@@ -149,3 +149,18 @@ TEST(plugin_host_table_serves_every_core_function) {
     host->HttpHeadersSet(headers, "X-Test", "1");
     REQUIRE_EQ(headers.Get("X-Test"), std::string("1"));
 }
+
+#ifdef ULTRANET_V1ONLY_PLUGIN_DIR_DEFINE
+TEST(plugin_loader_refuses_a_v1_only_plugin) {
+    // The retired v1 entry (UltraNet_PluginRegister) resolved the host's
+    // symbols at load time, which only worked on POSIX and only when the host
+    // carried what the plug-in called. Only UltraNet_PluginInit is loaded now:
+    // a library that exports v1 alone is not an UltraNet plug-in.
+    const std::string previous = UltraNet_GetPluginDirectory();
+    UltraNet_SetPluginDirectory(ULTRANET_V1ONLY_PLUGIN_DIR_DEFINE);
+    UltraNet_RefreshPlugins();
+    const bool registered = UltraNet_GetPlugin("v1only") != nullptr;
+    UltraNet_SetPluginDirectory(previous);
+    REQUIRE(!registered);
+}
+#endif

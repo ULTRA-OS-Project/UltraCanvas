@@ -30,18 +30,17 @@
 // because COM is initialized around the call, and with the shell's own
 // "How do you want to open this file?" chooser (the "openas" verb) put up
 // when the type turns out to have no handler at all - what Explorer does
-// instead of failing. A registered handler that cannot be started from this
-// process (a packaged app such as Photos, whose activation DLL the shell
-// loads in here) is handed to explorer.exe instead, and the loader's own
-// "entry point not found" box is suppressed around every shell launch. A
-// launch that still fails reports the reason the shell gave rather than
-// "could not open".
+// instead of failing. The loader's own "entry point not found" box is
+// suppressed around every shell launch (a DLL the shell loads in here that
+// fails to resolve an import is reported as the shell's error, not as a
+// modal box on this thread), and a launch that fails reports the reason
+// the shell gave rather than "could not open".
 // COM is initialized per call (apartment-threaded, balanced), because the
 // core calls this backend from both the UI thread and its prewarm worker.
 // All entry points are serialized by the core's backend mutex (see
 // UltraCanvasFileAssociationsBackend.h) — no locking here.
-// Version: 1.3.1
-// Last Modified: 2026-09-29
+// Version: 1.3.2
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 // SHAssocEnumHandlers / IAssocHandler are Vista+ and SetThreadErrorMode is
@@ -578,43 +577,6 @@ namespace {
         return outcome;
     }
 
-    // Explorer's own process, asked to open the file: exactly a double-click
-    // in Explorer, with the activation running in a process whose DLL
-    // environment is the stock one. The fallback for a handler that cannot
-    // be started from in here (see QuietLoaderScope). Explorer answers at
-    // once and reports nothing, so this is only ever the second attempt.
-    bool OpenThroughExplorer(const std::wstring& nativeFile) {
-        wchar_t windowsDir[MAX_PATH] = {};
-        const UINT length = GetWindowsDirectoryW(windowsDir, MAX_PATH);
-        if (length == 0 || length >= MAX_PATH) return false;
-        const std::wstring explorer = std::wstring(windowsDir) + L"\\explorer.exe";
-        // Always quoted, not quoted-when-spaced: Explorer splits its command
-        // line at commas as well, so "C:\x\a,b.jpg" bare would be two
-        // switches. A Windows path cannot contain a quote to escape.
-        std::wstring commandLine = L"\"" + explorer + L"\" \"" + nativeFile + L"\"";
-        const std::wstring directory = NativeParentDirectory(nativeFile);
-        STARTUPINFOW startup = {};
-        startup.cb = sizeof(startup);
-        PROCESS_INFORMATION process = {};
-        if (!CreateProcessW(explorer.c_str(), &commandLine[0], nullptr, nullptr,
-                            FALSE, 0, nullptr,
-                            directory.empty() ? nullptr : directory.c_str(),
-                            &startup, &process))
-            return false;
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-        return true;
-    }
-
-    // Failures that say nothing about the handler, where handing the file
-    // to Explorer would only move the same error into Explorer's own box.
-    bool IsFileLevelFailure(const ShellExecuteOutcome& outcome) {
-        return outcome.code == SE_ERR_FNF || outcome.code == SE_ERR_PNF ||
-               outcome.lastError == ERROR_FILE_NOT_FOUND ||
-               outcome.lastError == ERROR_PATH_NOT_FOUND ||
-               outcome.lastError == ERROR_CANCELLED;
-    }
-
 } // namespace
 
 bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError) {
@@ -642,11 +604,6 @@ bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError)
             const ShellExecuteOutcome chooser =
                     ShellExecuteVerb(L"openas", file, true);
             if (chooser.ok || chooser.lastError == ERROR_CANCELLED) continue;
-        } else if (!IsFileLevelFailure(opened) && OpenThroughExplorer(file)) {
-            // The type has a handler, it just would not start from this
-            // process (a packaged app whose activation DLL failed to load
-            // here comes back as "access denied"): Explorer starts it.
-            continue;
         }
 
         allOk = false;

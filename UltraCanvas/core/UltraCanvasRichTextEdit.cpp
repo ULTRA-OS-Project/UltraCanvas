@@ -7,7 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -4114,6 +4114,8 @@ UC_RTE_FORMAT_ACTION(ToggleBulletList(), editor.ToggleList(false))
 UC_RTE_FORMAT_ACTION(ToggleNumberedList(), editor.ToggleList(true))
 UC_RTE_FORMAT_ACTION(IndentList(), editor.IndentList())
 UC_RTE_FORMAT_ACTION(OutdentList(), editor.OutdentList())
+UC_RTE_FORMAT_ACTION(IncreaseQuoteLevel(), editor.IncreaseQuoteLevel())
+UC_RTE_FORMAT_ACTION(DecreaseQuoteLevel(), editor.DecreaseQuoteLevel())
 UC_RTE_FORMAT_ACTION(ToggleBlockQuote(), editor.ToggleBlockQuote())
 UC_RTE_FORMAT_ACTION(ToggleCodeBlock(const std::string& language), editor.ToggleCodeBlock(language))
 UC_RTE_FORMAT_ACTION(ToggleCheckList(), editor.ToggleCheckList())

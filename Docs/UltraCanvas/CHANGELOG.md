@@ -1,3 +1,173 @@
+#### 2026-10-02 *0.9.130*
+- **Quote levels can be changed from a toolbar.** New
+  `UCRichDocumentEditor::IncreaseQuoteLevel` / `DecreaseQuoteLevel` and the
+  matching `UltraCanvasRichTextEdit` methods move every block the selection
+  touches one quote level in or out (the caret's block when nothing is
+  selected).
+  - The level stays between 0 and 8.
+  - Each change is one undo step; a change that does nothing records none.
+  - They also work with the caret in a table cell: the level belongs to the
+    whole table and restyles none of its cells.
+
+#### 2026-10-02 *0.9.129*
+- **The file dialog can show its filters as toggle buttons.** With
+  `FileDialogConfig::filterToggles` (or `FileDialogOptions::SetFilterToggles`
+  through `UltraCanvasFileLoader`) the "Files of type" dropdown becomes a
+  "Show:" row of toggle buttons, one per filter, labelled with the filter's
+  name and with its extensions in the tooltip. Any number can be on, the
+  listing shows the files any of them matches, and the last one on cannot be
+  switched off. All start on except an "All files" (`*`) filter. It is for an
+  Open dialog whose filters are kinds of file (images, audio, video ...) and
+  would otherwise be a dropdown of endless extension lists. A native dialog
+  has no toggles, so `UltraCanvasFileLoader` hands it the same filters as a
+  list headed by "All supported files". The listing's filter now holds a copy
+  of the filters in force, so a toggle change applies to a new predicate
+  rather than editing one the listing may be running.
+- **`UltraCanvasMediaViewer`'s Open dialog uses the toggles: Images, Audio,
+  Video, Documents, Text, All files.** Its only filter had been a short list
+  of picture formats, so in the framework dialog every video, document and
+  text file the viewer opens was hidden. Each button now holds every
+  extension of that kind the viewer opens, worked out at run time from the
+  checks that decide what browsing a folder shows (a codec or reader a plugin
+  registers is included) and sorted by the viewer's own `ClassifyFile`:
+  vector drawings and 3D models are Images; PDFs, spreadsheets, e-books,
+  `.ucd` and fonts are Documents; Text is plain text, markup and every
+  programming language the syntax highlighter knows. A kind the build cannot
+  show (no video backend) gets no button.
+
+#### 2026-10-02 *0.9.128*
+- **A hook now enforces the PR number in the chat title.** `.claude/hooks/check-chat-title.sh` runs on `PostToolUse` for `mcp__github__create_pull_request` and `mcp__claude-code-remote__set_session_title`, and on `Stop`, in Claude Code Remote sessions only. Opening a PR records its number in a per-session file under `.git/`, so nothing appears in the working tree, and puts the rename instruction in front of the session with the number filled in. Each rename records the number the title starts with. A bare `#628` with no words after it does not count. At `Stop` the hook takes the PR the session opened, or the one its closing line names with ` — open as PR #<n>` (that also catches a PR opened from the Claude UI), and blocks once when the title was never given that number. A second stop goes through, so a title someone set by hand only costs one line of explanation. `AGENTS.md` rule 7 describes it.
+
+#### 2026-10-02 *0.9.127*
+- **The file dialog also remembers its Details column widths and the last
+  folder - one for all applications, or one per application.**
+  `FileDialog.conf` (beside the view and window size it already kept) now
+  holds the Size / Type / Modified widths the user dragged the columns to,
+  and the last used folder. That folder is where the next
+  `UltraCanvasFileDialog` opens when the caller names no starting folder -
+  UltraMail's *Attach file* - while a folder the caller does name still wins.
+  - Whether the folder is shared by all applications (Global) or kept per
+    application (Individual, each application with its own Global /
+    Individual choice) is set in the new ULTRA OS settings application,
+    UOS-Settings. An application switched to its own folder starts from the
+    common one until it has used a folder of its own.
+  - **`UltraCanvasFileDialogSettings.h`** (`UltraCanvas::FileDialogSettings`)
+    reads and writes the file for the dialog and for UOS-Settings alike.
+    Every change goes through `Update()`, which re-reads the file first, so
+    one application's write never discards another's; the file is written
+    beside itself and renamed into place.
+
+#### 2026-10-02 *0.9.126*
+- **UltraNet plug-ins are loaded `RTLD_LOCAL`.** `UltraNet_RefreshPlugins()`
+  opened every plug-in DSO with `RTLD_GLOBAL`, which put everything a plug-in
+  exports into the process-wide symbol scope, where it binds the symbols of
+  every library loaded after it - another plug-in's included, and plug-ins
+  built from the same helper sources export the same names. That scope was
+  only ever needed by the retired v1 entry; plug-ins now take nothing from
+  the host's symbol table (host table, ABI 2), so they are loaded
+  `RTLD_LOCAL`. A plug-in still resolves its own references against the host
+  first, so the host's `dynamic_cast` to the richer plug-in interfaces is
+  unaffected (`imap_plugin_exposes_mailbox_interface`). New test
+  `plugins_are_loaded_without_joining_the_global_symbol_scope` (POSIX): after
+  loading, a process-wide `dlsym` finds no plug-in's `UltraNet_PluginInit`; it
+  fails with `RTLD_GLOBAL`.
+- **The UltraNet loader no longer accepts the v1 plug-in entry.** A plug-in
+  DSO that exported only `UltraNet_PluginRegister()` used to be loaded as a
+  fallback. That entry registered itself by resolving `UltraNet_RegisterPlugin`
+  - and every other core function it called - from the host's symbol table at
+  load time, which only POSIX allows and which only worked when the host
+  happened to carry all of them. Every in-tree plug-in has used
+  `UltraNet_PluginInit(host)` and the host table (ABI 2) since the previous
+  release, so `UltraNet_RefreshPlugins()` now loads that entry alone, the same
+  way on every platform, and leaves a v1-only library unregistered. A
+  third-party plug-in still exporting only v1 has to be rebuilt with
+  `UltraNet_PluginInit` and `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`.
+  New test `plugin_loader_refuses_a_v1_only_plugin` (POSIX) builds such a
+  plug-in and checks it is not registered; against the previous loader it
+  fails.
+
+#### 2026-10-02 *0.9.125*
+- **VideoFX: background music** (VideoFX 0.4.0).
+  `VideoFXExportSettings::music` (`VideoFXMusic`) lays a song - any file with
+  sound, a video's soundtrack included - under a whole export, slideshow or
+  not: volume, start offset, looping (or silence after the end), fade in and
+  out over the export, and **ducking**: where the segments have sound of
+  their own the music drops to `duckingLevel` within about 0.1 s and returns
+  after a pause, without pumping between words. It is mixed in as the sound
+  is encoded, so it runs straight through joins, transitions and padding;
+  the level detection and gain ramps are VideoFX's own, identical on FFmpeg
+  4.4 to 8.x.
+  - `VideoFXSlideshowOptions::music` and `matchMusicLength`: a slideshow
+    whose seconds per photo are chosen to end with the song.
+  - Music makes a timeline of silent pictures produce sound, so photos plus
+    music can be written to MP3 / WAV.
+  - Fix: a sound-only export of photos with transitions came out too short -
+    each photo after the first ended where the previous transition's held
+    sound did, instead of after its own length.
+  - `videofx`: `--music`, `--music-volume`, `--music-start`, `--duck`,
+    `--no-loop`, `--fit-music`. `VideoFXTest` grows to 298 checks.
+
+#### 2026-10-01 *0.9.124*
+- **Typing in a search field hung the text area on a large document.**
+  `UltraCanvasTextArea::HighlightMatches` collected every match by calling
+  `utf8_find` in a loop, and each call walked the text from its start to the
+  previous match — and, for a case-insensitive search, made a lowercased copy
+  of the whole document first. That is quadratic in the number of matches:
+  one letter typed into UltraTexter's search bar with the ~940 KB framework
+  changelog open meant some 88,000 matches, each copying the full megabyte,
+  and the UI thread did not come back (the first 30 KB alone took 1.4 s). The
+  new `utf8_find_all` (`UltraCanvasUtilsUtf8.h`) lowercases once and returns
+  every non-overlapping match in one pass — the same positions the loop
+  produced, in 17 ms for the whole file. `HighlightMatches`, `CountMatches`,
+  `GetCurrentMatchIndex` and UltraTexter's background match counter use it.
+- **Replace All hung the text area on a large document.**
+  `UltraCanvasTextArea::ReplaceText(..., all = true)` replaced one match at a
+  time in place: a fresh `utf8_find` from the start of the text, then a splice
+  that shifts everything after it - 6 s for the first 100 KB of the framework
+  changelog with one letter replaced, and no end in sight for the whole file.
+  The new `utf8_replace_all` finds the matches once and builds the result in a
+  single pass (27 ms for the whole ~940 KB), with the same output as before.
+
+#### 2026-10-01 *0.9.123*
+- **AI sessions put the PR number at the front of the chat title.** `AGENTS.md` *Branch and pull-request rules* gains rule 7: once a session opens a pull request it renames itself `#<n> <current title>` (`set_session_title` in a Claude Code Remote session), swapping the number rather than stacking a second one when a replacement PR follows a merged one, so a chat list shows which PR each session drives. `CLAUDE.md` points at it; the maintainer rules renumber to 8 and 9.
+
+#### 2026-10-01 *0.9.122*
+- **The Filer's host-icon and shortcut tests run on Windows.**
+  `FilerHostIconsTest` and `FilerShortcutEntryTest` join
+  `Tests/FilerTests.cmake`, so the Windows CI rows build and run them with the
+  name-encoding and folder-preview tests: the host-icon test asks the real
+  Windows shell for its icons, and the shortcut test reads `.lnk` files on
+  the system they come from, with links that name real paths. The shortcut
+  test's stored paths and the folder it lists are converted with
+  `PathToUtf8` instead of `.string()`, and on Windows a desktop entry whose
+  `/bin/sh` this machine does not have is expected to leave `linkTarget`
+  empty and show its command, as the display does there.
+
+#### 2026-10-01 *0.9.121*
+- **Windows: an installed package whose ImageMagick coder carries a system
+  DLL's name is repaired on start.** Packages up to 0.9.92 shipped
+  `coders\mpr.dll`, and a newer package extracted over an older folder keeps
+  it, so the "procedure entry point `WNetGetConnectionW` could not be
+  located" box on "Delete as administrator" and on a double-click into
+  Photos came back on exactly the machines that had hit it. The image
+  subsystem now puts the package's coder folder right before anything can
+  load a coder (`UltraCanvasCoderModuleRepair`, new): the useless `mpr` and
+  `url` pseudo-formats are deleted with their `.la` files, and a real format
+  whose name Windows also uses (`dpx`, `vid`, whatever else `System32`
+  holds) is renamed to `<name>-coder.dll` with its `.la` pointed at the new
+  file, which ImageMagick opens through unchanged. Every change is written
+  to the framework log; a folder that cannot be written (a read-only
+  install) is reported there and left for `uc-diagnose.ps1` to list.
+  Deleting the files by hand is no longer needed.
+- **Windows: a default open that fails is reported, not handed to
+  `explorer.exe`.** 0.9.83 answered a registered handler that would not
+  start from our process by starting it from Explorer's, which hid the
+  reason. The reason was the `mpr.dll` coder shadowing the system's (fixed
+  in the package since, and repaired on start now), so the detour is gone:
+  `OpenWithDefaultApplication` launches through the shell as a double-click
+  does, with the loader's hard-error box still off on the launching thread,
+  and a launch that fails names the shell's error.
+
 #### 2026-10-01 *0.9.120*
 - **A word-processing document prints on Windows, through GutenPrint, and on an
   IPP printer without PDF.** It went to the printer only as the PDF

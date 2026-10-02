@@ -25,6 +25,9 @@ Quick pointers:
   3. **a pull request?** — its number and state, or the words "no pull
      request". Pushed is not in review, and the reader cannot tell the
      difference unless it is said.
+- When you open a pull request, rename the chat so its title starts with
+  the PR number (`#<n> <title>`, via `set_session_title`) — see rule 7 of
+  *Branch and pull-request rules* in `AGENTS.md`
 - The last reply before the chat waits for the user ends with the line
   `Code needs to be PRed (N lines)` — `N` measured against the merge base
   with `origin/main` (committed + uncommitted + untracked), `(0 lines)` when

@@ -379,6 +379,21 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
+
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
   `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
@@ -1009,6 +1024,15 @@ bytes) is transparently decompressed via the VirtualFS compression API, so
 applications never deal with compression formats themselves;
 `FileBytesResult::decompressedFrom` records the source format and
 `autoDecompress = false` opts out.
+
+The file dialogs follow `UltraCanvasDialogManager::SetUseNativeDialogs`: the
+platform's picker, or the framework's `UltraCanvasFileDialog`. What the
+framework's dialog remembers (view, size, Details column widths, last used
+folder - shared by all applications or per application) is
+`UltraCanvas::FileDialogSettings` in `UltraCanvasFileDialogSettings.h`, the
+file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
+settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
+folder scope. Every write goes through `FileDialogSettings::Update()`.
 
 ### **4. Plug-ins for File Types**
 
@@ -1822,9 +1846,10 @@ time: without it the same API links from a stub whose calls return
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
 frame, still images with sub-pixel pan and zoom and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
-multi-track audio mixing, hardware encoders beyond the platform ones picked
+several free audio tracks, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
@@ -1834,7 +1859,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
+  `VideoFXMusic` (`VideoFXExportSettings::music`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1866,8 +1892,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
-  ContainViewRect, MakeBlurredBackdrop, RenderView}`
-  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
+  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
+  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 

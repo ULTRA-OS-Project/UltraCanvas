@@ -15,6 +15,7 @@
 #include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailLoginCheck.h"
+#include "UltraMailOAuth.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraNet/UltraNetPlugins.h>
@@ -119,6 +120,17 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
+    // The OAuth client UltraMail signs in as. An UltraMail account that signed
+    // in through its provider's browser login holds a refresh token issued to
+    // that client, so renewing it has to go through the same one: the
+    // environment and the build's baked-in client are shared already, and
+    // this adds the oauth.ini in UltraMail's data folder, as UltraMail does.
+    UltraMail::OAuthApps::LoadFile(mailDataDir + "/oauth.ini");
+
+    // Attachments opened in the viewer are copies; prune them now, before any
+    // viewer has one open (a week unopened, then down to 256 MB).
+    PruneAttachmentCache(dataDir_ + "/attachments");
+
     LoadRules();
     ImportAccounts();
     store_.ListAccounts(accounts_);
@@ -165,11 +177,12 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
         if (account.source == AccountSource::UltraMail) any = true;
     if (!any) return 0;
 
-    // One entry per account: where its server is, and the password UltraMail
-    // already holds. An account with neither is simply not registered, and the
-    // backend then refuses its messages by name rather than failing obscurely.
-    // The vault is UltraMail's, unlocked with the device key UltraMail keeps
-    // beside it; until it is unlocked every Retrieve() says "no password".
+    // One entry per account: where its server is, and how it signs in - the
+    // password UltraMail holds, or, for an account that signed in through its
+    // provider's browser login, its OAuth2 token set. An account with neither
+    // is simply not registered, and the backend then refuses its messages by
+    // name rather than failing obscurely. The vault is UltraMail's, unlocked
+    // with the device key UltraMail keeps beside it, and only ever read.
     UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
     if (!vault.TryAutoUnlock()) {
         problem = vault.Exists()
@@ -193,21 +206,32 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
         const UltraMail::DiscoveryResult discovered = UltraMail::AutoDiscovery::ForAccount(record);
         if (!discovered.imap.Valid()) continue;
 
-        std::string password;
-        if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
-
         MailAccountAccess access;
         access.accountId    = account.accountId;
         access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(discovered.imap);
         access.ownerAddress = account.email;
-        access.options.credentials.username =
+        const std::string username =
             discovered.imap.username.empty() ? account.email : discovered.imap.username;
-        access.options.credentials.password = password;
+        access.options.credentials.username = username;
         UltraMail::ApplyConnection(discovered.imap, access.options);
+
+        UltraMail::OAuthTokens tokens;
+        if (vault.RetrieveOAuthTokens(account.accountId, tokens)) {
+            // Browser sign-in: a fresh bearer token before every server call,
+            // renewed through the provider when it has expired.
+            const std::string provider = UltraMail::OAuthProviderFor(discovered);
+            if (provider.empty()) continue;   // cannot renew without knowing whom to ask
+            access.prepareSession =
+                MakeOAuthSessionPreparer(provider, username, tokens);
+        } else {
+            std::string password;
+            if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
+            access.options.credentials.password = password;
+        }
         mailBackend_->SetAccount(access);
         ++usable;
     }
-    vault.Lock();   // the passwords are in the backend now; drop the key
+    vault.Lock();   // the secrets are in the backend now; drop the key
     return usable;
 }
 
@@ -264,7 +288,7 @@ void EmailCleanerApp::LoadRules() {
     // it can only ever sharpen the detection. On the first run, write the
     // built-in table out so there is something to edit.
     std::error_code ec;
-    if (std::filesystem::exists(rulesPath_, ec)) {
+    if (std::filesystem::exists(PathFromUtf8(rulesPath_), ec)) {
         RuleSet user;
         if (user.LoadFile(rulesPath_)) rules.Merge(user);
     } else {
@@ -289,6 +313,14 @@ void EmailCleanerApp::ImportAccounts() {
                 for (const UltraMail::Account& account : mailAccounts) {
                     store_.UpsertAccount(ToStoredAccount(account, AccountSource::UltraMail));
                     ultraMailAccounts_[account.accountId] = account;
+                    std::vector<UltraMail::Folder> folders;
+                    if (mailStore.ListFolders(account.accountId, folders)) {
+                        for (const UltraMail::Folder& folder : folders) {
+                            if (folder.role == UltraMail::FolderRole::Trash)
+                                ultraMailTrashDirs_[account.accountId].insert(
+                                    CacheDirectoryName(account.accountId, folder.name));
+                        }
+                    }
                     ++imported;
                 }
             }
@@ -311,8 +343,9 @@ void EmailCleanerApp::ImportAccounts() {
     // EMAILCLEANER_MAIL_DIR pointing at it. The cache layout still names the
     // accounts: one directory per account under <mail dir>/mail. Take them
     // from there so the corpus can be loaded without UltraMail present.
-    if (!std::filesystem::is_directory(mailCacheDir_, ec)) return;
-    for (const auto& entry : std::filesystem::directory_iterator(mailCacheDir_, ec)) {
+    const std::filesystem::path cacheRoot = PathFromUtf8(mailCacheDir_);
+    if (!std::filesystem::is_directory(cacheRoot, ec)) return;
+    for (const auto& entry : std::filesystem::directory_iterator(cacheRoot, ec)) {
         if (ec) break;
         if (!entry.is_directory(ec)) continue;
         StoredAccount stored;
@@ -536,15 +569,35 @@ void EmailCleanerApp::FetchThenAnalyse(const std::vector<std::string>& accountId
     }).detach();
 }
 
+std::set<std::string> EmailCleanerApp::TrashDirsFor(const std::string& accountId) {
+    if (!IsOwnAccountId(accountId)) {
+        auto it = ultraMailTrashDirs_.find(accountId);
+        return it == ultraMailTrashDirs_.end() ? std::set<std::string>{} : it->second;
+    }
+    std::set<std::string> dirs;
+    std::vector<UltraMail::Folder> folders;
+    if (ownAccounts_.IsOpen() && ownAccounts_.Store().ListFolders(accountId, folders)) {
+        for (const UltraMail::Folder& folder : folders)
+            if (folder.role == UltraMail::FolderRole::Trash)
+                dirs.insert(CacheDirectoryName(accountId, folder.name));
+    }
+    return dirs;
+}
+
 void EmailCleanerApp::AnalyseCaches(bool skipExisting, const std::string& fetchReport) {
     IngestOptions options;
     options.skipExisting = skipExisting;
+    // Mail in Trash has been dealt with - including what the actions moved
+    // there - so it is not analysed: by the server's folder role where known,
+    // and by name for the rest.
+    options.skipTrash = true;
 
     IngestStats total;
     const std::string wanted = accountBar_.Filter().accountId;
     for (const StoredAccount& account : accounts_) {
         if (!wanted.empty() && account.accountId != wanted) continue;
         options.ownerAddress = account.email;
+        options.skipFolders  = TrashDirsFor(account.accountId);
         total.Add(ingestor_.IngestMailCache(CacheDirFor(account.accountId),
                                             account.accountId, options));
     }

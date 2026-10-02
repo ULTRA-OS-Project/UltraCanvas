@@ -139,6 +139,16 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
 
     dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
+    // Attachments opened in the viewer are copies of what the message already
+    // holds, so their folder is pruned at every start - before any viewer has
+    // one open: what was not opened for a week goes, then the oldest until
+    // the rest fits in 256 MB. Earlier versions wrote them straight into the
+    // cache folder, where nothing else keeps files (the sender icons have a
+    // folder of their own); those loose files are cleared once.
+    attachmentDir_ = cacheDir_ + "/attachments";
+    AttachmentCache(cacheDir_).Prune(/*maxAgeSeconds=*/-1, /*maxBytes=*/0);
+    AttachmentCache(attachmentDir_).Prune(/*maxAgeSeconds=*/7 * 24 * 3600,
+                                          /*maxBytes=*/256ull * 1024 * 1024);
     mailDir_  = dataDir + "/mail";
     // App-wide view preferences (e.g. the reading pane). A missing file keeps
     // the defaults; it is written the first time the user changes a setting.
@@ -1018,10 +1028,10 @@ void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
             if (!trash.empty() && trash != env.folder)
                 return engine.MoveMessage(env.accountId, env.folder, env.uid, trash, url, opts);
             // No Trash mailbox (or already in it): flag \Deleted on the server and
-            // drop the local row so it leaves the list.
+            // drop the local row and its cached body so it leaves the list.
             SyncOutcome o = engine.SetFlag(env.accountId, env.folder, env.uid,
                                            Flag_Deleted, true, url, opts);
-            if (o) store_.RemoveMessage(env.accountId, env.folder, env.uid);
+            if (o) engine.ForgetMessage(env.accountId, env.folder, env.uid);
             return o;
         },
         "Delete");
@@ -2160,7 +2170,7 @@ void UltraMailApp::SeedDemoContacts() {
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
-    AttachmentCache cache(cacheDir_);
+    AttachmentCache cache(attachmentDir_);
     const std::string path = cache.Write(attachment);
     if (path.empty()) {
         AlertError(parent,
@@ -2168,7 +2178,7 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
                    "\"" + (attachment.filename.empty() ? std::string("(unnamed)")
                                                        : attachment.filename)
                    + "\" could not be written to the attachment cache in "
-                   + cacheDir_ + ". Check that the folder exists and is writable.");
+                   + attachmentDir_ + ". Check that the folder exists and is writable.");
         return;
     }
 
@@ -2227,7 +2237,7 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
                        ext.substr(1));
     opts.AddFilter("All files", "*");
 
-    const std::string cacheDir = cacheDir_;
+    const std::string cacheDir = attachmentDir_;
     UltraCanvas::UltraCanvasFileLoader::SaveFileDialog(
         opts,
         [attachment, cacheDir, parent, name](UltraCanvas::DialogResult result,

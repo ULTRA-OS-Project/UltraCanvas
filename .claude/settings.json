@@ -22,6 +22,25 @@
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-delivery.sh\"",
             "timeout": 20,
             "statusMessage": "Checking the work is committed and pushed..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-chat-title.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the chat title carries the PR number..."
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": "mcp__github__create_pull_request|mcp__claude-code-remote__set_session_title",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-chat-title.sh\" --record",
+            "timeout": 10
           }
         ]
       }

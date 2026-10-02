@@ -1,7 +1,7 @@
 // core/UltraCanvasUtilsUtf8.cpp
 // UTF-8 string utilities - out-of-line half of UltraCanvasUtilsUtf8.h.
-// Version: 1.1.0
-// Last Modified: 2026-09-15
+// Version: 1.2.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasUtilsUtf8.h"
@@ -66,6 +66,61 @@ namespace UltraCanvas {
         int result = found ? static_cast<int>(g_utf8_pointer_to_offset(lH, found)) : -1;
         g_free(lH);
         g_free(lN);
+        return result;
+    }
+
+    // All non-overlapping matches (see the header for why this is not a utf8_find loop).
+    std::vector<int> utf8_find_all(const std::string& haystack, const std::string& needle,
+                                   bool caseSensitive) {
+        std::vector<int> result;
+        if (needle.empty() || haystack.empty()) return result;
+        gchar* lH = caseSensitive ? nullptr : g_utf8_strdown(haystack.c_str(), -1);
+        gchar* lN = caseSensitive ? nullptr : g_utf8_strdown(needle.c_str(), -1);
+        const char* base = caseSensitive ? haystack.c_str() : lH;
+        const char* pattern = caseSensitive ? needle.c_str() : lN;
+        const size_t patternBytes = std::strlen(pattern);
+        if (patternBytes > 0) {
+            // Codepoint offsets are accumulated from the previous match, so the
+            // whole scan touches each byte a constant number of times.
+            const char* last = base;
+            int lastCp = 0;
+            const char* found = base;
+            while ((found = std::strstr(found, pattern)) != nullptr) {
+                lastCp += static_cast<int>(g_utf8_pointer_to_offset(last, found));
+                last = found;
+                result.push_back(lastCp);
+                found += patternBytes;
+            }
+        }
+        g_free(lH);
+        g_free(lN);
+        return result;
+    }
+
+    // One pass: copy the text between matches, then the replacement.
+    std::string utf8_replace_all(const std::string& haystack, const std::string& needle,
+                                 const std::string& rep, bool caseSensitive) {
+        const std::vector<int> matches = utf8_find_all(haystack, needle, caseSensitive);
+        if (matches.empty()) return haystack;
+        const int needleCp = static_cast<int>(g_utf8_strlen(needle.c_str(), -1));
+        const char* base = haystack.c_str();
+        const char* end = base + haystack.size();
+        std::string result;
+        result.reserve(haystack.size());
+        // Match positions ascend, so the codepoint-to-pointer walk only ever
+        // moves forward from where the previous match ended.
+        const char* copied = base;
+        int copiedCp = 0;
+        for (int matchCp : matches) {
+            const char* matchStart = g_utf8_offset_to_pointer(copied, matchCp - copiedCp);
+            const char* matchEnd = g_utf8_offset_to_pointer(matchStart, needleCp);
+            if (matchEnd > end) matchEnd = end;
+            result.append(copied, matchStart);
+            result += rep;
+            copied = matchEnd;
+            copiedCp = matchCp + needleCp;
+        }
+        result.append(copied, end);
         return result;
     }
 

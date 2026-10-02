@@ -14,6 +14,7 @@
 #include "UltraCanvasVolumeMonitor.h"   // ListMountedVolumes
 #include "UltraCanvasFilerWidget.h"     // the file dialog's listing
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasFileDialogSettings.h"
 #include <cstdlib>
 #include <fstream>
 #include <fmt/os.h>
@@ -1254,79 +1255,43 @@ namespace UltraCanvas {
                 FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized};
         constexpr int kFileDialogViewCount = 6;
 
-        // ===== REMEMBERED STATE =====
-        // The view the user last chose and the size they last gave the
-        // window, kept per user for every application that shows this dialog:
-        // "FileDialog.conf" in the framework's settings folder (beside the
-        // spell checker's user dictionary).
-        struct FileDialogState {
-            int view = 0;     // index into kFileDialogViews
-            int width = 0;    // 0 = not remembered
-            int height = 0;
-        };
+        // Bounds for what is written back (FileDialogSettings ignores values
+        // outside them when it reads the file).
         constexpr int kFileDialogMinWidth = 520;
         constexpr int kFileDialogMinHeight = 380;
         constexpr int kFileDialogMaxSide = 8000;
+        constexpr int kFileDialogMinColumn = 44;     // the widget's own minimum
+        constexpr int kFileDialogMaxColumn = 2000;
 
-        std::filesystem::path FileDialogStatePath() {
-            std::filesystem::path base;
-#if defined(_WIN32) || defined(_WIN64)
-            if (const wchar_t* appData = _wgetenv(L"APPDATA"))
-                base = std::filesystem::path(appData);   // path-string-ok: wide
-#elif defined(__APPLE__)
-            if (const char* home = std::getenv("HOME"))
-                base = PathFromUtf8(home) / "Library" / "Application Support";
-#else
-            if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-                base = PathFromUtf8(xdg);
-            } else if (const char* home = std::getenv("HOME")) {
-                base = PathFromUtf8(home) / ".config";
-            }
-#endif
-            if (base.empty()) return {};
-            return base / "UltraCanvas" / "FileDialog.conf";
-        }
-
-        FileDialogState LoadFileDialogState() {
-            FileDialogState state;
-            const std::filesystem::path path = FileDialogStatePath();
-            if (path.empty()) return state;
-            std::ifstream in(UltraCanvas::PathFromUtf8(path));
-            std::string line;
-            while (std::getline(in, line)) {
-                const size_t eq = line.find('=');
-                if (eq == std::string::npos) continue;
-                const std::string key = line.substr(0, eq);
-                int value = 0;
-                try { value = std::stoi(line.substr(eq + 1)); } catch (...) { continue; }
-                if (key == "view" && value >= 0 && value < kFileDialogViewCount) state.view = value;
-                else if (key == "width" && value >= kFileDialogMinWidth && value <= kFileDialogMaxSide) state.width = value;
-                else if (key == "height" && value >= kFileDialogMinHeight && value <= kFileDialogMaxSide) state.height = value;
-            }
-            return state;
-        }
-
-        void SaveFileDialogState(const FileDialogState& state) {
-            const std::filesystem::path path = FileDialogStatePath();
-            if (path.empty()) return;
-            std::error_code ec;
-            std::filesystem::create_directories(path.parent_path(), ec);
-            std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
-            if (!out) return;
-            out << "view=" << state.view << "\n"
-                << "width=" << state.width << "\n"
-                << "height=" << state.height << "\n";
+        // The name the running application registered with
+        // UltraCanvasApplication::Initialize: the key of its own last folder.
+        std::string CurrentApplicationName() {
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            return app ? app->GetAppName() : std::string();
         }
     } // namespace
 
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
-        // Opens the way the user left it last time: same view, same size.
-        const FileDialogState remembered = LoadFileDialogState();
+        // Opens the way the user left it last time: same view, same size
+        // (UltraCanvasFileDialogSettings.h, FileDialog.conf).
+        const FileDialogSettings remembered = FileDialogSettings::Load();
         viewIndex = remembered.view;
+        sizeColumnWidth = remembered.sizeColumn;
+        typeColumnWidth = remembered.typeColumn;
+        modifiedColumnWidth = remembered.modifiedColumn;
         if (remembered.width > 0 && remembered.height > 0) {
             fileConfig.width = remembered.width;
             fileConfig.height = remembered.height;
+        }
+        // The last used folder - the one all applications share, or this
+        // application's own, as ULTRA OS settings has it - when the caller
+        // names none; a folder the caller does name is the one it means.
+        if (fileConfig.initialDirectory.empty()) {
+            const std::string last = remembered.LastFolderFor(CurrentApplicationName());
+            std::error_code fec;
+            if (!last.empty() && std::filesystem::is_directory(PathFromUtf8(last), fec) && !fec)
+                fileConfig.initialDirectory = last;
         }
         UltraCanvasModalDialog::CreateDialog(fileConfig);
 
@@ -1474,9 +1439,9 @@ namespace UltraCanvas {
         filerView->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
         filerView->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
         filerView->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
-        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Size, 80);
-        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Type, 105);
-        filerView->SetDetailsColumnWidth(FilerDetailsColumn::ModifiedDate, 145);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Size, sizeColumnWidth);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Type, typeColumnWidth);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::ModifiedDate, modifiedColumnWidth);
         filerView->SetShowHiddenFiles(showHiddenFiles);
         filerView->SetSelectionInfoVisible(false);
         filerView->SetActivateOpensWithDefaultApp(false);
@@ -1543,17 +1508,40 @@ namespace UltraCanvas {
             };
             inputColumn->AddChild(fileNameInput);
 
-            addLabel("FileDialogTypeLabel", "Files of type:");
-            filterDropdown = std::make_shared<UltraCanvasDropdown>(
-                    "FileDialogType", 0, 0, 300, fieldHeight);
-            filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-                if (index < 0 || index >= static_cast<int>(fileConfig.filters.size())) return;
-                if (index == fileConfig.selectedFilterIndex) return;
-                fileConfig.selectedFilterIndex = index;
-                ApplyListingFilter();
-            };
-            inputColumn->AddChild(filterDropdown);
-            RebuildFilterDropdown();
+            if (fileConfig.filterToggles) {
+                // One button per kind of file, any number on, sized to their
+                // names and left-aligned: no extension lists to read through.
+                addLabel("FileDialogTypeLabel", "Show:");
+                auto toggleRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
+                toggleRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+                toggleRow->layout.SetFlexRow()
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                filterToggleBar = std::make_shared<UltraCanvasSegmentedControl>(
+                        "FileDialogTypeToggles", 0, 0, 300, fieldHeight);
+                filterToggleBar->SetSelectionMode(SegmentSelectionMode::Toggle);
+                filterToggleBar->SetWidthMode(SegmentWidthMode::FitContent);
+                filterToggleBar->layoutItem.SetFlexShrink(1);
+                toggleRow->AddChild(filterToggleBar);
+                inputColumn->AddChild(toggleRow);
+                RebuildFilterToggles();
+                ApplyListingFilter();   // the listing was set up before the toggles
+                filterToggleBar->onSelectionChanged = [this](const std::vector<int>& on) {
+                    activeFilters = std::set<int>(on.begin(), on.end());
+                    ApplyListingFilter();
+                };
+            } else {
+                addLabel("FileDialogTypeLabel", "Files of type:");
+                filterDropdown = std::make_shared<UltraCanvasDropdown>(
+                        "FileDialogType", 0, 0, 300, fieldHeight);
+                filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+                    if (index < 0 || index >= static_cast<int>(fileConfig.filters.size())) return;
+                    if (index == fileConfig.selectedFilterIndex) return;
+                    fileConfig.selectedFilterIndex = index;
+                    ApplyListingFilter();
+                };
+                inputColumn->AddChild(filterDropdown);
+                RebuildFilterDropdown();
+            }
 
             fields->AddChild(labelColumn);
             fields->AddChild(inputColumn);
@@ -1574,6 +1562,64 @@ namespace UltraCanvas {
             filterDropdown->SetSelectedIndex(fileConfig.selectedFilterIndex, false);
         }
         filterDropdown->SetDisabled(fileConfig.filters.size() < 2);
+    }
+
+    void UltraCanvasFileDialog::RebuildFilterToggles() {
+        activeFilters.clear();
+        const int count = static_cast<int>(fileConfig.filters.size());
+        auto isAllFiles = [this](int i) {
+            const auto& exts = fileConfig.filters[i].extensions;
+            return std::find(exts.begin(), exts.end(), "*") != exts.end();
+        };
+        // Every kind of file on, "All files" off: it would match everything
+        // and make the others pointless. Only an all-"*" list starts with it.
+        for (int i = 0; i < count; ++i) {
+            if (!isAllFiles(i)) activeFilters.insert(i);
+        }
+        if (activeFilters.empty()) {
+            for (int i = 0; i < count; ++i) activeFilters.insert(i);
+        }
+        if (!filterToggleBar) return;
+        filterToggleBar->ClearSegments();
+        std::string tooltip;
+        for (int i = 0; i < count; ++i) {
+            const FileFilter& filter = fileConfig.filters[i];
+            filterToggleBar->AddSegment(filter.description);
+            // The extensions stay one hover away, shortened for a long list.
+            if (isAllFiles(i)) continue;
+            std::string exts;
+            const size_t shown = std::min<size_t>(filter.extensions.size(), 24);
+            for (size_t k = 0; k < shown; ++k) {
+                if (k > 0) exts += " ";
+                exts += filter.extensions[k];
+            }
+            if (filter.extensions.size() > shown) {
+                exts += " ... (" + std::to_string(filter.extensions.size()) + " types)";
+            }
+            if (!tooltip.empty()) tooltip += "\n";
+            tooltip += filter.description + ": " + exts;
+        }
+        filterToggleBar->SetTooltip(tooltip);
+        // Set before the callback is wired (or while it is unset by a rebuild
+        // the caller follows with ApplyListingFilter).
+        auto callback = std::move(filterToggleBar->onSelectionChanged);
+        filterToggleBar->onSelectionChanged = nullptr;
+        filterToggleBar->SetSelectedIndices(std::vector<int>(activeFilters.begin(), activeFilters.end()));
+        filterToggleBar->onSelectionChanged = std::move(callback);
+    }
+
+    bool UltraCanvasFileDialog::MatchesTypeFilter(const std::string& fileName) const {
+        const int count = static_cast<int>(fileConfig.filters.size());
+        if (fileConfig.filterToggles) {
+            for (int i : activeFilters) {
+                if (i >= 0 && i < count && fileConfig.filters[i].Matches(fileName)) return true;
+            }
+            return activeFilters.empty();
+        }
+        if (fileConfig.selectedFilterIndex < 0 || fileConfig.selectedFilterIndex >= count) {
+            return true;
+        }
+        return fileConfig.filters[fileConfig.selectedFilterIndex].Matches(fileName);
     }
 
     void UltraCanvasFileDialog::FocusInitialElement() {
@@ -1707,15 +1753,44 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::PerformClose() {
-        // However it closes - OK, Cancel, Escape, the title bar - the view and
-        // the size it had are what the next file dialog opens with.
-        FileDialogState state;
-        state.view = viewIndex;
-        state.width = std::clamp(static_cast<int>(std::lround(GetWidth())),
-                                 kFileDialogMinWidth, kFileDialogMaxSide);
-        state.height = std::clamp(static_cast<int>(std::lround(GetHeight())),
-                                  kFileDialogMinHeight, kFileDialogMaxSide);
-        SaveFileDialogState(state);
+        // However it closes - OK, Cancel, Escape, the title bar - the view,
+        // the size, the column widths and the folder it had are what the next
+        // file dialog opens with.
+        // Written through Update(): the file is re-read first, so what other
+        // applications (and ULTRA OS settings) wrote since this dialog opened
+        // is kept.
+        int sizeColumn = sizeColumnWidth, typeColumn = typeColumnWidth,
+            modifiedColumn = modifiedColumnWidth;
+        if (filerView) {
+            auto column = [this](FilerDetailsColumn c) {
+                return std::clamp(filerView->GetDetailsColumnWidth(c),
+                                  kFileDialogMinColumn, kFileDialogMaxColumn);
+            };
+            sizeColumn = column(FilerDetailsColumn::Size);
+            typeColumn = column(FilerDetailsColumn::Type);
+            modifiedColumn = column(FilerDetailsColumn::ModifiedDate);
+        }
+        std::string folder;
+        {
+            std::error_code fec;
+            if (std::filesystem::is_directory(PathFromUtf8(currentDirectory), fec) && !fec)
+                folder = currentDirectory;
+        }
+        const int width = std::clamp(static_cast<int>(std::lround(GetWidth())),
+                                     kFileDialogMinWidth, kFileDialogMaxSide);
+        const int height = std::clamp(static_cast<int>(std::lround(GetHeight())),
+                                      kFileDialogMinHeight, kFileDialogMaxSide);
+        const int view = viewIndex;
+        const std::string appName = CurrentApplicationName();
+        FileDialogSettings::Update([&](FileDialogSettings& s) {
+            s.view = view;
+            s.width = width;
+            s.height = height;
+            s.sizeColumn = sizeColumn;
+            s.typeColumn = typeColumn;
+            s.modifiedColumn = modifiedColumn;
+            if (!folder.empty()) s.SetLastFolderFor(appName, folder);
+        });
         UltraCanvasModalDialog::PerformClose();
     }
 
@@ -1780,14 +1855,30 @@ namespace UltraCanvas {
             filerView->SetEntryFilter([](const FilerEntry& e) { return e.isDirectory; });
             return;
         }
-        if (fileConfig.selectedFilterIndex < 0 ||
-            fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size())) {
+        if (!fileConfig.filterToggles &&
+            (fileConfig.selectedFilterIndex < 0 ||
+             fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size()))) {
             filerView->SetEntryFilter(nullptr);
             return;
         }
-        const FileFilter filter = fileConfig.filters[fileConfig.selectedFilterIndex];
-        filerView->SetEntryFilter([filter](const FilerEntry& e) {
-            return e.isDirectory || e.isArchive || filter.Matches(e.name);
+        // The filters in force, copied: the listing may run the predicate off
+        // the UI thread, and a toggle change sets a new one through here.
+        std::vector<FileFilter> inForce;
+        if (fileConfig.filterToggles) {
+            for (int i : activeFilters) {
+                if (i >= 0 && i < static_cast<int>(fileConfig.filters.size())) {
+                    inForce.push_back(fileConfig.filters[i]);
+                }
+            }
+        } else {
+            inForce.push_back(fileConfig.filters[fileConfig.selectedFilterIndex]);
+        }
+        filerView->SetEntryFilter([inForce](const FilerEntry& e) {
+            if (e.isDirectory || e.isArchive) return true;
+            for (const FileFilter& filter : inForce) {
+                if (filter.Matches(e.name)) return true;
+            }
+            return inForce.empty();
         });
     }
 
@@ -1831,12 +1922,17 @@ namespace UltraCanvas {
         fileConfig.filters = filters;
         fileConfig.selectedFilterIndex = 0;
         RebuildFilterDropdown();
+        if (fileConfig.filterToggles) RebuildFilterToggles();
         ApplyListingFilter();
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const FileFilter& filter) {
         fileConfig.filters.push_back(filter);
         RebuildFilterDropdown();
+        if (fileConfig.filterToggles) {
+            RebuildFilterToggles();
+            ApplyListingFilter();
+        }
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const std::string& description, const std::vector<std::string>& extensions) {
@@ -1994,13 +2090,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFileDialog::IsFileMatchingFilter(const std::string& fileName) const {
-        if (fileConfig.selectedFilterIndex < 0 ||
-            fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size())) {
-            return true;
-        }
-
-        const FileFilter& filter = fileConfig.filters[fileConfig.selectedFilterIndex];
-        return filter.Matches(fileName);
+        return MatchesTypeFilter(fileName);
     }
 
     std::string UltraCanvasFileDialog::GetFileExtension(const std::string& fileName) const {

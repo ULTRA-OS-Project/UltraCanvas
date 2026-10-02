@@ -1,4 +1,4 @@
-#### 2026-10-01 *0.10.15*
+#### 2026-10-02 *0.10.17*
 - **Pictures in newsletters built from mail templates are shown.** Mail whose
   images carry `height="auto"` (Kickstarter's, and most Beefree / Braze
   newsletters) showed none of them - not even after *Show images* - because
@@ -11,6 +11,41 @@
   (Kickstarter's ART / COMICS / DESIGN …) was off screen entirely. Fixed in the
   framework's HTML reader (see the framework changelog, "HTML mail no longer
   runs off the right of the pane").
+
+#### 2026-10-02 *0.10.16*
+- **Quote + and Quote − in the compose window's formatting toolbar.** They
+  are the two quote-mark buttons at the end of the first row. They move the
+  paragraph at the cursor, or every selected paragraph, one quote level in
+  or out.
+  - Use them to place an answer between quoted lines of a reply, or to take
+    a quoted line out of the quote.
+  - Each click can be undone.
+  - The signature editor's toolbar does not show them.
+
+#### 2026-10-01 *0.10.15*
+- **The message cache no longer only grows.** Every message body UltraMail
+  downloads is kept as `mail/<account>/<folder>/<uid>.eml`, and none was ever
+  deleted: a message expunged on the server, moved to Trash or Junk, deleted,
+  or renumbered by a UIDVALIDITY reset lost its row in the index but kept its
+  file, so the mail folder grew by every message ever received - and
+  EmailCleaner, which reads the same cache, kept finding mail that was gone.
+  The body now goes with the row: `SyncEngine::MoveMessage`, the expunge in
+  `ReconcileFlags`, Delete without a Trash folder (`SyncEngine::ForgetMessage`)
+  and a UIDVALIDITY reset (the whole folder's files) remove it. And the first
+  reconcile of each folder prunes what earlier versions left behind - only
+  once the server has actually listed the folder (the same guard the expunge
+  has), and only up to the highest UID the index held when it started, so a
+  body a sync is writing at that moment is never touched.
+- **Opened attachments no longer pile up.** Opening an attachment writes a
+  copy for the viewer, and those copies were never deleted - straight into the
+  `cache` folder, for good. They now go to `cache/attachments`, which is pruned
+  at every start (before any viewer has a file open): what was not opened for
+  a week goes, then the oldest until the rest fits in 256 MB. Opening an
+  attachment again marks its copy as new. The loose copies earlier versions
+  left in `cache` are cleared once; the sender icons, in their own folder
+  there, are untouched. `AttachmentCache` also builds its paths through
+  `PathFromUtf8` now, so an attachment named in Thai or with an emoji is
+  written where it should be on Windows too.
 
 #### 2026-10-01 *0.10.14*
 - **Send works in the background, and nothing is lost on the way.** *Send*

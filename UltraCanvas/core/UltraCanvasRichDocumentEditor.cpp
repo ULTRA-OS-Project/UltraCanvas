@@ -7,7 +7,7 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocumentEditor.h"
@@ -2158,6 +2158,28 @@ void UCRichDocumentEditor::IndentList() {
     }
     NotifyChanged();
 }
+
+void UCRichDocumentEditor::ChangeQuoteLevel(int delta) {
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    bool changes = false;
+    for (int b = first; b <= last && b < GetBlockCount(); b++) {
+        const int level = std::clamp(doc->blocks[b].quoteLevel + delta, 0, kMaxQuoteLevel);
+        if (level != doc->blocks[b].quoteLevel) changes = true;
+    }
+    if (!changes) return;   // no empty undo step at level 0 or at the limit
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last && b < GetBlockCount(); b++) {
+            RichDocBlock& block = doc->blocks[b];
+            block.quoteLevel = std::clamp(block.quoteLevel + delta, 0, kMaxQuoteLevel);
+        }
+    }
+    NotifyChanged();
+}
+
+void UCRichDocumentEditor::IncreaseQuoteLevel() { ChangeQuoteLevel(+1); }
+void UCRichDocumentEditor::DecreaseQuoteLevel() { ChangeQuoteLevel(-1); }
 
 void UCRichDocumentEditor::OutdentList() {
     // A table cell holds runs and nothing else: RichTableCell carries no

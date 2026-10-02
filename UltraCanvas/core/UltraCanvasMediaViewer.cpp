@@ -60,6 +60,7 @@
 #include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -1384,14 +1385,21 @@ bool UltraCanvasMediaViewer::IsFontFile(const std::string& path) {
     return IsFontFileExtension(path);
 }
 
+// The e-book container formats IsEBookFile claims, also offered by the Open
+// dialog's "All supported media" filter.
+static const std::vector<std::string>& EBookExtensions() {
+    static const std::vector<std::string> exts = {
+        "epub", "fb2", "mobi", "prc", "azw", "azw3"
+    };
+    return exts;
+}
+
 bool UltraCanvasMediaViewer::IsEBookFile(const std::string& path) {
     // e-books open in UltraCanvasEBookViewer through the engine registry
     // (EPUB / FB2 / MOBI and Kindle variants). Plain text stays in the text
     // view even though a TXT e-book engine exists, so only the dedicated
     // e-book container formats are claimed here.
-    static const std::vector<std::string> b = {
-        "epub", "fb2", "mobi", "prc", "azw", "azw3"
-    };
+    const auto& b = EBookExtensions();
     std::string e = LowerExt(path);
     return !e.empty() && std::find(b.begin(), b.end(), e) != b.end();
 }
@@ -1439,17 +1447,24 @@ bool UltraCanvasMediaViewer::IsImageFile(const std::string& path) {
     return std::find(exts.begin(), exts.end(), e) != exts.end();
 }
 
+// Plain-text and markup extensions IsTextFile claims besides the syntax
+// tokenizer's source languages.
+static const std::vector<std::string>& PlainTextExtensions() {
+    static const std::vector<std::string> exts = {
+        "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
+        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
+        "tex", "srt", "vtt", "diff", "patch"
+    };
+    return exts;
+}
+
 bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // Text / markup / source files open in a read-only UltraCanvasTextArea. A
     // curated set of plain-text & markup extensions, plus any source language
     // the syntax tokenizer recognises (so highlighting matches the editor).
     std::string e = LowerExt(path);
     if (e.empty()) return false;
-    static const std::vector<std::string> textExts = {
-        "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
-        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
-        "tex", "srt", "vtt", "diff", "patch"
-    };
+    const auto& textExts = PlainTextExtensions();
     if (std::find(textExts.begin(), textExts.end(), e) != textExts.end()) return true;
     // Reuse the syntax tokenizer's language registry for source code (cpp, py,
     // js, java, …). Constructed once; mutation of its current-language state is
@@ -1620,13 +1635,79 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     // they hold nothing open once loaded.
 }
 
+// Every extension the viewer opens, for the Open dialog's type toggles.
+// Several kinds are decided at run time (the codec registry, the model and
+// vector readers a plugin registered, the tokenizer's languages), so the
+// candidates are gathered from every list those checks use and each is kept
+// only when IsSupportedMedia accepts it: the toggles then offer exactly what
+// browsing a folder would show. Lowercase, undotted, sorted, unique.
+static std::vector<std::string> SupportedOpenExtensions() {
+    std::vector<std::string> candidates = ImageExtensions();
+    auto add = [&candidates](const std::vector<std::string>& exts) {
+        candidates.insert(candidates.end(), exts.begin(), exts.end());
+    };
+    add(PlainTextExtensions());
+    add(EBookExtensions());
+    add({ "pdf", "ods", "csv", "tsv", "ucd" });
+    add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
+          "pcf", "bdf", "fon", "fnt" });
+    add(PreviewableModelExtensions());
+    add(PreviewableVectorExtensions());
+    for (MediaCodecKind kind : { MediaCodecKind::Video, MediaCodecKind::Audio }) {
+        for (const auto& codec : GetRegisteredMediaCodecs(kind)) {
+            candidates.push_back(codec.extension);
+            add(codec.aliases);
+        }
+    }
+    for (MediaFormatCategory category : {
+             MediaFormatCategory::Bitmap, MediaFormatCategory::Vector,
+             MediaFormatCategory::Model3D, MediaFormatCategory::Document,
+             MediaFormatCategory::Spreadsheet, MediaFormatCategory::Audio,
+             MediaFormatCategory::Video, MediaFormatCategory::Font }) {
+        add(UltraCanvasSupportedFormats::GetLoadExtensions(category));
+    }
+    static SyntaxTokenizer tokenizer;
+    for (const auto& language : tokenizer.GetLanguageExtensions()) add(language.second);
+
+    std::vector<std::string> out;
+    for (std::string e : candidates) {
+        if (!e.empty() && e.front() == '.') e.erase(0, 1);
+        std::transform(e.begin(), e.end(), e.begin(),
+                       [](unsigned char c) { return (char)std::tolower(c); });
+        if (e.empty() || e == "*") continue;
+        if (UltraCanvasMediaViewer::IsSupportedMedia("file." + e)) out.push_back(e);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
 void UltraCanvasMediaViewer::ShowOpenDialog() {
+    // One toggle button per kind of file rather than a list of extensions:
+    // each supported extension goes to the kind the viewer would show it as.
+    enum Group { Images, Audio, Video, Documents, Text, GroupCount };
+    static const char* const groupNames[GroupCount] = {
+        "Images", "Audio", "Video", "Documents", "Text" };
+    std::vector<std::string> groups[GroupCount];
+    for (const std::string& e : SupportedOpenExtensions()) {
+        switch (ClassifyFile("file." + e)) {
+            case MediaKind::Image:
+            case MediaKind::Vector:
+            case MediaKind::Model:    groups[Images].push_back(e);    break;
+            case MediaKind::Audio:    groups[Audio].push_back(e);     break;
+            case MediaKind::Video:    groups[Video].push_back(e);     break;
+            case MediaKind::Text:     groups[Text].push_back(e);      break;
+            default:                  groups[Documents].push_back(e); break;
+        }
+    }
+
     FileDialogOptions opts;
-    opts.SetTitle("Open media")
-        .AddFilter("Images", std::vector<std::string>{
-            "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif",
-            "svg", "ico", "heic", "heif", "avif", "jxl", "tga", "ppm", "qoi" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Open media").SetFilterToggles(true);
+    // A kind this build cannot show at all (no video backend) gets no button.
+    for (int g = 0; g < GroupCount; ++g) {
+        if (!groups[g].empty()) opts.AddFilter(groupNames[g], groups[g]);
+    }
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
             [this](DialogResult r, const std::vector<std::string>& files) {

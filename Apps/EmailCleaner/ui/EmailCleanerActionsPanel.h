@@ -60,6 +60,10 @@ public:
     // Re-plan and repaint from the database as it is now.
     void Refresh();
 
+    // True while a plan's server steps (unsubscribe, moves) are running on
+    // the worker thread. Apply stays disabled until they finish.
+    bool IsBusy() const { return busy_; }
+
     // Raised after a plan ran, so the app can re-read the corpus and repaint.
     std::function<void(const ActionOutcome&)> onApplied;
     // A sentence for the status line. Raised for the things that are not a
@@ -72,6 +76,8 @@ private:
     void          UpdatePlan();
     void          Confirm();
     void          Apply(const ActionPlan& plan);
+    // The end of Apply, on the UI thread once the server steps are done.
+    void          Finish(const ActionOutcome& outcome);
     void          ShowBlocklist();
     // "This is fine" / "This is spam": ask which category, then record it.
     void          MarkVerdict(bool wanted);
@@ -83,6 +89,7 @@ private:
 
     ActionTarget target_;
     std::string  accountId_;
+    bool         busy_ = false;   // a plan's server steps are running
     ActionPlan   plan_;
     // The plan's warnings plus anything the panel itself has to add (a missing
     // mail connection). Shown on the strip and repeated in the confirmation.
