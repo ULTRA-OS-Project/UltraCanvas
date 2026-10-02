@@ -123,7 +123,8 @@ void TestDisplayQuality() {
     VectorDocument doc;
     doc.ViewBox = Rect2Dd{0, 0, 40, 40};
     auto layer = std::make_shared<VectorLayer>();
-    auto rect = MakeRect(10, 10, 20, 20);
+    // On the half pixel, so the one-pixel outline covers whole pixels.
+    auto rect = MakeRect(10.5, 10.5, 20, 20);
     rect->Style.Fill = Color(255, 0, 0, 255);
     layer->AddChild(rect);
     doc.Layers.push_back(layer);
