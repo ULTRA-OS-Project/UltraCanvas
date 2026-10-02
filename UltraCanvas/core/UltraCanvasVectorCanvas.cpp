@@ -438,6 +438,18 @@ void UltraCanvasVectorCanvas::DrawGrid(IRenderContext* ctx, const Rect2Dd& area)
     drawLines(grid.spacing, grid.majorColor, false);
 }
 
+void UltraCanvasVectorCanvas::SetDisplayQuality(VectorDisplayQuality quality) {
+    VectorRenderOptions opts = renderer->GetOptions();
+    if (opts.DisplayQuality == quality) return;
+    opts.DisplayQuality = quality;
+    renderer->SetOptions(opts);
+    RequestRedraw();
+}
+
+VectorDisplayQuality UltraCanvasVectorCanvas::GetDisplayQuality() const {
+    return renderer->GetOptions().DisplayQuality;
+}
+
 void UltraCanvasVectorCanvas::DrawDocument(IRenderContext* ctx, const Rect2Dd& area) {
     if (!document) return;
     ctx->PushState();

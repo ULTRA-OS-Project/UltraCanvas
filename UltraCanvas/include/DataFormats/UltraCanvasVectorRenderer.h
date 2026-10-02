@@ -51,8 +51,20 @@ namespace UltraCanvas {
 
 // ===== RENDER OPTIONS =====
 
+    // How much of the drawing the renderer paints, cheapest first, as the
+    // view-quality setting of a drawing program:
+    //   Outline - every shape's outline as a one-pixel line in OutlineColor,
+    //             nothing filled, no clips, effects or transparency (the
+    //             "wireframe" view, for finding and picking shapes)
+    //   Simple  - fills and lines in their colours, edges not antialiased
+    //   Normal  - everything, antialiased
+    enum class VectorDisplayQuality { Outline = 0, Simple = 1, Normal = 2 };
+
     struct VectorRenderOptions {
+        // false draws Normal quality without antialiasing (as Simple does).
         bool EnableAntialiasing = true;
+        VectorDisplayQuality DisplayQuality = VectorDisplayQuality::Normal;
+        Color OutlineColor = Color(0, 0, 0, 255);
         float CurveTolerance = 0.25f;
         Rect2Dd ViewportBounds;
         bool ClipToViewport = true;
@@ -106,6 +118,16 @@ namespace UltraCanvas {
 
     private:
         float HairlineWidth() const;
+        // The user-space width of `pixels` device pixels under the current
+        // transform.
+        float DeviceWidth(float pixels) const;
+        bool OutlineMode() const {
+            return options.DisplayQuality == VectorDisplayQuality::Outline && !silhouetteMode;
+        }
+        // The antialiasing the display quality asks for, on the context.
+        void ApplyQualityAntialias();
+        // Strokes the current path as a one-pixel outline and clears it.
+        void StrokeOutline();
         IRenderContext* ctx = nullptr;
         VectorRenderOptions options;
         VectorRenderStats stats;

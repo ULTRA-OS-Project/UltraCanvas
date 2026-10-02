@@ -240,6 +240,13 @@ What the element does by itself:
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
   coordinates after the handles and before the rulers, `onViewChanged`,
   `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+- **Display quality** — `SetDisplayQuality(VectorDisplayQuality)`:
+  `Outline` draws every shape's outline as a one-pixel line and fills
+  nothing (no clips, effects or transparency either, so a shape hidden under
+  another or clipped away can still be found), `Simple` draws fills and lines
+  without antialiasing, `Normal` (the default) draws everything antialiased.
+  The same setting is `VectorRenderOptions::DisplayQuality` (with
+  `OutlineColor`) on a `VectorRenderer` drawn outside the canvas.
 - **Invalidation** — `InvalidateDoc(rect)` after an edit, or `Refresh()`.
 
 The element never edits the document and owns no tool: a selector, a pen,
