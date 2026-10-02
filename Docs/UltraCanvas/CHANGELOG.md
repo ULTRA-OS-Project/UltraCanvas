@@ -1,3 +1,14 @@
+#### 2026-10-02 *0.9.130*
+- **Quote levels can be changed from a toolbar.** New
+  `UCRichDocumentEditor::IncreaseQuoteLevel` / `DecreaseQuoteLevel` and the
+  matching `UltraCanvasRichTextEdit` methods move every block the selection
+  touches one quote level in or out (the caret's block when nothing is
+  selected).
+  - The level stays between 0 and 8.
+  - Each change is one undo step; a change that does nothing records none.
+  - They also work with the caret in a table cell: the level belongs to the
+    whole table and restyles none of its cells.
+
 #### 2026-10-02 *0.9.129*
 - **The file dialog can show its filters as toggle buttons.** With
   `FileDialogConfig::filterToggles` (or `FileDialogOptions::SetFilterToggles`
