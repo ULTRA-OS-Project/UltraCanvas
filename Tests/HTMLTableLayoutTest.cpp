@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.11.0 - <img> min / max sizes keep the picture's shape; max-width in %
 // Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - width / height of a block are its content's (box-sizing)
 // Version: 1.8.0 - per-side inline image borders, collapsed table borders, mitred corners
@@ -761,6 +762,59 @@ void TestBoxSizing() {
     Check(r.height > 0.f && r.height < 30.f, "auto / none: no limit");
 }
 
+// <img> with min / max width and height: shaped as CSS shapes a replaced
+// element (40x20 picture); max-width in percent on images, tables, blocks.
+void TestImageLimits() {
+    std::printf("image min / max sizes, percentage max-width\n");
+    auto first = [](const std::string& html, const char* prefix) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(html, opts).root;
+        if (!root) return Rect2Df();
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        for (const auto& p : all)
+            if (p.element->GetIdentifier().rfind(prefix, 0) == 0) return p.rect;
+        return Rect2Df();
+    };
+    Rect2Df r = first("<div><img src='p.png' style='max-height:10px'></div>", "html_img_");
+    CheckNear(r.width, 20.f, "max-height: the width follows the shape");
+    CheckNear(r.height, 10.f, "max-height");
+    r = first("<div><img src='p.png' style='min-width:80px'></div>", "html_img_");
+    CheckNear(r.width, 80.f, "min-width enlarges");
+    CheckNear(r.height, 40.f, "in proportion");
+    r = first("<div><img src='p.png' width='40' style='max-height:10px'></div>", "html_img_");
+    CheckNear(r.width, 40.f, "a given width stays");
+    CheckNear(r.height, 10.f, "the height is held");
+    r = first("<div><img src='p.png' style='min-width:80px;max-height:30px'></div>", "html_img_");
+    CheckNear(r.width, 80.f, "both limits: min-width");
+    CheckNear(r.height, 30.f, "both limits: max-height");
+    r = first("<div><img src='p.png' width='400' height='200' style='max-width:50%'></div>", "html_img_");
+    CheckNear(r.width, 200.f, "max-width: 50% of the line");
+    r = first("<div><img src='p.png' width='800' style='max-width:100%'></div>", "html_img_");
+    CheckNear(r.width, 400.f, "max-width: 100%");
+    CheckNear(r.height, 200.f, "shrunk in proportion");
+    r = first("<table style='max-width:50%'><tr><td>a long line of text that would like the "
+              "whole width of the page and more besides</td></tr></table>", "html_table_");
+    Check(r.width > 0.f && r.width <= 200.5f, "a table's max-width: 50%");
+    r = first("<div id='x' style='max-width:50%;margin:0 auto'>x</div>", "html_div_");
+    CheckNear(r.width, 200.f, "a block's max-width: 50%");
+    CheckNear(r.x, 100.f, "centred by margin: auto");
+}
+
 } // namespace
 
 int main() {
@@ -777,6 +831,7 @@ int main() {
     TestImagesShareLine();
     TestBorderSides();
     TestBoxSizing();
+    TestImageLimits();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

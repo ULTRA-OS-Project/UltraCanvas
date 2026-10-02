@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.10.0 - max-width in percent (maxWidthPercent)
 // Version: 1.9.0 - min-width, min-height, max-height (px; none / auto reset them)
 // Version: 1.8.0 - box-sizing (content-box / border-box)
 // Version: 1.7.0 - borders per side: border, border-top/-right/-bottom/-left,
@@ -813,11 +814,16 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
                                     : prop == "min-width"  ? s.minWidthPx
                                     : prop == "max-height" ? s.maxHeightPx
                                                            : s.minHeightPx;
-        // none (max) / auto (min) / a percentage: no limit kept.
+        // none (max) / auto (min): no limit. A percentage is kept for
+        // max-width only (resolved against the line at layout).
         limit.reset();
+        if (prop == "max-width") s.maxWidthPercent.reset();
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto)
+            if (len->unit == CssUnit::Percent) {
+                if (prop == "max-width") s.maxWidthPercent = std::max(0.f, len->value);
+            } else if (len->unit != CssUnit::Auto) {
                 limit = std::max(0.f, len->ToPx(em, rem));
+            }
         }
     }
     else if (prop == "font-size") {

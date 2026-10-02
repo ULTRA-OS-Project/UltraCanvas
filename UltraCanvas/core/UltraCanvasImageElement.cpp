@@ -1,5 +1,6 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.5.0 - SetHeightFollowsWidth: a wider set width grows the height too
 // Version: 1.4.0 - rounded corners (border-radius) clip the picture, inside the border
 // Version: 1.3.0 - a repeating image (SetImageRepeat) is one pattern fill over the
 //                 tiled area; drawn tile by tile where a backend has no patterns
@@ -164,7 +165,8 @@ namespace UltraCanvas {
         // shrinks instead of letterboxing inside a natural-height box.
         Size2Df natural = NaturalImageSize();
         if (definiteContentWidth && natural.width > 0.f &&
-            *definiteContentWidth < natural.width) {
+            (*definiteContentWidth < natural.width ||
+             (heightFollowsWidth && *definiteContentWidth > natural.width))) {
             float scale = *definiteContentWidth / natural.width;
             return Size2Df(natural.width * scale, natural.height * scale);
         }

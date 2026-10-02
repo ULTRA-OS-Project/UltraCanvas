@@ -1,9 +1,10 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,6 +52,7 @@ private:
     // Display properties
     ImageFitMode fitMode = ImageFitMode::Contain;
     ImagePosition imagePosition;   // centred unless set
+    bool heightFollowsWidth = false;  // see SetHeightFollowsWidth
     bool repeatX = false;           // tile across / down the element
     bool repeatY = false;
     Color tintColor = Colors::White;
@@ -118,6 +120,13 @@ public:
     // at the fitted size; one pattern fill draws them all, so a 1-pixel strip
     // repeated across a large box costs the same as one picture.
     void SetImageRepeat(bool x, bool y) { repeatX = x; repeatY = y; RequestRedraw(); }
+    // CSS replaced-element sizing: with a width and no height, the height is
+    // the picture's at that width - larger as well as smaller (an HTML <img
+    // width="800"> of a 400x200 picture is 800x400). Off by default: the
+    // element then only shrinks its height with a narrower width and keeps
+    // the picture's own height otherwise.
+    void SetHeightFollowsWidth(bool follows) { heightFollowsWidth = follows; InvalidateLayout(); }
+    bool GetHeightFollowsWidth() const { return heightFollowsWidth; }
     bool GetImageRepeatX() const { return repeatX; }
     bool GetImageRepeatY() const { return repeatY; }
     // The rectangle (element-local) the image is drawn into for the current

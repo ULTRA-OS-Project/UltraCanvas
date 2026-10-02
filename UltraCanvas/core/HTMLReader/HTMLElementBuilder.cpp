@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.16.0 - <img>: min / max width and height with the picture's ratio (CSS
+//                   2.1 10.4); max-width in percent on images and blocks
 // Version: 1.15.0 - min-width, min-height, max-height (content-box; border-box
 //                   with box-sizing: border-box)
 // Version: 1.14.0 - width / height of a block are its content's (CSS content-box);
@@ -233,13 +235,65 @@ UCDashPattern BorderDash(const BorderSide& side) {
 
 // The display size of an image's picture: its width / height (one of them
 // keeps the picture's shape), else the picture's own size.
+// The size an image's picture is shown at: its width / height (one of them
+// keeps the picture's shape), else the picture's own size - then held within
+// min-width / max-width / min-height / max-height (px), keeping the shape
+// where CSS does (CSS 2.1 10.4: a size not given follows the ratio; with
+// neither given the table of constraint violations decides). `keepsRatio`
+// says whether the result still has the picture's shape.
+struct ImageUsedSize {
+    Size2Df size;
+    bool keepsRatio = true;
+};
+ImageUsedSize UsedImageSize(const ComputedStyle& style, const UCImage& raster) {
+    const float nw = static_cast<float>(raster.GetWidth());
+    const float nh = static_cast<float>(raster.GetHeight());
+    const float minW = style.minWidthPx.value_or(0.f);
+    const float maxW = std::max(minW, style.maxWidthPx.value_or(INFINITY));
+    const float minH = style.minHeightPx.value_or(0.f);
+    const float maxH = std::max(minH, style.maxHeightPx.value_or(INFINITY));
+    auto clampW = [&](float v) { return std::clamp(v, minW, maxW); };
+    auto clampH = [&](float v) { return std::clamp(v, minH, maxH); };
+    ImageUsedSize out;
+    if (nw <= 0.f || nh <= 0.f) {
+        out.size = Size2Df(clampW(style.widthPx.value_or(nw)), clampH(style.heightPx.value_or(nh)));
+        out.keepsRatio = false;
+        return out;
+    }
+    if (style.widthPx && style.heightPx) {
+        out.size = Size2Df(clampW(*style.widthPx), clampH(*style.heightPx));
+        out.keepsRatio = false;                       // both given: no ratio
+    } else if (style.widthPx) {
+        const float w = clampW(*style.widthPx), h = w * nh / nw, ch = clampH(h);
+        out.size = Size2Df(w, ch);
+        out.keepsRatio = std::fabs(ch - h) < 0.01f;
+    } else if (style.heightPx) {
+        const float h = clampH(*style.heightPx), w = h * nw / nh, cw = clampW(w);
+        out.size = Size2Df(cw, h);
+        out.keepsRatio = std::fabs(cw - w) < 0.01f;
+    } else {
+        float w = nw, h = nh;
+        const bool wHigh = w > maxW, wLow = w < minW, hHigh = h > maxH, hLow = h < minH;
+        if (wHigh && hHigh) {
+            if (maxW / w <= maxH / h) { h = std::max(minH, maxW * h / w); w = maxW; }
+            else                      { w = std::max(minW, maxH * w / h); h = maxH; }
+        } else if (wLow && hLow) {
+            if (minW / w <= minH / h) { w = std::min(maxW, minH * w / h); h = minH; }
+            else                      { h = std::min(maxH, minW * h / w); w = minW; }
+        } else if (wLow && hHigh) { w = minW; h = maxH; out.keepsRatio = false; }
+        else if (wHigh && hLow)   { w = maxW; h = minH; out.keepsRatio = false; }
+        else if (wHigh) { h = std::max(maxW * h / w, minH); w = maxW; }
+        else if (wLow)  { h = std::min(minW * h / w, maxH); w = minW; }
+        else if (hHigh) { w = std::max(maxH * w / h, minW); h = maxH; }
+        else if (hLow)  { w = std::min(minH * w / h, maxW); h = minH; }
+        out.size = Size2Df(w, h);
+        if (out.keepsRatio) out.keepsRatio = std::fabs(w * nh - h * nw) < 0.01f * nw * nh;
+    }
+    return out;
+}
+
 Size2Df ImageContentSize(const ComputedStyle& style, const UCImage& raster) {
-    float w = static_cast<float>(raster.GetWidth());
-    float h = static_cast<float>(raster.GetHeight());
-    if (style.widthPx && style.heightPx) { w = *style.widthPx; h = *style.heightPx; }
-    else if (style.widthPx && w > 0.f)  { h = h * *style.widthPx / w;  w = *style.widthPx; }
-    else if (style.heightPx && h > 0.f) { w = w * *style.heightPx / h; h = *style.heightPx; }
-    return Size2Df(w, h);
+    return UsedImageSize(style, raster).size;
 }
 
 // border-radius in px for a border box of `boxW` x `boxH`: a percentage of
@@ -1015,6 +1069,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
 
     auto image = std::make_shared<UltraCanvasImageElement>(MakeId("img"));
     image->LoadFromImage(raster);
+    image->SetHeightFollowsWidth(true);   // <img width="800">: the height in proportion
 
     const ComputedStyle& style = resolver.StyleOf(&element);
     // object-fit / object-position: how the picture fills the box its width
@@ -1042,9 +1097,23 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     // minimum lets the row below shrink it (its min-content is its natural
     // width, which would otherwise pin it).
     CSSLayout::BoxConstraints constraints;
-    constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);
+    constraints.maxWidth = CSSLayout::Dimension::Pct(
+        std::min(100.f, style.maxWidthPercent.value_or(100.f)));   // max-width: 50%
     constraints.minWidth = CSSLayout::Dimension::Px(0.f);
     image->boxConstraints = constraints;
+    // min / max width and height in px: the size they leave the picture,
+    // shaped as CSS shapes it. A size that keeps the picture's shape gives
+    // the width only - the height follows it, and a line narrower than it
+    // still shrinks the picture in proportion (MeasureOwnContent); a size
+    // that breaks the shape gives both.
+    if (style.minWidthPx || style.maxWidthPx || style.minHeightPx || style.maxHeightPx) {
+        const ImageUsedSize used = UsedImageSize(style, *raster);
+        image->size.width = CSSLayout::Dimension::Px(used.size.width);
+        if (used.keepsRatio)
+            image->size.height = CSSLayout::Dimension::Auto();
+        else
+            image->size.height = CSSLayout::Dimension::Px(used.size.height);
+    }
     image->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     if (!linkHref.empty() && opts.onLinkActivated) {
         image->SetClickable(true);
@@ -1434,7 +1503,8 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     // min / max width and height. The engine limits a block's content box,
     // CSS's content-box; with box-sizing: border-box a limit is the whole
     // box's, so padding and border come off it.
-    if (style.maxWidthPx || style.minWidthPx || style.maxHeightPx || style.minHeightPx) {
+    if (style.maxWidthPx || style.maxWidthPercent || style.minWidthPx || style.maxHeightPx ||
+        style.minHeightPx) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
         const bool wholeBox = style.borderBoxSizing && !borderBoxSizes;
         const float offW = wholeBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
@@ -1443,6 +1513,7 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
                                     : 0.f;
         auto px = [](float v, float off) { return Dimension::Px(std::max(0.f, v - off)); };
         if (style.maxWidthPx)  limits.maxWidth  = px(*style.maxWidthPx, offW);
+        else if (style.maxWidthPercent) limits.maxWidth = Dimension::Pct(*style.maxWidthPercent);
         if (style.minWidthPx)  limits.minWidth  = px(*style.minWidthPx, offW);
         if (style.maxHeightPx) limits.maxHeight = px(*style.maxHeightPx, offH);
         if (style.minHeightPx) limits.minHeight = px(*style.minHeightPx, offH);
@@ -1513,7 +1584,8 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::PlaceByAutoMargins(
     std::shared_ptr<UltraCanvasUIElement> box, const ComputedStyle& style) {
     if (!box || !style.marginLeftAuto) return box;   // right-auto alone: start of line, as is
     const bool narrowed = style.widthPx || style.maxWidthPx ||
-                          (style.widthPercent && *style.widthPercent < 99.5f);
+                          (style.widthPercent && *style.widthPercent < 99.5f) ||
+                          (style.maxWidthPercent && *style.maxWidthPercent < 99.5f);
     if (!narrowed) return box;
     auto line = MakeContainer("autoline");
     line->size.width = CSSLayout::Dimension::Pct(100.f);
