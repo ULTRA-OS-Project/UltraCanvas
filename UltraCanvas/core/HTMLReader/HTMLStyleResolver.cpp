@@ -1,12 +1,14 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
+// Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
 //                  border-collapse / border-spacing / border-radius; cells
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -230,20 +232,22 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
         ApplyDeclaration(*decl, style, parentStyle);
     }
 
-    // Presentational attributes still common in eBook markup.
+    // Presentational attributes still common in eBook markup. "auto" (mail
+    // templates write height="auto" on every <img>) is no size at all, as in
+    // CSS - read as 0px it drew the picture zero pixels tall.
     if (element.tag == "img" || element.tag == "table" ||
         element.tag == "td" || element.tag == "th") {
         std::string w = element.GetAttribute("width");
         std::string h = element.GetAttribute("height");
         if (!w.empty() && !style.widthPx && !style.widthPercent) {
-            if (auto len = CssLength::Parse(w)) {
+            if (auto len = CssLength::Parse(w); len && len->unit != CssUnit::Auto) {
                 if (len->unit == CssUnit::Percent) style.widthPercent = len->value;
                 else style.widthPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
             }
         }
         if (!h.empty() && !style.heightPx) {
             if (auto len = CssLength::Parse(h)) {
-                if (len->unit != CssUnit::Percent) {
+                if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto) {
                     style.heightPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
                 }
             }
@@ -719,9 +723,20 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         }
     }
     else if (prop == "width") {
+        // The later declaration replaces the earlier one: width:100%!important
+        // over an inline width:600px (a newsletter's narrow-screen rule) is
+        // 100%, not 600px with a percentage beside it.
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit == CssUnit::Percent) s.widthPercent = len->value;
-            else if (len->unit != CssUnit::Auto) s.widthPx = len->ToPx(em, rem);
+            if (len->unit == CssUnit::Percent) {
+                s.widthPercent = len->value;
+                s.widthPx.reset();
+            } else if (len->unit == CssUnit::Auto) {
+                s.widthPercent.reset();
+                s.widthPx.reset();
+            } else {
+                s.widthPx = len->ToPx(em, rem);
+                s.widthPercent.reset();
+            }
         }
     }
     else if (prop == "height") {
