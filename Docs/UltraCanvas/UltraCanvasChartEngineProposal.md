@@ -806,7 +806,7 @@ has to move.
 
 | Precedent | What it gives us |
 |---|---|
-| **UltraNet plug-ins** (`Plugins/UltraNet/*`, `core/UltraNet/UltraNetPlugins.cpp`) | The mature model: `add_library(... MODULE ...)` with `PREFIX ""`, output into `${CMAKE_BINARY_DIR}/Plugins/UltraNet`, an ABI-versioned `extern "C" UltraNet_PluginInit(host)` entry with a host vtable (`abiVersion`, `RegisterPlugin`), a POSIX v1 fallback, an idempotent directory scan keyed on canonical path, lookup by scheme, and configure-time self-disable when a backend is missing |
+| **UltraNet plug-ins** (`Plugins/UltraNet/*`, `core/UltraNet/UltraNetPlugins.cpp`) | The mature model: `add_library(... MODULE ...)` with `PREFIX ""`, output into `${CMAKE_BINARY_DIR}/Plugins/UltraNet`, an ABI-versioned `extern "C" UltraNet_PluginInit(host)` entry with a host vtable (`abiVersion`, `RegisterPlugin` and, since ABI 2, every core function a plug-in calls - the POSIX v1 fallback was removed), an idempotent directory scan keyed on canonical path, lookup by scheme, and configure-time self-disable when a backend is missing |
 | **`UltraCanvasGraphicsPluginSystem.h`** | The in-process registry shape: `IGraphicsPlugin`, `RegisterPlugin` / `UnregisterPlugin` / `FindPluginForFile`, static registry with `Initialize()` / `Shutdown()` |
 | **`UltraCanvasTemplate.h::RegisterElementFactory(elementType, …)`** | String-keyed element factories already exist for templates — chart type names should plug into the same idea |
 

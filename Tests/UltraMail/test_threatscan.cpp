@@ -221,3 +221,68 @@ TEST(threat_level_names_round_trip) {
         REQUIRE(ThreatLevelFromString(ToString(level)) == level);
     REQUIRE(ThreatLevelFromString("nonsense") == ThreatLevel::Unscanned);
 }
+
+// ---------------------------------------------------------------------------
+// Sender domain vs. button domain (the reading pane's phishing warning)
+// ---------------------------------------------------------------------------
+TEST(domain_mismatch_names_the_sender_and_the_button_domain) {
+    const auto m = FindDomainMismatch(Html("info@riscoscloverleaf.com",
+        "<p>Your mailbox has a temporary restriction.</p>"
+        "<a href=\"https://track.mailer.example/u\">unsubscribe</a>"
+        "<a href=\"https://secure-mail.verify-now.top/login\">Confirm Now</a>"));
+    REQUIRE(m.found);
+    REQUIRE(m.isButton);
+    REQUIRE_EQ(m.senderDomain, std::string("riscoscloverleaf.com"));
+    REQUIRE_EQ(m.linkDomain, std::string("secure-mail.verify-now.top"));
+    REQUIRE_EQ(m.linkText, std::string("Confirm Now"));
+}
+
+TEST(domain_mismatch_is_not_found_when_links_stay_on_the_senders_domain) {
+    const auto m = FindDomainMismatch(Html("news@shop.example.com",
+        "<a href=\"https://www.example.com/offer\">See the offer</a>"
+        "<a href=\"https://example.com/unsubscribe\">unsubscribe</a>"));
+    REQUIRE(!m.found);
+}
+
+TEST(domain_mismatch_falls_back_to_a_bare_link) {
+    ScanInput in;
+    in.fromAddr = "billing@example.com";
+    in.body     = "Pay here: https://pay.elsewhere.test/x";
+    const auto m = FindDomainMismatch(in);
+    REQUIRE(m.found);
+    REQUIRE(!m.isButton);
+    REQUIRE_EQ(m.linkDomain, std::string("pay.elsewhere.test"));
+}
+
+// ---------------------------------------------------------------------------
+// Advance-fee fraud ("Nigeria connection" / 419)
+// ---------------------------------------------------------------------------
+TEST(advance_fee_story_is_a_scam) {
+    ScanInput in;
+    in.fromAddr = "barrister.james@mailbox.example";
+    in.subject  = "Urgent: next of kin";
+    in.body     = "Dear Friend, my late client died in a car accident and left "
+                  "US$ 15,500,000.00 in a dormant account. You will receive 40% as "
+                  "my partner; you only need to pay the taxes and the clearance fee.";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "advance-fee-fraud"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(advance_fee_in_words_millions_is_recognised) {
+    ScanInput in;
+    in.fromAddr = "someone@example.test";
+    in.body     = "The inheritance of 10.5 million united states dollars awaits you.";
+    REQUIRE(HasFinding(ScanMessage(in), "advance-fee-fraud"));
+}
+
+TEST(a_large_number_without_the_story_is_not_advance_fee) {
+    ScanInput in;
+    in.fromAddr = "news@example.test";
+    in.body     = "The city announced a budget of $12,000,000 for new schools.";
+    REQUIRE(!HasFinding(ScanMessage(in), "advance-fee-fraud"));
+    ScanInput story;
+    story.fromAddr = "aunt@example.test";
+    story.body     = "Grandpa passed away last week; the funeral is on Friday.";
+    REQUIRE(!HasFinding(ScanMessage(story), "advance-fee-fraud"));
+}

@@ -476,6 +476,7 @@ private:
 
     std::string dataDir_;
     std::string cacheDir_;
+    std::string attachmentDir_;   // <cache>/attachments: copies for the viewer, pruned
     std::string mailDir_;
     // The plug-in directory the registry was pointed at (for diagnostics).
     std::string pluginDir_;

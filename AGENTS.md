@@ -53,8 +53,9 @@ before adding cross-module code.
   helpers where they exist:
 
   ```cpp
-  auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
-  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 101, 100, 50, 120, 40, "Click Me")
+  auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");   // identifier, x, y, w, h, text
+  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 100, 50, 120, 40, "Click Me")
+  // There is no numeric id argument on any element factory or constructor.
   ```
 
 - **Never hand-roll a UI element** — see
@@ -243,6 +244,35 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
+**Tests that need a display.** A few tests under `Tests/` open a real window
+and read the composited pixels back (`CaretStackingTest`,
+`TextMetricsScreenshotTest`, `TextAreaSpellCheckTest`). They skip themselves
+without a `DISPLAY`, so a bare CI machine passes them; to run one, give it a
+display with `xvfb-run -a ./build/bin/TextMetricsScreenshotTest`. Two things
+about a window under Xvfb catch people out:
+
+- There is no window manager, so the window is never activated, and a window
+  that is never activated draws no caret and reports no focused element. That
+  is correct behaviour, not a bug in the test. A test that needs focus hands the
+  application the activation event the backend would have delivered and then
+  focuses the element: `DisplayTest::FocusElement(app, window, element)` in
+  `Tests/DisplayTestSupport.h` does both and says whether it worked. Driving
+  it from outside with `xdotool windowfocus` works too but is slower and needs
+  another package.
+- There is no event loop unless the test runs one, so frames are driven by
+  hand: `DisplayTest::Frame(window, {elements})` marks them dirty and renders
+  once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
+  claimed. A text input shows its caret only while nothing is selected, so
+  measure the caret before making a selection.
+
+`TextMetricsScreenshotTest` doubles as the screenshot fixture for the
+text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
+writes the window as PPM files (the caret, a selection, the popup menu) that
+any image tool converts. With `GDK_SCALE=2` it renders at 2x and skips its
+pixel assertions, which are written for whole logical pixels; the PPM is
+still read back at logical size, so for the actual 2x pixels take an X
+screenshot of the Xvfb display instead (`import -window root shot.png`).
+
 `-DULTRACANVAS_BUILD_NET_TESTS=ON` adds two UltraNet binaries: `UltraNetTests`
 (pass/fail suite) and `UltraNetApiStatus`, which probes every public
 `UltraNet_*` entry point and prints WORKING / IMPLEMENTED / NOT IMPLEMENTED /
@@ -270,6 +300,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
+| `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
@@ -622,9 +653,25 @@ For assistants:
    - **Commit subjects** follow the same rule: the reason for the change, not
      the tool, session or branch that produced it.
 
+7. **Put the PR number at the front of the chat title.** As soon as you open
+   a pull request, rename the session so its title starts with the number:
+   `#<n> <current title>` — e.g. `#412 UltraMail: wrap long subjects in the
+   list`. In a Claude Code Remote session call `set_session_title` (the
+   claude-code-remote MCP server) right after `create_pull_request` returns;
+   where no such tool exists, tell the user the number to add instead. One
+   number per chat: when a later PR replaces a merged or closed one (rule 2),
+   swap the old number for the new one rather than stacking them, and never
+   rename to the bare number — keep the rest of the title so the chat list
+   still says what the work is. `.claude/hooks/check-chat-title.sh` enforces
+   this in Claude Code Remote sessions: on `PostToolUse` it records the PR a
+   session opens and the number each `set_session_title` gives it, and on
+   `Stop` it blocks once when the PR the session opened — or the one its
+   closing line names with ` — open as PR #<n>`, which covers a PR opened
+   from the Claude UI — is not the number the title was given.
+
 For maintainers:
 
-7. **Merge with the PR title, not the branch name.** GitHub's default merge
+8. **Merge with the PR title, not the branch name.** GitHub's default merge
    commit is `Merge pull request #N from <owner>/<branch>`, which puts the
    branch's random words into `main`'s history. In the repository's
    *Settings → General → Pull Requests*, set the merge-commit default message
@@ -632,6 +679,6 @@ For maintainers:
    squash merges to **Pull request title** as well. Until that is set, edit
    the commit message in the merge dialog before confirming.
 
-8. **Do not merge a session's PR while the session may still push to it.**
+9. **Do not merge a session's PR while the session may still push to it.**
    Merge after the session says it is done — or, if merging early, tell the
    session so it restarts from `main` and opens a fresh PR for the rest.

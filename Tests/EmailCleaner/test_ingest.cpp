@@ -6,6 +6,7 @@
 #include "test_framework.h"
 
 #include "EmailCleanerIngest.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
 #include <filesystem>
@@ -408,4 +409,40 @@ TEST(Ingest_ReClassifiesWithAChangedRuleSet) {
     REQUIRE(store.ListMessages(MessageFilter{}, messages));
     REQUIRE_EQ(messages.size(), static_cast<std::size_t>(1));
     REQUIRE(messages[0].category == MessageCategory::ProductSpam);
+}
+
+TEST(Ingest_FoldersAndAccountsWithNonAsciiNamesAreRead) {
+    // Folder names come from the IMAP server ("Entw\xc3\xbcrfe", "\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0"),
+    // and every path in the app is UTF-8 (AGENTS.md). The cache is walked and
+    // each .eml read through PathFromUtf8; through the narrow-string calls,
+    // Windows reads them in its code page and the folder's mail goes missing.
+    TempDir cache;
+    const std::string account = "erika-\xc3\xb6";
+    const std::string folder  = "Entw\xc3\xbcrfe";
+    const std::filesystem::path dir = cache.Path() / UltraCanvas::PathFromUtf8(account) /
+                                      UltraCanvas::PathFromUtf8(folder);
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream out(dir / "3.eml", std::ios::binary);
+        out << kPersonalMessage;
+    }
+
+    AnalysisStore store = OpenStore();
+    Ingestor ingestor(store);
+    const IngestStats stats = ingestor.IngestMailCache(
+        UltraCanvas::PathToUtf8(cache.Path()), account, IngestOptions{});
+    REQUIRE_EQ(stats.analysed, 1);
+    REQUIRE_EQ(stats.failed, 0);
+
+    MessageFilter filter;
+    filter.folder = folder;   // the folder keeps its real name
+    std::vector<AnalyzedMessage> messages;
+    REQUIRE(store.ListMessages(filter, messages));
+    REQUIRE_EQ(messages.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(messages[0].uid, 3);
+
+    // The single-file reader takes the same UTF-8 path.
+    std::string raw;
+    REQUIRE(ReadFileBytes(UltraCanvas::PathToUtf8(dir / "3.eml"), raw));
+    REQUIRE(!raw.empty());
 }

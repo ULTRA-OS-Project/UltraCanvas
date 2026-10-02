@@ -462,6 +462,17 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== UOS-SETTINGS =====
+# The ULTRA OS settings application: settings that belong to the system rather
+# than to one application, starting with where the file dialogs of all
+# applications open (FileDialog.conf, UltraCanvasFileDialogSettings.h).
+option(BUILD_UOS_SETTINGS "Build the UOS-Settings application" ON)
+if(BUILD_UOS_SETTINGS)
+    message(STATUS "")
+    message(STATUS "── Building UOS-Settings ──")
+    add_subdirectory(Apps/UOSSettings)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless
@@ -2065,28 +2076,10 @@ if(TARGET UltraCanvasLaTeX)
 endif()
 
 # ===== PACKAGE CONFIGURATION =====
-include(CMakePackageConfigHelpers)
-
-# Generate version file
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-# Generate config file
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    @ONLY
-)
-
-# Install config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    DESTINATION lib/cmake/UltraCanvas
-)
+# UltraCanvasConfig.cmake, its version file and the UltraCanvasTargets export
+# are generated and installed by UltraCanvas/CMakeLists.txt ("INSTALLATION AND
+# THE CMAKE PACKAGE"), where the link interface and the dependency choices they
+# describe are in scope. Tests/PackageConsumer builds against the result.
 
 # ===== CPack CONFIGURATION =====
 #set(CPACK_PACKAGE_NAME "UltraCanvas")

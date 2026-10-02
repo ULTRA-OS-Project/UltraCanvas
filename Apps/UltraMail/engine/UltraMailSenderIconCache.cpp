@@ -120,7 +120,7 @@ bool SenderIconCache::RetryAllowed(const std::string& brandId) const {
 void SenderIconCache::NoteFailure(const std::string& brandId) {
     if (root_.empty()) return;
     std::error_code ec;
-    fs::create_directories(root_, ec);
+    fs::create_directories(PathFromUtf8(root_), ec);
     std::ofstream out(PathFromUtf8(root_) / (brandId + ".missing"), std::ios::trunc);
     if (out) out << Now() << "\n";
 }
@@ -132,7 +132,7 @@ std::string SenderIconCache::Store(const std::string& brandId,
     if (root_.empty() || brandId.empty() || ext.empty()) return "";
 
     std::error_code ec;
-    fs::create_directories(root_, ec);
+    fs::create_directories(PathFromUtf8(root_), ec);
     const fs::path path = PathFromUtf8(root_) / (brandId + "." + ext);
     // Write beside the target and rename, so a half-written icon is never seen
     // by the UI thread reading the same folder.

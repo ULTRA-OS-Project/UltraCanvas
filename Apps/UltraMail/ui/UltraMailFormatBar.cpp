@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.cpp
+// Version: 0.2.0 - Quote + / Quote − for the compose window, at the end of
+//                  the character row
 // Version: 0.1.0 - moved out of the signature editor, so the compose window has
 //                  the same tools
 // Author: UltraCanvas Framework / ULTRA OS
@@ -7,6 +9,7 @@
 #include "UltraMailTheme.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
@@ -163,6 +166,30 @@ FormatBar FormatBar::Build(const Options& options) {
         OnEditor(editor, [hex](UltraCanvasRichTextEdit& e) { e.SetTextColor(hex); });
     };
     charRow->AddChild(colours);
+    if (options.quoteTools) {
+        // Where an answer goes between quoted lines, or a quoted line comes
+        // out of the quote: the paragraphs at the cursor (or every selected
+        // one) one quote level in or out. Each click is one undo step.
+        // In the character row, which has room after the swatches: the
+        // paragraph row is full at the compose window's default width (it
+        // ends in Plain text | Formatted). The quote mark and a sign keep
+        // them small.
+        auto quoteTool = [&](const std::string& toolId, const std::string& sign,
+                             const std::string& tooltip,
+                             std::function<void(UltraCanvasRichTextEdit&)> action) {
+            auto tool = addTool(charRow, toolId, sign, tooltip, 34, std::move(action));
+            tool->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/quote.svg"));
+            tool->SetIconPosition(ButtonIconPosition::Left);
+            tool->SetIconSize(14, 14);
+            tool->SetIconSpacing(2);
+            tool->SetUseIconAsMask(true);
+            Theme::FitToLabel(tool, 34);
+        };
+        quoteTool(id + "QuoteIn", "+", "Quote: the paragraph one quote level in",
+                  [](UltraCanvasRichTextEdit& e) { e.IncreaseQuoteLevel(); });
+        quoteTool(id + "QuoteOut", "\xE2\x88\x92", "Unquote: the paragraph one quote level out",
+                  [](UltraCanvasRichTextEdit& e) { e.DecreaseQuoteLevel(); });
+    }
     charRow->AddStretchSpacer(1);
     bar.root->AddChild(charRow);
     bar.characterRow_ = charRow.get();

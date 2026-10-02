@@ -90,4 +90,21 @@ ThreatReport ScanMessage(const ScanInput& input);
 // Convenience: parse a raw RFC 5322 message (the cached .eml) and scan it.
 ThreatReport ScanRawMessage(const std::string& rawMessage);
 
+// The sender's domain next to the domain the message's button actually goes
+// to, for the reading pane's warning ("Sender domain: … / Button domain: …").
+// `found` is false when the sender has no domain or every link stays on it.
+// The button is the first off-domain link that carries text (an "unsubscribe"
+// footer link is passed over while a better one exists); a bare off-domain
+// URL is the fallback, reported with `isButton` false.
+struct DomainMismatch {
+    bool        found = false;
+    std::string senderDomain;    // "example.com"
+    std::string linkDomain;      // the link's host, "login.example-verify.top"
+    std::string linkText;        // the button's text, when it has one
+    bool        isButton = false;
+};
+
+DomainMismatch FindDomainMismatch(const ScanInput& input);
+DomainMismatch FindDomainMismatchInRaw(const std::string& rawMessage);
+
 } // namespace UltraMail

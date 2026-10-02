@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UOS-Settings, the ULTRA OS settings. The
+# install rules put media/appicon/UOS-Settings.{png,svg} into the hicolor
+# theme, which is where `Icon=UOS-Settings` is looked up.
+Type=Application
+Version=1.5
+Name=UOS-Settings
+GenericName=ULTRA OS Settings
+Comment=Settings shared by every ULTRA OS application, such as where file dialogs open
+Exec=UOS-Settings
+TryExec=UOS-Settings
+Icon=UOS-Settings
+Terminal=false
+StartupNotify=true
+StartupWMClass=UOS-Settings
+Categories=Settings;System;
+Keywords=settings;preferences;file dialog;folder;ULTRA OS;

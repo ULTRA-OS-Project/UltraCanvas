@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.3.0 - Spell checking and an editor context menu
-// Last Modified: 2026-08-28
+// Version: 2.3.2 - Live search starts at two characters
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -18,6 +18,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasRichTextPrint.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -361,15 +362,13 @@ namespace {
                         pos += needle.size();
                     }
                 } else {
-                    int pos = 0;
-                    int searchLen = utf8_length(searchText);
-                    while ((pos = utf8_find(textSnapshot, searchText, pos, caseSensitive)) >= 0) {
-                        if (matchCountCancel.load()) return;
-                        count++;
-                        if (pos == selectionPos) {
-                            currentIndex = count;
+                    const std::vector<int> matches = utf8_find_all(textSnapshot, searchText, caseSensitive);
+                    count = static_cast<int>(matches.size());
+                    for (int i = 0; i < count; i++) {
+                        if (matches[i] == selectionPos) {
+                            currentIndex = i + 1;
+                            break;
                         }
-                        pos += searchLen;
                     }
                 }
 
@@ -2170,6 +2169,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
         auto doc = documents[docIndex];
 
+#if !defined(ULTRACANVAS_PLUGIN_PDF)
+        // The PDF view is compiled only when MuPDF was found at configure
+        // time (ULTRACANVAS_PLUGIN_PDF). Without it this build cannot show a
+        // PDF, so say so instead of failing to link.
+        UltraCanvasDialogManager::ShowMessage(
+                "This build of Texter has no PDF support (MuPDF was not found "
+                "when it was built), so " + PathToUtf8(PathFromUtf8(filePath).filename()) +
+                " cannot be opened.",
+                "Open PDF", DialogType::Warning, DialogButtons::OK, nullptr);
+        (void)doc;
+        return false;
+#else
         // Build the PDF view at the same logical size as the textArea slot.
         // The container will resize it on layout passes.
         auto view = UltraCanvas::CreatePDFView(
@@ -2226,6 +2237,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         lastOpenedDirectory = PathToUtf8(p.parent_path());
         AddToRecentFiles(filePath);
         return true;
+#endif
     }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
@@ -2610,6 +2622,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = documents[docIndex];
 
             // PDF documents save via the MuPDF engine, not the text encoder.
+#if defined(ULTRACANVAS_PLUGIN_PDF)
             if (doc->IsPdf() && doc->pdfView) {
                 if (!doc->pdfView->SaveAs(filePath)) {
                     debugOutput << "Failed to save PDF: " << filePath << std::endl;
@@ -2628,6 +2641,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 AddToRecentFiles(filePath);
                 return true;
             }
+#endif
 
             std::string targetExt = PathToUtf8(PathFromUtf8(filePath).extension());
             if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);
@@ -3723,7 +3737,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // A word-processing tab prints as what it looks like: its pages as a
         // PDF, fonts, pictures, tables, headers and page numbers included.
         // (Its text area is detached and empty, which is why reading that
-        // once printed a blank page.)
+        // once printed a blank page.) The same pages go along to be drawn by
+        // a printer that cannot take a PDF - Windows, GutenPrint, an IPP
+        // printer without PDF - which otherwise refused the job.
         if (doc->IsRichDocument() && doc->richEdit) {
             std::vector<uint8_t> pdf;
             std::string error;
@@ -3731,7 +3747,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
                 return;
             }
-            const IODeviceResult printed = PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow());
+            const IODeviceResult printed =
+                PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow(),
+                                        CreateRichDocumentPrintPages(*doc->richEdit));
             if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
                 UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
             }
@@ -5411,14 +5429,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         // ── Search text changed (handles clearing) ──
+        // Below MinLiveSearchChars no live search runs, so the highlights of the
+        // longer term the user is deleting back from must not stay up.
         searchBar->onSearchTextChanged = [this](const std::string& text) {
-            if (text.empty()) {
+            if (!UltraCanvasSearchBar::IsLiveSearchText(text)) {
                 CancelAsyncMatchCount();
                 auto doc = GetActiveDocument();
                 if (doc && !doc->IsRichDocument() && doc->textArea) {
                     doc->textArea->ClearHighlights();
                 }
-                searchBar->UpdateMatchCount(0, 0);
+                if (searchBar) searchBar->ClearMatchCount();
             }
         };
 

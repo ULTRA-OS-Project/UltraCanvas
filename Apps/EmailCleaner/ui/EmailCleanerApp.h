@@ -36,6 +36,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -84,6 +85,10 @@ private:
     void AnalyseCaches(bool skipExisting, const std::string& fetchReport);
     // Where an account's cached bodies are: UltraMail's cache, or EmailCleaner's.
     std::string CacheDirFor(const std::string& accountId) const;
+    // The cache directories of an account's Trash, as its server names it
+    // (the SPECIAL-USE role in UltraMail's or EmailCleaner's own folder list).
+    // The analysis leaves them out; the name heuristic covers the rest.
+    std::set<std::string> TrashDirsFor(const std::string& accountId);
     // The saved password of an own account ("" when there is none).
     std::string OwnPassword(const std::string& accountId) const;
     // Open the keyword rule editor, and re-analyse once it has written.
@@ -126,6 +131,8 @@ private:
     // The full records behind accounts_ (servers included), by account id —
     // what the mail backend and the fetch need and the analysis rows omit.
     std::map<std::string, UltraMail::Account> ultraMailAccounts_;
+    // UltraMail's Trash folders per account, read with its account list.
+    std::map<std::string, std::set<std::string>> ultraMailTrashDirs_;
     OwnAccounts   ownAccounts_;
     bool          fetching_ = false;   // an own-account download is running
     std::string selectedSender_;

@@ -38,7 +38,12 @@ Two rules decide which one wins:
 The badge is never the only place a verdict is said: hovering it shows the
 class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
-reading pane. Nothing is ever hidden, moved or deleted — UltraMail labels, the
+reading pane. When the scan's verdict is suspicious or worse and a button (or,
+failing that, a bare link) leads off the sender's domain, the strip is titled
+*"Warning: This is likely a phishing² email!"*, quotes both domains —
+`Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
+the footnote: phishing emails try to get your credentials to hack your
+accounts on other websites (`FindDomainMismatch` in the scan). Nothing is ever hidden, moved or deleted — UltraMail labels, the
 reader decides.
 
 ## 2. The known-sender registry
@@ -153,6 +158,7 @@ their weights:
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
 | `auth-failure` | 30 | `Authentication-Results` reports `spf=fail` / `dkim=fail` / `dmarc=fail` |
+| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate, taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential") — 50 when two of those appear |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |

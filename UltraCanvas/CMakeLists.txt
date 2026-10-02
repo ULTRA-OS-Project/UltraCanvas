@@ -5,6 +5,9 @@
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
+# CMAKE_INSTALL_LIBDIR / _BINDIR for every install() below, the plug-in
+# directories' included - they are added before the INSTALLATION section.
+include(GNUInstallDirs)
 include(FetchContent)
 
 # Enable the C language: third_party/miniz/miniz.c (ZIP support for ODS/XLSX File
@@ -202,6 +205,11 @@ if(NOT TARGET fmt::fmt)
                 fmt
                 GIT_REPOSITORY https://github.com/fmtlib/fmt
                 GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        # The core's link interface names fmt::fmt, so the installed CMake
+        # package (see INSTALLATION AND THE CMAKE PACKAGE below) needs fmt's
+        # own package next to it: find_dependency(fmt) in UltraCanvasConfig.
+        # A fetched fmt writes one only when asked.
+        set(FMT_INSTALL ON CACHE BOOL "Install the fetched fmt beside UltraCanvas" FORCE)
         FetchContent_MakeAvailable(fmt)
         if(EMSCRIPTEN)
             # fmt's format.h uses malloc/free but only gets <cstdlib>
@@ -400,6 +408,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibilityBridge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGroupBox.cpp
@@ -530,6 +539,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         # "Is this file in use by another program" - the question behind
@@ -542,6 +552,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # An installed Windows package whose ImageMagick coder carries a
+        # system DLL's name (mpr.dll, 0.9.92 and older, or a newer package
+        # extracted over it) is put right before the image subsystem starts.
+        # Windows backend under OS/MSWindows/, picked up by the platform
+        # glob; every other platform gets the no-op in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCoderModuleRepair.cpp
         # "Extract and run": a program inside an archive, unpacked to a run
         # folder, started, and its folder removed once it has ended. POSIX
         # launch in here; the Windows one (a job object) under OS/MSWindows/.
@@ -868,6 +884,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its pages, for the printers that draw rather than take its PDF.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
         # Word-processing formats: ODT/DOCX/DOC readers and writers
         # (used by FileLoader::OpenTextDocument and Texter)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
@@ -1154,6 +1172,33 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # NSSpellChecker ships with every macOS and needs no feature flag.
     message(STATUS "  NSSpellChecker: available (native macOS spell backend)")
 endif()
+
+# A missing Hunspell is only a STATUS line while a native backend covers for
+# it. With no backend at all the library still builds, but every spell-check
+# feature is silently off - the service reports zero dictionaries, the
+# runtime names its backend "Hunspell (not compiled in)", and
+# TextAreaSpellCheckTest skips - which has cost a reader a detour before.
+# That deserves a WARNING naming the package to install.
+set(_uc_spell_backend_available ${HUNSPELL_FOUND})
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
+    set(_uc_spell_backend_available TRUE)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_API)
+    set(_uc_spell_backend_available TRUE)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    set(_uc_spell_backend_available TRUE)
+endif()
+if(NOT _uc_spell_backend_available)
+    message(WARNING
+        "No spell-check backend: Hunspell was not found and this platform has no "
+        "native backend to fall back on. The library builds, but spell checking "
+        "is off (zero dictionaries, backend \"Hunspell (not compiled in)\") and "
+        "TextAreaSpellCheckTest skips. Install Hunspell and a dictionary - "
+        "Debian/Ubuntu: libhunspell-dev hunspell-en-us; Fedora: hunspell-devel "
+        "hunspell-en; macOS: brew install hunspell; Windows: vcpkg install hunspell "
+        "- or on Linux enchant-2 (libenchant-2-dev), then re-run cmake. "
+        "See Docs/Dependencies.md.")
+endif()
+unset(_uc_spell_backend_available)
 
 # Include headers (for IDE support)
 file(GLOB ULTRACANVAS_HEADERS
@@ -1592,7 +1637,8 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         # vendored header-only libs (<nlohmann/json.hpp> for Documents / JMAP)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
-        $<INSTALL_INTERFACE:include/ultracanvas>
+        $<INSTALL_INTERFACE:include/ultracanvas/include>
+        $<INSTALL_INTERFACE:include/ultracanvas/Plugins>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
@@ -2105,7 +2151,7 @@ add_library(UltraCanvasTextUtils STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextUtils.cpp)
 target_include_directories(UltraCanvasTextUtils PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/ultracanvas>)
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
 target_compile_features(UltraCanvasTextUtils PUBLIC cxx_std_20)
 set_target_properties(UltraCanvasTextUtils PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -2116,7 +2162,7 @@ add_library(UltraCanvasBase32 STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBase32.cpp)
 target_include_directories(UltraCanvasBase32 PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/ultracanvas>)
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
 target_compile_features(UltraCanvasBase32 PUBLIC cxx_std_20)
 set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -2127,7 +2173,7 @@ add_library(UltraCrypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
 target_include_directories(UltraCrypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/ultracanvas>)
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
 target_compile_features(UltraCrypt PUBLIC cxx_std_20)
 set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The secure Base32 decoder delegates to the shared codec in UltraCanvasBase32.
@@ -2147,7 +2193,7 @@ add_library(UltraVault STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
 target_include_directories(UltraVault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/ultracanvas>)
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
 target_compile_features(UltraVault PUBLIC cxx_std_20)
 set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(UltraVault PUBLIC UltraCrypt)
@@ -2188,7 +2234,7 @@ endif()
 add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
 target_include_directories(NetworkMonitor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/ultracanvas>)
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
 target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
 set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(WIN32)
@@ -2374,7 +2420,7 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             # vendored header-only libs (nlohmann/json for the JMAP plug-in & tests)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
-            $<INSTALL_INTERFACE:include/ultracanvas>)
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
@@ -2626,7 +2672,7 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_include_directories(UltraWin
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include/ultracanvas>)
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
     # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
     # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
     target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
@@ -2712,7 +2758,7 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         target_include_directories(UltraDatabase
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                $<INSTALL_INTERFACE:include/ultracanvas>)
+                $<INSTALL_INTERFACE:include/ultracanvas/include>)
         target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
         target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
         target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
@@ -2828,7 +2874,7 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     target_include_directories(UltraMessage
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include/ultracanvas>)
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads)
     if(_um_core_type STREQUAL "SHARED_LIBRARY")
         target_link_libraries(UltraMessage PUBLIC ${ULTRACANVAS_LIB_NAME})
@@ -2881,7 +2927,7 @@ if(TARGET UltraMessage)
     target_include_directories(UltraMessageCenter
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include/ultracanvas>)
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(UltraMessageCenter PUBLIC ${ULTRACANVAS_LIB_NAME} UltraMessage)
     target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
@@ -3317,7 +3363,8 @@ add_library(UltraCanvasAllFormats OBJECT
 target_compile_features(UltraCanvasAllFormats PRIVATE cxx_std_20)
 target_include_directories(UltraCanvasAllFormats
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
+        $<INSTALL_INTERFACE:include/ultracanvas/Plugins>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}
@@ -3371,30 +3418,179 @@ set(ULTRACANVAS_INCLUDE_DIRS
     PARENT_SCOPE
 )
 
-# ===== INSTALLATION =====
-# install(TARGETS ${ULTRACANVAS_LIB_NAME} grapheme
-#     EXPORT UltraCanvasTargets
-#     LIBRARY DESTINATION lib
-#     ARCHIVE DESTINATION lib
-#     RUNTIME DESTINATION bin
-# )
+# ===== INSTALLATION AND THE CMAKE PACKAGE =====
+# `cmake --install` lays out the headers, the libraries and a CMake package, so
+# an application outside this repository builds against the framework with
+#
+#     find_package(UltraCanvas CONFIG REQUIRED)
+#     target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+#
+# instead of add_subdirectory()-ing the whole tree (Docs/GettingStarted.md,
+# step 4). Tests/PackageConsumer is the proof: CI installs into a scratch
+# prefix and builds it with nothing but that find_package.
+#
+# What is in the export set is dictated by CMake, not chosen: every target the
+# core's link interface names must be exported with it, or install(EXPORT)
+# refuses to generate - and a static core's PRIVATE links count too, as
+# $<LINK_ONLY:...>. So the helper archives ride along; VirtualFS and fmt are
+# reached through their own packages (a cross-export-set reference resolves by
+# the other set's namespace, which is why a fetched fmt is told to install
+# itself above). The file-format plug-ins join the same export set from their
+# own directories (install(TARGETS ... EXPORT UltraCanvasTargets) in each
+# Plugins/*/CMakeLists.txt), together with what they carry - the vendored
+# libcdr archive, the Rust staticlib behind the Vectorizer - and the
+# UltraCanvasAllFormats registrar, so a consumer that links it has every
+# installed format registered before main(), as an in-tree application does.
 
+# The headers install as a mirror of this directory's layout under
+# include/ultracanvas - include/, Plugins/, libspecific/ and OS/ side by side -
+# because the public headers were written against that layout and reach
+# across it: UltraCanvasImage.h includes "../libspecific/Cairo/ImageCairo.h",
+# UltraCanvasApplication.h and UltraCanvasWindow.h include "../OS/<Platform>/..."
+# and the chart and document headers include "Plugins/..." and
+# "Documents/eBook/...". The install interface is the first two of those
+# directories, exactly as the build interface above; the other two are only
+# ever reached through "../". Flattening the layout instead would mean
+# rewriting those includes, and the Windows and macOS builds exercise them.
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-    DESTINATION include/ultracanvas
+    DESTINATION include/ultracanvas/include
+    FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/
+    DESTINATION include/ultracanvas/Plugins
+    FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/
+    DESTINATION include/ultracanvas/libspecific
+    FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/OS/
+    DESTINATION include/ultracanvas/OS
     FILES_MATCHING PATTERN "*.h"
 )
 
-# Install bundled libgrapheme header
-# install(FILES ${LIBGRAPHEME_DIR}/grapheme.h
-#     DESTINATION include/ultracanvas/grapheme
-# )
+set(_uc_export_targets
+    ${ULTRACANVAS_LIB_NAME}
+    UltraCanvasTextUtils
+    UltraCanvasBase32
+    UltraCrypt
+    UltraVault)
+# A static core keeps the JSON engine in its interface (consumers link the
+# archive themselves, see the uc-yyjson link above); a shared one folds it in.
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    list(APPEND _uc_export_targets uc-yyjson)
+    # UltraWin follows the same split as UltraNet below: PUBLIC on a static
+    # core, so the consumer links the archive and the package must name it;
+    # folded in whole-archive and PRIVATE on a shared one, where it needs no
+    # entry. Its own interface is Threads, uc-yyjson and the FreeRDP -l names.
+    if(TARGET UltraWin)
+        list(APPEND _uc_export_targets UltraWin)
+    endif()
+endif()
+if(TARGET UltraDatabase)
+    list(APPEND _uc_export_targets UltraDatabase)
+endif()
+# UltraNet: exportable only on a system libcurl, which CMake re-finds as
+# CURL::libcurl. The vendored libcurl (ULTRACANVAS_USE_VENDORED_CURL, built by
+# cmake/VendoredCurl.cmake) is an EXCLUDE_FROM_ALL sub-build with no
+# installable package, so a link interface
+# naming it cannot be exported. A shared core does not name it - UltraNet is
+# folded in whole-archive and PRIVATE - so there the package is still complete,
+# and the vendored libcurl.so.4 the DSO needs is installed beside it. A static
+# core does name it, and then there is no package to install.
+set(_uc_package_has_net OFF)
+set(_uc_package_blocked "")
+if(TARGET UltraNet)
+    if(UC_CURL_LINK STREQUAL "CURL::libcurl")
+        list(APPEND _uc_export_targets UltraNet)
+        set(_uc_package_has_net ON)
+    elseif(ULTRACANVAS_BUILD_SHARED)
+        install(TARGETS libcurl_shared
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    else()
+        set(_uc_package_blocked
+            "a static libUltraCanvas names UltraNet in its link interface, and this UltraNet links the vendored libcurl, which has no installable package - build with ULTRACANVAS_BUILD_SHARED=ON, or against a system libcurl with WebSocket support")
+    endif()
+endif()
 
-# Export CMake config for find_package support
-# install(EXPORT UltraCanvasTargets
-#     FILE UltraCanvasTargets.cmake
-#     NAMESPACE UltraCanvas::
-#     DESTINATION lib/cmake/UltraCanvas
-# )
+if(_uc_package_blocked)
+    install(TARGETS ${_uc_export_targets}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    message(STATUS "  [−] CMake package (find_package(UltraCanvas)) - NOT INSTALLED: ${_uc_package_blocked}")
+else()
+    install(TARGETS ${_uc_export_targets}
+        EXPORT UltraCanvasTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION include/ultracanvas/include)
+    # The registrar is an OBJECT library (see its definition above for why);
+    # its objects install under lib/ultracanvas and the import is an object
+    # library too, so target_link_libraries(app UltraCanvas::UltraCanvasAllFormats)
+    # links every object in, which is what makes the registration happen.
+    install(TARGETS UltraCanvasAllFormats
+        EXPORT UltraCanvasTargets
+        OBJECTS DESTINATION ${CMAKE_INSTALL_LIBDIR}/ultracanvas)
+    install(EXPORT UltraCanvasTargets
+        FILE UltraCanvasTargets.cmake
+        NAMESPACE UltraCanvas::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/UltraCanvas)
+
+    # The package version is the framework's, from the first line of
+    # Docs/UltraCanvas/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) - not
+    # PROJECT_VERSION, which belongs to whichever project() added this
+    # directory (the root, or an application in the sibling layout).
+    if(DEFINED ULTRACANVAS_VERSION)
+        set(ULTRACANVAS_PACKAGE_VERSION "${ULTRACANVAS_VERSION}")
+    else()
+        set(ULTRACANVAS_PACKAGE_VERSION "${PROJECT_VERSION}")
+    endif()
+    # What UltraCanvasConfig.cmake.in has to re-find on the consumer's side.
+    set(ULTRACANVAS_PACKAGE_HAS_VIRTUALFS OFF)
+    if(TARGET VirtualFS)
+        set(ULTRACANVAS_PACKAGE_HAS_VIRTUALFS ON)
+    endif()
+    set(ULTRACANVAS_PACKAGE_HAS_NET ${_uc_package_has_net})
+    # UltraNet's interface also names the TLS backend and the iconv shim it was
+    # built with, as imported targets the consumer has to re-find.
+    set(ULTRACANVAS_PACKAGE_NET_OPENSSL OFF)
+    set(ULTRACANVAS_PACKAGE_NET_ICONV OFF)
+    if(_uc_package_has_net)
+        if(TARGET OpenSSL::SSL)
+            set(ULTRACANVAS_PACKAGE_NET_OPENSSL ON)
+        endif()
+        if(TARGET Iconv::Iconv)
+            set(ULTRACANVAS_PACKAGE_NET_ICONV ON)
+        endif()
+    endif()
+    # The EPS plug-in names ZLIB::ZLIB, an imported target the consumer re-finds.
+    set(ULTRACANVAS_PACKAGE_HAS_EPS OFF)
+    if(TARGET UltraCanvasEPSPlugin)
+        set(ULTRACANVAS_PACKAGE_HAS_EPS ON)
+    endif()
+    set(ULTRACANVAS_PACKAGE_HAS_VIPS OFF)
+    if(ULTRACANVAS_HAS_VIPS)
+        set(ULTRACANVAS_PACKAGE_HAS_VIPS ON)
+    endif()
+
+    include(CMakePackageConfigHelpers)
+    configure_package_config_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/UltraCanvas)
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake
+        VERSION ${ULTRACANVAS_PACKAGE_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/UltraCanvas)
+    message(STATUS "  [✓] CMake package - ${CMAKE_INSTALL_LIBDIR}/cmake/UltraCanvas (find_package(UltraCanvas), version ${ULTRACANVAS_PACKAGE_VERSION})")
+endif()
 
 # ===== CONFIGURATION SUMMARY =====
 message(STATUS "")

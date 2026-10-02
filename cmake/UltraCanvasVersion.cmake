@@ -36,6 +36,7 @@
 #   ULTRAVIEWER_VERSION        (Docs/UltraViewer/CHANGELOG.md)
 #   ULTRAPAINT_VERSION         (Docs/UltraPaint/CHANGELOG.md)
 #   ARTCREATOR_VERSION         (Docs/ArtCreator/CHANGELOG.md)
+#   UOSSETTINGS_VERSION        (Docs/UOSSettings/CHANGELOG.md)
 #   ULTRAWIN_VERSION           (Docs/Modules/UltraWin/CHANGELOG.md)
 #
 # Each of those also gets _VERSION_DATE (the date on the same changelog line —
@@ -119,6 +120,7 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 # Applications that keep their own changelog and version themselves.
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
+_ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRADESKTOP        "Docs/UltraDesktop/CHANGELOG.md")

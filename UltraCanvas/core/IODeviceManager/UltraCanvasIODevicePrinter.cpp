@@ -33,6 +33,15 @@ IODeviceResult NativePrintRenderer::Render(const IODeviceInfo& printer,
                                      "Print job has neither a file nor data");
     }
 
+    if (job.filePath.empty() && job.data.empty()) {
+        // Pages that draw themselves and nothing else: a driver that takes
+        // documents has nothing to take. Refused by name rather than queued
+        // empty; the caller sends the document (a PDF) alongside them.
+        return IODeviceResult::Error(IODeviceResultCode::NotSupported,
+                                     "This printer takes documents, and the job holds only "
+                                     "pages to draw; send the document with them");
+    }
+
     // No rendering: the OS driver takes the document as-is. Choosing the
     // native renderer is exactly the choice to let it do that.
     payload.filePath = job.filePath;

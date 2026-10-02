@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.4.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -378,6 +378,30 @@ enum class VideoFXFitMode {
     Stretch                         // distort to the exact size
 };
 
+// ============================================================================
+// BACKGROUND MUSIC (a sound bed under the whole export)
+// ============================================================================
+// Mixed in after everything else, so it runs straight through joins and
+// transitions. Where the segments have sound of their own - someone speaking
+// - the music dips to `duckingLevel` and comes back up after a pause.
+struct VideoFXMusic {
+    std::string path;               // any file with sound (MP3, M4A, WAV, FLAC, OGG, a video ...); "" = none
+    double volume = 0.8;            // linear gain, 0..4
+    double start = 0.0;             // seconds into the music file to begin at
+    bool loop = true;               // repeat when shorter than the video (false: silence after it ends)
+    double fadeIn = 1.0;            // seconds at the start of the export
+    double fadeOut = 2.0;           // seconds at the end of the export
+    double duckingLevel = 0.3;      // gain under the segments' own sound, 0..1 (1 = never dip)
+
+    static VideoFXMusic FromFile(const std::string& path, double volume = 0.8) {
+        VideoFXMusic m;
+        m.path = path;
+        m.volume = volume;
+        return m;
+    }
+    bool IsSet() const { return !path.empty(); }
+};
+
 struct VideoFXExportSettings {
     VideoFXContainer container = VideoFXContainer::Auto;
     VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto;
@@ -402,6 +426,8 @@ struct VideoFXExportSettings {
 
     int threads = 0;                // 0 = automatic
 
+    VideoFXMusic music;             // background music under the whole export (none by default)
+
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default
     static VideoFXExportSettings WebM(int height = 720);        // VP9 + Opus
@@ -421,6 +447,8 @@ struct VideoFXSlideshowOptions {
     VideoFXImageFit imageFit = VideoFXImageFit::Auto;   // Auto: portraits on a blurred background
     std::vector<std::string> captions;          // optional, one per image ("" = none), bottom centre
     bool fadeInOut = true;                      // fade from and to black at the ends
+    VideoFXMusic music;                         // background music; when set, used instead of settings.music
+    bool matchMusicLength = false;              // choose secondsPerImage so the slideshow ends with the music
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then

@@ -661,6 +661,28 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
+      # The installed CMake package is what an application outside this tree
+      # builds against (Docs/GettingStarted.md, the out-of-tree route). Install
+      # into a scratch prefix and build Tests/PackageConsumer with nothing but
+      # find_package(UltraCanvas): an export CMake refuses to generate, a
+      # header that reaches outside the install, or a dependency the config
+      # forgets fails here, on this pull request, rather than on a user's
+      # machine. Linux only: that is the leg that installs every module and
+      # builds the core shared, which is the shape a package is used in.
+      - name: Install and build against the CMake package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cmake --install build --prefix "$PWD/install-prefix" > install.log
+          test -f install-prefix/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake \
+            || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
+          cmake -S Tests/PackageConsumer -B build-package-consumer \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="$PWD/install-prefix"
+          cmake --build build-package-consumer --parallel 2
+          LD_LIBRARY_PATH="$PWD/install-prefix/lib" ./build-package-consumer/PackageConsumer
+
       # What the cache actually did, in the log where anyone can see it. A
       # leg still at a 0% hit rate on a second run of the same commit is
       # misconfigured rather than merely cold, and the counters are the only
@@ -745,12 +767,14 @@ jobs:
       # name-encoding test writes such files to a real folder and lists it
       # through UltraCanvasFilerWidget, which on Windows goes through the
       # UTF-16 file APIs - and through the runner's code page 1252 wherever a
-      # conversion was missed. ULTRACANVAS_BUILD_FILER_TESTS builds the two
-      # without the Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # conversion was missed. The host-icons test asks the real shell for
+      # its icons, and the shortcut test reads .lnk files on the system they
+      # come from. ULTRACANVAS_BUILD_FILER_TESTS builds the four without the
+      # Linux-only BUILD_TESTS; Linux runs them in the full pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
 
       # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
       # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"

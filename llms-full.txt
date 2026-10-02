@@ -111,6 +111,10 @@ UltraCanvas/
 
 ## Building
 
+New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
+step list for building an application on UltraCanvas and its modules, with an
+AI coding assistant (Claude Code in particular) doing most of the typing.
+
 **Prerequisites**
 
 Install the required dependencies for your platform:
@@ -550,6 +554,21 @@ the backing implementation can be replaced without affecting callers.
   `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
 
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
@@ -1133,18 +1152,33 @@ engine; these classes hold the pixels being edited and hand them to it.
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
   `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  No platform bridge (AT-SPI, UIA) yet. See
+  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
+  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
+  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
+  the Text pattern), sharing the tree, ids, geometry and text diffing in
+  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
-  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  selectable text: `CreateForFile(utf8Path, w, h, error)` /
   `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
 - **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
-  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent, pages)`,
   `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
   dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+  The optional `pages` (`IOPrintJob::pages`, an `IPrintPageSource`) is the
+  same document as pages to draw, for the renderers that cannot lay out a
+  PDF - Windows GDI, GutenPrint, IPP without PDF - which draw them instead of
+  refusing the job. `IPrintPageTarget::GetRenderContext()` lets a source draw
+  straight into a target's render context.
+- **RichDocumentPrintPages** / `CreateRichDocumentPrintPages(editor)`
+  (`UltraCanvasRichTextPrint.h`) — a word-processing document's pages as an
+  `IPrintPageSource`, the pages `ExportToPdf` writes, laid out by a hidden
+  element of its own. `UltraCanvasRichTextEdit::BeginPrintLayout` /
+  `RenderPrintPage` / `EndPrintLayout` draw them into any context. Tested by
+  `RichTextPrintTest`.
 - **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
   extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
   one line.
@@ -1166,6 +1200,15 @@ bytes) is transparently decompressed via the VirtualFS compression API, so
 applications never deal with compression formats themselves;
 `FileBytesResult::decompressedFrom` records the source format and
 `autoDecompress = false` opts out.
+
+The file dialogs follow `UltraCanvasDialogManager::SetUseNativeDialogs`: the
+platform's picker, or the framework's `UltraCanvasFileDialog`. What the
+framework's dialog remembers (view, size, Details column widths, last used
+folder - shared by all applications or per application) is
+`UltraCanvas::FileDialogSettings` in `UltraCanvasFileDialogSettings.h`, the
+file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
+settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
+folder scope. Every write goes through `FileDialogSettings::Update()`.
 
 ### **4. Plug-ins for File Types**
 
@@ -1979,9 +2022,10 @@ time: without it the same API links from a stub whose calls return
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
 frame, still images with sub-pixel pan and zoom and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
-multi-track audio mixing, hardware encoders beyond the platform ones picked
+several free audio tracks, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
@@ -1991,7 +2035,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
+  `VideoFXMusic` (`VideoFXExportSettings::music`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2023,8 +2068,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
-  ContainViewRect, MakeBlurredBackdrop, RenderView}`
-  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
+  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
+  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -3172,6 +3218,480 @@ configure time naming what is missing.
 
 *Part of ULTRA OS · Generated to accompany the UltraCanvas demo app's
 "Dependencies & Third Party" screen.*
+
+==============================================================================
+FILE: Docs/GettingStarted.md
+==============================================================================
+
+# Getting started: building an application with UltraCanvas and an AI assistant
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-01
+**Author:** UltraCanvas Framework
+
+This page is the step list for a programmer who has never built on UltraCanvas
+and wants to ship an application with it, using an AI coding assistant for most
+of the typing. It is written around **Claude Code**, because the repository
+carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
+and the hooks), but every step names what to do with another assistant too.
+
+The short version: **the repository already teaches the assistant how to work
+here.** Your job is to build it once, keep the assistant pointed at the docs,
+ask for one bounded change at a time, and run the checks before every push.
+Skip a step and the assistant starts guessing APIs from other frameworks,
+hand-paints controls, or leaves work in a container that is thrown away.
+
+---
+
+## Step 1 — Install the toolchain
+
+UltraCanvas is C++20 built with CMake ≥ 3.16. Clang is the default compiler on
+Linux.
+
+```bash
+# Ubuntu / Debian — the core set
+sudo apt install build-essential cmake pkg-config clang \
+    libcairo2-dev libpango1.0-dev libharfbuzz-dev libfreetype6-dev \
+    libvips-dev libglib2.0-dev libtinyxml2-dev libfmt-dev \
+    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+
+# macOS
+brew install cmake cairo pango freetype vips harfbuzz
+
+# Windows — MSYS2 CLANG64 shell (see build-win.cmd for the package list)
+pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake \
+    mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-pkgconf \
+    mingw-w64-clang-x86_64-cairo mingw-w64-clang-x86_64-pango \
+    mingw-w64-clang-x86_64-harfbuzz mingw-w64-clang-x86_64-glib2 \
+    mingw-w64-clang-x86_64-freetype mingw-w64-clang-x86_64-tinyxml2 \
+    mingw-w64-clang-x86_64-libvips
+```
+
+The complete, current three-OS lists are the ones CI installs in
+`.github/workflows/build.yml`; the optional plugins (CDR, PDF via MuPDF, OCR,
+Vectorizer, audio, video) each add a library, and every one of them can be
+switched off with a `-DULTRACANVAS_PLUGIN_<NAME>=OFF` option when you do not
+need it. `Docs/Dependencies.md` says which library each feature pulls in.
+
+## Step 2 — Clone and build the whole tree once
+
+```bash
+git clone https://github.com/ULTRA-OS-Project/UltraCanvas.git
+cd UltraCanvas
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/bin/UltraCanvasDemo
+```
+
+Build everything the first time, even though you only want your own app. Two
+reasons:
+
+- **The demo application is the live catalogue.** Every element, chart,
+  diagram and module has a page in `UltraCanvasDemo`, and the source of each
+  page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
+  `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
+  widget looks like and how it is wired, open the page and then the file.
+- **A green build is your baseline.** When the assistant's first change
+  breaks the build you want to know it was the change.
+
+Turn off the applications you do not need afterwards to shorten rebuilds:
+`-DBUILD_ULTRAFILER_APP=OFF -DBUILD_ULTRAPAINT_APP=OFF …` (the full option
+list is at the top of the root `CMakeLists.txt`).
+
+## Step 3 — Point the AI assistant at the repository's own guidance
+
+The repository is written to be read by an assistant. Make sure yours actually
+reads it.
+
+**Claude Code** (terminal, desktop, web, or IDE extension):
+
+1. Open the repository root. Claude Code loads `CLAUDE.md` automatically, and
+   that file sends it to `AGENTS.md`, the module registry and the docs map.
+   Nothing to configure.
+2. `.claude/settings.json` is committed, so every clone gets the same hooks
+   and permissions: a `SessionStart` hook that restates the delivery rule, a
+   `Stop` hook (`.claude/hooks/check-delivery.sh`) that refuses to end a
+   turn silently on uncommitted or unpushed work, and pre-approved read-only
+   `git` and `scripts/check_*.py` commands so the checks run without
+   prompting. Leave the file in place; it is what keeps a long session
+   honest.
+3. The first thing to say in a fresh session is what you are building, which
+   platforms it must run on and which modules you expect to use. The
+   assistant then knows which docs to read before writing anything.
+
+**Any other assistant** (Copilot, Cursor, Windsurf, ChatGPT, Gemini, …):
+
+- `AGENTS.md` is the vendor-neutral file; most agents pick it up by name.
+  If yours does not, paste it into the system prompt or project instructions.
+- `llms.txt` at the repo root is an index of the whole docs corpus with one
+  line per document; `llms-full.txt` is the entire corpus concatenated.
+  Upload `llms-full.txt` to a Claude.ai Project, a custom GPT or a Gemini
+  Gem and the chat can answer API questions without the repository open.
+- `context7.json` registers the docs with Context7, so an agent with the
+  Context7 MCP server resolves `ultracanvas` to the real docs.
+- There is no vendored MCP documentation server yet; `Docs/AI-Agent-Integration.md`
+  is the plan for one.
+
+**Your own app, outside this repository:** keep UltraCanvas as a git
+submodule and copy `CLAUDE.md`/`AGENTS.md` (or a two-line pointer to the
+submodule's copies) into your root. An assistant that cannot open
+`Docs/UltraCanvas/` will invent `canvas->AddButton(...)`-style APIs.
+
+## Step 4 — Decide where the app lives, then create the skeleton
+
+Two layouts are supported.
+
+| Layout | When | How it links |
+|---|---|---|
+| **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Install the framework once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+
+Both routes are validated on every pull request: CI builds the in-tree
+applications, and it installs the framework into a scratch prefix and builds
+`Tests/PackageConsumer` against it with nothing but `find_package`. That
+directory is the complete out-of-tree starting point, two files long:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+```
+
+The package carries the whole element catalogue, FileLoader, JSON, and
+UltraDatabase and UltraNet when the installed build enabled them, plus
+`UltraCanvas::UltraCrypt` and `UltraCanvas::UltraVault` as separate targets.
+The file-format plug-ins the build produced (CDR, XAR, EPS, the vector and
+3D-model converters, OCR, Vectorizer) are imported as
+`UltraCanvas::UltraCanvas<Name>Plugin` and listed in
+`ULTRACANVAS_PLUGIN_TARGETS`; link that list plus
+`UltraCanvas::UltraCanvasAllFormats` and every format is registered with
+FileLoader before `main()`, exactly as in-tree applications do it. The
+package re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
+pkg-config on your machine, so the `-dev` packages from step 1 are needed
+there too. A static framework built against the vendored libcurl cannot be
+packaged at all and says so at configure time; build it shared, or against
+a system libcurl with WebSocket support.
+
+Ask the assistant to **copy a small existing app, not to invent a structure**.
+`Apps/UltraAuthenticator/` is the cleanest template: a headless core library,
+a GUI target on top, `--version` from the changelog, an icon, a desktop entry.
+The minimum is this:
+
+`Apps/MyApp/CMakeLists.txt`
+
+```cmake
+if(NOT ULTRACANVAS_LIBRARY)
+    message(STATUS "  [−] MyApp - SKIPPED (framework not built)")
+    return()
+endif()
+
+add_executable(MyApp main.cpp MyAppWindow.cpp)
+
+# The version is the first line of Docs/MyApp/CHANGELOG.md, read by
+# cmake/UltraCanvasVersion.cmake once the app is declared there.
+target_compile_definitions(MyApp PRIVATE MYAPP_VERSION="${MYAPP_VERSION}")
+
+target_include_directories(MyApp PRIVATE ${ULTRACANVAS_INCLUDE_DIRS}
+                                         ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARY})
+if(ULTRACANVAS_PLUGIN_TARGETS)
+    target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_PLUGIN_TARGETS})
+endif()
+target_compile_features(MyApp PRIVATE cxx_std_20)
+set_target_properties(MyApp PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+install(TARGETS MyApp RUNTIME DESTINATION bin)
+```
+
+`Apps/MyApp/main.cpp`
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
+
+#ifdef __linux__
+#include <X11/Xlib.h>
+#include <csignal>
+#endif
+#include <iostream>
+
+#ifndef MYAPP_VERSION
+#error "MYAPP_VERSION must come from the CMake target (see cmake/UltraCanvasVersion.cmake)"
+#endif
+
+using namespace UltraCanvas;
+
+#ifdef __linux__
+// The one call a signal handler may make; Run() turns it into RequestExit().
+static void OnSignal(int) { UltraCanvasApplicationBase::RequestExitFromSignal(); }
+#endif
+
+int main(int argc, char* argv[]) {
+#ifdef __linux__
+    XInitThreads();
+    std::signal(SIGINT, OnSignal);
+    std::signal(SIGTERM, OnSignal);
+#endif
+
+    UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) {
+        std::cerr << "Failed to initialize UltraCanvas\n";
+        return EXIT_FAILURE;
+    }
+
+    WindowConfig config;
+    config.title  = "MyApp " MYAPP_VERSION;   // every app shows its version in the title
+    config.width  = 800;
+    config.height = 600;
+    auto window = CreateWindow(config);
+
+    auto label  = CreateLabel("greeting", 20, 20, 300, 24, "Hello from UltraCanvas");
+    auto button = CreateButton("quit", 20, 60, 120, 32, "Quit");
+    // Capture the window raw: the button lives inside it, and a shared_ptr
+    // here would close an ownership cycle (scripts/check_callback_cycles.py).
+    button->onClick = [&app]() { app.RequestExit(); };
+
+    window->AddChild(label);
+    window->AddChild(button);
+    window->Show();
+
+    app.Run();
+    return EXIT_SUCCESS;
+}
+
+#ifdef _WIN32
+#include <windows.h>
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __argv); }
+#endif
+```
+
+Then, in the same change: a `Docs/MyApp/CHANGELOG.md` whose first line is
+`#### 2026-10-01 *0.1.0*`, one `_ultracanvas_declare_product()` line in
+`cmake/UltraCanvasVersion.cmake`, and the `option()`/`add_subdirectory()`
+block in the root `CMakeLists.txt`. That is the whole registration; the
+version then flows from the changelog into the title and `--version`.
+
+## Step 5 — Build the UI from the element catalogue
+
+This is where AI-written code goes wrong most often, so the rule is a
+prohibition: **if it takes input, shows a picture or presents a value, it is
+an element.** The assistant must not paint a text field, button, progress bar
+or gauge with `DrawText` / `FillRoundedRectangle` and a private buffer.
+
+The working order for every screen:
+
+1. Read `Docs/UltraCanvas/UltraCanvasUIElements.md` — the catalogue of the
+   ~60 core elements and ~70 plugin elements (charts, diagrams, gauges,
+   codes, document views), each with its header.
+2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
+   and, for a non-trivial one, its page in `Apps/DemoApp/`.
+3. Lay out with the layout engines, not with hand-computed coordinates:
+   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
+   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+   with `PlaceChildAt()`, never `SetBounds()`.
+4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
+   widget `std::shared_ptr`-managed.
+5. Dialogs, menus, tooltips and toasts come from `UltraCanvasModalDialog`,
+   `UltraCanvasMenu`, `UltraCanvasTooltipManager` and
+   `UltraCanvasDialogManager`; a progress bar is
+   `UltraCanvasGaugeDiagramElement` in `GaugeMode::LinearBar`.
+
+A prompt that gets this right names the element:
+
+> Add a settings dialog to MyApp using `UltraCanvasModalDialog`, with an
+> `UltraCanvasTextInput` for the server name, an `UltraCanvasSpinner` for
+> the port and an `UltraCanvasSwitch` for TLS. Read the three component
+> docs in `Docs/UltraCanvas/` first and follow the dialog keyboard rules in
+> `UltraCanvasDialogKeyboard.md`.
+
+A prompt that gets it wrong says "draw a settings panel".
+
+Four conventions the checks enforce, and that the assistant must be told
+about when it works on an out-of-tree app (in-tree it reads them from
+`AGENTS.md`):
+
+- A callback stored on a widget captures that widget, or any container above
+  it, as a raw pointer, never as a `shared_ptr`.
+- File paths are UTF-8 everywhere: `PathToUtf8` / `PathFromUtf8` /
+  `OpenFileUtf8` from `UltraCanvasPathUtf8.h`, never `p.string()` or
+  `fs::path(str)`.
+- Numbers in file formats and protocols are dot-decimal: `TryParseFloat` /
+  `FormatFloatClassic`, never `std::stof` / `std::to_string(double)`.
+- No function named like a Win32 A/W macro (`CreateFile`, `LoadImage`,
+  `SendMessage`), and platform code only under `UltraCanvas/OS/<Platform>/`.
+
+## Step 6 — Add the modules you need, through their public surfaces
+
+Every module is wrapped behind an UltraCanvas-owned API; app code never calls
+a vendored third-party library directly. Read the module's entry in
+`Masterfile_modules.md` and its `Docs/Modules/<Name>/README.md` before asking
+the assistant to use it, and tell the assistant to do the same.
+
+| You need | Module | CMake target | Doc |
+|---|---|---|---|
+| HTTP, WebSocket, FTP, TCP/UDP, TLS, DNS | UltraNet | `UltraNet` (built when `ULTRACANVAS_ENABLE_NET=ON`) | `Docs/Modules/UltraNet/README.md`; run `UltraNetApiStatus` before relying on an endpoint |
+| SQLite / PostgreSQL with parameter binding, migrations | UltraDatabase | `UltraDatabase` | `Docs/Modules/UltraDatabase/README.md` |
+| Chat, embeddings, speech, image/video/music generation, vision, translation, code assist | UltraAI | `UltraAI::UltraAI` (+ `UltraAI::Core`) | `Docs/Modules/UltraAI/README.md`, `Docs/UltraCanvas/UltraCanvasAIExamples.md` |
+| Open or save any image, audio, video, document, 3D model | FileLoader | part of the core library; link `UltraCanvasAllFormats` to register every built format before `main()` | `Docs/Modules/FileLoader/README.md` |
+| Encryption, sealed envelopes, secure buffers | UltraCrypt | `UltraCrypt` | `Docs/Modules/UltraCrypt/` |
+| Secrets and API keys | UltraVault | with UltraCrypt | `Docs/Modules/UltraVault/` |
+| Virtual filesystem, archives, compression | VirtualFS | `VirtualFS::VirtualFS` | `Docs/Modules/VirtualFS/` |
+| Video probe, trim, effects, export | VideoFX | `VideoFX::VideoFX` | `Docs/Modules/VideoFX/` |
+| Notifications and the message centre | UltraMessage | `UltraMessage`, `UltraMessageCenter` | `Docs/Modules/UltraMessage/` |
+| JSON | UltraCanvasJSON (core) | core | `Docs/UltraCanvas/UltraCanvasJSON.md` |
+| Cloud sync, OCR, QR codes, PDF, smart-home, network monitor, Windows tier | UltraCloud, OCR, QRCode, PDF, SmartHome, NetworkMonitor, UltraWin | see each README | `Docs/Modules/<Name>/` |
+
+Two rules carry across all of them: **TLS verification stays on by default**
+and **SQL uses parameter binding only**. An assistant that proposes
+`verify = false` or string-concatenated SQL is to be corrected, not merged.
+
+If your application itself talks to Claude (an in-app assistant, a summariser,
+a translator), use UltraAI's `ITextLLM` with the `anthropic` adapter rather
+than calling the HTTP API by hand: the adapter owns the key vault, retries,
+SSE streaming and tool calls, and the `mock` adapter lets your tests run with
+no network.
+
+## Step 7 — Verify before every push
+
+Run what CI runs, locally, and make the assistant run it too. The
+`.claude/settings.json` permissions pre-approve exactly these commands so
+Claude Code never has to ask.
+
+```bash
+cmake --build build --parallel                # it still builds
+python3 scripts/check_ui_reuse.py --strict    # no hand-painted controls
+python3 scripts/check_callback_cycles.py      # no shared_ptr cycles in callbacks
+python3 scripts/check_path_string.py          # UTF-8 paths only
+python3 scripts/check_locale_numbers.py       # dot-decimal in file formats
+python3 scripts/check_win32_names.py          # no A/W macro collisions
+python3 scripts/check_element_catalogue.py    # every element is on the catalogue page
+git fetch origin main && python3 scripts/check_changelog.py --base origin/main
+```
+
+Tests live under `Tests/` (`-DBUILD_TESTS=ON`, then `ctest --test-dir build`);
+module suites have their own switches (`ULTRACANVAS_BUILD_NET_TESTS`,
+`ULTRACANVAS_BUILD_DATABASE_TESTS`, …). An app with logic worth testing
+splits it into a headless core library the way UltraAuthenticator does, so
+the tests run in CI without a display.
+
+Then **run the app and look at it.** A screenshot from the assistant is
+evidence; a description of what it "should" look like is not.
+
+## Step 8 — Version, document, regenerate
+
+- **The app's changelog is its version.** A release is a new
+  `#### YYYY-MM-DD *x.y.z*` line at the top of `Docs/MyApp/CHANGELOG.md`;
+  nothing else is hand-edited. A framework change the app needed goes in
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` as bullets with no header;
+  CI assigns the framework number on `main`.
+- **A new or changed public API gets its doc in the same change**:
+  `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
+  catalogue page for a new element, the module README for a module.
+- **After any docs edit**: `python3 scripts/generate_llms_txt.py`. CI
+  verifies `llms.txt` and `llms-full.txt` are in sync, and they are what the
+  next assistant session reads.
+- A new third-party dependency is recorded in `Docs/Dependencies.md`,
+  `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`, or it does not go
+  in.
+
+## Step 9 — Work in bounded sessions, on a branch, through a pull request
+
+How you drive the assistant matters as much as what it knows.
+
+1. **One change per session.** "Add the settings dialog" is a session; "build
+   the app" is not. A session that runs for hours loses the thread, and its
+   container is discarded at the end, so work that was never pushed is
+   gone, not pending.
+2. **Branch, commit, push, then open a pull request.** CI (`build.yml`, the
+   checks, the llms sync) runs on pull requests and on `main`, not on a bare
+   feature branch. A branch with no PR gets no CI validation.
+   Titles say what changed and why, never the branch name.
+3. **Read the `## Delivery` block.** Every reply from an assistant session
+   here ends with three blocks (`## Delivery`, `## Next Task`,
+   `## Other recommendations`) and the line `Code needs to be PRed (N lines)`.
+   The `Stop` hook measures `N` and blocks a reply that misreports it. If
+   `Delivery` says *uncommitted* or *no pull request*, nothing has reached
+   anyone yet; act on it.
+4. **Do not merge while the session may still push.** A merged PR cannot
+   receive new commits; a session that keeps pushing to a merged branch
+   strands its work. Merge when the session says it is done, or tell it to
+   restart from `main`.
+5. **When the assistant pushes back, read why.** `AGENTS.md` tells it to
+   state a concern and continue, and to put out-of-scope defects under
+   `## Other recommendations` rather than fix them silently. Those bullets
+   are your backlog.
+
+## Step 10 — Package
+
+- Linux: `./package-linux.sh` (portable tree with every app and a shared
+  `lib/`) or `appimage/` for a single-app AppImage.
+- Windows: `./package-win.sh`; `./set-version.sh` refreshes the `.rc` and
+  manifest literals that windres needs.
+- macOS: `./package-macos.sh`, or `package_and_notarize-macos.sh` for a
+  signed, notarised bundle (`Docs/UltraCanvas/UltraCanvasMacBundle.md`).
+- WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
+  lists what differs in the browser (`Run()` never returns, no synchronous
+  file pickers, text-only clipboard).
+
+---
+
+## Prompt recipes for Claude Code
+
+What to say, in the order a project needs it. Each one names the documents the
+assistant must read, which is what stops it guessing.
+
+**Starting the app**
+
+> Create a new application `Apps/MyApp` modelled on `Apps/UltraAuthenticator`:
+> a headless core library plus a GUI target, `--version` from
+> `Docs/MyApp/CHANGELOG.md` through `cmake/UltraCanvasVersion.cmake`, the
+> version in the window title, an icon under `media/appicon/`, and the
+> `option()` block in the root `CMakeLists.txt`. It should open one window with
+> an `UltraCanvasToolbar` and an `UltraCanvasSplitPane`. Read `AGENTS.md`,
+> `Docs/UltraCanvas/UltraCanvasUIElements.md` and the two component docs first.
+
+**Adding a screen**
+
+> Add an import page: an `UltraCanvasListView` of the files on the left and an
+> `UltraCanvasMediaViewer` preview on the right, inside the existing split
+> pane. Files are chosen with `UltraCanvasDialogManager`. Read
+> `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
+> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+
+**Using a module**
+
+> Fetch the catalogue JSON over HTTPS with UltraNet (`Docs/Modules/UltraNet/README.md`,
+> `Masterfile_modules.md` §UltraNet), parse it with `UltraCanvasJSON`, and
+> cache it in an UltraDatabase SQLite table with parameter binding. Keep TLS
+> verification on. Add a test under `Tests/` that runs against the mock.
+
+**Before pushing**
+
+> Run the build and every `scripts/check_*.py`, fix what they report, regenerate
+> `llms.txt` if you touched docs, commit with a subject that says what changed
+> and why, push, and report the `## Delivery` block.
+
+**When something looks wrong**
+
+> Run `./build/bin/MyApp`, take a screenshot of the import page, and compare it
+> with `Apps/DemoApp`'s list view page. Tell me what differs before changing
+> anything.
+
+## Checklist
+
+- [ ] Toolchain installed; the full tree builds and `UltraCanvasDemo` runs
+- [ ] The assistant has read `AGENTS.md` (Claude Code: automatic via `CLAUDE.md`)
+- [ ] App skeleton copied from an existing app (in-tree) or from `Tests/PackageConsumer` (out-of-tree); changelog, version line and CMake option in place
+- [ ] Every control comes from the catalogue; layouts from the layout engines
+- [ ] Modules used only through their public surfaces; TLS on, SQL bound
+- [ ] Build and all `scripts/check_*.py` are green locally
+- [ ] Docs updated and `llms.txt` regenerated in the same change
+- [ ] Committed, pushed, pull request open, `## Delivery` block read
+- [ ] App run and looked at on each platform you ship to
 
 ==============================================================================
 FILE: Docs/UltraCanvas/AndroidOnLinuxInvestigation.md
@@ -5395,11 +5915,12 @@ What assistive technology — screen readers, magnifiers, braille displays —
 needs to know about an element, in a form that does not depend on the
 platform: its **role**, its **name**, for text a **text interface** (content,
 caret, selection, character boxes, formatting, words, lines, sentences) and an
-**event stream** saying what changed. A platform bridge (AT-SPI on Linux, UI
-Automation on Windows, NSAccessibility on macOS) is the layer that hands this
-to the operating system; the bridges are not written yet, so today the layer
-serves tests, in-application readers (read aloud, a braille panel) and future
-bridges.
+**event stream** saying what changed. A platform bridge hands this to the
+operating system, where screen readers find it: **AT-SPI** on Linux (Orca)
+and **UI Automation** on Windows (Narrator, NVDA, JAWS) - see
+[Platform bridges](#platform-bridges). There is no macOS bridge
+(NSAccessibility) yet. The same layer serves tests and in-application readers
+(read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
@@ -5449,15 +5970,81 @@ UltraCanvasAccessibility::RemoveListener(id);
 ```
 
 The window announces `FocusChanged` when an element gains the focus; the rich
-text element announces edits, caret moves and selection changes. Elements build
-events only while someone listens (`HasListeners()`), so the layer costs nothing
-otherwise. Listeners are called on the thread that made the change (the UI
-thread).
+text element announces edits, caret moves and selection changes. Every element
+announces `ElementDestroyed` from its destructor, so a bridge can drop the id
+it gave it. Elements build events only while someone listens
+(`HasListeners()`), so the layer costs nothing otherwise. Listeners are called
+on the thread that made the change (the UI thread).
+
+`IAccessibleText::IsReadOnly()` (default false) tells a screen reader not to
+announce the text as editable; the rich text element answers its
+`IsReadOnly()`.
 
 ## Helpers
 
 `CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
 between the characters of the accessibility API and UTF-8 byte offsets.
+
+## Platform bridges
+
+Nothing to call: the application starts the bridge for its platform, and an
+element that describes itself (the three virtuals above) is reachable.
+
+**The tree.** The application holds its windows; a window holds its elements
+in container order. An element that has not described itself
+(`AccessibleRole::Unknown`) still appears - as a panel when it holds others,
+so a reader walks into it, else as a filler (AT-SPI) or custom control that is
+neither control nor content (UI Automation). Names are `GetAccessibleName()`,
+a window's title for a window. Positions are the element's place on the
+screen: window coordinates scaled by the window's device scale, from the
+window's content origin (`UltraCanvasWindowBase::GetContentScreenOrigin()`,
+below the title bar on Windows).
+
+**AT-SPI (Linux)** - `OS/Linux/UltraCanvasLinuxAccessibility`. The application
+registers on the accessibility bus with the registry (`Socket.Embed`) and
+answers there for the application (`Accessible`, `Application`), its windows
+(frames) and its elements (`Accessible`, `Component`, and `Text` for elements
+with text). Roles map to AT-SPI roles (`Document` → document text, `TextField`
+→ entry, `Button` → push button, ...); states include enabled, visible,
+showing, focusable, focused, editable or read-only, single/multi-line and, for
+a window, active. Text attributes use the names ATK and Orca read: `weight`,
+`style`, `underline`, `strikethrough`, `text-position`, `family-name`, `size`,
+`fg-color`, `bg-color`, `invalid` (spelling), plus `heading-level`,
+`list-item`, `link`, `revision` and `comment`. Events: focus
+(`StateChanged:focused` and `Focus`), window activation, `TextCaretMoved`,
+`TextSelectionChanged` and `TextChanged` as `delete`/`insert` with the text,
+worked out from the text the bridge last sent.
+
+It connects when the desktop has accessibility on (`org.a11y.Status`
+`IsEnabled` or `ScreenReaderEnabled`, which GNOME sets when Orca starts), and
+later when it is turned on; without a session bus it does nothing.
+`NO_AT_BRIDGE=1` keeps it off, `UC_ACCESSIBILITY_ALWAYS_ON=1` connects
+regardless. D-Bus is GIO's (already there through GTK); its calls are answered
+on the UI thread between events, through an fd watch on the event loop, with
+no thread of its own.
+
+**UI Automation (Windows)** - `OS/MSWindows/UltraCanvasWindowsAccessibility`.
+Each window answers `WM_GETOBJECT` with a fragment root; every element is a
+fragment (control type, name, automation id = identifier, framework
+"UltraCanvas", enabled, focusable, focused, offscreen, bounds, navigation,
+`SetFocus`, hit testing). An element with text offers the **Text pattern**:
+document, selection and point ranges that move and expand by character,
+format run, word, line, paragraph and document, find text, select, report one
+rectangle per line, and give font name and size, weight, italic, colours,
+super/subscript, underline/strikethrough, heading style ids, read-only and
+spelling/comment/insertion/deletion annotations (mixed where the runs of a
+range differ). Focus, text and caret/selection changes raise the matching
+events. `UIAutomationCore.dll` is loaded at run time, and the bridge does
+nothing until a client sends the first `WM_GETOBJECT`.
+
+**Testing.** `Tests/AtspiBridgeTest` runs a libatspi client - the library Orca
+uses - against a test application on a private accessibility bus: the tree,
+names, roles, states, text, words, sentences, attributes, extents, hit
+testing, moving the caret, and the insert/delete events of typing. It is built
+when the `atspi-2` development package is installed and skips itself without a
+display or at-spi2-core. The UI Automation bridge has no automated test yet:
+so far it is compile-checked (MinGW GCC and Clang) but has not been run
+against Narrator, NVDA or JAWS.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -11388,31 +11975,52 @@ UltraCanvasButton is a customizable button control in the UltraCanvas framework 
 // Using constructor
 auto button = std::make_shared<UltraCanvasButton>(
     "MyButton",    // identifier
-    101,           // id
     100, 50,       // x, y position
     120, 40,       // width, height
     "Click Me"     // button text
 );
 
 // Using factory function
-auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
+auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");
 
-// Using auto-sized button
-auto button = CreateAutoButton("MyButton", 100, 50, "Click Me");
+// Size only: the position comes from the layout it is added to
+auto button = std::make_shared<UltraCanvasButton>("MyButton", 120, 40, "Click Me");
+
+// Text only: the layout sizes it as well
+auto button = std::make_shared<UltraCanvasButton>("MyButton", "Click Me");
+
+// With an icon beside the text
+auto button = CreateIconButton("MyButton", 100, 50, 120, 40, "media/icons/ok.png", "Click Me");
 ```
+
+There is no numeric id argument: an element is identified by its identifier
+string, and a button placed by a layout needs no position at all.
 
 ## Class Reference
 
-### Constructor
+### Constructors
 
 ```cpp
-UltraCanvasButton(
-    const std::string& identifier = "Button",
-    long id = 0,
-    long x = 0, long y = 0,
-    long w = 100, long h = 30,
-    const std::string& buttonText = "Button"
-);
+UltraCanvasButton(const std::string& identifier,
+                  float x, float y, float w, float h,
+                  const std::string& buttonText = "Button");
+UltraCanvasButton(const std::string& identifier,
+                  float w, float h,
+                  const std::string& buttonText = "Button");   // positioned by a layout
+UltraCanvasButton(const std::string& identifier,
+                  const std::string& buttonText);               // sized by a layout too
+```
+
+### Factories
+
+```cpp
+std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
+                                                float x, float y, float w, float h,
+                                                const std::string& text = "Button");
+std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
+                                                    float x, float y, float w, float h,
+                                                    const std::string& iconPath,
+                                                    const std::string& text = "");
 ```
 
 ### Core Methods
@@ -11527,7 +12135,7 @@ button->onContextMenu = [menu, container](int windowX, int windowY) {
 ### Event Usage Example
 
 ```cpp
-auto button = CreateButton("MyButton", 1, 10, 10, 100, 30, "Click Me");
+auto button = CreateButton("MyButton", 10, 10, 100, 30, "Click Me");
 
 // Set click handler
 button->onClick = []() {
@@ -11628,7 +12236,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
 ### Standard Button
 
 ```cpp
-auto standardBtn = CreateButton("StandardButton", 1, 20, 20, 100, 30, "Standard");
+auto standardBtn = CreateButton("StandardButton", 20, 20, 100, 30, "Standard");
 standardBtn->onClick = []() {
     std::cerr << "Standard button clicked" << std::endl;
 };
@@ -11637,7 +12245,7 @@ standardBtn->onClick = []() {
 ### Colored Button
 
 ```cpp
-auto primaryBtn = CreateButton("PrimaryButton", 2, 20, 60, 100, 30, "Primary");
+auto primaryBtn = CreateButton("PrimaryButton", 20, 60, 100, 30, "Primary");
 primaryBtn->SetColors(
     Color(0, 123, 255, 255),  // Normal
     Color(0, 100, 225, 255),  // Hover
@@ -11667,7 +12275,7 @@ a `▾` character: a text renderer draws that glyph at a fraction of the
 section around it, while the icon fills the size it is given.
 
 ```cpp
-auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+auto newButton = CreateButton("New", 10, 10, 138, 28, "New folder");
 newButton->SetSplitEnabled(true);
 newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
 newButton->SetSplitSecondaryText("");        // the icon is the whole content
@@ -11695,7 +12303,7 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
 ### Disabled Button
 
 ```cpp
-auto disabledBtn = CreateButton("DisabledButton", 3, 20, 140, 100, 30, "Disabled");
+auto disabledBtn = CreateButton("DisabledButton", 20, 140, 100, 30, "Disabled");
 disabledBtn->SetEnabled(false);
 ```
 
@@ -14290,6 +14898,88 @@ Diagrams → Class Diagram, five buttons:
 - [`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md) — the full feature list and roadmap
 - [`UltraCanvasUMLModel.md`](UltraCanvasUMLModel.md) — model, notation grammar, C++ reverse engineering, text export
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared orthogonal router
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md
+==============================================================================
+
+# UltraCanvasCoderModuleRepair
+
+**Header:** `UltraCanvas/include/UltraCanvasCoderModuleRepair.h`
+**Sources:** `core/UltraCanvasCoderModuleRepair.cpp` (platform-free half and
+the no-op for every platform but Windows),
+`OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp` (System32 lookup)
+**Test:** `Tests/CoderModuleRepairTest.cpp`
+
+Repairs an installed Windows package in which an ImageMagick coder module
+carries the file name of a Windows system DLL. The image subsystem calls it
+on Windows before anything can load a coder; no application code needs to.
+
+## Why it exists
+
+Windows keys the modules of a process by base name. ImageMagick loads every
+coder into the process the first time libvips asks it whether it recognises
+a file, and with `coders\mpr.dll` (the `MPR:` in-memory image registry) among
+them, every later import of `MPR.dll` by a Windows component the shell loads
+in here - `pcacli.dll` for the `runas` verb behind "Delete as administrator",
+`daxexec.dll` for a Store app - was bound to the coder and failed with
+*The procedure entry point `WNetGetConnectionW` could not be located*.
+`package-win.sh` ships no such file any more, but a package extracted over
+an older folder keeps the old coders, and every extraction of 0.9.92 or older
+has them. See [*"Entry point not found" in a Windows
+DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+## What it does
+
+For every `*.dll` in `<exe>\lib\ImageMagick-*\modules-Q16HDRI\coders` whose
+name is one Windows itself uses (`mpr`, `url`, `dpx`, `vid` always, plus
+whatever the machine's `System32` holds):
+
+- a pseudo-format of no use here (`mpr`, `url`) is deleted, with its `.la`;
+- a real format (`dpx`: SMPTE DPX, which the export dialog offers) is renamed
+  to `<name>-coder.dll` and its `.la` rewritten so `dlname=` and
+  `library_names=` name the new file. ImageMagick opens a coder through its
+  `.la`, so the rename is invisible to it, and the process then holds a
+  module no system DLL is called;
+- a renamable coder with no `.la` beside it is deleted, since nothing could
+  point ImageMagick at the new name.
+
+The repair is idempotent, a missing folder is nothing to do, and a package
+re-extracted over a repaired one (the original back beside the renamed file)
+is repaired again. Every change and every failure is written to the
+framework log (`ULTRACANVAS_DEBUG_LOG`); a folder the process cannot write
+leaves the files in place, where `uc-diagnose.ps1 -CheckOnly` lists them.
+
+## API
+
+```cpp
+namespace UltraCanvas::CoderModuleRepair {
+    struct CoderModuleRepairResult {
+        std::vector<std::string> removed;   // "mpr.dll", "mpr.la"
+        std::vector<std::string> renamed;   // "dpx.dll -> dpx-coder.dll"
+        std::vector<std::string> failed;    // "mpr.dll: <why>"
+        bool Changed() const;
+    };
+    std::string LowerCaseName(const std::string& name);
+    bool IsKnownSystemDllName(const std::string& lowerName);   // mpr, url, dpx, vid
+    bool IsDroppableCoder(const std::string& lowerName);        // mpr, url
+    std::string RenamedCoderFileName(const std::string& dllName);
+    std::string RewriteLibtoolArchive(const std::string& laText, const std::string& dlName);
+    CoderModuleRepairResult RepairCoderModules(const std::string& codersDirUtf8,
+            const std::function<bool(const std::string& lowerName)>& isSystemDllName);
+    CoderModuleRepairResult RepairPackagedCoderModules(const std::string& exeDirUtf8);
+    bool NativeIsSystemDllName(const std::string& lowerName);   // Windows backend
+}
+```
+
+`RepairPackagedCoderModules` is the entry point `UCImageRaster::
+InitializeImageSubsysterm` uses on Windows; on every other platform it
+returns an empty result. `RepairCoderModules` with an explicit predicate is
+what the test drives on any platform.
+
+## Version
+
+- 1.0.0 (2026-10-01): first version.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
@@ -17465,7 +18155,7 @@ menus, toolbars, custom panels. The button only draws the accent; matching the
 key and invoking the action stays with the owner.
 
 ```cpp
-auto button = CreateButton("Apply", 1, 0, 0, 90, 28, "Apply");
+auto button = CreateButton("Apply", 0, 0, 90, 28, "Apply");
 button->SetMnemonicChar('A');            // underlines the first 'A'
 char letter = button->GetMnemonicChar(); // 'A'
 button->SetMnemonicIndex(3);             // or pick the character by index
@@ -20226,13 +20916,20 @@ code.
 
 ## Version
 
+- 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
+  answered a registered handler that would not start from our process by
+  starting it from Explorer's, which hid the reason; the reason was the
+  packaged `mpr.dll` coder, kept out of the package since and repaired in an
+  installed one on start ([`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)).
+  A default open that fails now names the shell's error. The loader's
+  hard-error box stays off on the launching thread.
 - 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
   "entry point not found" box: the shell loads a packaged app's activation
   DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process. (Why the import failed at all - a packaged ImageMagick coder
+  process (removed again in 1.2.3). (Why the import failed at all - a packaged ImageMagick coder
   named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
   same day; see [*"Entry point not found" in a Windows
   DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
@@ -44744,7 +45441,9 @@ one bar per level at the block's left and indents it by `style.quoteIndent`
 per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
 `ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
 programs: Enter keeps the level, Enter on an empty quoted line and Backspace
-at the start of a quoted block each step one level out (undoable).
+at the start of a quoted block each step one level out (undoable). For a
+toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
+selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to
@@ -45253,8 +45952,11 @@ the document's title as its name, and `GetAccessibleTextInterface()` - the
 paragraphs one per line (a table's cells tab-separated), caret and selection,
 character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
-selection changes and focus are announced to listeners. There is no platform
-bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+selection changes and focus are announced to listeners, and the platform
+bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
+Automation on Windows (Narrator, NVDA, JAWS) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
+is no macOS bridge yet.
 
 ## Drag and drop
 
@@ -45543,6 +46245,31 @@ PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
 prints one - which is what UltraTexter's Print does for a word-processing tab,
 and File > Export as PDF writes.
 
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
 ## Zoom and scrolling sideways
 
 ```cpp
@@ -45563,9 +46290,8 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No screen-reader bridge.** The accessibility model is there (see
-  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
-  operating system are not.
+- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
+  Automation) have one; VoiceOver does not see the element yet.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 
@@ -50943,7 +51669,7 @@ split->SetPaneMinSize(0, 120);        // sidebar never narrower than 120 px
 
 sidebar->SetBackgroundColor(Color(232, 240, 252, 255));
 sidebar->SetPadding(8);
-sidebar->AddChild(CreateButton("Files", 1, 10, 10, 120, 28, "Files"));
+sidebar->AddChild(CreateButton("Files", 10, 10, 120, 28, "Files"));
 
 editor->SetBackgroundColor(Colors::White);
 editor->AddChild(myEditorWidget);
@@ -57952,7 +58678,7 @@ exists:
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
 auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
-auto accept = CreateButton("ok", 101, 0, 0, 104, 30, "Compress");
+auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
 An element that belongs to a self-rendered view is added as a child of it and
@@ -60948,11 +61674,17 @@ and `url.dll` are pseudo-formats of no use here and are dropped, with their
 to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
 the file to load), so the rename costs it nothing, and the process holds a
 module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
-a package that carries a system DLL's name anywhere. For a package already
-extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
-named like Windows system DLLs*; deleting them (with the `.la` beside each)
-fixes that installation, and so does extracting a newer package into a fresh
-folder rather than over the old one.
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
 
 The general rule for anyone adding a DLL to the package: **no DLL may carry
 the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
@@ -63791,6 +64523,30 @@ four hold, because its parameter set is the richer one.
 accepting it and falling back at print time: a caller that asked for
 GutenPrint needs to know it is not getting it.
 
+### A document and its pages, together
+
+A formatted document reaches a printer as a PDF (`PrintDocumentWithDialog`),
+which CUPS and a PDF-reading IPP printer print as it is. The Windows GDI
+renderer, GutenPrint and an IPP printer without PDF cannot: they print what
+they can draw, and nothing here lays a PDF out. So a job may carry the same
+document twice - as bytes, and as **`IOPrintJob::pages`**, an
+`IPrintPageSource` that draws it - and each renderer takes the form it can
+use:
+
+| Renderer | Takes |
+|---|---|
+| Native on CUPS | the bytes, unchanged; a job of pages alone is refused by name rather than queued empty |
+| Windows GDI, GutenPrint | the pages: `MakePageSourceForJob` returns them before looking at the bytes |
+| IPP | the bytes when the printer takes them (and can select the page range); otherwise the pages, as PWG raster (`kIppDrawnPagesType`) |
+
+A source that is more than lines of text and pictures draws through the
+rendering stack, so **`IPrintPageTarget::GetRenderContext()`** hands over the
+target's `IRenderContext` where it has one (`RasterPageTarget`: GutenPrint's
+page, IPP's raster page). It is null for a Windows printer DC, where the
+source draws its page off screen and places it with `DrawImage`. A
+word-processing document's pages are `RichDocumentPrintPages`
+(`UltraCanvasRichTextPrint.h`), outside this module.
+
 ### Option resolution
 
 The GutenPrint parameter model — media type → resolution → cartridge → inkset
@@ -64038,7 +64794,9 @@ even to a printer that claims `text/plain`, because what a printer's own text
 path does with UTF-8 is anybody's guess and a page drawn here is the same page
 on every printer. What cannot be done either way is refused by name rather
 than half-printed: a PDF to a printer that takes none (nothing here paginates
-PDF yet), and a page range on a document the printer cannot select pages from.
+PDF yet), and a page range on a document the printer cannot select pages from
+- unless the job carries the document's pages too, which are then drawn (see
+*A document and its pages, together*).
 
 **The transport is one Print-Job request** - the IPP message with the
 document directly after it, POSTed with `Content-Type: application/ipp`. It
@@ -64598,7 +65356,7 @@ absent.
 | Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, or a Standard TCP/IP port's `HostAddress`). The parsing and the port-to-address guesses are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. WSD ports carry no address the spooler gives out, so a WSD queue gets bidi only. |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
-| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: PDF and other documents | ⚠️ a PDF on its own is still refused by name with `NotSupported`, not half-printed - laying one out needs the PDF plugin. A PDF that comes with its pages (`IOPrintJob::pages`, as a formatted document's does: `CreateRichDocumentPrintPages`) prints: the pages are drawn. |
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
@@ -64613,7 +65371,7 @@ absent.
 | IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
 | IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
-| IPP: PDF to a printer that takes no PDF | ❌ refused by name. Needs the PDF plugin to paginate, the same seam the GDI renderer is waiting on. |
+| IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
 | IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
 | IPP: document streaming | ❌ the request and document go as one HTTP body, so a document is in memory whole. Fine for the PDFs and photos this path carries; PWG raster is the heavier case - an A4 page of text at 300 dpi in grey is about 1.3 MB, because anti-aliased glyphs defeat run-length compression - so a long raster job would want `Create-Job` / `Send-Document` with a chunked body. |
 | IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) or cannot start: it needs a running DNS-SD daemon (Avahi) even with advertising off, and IPv6, so a container without IPv6 always skips. CI's Linux rows install it, start Avahi and set `ULTRACANVAS_TEST_IPP_REQUIRED`, which turns a skip into a failure, so there it must run. |
@@ -64622,7 +65380,7 @@ absent.
 | Cloud printing | ❌ architecture only |
 | **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
 | Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
-| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog: printing anything but plain text | ⚠️ `PrintDocumentWithDialog()` prints a document (a PDF), with its pages beside it for the renderers that must draw (`pages`); Texter prints word-processing tabs this way. An image file from a dialog has no bridge yet. |
 | Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
 | Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 
@@ -69751,7 +70509,10 @@ ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
 shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
 linkers reject a plug-in that calls the core directly; on Linux the
 `UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
-does, reading every built plug-in's undefined symbols.
+does, reading every built plug-in's undefined symbols. `UltraNet_PluginInit(host)`
+is the only entry point the loader accepts: the old POSIX-only v1 entry,
+`UltraNet_PluginRegister()`, which reached into the host's symbol table, is
+refused (`plugin_loader_refuses_a_v1_only_plugin`).
 
 ---
 
@@ -71201,13 +71962,14 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stages 1 and 2 implemented, plus photos.** Probe, frames, the
-> segment timeline with 26 effects, speed, joins, 30 transitions between
-> segments, text and image overlays, still images with smooth pan and zoom
-> ("Ken Burns") and one-call slideshows, GIF and audio-only output, lossless
-> cut, the background job and the `videofx` command-line tool work today, on
-> FFmpeg 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and
-> project files are planned (see *Roadmap*).
+> **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
+> frames, the segment timeline with 26 effects, speed, joins, 30 transitions
+> between segments, text and image overlays, still images with smooth pan and
+> zoom ("Ken Burns"), one-call slideshows, background music that dips under
+> speech, GIF and audio-only output, lossless cut, the background job and the
+> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
+> Picture-in-picture, keyframes, several free audio tracks and project files
+> are planned (see *Roadmap*).
 
 ---
 
@@ -71383,7 +72145,57 @@ VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
 
 It fades in from and out to black (`fadeInOut`), gives each photo its own
 `Auto` move, shows portrait photos whole on a blurred background, and without a size in the settings makes 1920x1080 at 30 fps.
-Length: `n x secondsPerImage - (n - 1) x transition`.
+Length: `n x secondsPerImage - (n - 1) x transition` — or, with
+`matchMusicLength`, the length of the music (see below).
+
+---
+
+## Background music
+
+`VideoFXExportSettings::music` lays a song under the whole export — any
+timeline, not only slideshows. It is mixed in last, so it plays straight
+through joins and transitions, and where the segments have sound of their own
+it steps back:
+
+```cpp
+VideoFXExportSettings settings = VideoFXExportSettings::WebMP4(1080);
+settings.music = VideoFXMusic::FromFile("summer.mp3", 0.8);   // path, volume
+settings.music.start = 12.0;          // begin 12 s into the song
+settings.music.fadeIn = 1.0;          // seconds, at the start of the export
+settings.music.fadeOut = 3.0;         // and at its end
+settings.music.duckingLevel = 0.25;   // under the clips' own sound
+VideoFX_Export(timeline, "holiday.mp4", settings);
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `volume` | 0.8 | Linear gain, 0..4 |
+| `start` | 0 | Seconds into the song to begin at |
+| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
+| `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
+
+**Ducking.** VideoFX listens to the segments' own sound block by block. While
+it is present — someone speaking in a clip, a waterfall — the music goes down
+to `duckingLevel` within about a tenth of a second; it waits for a pause of
+over half a second before coming back up, slowly, so speech does not make it
+pump between words. Photos and colour cards have no sound, so under a
+slideshow the music plays at full `volume`.
+
+**Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
+`VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
+photo so the show ends with it:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+Sound-only outputs work too: photos plus music into `.mp3` is a valid,
+correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
@@ -71613,6 +72425,8 @@ videofx testclip pattern.mp4 5 1280 720 30
 videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 ```
 
 ---
@@ -71643,7 +72457,8 @@ generates its own clips, so it needs no media files.
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
+| 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 
@@ -73227,7 +74042,9 @@ On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
 separators:
 
-1. **System** — *ULTRA OS settings* and the *app starter*.
+1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
+   settings* starts **UOS-Settings**, the system's settings application
+   (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
    entry; the first letter of its class when it has none). The active
@@ -73284,10 +74101,11 @@ windows stop short of the bars instead of covering them.
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
-  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
-  manager program, the number of virtual desktops. *Apply* writes the
-  settings and rebuilds the bars in place.
+- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+  the RAM disc path, the file manager program, the number of virtual
+  desktops - are the *Desktop* page of UOS-Settings. They live in the
+  desktop's settings file; the desktop checks it once a second and rebuilds
+  the bars in place when UOS-Settings changed one of them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.

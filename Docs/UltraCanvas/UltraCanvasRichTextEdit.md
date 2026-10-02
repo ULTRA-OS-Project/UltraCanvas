@@ -134,7 +134,9 @@ one bar per level at the block's left and indents it by `style.quoteIndent`
 per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
 `ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
 programs: Enter keeps the level, Enter on an empty quoted line and Backspace
-at the start of a quoted block each step one level out (undoable).
+at the start of a quoted block each step one level out (undoable). For a
+toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
+selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to
@@ -643,8 +645,11 @@ the document's title as its name, and `GetAccessibleTextInterface()` - the
 paragraphs one per line (a table's cells tab-separated), caret and selection,
 character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
-selection changes and focus are announced to listeners. There is no platform
-bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+selection changes and focus are announced to listeners, and the platform
+bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
+Automation on Windows (Narrator, NVDA, JAWS) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
+is no macOS bridge yet.
 
 ## Drag and drop
 
@@ -933,6 +938,31 @@ PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
 prints one - which is what UltraTexter's Print does for a word-processing tab,
 and File > Export as PDF writes.
 
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
 ## Zoom and scrolling sideways
 
 ```cpp
@@ -953,9 +983,8 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No screen-reader bridge.** The accessibility model is there (see
-  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
-  operating system are not.
+- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
+  Automation) have one; VoiceOver does not see the element yet.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

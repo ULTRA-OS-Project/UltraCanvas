@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.8.0 - Quote + / Quote − in the formatting toolbar
 // Version: 0.7.0 - one view per compose window: what answers after the window
 //                  closed holds the view weakly
 // Version: 0.6.0 - the full formatting toolbar (UltraMailFormatBar) and the
@@ -9,7 +10,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -123,6 +124,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     FormatBar::Options barOptions;
     barOptions.idPrefix = "c";
     barOptions.dialogParent = parent_;
+    barOptions.quoteTools = true;
     // Asked on every click, and again when a Link… or Picture… dialog
     // answers - by then the window may be closed and this view gone.
     barOptions.editor = [weak = weak_from_this()]() -> UltraCanvasRichTextEdit* {

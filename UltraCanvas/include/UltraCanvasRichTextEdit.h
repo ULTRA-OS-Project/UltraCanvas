@@ -18,7 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -268,6 +268,8 @@ public:
     void ToggleNumberedList();
     void IndentList();
     void OutdentList();
+    void IncreaseQuoteLevel();                // quote bars (RichDocBlock::quoteLevel)
+    void DecreaseQuoteLevel();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
     // Named styles (UCRichDocument::styles; a word processor's basic set
@@ -428,6 +430,24 @@ public:
     bool ExportToPdf(const std::string& utf8Path, std::string& error);
     // The same, into memory (for printing, attaching, uploading).
     bool ExportToPdf(std::vector<uint8_t>& pdfBytes, std::string& error);
+
+    // ===== PRINTING =====
+    // The pages ExportToPdf writes, drawn into any context - a printer's
+    // page, an off-screen bitmap. CreateRichDocumentPrintPages()
+    // (UltraCanvasRichTextPrint.h) drives these for the print dialog.
+    //
+    // Lays the document out as pages, measuring with `ctx`, and returns how
+    // many there are. Until EndPrintLayout() the element is in its output
+    // state (page view, zoom 1, no editing marks) and should not be shown.
+    int BeginPrintLayout(IRenderContext* ctx);
+    // Draws page `pageIndex` (0-based), its top-left corner at the context's
+    // origin, one unit per view pixel (96 to the inch). Only between
+    // BeginPrintLayout() and EndPrintLayout().
+    void RenderPrintPage(IRenderContext* ctx, int pageIndex);
+    // Puts the view back as it was and lets the screen lay it out again.
+    void EndPrintLayout();
+    // The page the document is laid out on: its own, or A4 with 2 cm margins.
+    RichPageSetup GetEffectivePageSetup() const { return EffectivePageSetup(); }
 
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
@@ -926,6 +946,15 @@ private:
     int CommentBoxAt(const Point2Di& elementPoint) const;
     bool ShowsEditingMarks() const { return !readOnly && !printing; }
     bool ExportPdfPages(class UltraCanvasPdfSurface& pdf, std::string& error);
+    // The view as it was before BeginPrintLayout(), for EndPrintLayout().
+    struct OutputViewState {
+        bool pageView = false;
+        float zoom = 1.0f;
+        float scrollOffset = 0.0f;
+        float hScrollOffset = 0.0f;
+        Rect2Df visibleArea{0, 0, 0, 0};
+    };
+    OutputViewState savedOutputView;
     bool selecting = false;           // mouse drag in progress
     // Drag and drop of the selection: a press inside it arms a drag, which
     // starts once the pointer has moved a few pixels (a press and release
