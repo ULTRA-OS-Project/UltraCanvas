@@ -1,3 +1,47 @@
+#### 2026-10-02 *0.9.131*
+- **HTML reader: pictures with `height="auto"` are shown.** Mail templates
+  (Beefree, Braze - Kickstarter's newsletters among them) write
+  `width="580" height="auto"` on every `<img>`. The resolver read the
+  attribute `auto` as 0px, so each picture was laid out zero pixels tall and
+  the message showed none of them, even after its remote images had loaded.
+  `width` / `height="auto"` on `<img>`, `<table>`, `<td>` and `<th>` is now no
+  size at all, as `auto` already was in CSS: the picture keeps its own aspect
+  ratio. Test: `HTMLReaderTest` (`TestImageAutoAttributes`).
+- **HTML mail columns stack in a narrow pane, as on a phone.** Mail templates
+  lay their articles out side by side and, below a width (`@media
+  (max-width:620px) { .stack .column { display:block } }`), make each `<td>`
+  a block so the columns stack. The HTML reader kept every `<td>` a table
+  cell whatever its `display`, so a narrow reading pane showed two squeezed
+  columns. Now the `display:block` cells next to each other in a row share
+  one anonymous cell and stack in it, as in a browser.
+  Test: `HTMLTableLayoutTest` ("mail columns stack in a narrow pane").
+- **A stretched flex item keeps its `max-width`.** `align-items: stretch`
+  widened an item past its max (or below its min) cross size; CSS Flexbox
+  clamps it (§9.4 step 11). In HTML mail, a `<div style="max-width:280px">`
+  holding a `width:100%` picture in a wider table cell was measured 280px
+  tall but drawn stretched, the picture spilling over the text below.
+- **`align="center"` / `"right"` on a container places its narrowed blocks.**
+  `<td align="center"><div style="max-width:280px">` centres the div, as in
+  browsers (also `<div align>` and `<center>`); before it sat at the left.
+  Test: `HTMLTableLayoutTest` ("align=center places a max-width block").
+- **HTML mail no longer runs off the right of the pane, and its centred menus
+  are on screen.** A picture sized in % of its column (`width:100%`, the
+  image of every mail-template newsletter) reported its natural width as the
+  narrowest it could be, so a 2000px photo widened the 600px table around it
+  to 2000px. Everything in that table then sat in a box far wider than the
+  pane: text ran off the right edge, and a centred row - Kickstarter's ART /
+  COMICS / DESIGN … menu - was laid out off screen altogether.
+  `UltraCanvasImageElement` now reports no min-content width when its width
+  or max-width is a percentage (CSS Sizing 3 §5.2.2, compressible replaced
+  elements), so the table keeps its own width and the picture shrinks into
+  it. Test: `HTMLImageAlignTest` ("width:100% picture in a 600px mail table").
+- **A later `width` replaces an earlier one.** The resolver kept a px and a %
+  width side by side, and the px one won: a newsletter's narrow-screen rule
+  `.row-content{width:100%!important}` over the table's inline `width:600px`
+  left it 600px wide in a narrow pane. `width: 100%`, `width: 300px` and
+  `width: auto` now each replace what came before. Test: `HTMLReaderTest`
+  (`TestImportantWidthReplacesInlineWidth`).
+
 #### 2026-10-02 *0.9.130*
 - **Quote levels can be changed from a toolbar.** New
   `UCRichDocumentEditor::IncreaseQuoteLevel` / `DecreaseQuoteLevel` and the
