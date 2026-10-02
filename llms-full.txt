@@ -58125,6 +58125,26 @@ tree->SetScrollToTopButtonStyle(style);
 // tree->SetShowScrollToTopButton(false);
 ```
 
+### Measuring the Tree
+
+```cpp
+int GetRequiredWidth(IRenderContext* ctx = nullptr)
+```
+
+The width the tree needs to show its widest row in full: indent, expander and
+check-flag slots, left icon and label text, plus the tree's right padding and
+border, the row's right icon and the vertical scrollbar while one is shown. Only
+the rows on show count - the children of a collapsed node do not. Text is
+measured with `ctx`, or the window's render context when `ctx` is null; the
+call returns 0 while there is neither (the tree is not in a window yet), so try
+again once the window is up.
+
+```cpp
+// Fit a sidebar to its folder names, with 10 px to spare.
+if (int need = tree->GetRequiredWidth(); need > 0)
+    splitPane->SetPaneFixedSize(0, need + 10);
+```
+
 ### Color Properties
 
 ```cpp
@@ -58414,6 +58434,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 |---------|------|---------|
 | 1.0.0 | 2024-12-19 | Initial release with full tree functionality |
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
+| 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 
 ## See Also
 

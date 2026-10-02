@@ -1,3 +1,15 @@
+#### 2026-10-02 *0.10.18*
+- **Settings > Reading > Layout sets the folder list's width.** *Auto* (the
+  default) makes the folder tree on the left 10 px wider than its longest
+  account address or folder name, and fits it again as folders arrive or a
+  branch is opened or closed; *Fixed width* keeps it at the number of pixels
+  set beside it (100 to 600, 200 to start with - typing a width chooses it).
+  Dragging the divider still resizes the list for the moment. Saved as
+  `folder_tree_width_mode` / `folder_tree_width` in `preferences.ini`; the
+  page's *Restore default layout* puts it back to *Auto*. Measuring the rows
+  is the framework's new `UltraCanvasTreeView::GetRequiredWidth` (see the
+  framework changelog, "TreeView: GetRequiredWidth").
+
 #### 2026-10-02 *0.10.17*
 - **Pictures in newsletters built from mail templates are shown.** Mail whose
   images carry `height="auto"` (Kickstarter's, and most Beefree / Braze
