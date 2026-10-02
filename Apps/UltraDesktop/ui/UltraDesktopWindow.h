@@ -26,6 +26,8 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <chrono>
+#include <filesystem>
 #include <map>
 #include "UltraCanvasWindow.h"
 
@@ -48,7 +50,6 @@ namespace UltraDesktop {
 class UltraDesktopAppStarter;
 class UltraDesktopStickerboard;
 class UltraDesktopTasksWindow;
-class UltraDesktopSettingsWindow;
 
 class UltraDesktopWindow {
 public:
@@ -62,7 +63,10 @@ public:
     void Show();
 
     // ===== WHAT THE BARS DO (also reachable from the windows this opens) =====
-    void OpenSettings();
+    // The ULTRA OS settings button: starts UOS-Settings, the system's settings
+    // application, where the desktop has its page (taskbar edge, wallpaper,
+    // RAM disc, file manager, virtual desktops).
+    void OpenSystemSettings();
     void OpenAppStarter();
     void OpenTasks();
     void OpenRamDisc();
@@ -70,9 +74,13 @@ public:
     void TakeScreenshot();
     void ToggleStickerboard(bool visible);
     void SwitchToDesktop(int index);
-    // Re-read the settings object and rebuild the bars: the settings window
-    // calls this after Apply.
+    // Save the settings object and rebuild the bars from it.
     void ApplySettings();
+    // UOS-Settings writes the desktop's settings file from its own process:
+    // when the file changed under us, take the settings it owns (edge,
+    // wallpaper, RAM disc, file manager, desktops) and rebuild. The sticky
+    // notes stay the ones in memory - they are this process's.
+    void CheckSettingsFile();
 
     DesktopSettings& Settings() { return settings_; }
     // How many desktops the organiser shows right now: the window manager's
@@ -121,6 +129,10 @@ private:
     // ===== STATE =====
     std::string settingsPath_;
     DesktopSettings settings_;
+    // The settings file's time stamp as of our own last read or write; a
+    // different one means another program wrote it.
+    std::filesystem::file_time_type settingsFileTime_{};
+    std::chrono::steady_clock::time_point nextSettingsCheck_{};
     std::string iconsDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
@@ -134,7 +146,6 @@ private:
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
-    std::shared_ptr<UltraDesktopSettingsWindow> settingsWindow_;
 
     // window id -> the toolbar item for it, in the order the user keeps
     std::map<uint64_t, std::string> runningItems_;

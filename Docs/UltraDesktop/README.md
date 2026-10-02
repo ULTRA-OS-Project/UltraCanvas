@@ -48,7 +48,9 @@ On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
 separators:
 
-1. **System** — *ULTRA OS settings* and the *app starter*.
+1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
+   settings* starts **UOS-Settings**, the system's settings application
+   (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
    entry; the first letter of its class when it has none). The active
@@ -105,10 +107,11 @@ windows stop short of the bars instead of covering them.
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
-  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
-  manager program, the number of virtual desktops. *Apply* writes the
-  settings and rebuilds the bars in place.
+- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+  the RAM disc path, the file manager program, the number of virtual
+  desktops - are the *Desktop* page of UOS-Settings. They live in the
+  desktop's settings file; the desktop checks it once a second and rebuilds
+  the bars in place when UOS-Settings changed one of them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.

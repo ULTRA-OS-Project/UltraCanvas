@@ -1,3 +1,16 @@
+#### 2026-10-01 *0.1.2*
+- **The desktop's settings moved to UOS-Settings.** The system's settings now
+  have an application of their own, UOS-Settings, and the taskbar's *ULTRA OS
+  settings* button starts it. Its *Desktop* page holds what the desktop's own
+  settings window held - the taskbar's edge, the wallpaper, the RAM disc, the
+  file manager, the number of virtual desktops - and that window is gone.
+  - UOS-Settings writes the desktop's settings file; the desktop checks the
+    file once a second and, when one of those settings changed, takes it over
+    and rebuilds its bars, as Apply used to. The sticky notes in the same file
+    stay the desktop's: what is in memory wins and is written back.
+  - When UOS-Settings cannot be started, the button says so instead of
+    doing nothing.
+
 #### 2026-10-01 *0.1.1*
 - **The info panel keeps its last items on a short bar.** With five or more
   virtual desktops on a 900 px screen the organiser left the panel less room
