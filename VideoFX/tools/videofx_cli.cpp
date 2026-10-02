@@ -19,6 +19,9 @@
 //          --title TEXT                  caption at the bottom, faded in and out
 //          --watermark IMAGE             logo in the top-right corner
 //          --font FONTFILE               font for --title (default: the bundled Ubuntu font)
+//          --music FILE                  background music under the whole export
+//          --music-volume V --music-start S --duck LEVEL --no-loop
+//          --fit-music                   slideshow: seconds per image chosen to end with the music
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -30,8 +33,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.4.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
@@ -81,6 +84,7 @@ int Usage() {
         "       videofx slideshow <out> <image>... [--seconds S] [--motion M] [--fit F] [--caption TEXT]...\n"
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
+        "         --music FILE [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
     return 2;
@@ -202,6 +206,12 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--seconds" && next(v)) o.slideshow.secondsPerImage = NumberOr(v, -1.0);
         else if (a == "--motion" && next(v)) { if (!ParseMotion(v, o.slideshow.motion)) return false; }
         else if (a == "--caption" && next(v)) o.slideshow.captions.push_back(v);
+        else if (a == "--music" && next(v)) settings.music.path = v;
+        else if (a == "--music-volume" && next(v)) settings.music.volume = NumberOr(v, -1.0);
+        else if (a == "--music-start" && next(v)) settings.music.start = NumberOr(v, -1.0);
+        else if (a == "--duck" && next(v)) settings.music.duckingLevel = NumberOr(v, -1.0);
+        else if (a == "--no-loop") settings.music.loop = false;
+        else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--fit" && next(v)) {
             if (v == "auto") o.slideshow.imageFit = VideoFXImageFit::Auto;
             else if (v == "cover") o.slideshow.imageFit = VideoFXImageFit::Cover;
