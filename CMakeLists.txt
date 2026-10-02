@@ -473,6 +473,17 @@ if(BUILD_UOS_SETTINGS)
     add_subdirectory(Apps/UOSSettings)
 endif()
 
+# ===== ULTRACLAUDE =====
+# A chat window for Claude on a Claude Pro / Max subscription: it runs the
+# official Claude Code CLI as a child process and shows its streamed output,
+# with a sign-in page that hands login to the CLI (claude auth login).
+option(BUILD_ULTRACLAUDE "Build the UltraClaude application" ON)
+if(BUILD_ULTRACLAUDE)
+    message(STATUS "")
+    message(STATUS "── Building UltraClaude ──")
+    add_subdirectory(Apps/UltraClaude)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless

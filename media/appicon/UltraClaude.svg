@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- UltraClaude: a speech bubble with a four-pointed spark - the ULTRA OS
+       chat app for Claude. An original mark, not Anthropic's logo. -->
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#CC6B4A"/>
+  <path d="M60 64 h136 a24 24 0 0 1 24 24 v68 a24 24 0 0 1 -24 24 h-70 l-38 32 v-32 h-28 a24 24 0 0 1 -24 -24 v-68 a24 24 0 0 1 24 -24 z"
+        fill="#FFF8F2"/>
+  <path d="M128 76 C132 106 140 114 170 122 C140 130 132 138 128 168 C124 138 116 130 86 122 C116 114 124 106 128 76 z"
+        fill="#C9643F"/>
+</svg>

@@ -49,7 +49,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # `ultramsg` is the UltraMessage command line (Apps/UltraMessageCli): post to,
 # follow and query the per-user message channel.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings)
+      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
