@@ -9,3 +9,10 @@
   never reaches the OCR or PDF code no longer carries them. The packaging
   script prints, and adds to the CI job summary, each bundle's size and how
   much of it is bundled libraries.
+- **UltraNetMonitor and DeviceExplorer on macOS no longer carry the LaTeX
+  module.** `package-macos.sh` copied `libUltraCanvasLaTeX.dylib`, the
+  libraries it loads and the MicroTeX fonts (`media/microtex`) into every
+  `.app`. Neither app typesets LaTeX: the only Markdown either shows is a
+  dialog message, which without the module displays `$...$` as plain text.
+  Their bundles now leave all three out (`NO_LATEX_APPS`); every other app
+  keeps them.

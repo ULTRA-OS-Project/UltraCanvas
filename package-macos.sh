@@ -498,14 +498,35 @@ notarize_bundle() {
 # runtime folder added later is shipped by default instead of silently missing.
 DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagrams sample.pdf)
 
-# Copy media/ into $1; with $2 = "samples" the demo sample content comes too.
+# Apps that never typeset LaTeX, so their bundles get neither the LaTeX module
+# (PlugIns/libUltraCanvasLaTeX.dylib and the libraries it pulls into
+# Frameworks/) nor its fonts (media/microtex). Neither app has a text area,
+# rich-text or Markdown view of its own; the one Markdown view they reach is
+# the modal dialog's message, which shows $...$ as plain text (Greek names
+# substituted) when the module is absent - and their dialogs carry only their
+# own status and error text. An app added to the bundle list keeps LaTeX by
+# default; add it here only after checking the same.
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer)
+
+# True when the app $1 is in NO_LATEX_APPS.
+app_without_latex() {
+    local a
+    for a in "${NO_LATEX_APPS[@]}"; do
+        [ "$a" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Copy media/ into $1; with $2 = "samples" the demo sample content comes too,
+# with $3 = "nolatex" the MicroTeX fonts stay out.
 copy_media() {
-    local dest="$1" with_samples="$2"
+    local dest="$1" with_samples="$2" latex="${3:-}"
     mkdir -p "$dest"
     local entry name skip s
     for entry in "$SCRIPT_DIR"/media/*; do
         name="$(basename "$entry")"
         skip=false
+        [ "$latex" = "nolatex" ] && [ "$name" = "microtex" ] && skip=true
         if [ "$with_samples" != "samples" ]; then
             for s in "${DEMO_SAMPLE_MEDIA[@]}"; do
                 [ "$name" = "$s" ] && { skip=true; break; }
@@ -560,7 +581,9 @@ build_app_bundle() {
     # Copy media assets to Resources/media/ (the sample content only for the
     # demo - see DEMO_SAMPLE_MEDIA)
     if [ -d "$SCRIPT_DIR/media" ]; then
-        copy_media "$contents_dir/Resources/media" "$samples"
+        local latex_media=""
+        app_without_latex "$exe_name" && latex_media="nolatex"
+        copy_media "$contents_dir/Resources/media" "$samples" "$latex_media"
         if [ "$samples" = "samples" ]; then
             echo "  Copied media assets (with the demo samples)"
         else
@@ -593,16 +616,20 @@ build_app_bundle() {
     # ".dylib", but accept a tree from before that and ship it under the
     # name the loader asks for.
     local latex_module=""
-    for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
-        if [ -f "$cand" ]; then latex_module="$cand"; break; fi
-    done
-    if [ -n "$latex_module" ]; then
-        mkdir -p "$contents_dir/PlugIns"
-        cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+    if app_without_latex "$exe_name"; then
+        echo "  Skipping LaTeX module ($display_name does not typeset LaTeX)"
     else
-        echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
+            if [ -f "$cand" ]; then latex_module="$cand"; break; fi
+        done
+        if [ -n "$latex_module" ]; then
+            mkdir -p "$contents_dir/PlugIns"
+            cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+        else
+            echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        fi
     fi
 
     # Bundle Homebrew dylibs
@@ -617,7 +644,11 @@ build_app_bundle() {
         bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
     fi
 
-    strip_binaries "$contents_dir/MacOS" "$contents_dir/Frameworks" "$contents_dir/PlugIns"
+    # PlugIns/ is absent from a bundle without the LaTeX module, and a missing
+    # path makes strip_binaries' du fail - fatal under set -e -o pipefail.
+    local strip_dirs=("$contents_dir/MacOS" "$contents_dir/Frameworks")
+    [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
+    strip_binaries "${strip_dirs[@]}"
 
     # Code sign
     if $DO_SIGN; then
