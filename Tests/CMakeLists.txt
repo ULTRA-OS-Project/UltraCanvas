@@ -3248,6 +3248,28 @@ else()
     message(STATUS "  TextAreaSyntaxStateTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA DETACHED TEST =====
+# A text area outside any window has no render context: SetText + ScrollTo on
+# it (the media viewer's Details panel) must not build layouts. Skips without
+# DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaDetachedTest...")
+    add_executable(TextAreaDetachedTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaDetachedTest.cpp
+    )
+    target_include_directories(TextAreaDetachedTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaDetachedTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaDetachedTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaDetachedTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaDetachedTest COMMAND TextAreaDetachedTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaDetachedTest")
+else()
+    message(STATUS "  TextAreaDetachedTest skipped (UltraCanvas target not present)")
+endif()
+
 message(STATUS "")
 
 # ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====
