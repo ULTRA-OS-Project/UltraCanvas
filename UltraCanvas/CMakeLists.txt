@@ -2622,7 +2622,9 @@ if(ULTRACANVAS_ENABLE_NET)
     # Plugins/UltraNet/common/UltraNetPluginHostShim.cpp). So the plug-ins link
     # with no -undefined dynamic_lookup on macOS and no core import library on
     # Windows, and either linker rejects a plug-in that starts calling the core
-    # directly - on Linux the UltraNetPluginHostImports test does.
+    # directly - on Linux the UltraNetPluginHostImports test does, and on
+    # Windows it also reads each DLL's import table, which catches a plug-in
+    # that was given a core import library to link against.
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()

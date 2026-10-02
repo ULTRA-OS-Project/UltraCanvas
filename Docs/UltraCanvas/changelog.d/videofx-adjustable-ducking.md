@@ -17,3 +17,21 @@
   rows now run it too (`ctest -R "^EmailCleanerEngine$"`). The one assertion
   that assumed `/` separators (`Attachment_CachePathFollowsUltraMailsLayout`)
   now builds its expected path the way the code does.
+- **CI: UltraMail's engine tests run on Windows**, in the same step as
+  EmailCleaner's (`ctest -R "^(EmailCleanerEngine|UltraMailEngine|...)$"`):
+  they were built on the Windows rows and never run. The sync-service test
+  wrote its cache to `"/tmp/ultramail_syncsvc_test"`; it now uses the system
+  temp folder.
+- **The plug-in import check covers Windows DLLs.**
+  `scripts/check_ultranet_plugin_imports.py` read only `.so` / `.dylib`
+  undefined symbols, so nothing checked that a Windows plug-in avoids the
+  core. It now reads each `.dll`'s import table (`llvm-objdump -p`, or GNU
+  `objdump -p`): a plug-in must import nothing from `libUltraCanvas*.dll`,
+  `UltraNet*.dll` or another plug-in, and no core function from any DLL. A
+  DLL it cannot read is a failure, not a pass. `UltraNetPluginHostImports`
+  is registered on Windows too (MSYS2's Python is added to the Windows rows)
+  and run there; it passes `--require` when the build makes plug-ins, so an
+  empty output folder fails. New `UltraNetPluginHostImportsSelfTest` checks
+  the parser against both objdump layouts; the check was tried on DLLs
+  built with clang/lld importing from `libUltraCanvas.dll` (caught), a core
+  C++ function from a renamed DLL (caught) and only `KERNEL32.dll` (clean).

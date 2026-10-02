@@ -257,6 +257,7 @@ jobs:
             ${{ matrix.msys_prefix }}-lcms2
             ${{ matrix.msys_prefix }}-icu
             ${{ matrix.msys_prefix }}-boost
+            ${{ matrix.msys_prefix }}-python
             zip
 
       # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
@@ -703,7 +704,7 @@ jobs:
       # need libsodium, which every row installs.
       #
       # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
-      # Linux one that runs ctest (Windows runs it too, in its own step below):
+      # Linux one that runs ctest (Windows runs it and UltraMail's, in their own step below):
       # the suite is headless (no display, no network), so building it on
       # macOS and Windows costs seconds and gates
       # the thing those rows uniquely exercise — the STATIC UltraCanvas link,
@@ -777,16 +778,23 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
 
-      # EmailCleaner's engine suite on Windows. It was built here (see the
-      # note above "Run UltraNet tests") but only Linux ran it, so the code
-      # that most needs Windows - account, mail and attachment paths with
-      # Thai and emoji names, opened through the UTF-16 file APIs on a code
-      # page 1252 runner - was checked on the platform where it cannot fail.
-      # The suite is headless: no display, no network, temp folders only.
-      - name: Run EmailCleaner tests (Windows)
+      # EmailCleaner's and UltraMail's engine suites on Windows. Both were
+      # built here (see the note above "Run UltraNet tests") but only Linux
+      # ran them, so the code that most needs Windows - account, mail, body
+      # and attachment cache paths with Thai and emoji names, opened through
+      # the UTF-16 file APIs on a code page 1252 runner - was checked on the
+      # platform where it cannot fail. Both suites are headless: no display,
+      # no network, temp folders only.
+      #
+      # UltraNetPluginHostImports reads each plug-in DLL's import table: a
+      # plug-in must import nothing from the core (libUltraCanvas, UltraNet)
+      # and no core function from any DLL - everything reaches the core
+      # through the UltraNetPluginHost table. Python comes from MSYS2 (the
+      # test is registered only when CMake finds it, hence --no-tests=error).
+      - name: Run EmailCleaner, UltraMail and plug-in import tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^EmailCleanerEngine$"
+        run: ctest --output-on-failure --no-tests=error -R "^(EmailCleanerEngine|UltraMailEngine|UltraNetPluginHostImports|UltraNetPluginHostImportsSelfTest)$"
 
       # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
       # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"

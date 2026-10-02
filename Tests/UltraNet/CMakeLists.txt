@@ -243,11 +243,22 @@ add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)
 # core through the UltraNetPluginHost table (Plugins/UltraNet/common/
 # UltraNetPluginHostShim.cpp). A shared-core build would resolve a stray one
 # anyway, so this reads the built plug-ins' undefined symbols instead of
-# trusting a load to fail. POSIX only: it needs nm and c++filt.
+# trusting a load to fail. On Linux and macOS it reads the undefined symbols
+# (nm, c++filt); on Windows each DLL's import table (llvm-objdump / objdump),
+# where a plug-in must import nothing from the core DLLs. --require when this
+# build makes plug-ins, so an empty output folder fails instead of passing;
+# the parser's own self-test runs alongside.
 find_package(Python3 COMPONENTS Interpreter QUIET)
-if(Python3_Interpreter_FOUND AND UNIX)
+if(Python3_Interpreter_FOUND AND (UNIX OR WIN32))
+    set(_ultranet_plugin_require "")
+    if(TARGET UltraNetImapPlugin OR TARGET UltraNetSmtpPlugin)
+        set(_ultranet_plugin_require --require)
+    endif()
     add_test(NAME UltraNetPluginHostImports
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py
-                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
+                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet ${_ultranet_plugin_require})
+    add_test(NAME UltraNetPluginHostImportsSelfTest
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py --self-test)
 endif()
