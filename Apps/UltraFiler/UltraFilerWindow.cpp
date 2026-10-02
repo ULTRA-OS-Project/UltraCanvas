@@ -3453,7 +3453,7 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         bool changed = false;
         for (const std::string& f : files) {
             std::error_code ec;
-            if (fs::is_directory(f, ec) && !ec)
+            if (fs::is_directory(PathFromUtf8(f), ec) && !ec)
                 changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
         }
         if (changed) {

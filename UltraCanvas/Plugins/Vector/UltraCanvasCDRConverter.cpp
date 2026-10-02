@@ -756,7 +756,7 @@ namespace UltraCanvas {
                                         (r.error.empty() ? std::string("libcdr could not read the file") : r.error));
             }
             std::error_code ec;
-            for (const std::string& written : r.writtenFiles) std::filesystem::remove(written, ec);
+            for (const std::string& written : r.writtenFiles) std::filesystem::remove(PathFromUtf8(written), ec);
             std::filesystem::remove(svgPath, ec);
             return doc;
 #else

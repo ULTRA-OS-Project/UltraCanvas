@@ -1,4 +1,4 @@
-#### 2026-10-02 *0.10.18*
+#### 2026-10-02 *0.10.19*
 - **Settings > Reading > Layout sets the folder list's width.** *Auto* (the
   default) makes the folder tree on the left 10 px wider than its longest
   account address or folder name, and fits it again as folders arrive or a
@@ -9,6 +9,24 @@
   page's *Restore default layout* puts it back to *Auto*. Measuring the rows
   is the framework's new `UltraCanvasTreeView::GetRequiredWidth` (see the
   framework changelog, "TreeView: GetRequiredWidth").
+
+#### 2026-10-02 *0.10.18*
+- **Mail in folders with non-English names is found on Windows.** Message
+  bodies are cached as `mail/<account>/<folder>/<uid>.eml`, and the account
+  and folder were joined onto that path as plain strings - which Windows
+  converts in its ANSI code page. A folder such as "Entwürfe" or "Корзина"
+  was cached under a mangled name. UltraMail read it back the same way, so
+  it went unnoticed, but EmailCleaner, which reads the cache as UTF-8,
+  never found that mail. The cache path, the preview's read and the
+  removal of an account's mail now pass every part through `PathFromUtf8`.
+  Bodies already cached under a mangled name are fetched again.
+  - The sender-icon cache built its file names the same way
+    (`dir / (brandId + ".png")`); they go through `PathFromUtf8` too, found
+    by the extended path check (framework changelog).
+  - New test `cached_body_path_keeps_a_non_ascii_folder_name`. UltraMail's
+    engine tests now run on Windows CI, where two tests failed because they
+    still had a file open while it was replaced or deleted; they close it
+    first.
 
 #### 2026-10-02 *0.10.17*
 - **Pictures in newsletters built from mail templates are shown.** Mail whose

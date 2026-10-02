@@ -88,10 +88,13 @@ TEST(cache_write_roundtrip_and_dedup) {
     REQUIRE(!p1.empty());
     REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(p1)));
 
-    // Bytes on disk match.
-    std::ifstream is(UltraCanvas::PathFromUtf8(p1), std::ios::binary);
-    std::string got((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    REQUIRE_EQ(got, content);
+    // Bytes on disk match. The stream is closed before the folder is removed:
+    // Windows will not delete a file that is still open.
+    {
+        std::ifstream is(UltraCanvas::PathFromUtf8(p1), std::ios::binary);
+        std::string got((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+        REQUIRE_EQ(got, content);
+    }
 
     // Identical content reuses the same file.
     std::string p2 = cache.Write(att);

@@ -126,8 +126,11 @@ std::string SanitizeFolder(const std::string& folder) {
 
 std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
                            const std::string& folder, int64_t uid) {
-    fs::path p = PathFromUtf8(emlDir) / accountId / SanitizeFolder(folder)
-               / (std::to_string(uid) + ".eml");
+    // Every part through PathFromUtf8: joining a std::string straight onto a
+    // path converts it in the ANSI code page on Windows, so a folder whose
+    // name is outside that code page was cached under a mangled name.
+    fs::path p = PathFromUtf8(emlDir) / PathFromUtf8(accountId)
+               / PathFromUtf8(SanitizeFolder(folder)) / (std::to_string(uid) + ".eml");
     return PathToUtf8(p);
 }
 

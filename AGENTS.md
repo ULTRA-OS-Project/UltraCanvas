@@ -113,7 +113,12 @@ before adding cross-module code.
   handed straight to `fs::exists(str)`, `fs::remove(str, ec)`,
   `fs::directory_iterator(str)`, `std::ifstream f(str)`, `f.open(str)` or
   `fs::path p = str;` converts through the code page as well (`path-implicit`),
-  and `fopen(name, mode)` reads the name in it (`fopen-narrow`). Write
+  and so does a string joined onto a path with `/` or `/=`:
+  `PathFromUtf8(dir) / accountId / folder` cached UltraMail's bodies under a
+  mangled folder name on Windows until 0.10.18 - write
+  `PathFromUtf8(dir) / PathFromUtf8(accountId) / PathFromUtf8(folder)`. A bare
+  literal (`/ "mail"`) is ASCII and fine. `fopen(name, mode)` reads the name
+  in the code page too (`fopen-narrow`). Write
   `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
   `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
   through), so wrapping is never wrong. The check reads the file's own

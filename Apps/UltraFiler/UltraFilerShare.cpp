@@ -10,6 +10,8 @@
 
 #include "UltraFilerShare.h"
 
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
+
 #include <filesystem>
 #include <system_error>
 
@@ -136,7 +138,7 @@ bool ShareByEmail(const std::vector<std::string>& paths, std::string& outError) 
     std::vector<std::string> files;
     for (const std::string& p : paths) {
         std::error_code ec;
-        if (fs::is_regular_file(p, ec) && !ec) files.push_back(p);
+        if (fs::is_regular_file(UltraCanvas::PathFromUtf8(p), ec) && !ec) files.push_back(p);
     }
     if (files.empty()) {
         outError = "There are no files to share - folders cannot be sent "

@@ -136,7 +136,7 @@ UltraWinResult ApplyMappings(const std::string& prefixPath) {
                                 std::tolower(static_cast<unsigned char>(
                                     letter)))) +
             ":";
-        fs::path linkPath = dosdevices / link;
+        fs::path linkPath = dosdevices / PathFromUtf8(link);
         std::error_code lec;
         if (fs::is_symlink(linkPath, lec)) fs::remove(linkPath, lec);
         fs::create_directory_symlink(UltraCanvas::PathFromUtf8(target), linkPath, lec);

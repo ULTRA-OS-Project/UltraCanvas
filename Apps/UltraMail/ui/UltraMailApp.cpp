@@ -2408,7 +2408,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
 
             // Delete the downloaded mail bodies (mailDir_/<accountId>/…).
             std::error_code ec;
-            std::filesystem::remove_all(PathFromUtf8(mailDir_) / accountId, ec);
+            std::filesystem::remove_all(PathFromUtf8(mailDir_) / PathFromUtf8(accountId), ec);
 
             // Drop the selection; Refresh() re-selects the first account left.
             if (selectedAccount_ == accountId) selectedAccount_.clear();

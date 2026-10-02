@@ -72196,6 +72196,10 @@ VideoFX_Export(timeline, "holiday.mp4", settings);
 | `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
 | `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
 | `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
+| `duckingThresholdDb` | −36.5 | The segments' sound counts as present above this RMS level, dBFS, −90..0 |
+| `duckingAttack` | 0.12 s | How fast the music goes down (time constant), 0.001..10 |
+| `duckingHold` | 0.6 s | Quiet needed before it comes back up, 0..30 |
+| `duckingRelease` | 0.8 s | How slowly it comes back (time constant), 0.001..30 |
 
 **Ducking.** VideoFX listens to the segments' own sound block by block. While
 it is present — someone speaking in a clip, a waterfall — the music goes down
@@ -72203,6 +72207,21 @@ to `duckingLevel` within about a tenth of a second; it waits for a pause of
 over half a second before coming back up, slowly, so speech does not make it
 pump between words. Photos and colour cards have no sound, so under a
 slideshow the music plays at full `volume`.
+
+Those defaults are tuned for **speech**. A clip that is loud the whole way
+through — a concert, a street, the waterfall — stays above −36.5 dBFS, so the
+music sits at `duckingLevel` for its entire length. Raise the threshold above
+the clip's own background so only its louder moments duck, and shorten the
+hold so the music returns between them:
+
+```cpp
+settings.music.duckingThresholdDb = -15.0;   // ignore a steady background below -15 dBFS
+settings.music.duckingHold = 0.2;            // back up after a fifth of a second of calm
+settings.music.duckingRelease = 0.4;
+```
+
+or set `duckingLevel = 1` to never duck at all. `videofx` takes the same as
+`--duck-threshold DB --duck-attack S --duck-hold S --duck-release S`.
 
 **Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
 `VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
@@ -72448,6 +72467,7 @@ videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 ```
 
 ---

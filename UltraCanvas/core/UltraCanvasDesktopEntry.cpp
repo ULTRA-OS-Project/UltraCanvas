@@ -324,7 +324,7 @@ namespace UltraCanvas {
                     for (const char* category : kIconCategories) {
                         for (const char* ext : kIconExtensions) {
                             const fs::path candidate =
-                                    dir->path / category / (name + "." + ext);
+                                    dir->path / category / PathFromUtf8(name + "." + ext);
                             if (IsFile(candidate)) return PathToUtf8(candidate);
                         }
                     }
