@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.12.0 - percentage min / max sizes; border-box percentage max-width
 // Version: 1.11.0 - <img> min / max sizes keep the picture's shape; max-width in %
 // Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - width / height of a block are its content's (box-sizing)
@@ -813,6 +814,45 @@ void TestImageLimits() {
     r = first("<div id='x' style='max-width:50%;margin:0 auto'>x</div>", "html_div_");
     CheckNear(r.width, 200.f, "a block's max-width: 50%");
     CheckNear(r.x, 100.f, "centred by margin: auto");
+    r = first("<div style='max-width:50%;padding:10px;border:2px solid #000;box-sizing:border-box'>"
+              "a line of text long enough to fill the whole width of the page</div>", "html_div_");
+    CheckNear(r.width, 200.f, "border-box max-width: 50% is the whole box");
+    r = first("<div style='min-width:75%;width:10px'>x</div>", "html_div_");
+    CheckNear(r.width, 300.f, "min-width: 75%");
+    auto inner = [&](const std::string& html) {
+        // The second div: the one inside the 100px-high box.
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(html, opts).root;
+        if (!root) return Rect2Df();
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        int n = 0;
+        for (const auto& p : all)
+            if (p.element->GetIdentifier().rfind("html_div_", 0) == 0 && ++n == 2) return p.rect;
+        return Rect2Df();
+    };
+    r = inner("<div style='height:100px'><div style='min-height:50%'>x</div></div>");
+    CheckNear(r.height, 50.f, "min-height: 50% of a set height");
+    r = inner("<div style='height:100px'><div style='max-height:20%;height:90px'>x</div></div>");
+    CheckNear(r.height, 20.f, "max-height: 20% of a set height");
+    r = inner("<div><div style='min-height:50%'>x</div></div>");
+    Check(r.height > 0.f && r.height < 30.f, "an auto-height parent: no limit");
+    r = first("<div><img src='p.png' style='min-width:25%'></div>", "html_img_");
+    CheckNear(r.width, 100.f, "an image's min-width: 25%");
+    CheckNear(r.height, 50.f, "its height follows");
 }
 
 } // namespace

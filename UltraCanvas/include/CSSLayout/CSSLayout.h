@@ -1,7 +1,10 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
+// Version: 4.11.0 - Element::percentHeightBase: a block parent's set height for
+//                   percentage min-height / max-height
+// Version: 4.10.0 - Dimension::offsetPx: a length plus pixels (calc(50% - 20px))
 // Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +29,10 @@ namespace UltraCanvas {
         struct Dimension {
             DimensionUnit unit = DimensionUnit::Auto;
             float value = 0.f;
+            // Pixels added once the value is resolved (CSS calc(50% - 20px)):
+            // for px, %, vw / vh, em / rem. A percentage that cannot resolve
+            // (no definite parent size) stays unresolved, offset and all.
+            float offsetPx = 0.f;
 
             static Dimension Auto();
             static Dimension Px(float v);
@@ -35,6 +42,8 @@ namespace UltraCanvas {
             static Dimension Vh(float v);   // % of viewport height
             static Dimension Em(float v);   // multiple of current font size
             static Dimension Rem(float v);  // multiple of root font size
+            // A percentage plus (or, negative, minus) pixels.
+            static Dimension PctPlus(float pct, float px);
 
             bool isAuto() const { return unit == DimensionUnit::Auto; }
         };
@@ -376,6 +385,14 @@ namespace UltraCanvas {
             // layout
             Layout layout;
             LayoutItem layoutItem;
+
+            // The content height a percentage min-height / max-height resolves
+            // against when no definite height comes down as a constraint: set
+            // by a block parent whose own height is given (CSS: such a
+            // percentage needs the containing block's height to be specified;
+            // otherwise it limits nothing). Empty for children of other
+            // layouts, which pass definite heights as constraints.
+            std::optional<float> percentHeightBase;
 
             // caches
             MeasureResult  measured;    // extrinsic, keyed by MeasureConstraints

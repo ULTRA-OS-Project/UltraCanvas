@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.12.0 - min-width, min-height, max-height in percent
 // Version: 1.11.0 - max-width in percent
 // Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - box-sizing
@@ -147,10 +148,15 @@ struct ComputedStyle {
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;
     std::optional<float> maxWidthPercent;   // max-width: 50% (of the containing line)
-    // min-width / min-height / max-height in px (their percentages are not kept).
+    // min-width / min-height / max-height: in px, or in percent (of the
+    // containing width / height; a height percentage limits nothing when the
+    // container's height is not set, as in CSS).
     std::optional<float> minWidthPx;
     std::optional<float> minHeightPx;
     std::optional<float> maxHeightPx;
+    std::optional<float> minWidthPercent;
+    std::optional<float> minHeightPercent;
+    std::optional<float> maxHeightPercent;
     // The four borders, each with its own width, style and colour (CSS
     // border, border-top, border-width, border-left-color, ...). A side draws
     // only with a style: Width() is 0 for border-style none, whatever its

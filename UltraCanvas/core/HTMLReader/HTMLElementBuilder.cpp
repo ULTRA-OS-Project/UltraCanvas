@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.17.0 - min / max width and height in percent; under box-sizing:
+//                   border-box a percentage limit loses the padding and border
+//                   (Dimension::PctPlus)
 // Version: 1.16.0 - <img>: min / max width and height with the picture's ratio (CSS
 //                   2.1 10.4); max-width in percent on images and blocks
 // Version: 1.15.0 - min-width, min-height, max-height (content-box; border-box
@@ -1099,7 +1102,11 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     CSSLayout::BoxConstraints constraints;
     constraints.maxWidth = CSSLayout::Dimension::Pct(
         std::min(100.f, style.maxWidthPercent.value_or(100.f)));   // max-width: 50%
-    constraints.minWidth = CSSLayout::Dimension::Px(0.f);
+    constraints.minWidth = style.minWidthPercent ? CSSLayout::Dimension::Pct(*style.minWidthPercent)
+                                                 : CSSLayout::Dimension::Px(0.f);
+    // Height percentages limit only where the container's height is set.
+    if (style.maxHeightPercent) constraints.maxHeight = CSSLayout::Dimension::Pct(*style.maxHeightPercent);
+    if (style.minHeightPercent) constraints.minHeight = CSSLayout::Dimension::Pct(*style.minHeightPercent);
     image->boxConstraints = constraints;
     // min / max width and height in px: the size they leave the picture,
     // shaped as CSS shapes it. A size that keeps the picture's shape gives
@@ -1503,20 +1510,25 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     // min / max width and height. The engine limits a block's content box,
     // CSS's content-box; with box-sizing: border-box a limit is the whole
     // box's, so padding and border come off it.
-    if (style.maxWidthPx || style.maxWidthPercent || style.minWidthPx || style.maxHeightPx ||
-        style.minHeightPx) {
+    if (style.maxWidthPx || style.maxWidthPercent || style.minWidthPx || style.minWidthPercent ||
+        style.maxHeightPx || style.maxHeightPercent || style.minHeightPx || style.minHeightPercent) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
         const bool wholeBox = style.borderBoxSizing && !borderBoxSizes;
         const float offW = wholeBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
                                       style.BorderHorizontal() : 0.f;
         const float offH = wholeBox ? style.paddingTop + style.paddingBottom + style.BorderVertical()
                                     : 0.f;
-        auto px = [](float v, float off) { return Dimension::Px(std::max(0.f, v - off)); };
-        if (style.maxWidthPx)  limits.maxWidth  = px(*style.maxWidthPx, offW);
-        else if (style.maxWidthPercent) limits.maxWidth = Dimension::Pct(*style.maxWidthPercent);
-        if (style.minWidthPx)  limits.minWidth  = px(*style.minWidthPx, offW);
-        if (style.maxHeightPx) limits.maxHeight = px(*style.maxHeightPx, offH);
-        if (style.minHeightPx) limits.minHeight = px(*style.minHeightPx, offH);
+        // A px limit, else a percentage of the container - less the padding
+        // and border under border-box (calc(50% - 20px)).
+        auto limit = [](const std::optional<float>& px, const std::optional<float>& pct,
+                        float off, Dimension& out) {
+            if (px) out = Dimension::Px(std::max(0.f, *px - off));
+            else if (pct) out = Dimension::PctPlus(*pct, -off);
+        };
+        limit(style.maxWidthPx,  style.maxWidthPercent,  offW, limits.maxWidth);
+        limit(style.minWidthPx,  style.minWidthPercent,  offW, limits.minWidth);
+        limit(style.maxHeightPx, style.maxHeightPercent, offH, limits.maxHeight);
+        limit(style.minHeightPx, style.minHeightPercent, offH, limits.minHeight);
         target.boxConstraints = limits;
     }
     ApplyBorders(target, style);

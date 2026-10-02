@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.12.0 - min / max width and height in percent
 // Version: 1.11.0 - max-width in percent
 // Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - box-sizing
@@ -733,6 +734,11 @@ static void TestBorderSides() {
     CHECK(st.maxHeightPx && *st.maxHeightPx == 50.f);
     st = styleOf("max-height:50px;max-height:none;min-width:10px;min-width:auto;min-height:50%");
     CHECK(!st.maxHeightPx && !st.minWidthPx && !st.minHeightPx);
+    CHECK(st.minHeightPercent && *st.minHeightPercent == 50.f && !st.maxHeightPercent);
+    st = styleOf("min-width:25%;max-height:10%;min-height:5px");
+    CHECK(st.minWidthPercent && *st.minWidthPercent == 25.f && !st.minWidthPx);
+    CHECK(st.maxHeightPercent && *st.maxHeightPercent == 10.f);
+    CHECK(st.minHeightPx && !st.minHeightPercent);
     st = styleOf("max-width:100%");
     CHECK(st.maxWidthPercent && *st.maxWidthPercent == 100.f && !st.maxWidthPx);
     st = styleOf("max-width:100%;max-width:300px");

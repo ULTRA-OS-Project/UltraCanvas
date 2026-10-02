@@ -1,5 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.8.0 - percentage min-height / max-height resolve against a block
+//                 parent's set height (percentHeightBase)
 // Version: 1.7.0 - dispatch display: table to MeasureTable / ArrangeTable.
 // Version: 1.6.0 - block layout honours in-flow children's margins: offset,
 //                 added to the stack and the auto height, horizontal margins
@@ -12,7 +14,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -107,24 +109,26 @@ namespace UltraCanvas {
                     }
                 }
 
-                // Height
+                // Height. min / max-height percentages also resolve against
+                // a block parent's set height (percentHeightBase).
+                const std::optional<float> limitBlock = parentBlock ? parentBlock : e.percentHeightBase;
                 {
                     auto specH = resolveDimension(e.size.height, parentBlock, ctx);
                     if (authoritative) {
                         // Used size wins over an explicit height (stretched/grown box).
                         float ch = borderBoxToContent(c.vertical.available, padV, bordV);
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (specH.has_value()) {
                         float ch = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specH, padV, bordV)
                             : *specH;
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (c.vertical.mode == ConstraintMode::Exact) {
                         float bb = c.vertical.available;
                         float ch = borderBoxToContent(bb, padV, bordV);
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else {
                         out.contentHeight = std::nullopt;
@@ -341,6 +345,12 @@ namespace UltraCanvas {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
                 auto m = resolveEdgeSizes(kid->box.margin, marginBasis, ctx);
+                // This box's set height: the base of the child's percentage
+                // min / max-height. A changed base voids its cached measure.
+                if (kid->percentHeightBase != own.contentHeight) {
+                    kid->percentHeightBase = own.contentHeight;
+                    kid->measured.valid = false;
+                }
                 MeasureConstraints kc{ narrowByMargins(childH, m.horizontal()), childC.vertical };
                 kid->Measure(kc, ctx);
                 stackedHeight += m.top + kid->measured.measuredHeight + m.bottom;
@@ -373,7 +383,8 @@ namespace UltraCanvas {
                 (c.vertical.mode == ConstraintMode::Unbounded)
                     ? std::nullopt
                     : std::optional<float>{c.vertical.available};
-            contentH = clampToConstraints(contentH, e.boxConstraints, false, parentBlock, ctx);
+            contentH = clampToConstraints(contentH, e.boxConstraints, false,
+                                          parentBlock ? parentBlock : e.percentHeightBase, ctx);
 
             // AbsoluteUI children contribute to the container's measured size
             // (unlike plain Absolute). Grow the *auto* content dimension to cover

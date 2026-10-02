@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.11.0 - min-width, min-height, max-height in percent too
 // Version: 1.10.0 - max-width in percent (maxWidthPercent)
 // Version: 1.9.0 - min-width, min-height, max-height (px; none / auto reset them)
 // Version: 1.8.0 - box-sizing (content-box / border-box)
@@ -814,16 +815,17 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
                                     : prop == "min-width"  ? s.minWidthPx
                                     : prop == "max-height" ? s.maxHeightPx
                                                            : s.minHeightPx;
-        // none (max) / auto (min): no limit. A percentage is kept for
-        // max-width only (resolved against the line at layout).
+        std::optional<float>& percent = prop == "max-width"  ? s.maxWidthPercent
+                                      : prop == "min-width"  ? s.minWidthPercent
+                                      : prop == "max-height" ? s.maxHeightPercent
+                                                             : s.minHeightPercent;
+        // none (max) / auto (min): no limit. A percentage is resolved against
+        // the container at layout.
         limit.reset();
-        if (prop == "max-width") s.maxWidthPercent.reset();
+        percent.reset();
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit == CssUnit::Percent) {
-                if (prop == "max-width") s.maxWidthPercent = std::max(0.f, len->value);
-            } else if (len->unit != CssUnit::Auto) {
-                limit = std::max(0.f, len->ToPx(em, rem));
-            }
+            if (len->unit == CssUnit::Percent) percent = std::max(0.f, len->value);
+            else if (len->unit != CssUnit::Auto) limit = std::max(0.f, len->ToPx(em, rem));
         }
     }
     else if (prop == "font-size") {
