@@ -100,6 +100,7 @@ namespace UltraCanvas {
         }
 
         if (options.PixelRatio != 1.0f) ctx->Scale(options.PixelRatio, options.PixelRatio);
+        ApplyQualityAntialias();
 
         if (document.BackgroundColor.has_value()) {
             ctx->SetFillPaint(document.BackgroundColor.value());
@@ -120,8 +121,9 @@ namespace UltraCanvas {
     void VectorRenderer::RenderLayer(IRenderContext *context, const VectorLayer &layer) {
         ctx = context;
         ctx->PushState();
+        ApplyQualityAntialias();
 
-        float layerOpacity = silhouetteMode ? 1.0f : layer.Opacity * currentOpacity;
+        float layerOpacity = silhouetteMode || OutlineMode() ? 1.0f : layer.Opacity * currentOpacity;
         opacityStack.push(currentOpacity);
         currentOpacity = layerOpacity;
         ctx->SetAlpha(currentOpacity);
@@ -157,11 +159,14 @@ namespace UltraCanvas {
         ctx->PushState();
         if (element.Transform.has_value()) ApplyTransform(element.Transform.value());
         ApplyStyle(element.Style);
-        if (element.Style.ClipPath.has_value() && !element.Style.ClipPath->empty())
+        // The outline view shows every shape whole: clips, effects and
+        // transparency are what it leaves out.
+        const bool outline = OutlineMode();
+        if (!outline && element.Style.ClipPath.has_value() && !element.Style.ClipPath->empty())
             ApplyClip(*element.Style.ClipPath);
 
         const TransparencyData *tr = element.Style.Transparency.has_value() ? &*element.Style.Transparency : nullptr;
-        const bool effects = !silhouetteMode &&
+        const bool effects = !silhouetteMode && !outline &&
                              (element.Effects.Any() ||
                               (tr && (tr->IsGradient() || tr->Mix != TransparencyMix::Mix || tr->Level > 0.0f)));
         if (effects) RenderWithEffects(element);
@@ -288,7 +293,7 @@ namespace UltraCanvas {
         const VectorStyle &style = element.Style;
         const StrokeData *st = HasStroke(style) ? &*style.Stroke : nullptr;
         const bool gallery = st && (st->HasArrowheads() || st->HasWidthProfile() || st->HasBrush());
-        if (!gallery) {
+        if (!gallery || OutlineMode()) {
             FillAndStroke(style);
             return;
         }
@@ -312,6 +317,10 @@ namespace UltraCanvas {
     // resolve against the path's own extents, which are the element's
     // untransformed bounds because the element's Transform is on the CTM.
     void VectorRenderer::FillAndStroke(const VectorStyle &style) {
+        if (OutlineMode()) {
+            StrokeOutline();
+            return;
+        }
         const bool fill = HasFill(style);
         const bool stroke = HasStroke(style);
         if (!fill && !stroke) {
@@ -331,13 +340,14 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::RenderLine(const VectorLine &line) {
-        if (!HasStroke(line.Style)) return;
+        if (!HasStroke(line.Style) && !OutlineMode()) return;
         RenderShape(line);
     }
 
     void VectorRenderer::RenderText(const VectorText &text) {
         const float opacity = silhouetteMode ? 1.0f : text.Style.FillOpacity;
         if (silhouetteMode) ctx->SetTextPaint(Colors::Black);
+        else if (OutlineMode()) ctx->SetTextPaint(options.OutlineColor);
         else if (text.Style.Fill.has_value()) {
             if (auto *color = std::get_if<Color>(&text.Style.Fill.value()))
                 ctx->SetTextPaint(WithOpacity(*color, opacity));
@@ -399,6 +409,19 @@ namespace UltraCanvas {
             ctx->FillRectangle(image.Bounds);
             return;
         }
+        if (OutlineMode()) {
+            // The picture's frame and diagonals, as a drawing program's
+            // wireframe view shows a bitmap.
+            const Rect2Dd b(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height);
+            ctx->ClearPath();
+            ctx->Rect(b.x, b.y, b.width, b.height);
+            ctx->MoveTo(b.x, b.y);
+            ctx->LineTo(b.x + b.width, b.y + b.height);
+            ctx->MoveTo(b.x + b.width, b.y);
+            ctx->LineTo(b.x, b.y + b.height);
+            StrokeOutline();
+            return;
+        }
         if (image.Source.empty()) return;
         const Rect2Dd box(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height);
         // An image embedded in the file ("data:image/png;base64,...": SVG,
@@ -426,7 +449,7 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderGroup(const VectorGroup &group) {
         opacityStack.push(currentOpacity);
-        if (!silhouetteMode) currentOpacity *= group.Style.Opacity;
+        if (!silhouetteMode && !OutlineMode()) currentOpacity *= group.Style.Opacity;
         ctx->SetAlpha(currentOpacity);
         for (const auto &child: group.Children) if (child) RenderElement(ctx, *child);
         currentOpacity = opacityStack.top();
@@ -452,7 +475,24 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::ApplyStyle(const VectorStyle &style) {
-        ctx->SetAlpha(silhouetteMode ? 1.0 : style.Opacity * currentOpacity);
+        ctx->SetAlpha(silhouetteMode || OutlineMode() ? 1.0 : style.Opacity * currentOpacity);
+    }
+
+    void VectorRenderer::ApplyQualityAntialias() {
+        if (!ctx) return;
+        const bool smooth = options.DisplayQuality == VectorDisplayQuality::Normal && options.EnableAntialiasing;
+        ctx->SetAntialias(smooth ? UltraCanvas::AntialiasMode::DefaultQuality
+                                 : UltraCanvas::AntialiasMode::NoAntialias);
+    }
+
+    void VectorRenderer::StrokeOutline() {
+        ctx->SetStrokePaint(options.OutlineColor);
+        ctx->SetStrokeWidth(DeviceWidth(1.0f));
+        ctx->SetLineDash(UCDashPattern());
+        ctx->SetLineJoin(LineJoin::Miter);
+        ctx->SetLineCap(LineCap::Butt);
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
     }
 
     // Clips to the outlines of a <clipPath> definition. The clip is set in
@@ -495,12 +535,17 @@ namespace UltraCanvas {
     // The user-space width of options.MinStrokePixels device pixels under the
     // current transform (the geometric mean of its two scale factors).
     float VectorRenderer::HairlineWidth() const {
-        if (options.MinStrokePixels <= 0.0f || !ctx) return 0.0f;
+        if (options.MinStrokePixels <= 0.0f) return 0.0f;
+        return DeviceWidth(options.MinStrokePixels);
+    }
+
+    float VectorRenderer::DeviceWidth(float pixels) const {
+        if (!ctx) return pixels;
         double a, b, c, d, e, f;
         ctx->GetTransform(a, b, c, d, e, f);
         const double scale = std::sqrt(std::fabs(a * d - b * c));
         if (!(scale > 1e-12) || !std::isfinite(scale)) return 0.0f;
-        return static_cast<float>(options.MinStrokePixels / scale);
+        return static_cast<float>(pixels / scale);
     }
 
     void VectorRenderer::ApplyStroke(const StrokeData &stroke, const Rect2Dd &bounds, float opacity) {
@@ -1234,6 +1279,13 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderClipView(const VectorClipView &clip) {
         const auto keyholes = clip.KeyholeShapes();
+        if (OutlineMode()) {
+            // Unclipped: the keyholes' outlines and the whole of every
+            // member, so a clipped-away shape can still be found.
+            for (const auto &k: keyholes) if (k) RenderElement(ctx, *k);
+            for (const auto &child: clip.Contents()) if (child) RenderElement(ctx, *child);
+            return;
+        }
         bool any = false;
         ctx->ClearPath();
         for (const auto &k: keyholes) {

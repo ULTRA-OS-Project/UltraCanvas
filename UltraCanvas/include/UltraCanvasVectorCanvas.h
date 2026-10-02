@@ -172,6 +172,11 @@ public:
 
     // ===== SELECTION DISPLAY =====
     void SetShowSelection(bool show) { showSelection = show; RequestRedraw(); }
+    // How much of the drawing is painted: outlines only, fills and lines
+    // without antialiasing, or everything antialiased (the default). The
+    // selection handles, guides and rulers are drawn the same in each.
+    void SetDisplayQuality(VectorDisplayQuality quality);
+    VectorDisplayQuality GetDisplayQuality() const;
     void SetHandleMode(VectorHandleMode mode);
     VectorHandleMode GetHandleMode() const { return handleMode; }
     void SetHandleSizePixels(double px) { handleSize = px; RequestRedraw(); }
