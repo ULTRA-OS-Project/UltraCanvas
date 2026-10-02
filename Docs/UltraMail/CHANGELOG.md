@@ -11,7 +11,9 @@
 - **Names and subjects written as HTML read properly.** Some senders'
   systems put HTML character references into the header - Lexware's
   messages arrived "to Stefan Fr&ouml;hling". The list, the reading pane,
-  the sender badge and collected contacts now show "Fröhling"; every named
+  the sender badge and collected contacts now show "Fröhling", and so do
+  replies and forwards - the "... wrote:" line, the forwarded From/To
+  lines and the Re:/Fwd: subject, in plain and formatted mail; every named
   and numeric reference (`&auml;`, `&amp;`, `&#8211;`, `&#x20AC;`) is
   decoded, and a plain "&" (AT&T) stays as it is.
 
