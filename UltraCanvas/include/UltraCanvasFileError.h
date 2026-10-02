@@ -154,7 +154,7 @@ namespace Detail {
             std::error_code ec;
             if (!fs::exists(candidate, ec)) return candidate;
         }
-        return dir / (".ucsave" + PathToUtf8(target.extension()));
+        return dir / PathFromUtf8(".ucsave" + PathToUtf8(target.extension()));
     }
 
     // Removes the staged file unless the write was committed - including when

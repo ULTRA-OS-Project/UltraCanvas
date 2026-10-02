@@ -35,3 +35,31 @@
   the parser against both objdump layouts; the check was tried on DLLs
   built with clang/lld importing from `libUltraCanvas.dll` (caught), a core
   C++ function from a renamed DLL (caught) and only `KERNEL32.dll` (clean).
+- **The path check catches a string joined onto a path with `/`.**
+  `scripts/check_path_string.py` (`path-implicit`) looked at strings handed
+  to `fs::` calls, stream constructors, `open()` and `fs::path p = str;`, but
+  not at `PathFromUtf8(dir) / accountId` - the form of the two real Windows
+  bugs this branch fixed in UltraMail and EmailCleaner (a mail folder with a
+  non-English name cached under a mangled path). A `/` chain that holds a
+  path (`PathFromUtf8(...)`, `fs::path(...)`, a path variable or an
+  `auto` set from one, a path accessor such as `.parent_path()`) now has
+  each operand checked: a `std::string` variable, `.c_str()` or a call to a
+  function the file declares as returning `std::string`
+  (`/ SanitizeFolder(folder)`) or a parenthesised sum with such a term
+  (`/ (baseName + " (2)")`) is reported; `p /= str;`, `pathVar = str;` and a
+  `cond ? s1 : s2` with a string branch likewise. The check also reads
+  range-for variables (`for (const std::string& d : dirs)`), C strings and
+  other `auto`s, so the nearest declaration of a name decides its type
+  (a `for (const char* name : {...})` is no longer taken for an older
+  `std::string name`).
+  - 49 sites across the tree were wrapped in `PathFromUtf8`: joins in the
+    Filer widget (copy / extract / rename-on-collision), the Git repository
+    reader, rich-document image export, shell-link resolution, desktop
+    entries, file-error suggestions, the GutenPrint PPD cache, UltraWin,
+    the OCR language files, UltraCloud's secrets, UltraMail's sender-icon
+    cache, UltraCleaner's trash and the macOS bundle reader; `std::string`
+    range-for variables handed to `fs::` calls in the Hunspell backend, the
+    CDR converter, the Filer widget and UltraFiler; and the Filer's extract
+    destination, built with `fs::path dir(cond ? a : b)` and reassigned
+    `dir = currentPath`. Against the pre-fix UltraMail / EmailCleaner
+    sources the check reports all five lines that were wrong.

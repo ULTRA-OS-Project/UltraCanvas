@@ -814,7 +814,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             std::string name = media[i].name.empty()
                 ? "image" + std::to_string(i + 1) + "." + FileExtensionForMimeType(media[i].mimeType)
                 : PathToUtf8(PathFromUtf8(media[i].name).filename());
-            std::filesystem::path target = PathFromUtf8(options.imageDirectory) / name;
+            std::filesystem::path target = PathFromUtf8(options.imageDirectory) / PathFromUtf8(name);
             std::ofstream out(UltraCanvas::PathFromUtf8(target), std::ios::binary);
             if (out.is_open()) {
                 out.write(reinterpret_cast<const char*>(media[i].data.data()),

@@ -42,10 +42,22 @@ What is reported:
       the string is converted implicitly - through the code page:
           fs::exists(str)  fs::remove(str, ec)  fs::directory_iterator(str)
           std::ifstream f(str)  f.open(str)  fs::path p = str;
-      Use PathFromUtf8(str). The argument counts as a string when it is
+          PathFromUtf8(dir) / accountId     p /= folder;
+      Use PathFromUtf8(str). A `/` join counts when the chain holds a path:
+      a PathFromUtf8(...) or fs::path(...), a name declared as a path (an
+      `auto` initialised from PathFromUtf8 included), or a path accessor
+      such as .parent_path() or temp_directory_path(). Each operand of that
+      chain that is a UTF-8 string is reported - a name declared as a
+      std::string, `.c_str()`, or a call to a function the file declares as
+      returning std::string (`/ SanitizeFolder(folder)`), or a parenthesised
+      sum with such a term (`/ (baseName + " (2)")`). A bare literal
+      (`/ "mail"`) and a sum of literals and std::to_string are ASCII and
+      fine. Assigning a string to a path declared earlier (`dir =
+      currentPath;`) and a `cond ? s1 : s2` with a string branch count too. The argument counts as a string when it is
       `.c_str()`, a `+` concatenation with a literal or a string, or a name
       whose nearest declaration above the use, in the same file, is a
-      std::string - the check has no types, so it reads the declarations. (PathFromUtf8 also takes a path, a C
+      std::string - the check has no types, so it reads the declarations;
+      for a call, the declaration of the function. (PathFromUtf8 also takes a path, a C
       string and a string_view, so wrapping is never wrong.)
 
   fopen-narrow
@@ -53,8 +65,10 @@ What is reported:
       the name in the Windows code page. Use OpenFileUtf8(name, mode).
 
 What is still NOT reported: a string whose type the file does not spell out
-(an `auto`, a getter's return value) handed to a path parameter, and the
-declaration form `fs::path p(str);` with such a string. Review catches those.
+(an `auto`, a getter's return value, a member declared in another file such
+as `env.accountId`) handed to a path parameter or joined onto a path, and
+the declaration form `fs::path p(str);` with such a string. Review catches
+those.
 The two implicit kinds skip the Linux, macOS, Android, WASM and ULTRA OS
 platform folders, where a path's native string is the UTF-8 bytes.
 
@@ -133,6 +147,21 @@ STRING_DECL_RE = re.compile(
     r"\b(?:const\s+)?(?:std::)?string\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
 PATH_DECL_RE = re.compile(
     r"\b(?:std::filesystem|fs|filesystem)::path\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
+# `auto p = PathFromUtf8(...)` / `auto p = fs::path(...)`: a path too
+AUTO_PATH_DECL_RE = re.compile(
+    r"\bauto\s*[&*]?\s*(\w+)\s*=\s*(?:UltraCanvas::)?(?:PathFromUtf8|"
+    r"(?:std::filesystem|fs|filesystem)::(?:path|temp_directory_path|current_path))\s*\(")
+# Declarations that make a name neither a string nor a path, so an older
+# std::string of the same name further up no longer applies: a C string, a
+# range-for variable (`for (const auto& part : rel)`, `for (const char* n :
+# {...})`) and any other `auto`. A range-for over std::string stays a string.
+OTHER_DECL_RES = (
+    re.compile(r"\b(?:const\s+)?char\s*(?:const\s*)?\*\s*(?:const\s+)?(\w+)\s*(?=[;=,\)\{\(\[:])"),
+    re.compile(r"\bfor\s*\(\s*(?:const\s+)?(?!(?:std::)?string\b)[\w:<>]+\s*[&*]*\s*(\w+)\s*:(?!:)"),
+    re.compile(r"\bauto\s*[&*]*\s*(\w+)\s*="),
+)
+RANGE_FOR_STRING_RE = re.compile(
+    r"\bfor\s*\(\s*(?:const\s+)?(?:std::)?string\s*[&*]?\s*(\w+)\s*:(?!:)")
 STREAM_DECL_RE = re.compile(r"\bstd::(?:i|o)?fstream\s+(\w+)")
 FS_CALL_RE = re.compile(
     r"(?<![\w:])(?:std::filesystem|fs|filesystem)::(\w+)\s*(\w+\s*)?([\({])")
@@ -141,6 +170,18 @@ PATH_ASSIGN_RE = re.compile(
     r"(?<![\w:])(?:std::filesystem|fs|filesystem)::path\s+\w+\s*=\s*([^;]+);")
 FOPEN_RE = re.compile(r"(?<![\w.>])(?:std::|::)?fopen\s*\(")
 ID_CHAIN_RE = re.compile(r"^[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*$")
+# A call: name (qualified, or through a member chain), then one argument list
+CALL_RE = re.compile(r"^(?P<name>[A-Za-z_][\w:]*(?:(?:\.|->)[A-Za-z_]\w*)*)\s*\((?P<args>.*)\)$")
+# Calls whose result is a std::filesystem::path
+PATH_CALLS = {"PathFromUtf8", "path", "parent_path", "filename", "stem",
+              "extension", "root_path", "root_name", "root_directory",
+              "relative_path", "lexically_normal", "lexically_relative",
+              "replace_extension", "replace_filename", "remove_filename",
+              "temp_directory_path", "current_path", "absolute", "canonical",
+              "weakly_canonical", "read_symlink"}
+# A `/` that is a binary operator: not `//`, `/*`, `*/` or `/=`
+JOIN_RE = re.compile(r"(?<![/*])/(?![/*=])")
+JOIN_ASSIGN_RE = re.compile(r"(?P<lhs>[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*)\s*/=(?P<rhs>[^;]+);")
 
 
 def _close_of(code: str, i: int) -> int:
@@ -184,6 +225,19 @@ def _top_level(text: str, ch: str) -> bool:
     return False
 
 
+def _top_level_index(text: str, ch: str) -> int:
+    depth = 0
+    for i, c in enumerate(text):
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == ch and depth == 0 and not (ch == ":" and (
+                text[i + 1:i + 2] == ":" or text[i - 1:i] == ":")):
+            return i
+    return -1
+
+
 class DeclaredTypes:
     """Which names the file declares as std::string and which as a path, by
     line. A name means whatever its nearest declaration above the use says:
@@ -196,24 +250,43 @@ class DeclaredTypes:
         for m in re.finditer("\n", text):
             starts.append(m.end())
         import bisect
-        for rx, is_string in ((STRING_DECL_RE, True), (PATH_DECL_RE, False)):
+        # Kinds: True = std::string, False = path, None = something else.
+        # Order matters only within a line: a later kind on the same line
+        # (an `auto p = PathFromUtf8(...)` is also an `auto`) wins.
+        rules = [(rx, None) for rx in OTHER_DECL_RES] + [
+            (STRING_DECL_RE, True), (RANGE_FOR_STRING_RE, True),
+            (PATH_DECL_RE, False), (AUTO_PATH_DECL_RE, False)]
+        for order, (rx, kind) in enumerate(rules):
             for m in rx.finditer(text):
                 line = bisect.bisect_right(starts, m.start(1))
-                self.decls.setdefault(m.group(1), []).append((line, is_string))
-        for v in self.decls.values():
+                self.decls.setdefault(m.group(1), []).append((line, order, kind))
+        for name, v in self.decls.items():
             v.sort()
+            self.decls[name] = [(line, kind) for line, _, kind in v]
         self.line = 0
 
-    def __contains__(self, name: str) -> bool:
-        best = None
+    def is_path(self, name: str) -> bool:
+        """Whether `name`'s nearest declaration above the use is a path."""
+        best, self._seen = None, False
         for line, is_string in self.decls.get(name, ()):
             if line > self.line:
                 break
-            best = is_string
-        if best is None:   # used above any declaration (a member, say)
+            best, self._seen = is_string, True
+        if not self._seen:
+            kinds = {k for _, k in self.decls.get(name, ())}
+            return kinds == {False}
+        return best is False
+
+    def __contains__(self, name: str) -> bool:
+        best, seen = None, False
+        for line, is_string in self.decls.get(name, ()):
+            if line > self.line:
+                break
+            best, seen = is_string, True
+        if not seen:   # used above any declaration (a member, say)
             kinds = {k for _, k in self.decls.get(name, ())}
             return kinds == {True}
-        return best
+        return best is True
 
 
 def _is_utf8_string(arg: str, strings, raw: str) -> bool:
@@ -224,6 +297,12 @@ def _is_utf8_string(arg: str, strings, raw: str) -> bool:
         return False
     if a.endswith(".c_str()"):
         return True
+    q = _top_level_index(a, "?")
+    if q >= 0:   # cond ? x : y - a string when either branch is one
+        c = _top_level_index(a[q + 1:], ":")
+        if c >= 0:
+            return any(_is_utf8_string(b, strings, b)
+                       for b in (a[q + 1:q + 1 + c], a[q + 2 + c:]))
     if ID_CHAIN_RE.match(a):
         return re.split(r"\.|->", a)[-1] in strings
     if a.startswith(("std::string(", "PathToUtf8(")):
@@ -235,6 +314,170 @@ def _is_utf8_string(arg: str, strings, raw: str) -> bool:
             if ID_CHAIN_RE.match(op) and re.split(r"\.|->", op)[-1] in strings:
                 return True
     return False
+
+
+def _operand_before(code: str, i: int) -> int:
+    """Start of the operand that ends just before code[i] (a `/`)."""
+    j = i - 1
+    while j >= 0 and code[j] == " ":
+        j -= 1
+    if j < 0:
+        return i
+    if code[j] == ")":
+        depth = 0
+        while j >= 0:
+            if code[j] == ")":
+                depth += 1
+            elif code[j] == "(":
+                depth -= 1
+                if depth == 0:
+                    break
+            j -= 1
+        if j < 0:
+            return i
+        j -= 1
+        while j >= 0 and code[j] == " ":
+            j -= 1
+    while j >= 0 and (code[j].isalnum() or code[j] in "_:.>-"):
+        if code[j] == ">" and not (j > 0 and code[j - 1] == "-"):
+            break
+        if code[j] == "-" and not (j + 1 < len(code) and code[j + 1] == ">"):
+            break
+        j -= 1
+    return j + 1
+
+
+def _operand_after(code: str, i: int) -> int:
+    """End (exclusive) of the operand that starts just after code[i]."""
+    j = i + 1
+    while j < len(code) and code[j] == " ":
+        j += 1
+    if j < len(code) and code[j] == "(":
+        close = _close_of(code, j)
+        return close + 1 if close >= 0 else j
+    if j < len(code) and code[j] == '"':
+        k = code.find('"', j + 1)
+        return k + 1 if k > 0 else j
+    while j < len(code) and (code[j].isalnum() or code[j] in "_:.") or \
+            (j + 1 < len(code) and code[j:j + 2] == "->"):
+        j += 2 if code[j:j + 2] == "->" else 1
+    if j < len(code) and code[j] == "(":
+        close = _close_of(code, j)
+        return close + 1 if close >= 0 else j
+    return j
+
+
+def _is_path_operand(op: str, strings) -> bool:
+    op = op.strip()
+    if ID_CHAIN_RE.match(op):
+        return strings.is_path(re.split(r"\.|->", op)[-1])
+    m = CALL_RE.match(op)
+    if m:
+        return re.split(r"::|\.|->", m.group("name"))[-1] in PATH_CALLS
+    return False
+
+
+def _is_string_operand(op: str, strings) -> bool:
+    op = op.strip()
+    if op.startswith("(") and _close_of(op, 0) == len(op) - 1:
+        # A parenthesised sum is a string when one of its terms is a string
+        # variable or call: `/ (baseName + " (2)")`. Literals and
+        # std::to_string alone are ASCII (`/ (std::to_string(uid) + ".eml")`).
+        inner = op[1:-1]
+        if _top_level(inner, "+"):
+            return any(_is_string_operand(t, strings) for t in _split_top(inner, "+")
+                       if not t.strip().startswith(('"', "std::to_string")))
+        return _is_string_operand(inner, strings)
+    if not op or op.startswith('"'):
+        return False   # a literal is ASCII here
+    if _is_utf8_string(op, strings, op):
+        return True
+    m = CALL_RE.match(op)
+    if m:
+        name = re.split(r"::|\.|->", m.group("name"))[-1]
+        return name not in PATH_CALLS and name in strings
+    return False
+
+
+def _split_top(text: str, ch: str) -> list[str]:
+    parts, depth, cur = [], 0, ""
+    for c in text:
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        if c == ch and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += c
+    parts.append(cur)
+    return parts
+
+
+PATH_REASSIGN_RE = re.compile(
+    r"(?:^|[;{}]|\belse\b|\))\s*(?P<lhs>[A-Za-z_]\w*)\s*=(?!=)\s*(?P<rhs>[^;]+);")
+
+
+def join_findings(path: Path, number: int, code: str, strings,
+                  raw: str = "") -> list[Finding]:
+    """`/` chains holding a path, and an operand that is a UTF-8 string.
+    `raw` is the line with its literals kept, for the message."""
+    found: list[Finding] = []
+    shown = raw if len(raw) == len(code) else code
+    slashes = [m.start() for m in JOIN_RE.finditer(code)]
+    seen: set[int] = set()
+    for i in slashes:
+        if i in seen:
+            continue
+        # Walk the chain this slash belongs to, left to right.
+        start = _operand_before(code, i)
+        operands = [(start, i)]
+        chain = [i]
+        k = i
+        while True:
+            end = _operand_after(code, k)
+            operands.append((k + 1, end))
+            nxt = end
+            while nxt < len(code) and code[nxt] == " ":
+                nxt += 1
+            if nxt < len(code) and nxt in slashes:
+                chain.append(nxt)
+                k = nxt
+                continue
+            break
+        seen.update(chain)
+        texts = [code[a:b] for a, b in operands]
+        if not any(_is_path_operand(t, strings) for t in texts):
+            continue
+        for (a, b), t in zip(operands, texts):
+            if _is_string_operand(t, strings):
+                t = shown[a:b].strip()
+                inner = t[1:-1] if t.startswith("(") and _close_of(t, 0) == len(t) - 1 else t
+                found.append(Finding(
+                    path, number, "path-implicit",
+                    f"`/` joins {t} onto a path, and a UTF-8 std::string "
+                    f"converts through the Windows code page - wrap it: "
+                    f"PathFromUtf8({inner})",
+                    symbol="operator/"))
+    for m in PATH_REASSIGN_RE.finditer(code):
+        # `p = str;` to a path declared earlier (the declaration form is
+        # path-implicit's `fs::path p = str;`)
+        if strings.is_path(m.group("lhs")) and _is_string_operand(m.group("rhs"), strings):
+            found.append(Finding(
+                path, number, "path-implicit",
+                f"assigning {m.group('rhs').strip()} to the path {m.group('lhs')} converts "
+                f"through the Windows code page - use PathFromUtf8(...)",
+                symbol="path=assign"))
+    for m in JOIN_ASSIGN_RE.finditer(code):
+        if _is_path_operand(m.group("lhs"), strings) and \
+                _is_string_operand(m.group("rhs"), strings):
+            found.append(Finding(
+                path, number, "path-implicit",
+                f"`/=` appends {m.group('rhs').strip()} to a path through the "
+                f"Windows code page - wrap it: PathFromUtf8(...)",
+                symbol="operator/="))
+    return found
 
 
 def implicit_findings(path: Path, number: int, code: str, raw: str,
@@ -274,6 +517,7 @@ def implicit_findings(path: Path, number: int, code: str, raw: str,
             path, number, "path-implicit",
             "fs::path = <UTF-8 std::string> converts through the Windows code "
             "page - use PathFromUtf8", symbol="path="))
+    found.extend(join_findings(path, number, code, strings, raw))
     for m in FOPEN_RE.finditer(code):
         close = _close_of(code, m.end() - 1)
         if close < 0:

@@ -8,6 +8,9 @@
   never found that mail. The cache path, the preview's read and the
   removal of an account's mail now pass every part through `PathFromUtf8`.
   Bodies already cached under a mangled name are fetched again.
+  - The sender-icon cache built its file names the same way
+    (`dir / (brandId + ".png")`); they go through `PathFromUtf8` too, found
+    by the extended path check (framework changelog).
   - New test `cached_body_path_keeps_a_non_ascii_folder_name`. UltraMail's
     engine tests now run on Windows CI, where two tests failed because they
     still had a file open while it was replaced or deleted; they close it
