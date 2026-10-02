@@ -1,3 +1,32 @@
+#### 2026-10-02 *0.9.126*
+- **UltraNet plug-ins are loaded `RTLD_LOCAL`.** `UltraNet_RefreshPlugins()`
+  opened every plug-in DSO with `RTLD_GLOBAL`, which put everything a plug-in
+  exports into the process-wide symbol scope, where it binds the symbols of
+  every library loaded after it - another plug-in's included, and plug-ins
+  built from the same helper sources export the same names. That scope was
+  only ever needed by the retired v1 entry; plug-ins now take nothing from
+  the host's symbol table (host table, ABI 2), so they are loaded
+  `RTLD_LOCAL`. A plug-in still resolves its own references against the host
+  first, so the host's `dynamic_cast` to the richer plug-in interfaces is
+  unaffected (`imap_plugin_exposes_mailbox_interface`). New test
+  `plugins_are_loaded_without_joining_the_global_symbol_scope` (POSIX): after
+  loading, a process-wide `dlsym` finds no plug-in's `UltraNet_PluginInit`; it
+  fails with `RTLD_GLOBAL`.
+- **The UltraNet loader no longer accepts the v1 plug-in entry.** A plug-in
+  DSO that exported only `UltraNet_PluginRegister()` used to be loaded as a
+  fallback. That entry registered itself by resolving `UltraNet_RegisterPlugin`
+  - and every other core function it called - from the host's symbol table at
+  load time, which only POSIX allows and which only worked when the host
+  happened to carry all of them. Every in-tree plug-in has used
+  `UltraNet_PluginInit(host)` and the host table (ABI 2) since the previous
+  release, so `UltraNet_RefreshPlugins()` now loads that entry alone, the same
+  way on every platform, and leaves a v1-only library unregistered. A
+  third-party plug-in still exporting only v1 has to be rebuilt with
+  `UltraNet_PluginInit` and `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`.
+  New test `plugin_loader_refuses_a_v1_only_plugin` (POSIX) builds such a
+  plug-in and checks it is not registered; against the previous loader it
+  fails.
+
 #### 2026-10-02 *0.9.125*
 - **VideoFX: background music** (VideoFX 0.4.0).
   `VideoFXExportSettings::music` (`VideoFXMusic`) lays a song - any file with
