@@ -1,3 +1,20 @@
+#### 2026-10-02 *0.10.20*
+- **Switching accounts is immediate, even while mail is being fetched.**
+  Clicking another account's tile sometimes took 10 to 20 seconds. The
+  background sync and the window read the mail database through one shared
+  connection, which runs one statement at a time, and the sync writes a row
+  per message - each its own commit forced to disk. A click that came
+  during a sync waited behind all of them. The workers now have a
+  connection of their own, and the database runs in write-ahead-log mode,
+  where reading never waits for writing and a commit no longer forces the
+  disk.
+- **Names and subjects written as HTML read properly.** Some senders'
+  systems put HTML character references into the header - Lexware's
+  messages arrived "to Stefan Fr&ouml;hling". The list, the reading pane,
+  the sender badge and collected contacts now show "Fröhling"; every named
+  and numeric reference (`&auml;`, `&amp;`, `&#8211;`, `&#x20AC;`) is
+  decoded, and a plain "&" (AT&T) stays as it is.
+
 #### 2026-10-02 *0.10.19*
 - **The Outbox window: what waits to be sent, and what to do about it.** While
   messages wait, the toolbar shows *Outbox (N)*; it opens a window listing

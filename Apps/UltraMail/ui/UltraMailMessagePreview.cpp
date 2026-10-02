@@ -11,6 +11,7 @@
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailHeaderText.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -682,10 +683,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Decode RFC 2047 encoded-words for display (idempotent: messages synced
     // before header decoding are still stored raw).
-    const std::string subject  = UltraNet_MimeDecodeHeader(env.subject);
-    const std::string fromName = UltraNet_MimeDecodeHeader(env.fromName);
+    const std::string subject  = DisplayHeader(env.subject);
+    const std::string fromName = DisplayHeader(env.fromName);
     std::vector<std::string> toList = env.to;
-    for (auto& addr : toList) addr = UltraNet_MimeDecodeHeader(addr);
+    for (auto& addr : toList) addr = DisplayHeader(addr);
 
     // Name on the first line; address and recipients on the second, with the
     // full sender in the tooltip.

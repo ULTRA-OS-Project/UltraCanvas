@@ -8,6 +8,7 @@
 //                  reading-pane toggle (side-by-side, or Gmail open-in-place).
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
+#include "UltraMailHeaderText.h"
 
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
@@ -829,10 +830,10 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
     // does not stop an explicit line break - a subject such as LinkedIn's
     // "... storage.\n\nWe're partnering ..." (the break is in the encoded
     // header itself) drew over two rows.
-    std::string sender  = SingleLine(UltraNet_MimeDecodeHeader(
+    std::string sender  = SingleLine(DisplayHeader(
         m.fromName.empty() ? m.fromAddr : m.fromName));
     std::string subject = m.subject.empty()
-        ? std::string("(no subject)") : SingleLine(UltraNet_MimeDecodeHeader(m.subject));
+        ? std::string("(no subject)") : SingleLine(DisplayHeader(m.subject));
 
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")
@@ -901,7 +902,7 @@ void MailView::RefreshRowText(int row) {
     if (row < 0 || row >= static_cast<int>(messages_.size()) ||
         row >= static_cast<int>(rowStates_.size()))
         return;
-    std::string sender = SingleLine(UltraNet_MimeDecodeHeader(
+    std::string sender = SingleLine(DisplayHeader(
         messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName));
     std::string state = std::string(rowStates_[row].unread ? "\xE2\x97\x8F " : "")
                       + (rowStates_[row].waiting ? "\xE2\x86\xA9 " : "");
@@ -980,8 +981,8 @@ void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
 
 bool MailView::SearchMatches(const MessageEnvelope& m) const {
     // Decoded like the row shows them, so what can be read can be found.
-    const std::string name = UltraNet_MimeDecodeHeader(m.fromName);
-    const std::string subject = UltraNet_MimeDecodeHeader(m.subject);
+    const std::string name = DisplayHeader(m.fromName);
+    const std::string subject = DisplayHeader(m.subject);
     std::size_t pos = 0;
     while (pos < searchText_.size()) {
         while (pos < searchText_.size() && searchText_[pos] == ' ') ++pos;

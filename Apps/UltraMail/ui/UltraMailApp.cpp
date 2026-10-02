@@ -24,6 +24,7 @@
 // Last Modified: 2026-10-01
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
+#include "UltraMailHeaderText.h"
 
 #include "UltraMailAlerts.h"
 #include "UltraMailSettingsDialog.h"
@@ -138,6 +139,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     const std::string dbPath = dataDir + "/mail.db";
 
     UltraDbResult opened = store_.Open("ultramail", dbPath);
+    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath);
     if (!opened) {
         if (outError) *outError = DetailLine(opened);
         return false;
@@ -957,7 +959,7 @@ void UltraMailApp::RunMailboxAction(
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
             } else {
-                SyncEngine engine(store_, *imap, mailDir_);
+                SyncEngine engine(workerStore_, *imap, mailDir_);
                 outcome = op(engine, serverUrl, opts);
             }
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
@@ -1016,7 +1018,7 @@ void UltraMailApp::RunMailboxActionQuiet(
         UltraNetResult cred = ResolveCredentials(accountId, username, provider,
                                                  opts.credentials);
         if (!cred) return;
-        SyncEngine engine(store_, *imap, mailDir_);
+        SyncEngine engine(workerStore_, *imap, mailDir_);
         op(engine, serverUrl, opts);
     }).detach();
 }
@@ -1137,7 +1139,7 @@ void UltraMailApp::UnsubscribeWith(const MessageEnvelope& env, const std::string
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
     const UnsubscribeInfo info = ReadUnsubscribe(raw);
     const std::string sender = env.fromName.empty() ? env.fromAddr
-                                                    : UltraNet_MimeDecodeHeader(env.fromName);
+                                                    : DisplayHeader(env.fromName);
     if (!info.Any()) {
         AlertWarning(parent, "This message offers no way to unsubscribe.",
                      "It has no List-Unsubscribe header, so UltraMail cannot leave the "
@@ -1819,7 +1821,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     const std::string provider = OAuthProviderFor(settings);
     opts.credentials.username  = username;
 
-    auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+    auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
     SetStatus("Opening " + FriendlyFolderName(folder) + "…");
     NoteConnection(accountId, ConnectionState::Checking);
@@ -1958,7 +1960,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         const std::string provider = OAuthProviderFor(settings);
         opts.credentials.username = username;
 
-        auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+        auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
         const std::string aid = acc.accountId;
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
         SetStatus("Checking " + who + "…");
@@ -2121,7 +2123,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     if (!found) {
         // New - or the index said "known" but the store no longer has it.
         contact = Contact{};
-        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        contact.displayName = DisplayHeader(m.fromName);
         ContactEmail e; e.address = m.fromAddr; e.primary = true;
         contact.emails.push_back(e);
     }
@@ -2145,7 +2147,7 @@ void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
     } else if (r) {
         // New: the sender's name and address, filed where asked.
         contact = Contact{};
-        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        contact.displayName = DisplayHeader(m.fromName);
         if (contact.displayName.empty()) contact.displayName = m.fromAddr;
         if (place.isGroup) contact.group = place.group;
         else               contact.section = place.section;
@@ -2628,7 +2630,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
             if (!confirmed) return;
 
             // Stop future background syncs for the account first. An in-flight
-            // sync worker (syncsInFlight_) still holds valid store_/mailDir_
+            // sync worker (syncsInFlight_) still holds valid workerStore_/mailDir_
             // references; at worst it re-inserts a few rows after this, which
             // the next removal (or a restart) clears — acceptable here.
             scheduler_.Remove(accountId);

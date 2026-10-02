@@ -410,6 +410,12 @@ private:
     MailOAuth       oauth_;
 
     LocalStore store_;
+    // The same mail.db on a connection of its own, for the worker threads
+    // (sync, folder fetch, mailbox actions). A connection runs one statement
+    // at a time, so with one shared connection the UI thread queued behind
+    // every row a sync wrote: switching accounts mid-sync took 10-20 seconds.
+    // Under WAL (LocalStore::Open) the UI's reads never wait for these writes.
+    LocalStore workerStore_;
     ContactStore contacts_;
     // Icons of the known services in the sender registry, under
     // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
