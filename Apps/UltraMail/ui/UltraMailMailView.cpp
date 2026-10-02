@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
+//                  (+10 px) or a fixed width
 // Version: 0.6.0 - SetBodyOptions; trusted picture hosts reach the preview
 // Version: 0.5.0 - a sender-badge column left of Subject, painted by the list
 //                  delegate; the folder's stored scan verdicts are read once
@@ -12,6 +14,7 @@
 
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
+#include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
@@ -20,6 +23,7 @@
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -43,7 +47,10 @@ constexpr int kRowHeight    = 22;
 constexpr int kHeaderHeight = 22;
 constexpr int kSplitterGap  = 8;   // the page shows through between the cards
 
-constexpr int kFolderMinWidth  = 180;
+// The folder pane's range, whether fitted to its rows or set in pixels.
+constexpr int kFolderMinWidth  = 100;
+constexpr int kFolderMaxWidth  = 600;
+constexpr int kFolderFitSlack  = 10;   // fitted: this much room after the longest row
 constexpr int kListMinWidth    = 300;
 constexpr int kPreviewMinWidth = 466;
 
@@ -302,6 +309,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
         if (acct != curAccount_ && onSelectAccount) onSelectAccount(acct);
         ShowFolder(acct, folder);
     };
+    // A fitted tree follows the rows on show.
+    folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
+    folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
     FillWith(folderBox_, folderTree_);
     FillWith(folderPane, folderBox_);
 
@@ -519,6 +529,38 @@ void MailView::SetBodyOptions(bool showHtml, float textSizePx) {
     preview_.showHtml = showHtml;
     preview_.bodyFontSizePx = textSizePx;
     preview_.ReRender();
+}
+
+void MailView::SetFolderTreeWidth(bool fitToText, int fixedPx) {
+    folderTreeFitToText_  = fitToText;
+    folderTreeFixedWidth_ = fixedPx;
+    ApplyFolderTreeWidth();
+}
+
+void MailView::ApplyFolderTreeWidth(bool allowRetry) {
+    if (!outerSplit_ || !folderBox_ || !folderTree_) return;
+    int width = folderTreeFixedWidth_;
+    if (folderTreeFitToText_) {
+        const int rows = folderTree_->GetRequiredWidth();
+        if (rows <= 0) {
+            // Not in a window yet, so nothing to measure the text with.
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (allowRetry && app && !folderTreeRetryPosted_) {
+                folderTreeRetryPosted_ = true;
+                app->PostToUIThread([this]() {
+                    folderTreeRetryPosted_ = false;
+                    ApplyFolderTreeWidth(/*allowRetry=*/false);
+                });
+            }
+            return;
+        }
+        // The card around the tree: its border and padding on both sides.
+        const int card = static_cast<int>(std::ceil(folderBox_->GetTotalBorderHorizontal() +
+                                                    folderBox_->GetTotalPaddingHorizontal()));
+        width = rows + kFolderFitSlack + card;
+    }
+    width = std::clamp(width, kFolderMinWidth, kFolderMaxWidth);
+    if (outerSplit_->GetPaneFixedSize(0) != width) outerSplit_->SetPaneFixedSize(0, width);
 }
 
 void MailView::SetAccounts(std::vector<Account> accounts) {
@@ -782,6 +824,7 @@ void MailView::RebuildFolderTree() {
 
     folderTree_->ExpandAll();
     SelectFolderNode(curAccount_, curFolder_);
+    if (folderTreeFitToText_) ApplyFolderTreeWidth();
 }
 
 void MailView::SelectFolderNode(const std::string& accountId, const std::string& folder) {

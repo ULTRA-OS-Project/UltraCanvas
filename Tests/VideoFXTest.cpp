@@ -10,7 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.4.1
+// Version: 0.4.2
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
@@ -382,6 +382,24 @@ static void TestMusicMath() {
     for (int i = 0; i < 20; ++i) { q.Update(0.0, 0.02); slow.Update(0.0, 0.02); }   // 0.4 s pause
     CHECK(q.Gain() > 0.9, "hold 0.1 s, release 0.05 s: back up after a 0.4 s pause");
     CHECK(Near(slow.Gain(), 0.25, 0.01), "speech hold 0.6 s: still down after a 0.4 s pause");
+
+    // Presets fill in the threshold and times, never the depth
+    VideoFXMusic preset;
+    preset.duckingLevel = 0.2;
+    preset.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+    CHECK(Near(preset.duckingThresholdDb, -15.0, 1e-9) && Near(preset.duckingLevel, 0.2, 1e-9),
+          "LoudEvent preset: -15 dBFS, the ducking depth left alone");
+    CHECK(ValidateMusic(preset, error), "LoudEvent preset is valid");
+    MusicDucker loudPreset(preset);
+    for (int i = 0; i < 100; ++i) loudPreset.Update(0.1, 0.02);  // the -20 dBFS background again
+    CHECK(Near(loudPreset.Gain(), 1.0, 1e-9), "LoudEvent preset: a loud background alone does not duck");
+    preset.SetDuckingPreset(VideoFXDuckingPreset::Outdoor);
+    CHECK(Near(preset.duckingThresholdDb, -28.0, 1e-9) && ValidateMusic(preset, error), "Outdoor preset: -28 dBFS");
+    preset.SetDuckingPreset(VideoFXDuckingPreset::Speech);
+    const VideoFXMusic defaults;
+    CHECK(preset.duckingThresholdDb == defaults.duckingThresholdDb && preset.duckingAttack == defaults.duckingAttack &&
+          preset.duckingHold == defaults.duckingHold && preset.duckingRelease == defaults.duckingRelease,
+          "Speech preset equals the defaults");
 
     m = VideoFXMusic::FromFile("song.mp3");
     m.duckingThresholdDb = 3.0;

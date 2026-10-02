@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.3.0 - folder_tree_width_mode (auto / fixed) and folder_tree_width (px)
 // Version: 0.2.0 - remote_images, trusted_image_domains, message_view,
 //                  message_text_size
 // Author: UltraCanvas Framework / ULTRA OS
@@ -60,6 +61,18 @@ bool Preferences::Load(const std::string& path) {
             try { messageTextSize = std::clamp(std::stoi(Trim(value)), 9, 24); }
             catch (...) { /* keeps the default */ }
         }
+        // The width is kept while the tree fits its names, so switching back
+        // to a fixed width finds the number last chosen.
+        if (key == "folder_tree_width_mode")
+            folderTreeWidthMode = Trim(value) == "fixed" ? FolderTreeWidthMode::FixedWidth
+                                                         : FolderTreeWidthMode::FitToText;
+        if (key == "folder_tree_width") {
+            try {
+                folderTreeWidth = std::clamp(std::stoi(Trim(value)), kFolderTreeMinWidth,
+                                             kFolderTreeMaxWidth);
+            }
+            catch (...) { /* keeps the default */ }
+        }
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -111,6 +124,9 @@ bool Preferences::Save(const std::string& path) const {
     file << "\n";
     file << "message_view = " << (showHtml ? "html" : "plain") << "\n";
     file << "message_text_size = " << messageTextSize << "\n";
+    file << "folder_tree_width_mode = "
+         << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
+    file << "folder_tree_width = " << folderTreeWidth << "\n";
     return static_cast<bool>(file);
 }
 
