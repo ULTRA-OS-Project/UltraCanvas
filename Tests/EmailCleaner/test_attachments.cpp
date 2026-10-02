@@ -84,8 +84,11 @@ std::string AsText(const std::vector<uint8_t>& bytes) {
 // ---- Where the cache keeps a message ---------------------------------------
 
 TEST(Attachment_CachePathFollowsUltraMailsLayout) {
+    // Joined with the platform's separator, as UltraMail joins it (a backslash on
+    // Windows), so the expected path is built the same way.
     REQUIRE_EQ(CachedMessagePath("/data/mail", "erika", "INBOX", 42),
-               std::string("/data/mail/erika/INBOX/42.eml"));
+               UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8("/data/mail") /
+                                       "erika" / "INBOX" / "42.eml"));
     // Anything missing is not a path.
     REQUIRE(CachedMessagePath("", "erika", "INBOX", 42).empty());
     REQUIRE(CachedMessagePath("/data/mail", "erika", "INBOX", 0).empty());

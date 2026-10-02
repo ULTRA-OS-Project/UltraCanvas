@@ -313,10 +313,14 @@ TEST(credential_vault_roundtrip) {
     REQUIRE(vault.Retrieve("erika", got));
     REQUIRE_EQ(got, std::string("s3cr3t-p@ss"));
 
-    // The vault file must not contain the plaintext secret.
-    std::ifstream is(vault.VaultPath(), std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    REQUIRE(content.find("s3cr3t-p@ss") == std::string::npos);
+    // The vault file must not contain the plaintext secret. The stream is
+    // closed before Remove() rewrites the file: Windows will not replace a
+    // file that is still open.
+    {
+        std::ifstream is(vault.VaultPath(), std::ios::binary);
+        std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+        REQUIRE(content.find("s3cr3t-p@ss") == std::string::npos);
+    }
 
     // The 0.1 key file must not be recreated — the key is derived, not stored.
     REQUIRE(!fs::exists(dir / "vault.key"));

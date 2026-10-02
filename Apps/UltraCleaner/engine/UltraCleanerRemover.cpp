@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 std::string UniqueTrashName(const std::string& directory,
                             const std::string& baseName) {
     std::error_code ec;
-    if (!fs::exists(PathFromUtf8(directory) / baseName, ec)) return baseName;
+    if (!fs::exists(PathFromUtf8(directory) / PathFromUtf8(baseName), ec)) return baseName;
 
     const fs::path base(UltraCanvas::PathFromUtf8(baseName));
     const std::string stem = PathToUtf8(base.stem());
@@ -41,7 +41,7 @@ std::string UniqueTrashName(const std::string& directory,
     for (int suffix = 1; suffix < 10000; ++suffix) {
         const std::string candidate =
             stem + "." + std::to_string(suffix) + extension;
-        if (!fs::exists(PathFromUtf8(directory) / candidate, ec)) return candidate;
+        if (!fs::exists(PathFromUtf8(directory) / PathFromUtf8(candidate), ec)) return candidate;
     }
     return baseName + ".overflow";
 }
@@ -131,7 +131,7 @@ bool MoveToXdgTrash(const std::string& path, std::string& error) {
 
     // The info file is written first: a file in files/ without its info is a
     // stray the desktop cannot restore, while the reverse is harmless.
-    std::ofstream info(infoDir / (unique + ".trashinfo"), std::ios::binary);
+    std::ofstream info(infoDir / PathFromUtf8(unique + ".trashinfo"), std::ios::binary);
     if (!info) {
         error = "cannot write the trash info file";
         return false;
@@ -141,9 +141,9 @@ bool MoveToXdgTrash(const std::string& path, std::string& error) {
          << "DeletionDate=" << TrashInfoTimestamp() << "\n";
     info.close();
 
-    if (!MoveDirectoryOrFile(PathFromUtf8(path), filesDir / unique, error)) {
+    if (!MoveDirectoryOrFile(PathFromUtf8(path), filesDir / PathFromUtf8(unique), error)) {
         std::error_code cleanupEc;
-        fs::remove(infoDir / (unique + ".trashinfo"), cleanupEc);
+        fs::remove(infoDir / PathFromUtf8(unique + ".trashinfo"), cleanupEc);
         return false;
     }
     return true;
@@ -161,7 +161,7 @@ bool MoveToMacTrash(const std::string& path, std::string& error) {
     fs::create_directories(PathFromUtf8(trash), ec);
     const std::string baseName = PathToUtf8(PathFromUtf8(path).filename());
     const std::string unique = UniqueTrashName(trash, baseName);
-    return MoveDirectoryOrFile(PathFromUtf8(path), PathFromUtf8(trash) / unique, error);
+    return MoveDirectoryOrFile(PathFromUtf8(path), PathFromUtf8(trash) / PathFromUtf8(unique), error);
 }
 #endif
 

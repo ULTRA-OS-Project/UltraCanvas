@@ -12,8 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.4.0
-// Last Modified: 2026-10-01
+// Version: 0.4.1
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -1979,7 +1979,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
     r = OpenOutput();
     if (r == VideoFXResult::Ok && settings.music.IsSet() && outAudio) {
         musicOn = true;
-        ducker = std::make_unique<MusicDucker>(settings.music.duckingLevel);
+        ducker = std::make_unique<MusicDucker>(settings.music);
         musicFifo.reset(av_audio_fifo_alloc(sampleFmt, channels, 8192));
         r = musicFifo ? OpenMusic() : Fail(VideoFXResult::EncodeError, "Out of memory");
     }

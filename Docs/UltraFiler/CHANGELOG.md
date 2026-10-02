@@ -1,3 +1,12 @@
+#### 2026-10-02 *1.64.1*
+- **Pinning folders and sharing files work for names outside the Windows
+  code page.** Both handed each selected path, a UTF-8 string, straight to
+  `fs::is_directory` / `fs::is_regular_file`, which on Windows reads it in
+  the ANSI code page, so a folder or file named in Thai, Cyrillic or with an
+  emoji was treated as missing and left out. Found by the extended path
+  check (framework changelog), which also fixed the same pattern in the Filer
+  widget's copy, extract and rename-on-collision paths.
+
 #### 2026-10-01 *1.64.0*
 - **Thumbnail tiles that show no picture keep one size.** In a folder whose
   pictures could not be turned into thumbnails, the type icons were drawn

@@ -11,6 +11,7 @@
 #include "IODeviceManager/UltraCanvasIODevicePrinterJobSource.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
@@ -159,7 +160,7 @@ std::string GutenPrintRenderer::PpdPathFor(const std::string& modelUri) const {
     // same printer reuses the file instead of filling the temp directory.
     std::string safeName = NormalizeName(modelUri);
     if (safeName.empty()) safeName = "model";
-    const std::filesystem::path path = directory / (safeName + ".ppd");
+    const std::filesystem::path path = directory / PathFromUtf8(safeName + ".ppd");
 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) return std::string();

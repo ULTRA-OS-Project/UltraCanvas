@@ -253,10 +253,10 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
 
     for (const std::string& directory : BuildDictionarySearchPaths()) {
         std::error_code directoryError;
-        if (!fs::is_directory(directory, directoryError) || directoryError) continue;
+        if (!fs::is_directory(PathFromUtf8(directory), directoryError) || directoryError) continue;
 
         std::error_code iterationError;
-        fs::directory_iterator it(directory, iterationError);
+        fs::directory_iterator it(PathFromUtf8(directory), iterationError);
         if (iterationError) continue;
 
         for (const fs::directory_entry& entry : it) {

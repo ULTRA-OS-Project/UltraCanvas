@@ -722,8 +722,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
-    fs::path path = PathFromUtf8(mailDir_) / env.accountId / SanitizeFolder(env.folder)
-                  / (std::to_string(env.uid) + ".eml");
+    fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
+                  / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.

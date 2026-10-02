@@ -81,7 +81,7 @@ std::string CachedMessagePath(const std::string& mailCacheDir,
                               int64_t uid) {
     if (mailCacheDir.empty() || accountId.empty() || folder.empty() || uid <= 0)
         return "";
-    std::filesystem::path p = PathFromUtf8(mailCacheDir) / accountId / folder;
+    std::filesystem::path p = PathFromUtf8(mailCacheDir) / PathFromUtf8(accountId) / PathFromUtf8(folder);
     p /= (std::to_string(uid) + ".eml");
     return PathToUtf8(p);
 }
