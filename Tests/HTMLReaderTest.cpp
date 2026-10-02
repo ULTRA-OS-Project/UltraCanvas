@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - box-sizing
 // Version: 1.8.0 - borders per side
 // Version: 1.7.0 - border-radius %, <img border>, border currentColor
@@ -725,6 +726,12 @@ static void TestBorderSides() {
     CHECK(!st.borderBoxSizing);                             // content-box by default
     CHECK(styleOf("box-sizing:border-box").borderBoxSizing);
     CHECK(!styleOf("box-sizing:border-box;box-sizing:content-box").borderBoxSizing);
+    st = styleOf("min-width:120px;min-height:2em;max-height:50px");
+    CHECK(st.minWidthPx && *st.minWidthPx == 120.f);
+    CHECK(st.minHeightPx && *st.minHeightPx == 32.f);
+    CHECK(st.maxHeightPx && *st.maxHeightPx == 50.f);
+    st = styleOf("max-height:50px;max-height:none;min-width:10px;min-width:auto;min-height:50%");
+    CHECK(!st.maxHeightPx && !st.minWidthPx && !st.minHeightPx);
 }
 
 int main() {

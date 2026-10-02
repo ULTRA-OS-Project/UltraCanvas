@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.9.0 - min-width, min-height, max-height (px; none / auto reset them)
 // Version: 1.8.0 - box-sizing (content-box / border-box)
 // Version: 1.7.0 - borders per side: border, border-top/-right/-bottom/-left,
 //                  border-width / -style / -color (1-4 values) and the per-side
@@ -806,11 +807,17 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
                 s.backgroundPositions.push_back(*position);
         }
     }
-    else if (prop == "max-width") {
-        s.maxWidthPx.reset();
+    else if (prop == "max-width" || prop == "min-width" ||
+             prop == "max-height" || prop == "min-height") {
+        std::optional<float>& limit = prop == "max-width"  ? s.maxWidthPx
+                                    : prop == "min-width"  ? s.minWidthPx
+                                    : prop == "max-height" ? s.maxHeightPx
+                                                           : s.minHeightPx;
+        // none (max) / auto (min) / a percentage: no limit kept.
+        limit.reset();
         if (auto len = CssLength::Parse(lower)) {
             if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto)
-                s.maxWidthPx = len->ToPx(em, rem);
+                limit = std::max(0.f, len->ToPx(em, rem));
         }
     }
     else if (prop == "font-size") {

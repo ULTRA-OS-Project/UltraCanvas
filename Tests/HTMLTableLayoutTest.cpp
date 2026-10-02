@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - width / height of a block are its content's (box-sizing)
 // Version: 1.8.0 - per-side inline image borders, collapsed table borders, mitred corners
 // Version: 1.7.0 - vertical-align on a shared image line
@@ -748,6 +749,16 @@ void TestBoxSizing() {
     CheckNear(r.width, 200.f, "border-box max-width limits the box");
     r = box("padding:8px;background:#eee");
     CheckNear(r.width, 400.f, "no width: the line's");
+    r = box("min-height:60px;border:1px solid #000");
+    CheckNear(r.height, 62.f, "min-height: the content's, border around it");
+    r = box("max-height:30px;height:80px");
+    CheckNear(r.height, 30.f, "max-height beats height");
+    r = box("min-width:300px;width:100px");
+    CheckNear(r.width, 300.f, "min-width beats width");
+    r = box("min-height:60px;padding:10px;box-sizing:border-box");
+    CheckNear(r.height, 60.f, "border-box min-height: the whole box");
+    r = box("min-height:auto;max-height:none");
+    Check(r.height > 0.f && r.height < 30.f, "auto / none: no limit");
 }
 
 } // namespace

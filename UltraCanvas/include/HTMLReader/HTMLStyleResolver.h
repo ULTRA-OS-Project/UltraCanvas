@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.10.0 - min-width, min-height, max-height
 // Version: 1.9.0 - box-sizing
 // Version: 1.8.0 - borders per side (width, style, colour): BorderSide
 // Version: 1.7.0 - border-radius in percent; <img border>
@@ -144,6 +145,10 @@ struct ComputedStyle {
     // margin-left / margin-right: auto (centring a box with a width).
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;
+    // min-width / min-height / max-height in px (percentages are not kept).
+    std::optional<float> minWidthPx;
+    std::optional<float> minHeightPx;
+    std::optional<float> maxHeightPx;
     // The four borders, each with its own width, style and colour (CSS
     // border, border-top, border-width, border-left-color, ...). A side draws
     // only with a style: Width() is 0 for border-style none, whatever its

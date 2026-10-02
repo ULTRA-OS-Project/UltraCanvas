@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.15.0 - min-width, min-height, max-height (content-box; border-box
+//                   with box-sizing: border-box)
 // Version: 1.14.0 - width / height of a block are its content's (CSS content-box);
 //                   box-sizing: border-box keeps them whole; tables, cells and
 //                   images keep their own sizing
@@ -1429,16 +1431,21 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     if (style.backgroundColor) {
         target.SetBackgroundColor(ToColor(*style.backgroundColor));
     }
-    if (style.maxWidthPx) {
+    // min / max width and height. The engine limits a block's content box,
+    // CSS's content-box; with box-sizing: border-box a limit is the whole
+    // box's, so padding and border come off it.
+    if (style.maxWidthPx || style.minWidthPx || style.maxHeightPx || style.minHeightPx) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
-        // The engine limits the content's width (content-box); with
-        // box-sizing: border-box the limit is the whole box's.
-        float maxContent = *style.maxWidthPx;
-        if (style.borderBoxSizing && !borderBoxSizes) {
-            maxContent -= style.paddingLeft + style.paddingRight + foldLeft + foldRight +
-                          style.BorderHorizontal();
-        }
-        limits.maxWidth = Dimension::Px(std::max(0.f, maxContent));
+        const bool wholeBox = style.borderBoxSizing && !borderBoxSizes;
+        const float offW = wholeBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
+                                      style.BorderHorizontal() : 0.f;
+        const float offH = wholeBox ? style.paddingTop + style.paddingBottom + style.BorderVertical()
+                                    : 0.f;
+        auto px = [](float v, float off) { return Dimension::Px(std::max(0.f, v - off)); };
+        if (style.maxWidthPx)  limits.maxWidth  = px(*style.maxWidthPx, offW);
+        if (style.minWidthPx)  limits.minWidth  = px(*style.minWidthPx, offW);
+        if (style.maxHeightPx) limits.maxHeight = px(*style.maxHeightPx, offH);
+        if (style.minHeightPx) limits.minHeight = px(*style.minHeightPx, offH);
         target.boxConstraints = limits;
     }
     ApplyBorders(target, style);
