@@ -361,13 +361,17 @@ DiscoveryResult AutoDiscovery::GuessForDomain(const std::string& email) {
 
 std::string AutoDiscovery::ImapServerUrl(const MailServerSettings& imap) {
     if (!imap.Valid()) return "";
-    std::string scheme = imap.security == MailSecurity::SslTls ? "imaps" : "imap";
+    // Reconcile against the port so imaps:// (implicit TLS) is never used on a
+    // STARTTLS port; ApplyConnection derives implicitTls the same way.
+    std::string scheme =
+        EffectiveSecurity(imap.port, imap.security) == MailSecurity::SslTls ? "imaps" : "imap";
     return scheme + "://" + imap.host + ":" + PortStr(imap.port) + "/";
 }
 
 std::string AutoDiscovery::SmtpServerUrl(const MailServerSettings& smtp) {
     if (!smtp.Valid()) return "";
-    std::string scheme = smtp.security == MailSecurity::SslTls ? "smtps" : "smtp";
+    std::string scheme =
+        EffectiveSecurity(smtp.port, smtp.security) == MailSecurity::SslTls ? "smtps" : "smtp";
     return scheme + "://" + smtp.host + ":" + PortStr(smtp.port) + "/";
 }
 
