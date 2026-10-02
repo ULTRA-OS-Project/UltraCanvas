@@ -171,6 +171,22 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# macOS: record only the dylibs a binary actually takes a symbol from. On
+# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
+# so every application's link line carries the core's whole PUBLIC dependency
+# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
+# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
+# command for each one whether the program uses it or not. package-macos.sh
+# then copies every one of them, with its own dependencies, into each .app's
+# Frameworks/, six bundles over. With this flag an app that never reaches the
+# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
+# that supplied no symbol at link time are dropped, so nothing an app calls
+# can go missing; it would only matter for a library needed purely for a side
+# effect of its initializer, and none of the Homebrew dependencies is that.
+if(APPLE)
+    add_link_options(LINKER:-dead_strip_dylibs)
+endif()
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

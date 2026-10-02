@@ -840,3 +840,28 @@ ls -1 "$OUTPUT_DIR/" | while read -r item; do
         echo "    $item ($(du -sh "$OUTPUT_DIR/$item" | cut -f1))"
     fi
 done
+
+# Per-bundle breakdown: how much of each bundle is bundled libraries. Every
+# .app carries its own Frameworks/, so this is where the macOS download's size
+# goes; written to the job summary too when run in GitHub Actions, so a change
+# to what the apps link shows up as a number on the run page.
+echo ""
+echo "  Bundled libraries per bundle:"
+SIZE_TABLE="| Bundle | Total | Frameworks | dylibs |"$'\n'"|---|---:|---:|---:|"
+for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
+    [ -d "$item" ] || continue
+    fw_dir="$item/Contents/Frameworks"
+    [ -d "$fw_dir" ] || fw_dir="$item/Frameworks"
+    total=$(du -sh "$item" | cut -f1)
+    fw_size=$(du -sh "$fw_dir" 2>/dev/null | cut -f1)
+    fw_count=$(find "$fw_dir" -name '*.dylib' 2>/dev/null | wc -l | tr -d ' ')
+    echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count |"
+done
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+        echo "### macOS bundle sizes ($(uname -m))"
+        echo ""
+        echo "$SIZE_TABLE"
+    } >> "$GITHUB_STEP_SUMMARY"
+fi
