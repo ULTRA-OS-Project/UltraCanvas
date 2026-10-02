@@ -349,7 +349,7 @@ IngestStats Ingestor::IngestMailCache(const std::string& mailCacheDir,
                                       const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    const std::filesystem::path root = PathFromUtf8(mailCacheDir) / accountId;
+    const std::filesystem::path root = PathFromUtf8(mailCacheDir) / PathFromUtf8(accountId);
     if (!std::filesystem::is_directory(root, ec)) return stats;
 
     std::vector<std::filesystem::path> folders;

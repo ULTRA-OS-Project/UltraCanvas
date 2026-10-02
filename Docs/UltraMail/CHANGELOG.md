@@ -1,3 +1,18 @@
+#### 2026-10-02 *0.10.18*
+- **Mail in folders with non-English names is found on Windows.** Message
+  bodies are cached as `mail/<account>/<folder>/<uid>.eml`, and the account
+  and folder were joined onto that path as plain strings - which Windows
+  converts in its ANSI code page. A folder such as "Entwürfe" or "Корзина"
+  was cached under a mangled name. UltraMail read it back the same way, so
+  it went unnoticed, but EmailCleaner, which reads the cache as UTF-8,
+  never found that mail. The cache path, the preview's read and the
+  removal of an account's mail now pass every part through `PathFromUtf8`.
+  Bodies already cached under a mangled name are fetched again.
+  - New test `cached_body_path_keeps_a_non_ascii_folder_name`. UltraMail's
+    engine tests now run on Windows CI, where two tests failed because they
+    still had a file open while it was replaced or deleted; they close it
+    first.
+
 #### 2026-10-02 *0.10.17*
 - **Pictures in newsletters built from mail templates are shown.** Mail whose
   images carry `height="auto"` (Kickstarter's, and most Beefree / Braze

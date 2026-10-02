@@ -355,6 +355,21 @@ TEST(sync_messages_is_incremental) {
     REQUIRE_EQ(msgs.size(), (size_t)4);
 }
 
+TEST(cached_body_path_keeps_a_non_ascii_folder_name) {
+    // IMAP folder names are often outside the ANSI code page ("Entw\xc3\xbcrfe",
+    // "\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0"). Joined onto the path as a
+    // bare std::string, Windows converted them in that code page and the body
+    // was cached under a mangled folder - one EmailCleaner, reading the same
+    // cache as UTF-8, never found. Every part must go through PathFromUtf8.
+    for (const std::string folder : { std::string("Entw\xc3\xbcrfe"),
+                                      std::string("\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0") }) {
+        const std::string expected = UltraCanvas::PathToUtf8(
+            UltraCanvas::PathFromUtf8("cache") / UltraCanvas::PathFromUtf8("erika-\xc3\xb6") /
+            UltraCanvas::PathFromUtf8(folder) / "7.eml");
+        REQUIRE_EQ(CachedBodyPath("cache", "erika-\xc3\xb6", folder, 7), expected);
+    }
+}
+
 TEST(fetch_bodies_writes_parseable_eml) {
     Fixture fx("bodies");
     SyncEngine engine(fx.store, fx.fake, fx.emlDir);
