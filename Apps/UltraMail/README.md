@@ -97,7 +97,9 @@ Apps/UltraMail/
                                   until sent, then deleted, and a copy in the
                                   Sent folder once sent (ServerCopies; none
                                   where the server files sent mail itself);
-                                  DeleteMessage, held messages (being
+                                  DeleteMessage (a copy the server cannot be
+                                  reached for is deleted by a later pass:
+                                  withdrawn messages), held messages (being
                                   corrected); OutboxRetryClock: automatic
                                   retry timing
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over

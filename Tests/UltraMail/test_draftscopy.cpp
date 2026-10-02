@@ -68,6 +68,8 @@ public:
                                   std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
+        if (unreachable)
+            return UltraNetResult::Error(UltraNetResultCode::ConnectionRefused, "offline");
         for (const auto& m : messages) {
             if (m.folder != folder) continue;
             UltraNetMailEnvelope e;
@@ -100,7 +102,14 @@ public:
         messages.push_back({static_cast<uint32_t>(messages.size() + 1), folder, raw, false, flags});
         return UltraNetResult::Ok();
     }
+    UltraNetResult ExpungeMessage(const std::string&, const std::string& folder, uint32_t uid,
+                                  const UltraNetMailOptions&) override {
+        expunged.push_back(folder + "/" + std::to_string(uid));
+        return UltraNetResult::Ok();
+    }
     bool otherTouched = false;
+    bool unreachable = false;            // FetchEnvelopes fails (offline)
+    std::vector<std::string> expunged;   // "folder/uid" per UID EXPUNGE
 
     static std::string Header(const std::string& raw, const std::string& name) {
         const std::string key = "\r\n" + name + ": ";
@@ -336,5 +345,62 @@ TEST(a_waiting_message_can_be_deleted_with_its_drafts_copy) {
     REQUIRE_EQ(items[0].id, keep);
     REQUIRE(!imap.messages[0].deleted);   // the other message's copy stays
     REQUIRE(imap.messages[1].deleted);
-    REQUIRE(outbox.DeleteMessage(drop, &keeper).success);   // already gone: fine
+    // Expunged too - that message only - so no client still shows it.
+    REQUIRE_EQ(imap.expunged.size(), std::size_t(1));
+    REQUIRE_EQ(imap.expunged[0], std::string("Drafts/2"));
+    Outbox::DeleteOutcome outcome = Outbox::DeleteOutcome::Deleted;
+    REQUIRE(outbox.DeleteMessage(drop, &keeper, &outcome).success);   // already gone: fine
+    REQUIRE(outcome == Outbox::DeleteOutcome::AlreadyGone);
+}
+
+TEST(a_copy_that_cannot_be_deleted_now_is_deleted_by_a_later_pass) {
+    OutboxStore store;
+    REQUIRE(store.Open("outbox-withdrawn", ":memory:").success);
+    int64_t keep = 0, drop = 0;
+    REQUIRE(store.Enqueue("erika", "smtp://x/", Reply(), keep).success);
+    REQUIRE(store.Enqueue("erika", "smtp://x/", Reply(), drop).success);
+    Imap imap;
+    const ServerCopies keeper = Keeper(imap);
+    Outbox outbox(store);
+    REQUIRE_EQ(outbox.SaveDraftCopies(keeper).draftsSaved, 2);
+
+    // Deleted while the server cannot be reached (offline, or the vault
+    // locked): out of the outbox at once, its copy still in Drafts.
+    imap.unreachable = true;
+    Outbox::DeleteOutcome outcome = Outbox::DeleteOutcome::Deleted;
+    REQUIRE(outbox.DeleteMessage(drop, &keeper, &outcome).success);
+    REQUIRE(outcome == Outbox::DeleteOutcome::CopyLeftForLater);
+    REQUIRE_EQ(Pending(store), 1);
+    int withdrawn = 0;
+    store.WithdrawnCount(withdrawn);
+    REQUIRE_EQ(withdrawn, 1);
+    REQUIRE(!imap.messages[1].deleted);
+
+    // A pass never sends it ...
+    Smtp smtp;
+    smtp.succeed = false;
+    outbox.Flush(smtp, Outbox::OptionsResolver{}, &keeper);
+    REQUIRE_EQ(smtp.sends, 1);   // the other message only
+    store.WithdrawnCount(withdrawn);
+    REQUIRE_EQ(withdrawn, 1);    // still offline: the copy waits
+
+    // ... and the first one that reaches the server deletes the copy.
+    imap.unreachable = false;
+    smtp.sends = 0;
+    outbox.Flush(smtp, Outbox::OptionsResolver{}, &keeper);
+    REQUIRE_EQ(smtp.sends, 1);
+    REQUIRE(imap.messages[1].deleted);
+    REQUIRE(!imap.messages[0].deleted);
+    store.WithdrawnCount(withdrawn);
+    REQUIRE_EQ(withdrawn, 0);
+    REQUIRE_EQ(Pending(store), 1);
+
+    // Without a server copy (none saved, no IMAP), Delete is immediate.
+    int64_t plain = 0;
+    REQUIRE(store.Enqueue("erika", "smtp://x/", Reply(), plain).success);
+    REQUIRE(outbox.DeleteMessage(plain, nullptr, &outcome).success);
+    REQUIRE(outcome == Outbox::DeleteOutcome::Deleted);
+    REQUIRE_EQ(Pending(store), 1);
+    store.WithdrawnCount(withdrawn);
+    REQUIRE_EQ(withdrawn, 0);
 }

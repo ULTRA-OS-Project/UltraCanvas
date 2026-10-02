@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
+//                   send instead of refusing; a Drafts copy that cannot be
+//                   deleted now is deleted by a later pass
 // Version: 0.9.15 - the Outbox window: the waiting messages with Send now,
 //                   Edit and Delete (toolbar "Outbox (N)"); a sent message
 //                   is filed in the Sent folder; outbox work runs in one queue
@@ -238,7 +241,9 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // Messages left in the outbox by an earlier run go out by themselves,
     // shortly after start (once the window is up and the network had a moment).
     StartOutboxRetryTimer();
-    if (OutboxPending() > 0) outboxRetry_.RetryAt(NowMonotonicSec() + 20);
+    // (and Drafts copies of deleted messages still to be removed)
+    if (OutboxPending() > 0 || OutboxWithdrawn() > 0)
+        outboxRetry_.RetryAt(NowMonotonicSec() + 20);
     RefreshOutbox();
 
     // Migration: an existing vault made with a master password (before device
@@ -1299,7 +1304,7 @@ bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId)
     // A corrected message replaces the one it was made from: that one goes
     // (with its Drafts copy) before the pass below can pick it up - it is
     // held until then.
-    if (replacesOutboxId != 0) DeleteFromOutbox(replacesOutboxId);
+    if (replacesOutboxId != 0) DeleteFromOutbox(replacesOutboxId, /*quiet=*/true);
     RefreshOutbox();
 
     // Remember the people we write to.
@@ -1361,6 +1366,14 @@ void UltraMailApp::ReportNotSent(const std::string& fromAddr, const std::string&
     // the outbox holds them.
     std::vector<OutboxItem> pending;
     outbox_.ListPending(pending);
+    // A message the user is deleting (queued behind this pass) is not one
+    // to warn about; with nothing else left, there is nothing to say.
+    pending.erase(std::remove_if(pending.begin(), pending.end(),
+                                 [this](const OutboxItem& item) {
+                                     return outboxDeleting_.count(item.id) != 0;
+                                 }),
+                  pending.end());
+    if (pending.empty()) return;
     bool allInDrafts = !pending.empty();
     for (const auto& item : pending) if (!item.HasDraftCopy()) allInDrafts = false;
 
@@ -1399,10 +1412,19 @@ int UltraMailApp::OutboxPending() const {
     return n;
 }
 
+int UltraMailApp::OutboxWithdrawn() const {
+    int n = 0;
+    if (outbox_.IsOpen()) outbox_.WithdrawnCount(n);
+    return n;
+}
+
 void UltraMailApp::NoteOutboxPass() {
-    // A message held for correcting is not one the pass failed to send.
-    if (OutboxPending() - outbox_.HeldCount() <= 0) outboxRetry_.Succeeded();
-    else outboxRetry_.Failed(NowMonotonicSec());
+    // A message held for correcting is not one the pass failed to send; a
+    // deleted message's Drafts copy still on the server is work left over.
+    if (OutboxPending() - outbox_.HeldCount() <= 0 && OutboxWithdrawn() == 0)
+        outboxRetry_.Succeeded();
+    else
+        outboxRetry_.Failed(NowMonotonicSec());
 }
 
 void UltraMailApp::StartOutboxRetryTimer() {
@@ -1422,7 +1444,12 @@ void UltraMailApp::AutoRetryOutbox() {
     if (outboxFlushInFlight_ || !vault_.IsUnlocked()) return;
     std::vector<OutboxItem> pending;
     outbox_.ListPending(pending);
-    if (pending.empty()) { outboxRetry_.Succeeded(); return; }
+    if (pending.empty()) {
+        if (OutboxWithdrawn() == 0) { outboxRetry_.Succeeded(); return; }
+        // Only Drafts copies of deleted messages to remove: no send.
+        FlushOutboxInBackground(nullptr, [this](const Outbox::FlushStats&) { NoteOutboxPass(); });
+        return;
+    }
 
     const std::string from = pending.front().draft.fromAddr;
     DiscoveryResult disc = SettingsForEmail(from);
@@ -1541,7 +1568,13 @@ void UltraMailApp::RunOutboxJob(OutboxJob job, const std::string& status,
                 PendingOutboxJob next = std::move(pendingOutboxJobs_.front());
                 pendingOutboxJobs_.erase(pendingOutboxJobs_.begin());
                 RunOutboxJob(std::move(next.job), next.status, std::move(next.onDone));
+                return;
             }
+            // The queue is empty: what waited for it (Edit) runs now.
+            std::vector<std::function<void()>> waiting;
+            waiting.swap(whenOutboxIdle_);
+            if (outboxWindow_) outboxView_.SetNote("");
+            for (auto& action : waiting) action();
         });
     }).detach();
 }
@@ -2252,31 +2285,54 @@ void UltraMailApp::ConfirmDeleteFromOutbox(int64_t id) {
         [this, id](bool confirmed) {
             if (!confirmed) return;
             // The Drafts copy is deleted on the server: that needs the sign-in.
-            EnsureVaultUnlocked([this, id]() { DeleteFromOutbox(id); });
+            // Queued behind a send that is running now: it may be sending
+            // this very message, and says so if it did.
+            EnsureVaultUnlocked([this, id]() { DeleteFromOutbox(id, /*quiet=*/false); });
         },
         outboxWindow_ ? outboxWindow_.get()
                       : (window_ ? static_cast<UltraCanvas::UltraCanvasWindowBase*>(window_.get())
                                  : nullptr));
 }
 
-void UltraMailApp::DeleteFromOutbox(int64_t id) {
+void UltraMailApp::DeleteFromOutbox(int64_t id, bool quiet) {
     auto result = std::make_shared<UltraDbResult>(UltraDbResult::Ok());
+    auto outcome = std::make_shared<Outbox::DeleteOutcome>(Outbox::DeleteOutcome::Deleted);
+    outboxDeleting_.insert(id);
     RunOutboxJob(
-        [id, result](Outbox& ob, const ServerCopies* copies) {
-            *result = ob.DeleteMessage(id, copies);
+        [id, result, outcome](Outbox& ob, const ServerCopies* copies) {
+            *result = ob.DeleteMessage(id, copies, outcome.get());
         },
         "Deleting from the outbox…",
-        [this, id, result]() {
+        [this, id, quiet, result, outcome]() {
             outbox_.SetHeld(id, false);
+            outboxDeleting_.erase(id);
+            UltraCanvas::UltraCanvasWindowBase* parent =
+                outboxWindow_ ? outboxWindow_.get() : (window_ ? window_.get() : nullptr);
             if (!*result) {
-                AlertError(outboxWindow_ ? outboxWindow_.get() : window_.get(),
-                           "The message could not be deleted from the outbox.",
+                AlertError(parent, "The message could not be deleted from the outbox.",
                            DetailLine(*result));
                 return;
             }
-            // Nothing left to try again: the automatic retries end.
-            if (OutboxPending() == 0) outboxRetry_.Succeeded();
+            // Nothing left to do: the automatic retries end. A Drafts copy
+            // still on the server: a pass comes back for it.
+            if (OutboxPending() - outbox_.HeldCount() <= 0 && OutboxWithdrawn() == 0)
+                outboxRetry_.Succeeded();
+            else if (!outboxRetry_.Scheduled())
+                outboxRetry_.Failed(NowMonotonicSec());
+            if (quiet) return;
+            if (*outcome == Outbox::DeleteOutcome::AlreadyGone)
+                AlertSuccess(parent, "This message had been sent before it could be deleted.");
+            else if (*outcome == Outbox::DeleteOutcome::CopyLeftForLater)
+                AlertSuccess(parent, "The message was deleted from the outbox and will not be sent.",
+                             "Its copy in the Drafts folder could not be deleted yet - the "
+                             "server could not be reached. UltraMail deletes it the next time "
+                             "it does.");
         });
+}
+
+void UltraMailApp::WhenOutboxIdle(std::function<void()> action) {
+    if (!outboxFlushInFlight_) { action(); return; }
+    whenOutboxIdle_.push_back(std::move(action));
 }
 
 void UltraMailApp::EditFromOutbox(int64_t id) {
@@ -2289,8 +2345,12 @@ void UltraMailApp::EditFromOutbox(int64_t id) {
     UltraCanvas::UltraCanvasWindowBase* parent =
         outboxWindow_ ? outboxWindow_.get() : (window_ ? window_.get() : nullptr);
     if (outboxFlushInFlight_) {
-        AlertWarning(parent, "The outbox is sending right now.",
-                     "Wait until it has finished - it may be sending this very message.");
+        // A send is running, maybe of this very message: the window opens
+        // once it has finished (or says the message has gone out).
+        if (outboxWindow_)
+            outboxView_.SetNote("The message opens for correcting once the current attempt "
+                                "to send has finished.");
+        WhenOutboxIdle([this, id]() { EditFromOutbox(id); });
         return;
     }
     std::vector<OutboxItem> pending;

@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
+// Version: 0.7.0 - withdrawn messages (migration 4): a deleted or replaced
+//                  message whose Drafts copy is not deleted yet; the copy
+//                  is expunged (UID EXPUNGE) once flagged \Deleted
 // Version: 0.6.0 - the Sent copy, DeleteMessage, ServerFilesSentMail, held
 //                  messages; a message is sent with the Message-ID its
 //                  copies carry
@@ -161,6 +164,11 @@ UltraDbResult OutboxStore::Open(const std::string& connectionName,
           "ALTER TABLE outbox ADD COLUMN drafts_folder TEXT DEFAULT '';"
           "ALTER TABLE outbox ADD COLUMN in_reply_to TEXT DEFAULT '';"
           "ALTER TABLE outbox ADD COLUMN refs TEXT DEFAULT '';" },
+        // A message deleted from the outbox (or replaced by a corrected one)
+        // whose Drafts copy could not be deleted yet: never sent, kept only
+        // until a later pass reaches the server and deletes the copy.
+        { 4, "withdrawn messages",
+          "ALTER TABLE outbox ADD COLUMN withdrawn INTEGER DEFAULT 0;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -219,13 +227,21 @@ UltraDbResult OutboxStore::LoadAttachments(OutboxItem& item) const {
 }
 
 UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
+    return List(out, /*withdrawn=*/false);
+}
+
+UltraDbResult OutboxStore::ListWithdrawn(std::vector<OutboxItem>& out) const {
+    return List(out, /*withdrawn=*/true);
+}
+
+UltraDbResult OutboxStore::List(std::vector<OutboxItem>& out, bool withdrawn) const {
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
         "SELECT id, account_id, server_url, from_name, from_addr, to_addrs, cc_addrs, "
         "bcc_addrs, subject, body, body_is_html, text_body, attempts, last_error, "
         "message_id, drafts_folder, in_reply_to, refs "
-        "FROM outbox ORDER BY id", rs);
+        "FROM outbox WHERE withdrawn = ? ORDER BY id", { withdrawn ? 1 : 0 }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
         OutboxItem it;
@@ -248,8 +264,11 @@ UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
         it.messageId    = row["message_id"].AsString();
         it.draft.messageId = it.messageId;   // sent with the ID its copies carry
         it.draftsFolder = row["drafts_folder"].AsString();
-        UltraDbResult ar = LoadAttachments(it);
-        if (!ar) return ar;
+        it.withdrawn    = withdrawn;
+        if (!withdrawn) {   // a withdrawn message is never sent: no parts needed
+            UltraDbResult ar = LoadAttachments(it);
+            if (!ar) return ar;
+        }
         out.push_back(std::move(it));
     }
     return UltraDbResult::Ok();
@@ -280,10 +299,23 @@ UltraDbResult OutboxStore::MarkDraftSaved(int64_t id, const std::string& folder)
                         { folder, id });
 }
 
+UltraDbResult OutboxStore::MarkWithdrawn(int64_t id) {
+    return UltraDb_Exec(connection_, "UPDATE outbox SET withdrawn = 1 WHERE id = ?", { id });
+}
+
 UltraDbResult OutboxStore::PendingCount(int& out) const {
+    return Count(out, /*withdrawn=*/false);
+}
+
+UltraDbResult OutboxStore::WithdrawnCount(int& out) const {
+    return Count(out, /*withdrawn=*/true);
+}
+
+UltraDbResult OutboxStore::Count(int& out, bool withdrawn) const {
     out = 0;
     UltraDbResultSet rs;
-    UltraDbResult q = UltraDb_Query(connection_, "SELECT COUNT(*) AS n FROM outbox", rs);
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT COUNT(*) AS n FROM outbox WHERE withdrawn = ?", { withdrawn ? 1 : 0 }, rs);
     if (!q) return q;
     if (!rs.Empty()) out = rs.Row(0)["n"].AsInt();
     return UltraDbResult::Ok();
@@ -344,8 +376,9 @@ bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushSt
     return true;
 }
 
-void Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
-    if (!item.HasDraftCopy() || !copies.imap || !copies.prepare) return;
+bool Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
+    if (!item.HasDraftCopy()) return true;
+    if (!copies.imap || !copies.prepare) return false;
     ServerFolders where;
     UltraNetResult r = copies.prepare(item.accountId, where);
     std::vector<UltraNetMailEnvelope> envelopes;
@@ -354,8 +387,10 @@ void Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies,
     if (!r) {
         stats.draftFailures++;
         stats.lastDraftFailure = r;
-        return;
+        return false;
     }
+    // No copy there any more (deleted by hand, or on another device) is fine.
+    bool removed = true;
     const std::string wanted = BareMessageId(item.messageId);
     for (const auto& e : envelopes) {
         if (BareMessageId(e.messageId) != wanted) continue;
@@ -364,8 +399,27 @@ void Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies,
         if (!del) {
             stats.draftFailures++;
             stats.lastDraftFailure = del;
+            removed = false;
+            continue;
         }
+        // Gone for good, not left flagged for a client that shows deleted
+        // messages. Just this one: a server without UIDPLUS refuses, and the
+        // copy stays flagged \Deleted - which is still deleted.
+        copies.imap->ExpungeMessage(where.serverUrl, item.draftsFolder, e.uid, where.options);
     }
+    return removed;
+}
+
+int Outbox::RemoveWithdrawnCopies(const ServerCopies& copies, FlushStats& stats) {
+    std::vector<OutboxItem> withdrawn;
+    if (!store_.ListWithdrawn(withdrawn)) return 0;
+    int done = 0;
+    for (const auto& item : withdrawn) {
+        if (!RemoveDraftCopy(item, copies, stats)) continue;   // next pass
+        store_.Remove(item.id);
+        ++done;
+    }
+    return done;
 }
 
 void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
@@ -386,22 +440,35 @@ void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, Fl
 
 Outbox::FlushStats Outbox::SaveDraftCopies(const ServerCopies& copies) {
     FlushStats stats;
+    RemoveWithdrawnCopies(copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
     for (auto& item : pending) SaveDraftCopy(item, copies, stats);
     return stats;
 }
 
-UltraDbResult Outbox::DeleteMessage(int64_t id, const ServerCopies* copies) {
+UltraDbResult Outbox::DeleteMessage(int64_t id, const ServerCopies* copies,
+                                    DeleteOutcome* outcome) {
+    if (outcome) *outcome = DeleteOutcome::AlreadyGone;
     std::vector<OutboxItem> pending;
     if (UltraDbResult r = store_.ListPending(pending); !r) return r;
     for (const auto& item : pending) {
         if (item.id != id) continue;
-        if (copies) {
-            FlushStats ignored;   // a copy left in Drafts can be deleted there
-            RemoveDraftCopy(item, *copies, ignored);
+        // Withdrawn first: from here on it is never sent, whatever happens
+        // to its copy.
+        if (UltraDbResult w = store_.MarkWithdrawn(id); !w) return w;
+        FlushStats ignored;
+        if (copies && RemoveDraftCopy(item, *copies, ignored)) {
+            if (outcome) *outcome = DeleteOutcome::Deleted;
+            return store_.Remove(id);
         }
-        return store_.Remove(id);
+        if (!item.HasDraftCopy()) {   // nothing on the server to wait for
+            if (outcome) *outcome = DeleteOutcome::Deleted;
+            return store_.Remove(id);
+        }
+        // The server cannot be reached now: a later pass deletes the copy.
+        if (outcome) *outcome = DeleteOutcome::CopyLeftForLater;
+        return UltraDbResult::Ok();
     }
     return UltraDbResult::Ok();   // already gone (sent meanwhile)
 }
@@ -409,6 +476,7 @@ UltraDbResult Outbox::DeleteMessage(int64_t id, const ServerCopies* copies) {
 Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
                                  const ServerCopies* copies) {
     FlushStats stats;
+    if (copies) RemoveWithdrawnCopies(*copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
     MailSender sender(smtp);

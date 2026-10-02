@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOutboxView.cpp
+// Version: 0.2.0 - SetNote; Edit and Delete while a send runs
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOutboxView.h"
@@ -82,7 +83,7 @@ std::shared_ptr<UltraCanvasContainer> OutboxView::Build() {
     list_->onSelectionChanged = [this](const std::vector<int>&) { UpdateButtons(); };
     // Double-click: open it to correct it (Edit).
     list_->onItemDoubleClicked = [this](int) {
-        if (const int64_t id = SelectedId(); id && !sending_ && onEdit) onEdit(id);
+        if (const int64_t id = SelectedId(); id && onEdit) onEdit(id);
     };
     // The whole error, which the column may cut short.
     list_->tooltipProvider = [this](int row, int) -> std::string {
@@ -174,16 +175,26 @@ void OutboxView::SetItems(const std::vector<OutboxItem>& items, bool sending,
     else if (!items_.empty()) list_->GetSelection()->Select(0);
     list_->RequestRedraw();
 
-    if (summary_) {
-        const size_t n = items_.size();
-        summary_->SetText(n == 0
-            ? std::string("The outbox is empty: every message has been sent.")
-            : (n == 1 ? std::string("1 message is") : std::to_string(n) + " messages are")
-              + " waiting to be sent. UltraMail tries again by itself - sooner when the "
-                "connection is back. A message the server keeps refusing can be "
-                "corrected (Edit) or deleted here.");
-    }
+    UpdateSummary();
     UpdateButtons();
+}
+
+void OutboxView::SetNote(const std::string& note) {
+    note_ = note;
+    UpdateSummary();
+}
+
+void OutboxView::UpdateSummary() {
+    if (!summary_) return;
+    const size_t n = items_.size();
+    std::string text = n == 0
+        ? std::string("Nothing is waiting to be sent.")
+        : (n == 1 ? std::string("1 message is") : std::to_string(n) + " messages are")
+          + " waiting to be sent. UltraMail tries again by itself - sooner when the "
+            "connection is back. A message the server keeps refusing can be "
+            "corrected (Edit) or deleted here.";
+    if (!note_.empty()) text += " " + note_;
+    summary_->SetText(text);
 }
 
 int64_t OutboxView::SelectedId() const {
@@ -196,8 +207,9 @@ int64_t OutboxView::SelectedId() const {
 void OutboxView::UpdateButtons() {
     const bool any = SelectedId() != 0;
     if (sendNow_) sendNow_->SetDisabled(items_.empty() || sending_);
-    if (edit_)    edit_->SetDisabled(!any || sending_);
-    if (delete_)  delete_->SetDisabled(!any || sending_);
+    // Not while sending: the app runs them once the send has finished.
+    if (edit_)    edit_->SetDisabled(!any);
+    if (delete_)  delete_->SetDisabled(!any);
 }
 
 } // namespace UltraMail

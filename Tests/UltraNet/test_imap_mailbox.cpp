@@ -56,6 +56,10 @@ TEST(imap_search_by_message_id_quotes_the_id) {
                std::string("UID SEARCH HEADER Message-ID \"<a\\\"b\\\\c@x>\""));
 }
 
+TEST(imap_uid_expunge_names_one_message) {
+    REQUIRE_EQ(UidExpungeCommand(42), std::string("UID EXPUNGE 42"));
+}
+
 TEST(imap_flag_roundtrip) {
     UltraNetMailFlags f = UltraNetMailFlags::Seen | UltraNetMailFlags::Answered;
     std::string s = FlagsToImapString(f);

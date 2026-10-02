@@ -4,6 +4,7 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.3.0 - UidExpungeCommand
 // Version: 0.2.0 - RawHeaderValue, SearchByMessageIdCommand (APPEND's flags)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -102,6 +103,12 @@ inline std::string SearchByMessageIdCommand(const std::string& messageId) {
         if (c != '\r' && c != '\n') quoted += c;
     }
     return "UID SEARCH HEADER Message-ID \"" + quoted + "\"";
+}
+
+// "UID EXPUNGE <uid>" (RFC 4315): removes that one message, if it is flagged
+// \Deleted - a plain EXPUNGE would remove every message flagged so.
+inline std::string UidExpungeCommand(uint32_t uid) {
+    return "UID EXPUNGE " + std::to_string(uid);
 }
 
 // ---- flags <-> IMAP tokens -------------------------------------------------

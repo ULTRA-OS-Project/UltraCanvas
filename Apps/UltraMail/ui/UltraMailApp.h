@@ -3,6 +3,7 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.10.1 - Edit / Delete wait for a running send (WhenOutboxIdle)
 // Version: 0.10.0 - the Outbox window (OpenOutbox), outbox work in one queue
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
@@ -309,7 +310,11 @@ private:
     void RefreshOutbox();
     // Delete asks first; the message and its Drafts copy go on a worker.
     void ConfirmDeleteFromOutbox(int64_t id);
-    void DeleteFromOutbox(int64_t id);
+    // `quiet`: no word on the outcome (Edit's replacement). A Drafts copy the
+    // server cannot be reached for now is deleted by a later pass.
+    void DeleteFromOutbox(int64_t id, bool quiet);
+    // Runs `action` once no outbox job runs or waits (now, when idle).
+    void WhenOutboxIdle(std::function<void()> action);
     // A waiting message in a compose window, to correct and send again.
     void EditFromOutbox(int64_t id);
     // Send what waits in the outbox (the Retry button's action), opening the
@@ -339,6 +344,8 @@ private:
     // when nothing waits any more.
     void NoteOutboxPass();
     int OutboxPending() const;
+    // Deleted messages whose Drafts copies are still to be removed.
+    int OutboxWithdrawn() const;
     // The IMAP side of the server copies for a send worker: the IMAP plug-in
     // (null without it) and, from a snapshot of the accounts taken here on the
     // UI thread, each account's server, Drafts and Sent folders and sign-in.
@@ -455,6 +462,11 @@ private:
         std::function<void()> onDone;
     };
     std::vector<PendingOutboxJob> pendingOutboxJobs_;
+    // Messages a queued DeleteFromOutbox will delete: a pass that fails to
+    // send one of them does not warn about it.
+    std::set<int64_t> outboxDeleting_;
+    // Run once the queue is empty (WhenOutboxIdle).
+    std::vector<std::function<void()>> whenOutboxIdle_;
 
     // App-wide view preferences (reading pane on/off), remembered between runs
     // in preferences.ini under the data directory.

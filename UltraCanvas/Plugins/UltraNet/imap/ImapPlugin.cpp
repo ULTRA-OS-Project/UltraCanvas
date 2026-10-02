@@ -1,4 +1,5 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.4.0 - ExpungeMessage (UID EXPUNGE)
 // Version: 0.3.0 - AppendMessage sets the flags it is given (found again by
 //                  Message-ID, then UID STORE)
 // Version: 0.2.0
@@ -417,6 +418,18 @@ public:
         cmd << "UID STORE " << uid << ' ' << (set ? '+' : '-') << "FLAGS (" << tokens << ')';
         std::string body;
         return RunCommand(base + EncodeMailboxPath(folder), cmd.str(), options, tls, body);
+    }
+
+    UltraNetResult ExpungeMessage(const std::string& serverUrl,
+                                  const std::string& folder,
+                                  uint32_t uid,
+                                  const UltraNetMailOptions& options) override {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        std::string body;
+        return RunCommand(base + EncodeMailboxPath(folder), UidExpungeCommand(uid), options, tls,
+                          body);
     }
 
     UltraNetResult MoveMessage(const std::string& serverUrl,

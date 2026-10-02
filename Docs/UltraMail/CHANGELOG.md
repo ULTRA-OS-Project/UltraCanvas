@@ -11,8 +11,22 @@
   sent. Closing the window without sending lets the old version go out as
   it was. *Delete* asks first, then takes the message out of the outbox for
   good and deletes its Drafts copy - so a message that can never be sent is
-  no longer tried every 30 minutes for ever. Edit and Delete wait while a
-  pass is sending.
+  no longer tried every 30 minutes for ever.
+- **Edit and Delete work while a message is being sent.** They used to be
+  greyed out until the attempt was over. Now *Delete* is carried out right
+  after it (and says so if the message went out meanwhile), and *Edit*
+  opens the message as soon as the attempt has finished - the window says
+  it will. A failed attempt does not warn about a message you are deleting.
+- **Deleted Drafts copies are gone for good.** A copy taken out of Drafts -
+  the message was sent, deleted or replaced by a corrected version - is now
+  expunged on the server (`UID EXPUNGE`, that message only) instead of being
+  left flagged as deleted, which some mail apps keep showing. A server
+  without UIDPLUS leaves it flagged, as before.
+- **A Drafts copy that cannot be deleted now is deleted later.** When a
+  message is deleted or replaced while the server cannot be reached
+  (offline, or the credential vault locked), it leaves the outbox at once
+  and is never sent; its Drafts copy is deleted by the next pass that
+  reaches the server, after a restart too. Delete says when this happens.
 - **A sent message is filed in the Sent folder.** Once a message has gone
   out, a copy is saved to the account's Sent folder (the folder the server
   marks as Sent, else "Sent"), marked read, with the same Message-ID the

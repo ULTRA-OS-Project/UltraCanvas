@@ -258,7 +258,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   **Outbox window** (toolbar *Outbox (N)*, shown while messages wait) lists
   the waiting messages with why they have not gone out, and offers *Send
   now*, *Edit…* (correct and send again; the old version is held meanwhile
-  and replaced) and *Delete* (with its Drafts copy).)*
+  and replaced) and *Delete* (with its Drafts copy, expunged; when the
+  server cannot be reached, by a later pass). Both wait for a running send
+  instead of refusing.)*
 
 ### 3.2 Everyday comfort features (v1.0)
 

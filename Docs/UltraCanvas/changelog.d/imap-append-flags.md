@@ -9,6 +9,13 @@
   header block of a raw message, continuation lines unfolded) and
   `SearchByMessageIdCommand` (the quoted, escaped search). Tested in
   `test_imap_mailbox.cpp`; checked against a Dovecot 2.3 server.
+- **New `IMailboxProtocolPlugin::ExpungeMessage(serverUrl, folder, uid,
+  options)`**: removes one message already flagged `\Deleted` for good with
+  `UID EXPUNGE` (RFC 4315), never the other messages flagged so in the
+  folder. Added last, with a default that reports "not implemented", like
+  `FetchAllFlags`; the IMAP plug-in implements it (helper
+  `UidExpungeCommand` in `ImapParse.h`, tested). A server without UIDPLUS
+  refuses it and the message stays flagged. Checked against Dovecot 2.3.
 - **`UltraNet_MimeBuild` takes a Message-ID passed in `extraHeaders`.**
   `in.messageId` still wins; without it a non-empty `Message-ID` among the
   extra headers (any capitalisation) is used, and only then is one made up -

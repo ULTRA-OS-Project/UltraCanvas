@@ -4,6 +4,8 @@
 // out yet - with Send now, Edit and Delete. A message that can never be sent
 // (a recipient the server rejects) is deleted or corrected here instead of
 // being tried every 30 minutes for ever.
+// Version: 0.2.0 - Edit and Delete stay available while a send runs (the app
+//                  queues them behind it); SetNote
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -32,11 +34,15 @@ public:
     // Release the elements (the window closed).
     void Release();
 
-    // The waiting messages; `sending` = a pass is running now, so Edit and
-    // Delete wait (the pass may be sending the very message). `held`: the
+    // The waiting messages; `sending` = a pass is running now (the rows say
+    // "Sending…"; Edit and Delete wait for it, in the app). `held`: the
     // ones open in a compose window to be corrected.
     void SetItems(const std::vector<OutboxItem>& items, bool sending,
                   const std::set<int64_t>& held = {});
+
+    // A line under the summary ("opens once the current attempt has
+    // finished"); "" clears it.
+    void SetNote(const std::string& note);
 
     std::function<void()> onSendNow;
     std::function<void(int64_t id)> onEdit;
@@ -50,6 +56,8 @@ private:
     std::vector<OutboxItem> items_;
     bool sending_ = false;
     std::set<int64_t> held_;
+    std::string note_;
+    void UpdateSummary();
     std::shared_ptr<UltraCanvas::UltraCanvasMultiColumnListModel> model_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> list_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> summary_;
