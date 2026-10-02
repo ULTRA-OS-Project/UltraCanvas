@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.4.1
+// Version: 0.4.2
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
@@ -381,6 +381,14 @@ enum class VideoFXFitMode {
 // ============================================================================
 // BACKGROUND MUSIC (a sound bed under the whole export)
 // ============================================================================
+// Ready-made ducking for the usual kinds of footage; fills in the threshold
+// and timing of VideoFXMusic (the depth, duckingLevel, is left as it is).
+enum class VideoFXDuckingPreset {
+    Speech,      // talking in quiet rooms: the defaults (-36.5 dBFS, hold 0.6 s)
+    Outdoor,     // talking over wind and traffic: -28 dBFS
+    LoudEvent    // crowds, engines, concerts: -15 dBFS, back up after 0.2 s of calm
+};
+
 // Mixed in after everything else, so it runs straight through joins and
 // transitions. Where the segments have sound of their own - someone speaking
 // - the music dips to `duckingLevel` and comes back up after a pause.
@@ -411,6 +419,25 @@ struct VideoFXMusic {
         return m;
     }
     bool IsSet() const { return !path.empty(); }
+
+    void SetDuckingPreset(VideoFXDuckingPreset preset) {
+        switch (preset) {
+            case VideoFXDuckingPreset::Speech: {
+                const VideoFXMusic defaults;
+                duckingThresholdDb = defaults.duckingThresholdDb;
+                duckingAttack = defaults.duckingAttack;
+                duckingHold = defaults.duckingHold;
+                duckingRelease = defaults.duckingRelease;
+                break;
+            }
+            case VideoFXDuckingPreset::Outdoor:
+                duckingThresholdDb = -28.0; duckingAttack = 0.12; duckingHold = 0.5; duckingRelease = 0.7;
+                break;
+            case VideoFXDuckingPreset::LoudEvent:
+                duckingThresholdDb = -15.0; duckingAttack = 0.12; duckingHold = 0.2; duckingRelease = 0.4;
+                break;
+        }
+    }
 };
 
 struct VideoFXExportSettings {

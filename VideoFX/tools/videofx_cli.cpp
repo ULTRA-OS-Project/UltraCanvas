@@ -24,6 +24,8 @@
 //          --duck-threshold DB --duck-attack S --duck-hold S --duck-release S
 //                                        when the clips' sound ducks the music (default
 //                                        -36.5 dBFS, 0.12 s, 0.6 s, 0.8 s: tuned for speech)
+//          --duck-preset speech|outdoor|loud   all four for the kind of footage; the
+//                                        single values above refine it, in any order
 //          --fit-music                   slideshow: seconds per image chosen to end with the music
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
@@ -36,7 +38,7 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.4.1
+// Version: 0.4.2
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
@@ -91,6 +93,7 @@ int Usage() {
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --music FILE [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
+        "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
@@ -151,6 +154,16 @@ bool ParseMotion(const std::string& s, VideoFXImageMotion& m) {
     return false;
 }
 
+bool ParseDuckingPreset(const std::string& s, VideoFXMusic& m) {
+    static const std::pair<const char*, VideoFXDuckingPreset> names[] = {
+        {"speech", VideoFXDuckingPreset::Speech}, {"outdoor", VideoFXDuckingPreset::Outdoor},
+        {"loud", VideoFXDuckingPreset::LoudEvent}};
+    for (const auto& n : names) {
+        if (s == n.first) { m.SetDuckingPreset(n.second); return true; }
+    }
+    return false;
+}
+
 bool ParseTransition(const std::string& spec, VideoFXTransition& t) {
     static const std::pair<const char*, VideoFXTransitionType> names[] = {
         {"crossfade", VideoFXTransitionType::Crossfade}, {"dissolve", VideoFXTransitionType::Dissolve},
@@ -190,6 +203,11 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
     double& speed = o.speed;
     bool& lossless = o.lossless;
     std::vector<std::string> rest;
+    // A preset first, wherever it is written, so --duck-threshold and the
+    // other single values always refine it rather than being overwritten
+    for (size_t i = 0; i + 1 < args.size(); ++i) {
+        if (args[i] == "--duck-preset" && !ParseDuckingPreset(args[i + 1], settings.music)) return false;
+    }
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
         auto next = [&](std::string& v) {
@@ -218,6 +236,7 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--music-start" && next(v)) settings.music.start = NumberOr(v, -1.0);
         else if (a == "--duck" && next(v)) settings.music.duckingLevel = NumberOr(v, -1.0);
         // NaN, not -1, for a value that does not parse: -1 dBFS is a valid threshold
+        else if (a == "--duck-preset" && next(v)) {}             // applied above
         else if (a == "--duck-threshold" && next(v)) settings.music.duckingThresholdDb = NumberOr(v, kNotANumber);
         else if (a == "--duck-attack" && next(v)) settings.music.duckingAttack = NumberOr(v, kNotANumber);
         else if (a == "--duck-hold" && next(v)) settings.music.duckingHold = NumberOr(v, kNotANumber);
