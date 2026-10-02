@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.9.0 - box-sizing
 // Version: 1.8.0 - borders per side (width, style, colour): BorderSide
 // Version: 1.7.0 - border-radius in percent; <img border>
 // Version: 1.6.0 - object-fit / object-position
@@ -10,7 +11,7 @@
 // Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -177,6 +178,9 @@ struct ComputedStyle {
     float borderRadiusPercent = 0;
     // border-spacing (CSS) or the cellspacing attribute, on a table.
     std::optional<float> borderSpacing;
+    // box-sizing: border-box - width / height include padding and border.
+    // CSS's initial content-box: they are the content's.
+    bool borderBoxSizing = false;
     std::optional<float> widthPx;
     std::optional<float> heightPx;
     std::optional<float> widthPercent;   // width given in % (builder maps to Dimension::Pct)

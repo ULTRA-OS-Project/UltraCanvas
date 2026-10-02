@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.9.0 - width / height of a block are its content's (box-sizing)
 // Version: 1.8.0 - per-side inline image borders, collapsed table borders, mitred corners
 // Version: 1.7.0 - vertical-align on a shared image line
 // Version: 1.6.0 - images in a block without text share a line
@@ -704,6 +705,51 @@ void TestBorderSides() {
     Check(isRed(33, 2) && isBlue(37, 7), "top-right corner mitred too");
 }
 
+// width / height size a block's content (CSS content-box): padding and
+// border go around them. box-sizing: border-box keeps the box whole; a
+// percentage is the content's share of the line; max-width limits the
+// content, or the box with border-box.
+void TestBoxSizing() {
+    std::printf("width and height are the content's\n");
+    auto box = [](const std::string& css) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build("<div id='t' style='" + css + "'>x</div>", opts).root;
+        if (!root) return Rect2Df();
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        for (const auto& p : all)
+            if (p.element->GetIdentifier().rfind("html_div_", 0) == 0) return p.rect;
+        return Rect2Df();
+    };
+    Rect2Df r = box("width:120px;height:30px;padding:4px;border:10px solid #000");
+    CheckNear(r.width, 148.f, "120 + 2*4 padding + 2*10 border");
+    CheckNear(r.height, 58.f, "30 + 2*4 + 2*10");
+    r = box("width:120px;height:30px;padding:4px;border:10px solid #000;box-sizing:border-box");
+    CheckNear(r.width, 120.f, "border-box: the whole box");
+    CheckNear(r.height, 30.f, "border-box height");
+    r = box("width:50%;padding:0 10px;border:2px solid #000");
+    CheckNear(r.width, 224.f, "50% of 400 + padding + border");
+    r = box("max-width:200px;padding:10px;border:2px solid #000");
+    CheckNear(r.width, 224.f, "max-width limits the content");
+    r = box("max-width:200px;padding:10px;border:2px solid #000;box-sizing:border-box");
+    CheckNear(r.width, 200.f, "border-box max-width limits the box");
+    r = box("padding:8px;background:#eee");
+    CheckNear(r.width, 400.f, "no width: the line's");
+}
+
 } // namespace
 
 int main() {
@@ -719,6 +765,7 @@ int main() {
     TestImageBox();
     TestImagesShareLine();
     TestBorderSides();
+    TestBoxSizing();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

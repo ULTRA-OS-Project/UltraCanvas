@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.8.0 - ApplyBoxStyle: width / height are the content's (CSS content-box)
+//                  unless box-sizing: border-box or `borderBoxSizes`
 // Version: 1.7.0 - ApplyBorders; collapsed table borders
 // Version: 1.6.0 - the gap between images is a space measured in their font
 // Version: 1.5.0 - images in a block without text share a wrapping line
@@ -13,7 +15,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -160,9 +162,14 @@ private:
                          bool deep = false);
 
     // Horizontal margins fold into padding unless `realMargins` (an inline
-    // box, whose background must not reach into its margin).
+    // box, whose background must not reach into its margin). width / height
+    // size the content, as CSS's content-box does, unless the style says
+    // box-sizing: border-box or the caller sizes the box as a whole
+    // (`borderBoxSizes`: tables and their cells, as browsers size them, and
+    // images, which set up their own content box).
     void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
-                       bool fillWidth = true, bool realMargins = false);
+                       bool fillWidth = true, bool realMargins = false,
+                       bool borderBoxSizes = false);
     // The border sides and radius of a style (ApplyBoxStyle calls it; a
     // collapsed table's cells call it once their shared edges are settled).
     void ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style);

@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.9.0 - box-sizing
 // Version: 1.8.0 - borders per side
 // Version: 1.7.0 - border-radius %, <img border>, border currentColor
 // Version: 1.6.0 - object-fit, object-position
@@ -721,6 +722,9 @@ static void TestBorderSides() {
     CHECK(!st.HasBorder());
     st = styleOf("border:thin solid");
     CHECK(st.borderLeft.Width() == 1.f);
+    CHECK(!st.borderBoxSizing);                             // content-box by default
+    CHECK(styleOf("box-sizing:border-box").borderBoxSizing);
+    CHECK(!styleOf("box-sizing:border-box;box-sizing:content-box").borderBoxSizing);
 }
 
 int main() {

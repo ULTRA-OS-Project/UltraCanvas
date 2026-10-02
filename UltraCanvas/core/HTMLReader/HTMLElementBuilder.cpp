@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.14.0 - width / height of a block are its content's (CSS content-box);
+//                   box-sizing: border-box keeps them whole; tables, cells and
+//                   images keep their own sizing
 // Version: 1.13.0 - border-collapse: collapse draws a shared cell edge once (the
 //                   wider border wins); <table border> rules join the resolution
 // Version: 1.12.0 - vertical-align on images sharing a line: top, middle, bottom
@@ -30,7 +33,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -1024,7 +1027,8 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     boxStyle.borderRadius = BorderRadiusPx(style,
         content.width + style.paddingLeft + style.paddingRight + style.BorderHorizontal(),
         content.height + style.paddingTop + style.paddingBottom + style.BorderVertical());
-    ApplyBoxStyle(*image, boxStyle, /*fillWidth=*/false);
+    ApplyBoxStyle(*image, boxStyle, /*fillWidth=*/false, /*realMargins=*/false,
+                  /*borderBoxSizes=*/true);
     image->box.boxSizing = CSSLayout::BoxSizing::ContentBox;
     image->box.padding.left = CSSLayout::Dimension::Px(style.paddingLeft);
     image->box.padding.right = CSSLayout::Dimension::Px(style.paddingRight);
@@ -1198,7 +1202,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     auto table = MakeContainer("table");
     RegisterAnchors(element, table);
     ++elementCount;
-    ApplyBoxStyle(*table, style, /*fillWidth=*/false, /*realMargins=*/inlineBox);
+    ApplyBoxStyle(*table, style, /*fillWidth=*/false, /*realMargins=*/inlineBox,
+                  /*borderBoxSizes=*/true);
     // border-spacing: CSS, else cellspacing, else a browser's 2px.
     const float spacing = style.borderCollapse ? 0.f : style.borderSpacing.value_or(2.f);
     table->layout.SetTableSpacing(spacing, spacing);
@@ -1294,7 +1299,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
             boxStyle.SetAllBorders(BorderSide{});
         }
         // A px / % width is the column's width (the table layout reads it).
-        ApplyBoxStyle(*cellBox, boxStyle, /*fillWidth=*/false);
+        ApplyBoxStyle(*cellBox, boxStyle, /*fillWidth=*/false, /*realMargins=*/false,
+                      /*borderBoxSizes=*/true);
         if (!cellStyle.backgroundColor && rowStyle.backgroundColor) {
             cellBox->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
         }
@@ -1376,7 +1382,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
 
 void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
                                    const ComputedStyle& style, bool fillWidth,
-                                   bool realMargins) {
+                                   bool realMargins, bool borderBoxSizes) {
     using CSSLayout::Dimension;
 
     // Vertical margins become sibling spacer elements (see BuildChildrenInto);
@@ -1397,15 +1403,27 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         target.box.margin.left = Dimension::Px(style.marginLeft);
     }
 
+    // width / height: the content's (CSS content-box), so the box is that
+    // plus its padding (and the margins folded into it) and border - or the
+    // whole box with box-sizing: border-box. A px size is turned into the
+    // border-box size here; a percentage cannot be (the engine has no
+    // "50% + 20px"), so that box is laid out as content-box itself.
+    const bool contentBox = !borderBoxSizes && !style.borderBoxSizing;
+    const float aroundW = contentBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
+                                       style.BorderHorizontal() : 0.f;
+    const float aroundH = contentBox ? style.paddingTop + style.paddingBottom + style.BorderVertical()
+                                     : 0.f;
+    const bool percentContent = contentBox && !style.widthPx && style.widthPercent;
+    if (percentContent) target.box.boxSizing = CSSLayout::BoxSizing::ContentBox;
     if (style.widthPx) {
-        target.size.width = Dimension::Px(*style.widthPx);
+        target.size.width = Dimension::Px(*style.widthPx + aroundW);
     } else if (style.widthPercent) {
         target.size.width = Dimension::Pct(*style.widthPercent);
     } else if (fillWidth) {
         target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
-        target.size.height = Dimension::Px(*style.heightPx);
+        target.size.height = Dimension::Px(*style.heightPx + (percentContent ? 0.f : aroundH));
     }
 
     if (style.backgroundColor) {
@@ -1413,7 +1431,14 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     }
     if (style.maxWidthPx) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
-        limits.maxWidth = Dimension::Px(*style.maxWidthPx);
+        // The engine limits the content's width (content-box); with
+        // box-sizing: border-box the limit is the whole box's.
+        float maxContent = *style.maxWidthPx;
+        if (style.borderBoxSizing && !borderBoxSizes) {
+            maxContent -= style.paddingLeft + style.paddingRight + foldLeft + foldRight +
+                          style.BorderHorizontal();
+        }
+        limits.maxWidth = Dimension::Px(std::max(0.f, maxContent));
         target.boxConstraints = limits;
     }
     ApplyBorders(target, style);

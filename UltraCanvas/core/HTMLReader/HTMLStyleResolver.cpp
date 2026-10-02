@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.8.0 - box-sizing (content-box / border-box)
 // Version: 1.7.0 - borders per side: border, border-top/-right/-bottom/-left,
 //                  border-width / -style / -color (1-4 values) and the per-side
 //                  longhands; a border without a style draws nothing, as in CSS;
@@ -18,7 +19,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -897,6 +898,10 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
         s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "box-sizing") {
+        if (lower == "border-box") s.borderBoxSizing = true;
+        else if (lower == "content-box") s.borderBoxSizing = false;
     }
     else if (prop == "border-collapse") {
         s.borderCollapse = (lower == "collapse");
