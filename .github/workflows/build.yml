@@ -964,7 +964,7 @@ jobs:
       # The disk image only, not the dist-macos/ folders: upload-artifact
       # does not keep file permissions, so an app unpacked from a zip of the
       # .app folders has lost its executable bit and does not start. The DMG
-      # keeps it, is already LZFSE-compressed (hence compression-level 0 -
+      # keeps it, is already LZMA-compressed (hence compression-level 0 -
       # zipping it again only costs time) and is signed, and on main
       # notarized and stapled, as one file.
       - name: Upload build artifacts (macOS)

@@ -5,8 +5,9 @@
   program used it or not. `package-macos.sh` then copied all of them, with
   their own dependencies, into every one of the six `.app` bundles. Apps now
   link with `-dead_strip_dylibs`, which drops only the libraries an app takes
-  no symbol from, so an app such as UltraNetMonitor or DeviceExplorer that
-  never reaches the OCR or PDF code no longer carries them. The packaging
+  no symbol from. So far that is little: DeviceExplorer loses zbar and c-ares,
+  while tesseract, MuPDF and the rest stay, because core code every app pulls
+  in still references them. The packaging
   script prints, and adds to the CI job summary, each bundle's size and how
   much of it is bundled libraries.
 - **UltraNetMonitor and DeviceExplorer on macOS no longer carry the LaTeX
@@ -20,7 +21,7 @@
   `dist-macos/` folder zipped by `upload-artifact`, which does not keep file
   permissions, so an app unpacked from it had lost its executable bit. CI now
   packages with `--dmg` and uploads only `UCDemo-MacOS-<version>-<arch>.dmg`.
-  The image is LZFSE-compressed (`ULFO`, smaller than the old `UDZO`), holds
+  The image is LZMA-compressed (`ULMO`, the tightest format `hdiutil` has), holds
   the six apps, `ultramsg` and an Applications link for drag-and-drop install,
   is signed like the apps, and on `main` is notarized and stapled as well.
   `hdiutil create` gets three tries against the runners' occasional "Resource

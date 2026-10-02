@@ -853,8 +853,10 @@ if $CREATE_DMG; then
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
 
-    # Create the compressed DMG. ULFO (LZFSE) packs tighter than the old UDZO
-    # (zlib) and opens faster; it needs macOS 10.11, below the apps' own
+    # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
+    # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
+    # against 503 MB for the zip of the same .app folders, so only LZMA beats
+    # that. It needs macOS 10.15 to open, below the apps' own
     # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
     # with "Resource busy" while the system indexes the staging folder, so it
     # gets three tries.
@@ -862,7 +864,7 @@ if $CREATE_DMG; then
     until hdiutil create \
             -volname "UltraCanvas $VERSION" \
             -srcfolder "$DMG_STAGING" \
-            -ov -format ULFO \
+            -ov -format ULMO \
             "$OUTPUT_DIR/$DMG_NAME"; do
         if [ "$dmg_try" -ge 3 ]; then
             echo "  ERROR: hdiutil create failed $dmg_try times"
