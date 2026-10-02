@@ -1,12 +1,14 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
+// Version: 1.4.0 - attribute selectors: [a], [a=v], ~= ^= $= *= |=, quoted
+//                  values, the i flag (Mailchimp: td[class=mcnTextContent])
 // Version: 1.3.0 - @media blocks apply when their query matches the media width;
 //                  <!-- --> around a style sheet is skipped.
 // Version: 1.2.0 - a:link / :any-link selectors match links (mail styles its
 //                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -260,7 +262,8 @@ int Selector::Specificity() const {
     int ids = 0, classes = 0, tags = 0;
     for (const auto& part : path) {
         if (!part.id.empty()) ++ids;
-        classes += static_cast<int>(part.classes.size()) + (part.link ? 1 : 0);
+        classes += static_cast<int>(part.classes.size() + part.attributes.size()) +
+                   (part.link ? 1 : 0);
         if (!part.tag.empty() && part.tag != "*") ++tags;
     }
     return ids * 10000 + classes * 100 + tags;
@@ -290,8 +293,56 @@ std::optional<SimpleSelector> ParseCompound(const std::string& text) {
             }
             return std::nullopt;
         }
-        if (c == ':' || c == '[' || c == '(') {
-            return std::nullopt;   // pseudo-element / attribute / functional
+        if (c == '[') {
+            // [name], [name=value], [name~=value] ... with an optional
+            // quoted value and an " i" flag; anything else drops the rule.
+            size_t close = i + 1;
+            char quote = 0;
+            for (; close < text.size(); ++close) {
+                if (quote) { if (text[close] == quote) quote = 0; continue; }
+                if (text[close] == '"' || text[close] == '\'') quote = text[close];
+                else if (text[close] == ']') break;
+            }
+            if (close >= text.size()) return std::nullopt;
+            std::string inner = Trim(text.substr(i + 1, close - i - 1));
+            i = close + 1;
+            AttributeSelector attr;
+            size_t n = 0;
+            while (n < inner.size() && (std::isalnum(static_cast<unsigned char>(inner[n])) ||
+                                        inner[n] == '-' || inner[n] == '_' || inner[n] == ':')) {
+                attr.name += static_cast<char>(std::tolower(static_cast<unsigned char>(inner[n])));
+                ++n;
+            }
+            if (attr.name.empty()) return std::nullopt;
+            std::string rest = Trim(inner.substr(n));
+            if (!rest.empty()) {
+                size_t eq = 0;
+                if (rest[0] == '=') { attr.op = '='; eq = 1; }
+                else if (rest.size() > 1 && rest[1] == '=' &&
+                         std::string("~^$*|").find(rest[0]) != std::string::npos) {
+                    attr.op = rest[0]; eq = 2;
+                } else {
+                    return std::nullopt;
+                }
+                std::string value = Trim(rest.substr(eq));
+                if (!value.empty() && (value[0] == '"' || value[0] == '\'')) {
+                    const size_t end = value.find(value[0], 1);
+                    if (end == std::string::npos) return std::nullopt;
+                    attr.value = value.substr(1, end - 1);
+                    value = Trim(value.substr(end + 1));
+                } else {
+                    const size_t space = value.find_first_of(" \t");
+                    attr.value = value.substr(0, space);
+                    value = space == std::string::npos ? std::string() : Trim(value.substr(space));
+                }
+                if (value == "i" || value == "I") attr.ignoreCase = true;
+                else if (!value.empty() && value != "s" && value != "S") return std::nullopt;
+            }
+            result.attributes.push_back(std::move(attr));
+            continue;
+        }
+        if (c == ':' || c == '(') {
+            return std::nullopt;   // pseudo-element / functional
         }
         if (c == '*') {
             ++i;
@@ -341,6 +392,21 @@ std::optional<Selector> ParseSelector(const std::string& text) {
 
     while (i <= text.size()) {
         char c = (i < text.size()) ? text[i] : ' ';
+        // An attribute selector is one piece: its spaces, '~' (~=) and
+        // quoted text are not combinators.
+        if (c == '[') {
+            char quote = 0;
+            size_t j = i;
+            for (; j < text.size(); ++j) {
+                if (quote) { if (text[j] == quote) quote = 0; continue; }
+                if (text[j] == '"' || text[j] == '\'') quote = text[j];
+                else if (text[j] == ']') break;
+            }
+            if (j >= text.size()) return std::nullopt;
+            token += text.substr(i, j - i + 1);
+            i = j + 1;
+            continue;
+        }
         if (std::isspace(static_cast<unsigned char>(c))) {
             if (!flush()) return std::nullopt;
             ++i;

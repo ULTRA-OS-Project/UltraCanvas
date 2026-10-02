@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.3.0 - attribute selectors match; box-sizing
 // Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
 // Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
@@ -275,6 +276,10 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
 void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& s) {
     const float em = s.fontSizePx;
 
+    if (tag == "table" || tag == "input" || tag == "select" || tag == "button" ||
+        tag == "textarea")
+        s.borderBox = true;
+
     auto block = [&]() { s.display = DisplayMode::Block; };
     auto marginsV = [&](float m) { s.marginTop = m; s.marginBottom = m; };
     auto heading = [&](float scale, float marginEm) {
@@ -382,6 +387,37 @@ bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& elem
         if (!element.HasClass(cls)) return false;
     }
     if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
+    for (const auto& attr : part.attributes) {
+        if (!element.HasAttribute(attr.name)) return false;
+        if (attr.op == 0) continue;
+        std::string have = element.GetAttribute(attr.name);
+        std::string want = attr.value;
+        if (attr.ignoreCase) {
+            for (char& ch : have) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            for (char& ch : want) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        bool ok = false;
+        switch (attr.op) {
+            case '=': ok = have == want; break;
+            case '^': ok = !want.empty() && have.compare(0, want.size(), want) == 0; break;
+            case '$': ok = !want.empty() && have.size() >= want.size() &&
+                           have.compare(have.size() - want.size(), want.size(), want) == 0; break;
+            case '*': ok = !want.empty() && have.find(want) != std::string::npos; break;
+            case '|': ok = have == want || have.compare(0, want.size() + 1, want + "-") == 0; break;
+            case '~': {
+                size_t pos = 0;
+                while (!ok && pos < have.size()) {
+                    while (pos < have.size() && std::isspace(static_cast<unsigned char>(have[pos]))) ++pos;
+                    size_t end = pos;
+                    while (end < have.size() && !std::isspace(static_cast<unsigned char>(have[end]))) ++end;
+                    ok = end > pos && have.compare(pos, end - pos, want) == 0 && end - pos == want.size();
+                    pos = end;
+                }
+                break;
+            }
+        }
+        if (!ok) return false;
+    }
     return true;
 }
 
@@ -642,6 +678,10 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
         s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "box-sizing") {
+        if (lower == "border-box") s.borderBox = true;
+        else if (lower == "content-box") s.borderBox = false;
     }
     else if (prop == "border-collapse") {
         s.borderCollapse = (lower == "collapse");

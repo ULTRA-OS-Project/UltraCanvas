@@ -10,7 +10,8 @@
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
 // Version: 1.2.0 - display:block cells stack (mail columns on a narrow screen);
-//                  align=center places a max-width block
+//                  align=center places a max-width block; a px width is the
+//                  content box unless box-sizing: border-box
 // Version: 1.1.0 - background pictures, margin: auto, @media width
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
@@ -316,9 +317,9 @@ void TestStackedColumns() {
 
 // <td align="center"> centres a narrowed block in it, as browsers do: the
 // mail template's 280px picture in a stacked, 580px-wide column.
-void TestAlignCentresNarrowBlock() {
-    std::printf("align=center places a max-width block\n");
-    static const std::vector<uint8_t> png = {   // 400x400, one colour
+// A 400x400 one-colour PNG.
+const std::vector<uint8_t>& Png400() {
+    static const std::vector<uint8_t> png = {
         0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
         0x00,0x00,0x01,0x90,0x00,0x00,0x01,0x90,0x08,0x02,0x00,0x00,0x00,0x0F,0xDD,0xA1,
         0x9B,0x00,0x00,0x03,0xEB,0x49,0x44,0x41,0x54,0x78,0xDA,0xED,0xD4,0x31,0x0D,0x00,
@@ -386,9 +387,15 @@ void TestAlignCentresNarrowBlock() {
         0x0B,0xC0,0xB0,0x00,0xC3,0x02,0x30,0x2C,0x00,0xC3,0x02,0x0C,0x0B,0xE0,0xD2,0x02,
         0xEC,0xC4,0x1B,0x82,0xD2,0xD3,0x19,0xBE,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,
         0xAE,0x42,0x60,0x82 };
+    return png;
+}
+
+void TestAlignCentresNarrowBlock() {
+    std::printf("align=center places a max-width block\n");
+    const std::vector<uint8_t>& png = Png400();
     HTML::BuildOptions opts;
     opts.style.baseFontSizePx = 12.f;
-    opts.resourceLoader = [](const std::string&) { return png; };
+    opts.resourceLoader = [&png](const std::string&) { return png; };
     // Without align the block stays at the start of the cell - and still
     // 280px: the cell's stretch must not widen it past its max-width.
     for (const bool centred : { true, false }) {
@@ -429,6 +436,48 @@ void TestAlignCentresNarrowBlock() {
     }
 }
 
+// A px width is the content box (CSS default): Mailchimp's footer icon cell
+// <td style="width:25px; padding:0 10px"> is 45px wide and its width:100%
+// picture 25px - not 5px, as when the padding was counted inside the 25.
+// box-sizing: border-box keeps the padding inside, as CSS says.
+void TestContentBoxWidth() {
+    std::printf("a px width is the content box unless box-sizing: border-box\n");
+    for (const bool borderBox : { false, true }) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return Png400(); };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(
+            std::string("<table cellpadding='0' cellspacing='0' align='center'><tr>"
+                        "<td style='padding:0 10px;width:25px;height:25px;text-align:center") +
+            (borderBox ? ";box-sizing:border-box" : "") +
+            "'><a href='mailto:x@y'><img src='i.png' style='width:100%;height:auto;display:block'>"
+            "</a></td></tr></table>", opts).root;
+        Check(root != nullptr, "built");
+        if (!root) return;
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        const Placed* image = nullptr;
+        for (const auto& p : all)
+            if (dynamic_cast<UltraCanvasImageElement*>(p.element)) image = &p;
+        Check(image != nullptr, "picture built");
+        if (!image) return;
+        CheckNear(image->rect.width, borderBox ? 5.f : 25.f,
+                  borderBox ? "border-box: 25px minus the padding" : "content-box: the picture is 25px");
+    }
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("HTMLTableLayoutTest");
     TestSharedColumns();
@@ -438,6 +487,7 @@ int main() {
     TestBackgroundAndAutoMargins();
     TestStackedColumns();
     TestAlignCentresNarrowBlock();
+    TestContentBoxWidth();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

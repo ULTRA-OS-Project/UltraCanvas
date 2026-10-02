@@ -1,12 +1,13 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.6.0 - attribute selectors
 // Version: 1.5.0 - a later width declaration replaces an earlier one
 // Version: 1.4.0 - width/height="auto" on <img> is no size
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -526,6 +527,60 @@ static void TestImportantWidthReplacesInlineWidth() {
     CHECK(!sa.widthPercent.has_value());
 }
 
+// Attribute selectors, as Mailchimp writes its narrow-screen rules:
+// table[id=templateBody]{width:100% !important}, td[class=mcnTextContent].
+static void TestAttributeSelectors() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "table[id=templateBody]{width:100% !important}"
+        "td[class=mcnTextContent]{color:#ff0000}"
+        "td[class=other]{color:#00ff00}"
+        "[data-x]{font-weight:bold}"
+        "a[href^=\"mailto:\"]{color:#0000ff}"
+        "a[href$='.pdf' i]{font-style:italic}"
+        "p[class~=b]{text-align:center}"
+        "p[lang|=de]{text-align:right}"
+        "span[title*=\"a b\"]{text-decoration:underline}"
+        "div[class=x] > span[id=deep]{color:#123456}"
+        "</style></head><body>"
+        "<table id='templateBody' width='600'><tr><td id='c' class='mcnTextContent'>t</td></tr></table>"
+        "<div id='dx' data-x=''>x</div>"
+        "<a id='m' href='mailto:a@b'>m</a><a id='f' href='/X.PDF'>f</a>"
+        "<p id='pb' class='a b c'>p</p><p id='pl' lang='de-AT'>q</p>"
+        "<span id='sp' title='say a b c'>s</span>"
+        "<div class='x'><b><span id='deep'>d</span></b></div>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    const ComputedStyle& t = style("templateBody");
+    CHECK(t.widthPercent.has_value() && Near(*t.widthPercent, 100.f));
+    CHECK(!t.widthPx.has_value());
+    CHECK(style("c").color.r == 255 && style("c").color.g == 0);
+    CHECK(style("dx").bold);
+    CHECK(style("m").color.b == 255 && style("m").color.r == 0);
+    CHECK(style("f").italic);
+    CHECK(style("pb").textAlign == TextAlignMode::Center);
+    CHECK(style("pl").textAlign == TextAlignMode::Right);
+    CHECK(style("sp").underline);
+    CHECK(style("deep").color.r == 0x12 && style("deep").color.b == 0x56);
+}
+
 static void TestMailTableStyles() {
     Parser parser;
     Document doc = parser.Parse(
@@ -646,6 +701,7 @@ int main() {
     TestMailTableStyles();
     TestImageAutoAttributes();
     TestImportantWidthReplacesInlineWidth();
+    TestAttributeSelectors();
     TestMediaAndBackgrounds();
 
     std::printf("%s: %d checks, %d failures\n",

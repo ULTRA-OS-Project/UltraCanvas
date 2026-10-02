@@ -1,3 +1,12 @@
+#### 2026-10-02 *0.10.21*
+- **Mailchimp mail fits a narrow reading pane, and its footer icons are
+  their real size.** Newsletters and invoices built with Mailchimp (Lexware's
+  among them) stayed 600px wide in a pane narrower than 480px, because their
+  narrow-screen rules use CSS attribute selectors the HTML reader skipped; and
+  their footer icons were drawn 5px wide instead of 25px. Fixed in the
+  framework's HTML reader (see the framework changelog, "attribute selectors"
+  and "a px width or height is the content box").
+
 #### 2026-10-02 *0.10.20*
 - **Settings > Reading > Layout sets the folder list's width.** *Auto* (the
   default) makes the folder tree on the left 10 px wider than its longest

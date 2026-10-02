@@ -3,9 +3,10 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,6 +77,10 @@ struct ComputedStyle {
     // margin-left / margin-right: auto (centring a box with a width).
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;
+    // box-sizing: a px width / height is the content box (CSS default) unless
+    // border-box - then it includes padding and border. Tables and form
+    // controls are border-box, as in browsers' own style sheets.
+    bool borderBox = false;
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
     float borderRadius = 0;

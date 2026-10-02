@@ -4,8 +4,9 @@
 // descendant chains, the box-model / typography / color properties, and a
 // specificity-ordered cascade. Framework-independent: value types here are
 // plain structs; HTMLElementBuilder maps them onto CSSLayout/widget types.
+// Version: 1.1.0 - attribute selectors ([a], [a=v], ~= ^= $= *= |=)
 // Version: 1.0.0
-// Last Modified: 2026-07-02
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,10 +57,20 @@ struct Declaration {
 };
 
 // One compound selector: tag, classes and id that must all match one element.
+// [name], [name=value] and the ~= ^= $= *= |= forms; mail templates style by
+// them (Mailchimp: td[class=mcnTextContent], table[id=templateBody]).
+struct AttributeSelector {
+    std::string name;                 // lower-case
+    char op = 0;                      // 0 = present, '=', '~', '^', '$', '*', '|'
+    std::string value;
+    bool ignoreCase = false;          // [name=value i]
+};
+
 struct SimpleSelector {
     std::string tag;                  // empty or "*" = any element
     std::vector<std::string> classes;
     std::string id;
+    std::vector<AttributeSelector> attributes;
     // :link / :any-link - an <a href>. Links are all unvisited here, so a
     // :visited rule never matches and :hover / :active / :focus rules are
     // dropped (a static render is never hovered).

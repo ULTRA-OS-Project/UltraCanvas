@@ -2,7 +2,9 @@
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
 // Version: 1.5.0 - display:block cells of a row stack in one anonymous cell
 //                  (mail-template columns on a narrow screen); align="center"
-//                  / "right" on a container places its narrowed blocks too
+//                  / "right" on a container places its narrowed blocks too;
+//                  a px width / height is the content box unless
+//                  box-sizing: border-box (padding and border on top)
 // Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
 //                  images (first url() layer that loads, fitted by
 //                  background-size); rounded borderless boxes; max-width;
@@ -1178,15 +1180,23 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         target.box.margin.left = Dimension::Px(style.marginLeft);
     }
 
+    // The layout boxes are border-box; a CSS px size is the content box
+    // unless box-sizing says border-box, so padding and border go on top
+    // (a 25px-wide cell with 10px padding is 45px, its picture 25px).
+    const float frame = style.borderBox ? 0.f : 2.f * style.borderWidth;
+    const float extraW = style.borderBox ? 0.f
+        : style.paddingLeft + foldLeft + style.paddingRight + foldRight + frame;
+    const float extraH = style.borderBox ? 0.f
+        : style.paddingTop + style.paddingBottom + frame;
     if (style.widthPx) {
-        target.size.width = Dimension::Px(*style.widthPx);
+        target.size.width = Dimension::Px(*style.widthPx + extraW);
     } else if (style.widthPercent) {
         target.size.width = Dimension::Pct(*style.widthPercent);
     } else if (fillWidth) {
         target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
-        target.size.height = Dimension::Px(*style.heightPx);
+        target.size.height = Dimension::Px(*style.heightPx + extraH);
     }
 
     if (style.backgroundColor) {
@@ -1194,7 +1204,7 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     }
     if (style.maxWidthPx) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
-        limits.maxWidth = Dimension::Px(*style.maxWidthPx);
+        limits.maxWidth = Dimension::Px(*style.maxWidthPx + extraW);
         target.boxConstraints = limits;
     }
     if (style.borderWidth > 0) {
