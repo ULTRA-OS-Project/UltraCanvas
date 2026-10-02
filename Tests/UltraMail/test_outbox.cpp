@@ -13,7 +13,9 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraCanvasPathUtf8.h"
 
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -217,7 +219,10 @@ TEST(syncservice_syncnow_populates_store) {
     store.UpsertAccount(a);
 
     FakeMailbox mailbox;
-    SyncService svc(store, mailbox, "/tmp/ultramail_syncsvc_test");
+    // The system temp folder, not "/tmp": the suite runs on Windows too.
+    const std::string cacheDir = UltraCanvas::PathToUtf8(
+        std::filesystem::temp_directory_path() / "ultramail_syncsvc_test");
+    SyncService svc(store, mailbox, cacheDir);
     UltraNetMailOptions opts;
 
     SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);

@@ -1,3 +1,11 @@
+#### 2026-10-02 *0.58*
+- **Moving to the trash works for names outside the Windows code page.**
+  Picking a free name in the trash and moving the item there joined the
+  name onto the trash folder as a plain string, which Windows converts in
+  its ANSI code page - a file named in Thai, Cyrillic or with an emoji was
+  looked for, and moved, under a mangled name. Every part now goes through
+  `PathFromUtf8`; found by the extended path check (framework changelog).
+
 #### 2026-09-30 *0.57*
 - **A failure no longer ends the clean.** The remover stopped after fifty
   failures. On Windows the temp directory holds more files than that which

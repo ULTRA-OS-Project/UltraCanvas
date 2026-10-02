@@ -1,4 +1,4 @@
-#### 2026-10-02 *0.10.17*
+#### 2026-10-02 *0.10.19*
 - **The Outbox window: what waits to be sent, and what to do about it.** While
   messages wait, the toolbar shows *Outbox (N)*; it opens a window listing
   each one - To, Subject, the account it goes from, how often it was tried
@@ -39,6 +39,45 @@
   message.
 - Sending, deleting and the server copies all run through one outbox queue on
   a worker, one job at a time, so a delete never races a send.
+
+#### 2026-10-02 *0.10.18*
+- **Mail in folders with non-English names is found on Windows.** Message
+  bodies are cached as `mail/<account>/<folder>/<uid>.eml`, and the account
+  and folder were joined onto that path as plain strings - which Windows
+  converts in its ANSI code page. A folder such as "Entwürfe" or "Корзина"
+  was cached under a mangled name. UltraMail read it back the same way, so
+  it went unnoticed, but EmailCleaner, which reads the cache as UTF-8,
+  never found that mail. The cache path, the preview's read and the
+  removal of an account's mail now pass every part through `PathFromUtf8`.
+  Bodies already cached under a mangled name are fetched again.
+  - The sender-icon cache built its file names the same way
+    (`dir / (brandId + ".png")`); they go through `PathFromUtf8` too, found
+    by the extended path check (framework changelog).
+  - New test `cached_body_path_keeps_a_non_ascii_folder_name`. UltraMail's
+    engine tests now run on Windows CI, where two tests failed because they
+    still had a file open while it was replaced or deleted; they close it
+    first.
+
+#### 2026-10-02 *0.10.17*
+- **Pictures in newsletters built from mail templates are shown.** Mail whose
+  images carry `height="auto"` (Kickstarter's, and most Beefree / Braze
+  newsletters) showed none of them - not even after *Show images* - because
+  the HTML reader drew each one zero pixels tall. The fix is in the framework's
+  HTML reader (see the framework changelog, "pictures with `height="auto"` are
+  shown").
+- **Newsletters fit the reading pane, menus included.** A picture as wide as
+  its column made the whole 600px newsletter as wide as the picture's file -
+  often 2000px - so the text ran off the right of the pane and a centred menu
+  (Kickstarter's ART / COMICS / DESIGN …) was off screen entirely. Fixed in the
+  framework's HTML reader (see the framework changelog, "HTML mail no longer
+  runs off the right of the pane").
+- **In a narrow reading pane, newsletter columns stack, as on a phone.**
+  Articles side by side in the newsletter come one under another when the
+  pane is narrower than the newsletter's own breakpoint (620px for most
+  templates), each at the full width, with its picture centred at its own
+  size instead of drawn over the text below it. Fixed in the framework's HTML
+  reader (see the framework changelog, "HTML mail columns stack in a narrow
+  pane").
 
 #### 2026-10-02 *0.10.16*
 - **Quote + and Quote − in the compose window's formatting toolbar.** They

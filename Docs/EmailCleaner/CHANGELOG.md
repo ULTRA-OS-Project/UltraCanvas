@@ -1,3 +1,12 @@
+#### 2026-10-02 *0.4.2*
+- **Mail in folders and accounts with non-English names is read on
+  Windows.** Scanning the mail cache and opening a message for its
+  attachments joined the account and folder onto the path as plain strings,
+  which Windows converts in its ANSI code page, so a folder such as
+  "Entwürfe" was looked for under a mangled name and its mail was left out
+  of the analysis. Both now pass every part through `PathFromUtf8`. Found
+  by EmailCleaner's engine tests, which now run on Windows CI too.
+
 #### 2026-09-29 *0.4.1*
 - **UltraMail accounts that signed in through the browser can be acted on.**
   An account set up in UltraMail with its provider's browser login (OAuth2 -

@@ -89,7 +89,7 @@ std::string SenderIconCache::PathFor(const std::string& brandId) const {
     std::error_code ec;
     std::string found;
     for (const char* ext : kExtensions) {
-        const fs::path p = PathFromUtf8(root_) / (brandId + "." + ext);
+        const fs::path p = PathFromUtf8(root_) / PathFromUtf8(brandId + "." + ext);
         if (fs::exists(p, ec)) { found = PathToUtf8(p); break; }
     }
     resolved_[brandId] = found;   // a miss is remembered too; Store() clears it
@@ -108,7 +108,7 @@ std::string SenderIconCache::IconForAddress(const std::string& address) const {
 
 bool SenderIconCache::RetryAllowed(const std::string& brandId) const {
     if (root_.empty()) return false;
-    const fs::path marker = PathFromUtf8(root_) / (brandId + ".missing");
+    const fs::path marker = PathFromUtf8(root_) / PathFromUtf8(brandId + ".missing");
     std::error_code ec;
     if (!fs::exists(marker, ec)) return true;
     std::ifstream in(marker);
@@ -121,7 +121,7 @@ void SenderIconCache::NoteFailure(const std::string& brandId) {
     if (root_.empty()) return;
     std::error_code ec;
     fs::create_directories(PathFromUtf8(root_), ec);
-    std::ofstream out(PathFromUtf8(root_) / (brandId + ".missing"), std::ios::trunc);
+    std::ofstream out(PathFromUtf8(root_) / PathFromUtf8(brandId + ".missing"), std::ios::trunc);
     if (out) out << Now() << "\n";
 }
 
@@ -133,10 +133,10 @@ std::string SenderIconCache::Store(const std::string& brandId,
 
     std::error_code ec;
     fs::create_directories(PathFromUtf8(root_), ec);
-    const fs::path path = PathFromUtf8(root_) / (brandId + "." + ext);
+    const fs::path path = PathFromUtf8(root_) / PathFromUtf8(brandId + "." + ext);
     // Write beside the target and rename, so a half-written icon is never seen
     // by the UI thread reading the same folder.
-    const fs::path temp = PathFromUtf8(root_) / (brandId + ".part");
+    const fs::path temp = PathFromUtf8(root_) / PathFromUtf8(brandId + ".part");
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         if (!out) return "";
@@ -146,7 +146,7 @@ std::string SenderIconCache::Store(const std::string& brandId,
     }
     fs::rename(temp, path, ec);
     if (ec) { fs::remove(temp, ec); return ""; }
-    fs::remove(PathFromUtf8(root_) / (brandId + ".missing"), ec);
+    fs::remove(PathFromUtf8(root_) / PathFromUtf8(brandId + ".missing"), ec);
     resolved_[brandId] = PathToUtf8(path);
     return PathToUtf8(path);
 }

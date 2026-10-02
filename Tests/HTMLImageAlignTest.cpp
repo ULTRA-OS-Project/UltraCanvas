@@ -8,8 +8,9 @@
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; inline images are laid out and drawn on an
 // offscreen render context - no window or display needed.
+// Version: 1.1.0 - a width:100% picture in a 600px mail table stays 600px
 // Version: 1.0.0
-// Last Modified: 2026-09-28
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -304,6 +305,28 @@ int main() {
             const Rect2Df b = p.image->GetBounds();
             Check(b.width <= p.rowWidth + 0.5f, "shrinks to the column");
             CheckNear(b.x, 0.f, "starts at the left");
+            CheckNear(b.height, b.width / 10.f, "keeps its 10:1 aspect ratio");
+        }
+    }
+
+    // A mail template's picture: width:100% in a 600px table. Its natural
+    // width (1000px) is no minimum - a percentage-sized image can shrink to
+    // nothing, as in a browser - so the table stays 600px instead of growing
+    // to the picture and pushing the message off the right of the pane.
+    std::printf("width:100%% picture in a 600px mail table\n");
+    {
+        std::shared_ptr<UltraCanvasContainer> keep;
+        Placed p = LayOut(
+            "<table width=\"600\" style=\"width:600px\" cellpadding=\"0\" cellspacing=\"0\">"
+            "<tr><td style=\"width:100%\"><div style=\"max-width:580px\">"
+            "<a href=\"https://x.example\"><img src=\"big.png\" width=\"580\" height=\"auto\" "
+            "style=\"display:block;height:auto;border:0;width:100%\"></a>"
+            "</div></td></tr></table>", 640.f, keep);
+        Check(p.image != nullptr, "image built");
+        if (p.image) {
+            const Rect2Df b = p.image->GetBounds();
+            Check(b.width <= 600.5f, "no wider than the 600px table");
+            Check(b.width >= 500.f, "fills the column");
             CheckNear(b.height, b.width / 10.f, "keeps its 10:1 aspect ratio");
         }
     }

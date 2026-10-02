@@ -817,7 +817,7 @@ std::string UltraCanvasGitRepository::ReadHeadSha() {
 
     const std::string ref = Trim(content.substr(5));
     std::string target;
-    if (ReadWholeFile(PathFromUtf8(impl->gitDirectory) / ref, target)) return Trim(target);
+    if (ReadWholeFile(PathFromUtf8(impl->gitDirectory) / PathFromUtf8(ref), target)) return Trim(target);
 
     // Fall back to packed-refs.
     std::unordered_map<std::string, std::string> refs, peeled;

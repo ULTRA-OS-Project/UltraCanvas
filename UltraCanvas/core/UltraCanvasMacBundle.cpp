@@ -56,9 +56,9 @@ namespace UltraCanvas {
             std::error_code ec;
             for (const std::string& candidate : {iconFile, iconName}) {
                 if (candidate.empty()) continue;
-                const fs::path direct = resources / candidate;
+                const fs::path direct = resources / PathFromUtf8(candidate);
                 if (IsFile(direct)) return PathToUtf8(direct);
-                const fs::path suffixed = resources / (candidate + ".icns");
+                const fs::path suffixed = resources / PathFromUtf8(candidate + ".icns");
                 if (IsFile(suffixed)) return PathToUtf8(suffixed);
             }
             if (!fs::is_directory(resources, ec) || ec) return {};
@@ -122,7 +122,7 @@ namespace UltraCanvas {
 
         const std::string executable = info.GetString("CFBundleExecutable");
         if (!executable.empty()) {
-            const fs::path macOs = contents / "MacOS" / executable;
+            const fs::path macOs = contents / "MacOS" / PathFromUtf8(executable);
             if (IsFile(macOs)) bundle.executable = PathToUtf8(macOs);
         }
         bundle.iconFile = FindBundleIcon(contents / "Resources",

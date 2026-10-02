@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.5.0 - display:block cells of a row stack in one anonymous cell
+//                  (mail-template columns on a narrow screen); align="center"
+//                  / "right" on a container places its narrowed blocks too
 // Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
 //                  images (first url() layer that loads, fitted by
 //                  background-size); rounded borderless boxes; max-width;
@@ -11,7 +14,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -493,7 +496,22 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
         if (IsBlockDisplay(childStyle.display)) {
             flushRun();
-            addFlowChild(PlaceByAutoMargins(BuildBlock(child), childStyle),
+            // align="center" / "right" on the container (<td align>, <div
+            // align>, <center>) places a narrowed block too, as browsers do -
+            // the mail template's <td align="center"><div style="max-width:
+            // 280px">: placed like margin: auto, unless the block has its own.
+            ComputedStyle placement = childStyle;
+            if (!placement.marginLeftAuto && !placement.marginRightAuto) {
+                std::string align = element.tag == "center" ? std::string("center")
+                                                            : element.GetAttribute("align");
+                for (char& ch : align) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                if (align == "center" || align == "middle") {
+                    placement.marginLeftAuto = placement.marginRightAuto = true;
+                } else if (align == "right") {
+                    placement.marginLeftAuto = true;
+                }
+            }
+            addFlowChild(PlaceByAutoMargins(BuildBlock(child), placement),
                          childStyle.marginTop, childStyle.marginBottom);
             return;
         }
@@ -1059,12 +1077,46 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         }
         Node& row = *rows[r].row;
         const ComputedStyle& rowStyle = resolver.StyleOf(&row);
+        // A <td> made display:block is no longer a cell: as in a browser, the
+        // blocks next to each other in a row share one anonymous cell and
+        // stack in it. This is how mail templates turn their side-by-side
+        // columns into one column on a narrow screen
+        // (@media (max-width:620px) { .stack .column { display:block } }).
+        std::vector<Node*> stacked;
+        auto flushStacked = [&]() {
+            if (stacked.empty()) return;
+            while (isTaken(r, c)) ++c;
+            take(r, c);
+            auto anon = MakeContainer("td");
+            ++elementCount;
+            anon->layout.SetFlex(CSSLayout::FlexDirection::Column)
+                        .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexStart)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            anon->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, 1, 1);
+            if (rowStyle.backgroundColor) anon->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
+            for (Node* block : stacked) {
+                auto box = BuildBlock(*block);
+                box->layoutItem.SetFlexShrink(0.f);
+                anon->AddChild(box);
+                ++elementCount;
+            }
+            table->AddChild(anon);
+            ++c;
+            stacked.clear();
+        };
         for (const auto& cellPtr : row.children) {
             Node& cell = *cellPtr;
             if (!cell.IsElement() || !isCell(cell)) continue;
-            if (resolver.StyleOf(&cell).display == DisplayMode::Hidden) continue;
+            const DisplayMode display = resolver.StyleOf(&cell).display;
+            if (display == DisplayMode::Hidden) continue;
+            if (display == DisplayMode::Block) {
+                stacked.push_back(&cell);
+                continue;
+            }
+            flushStacked();
             addCell(cell, rowStyle, r, c);
         }
+        flushStacked();
     }
 
     const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;

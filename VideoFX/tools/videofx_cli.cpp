@@ -21,6 +21,9 @@
 //          --font FONTFILE               font for --title (default: the bundled Ubuntu font)
 //          --music FILE                  background music under the whole export
 //          --music-volume V --music-start S --duck LEVEL --no-loop
+//          --duck-threshold DB --duck-attack S --duck-hold S --duck-release S
+//                                        when the clips' sound ducks the music (default
+//                                        -36.5 dBFS, 0.12 s, 0.6 s, 0.8 s: tuned for speech)
 //          --fit-music                   slideshow: seconds per image chosen to end with the music
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
@@ -33,8 +36,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.4.0
-// Last Modified: 2026-10-01
+// Version: 0.4.1
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
@@ -42,6 +45,7 @@
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -67,6 +71,8 @@ bool ParseNumber(const std::string& text, double& out) {
     return !in.fail() && in.peek() == std::char_traits<char>::eof();
 }
 
+constexpr double kNotANumber = std::numeric_limits<double>::quiet_NaN();
+
 double NumberOr(const std::string& text, double fallback) {
     double v = 0.0;
     return ParseNumber(text, v) ? v : fallback;
@@ -85,6 +91,7 @@ int Usage() {
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --music FILE [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
+        "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
     return 2;
@@ -210,6 +217,11 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--music-volume" && next(v)) settings.music.volume = NumberOr(v, -1.0);
         else if (a == "--music-start" && next(v)) settings.music.start = NumberOr(v, -1.0);
         else if (a == "--duck" && next(v)) settings.music.duckingLevel = NumberOr(v, -1.0);
+        // NaN, not -1, for a value that does not parse: -1 dBFS is a valid threshold
+        else if (a == "--duck-threshold" && next(v)) settings.music.duckingThresholdDb = NumberOr(v, kNotANumber);
+        else if (a == "--duck-attack" && next(v)) settings.music.duckingAttack = NumberOr(v, kNotANumber);
+        else if (a == "--duck-hold" && next(v)) settings.music.duckingHold = NumberOr(v, kNotANumber);
+        else if (a == "--duck-release" && next(v)) settings.music.duckingRelease = NumberOr(v, kNotANumber);
         else if (a == "--no-loop") settings.music.loop = false;
         else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--fit" && next(v)) {

@@ -5098,7 +5098,7 @@ namespace UltraCanvas {
         std::string stem = PathToUtf8(base.stem());
         std::string ext = PathToUtf8(base.extension());   // includes the dot
         fs::path dir(UltraCanvas::PathFromUtf8(folder));
-        fs::path candidate = dir / baseName;
+        fs::path candidate = dir / PathFromUtf8(baseName);
         std::error_code ec;
         int n = 2;
         // A name is free when nothing on the disk has it and the caller has
@@ -5108,7 +5108,7 @@ namespace UltraCanvas {
             return alsoTaken && alsoTaken(PathToUtf8(p));
         };
         while (taken(candidate)) {
-            candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
+            candidate = dir / PathFromUtf8(stem + " (" + std::to_string(n++) + ")" + ext);
         }
         return PathToUtf8(candidate);
     }
@@ -8131,7 +8131,7 @@ namespace UltraCanvas {
         if (archiveJob) return false;   // a job is already running
 
         const std::string baseName = PathToUtf8(PathFromUtf8(e.name).stem());
-        std::string destDir = PathToUtf8(PathFromUtf8(currentPath) / baseName);
+        std::string destDir = PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(baseName));
         std::error_code ec;
         // Keep both renames the destination; Replace merges the archive
         // content into the existing folder.
@@ -8524,15 +8524,15 @@ namespace UltraCanvas {
         if (baseName.empty()) baseName = d.extractMode ? "Extracted" : "archive";
 
         std::error_code ec;
-        fs::path dir(d.destDir.empty() ? currentPath : d.destDir);
-        if (!fs::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) dir = currentPath;
+        fs::path dir = PathFromUtf8(d.destDir.empty() ? currentPath : d.destDir);
+        if (!fs::is_directory(dir, ec)) dir = PathFromUtf8(currentPath);
 
         if (d.extractMode) {
             // The name is the destination folder the archives unpack into.
-            fs::path target = dir / baseName;
+            fs::path target = dir / PathFromUtf8(baseName);
             int n = 2;
             while (fs::exists(UltraCanvas::PathFromUtf8(target), ec))
-                target = dir / (baseName + " (" + std::to_string(n++) + ")");
+                target = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")");
             fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
             if (ec || !fs::is_directory(UltraCanvas::PathFromUtf8(target), ec)) {
                 ReportError("Extraction failed: cannot create " + PathToUtf8(target));
@@ -8547,10 +8547,10 @@ namespace UltraCanvas {
                     std::string stem =
                             ArchiveBaseNameOf(PathToUtf8(PathFromUtf8(src).filename()), false);
                     if (stem.empty()) stem = "archive";
-                    dest = target / stem;
+                    dest = target / PathFromUtf8(stem);
                     int m = 2;
                     while (fs::exists(UltraCanvas::PathFromUtf8(dest), ec))
-                        dest = target / (stem + " (" + std::to_string(m++) + ")");
+                        dest = target / PathFromUtf8(stem + " (" + std::to_string(m++) + ")");
                     fs::create_directories(UltraCanvas::PathFromUtf8(dest), ec);
                 }
                 jobs.emplace_back(src, PathToUtf8(dest));
@@ -8564,10 +8564,10 @@ namespace UltraCanvas {
 
         // Uniquify while keeping the full (possibly compound) extension intact,
         // so ".tar.gz" stays ".tar.gz" rather than becoming ".tar (2).gz".
-        fs::path candidate = dir / (baseName + "." + ext);
+        fs::path candidate = dir / PathFromUtf8(baseName + "." + ext);
         int n = 2;
         while (fs::exists(UltraCanvas::PathFromUtf8(candidate), ec)) {
-            candidate = dir / (baseName + " (" + std::to_string(n++) + ")." + ext);
+            candidate = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")." + ext);
         }
         std::string dest = PathToUtf8(candidate);
 
@@ -14456,7 +14456,7 @@ namespace UltraCanvas {
             if (openable) {
                 std::error_code ec;
                 for (const std::string& p : targetPaths) {
-                    if (fs::is_regular_file(p, ec) && !ec) continue;
+                    if (fs::is_regular_file(PathFromUtf8(p), ec) && !ec) continue;
                     openable = false;
                     break;
                 }

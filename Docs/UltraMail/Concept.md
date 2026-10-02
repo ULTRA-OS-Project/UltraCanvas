@@ -253,7 +253,7 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   a message not sent is reported with Retry and is tried again by itself -
   after 1, 2, 5 and 10 minutes, then every 30, and at once when the
   connection is back. Autosave and undo-send are still to come. Since
-  0.10.17 a sent message is filed in the Sent folder - except on servers
+  0.10.19 a sent message is filed in the Sent folder - except on servers
   that do that themselves (Gmail, Outlook.com / Microsoft 365) - and the
   **Outbox window** (toolbar *Outbox (N)*, shown while messages wait) lists
   the waiting messages with why they have not gone out, and offers *Send

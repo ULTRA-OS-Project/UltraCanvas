@@ -188,7 +188,7 @@ namespace UltraCanvas {
         bool FindChildNoCase(const fs::path& dir, const std::string& name,
                              fs::path& out) {
             std::error_code ec;
-            fs::path direct = dir / name;
+            fs::path direct = dir / PathFromUtf8(name);
             if (fs::exists(direct, ec) && !ec) { out = direct; return true; }
             for (fs::directory_iterator it(dir, ec), end; it != end;
                  it.increment(ec)) {
@@ -285,7 +285,7 @@ namespace UltraCanvas {
         // exactly the mapping wanted here.
         void AddPrefixCandidate(std::vector<fs::path>& out,
                                 const fs::path& prefix, char letter) {
-            AddCandidate(out, prefix / "dosdevices" / (std::string(1, letter) + ":"));
+            AddCandidate(out, prefix / "dosdevices" / PathFromUtf8(std::string(1, letter) + ":"));
             if (letter == 'c') AddCandidate(out, prefix / "drive_c");
         }
 

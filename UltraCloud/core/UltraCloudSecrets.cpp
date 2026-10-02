@@ -115,7 +115,7 @@ std::string Deobfuscate(const std::vector<uint8_t>& key, const std::string& enco
 fs::path LegacySecretFile(const std::string& dir, const std::string& accountId) {
     std::string safe;
     for (char c : accountId) safe.push_back(std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
-    return PathFromUtf8(dir) / (safe + ".secret");
+    return PathFromUtf8(dir) / PathFromUtf8(safe + ".secret");
 }
 
 bool ReadLegacySecret(const fs::path& file, const std::vector<uint8_t>& key, Credentials& out) {
