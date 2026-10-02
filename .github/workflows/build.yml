@@ -703,8 +703,9 @@ jobs:
       # need libsodium, which every row installs.
       #
       # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
-      # Linux one that runs ctest: the suite is headless (no display, no
-      # network), so building it on macOS and Windows costs seconds and gates
+      # Linux one that runs ctest (Windows runs it too, in its own step below):
+      # the suite is headless (no display, no network), so building it on
+      # macOS and Windows costs seconds and gates
       # the thing those rows uniquely exercise — the STATIC UltraCanvas link,
       # where the core archive has to follow UltraNet on the link line.
       #
@@ -775,6 +776,17 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
+
+      # EmailCleaner's engine suite on Windows. It was built here (see the
+      # note above "Run UltraNet tests") but only Linux ran it, so the code
+      # that most needs Windows - account, mail and attachment paths with
+      # Thai and emoji names, opened through the UTF-16 file APIs on a code
+      # page 1252 runner - was checked on the platform where it cannot fail.
+      # The suite is headless: no display, no network, temp folders only.
+      - name: Run EmailCleaner tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^EmailCleanerEngine$"
 
       # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
       # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"
