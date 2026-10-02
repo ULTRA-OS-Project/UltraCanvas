@@ -7,7 +7,6 @@
 
 #include "UltraDesktopWindow.h"
 #include "UltraDesktopAppStarter.h"
-#include "UltraDesktopSettingsWindow.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 
@@ -19,6 +18,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasUtils.h"
@@ -107,6 +107,10 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
         debugOutput << "UltraDesktop: settings not read (" << error << "), using the defaults" << std::endl;
     }
     if (edgeOverride) settings_.taskbarEdge = *edgeOverride;
+    {
+        std::error_code ec;
+        settingsFileTime_ = std::filesystem::last_write_time(PathFromUtf8(settingsPath_), ec);
+    }
     iconsDir_ = NormalizePath(GetResourcesDir() + "media/icons/desktop/");
 
     WindowConfig config;
@@ -311,7 +315,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
     AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
-                 [this]() { OpenSettings(); });
+                 [this]() { OpenSystemSettings(); });
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
@@ -437,13 +441,15 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
 
 // ===== WHAT THE BARS DO =====
 
-void UltraDesktopWindow::OpenSettings() {
-    if (settingsWindow_ && settingsWindow_->IsOpen()) {
-        settingsWindow_->Raise();
-        return;
-    }
-    settingsWindow_ = std::make_shared<UltraDesktopSettingsWindow>(this);
-    settingsWindow_->Open();
+void UltraDesktopWindow::OpenSystemSettings() {
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", {}, &error)) return;
+    debugOutput << "UltraDesktop: UOS-Settings: " << error << std::endl;
+    UltraCanvasDialogManager::ShowWarning(
+            "UOS-Settings, the ULTRA OS settings application, could not be started. "
+            "It holds the desktop's settings too: install it beside UltraDesktop or "
+            "on the PATH.\n\n" + error,
+            "ULTRA OS settings", nullptr, window_.get());
 }
 
 void UltraDesktopWindow::OpenAppStarter() {
@@ -547,11 +553,50 @@ void UltraDesktopWindow::SaveSettings() {
     if (!settings_.Save(settingsPath_, &error)) {
         debugOutput << "UltraDesktop: settings not saved: " << error << std::endl;
     }
+    std::error_code ec;
+    settingsFileTime_ = std::filesystem::last_write_time(PathFromUtf8(settingsPath_), ec);
+}
+
+void UltraDesktopWindow::CheckSettingsFile() {
+    if (settingsPath_.empty()) return;
+    // Once a second is plenty for a setting the user just changed elsewhere.
+    const auto now = std::chrono::steady_clock::now();
+    if (now < nextSettingsCheck_) return;
+    nextSettingsCheck_ = now + std::chrono::seconds(1);
+
+    std::error_code ec;
+    const auto stamp = std::filesystem::last_write_time(PathFromUtf8(settingsPath_), ec);
+    if (ec || stamp == settingsFileTime_) return;
+    settingsFileTime_ = stamp;
+
+    DesktopSettings written;
+    std::string error;
+    if (!written.Load(settingsPath_, &error)) {
+        debugOutput << "UltraDesktop: changed settings not read: " << error << std::endl;
+        return;
+    }
+    // Only what UOS-Settings edits; the notes and the Stickerboard switch are
+    // this process's and the copy in memory is the current one.
+    const bool changed = written.taskbarEdge != settings_.taskbarEdge ||
+                         written.wallpaper != settings_.wallpaper ||
+                         written.ramDiscPath != settings_.ramDiscPath ||
+                         written.filerProgram != settings_.filerProgram ||
+                         written.virtualDesktops != settings_.virtualDesktops;
+    if (!changed) return;
+    settings_.taskbarEdge = written.taskbarEdge;
+    settings_.wallpaper = written.wallpaper;
+    settings_.ramDiscPath = written.ramDiscPath;
+    settings_.filerProgram = written.filerProgram;
+    settings_.virtualDesktops = written.virtualDesktops;
+    // Written back with the notes as they are now, should a note have
+    // changed between UOS-Settings reading the file and writing it.
+    ApplySettings();
 }
 
 // ===== LIVE DATA =====
 
 void UltraDesktopWindow::OnTimer() {
+    CheckSettingsFile();
     if (windowsDirty_.exchange(false)) {
         RefreshDesktops();
         RefreshWindows();

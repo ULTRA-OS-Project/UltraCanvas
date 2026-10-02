@@ -1,3 +1,106 @@
+#### 2026-10-02 *0.9.131*
+- **HTML reader: pictures with `height="auto"` are shown.** Mail templates
+  (Beefree, Braze - Kickstarter's newsletters among them) write
+  `width="580" height="auto"` on every `<img>`. The resolver read the
+  attribute `auto` as 0px, so each picture was laid out zero pixels tall and
+  the message showed none of them, even after its remote images had loaded.
+  `width` / `height="auto"` on `<img>`, `<table>`, `<td>` and `<th>` is now no
+  size at all, as `auto` already was in CSS: the picture keeps its own aspect
+  ratio. Test: `HTMLReaderTest` (`TestImageAutoAttributes`).
+- **HTML mail columns stack in a narrow pane, as on a phone.** Mail templates
+  lay their articles out side by side and, below a width (`@media
+  (max-width:620px) { .stack .column { display:block } }`), make each `<td>`
+  a block so the columns stack. The HTML reader kept every `<td>` a table
+  cell whatever its `display`, so a narrow reading pane showed two squeezed
+  columns. Now the `display:block` cells next to each other in a row share
+  one anonymous cell and stack in it, as in a browser.
+  Test: `HTMLTableLayoutTest` ("mail columns stack in a narrow pane").
+- **A stretched flex item keeps its `max-width`.** `align-items: stretch`
+  widened an item past its max (or below its min) cross size; CSS Flexbox
+  clamps it (§9.4 step 11). In HTML mail, a `<div style="max-width:280px">`
+  holding a `width:100%` picture in a wider table cell was measured 280px
+  tall but drawn stretched, the picture spilling over the text below.
+- **`align="center"` / `"right"` on a container places its narrowed blocks.**
+  `<td align="center"><div style="max-width:280px">` centres the div, as in
+  browsers (also `<div align>` and `<center>`); before it sat at the left.
+  Test: `HTMLTableLayoutTest` ("align=center places a max-width block").
+- **HTML mail no longer runs off the right of the pane, and its centred menus
+  are on screen.** A picture sized in % of its column (`width:100%`, the
+  image of every mail-template newsletter) reported its natural width as the
+  narrowest it could be, so a 2000px photo widened the 600px table around it
+  to 2000px. Everything in that table then sat in a box far wider than the
+  pane: text ran off the right edge, and a centred row - Kickstarter's ART /
+  COMICS / DESIGN … menu - was laid out off screen altogether.
+  `UltraCanvasImageElement` now reports no min-content width when its width
+  or max-width is a percentage (CSS Sizing 3 §5.2.2, compressible replaced
+  elements), so the table keeps its own width and the picture shrinks into
+  it. Test: `HTMLImageAlignTest` ("width:100% picture in a 600px mail table").
+- **A later `width` replaces an earlier one.** The resolver kept a px and a %
+  width side by side, and the px one won: a newsletter's narrow-screen rule
+  `.row-content{width:100%!important}` over the table's inline `width:600px`
+  left it 600px wide in a narrow pane. `width: 100%`, `width: 300px` and
+  `width: auto` now each replace what came before. Test: `HTMLReaderTest`
+  (`TestImportantWidthReplacesInlineWidth`).
+
+#### 2026-10-02 *0.9.130*
+- **Quote levels can be changed from a toolbar.** New
+  `UCRichDocumentEditor::IncreaseQuoteLevel` / `DecreaseQuoteLevel` and the
+  matching `UltraCanvasRichTextEdit` methods move every block the selection
+  touches one quote level in or out (the caret's block when nothing is
+  selected).
+  - The level stays between 0 and 8.
+  - Each change is one undo step; a change that does nothing records none.
+  - They also work with the caret in a table cell: the level belongs to the
+    whole table and restyles none of its cells.
+
+#### 2026-10-02 *0.9.129*
+- **The file dialog can show its filters as toggle buttons.** With
+  `FileDialogConfig::filterToggles` (or `FileDialogOptions::SetFilterToggles`
+  through `UltraCanvasFileLoader`) the "Files of type" dropdown becomes a
+  "Show:" row of toggle buttons, one per filter, labelled with the filter's
+  name and with its extensions in the tooltip. Any number can be on, the
+  listing shows the files any of them matches, and the last one on cannot be
+  switched off. All start on except an "All files" (`*`) filter. It is for an
+  Open dialog whose filters are kinds of file (images, audio, video ...) and
+  would otherwise be a dropdown of endless extension lists. A native dialog
+  has no toggles, so `UltraCanvasFileLoader` hands it the same filters as a
+  list headed by "All supported files". The listing's filter now holds a copy
+  of the filters in force, so a toggle change applies to a new predicate
+  rather than editing one the listing may be running.
+- **`UltraCanvasMediaViewer`'s Open dialog uses the toggles: Images, Audio,
+  Video, Documents, Text, All files.** Its only filter had been a short list
+  of picture formats, so in the framework dialog every video, document and
+  text file the viewer opens was hidden. Each button now holds every
+  extension of that kind the viewer opens, worked out at run time from the
+  checks that decide what browsing a folder shows (a codec or reader a plugin
+  registers is included) and sorted by the viewer's own `ClassifyFile`:
+  vector drawings and 3D models are Images; PDFs, spreadsheets, e-books,
+  `.ucd` and fonts are Documents; Text is plain text, markup and every
+  programming language the syntax highlighter knows. A kind the build cannot
+  show (no video backend) gets no button.
+
+#### 2026-10-02 *0.9.128*
+- **A hook now enforces the PR number in the chat title.** `.claude/hooks/check-chat-title.sh` runs on `PostToolUse` for `mcp__github__create_pull_request` and `mcp__claude-code-remote__set_session_title`, and on `Stop`, in Claude Code Remote sessions only. Opening a PR records its number in a per-session file under `.git/`, so nothing appears in the working tree, and puts the rename instruction in front of the session with the number filled in. Each rename records the number the title starts with. A bare `#628` with no words after it does not count. At `Stop` the hook takes the PR the session opened, or the one its closing line names with ` — open as PR #<n>` (that also catches a PR opened from the Claude UI), and blocks once when the title was never given that number. A second stop goes through, so a title someone set by hand only costs one line of explanation. `AGENTS.md` rule 7 describes it.
+
+#### 2026-10-02 *0.9.127*
+- **The file dialog also remembers its Details column widths and the last
+  folder - one for all applications, or one per application.**
+  `FileDialog.conf` (beside the view and window size it already kept) now
+  holds the Size / Type / Modified widths the user dragged the columns to,
+  and the last used folder. That folder is where the next
+  `UltraCanvasFileDialog` opens when the caller names no starting folder -
+  UltraMail's *Attach file* - while a folder the caller does name still wins.
+  - Whether the folder is shared by all applications (Global) or kept per
+    application (Individual, each application with its own Global /
+    Individual choice) is set in the new ULTRA OS settings application,
+    UOS-Settings. An application switched to its own folder starts from the
+    common one until it has used a folder of its own.
+  - **`UltraCanvasFileDialogSettings.h`** (`UltraCanvas::FileDialogSettings`)
+    reads and writes the file for the dialog and for UOS-Settings alike.
+    Every change goes through `Update()`, which re-reads the file first, so
+    one application's write never discards another's; the file is written
+    beside itself and renamed into place.
+
 #### 2026-10-02 *0.9.126*
 - **UltraNet plug-ins are loaded `RTLD_LOCAL`.** `UltraNet_RefreshPlugins()`
   opened every plug-in DSO with `RTLD_GLOBAL`, which put everything a plug-in

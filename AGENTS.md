@@ -300,6 +300,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
+| `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
@@ -661,7 +662,12 @@ For assistants:
    number per chat: when a later PR replaces a merged or closed one (rule 2),
    swap the old number for the new one rather than stacking them, and never
    rename to the bare number — keep the rest of the title so the chat list
-   still says what the work is.
+   still says what the work is. `.claude/hooks/check-chat-title.sh` enforces
+   this in Claude Code Remote sessions: on `PostToolUse` it records the PR a
+   session opens and the number each `set_session_title` gives it, and on
+   `Stop` it blocks once when the PR the session opened — or the one its
+   closing line names with ` — open as PR #<n>`, which covers a PR opened
+   from the Claude UI — is not the number the title was given.
 
 For maintainers:
 

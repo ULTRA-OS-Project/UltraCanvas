@@ -129,6 +129,7 @@ Apps/UltraMail/
                                   (UltraCloud picker → share link into the body)
     UltraMailFormatBar.{h,cpp}    the formatting toolbar for a RichTextEdit, shared
                                   by the compose window and the signature editor
+                                  (the compose window's adds Quote + / Quote −)
     UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
