@@ -1,3 +1,48 @@
+#### 2026-10-03 *0.9.139*
+- **The media viewer says when a picture cannot be decoded.** A file whose
+  header reads but whose pixels do not (a HEIC on a build without an HEVC
+  decoder, a truncated PNG) left an empty display and an info bar listing
+  its size as if it were showing. The display now reads "Cannot decode this
+  picture", the info bar gives the reason libvips reports
+  (`cannot decode - heif: Unsupported feature: Unsupported codec (4.3000)`),
+  and an open Details panel adds a *Decoding* row. Only drawing decodes the
+  pixels, so the surface finds out then and tells the viewer through the new
+  `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image and after
+  the frame rather than inside `Render`.
+- **The media viewer builds its Details text only while the panel is open.**
+  It used to build it for every file it loaded, which reads the file's
+  metadata (EXIF, IPTC, XMP, ICC, PNG text) through libvips and lays out the
+  Markdown tables, even with the panel closed, which is how it usually is.
+  Now opening the panel builds the text for the file on show, and while the
+  panel stays open each file loaded refreshes it, so browsing with it closed
+  costs nothing extra. An empty viewer's panel says "No media" instead of
+  keeping the last file's details.
+- **The demo's Media Viewer page crashed (ACCESS_VIOLATION on Windows,
+  SIGSEGV on Linux).** The viewer fills its Details panel, a Markdown
+  `UltraCanvasTextArea`, and scrolls it to the top on every file it loads:
+  when the page opens and on every click or arrow key that browses the
+  folder. When the viewer is not in a window yet, as the demo does it
+  (`OpenFolder` before `AddChild`), the text area has no render context, and
+  `ScrollTo` built the line layouts anyway, through a null context.
+  `GetActualLineLayout` now builds layouts only when there is a context and
+  otherwise returns no layout, which every caller already handles; the first
+  `Render` lays the text out. The same function read one element past the end
+  of the layout cache for an index equal to the line count; it no longer
+  does. New `TextAreaDetachedTest` scrolls a detached Markdown and plain text
+  area, then checks both lay out once attached.
+- **An image whose header reads but whose pixels do not decode crashed
+  whatever drew it.** libvips opens a file lazily, so such an image has a
+  size and counts as valid; only making the pixmap finds the pixels missing,
+  and `CreatePixmapFromVImage` then copied from the null pointer
+  `VImage::data()` returns. The demo's Media Viewer hit it browsing to
+  `dice.heic` on a build whose libheif has no HEVC decoder, and a truncated
+  PNG does the same everywhere. The pixmap request now fails cleanly: no
+  pixmap, the libvips reason in the image's error message, and no decoding
+  again on the next request. The function's other two failures (no Cairo
+  surface, no surface data) threw an exception the pixmap path does not
+  catch, which ended the program too; all three now throw `vips::VError` and
+  free the surface first. New `ImageUndecodableTest`.
+
 #### 2026-10-03 *0.9.138*
 - **CSSLayout: floats in block layout.** `LayoutItem::floatSide`
   (`SetFloat(FloatSide::Left / Right)`) puts a block child at the left or
