@@ -91,7 +91,9 @@ private:
     AttachmentStrip attachments_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> to_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> cc_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> bcc_;   // only when the draft has Bcc
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> bcc_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bccRow_;   // shown by the Bcc toggle
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    bccToggle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> subject_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;       // plain drafts
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> rich_;    // formatted drafts
