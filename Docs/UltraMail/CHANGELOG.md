@@ -11,6 +11,11 @@
 - **Bcc in the compose window.** A **Bcc** toggle at the end of the Cc row
   shows a Bcc row for blind copies the other recipients don't see. Hiding the
   row again empties it, so nothing goes to an address that is out of sight.
+- **To, Cc and Bcc complete from the address book.** Typing in a recipient
+  field pops up the contacts whose name, organization or address matches what
+  is typed after the last comma - matches at the start of a word first. Down
+  and Enter, or a click, puts in "Name <address>, " and keeps the recipients
+  before it; addresses already in the field are not offered again.
 - **Plain-text mail: addresses are links.** They show the pointing hand, show
   their address in the status line or as a tooltip, and are counted with the
   message's links. They are never judged as web links by the threat scan.

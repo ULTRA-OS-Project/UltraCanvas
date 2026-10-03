@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.h
-// The compose surface: To / Cc / Subject fields, an editable body, the
+// The compose surface: To / Cc (/ Bcc) / Subject fields - the recipient
+// fields complete names and addresses from the address book - an editable body, the
 // attachment strip, and the buttons Send / Cancel / Attach file / Attach cloud
 // link. Built from a Draft (blank, reply-prefilled or forward-prefilled) and
 // hands an updated Draft back through onSend. "Attach file" reads a local file
@@ -15,12 +16,14 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.8.0 - To / Cc / Bcc complete from the address book (suggestRecipients);
+//                  the Bcc toggle
 // Version: 0.7.0 - one view per window: owned by a shared_ptr, late dialog
 //                  answers hold it weakly
 // Version: 0.6.0 - the full formatting toolbar, and the Plain text | Formatted
 //                  switch
 // Version: 0.5.0
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -30,11 +33,13 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasTextArea.h"
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailFormatBar.h"
 #include "UltraMailComposer.h"
+#include "UltraMailRecipientComplete.h"
 
 #include <UltraCloud/UltraCloudService.h>
 
@@ -69,6 +74,12 @@ public:
     std::function<void(const Draft&)> onSend;
     // Raised when Cancel is clicked.
     std::function<void()> onCancel;
+    // The address-book matches for the recipient being typed (`query`, the
+    // part after the last comma of `fieldText`). Set before Build(); unset,
+    // the recipient fields complete nothing.
+    std::function<std::vector<RecipientSuggestion>(const std::string& query,
+                                                   const std::string& fieldText)>
+        suggestRecipients;
 
 private:
     Draft CollectDraft() const;
