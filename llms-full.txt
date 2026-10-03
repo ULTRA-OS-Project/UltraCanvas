@@ -3448,6 +3448,12 @@ of the typing. It is written around **Claude Code**, because the repository
 carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
 and the hooks), but every step names what to do with another assistant too.
 
+**Choose your platform as you read.** Every step that differs by operating
+system offers one collapsed section per OS: Linux, macOS and Windows. Open the
+one you work on; open another to see what a colleague on that platform does.
+UltraCanvasStart, the setup application, will present the same choice on its
+first page, preselected to the machine it runs on.
+
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
 this: it says where each step happens when CI is the compiler.
@@ -3462,33 +3468,100 @@ hand-paints controls, or leaves work in a container that is thrown away.
 
 ## Step 1 — Install the toolchain
 
-UltraCanvas is C++20 built with CMake ≥ 3.16. Clang is the default compiler on
-Linux.
+UltraCanvas is C++20 built with CMake ≥ 3.16. Pick your platform.
+
+<details>
+<summary><b>Linux</b> — Ubuntu / Debian, Clang is the default compiler</summary>
 
 ```bash
-# Ubuntu / Debian — the core set
 sudo apt install build-essential cmake pkg-config clang \
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libfreetype6-dev \
     libvips-dev libglib2.0-dev libtinyxml2-dev libfmt-dev \
     libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+```
 
-# macOS
-brew install cmake cairo pango freetype vips harfbuzz
+Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
+`libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
+decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
+for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
+Other distributions use the same library names under their package manager.
 
-# Windows — MSYS2 CLANG64 shell (see build-win.cmd for the package list)
+</details>
+
+<details>
+<summary><b>macOS</b> — Xcode Command Line Tools and Homebrew, Apple Silicon or Intel</summary>
+
+```bash
+xcode-select --install          # Apple Clang, git, make
+brew install cmake pkg-config cairo pango harfbuzz vips glib freetype tinyxml2
+
+# Optional: the libraries the CI build adds for the plug-ins
+brew install libcdr librevenge boost little-cms2 icu4c   # CDR plug-in
+brew install zbar                                         # barcode decoding
+brew install mupdf                                        # PDF plug-in
+brew install c-ares libsodium                             # UltraNet DNS, UltraCrypt
+brew install leptonica tesseract                          # OCR plug-in
+brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
+```
+
+Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
+directory itself. The complete list is the *Install dependencies (macOS)* step
+in `.github/workflows/build.yml`.
+
+</details>
+
+<details>
+<summary><b>Windows</b> — MSYS2 CLANG64 (x86_64) or CLANGARM64 (Windows on ARM)</summary>
+
+The supported toolchain is MSYS2 with the **CLANG64** environment: Clang,
+libc++, Ninja. That is what CI builds and what `package-win.sh` packages from;
+MSVC and the MINGW64 gcc environment are not supported. Install MSYS2 from
+<https://www.msys2.org>, open the **MSYS2 CLANG64** shell, and:
+
+```bash
+pacman -Syu          # close and reopen the shell if it asks you to
 pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake \
     mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-pkgconf \
+    mingw-w64-clang-x86_64-cppwinrt \
     mingw-w64-clang-x86_64-cairo mingw-w64-clang-x86_64-pango \
     mingw-w64-clang-x86_64-harfbuzz mingw-w64-clang-x86_64-glib2 \
     mingw-w64-clang-x86_64-freetype mingw-w64-clang-x86_64-tinyxml2 \
-    mingw-w64-clang-x86_64-libvips
+    mingw-w64-clang-x86_64-libiconv mingw-w64-clang-x86_64-zlib \
+    mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-glew \
+    mingw-w64-clang-x86_64-fmt mingw-w64-clang-x86_64-curl-winssl \
+    git zip
+
+# Optional: what the CI build adds for the plug-ins
+pacman -S mingw-w64-clang-x86_64-rust                                  # Vectorizer
+pacman -S mingw-w64-clang-x86_64-libcdr mingw-w64-clang-x86_64-librevenge \
+    mingw-w64-clang-x86_64-lcms2 mingw-w64-clang-x86_64-icu \
+    mingw-w64-clang-x86_64-boost                                       # CDR plug-in
+pacman -S mingw-w64-clang-x86_64-mupdf mingw-w64-clang-x86_64-libmupdf # PDF plug-in
+pacman -S mingw-w64-clang-x86_64-leptonica mingw-w64-clang-x86_64-tesseract-ocr  # OCR
 ```
 
-The complete, current three-OS lists are the ones CI installs in
-`.github/workflows/build.yml`; the optional plugins (CDR, PDF via MuPDF, OCR,
-Vectorizer, audio, video) each add a library, and every one of them can be
-switched off with a `-DULTRACANVAS_PLUGIN_<NAME>=OFF` option when you do not
-need it. `Docs/Dependencies.md` says which library each feature pulls in.
+On Windows on ARM replace `mingw-w64-clang-x86_64-` with
+`mingw-w64-clang-aarch64-` and use the CLANGARM64 shell. The complete list is
+the *Setup MSYS2 (Windows)* step in `.github/workflows/build.yml`.
+`build-win.cmd` in the repository root carries the same list.
+
+Two Windows-specific rules the checks enforce: file paths go through
+`PathFromUtf8` / `PathToUtf8` / `OpenFileUtf8`, never `p.string()` or
+`fs::path(str)`, because libc++ converts those through the ANSI code page and a
+Thai or emoji file name then names a different file; and no function may carry
+the name of a Win32 A/W macro (`CreateFile`, `LoadImage`, `SendMessage`),
+because `<windows.h>` renames it in some translation units and the link fails
+only on Windows.
+
+</details>
+
+Every optional plug-in can be switched off with `-DULTRACANVAS_PLUGIN_<NAME>=OFF`
+when you do not need it, and `Docs/Dependencies.md` says which library each
+feature pulls in. If you would rather not build the framework at all, the SDK
+([`UltraCanvasSDK.md`](UltraCanvasSDK.md)) is the framework already built for
+each of these platforms; the compiler and the libraries above are still needed.
 
 ## Step 2 — Clone and build the whole tree once
 
@@ -3499,6 +3572,35 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/bin/UltraCanvasDemo
 ```
+
+<details>
+<summary><b>Linux</b></summary>
+
+The core builds as a shared library by default, as CI does; the demo and the
+other applications sit in `build/bin/`.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+The core builds as a static library by default. The applications are plain
+executables under `build/bin/`; `package-macos.sh` turns them into bundles in
+step 10.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
+`./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
+command prompt with the MSYS2 `bin` directory on `PATH`. The executables are
+GUI-subsystem programs, so they print nothing to a console;
+`Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
+build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
+
+</details>
 
 Build everything the first time, even though you only want your own app. Two
 reasons:
@@ -3561,7 +3663,7 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Install the framework once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK artifact CI builds for your platform ([`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
 Both routes are validated on every pull request: CI builds the in-tree
 applications, and it installs the framework into a scratch prefix and builds
@@ -3684,6 +3786,14 @@ int main(int argc, char* argv[]) {
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __argv); }
 #endif
 ```
+
+The `#ifdef` blocks are the whole of what differs per platform in an
+application's entry point: Linux needs X11 threading and the signal handlers,
+Windows needs `WinMain` because the executables are GUI-subsystem programs,
+and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
+so no console opens beside the window, and embed the icon in the `.exe` with
+`ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
+Explorer and the taskbar read.
 
 Then, in the same change: a `Docs/MyApp/CHANGELOG.md` whose first line is
 `#### 2026-10-01 *0.1.0*`, one `_ultracanvas_declare_product()` line in
@@ -3844,15 +3954,45 @@ How you drive the assistant matters as much as what it knows.
 
 ## Step 10 — Package
 
-- Linux: `./package-linux.sh` (portable tree with every app and a shared
-  `lib/`) or `appimage/` for a single-app AppImage.
-- Windows: `./package-win.sh`; `./set-version.sh` refreshes the `.rc` and
-  manifest literals that windres needs.
-- macOS: `./package-macos.sh`, or `package_and_notarize-macos.sh` for a
-  signed, notarised bundle (`Docs/UltraCanvas/UltraCanvasMacBundle.md`).
-- WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
-  lists what differs in the browser (`Run()` never returns, no synchronous
-  file pickers, text-only clipboard).
+<details>
+<summary><b>Linux</b></summary>
+
+`./package-linux.sh` builds a portable tree with every application and a
+shared `lib/` holding the dependent `.so` files, paid for once; `appimage/`
+builds a single-application AppImage.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+`./package-macos.sh` builds the application bundle and a disk image for an
+unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
+notarised bundle a release ships; it needs a Developer ID certificate in the
+keychain and the notarisation credentials the script names. CI runs it only on
+pushes to `main`; pull requests get the unsigned bundle.
+`Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
+`Info.plist`, icons, and how web locations and aliases are handled.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+`./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
+collects every application with the DLLs it needs into one standalone zip.
+`--no-sign` skips Authenticode signing when no certificate is present;
+`SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
+release uses. The version in the `.exe` resource and the manifest comes from
+the app's changelog line; only the Windows resource files still carry a literal
+copy, because `windres` reads them from disk: run `./set-version.sh` after
+bumping the version, and the CMake configure warns when they are stale.
+
+</details>
+
+WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
+lists what differs in the browser (`Run()` never returns, no synchronous file
+pickers, text-only clipboard).
 
 ---
 
@@ -3909,6 +4049,117 @@ assistant must read, which is what stops it guessing.
 - [ ] Docs updated and `llms.txt` regenerated in the same change
 - [ ] Committed, pushed, pull request open, `## Delivery` block read
 - [ ] App run and looked at on each platform you ship to
+
+==============================================================================
+FILE: Docs/UltraCanvasSDK.md
+==============================================================================
+
+# The UltraCanvas SDK
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-03
+**Author:** UltraCanvas Framework
+
+The SDK is the framework **already built and installed**, zipped up: the
+headers, the libraries, the file-format plug-ins and the CMake package that
+`find_package(UltraCanvas)` reads. It exists so that an application outside
+this repository can be built without first compiling the framework, and so
+that UltraCanvasStart can set a machine up by unpacking one folder instead of
+running a forty-minute build.
+
+CI produces it on every pull request and every push to `main`, one per
+platform leg, as a workflow artifact:
+
+| Artifact | Contents |
+|---|---|
+| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries |
+| `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64 |
+
+Each is the result of `cmake --install build --prefix <sdk>` for that leg,
+plus a copy of this page, the licenses and the `PackageConsumer` example. The
+version in the name is the framework's, from the first line of
+`Docs/UltraCanvas/CHANGELOG.md`. Artifacts are kept for seven days; a release
+copy is a matter of attaching the same file to a GitHub release.
+
+## Layout
+
+```
+UltraCanvas-SDK-<platform>-<version>-<arch>/
+  include/ultracanvas/          the headers, as a mirror of the source layout
+    include/                    the public headers - this is the include path
+    Plugins/                    the chart, diagram and document headers
+    libspecific/  OS/           reached only through "../" from the public headers
+  include/ultracanvas/plugins/  the format plug-ins' public headers
+  lib/                          libUltraCanvas, the module archives, the plug-ins
+  bin/                          on Windows: libUltraCanvas.dll (the import library is in lib/)
+  lib/cmake/UltraCanvas/        UltraCanvasConfig.cmake and the exported targets
+  lib/cmake/VirtualFS/          VirtualFS, found through its own package
+  lib/ultracanvas/              the UltraCanvasAllFormats registrar's objects
+  examples/PackageConsumer/     the two-file application that uses all of it
+  README.md  LICENSE  THIRD_PARTY_LICENSES.md
+```
+
+## Using it
+
+```bash
+tar xzf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.gz   # unzip on Windows
+cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-0.9.142-x86_64
+cmake --build build
+```
+
+and in `MyApp/CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas
+                                    ${ULTRACANVAS_PLUGIN_TARGETS}
+                                    UltraCanvas::UltraCanvasAllFormats)
+```
+
+`examples/PackageConsumer` inside the SDK is exactly this, with a `main.cpp`
+that opens a window and registers the formats. Copy it, rename it, start
+there. The imported targets and variables the package provides are listed at
+the top of `UltraCanvasConfig.cmake`.
+
+On Linux the shared core sits in `lib/`; run an application with that
+directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
+the executable the way `package-linux.sh` does. On Windows the core is
+`bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
+the executable, which is what `package-win.sh` does for a release.
+
+## What the SDK does not replace
+
+The SDK saves building the framework. It does not carry a compiler, CMake, or
+the **development packages of the libraries the framework uses**: the public
+headers include `<cairo/cairo.h>`, `<glib.h>` and `<vips/vips8>`, and the
+installed package re-finds cairo, pango, freetype, glib, tinyxml2 and libvips
+through pkg-config on the consuming machine. So the host still needs, from
+[`GettingStarted.md`](GettingStarted.md) step 1:
+
+- a C++20 compiler and CMake ≥ 3.16;
+- the `-dev` packages of the core libraries on Linux, the Homebrew formulae on
+  macOS, the MSYS2 CLANG64 packages on Windows.
+
+Bundling those headers and import libraries into the Windows and macOS SDKs,
+where the dependency trees are relocatable, is the planned next step; on Linux
+the distribution's packages stay the right source.
+
+## Compatibility
+
+An SDK is built on one platform leg and is for that platform and architecture
+only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
+runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
+DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
+`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
+runtime dependency beyond the libraries named above.
+
+The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
+with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
+accepts any 0.x SDK.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/AndroidOnLinuxInvestigation.md
