@@ -157,6 +157,9 @@ OS settings switches between them. A caller that names an
 
 ## Native or framework
 
+The system dialogs together (message boxes, input, print) are described in
+[UltraCanvasSystemDialogs.md](UltraCanvasSystemDialogs.md).
+
 `UltraCanvasDialogManager::SetUseNativeDialogs(bool)` decides for the whole
 application: message boxes and `UltraCanvasFileLoader`'s file dialogs follow
 it together. An application that wants this dialog for files but the

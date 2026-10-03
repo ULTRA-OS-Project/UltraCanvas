@@ -11,7 +11,6 @@
 #include <cctype>
 #include <fstream>
 #include <string>
-#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraMail {
 
