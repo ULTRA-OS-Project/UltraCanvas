@@ -10,3 +10,10 @@
   turns it off for a caller that asks itself. The new
   `Docs/UltraCanvas/UltraCanvasFileDialog.md` describes the dialog: its
   modes, the filter toggles, the overwrite question and what it remembers.
+- **A new `FileDialogConfig` has no filters.** It came with four samples
+  (All Files, Text, Image and Document files), so code that built the file
+  dialog itself and did not replace them offered `.doc` and `.rtf` in a
+  picture picker. It now starts empty, and a file dialog without filters
+  lists every file under one "All Files" entry (a folder picker filters
+  nothing). `UltraCanvasFileLoader` passes the caller's filters straight
+  through and leaves that fallback to the dialog.

@@ -21235,7 +21235,6 @@ creates the dialog from a `FileDialogConfig` itself:
 FileDialogConfig config;
 config.title = "Choose a folder of photos";
 config.dialogType = FileDialogType::SelectFolder;
-config.filters.clear();                  // a folder picker filters nothing
 config.initialDirectory = startFolder;   // empty: the last used folder
 
 auto dialog = UltraCanvasDialogManager::CreateFileDialog(config);
@@ -21243,9 +21242,8 @@ dialog->onFileSelected = [](const std::string& folder) { /* ... */ };
 UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow);
 ```
 
-A config built this way starts with sample filters (All Files, Text, Image,
-Document files). Replace or `clear()` them. `UltraCanvasFileLoader` does that
-for you.
+A config starts without filters: the dialog then lists every file under an
+"All Files" entry. A folder picker ignores filters.
 
 | `FileDialogConfig` field | |
 |---|---|

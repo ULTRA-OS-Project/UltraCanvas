@@ -162,15 +162,9 @@ namespace UltraCanvas {
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
         config.confirmOverwrite = opts.confirmOverwrite;
-        // A folder has no file filter; a file dialog takes the caller's, and
-        // falls back to "everything" rather than the config's sample list.
-        if (type == FileDialogType::SelectFolder) {
-            config.filters.clear();
-        } else if (!opts.filters.empty()) {
-            config.filters = opts.filters;
-        } else {
-            config.filters = { FileFilter("All Files", "*") };
-        }
+        // A folder has no file filter; a file dialog takes the caller's (the
+        // dialog lists every file when there are none).
+        if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
         return config;
     }
 
