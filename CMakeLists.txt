@@ -693,6 +693,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
+            Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )

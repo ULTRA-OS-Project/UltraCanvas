@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.7.0 - a server name that cannot be one (an @, a scheme, a port
+//                  after a colon, ...) is reported on Save, before the sign-in
 // Version: 0.6.0 - the Signature row: the account's signature in a few words and
 //                  "Edit signature…" (UltraMailSignatureDialog)
 // Version: 0.5.0 - the app-wide view options (preview pane, sender icons) moved to
@@ -396,9 +398,20 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         out.displayName = nameInput ? Trim(nameInput->GetText()) : std::string();
         out.newPassword = passInput ? passInput->GetText() : std::string();  // not trimmed
 
+        // A name that cannot be a server is reported here, before a sign-in
+        // spends its ten-second timeout on it.
+        auto badHost = [status](const char* field, const std::string& host) {
+            const std::string problem = ServerNameProblem(host);
+            if (problem.empty()) return false;
+            status->SetTextColor(Theme::kWaitingText);
+            status->SetText(std::string(field) + " \"" + host + "\": " + problem);
+            return true;
+        };
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
+        if (badHost("Incoming (IMAP) server", r.imap.host)) return false;
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
         if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
+        if (badHost("Outgoing (SMTP) server", r.smtp.host)) return false;
         if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return false; }
         r.found  = true;
         r.source = "manual";
