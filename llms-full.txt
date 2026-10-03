@@ -3451,8 +3451,11 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application, will present the same choice on its
-first page, preselected to the machine it runs on.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
+the same choice on its first page, preselected to the machine it runs on, and
+then checks and installs the packages below, names the matching SDK, writes
+the project skeleton of step 3 and prepares the first prompt for the
+assistant. `UltraCanvasStart --check` does the checking in a terminal.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside

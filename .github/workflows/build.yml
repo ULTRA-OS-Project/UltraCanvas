@@ -531,6 +531,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
@@ -553,6 +554,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -743,6 +745,24 @@ jobs:
       - name: ccache statistics
         if: always()
         run: ccache -s
+
+      # UltraCanvasStart's engine tests, then the app's headless --check on
+      # this leg's platform: it detects the runner, finds its package manager
+      # and checks the toolchain and core libraries, which the leg has by
+      # construction, so a non-zero status names a detection or check bug.
+      # The engine test binary is a ctest entry (UltraCanvasStartEngine);
+      # Linux runs it again with the rest of the suite below, which is fine.
+      # The job's default shell: the MSYS2 shell on Windows, where the DLLs
+      # the executable needs are on PATH.
+      - name: UltraCanvasStart engine tests and --check smoke run
+        run: |
+          set -eu
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          exe=build/UltraCanvasStart
+          [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          "$exe" --version
+          "$exe" --check
+          "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
 
       - name: Run UltraNet tests
         if: runner.os != 'Windows'
