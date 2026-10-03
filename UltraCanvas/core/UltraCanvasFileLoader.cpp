@@ -161,6 +161,7 @@ namespace UltraCanvas {
         config.showHiddenFiles  = opts.showHiddenFiles;
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
+        config.confirmOverwrite = opts.confirmOverwrite;
         // A folder has no file filter; a file dialog takes the caller's, and
         // falls back to "everything" rather than the config's sample list.
         if (type == FileDialogType::SelectFolder) {

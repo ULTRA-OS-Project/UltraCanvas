@@ -2062,7 +2062,33 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
-        if (files.empty()) return;
+        if (files.empty() || overwritePromptOpen) return;
+        // Save over a file that is there: ask first, as the platforms' own
+        // save dialogs do. No answers leaves the dialog open on the name.
+        if (fileConfig.dialogType == FileDialogType::Save && fileConfig.confirmOverwrite) {
+            const std::filesystem::path target =
+                    PathFromUtf8(CombinePath(currentDirectory, files.front()));
+            std::error_code ec;
+            if (std::filesystem::exists(target, ec) && !ec) {
+                overwritePromptOpen = true;
+                std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+                const std::string name = PathToUtf8(target.filename());
+                UltraCanvasDialogManager::ShowConfirmation(
+                        "\"" + name + "\" already exists.\nDo you want to replace it?",
+                        "Replace File",
+                        [weak, this, files](bool replace) {
+                            if (weak.expired()) return;
+                            overwritePromptOpen = false;
+                            if (replace) FinishAccept(files);
+                        },
+                        this);
+                return;
+            }
+        }
+        FinishAccept(files);
+    }
+
+    void UltraCanvasFileDialog::FinishAccept(const std::vector<std::string>& files) {
         selectedFiles = files;
         if (fileConfig.allowMultipleSelection) {
             if (onFilesSelected) onFilesSelected(GetSelectedFilePaths());

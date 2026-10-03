@@ -21224,7 +21224,7 @@ options say `SetRegisterAsRecent(false)`.
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles` and the parent window.
+`SetFilterToggles`, `SetConfirmOverwrite` and the parent window.
 
 ### Building it yourself
 
@@ -21256,6 +21256,7 @@ for you.
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
 | `filterToggles` | Toggle buttons instead of the dropdown |
+| `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -21269,8 +21270,12 @@ between folders.
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
   listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists. The dialog does not ask
-  before overwriting, so the caller does that if it should.
+- **Save** accepts any name in a folder that exists. A name that is already a
+  file gets a **Replace File** question first ("… already exists. Do you want
+  to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
+  dialog open on that name. A caller that asks itself, or appends to the
+  file, turns this off with `confirmOverwrite = false`
+  (`FileDialogOptions::SetConfirmOverwrite(false)`).
 - **Select folder** lists folders only. OK answers the folder highlighted in
   the listing, else the folder being shown.
 - Return in the path field goes to the folder typed there. A file path opens
