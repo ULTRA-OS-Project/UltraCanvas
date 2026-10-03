@@ -277,7 +277,10 @@ if [ "$PLATFORM" = macos ]; then
     # the system SDK. vips.pc requires libarchive, so a consumer looking only
     # at deps/ needs those stubs too; they are copied as they are (no prefix
     # of ours to relocate) and only where no bundled .pc has the name.
-    STUBS="$HOMEBREW_PREFIX/Library/Homebrew/os/mac/pkgconfig"
+    # The stubs live in Homebrew's own repository: the prefix on Apple
+    # silicon (/opt/homebrew), but /usr/local/Homebrew on Intel, where the
+    # prefix is /usr/local. brew --repository names it on both.
+    STUBS="$(brew --repository)/Library/Homebrew/os/mac/pkgconfig"
     if [ -d "$STUBS" ]; then
         stubdir="$STUBS/$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
         [ -d "$stubdir" ] || stubdir="$(ls -d "$STUBS"/*/ 2>/dev/null | sort -V | tail -1)"
