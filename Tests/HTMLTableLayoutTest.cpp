@@ -941,6 +941,14 @@ void TestMailTables() {
         Check(l->GetText().rfind("<span letter_spacing=\"2048\">", 0) == 0, "block spacing: 2px");
         Check(l->GetText().find("letter_spacing=\"5120\">cd") != std::string::npos, "span spacing: 5px");
     } else Check(false, "letter-spacing label");
+    // A shrink-to-fit button with letter-spacing keeps its caption on one line
+    // (Pango breaks on the spacing after the last letter that its extents
+    // leave out).
+    b = build("<table><tr><td style='padding:15px 30px;font-size:14px;line-height:18px;"
+              "letter-spacing:2px'>FIND OUT WHO</td></tr></table>");
+    lab = LabelWith(b.all, "FIND");
+    if (lab) CheckNear(lab->rect.height, 18.f, "spaced caption: one line");
+    else Check(false, "spaced caption");
     // A cell keeps its last child's bottom margin.
     b = build("<table cellpadding='0' cellspacing='0'><tr><td>"
               "<div style='height:30px;margin-bottom:20px'></div></td></tr></table>");

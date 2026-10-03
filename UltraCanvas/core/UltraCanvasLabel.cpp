@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
+//                 spacing: Pango breaks on spacing its extents leave out)
 // Version: 2.8.0 - LabelStyle::lineHeightPx: every line that height, but a line
 //                 holding a taller inline image still grows
 // Version: 2.7.0 - an inline image's border drawn per side (mitred corners)
@@ -305,6 +307,26 @@ namespace UltraCanvas {
 
     // ===== Engine entry points =====
 
+    // The width the text needs to keep its natural line breaks. That is the
+    // laid-out width, except that with letter spacing Pango breaks a line on
+    // the spacing after its last letter, which its extents leave out: at
+    // exactly the measured width the last word would wrap. So check, and
+    // widen until it fits. Leaves the layout unwrapped (explicit width -1).
+    float UltraCanvasLabel::NaturalTextWidth() {
+        textLayout->SetExplicitWidth(-1);
+        float w = (float)textLayout->GetLayoutWidth();
+        if (style.wrap == TextWrap::WrapNone || w <= 0.f) return w;
+        const int lines = textLayout->GetLineCount();
+        for (int step = 0; step < 16; ++step) {
+            textLayout->SetExplicitWidth(w);
+            const bool fits = textLayout->GetLineCount() <= lines;
+            if (fits) break;
+            w += 1.f;
+        }
+        textLayout->SetExplicitWidth(-1);
+        return w;
+    }
+
     void UltraCanvasLabel::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
         FitInlineImages(-1.f);   // max-content: images at their own size
         if (!EnsureTextLayout()) {
@@ -313,8 +335,7 @@ namespace UltraCanvas {
             return;
         }
         // max-content: unbounded width → single-line natural width.
-        textLayout->SetExplicitWidth(-1);
-        const float maxW = (float)textLayout->GetLayoutWidth();
+        const float maxW = NaturalTextWidth();
         const float maxH = (float)textLayout->GetLayoutHeight();
 
         // min-content: the widest unbreakable run - the layout at a one-pixel
@@ -370,8 +391,7 @@ namespace UltraCanvas {
         }
 
         // Max-content: natural (unwrapped) width and its height.
-        textLayout->SetExplicitWidth(-1);
-        float w = (float)textLayout->GetLayoutWidth();
+        float w = NaturalTextWidth();
         return Size2Df(w, (float)textLayout->GetLayoutHeight());
     }
 

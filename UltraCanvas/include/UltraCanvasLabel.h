@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
 // Version: 2.4.0 - LabelStyle::lineHeightPx (CSS line-height)
 // Version: 2.3.0 - an inline image's border per side (LabelInlineImageBorder)
 // Version: 2.2.0 - an inline image has a frame: margin, border, padding,
@@ -270,6 +271,8 @@ namespace UltraCanvas {
     private:
         // The display size of an inline image on a line `inlineFitWidth` wide.
         Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        // Natural (max-content) text width that keeps the natural line breaks.
+        float NaturalTextWidth();
         // The margin box an inline image reserves on its line, label-local.
         Rect2Df InlineImageMarginRect(size_t index);
         // Size the images for a line `width` wide (-1: unbounded); drops the
