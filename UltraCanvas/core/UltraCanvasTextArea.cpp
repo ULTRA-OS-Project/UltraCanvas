@@ -1,7 +1,8 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.2
-// Last Modified: 2026-10-01
+// Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
+//                 replace the fixed 15px square scrollbar
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1279,14 +1280,24 @@ namespace UltraCanvas {
         caret.Show(this, rectInWindow, style.cursorColor);
     }
 
+    void UltraCanvasTextArea::FillScrollbarRect(IRenderContext* context, const Rect2Dd& r) {
+        // The radius never exceeds half the short side, so a short thumb stays a pill.
+        const double radius = std::min<double>(style.scrollbarCornerRadius,
+                                               std::min(r.width, r.height) * 0.5);
+        if (radius > 0.0) context->FillRoundedRectangle(r, radius);
+        else              context->FillRectangle(r);
+    }
+
     void UltraCanvasTextArea::DrawScrollbars(IRenderContext* context) {
         auto bounds = GetLocalBounds();
+        const int sbw = ScrollbarWidth();
+        const int in  = std::max(0, std::min(style.scrollbarThumbInset, (sbw - 1) / 2));
 
         // Element-local coordinates: scrollbars hug the element's right/bottom edge at
-        // origin 0,0. (visibleTextArea already reserves the 15px track.)
+        // origin 0,0. (visibleTextArea already reserves the track.)
         if (IsNeedVerticalScrollbar()) {
-            int scrollbarX = bounds.x + bounds.width - 15;
-            int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
+            int scrollbarX = bounds.x + bounds.width - sbw;
+            int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? sbw : 0);
 
             // Hex mode still uses row-index scrolling; text mode uses pixel content height
             // derived from the built line layouts.
@@ -1311,17 +1322,17 @@ namespace UltraCanvas {
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(Rect2Dd(scrollbarX, bounds.y, 15, scrollbarHeight));
+            FillScrollbarRect(context, Rect2Dd(scrollbarX, bounds.y, sbw, scrollbarHeight));
 
-            verticalScrollThumb = {scrollbarX, thumbY, 15, thumbHeight};
+            verticalScrollThumb = {scrollbarX, thumbY, sbw, thumbHeight};
 
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(Rect2Dd(scrollbarX + 2, thumbY + 2, 11, thumbHeight - 4));
+            FillScrollbarRect(context, Rect2Dd(scrollbarX + in, thumbY + in, sbw - 2 * in, thumbHeight - 2 * in));
         }
 
         if (IsNeedHorizontalScrollbar()) {
-            float scrollbarY = static_cast<float>(bounds.y + bounds.height - 15);
-            float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
+            float scrollbarY = static_cast<float>(bounds.y + bounds.height - sbw);
+            float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? sbw : 0));
 
             float thumbWidthRatio = static_cast<float>(visibleTextArea.width) / static_cast<float>(maxLineWidth);
             float thumbWidth = std::max(20.0f, scrollbarWidth * thumbWidthRatio);
@@ -1336,12 +1347,12 @@ namespace UltraCanvas {
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(Rect2Dd(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f));
+            FillScrollbarRect(context, Rect2Dd(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, sbw));
 
-            horizontalScrollThumb = {static_cast<int>(thumbX), static_cast<int>(scrollbarY), static_cast<int>(thumbWidth), 15};
+            horizontalScrollThumb = {static_cast<int>(thumbX), static_cast<int>(scrollbarY), static_cast<int>(thumbWidth), sbw};
 
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(Rect2Dd(thumbX + 2, scrollbarY + 2, thumbWidth - 4, 11.0f));
+            FillScrollbarRect(context, Rect2Dd(thumbX + in, scrollbarY + in, thumbWidth - 2 * in, sbw - 2 * in));
         }
     }
 
@@ -1647,7 +1658,7 @@ namespace UltraCanvas {
         }
         if (isDraggingVerticalThumb) {
             auto bounds = GetLocalBounds();
-            float scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
+            float scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? ScrollbarWidth() : 0);
             float thumbHeight = verticalScrollThumb.height;
             float maxThumbY = scrollbarHeight - thumbHeight;
 
@@ -1670,7 +1681,7 @@ namespace UltraCanvas {
 
         if (isDraggingHorizontalThumb) {
             auto bounds = GetLocalBounds();
-            float scrollbarWidth = bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0);
+            float scrollbarWidth = bounds.width - (IsNeedVerticalScrollbar() ? ScrollbarWidth() : 0);
             float thumbWidth = horizontalScrollThumb.width;
             float maxThumbX = scrollbarWidth - thumbWidth;
 
@@ -1691,13 +1702,13 @@ namespace UltraCanvas {
         if (!isSelectingText) {
             auto bounds = GetLocalBounds();
             if (IsNeedVerticalScrollbar() &&
-                event.pointer.x >= bounds.width - 15 && event.pointer.x <= bounds.width &&
+                event.pointer.x >= bounds.width - ScrollbarWidth() && event.pointer.x <= bounds.width &&
                 event.pointer.y >= 0 && event.pointer.y <= bounds.height) {
                 SetMouseCursor(UCMouseCursor::SizeNS);
                 return true;
             }
             if (IsNeedHorizontalScrollbar() &&
-                event.pointer.y >= bounds.height - 15 && event.pointer.y <= bounds.height &&
+                event.pointer.y >= bounds.height - ScrollbarWidth() && event.pointer.y <= bounds.height &&
                 event.pointer.x >= 0 && event.pointer.x <= bounds.width) {
                 SetMouseCursor(UCMouseCursor::SizeWE);
                 return true;
@@ -2053,17 +2064,17 @@ namespace UltraCanvas {
         bool needHorizontalScrollbar = false;
         if (IsNeedHorizontalScrollbar()) {
             needHorizontalScrollbar = true;
-            visibleTextArea.height -= 15;
+            visibleTextArea.height -= ScrollbarWidth();
             if (IsNeedVerticalScrollbar()) {
                 needVerticalScrollbar = true;
-                visibleTextArea.width -= 15;
+                visibleTextArea.width -= ScrollbarWidth();
             }
         } else if (IsNeedVerticalScrollbar()) {
             needVerticalScrollbar = true;
-            visibleTextArea.width -= 15;
+            visibleTextArea.width -= ScrollbarWidth();
             if (IsNeedHorizontalScrollbar()) {
                 needHorizontalScrollbar = true;
-                visibleTextArea.height -= 15;
+                visibleTextArea.height -= ScrollbarWidth();
             }
         }
 
@@ -2071,9 +2082,9 @@ namespace UltraCanvas {
         // invalidates the cache automatically.
 
         if (!needVerticalScrollbar && IsNeedVerticalScrollbar()) {
-            visibleTextArea.width -= 15;
+            visibleTextArea.width -= ScrollbarWidth();
             if (!needHorizontalScrollbar && IsNeedHorizontalScrollbar()) {
-                visibleTextArea.height -= 15;
+                visibleTextArea.height -= ScrollbarWidth();
             }
         }
     }

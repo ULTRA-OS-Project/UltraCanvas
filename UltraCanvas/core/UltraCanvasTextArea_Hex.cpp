@@ -112,7 +112,7 @@ namespace UltraCanvas {
             int estTotalRows = (bufSize > 0) ? ((bufSize + bprEst - 1) / bprEst) : 1;
             int estMaxVisible = std::max(1, (int)((finalBounds.height - style.textPadding * 2) / hexRowHeight));
             if (estTotalRows > estMaxVisible) {
-                availWidth -= 15; // scrollbar width
+                availWidth -= ScrollbarWidth();
             }
         }
 

@@ -1,3 +1,18 @@
+#### 2026-10-04 *0.10.27*
+- **The message text fits its pane.** An HTML message tall enough to scroll
+  was laid out for the pane's full width, and the vertical scrollbar then took
+  its strip on top: the end of every line ran under the bar and the few
+  hidden pixels raised a horizontal scrollbar across the bottom as well. The
+  body is now laid out at the width beside the bar, so lines wrap before it and
+  a horizontal bar appears only for content that really cannot wrap (a
+  fixed-width table, a large picture). A sliver of the line scrolled past the
+  bottom edge is no longer left behind below the text.
+- **Thin, round scrollbars in the reading pane.** The message text (HTML and
+  plain text) scrolls with the same thin, rounded scrollbar as the message
+  list instead of the wide square one. Plain-text mail needs the framework's
+  new text-area scrollbar style (framework changelog, "TextArea: the
+  scrollbar's thickness and rounding are styleable").
+
 #### 2026-10-04 *0.10.26*
 - **Unread mail stays unread.** Syncing marked every new message read on the
   server, so the list had no unread mail to show in bold, the account's unread

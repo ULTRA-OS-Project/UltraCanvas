@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.12.0 - the HTML body is laid out beside the vertical scrollbar (no
+//                 text under the bar, no stray horizontal bar); thin, round
+//                 scrollbars as in the message list
 // Version: 0.11.0 - a web address in plain-text mail opens when clicked
 // Version: 0.10.0 - the plain-text view reports the web address under the pointer
 //                 too (status line or tooltip, as Settings > Display > Links says)
@@ -91,6 +94,36 @@ void OpenMessageLink(const std::string& href) {
     else if (lower.rfind("www.", 0) == 0)
         UltraCanvas::OpenURL("https://" + href);
 }
+
+// The HTML body's scroll view. The body is laid out at the width the reader
+// can actually see: the pane's content width, less the vertical scrollbar's
+// track while that bar is shown. Laid out at the full width (width: 100%), a
+// tall message ran under the vertical bar - its right edge cut off - and the
+// few hidden pixels raised a horizontal scrollbar as well. The body is laid
+// out again only when the bar comes or goes, so that settles in one extra
+// pass. Content that cannot reflow (a fixed-width table, a large picture) is
+// still wider than that and still gets the horizontal bar.
+class BodyScrollView : public UltraCanvasContainer {
+public:
+    using UltraCanvasContainer::UltraCanvasContainer;
+
+    std::shared_ptr<UltraCanvasUIElement> body;
+
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        if (!body) return;
+        // calc(100% - track) while the vertical bar is shown, 100% otherwise.
+        const float gutter = verticalScrollbar->IsVisible()
+                                 ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
+        const CSSLayout::Dimension& cur = body->size.width;
+        if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
+            cur.offsetPx == -gutter)
+            return;
+        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        body->InvalidateSubtree();
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+    }
+};
 
 // The plain-text body: a read-only text area whose web addresses (bare URLs
 // in the text) work like the HTML view's links - the one under the pointer is
@@ -436,6 +469,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     if (auto s = bodyHost_->GetContainerStyle(); true) {
         s.autoShowScrollbars = true;
         s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
     root_->AddChild(bodyHost_);
@@ -501,8 +535,13 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // natural height — so the body sits below the header (no overlap)
             // and scrolls vertically when tall. The builder disables the tree's
             // own scrollbars precisely so the host scrolls instead.
-            auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
+            auto scroll = std::make_shared<BodyScrollView>("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            // A container draws its children 1px past its content box, and a
+            // scroll repaints only the container itself: without a little
+            // padding the line scrolled past the bottom edge left slivers of
+            // glyphs below the body that were never painted over.
+            scroll->SetPadding(2.0f, 0.0f);
             // A deliberate scroll view, so it opts in (containers do not
             // scroll unless asked): the vertical bar for a tall message, and a
             // horizontal one too, so content that genuinely cannot reflow
@@ -511,11 +550,14 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             {
                 ContainerStyle scrollStyle = scroll->GetContainerStyle();
                 scrollStyle.autoShowScrollbars = true;
+                scrollStyle.scrollbarStyle = ScrollbarStyle::Modern();
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane).
+            // than laying out over-wide (responsive emails fill the pane). The
+            // scroll view narrows it by the vertical bar once that is shown.
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
+            scroll->body = r.root;
             bodyHost_->AddChild(scroll);
             scroll->AddChild(r.root);
             scroll->ScrollToVertical(0);
@@ -535,6 +577,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text, /*bordered=*/false);
+    {
+        // The message list's scrollbar (ScrollbarStyle::Modern), not the text
+        // area's classic 15px square one.
+        const ScrollbarStyle modern = ScrollbarStyle::Modern();
+        auto& ts = text->GetStyle();
+        ts.scrollbarWidth        = modern.trackSize;
+        ts.scrollbarCornerRadius = static_cast<float>(modern.thumbCornerRadius);
+        ts.scrollbarThumbInset   = 0;
+        ts.scrollbarTrackColor   = modern.trackColor;
+        ts.scrollbarColor        = modern.thumbColor;
+    }
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
