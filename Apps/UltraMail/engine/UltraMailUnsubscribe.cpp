@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailUnsubscribe.cpp
+// Version: 0.2.0 - ParseMailto, shared with mailto: links in a message
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -74,6 +75,30 @@ std::string Header(const std::map<std::string, std::string>& headers,
 
 } // namespace
 
+MailtoTarget ParseMailto(const std::string& href) {
+    MailtoTarget target;
+    if (!StartsWithNoCase(href, "mailto:")) return target;
+    const std::string rest = href.substr(7);
+    const std::size_t q = rest.find('?');
+    target.address = PercentDecode(rest.substr(0, q));
+    if (q == std::string::npos) return target;
+    std::size_t p = q + 1;
+    while (p <= rest.size()) {
+        std::size_t amp = rest.find('&', p);
+        if (amp == std::string::npos) amp = rest.size();
+        const std::string pair = rest.substr(p, amp - p);
+        const std::size_t eq = pair.find('=');
+        if (eq != std::string::npos) {
+            const std::string key = Lower(pair.substr(0, eq));
+            const std::string val = PercentDecode(pair.substr(eq + 1));
+            if (key == "subject") target.subject = val;
+            else if (key == "body") target.body = val;
+        }
+        p = amp + 1;
+    }
+    return target;
+}
+
 UnsubscribeInfo ParseListUnsubscribe(const std::string& listUnsubscribe,
                                      const std::string& listUnsubscribePost) {
     UnsubscribeInfo info;
@@ -87,24 +112,10 @@ UnsubscribeInfo ParseListUnsubscribe(const std::string& listUnsubscribe,
             if (oneClick && info.oneClickUrl.empty() && StartsWithNoCase(entry, "https://"))
                 info.oneClickUrl = entry;
         } else if (StartsWithNoCase(entry, "mailto:") && info.mailtoAddress.empty()) {
-            const std::string rest = entry.substr(7);
-            const std::size_t q = rest.find('?');
-            info.mailtoAddress = PercentDecode(rest.substr(0, q));
-            if (q == std::string::npos) continue;
-            std::size_t p = q + 1;
-            while (p <= rest.size()) {
-                std::size_t amp = rest.find('&', p);
-                if (amp == std::string::npos) amp = rest.size();
-                const std::string pair = rest.substr(p, amp - p);
-                const std::size_t eq = pair.find('=');
-                if (eq != std::string::npos) {
-                    const std::string key = Lower(pair.substr(0, eq));
-                    const std::string val = PercentDecode(pair.substr(eq + 1));
-                    if (key == "subject") info.mailtoSubject = val;
-                    else if (key == "body") info.mailtoBody = val;
-                }
-                p = amp + 1;
-            }
+            const MailtoTarget target = ParseMailto(entry);
+            info.mailtoAddress = target.address;
+            info.mailtoSubject = target.subject;
+            info.mailtoBody    = target.body;
         }
     }
     return info;

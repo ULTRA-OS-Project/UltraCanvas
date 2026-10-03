@@ -1,5 +1,6 @@
 // Tests/UltraMail/test_unsubscribe.cpp
 // List-Unsubscribe / List-Unsubscribe-Post parsing (RFC 2369, RFC 8058).
+// Version: 0.2.0 - ParseMailto
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -57,4 +58,13 @@ TEST(unsubscribe_read_from_raw_message_with_folding) {
     REQUIRE_EQ(u.oneClickUrl, std::string("https://x.example/unsub?t=abc"));
     REQUIRE_EQ(u.mailtoAddress, std::string("off@x.example"));
     REQUIRE(!ReadUnsubscribe("").Any());
+}
+
+TEST(parse_mailto_splits_address_subject_and_body) {
+    const MailtoTarget t = ParseMailto("mailto:help%40example.com?subject=Order%20123&body=Hi+there");
+    REQUIRE_EQ(t.address, std::string("help@example.com"));
+    REQUIRE_EQ(t.subject, std::string("Order 123"));
+    REQUIRE_EQ(t.body, std::string("Hi+there"));   // '+' stays a '+' (RFC 6068)
+    REQUIRE_EQ(ParseMailto("MAILTO:a@b.example").address, std::string("a@b.example"));
+    REQUIRE(ParseMailto("https://example.com").address.empty());
 }

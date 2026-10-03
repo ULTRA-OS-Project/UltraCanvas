@@ -1,3 +1,14 @@
+#### 2026-10-04 *0.10.25*
+- **Mail addresses in a message open a new message.** A `mailto:` link in
+  formatted mail, and a `mailto:` or plain address ("support@shop.example")
+  written in plain-text mail, opens a new message in UltraMail, from the
+  account the message was read in, with the subject and text the link
+  carries. Before, a `mailto:` link went to the system's mail program, and
+  addresses in plain text did nothing.
+- **Plain-text mail: addresses are links.** They show the pointing hand, show
+  their address in the status line or as a tooltip, and are counted with the
+  message's links. They are never judged as web links by the threat scan.
+
 #### 2026-10-04 *0.10.24*
 - **Settings > Display > Links: where a link's address is shown.** Two
   choices:

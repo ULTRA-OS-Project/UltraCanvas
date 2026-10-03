@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.8.0 - onComposeTo: a clicked mail address (mailto:) is written to in
+//                UltraMail, from the shown message's account
 // Version: 0.7.0 - linkTooltips: a link's address as a tooltip (Settings > Display >
 //                Links), or only through onLinkHovered
 // Version: 0.6.0 - onLinksShown / onLinkHovered (the links of the shown body, and
@@ -92,6 +94,11 @@ public:
     std::function<void(const std::vector<MessageLink>&)> onLinksShown;
     // The link under the pointer in the body (its target), "" when it leaves.
     std::function<void(const std::string& href)> onLinkHovered;
+    // A clicked mail address (a mailto: link, or an address written in plain
+    // text): the app opens a new message to it, from this account's identity.
+    // Unset, the system's mail handler gets the mailto: address.
+    std::function<void(const std::string& selfName, const std::string& selfAddr,
+                       const std::string& mailtoHref)> onComposeTo;
 
     // Remote images (http/https) are not loaded until the reader asks: a bar
     // above the body offers "Show images" for this message and "Always from
@@ -120,6 +127,9 @@ public:
     std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
 
 private:
+    // A link of the body was clicked: web addresses open in the browser, mail
+    // addresses through onComposeTo.
+    void ActivateLink(const std::string& href);
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
