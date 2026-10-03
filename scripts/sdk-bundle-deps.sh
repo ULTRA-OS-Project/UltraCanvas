@@ -256,6 +256,25 @@ if [ "$PLATFORM" = macos ]; then
         sed -i '' -e "s|$CELLAR/[^/]*/[^/]*|\${prefix}|g" -e "s|$HOMEBREW_PREFIX/opt/[^/]*|\${prefix}|g" \
                   -e "s|$HOMEBREW_PREFIX|\${prefix}|g" "$pc"
     done
+
+    # The libraries macOS itself provides (zlib, bzip2, expat, libffi,
+    # libxml2, libarchive, libcurl) have no keg: Homebrew's pkg-config finds
+    # them through stub .pc files it keeps per macOS version, which point at
+    # the system SDK. vips.pc requires libarchive, so a consumer looking only
+    # at deps/ needs those stubs too; they are copied as they are (no prefix
+    # of ours to relocate) and only where no bundled .pc has the name.
+    STUBS="$HOMEBREW_PREFIX/Library/Homebrew/os/mac/pkgconfig"
+    if [ -d "$STUBS" ]; then
+        stubdir="$STUBS/$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+        [ -d "$stubdir" ] || stubdir="$(ls -d "$STUBS"/*/ 2>/dev/null | sort -V | tail -1)"
+        for pc in "$stubdir"/*.pc; do
+            [ -f "$pc" ] || continue
+            if [ ! -f "$DEPS/lib/pkgconfig/$(basename "$pc")" ]; then
+                cp "$pc" "$DEPS/lib/pkgconfig/"
+            fi
+        done
+        echo "  system-library stubs from $stubdir"
+    fi
 fi
 
 echo "bundled into $DEPS:"

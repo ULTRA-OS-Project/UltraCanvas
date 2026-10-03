@@ -101,7 +101,9 @@ glib, tinyxml2 and libvips through pkg-config:
   puts `deps/` first on `CMAKE_PREFIX_PATH`, which is all FindPkgConfig and
   `find_dependency()` need. A consumer therefore builds with no MSYS2 or
   Homebrew packages installed; CI proves it by building `PackageConsumer`
-  with `PKG_CONFIG_LIBDIR` pointed at an empty directory. On macOS the
+  with `PKG_CONFIG_LIBDIR` pointed at an empty directory. The libraries
+  macOS itself provides (zlib, expat, libxml2, libarchive, libcurl) come
+  as Homebrew's stub `.pc` files pointing at the system SDK. On macOS the
   bundled dylibs carry `@rpath` install names and the package links consumers
   with an rpath to `deps/lib`, so the application runs on a Mac without
   Homebrew; `package-macos.sh` still re-bundles them into the app for a
