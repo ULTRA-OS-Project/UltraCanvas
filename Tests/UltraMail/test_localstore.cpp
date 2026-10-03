@@ -3,6 +3,7 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.3.0 - CountSentRecipients
 // Version: 0.2.0 - the needs-answer rules (age, people written to)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,6 +16,7 @@
 
 #include <ctime>
 #include <filesystem>
+#include <map>
 #include <string>
 
 using namespace UltraMail;
@@ -502,4 +504,28 @@ TEST(file_store_uses_wal_and_shares_rows_across_connections) {
     UltraDb_CloseConnection("umtest-wal-ui");
     UltraDb_CloseConnection("umtest-wal-worker");
     fs::remove_all(dir, ec);
+}
+
+TEST(count_sent_recipients_reads_the_sent_folders) {
+    LocalStore s = FreshStore("sentcount");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "Erika");
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    REQUIRE(s.UpsertFolder(sent).success);
+    auto sentTo = [&](int64_t uid, const std::vector<std::string>& to, uint32_t flags = 0) {
+        MessageEnvelope m = Incoming("erika", uid, "erika@example.com", to);
+        m.folder = "Sent";
+        m.flags = flags;
+        REQUIRE(s.UpsertMessage(m).success);
+    };
+    sentTo(1, {"Anna Schmidt <Anna@Example.com>", "max@example.com"});
+    sentTo(2, {"anna@example.com", "anna@example.com"});   // listed twice: counts once
+    sentTo(3, {"max@example.com"}, Flag_Deleted);          // deleted: left out
+    // Mail received is not mail written.
+    REQUIRE(s.UpsertMessage(Incoming("erika", 9, "carol@acme.com", {"erika@example.com"})).success);
+
+    std::map<std::string, int> counts;
+    REQUIRE(s.CountSentRecipients(counts).success);
+    REQUIRE(counts.size() == 2);
+    REQUIRE_EQ(counts["anna@example.com"], 2);
+    REQUIRE_EQ(counts["max@example.com"], 1);
 }

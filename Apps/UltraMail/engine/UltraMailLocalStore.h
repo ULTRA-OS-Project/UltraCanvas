@@ -3,6 +3,7 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.7.0 - CountSentRecipients: how often each address was written to
 // Version: 0.6.0 - NeedsAnswerRules: which unanswered mail counts as waiting for
 //                  a reply (its age, a sender written to), applied when counted
 // Version: 0.5.0 - schema 8: the account's signature (SetAccountSignature)
@@ -107,6 +108,11 @@ public:
     // incremental sync.
     UltraDbResult GetMaxUid(const std::string& accountId, const std::string& folder,
                             int64_t& out) const;
+
+    // How many stored messages in Sent folders (every account; deleted ones
+    // left out) list each address as a To: recipient - how often the user
+    // writes to it. Keys are bare addresses, lower case.
+    UltraDbResult CountSentRecipients(std::map<std::string, int>& out) const;
 
     // The rules ListNeedsAnswer and GetAccountStatus count by.
     void SetNeedsAnswerRules(const NeedsAnswerRules& rules) { needsAnswerRules_ = rules; }

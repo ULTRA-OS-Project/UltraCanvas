@@ -1,8 +1,10 @@
 // Apps/UltraMail/engine/UltraMailRecipientComplete.cpp
+// Version: 0.2.0 - ranked by how often each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailRecipientComplete.h"
 
+#include <algorithm>
 #include <cctype>
 #include <set>
 
@@ -68,13 +70,19 @@ std::string CompleteRecipient(const std::string& fieldText, const std::string& r
     return out + recipient + ", ";
 }
 
-std::vector<RecipientSuggestion> SuggestRecipients(const std::vector<Contact>& contacts,
-                                                   const std::string& query,
-                                                   const std::string& fieldText,
-                                                   std::size_t limit) {
-    std::vector<RecipientSuggestion> first, later;
+std::vector<RecipientSuggestion> SuggestRecipients(
+    const std::vector<Contact>& contacts, const std::string& query,
+    const std::string& fieldText, std::size_t limit,
+    const std::map<std::string, int>* writtenTo) {
+    struct Ranked {
+        RecipientSuggestion s;
+        int  written = 0;
+        bool starts  = false;
+    };
+    std::vector<Ranked> found;
+    std::vector<RecipientSuggestion> out;
     const std::string q = Lower(Trim(query));
-    if (q.empty() || limit == 0) return first;
+    if (q.empty() || limit == 0) return out;
 
     // The recipients already written (all but the one being typed).
     std::set<std::string> present;
@@ -102,16 +110,28 @@ std::vector<RecipientSuggestion> SuggestRecipients(const std::vector<Contact>& c
                                               addr.find(q) != std::string::npos);
             if (!starts && !contains) continue;
             seen.insert(addr);
-            RecipientSuggestion s;
-            s.address = Trim(e.address);
+            Ranked r;
+            r.s.address = Trim(e.address);
             const std::string display = Trim(c.displayName);
-            s.recipient = NameFitsField(display) ? display + " <" + s.address + ">" : s.address;
-            (starts ? first : later).push_back(std::move(s));
+            r.s.recipient = NameFitsField(display) ? display + " <" + r.s.address + ">"
+                                                   : r.s.address;
+            r.starts = starts;
+            if (writtenTo) {
+                const auto it = writtenTo->find(addr);
+                if (it != writtenTo->end()) r.written = it->second;
+            }
+            found.push_back(std::move(r));
         }
     }
-    for (auto& s : later) first.push_back(std::move(s));
-    if (first.size() > limit) first.resize(limit);
-    return first;
+    std::stable_sort(found.begin(), found.end(), [](const Ranked& a, const Ranked& b) {
+        if (a.written != b.written) return a.written > b.written;
+        return a.starts && !b.starts;
+    });
+    for (auto& r : found) {
+        if (out.size() == limit) break;
+        out.push_back(std::move(r.s));
+    }
+    return out;
 }
 
 } // namespace UltraMail

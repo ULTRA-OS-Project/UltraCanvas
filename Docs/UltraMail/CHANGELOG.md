@@ -15,7 +15,9 @@
   field pops up the contacts whose name, organization or address matches what
   is typed after the last comma - matches at the start of a word first. Down
   and Enter, or a click, puts in "Name <address>, " and keeps the recipients
-  before it; addresses already in the field are not offered again.
+  before it; addresses already in the field are not offered again. The
+  people you write to most - counted from the mail in your Sent folders -
+  come first.
 - **Plain-text mail: addresses are links.** They show the pointing hand, show
   their address in the status line or as a tooltip, and are counted with the
   message's links. They are never judged as web links by the threat scan.

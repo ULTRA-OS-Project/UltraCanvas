@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.22 - recipient suggestions ranked by how often each address is written to
 // Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
 // Version: 0.9.20 - a mailto: link's cc and bcc go into the new message
 // Version: 0.9.19 - a clicked mail address in a message opens a new message to it
@@ -959,11 +960,16 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_.get());
     // To / Cc / Bcc complete from the address book as it is when the window
-    // opens (one read, then matched in memory as the writer types).
+    // opens (one read, then matched in memory as the writer types), the
+    // addresses written to most often - by the mail in the Sent folders -
+    // first.
     auto book = std::make_shared<std::vector<Contact>>();
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
-    view->suggestRecipients = [book](const std::string& query, const std::string& fieldText) {
-        return SuggestRecipients(*book, query, fieldText);
+    auto written = std::make_shared<std::map<std::string, int>>();
+    store_.CountSentRecipients(*written);
+    view->suggestRecipients = [book, written](const std::string& query,
+                                              const std::string& fieldText) {
+        return SuggestRecipients(*book, query, fieldText, 8, written.get());
     };
     UltraCanvasWindow* raw = win.get();
     // Sent, or safely queued in the outbox: the window has done its job. It

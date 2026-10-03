@@ -1,5 +1,6 @@
 // Tests/UltraMail/test_recipientcomplete.cpp
 // Address completion for the compose window's To / Cc / Bcc fields.
+// Version: 0.2.0 - ranked by how often each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -7,6 +8,7 @@
 
 #include "UltraMailRecipientComplete.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -75,4 +77,21 @@ TEST(suggest_recipients_matches_names_and_addresses) {
 
     REQUIRE(SuggestRecipients(contacts, "", "").empty());
     REQUIRE(SuggestRecipients(contacts, "ann", "", 2).size() == 2);
+}
+
+TEST(suggest_recipients_puts_the_most_written_to_first) {
+    const std::vector<Contact> contacts = {
+        MakeContact("Anna Schmidt", {"anna@example.com"}),
+        MakeContact("Hans Annaberg", {"hans@example.com"}),
+        MakeContact("Joanna Lee", {"jo@example.com"}),
+    };
+    const std::map<std::string, int> written = {
+        {"jo@example.com", 12}, {"hans@example.com", 3}};
+    const auto s = SuggestRecipients(contacts, "ann", "", 8, &written);
+    REQUIRE(s.size() == 3);
+    REQUIRE_EQ(s[0].address, std::string("jo@example.com"));     // 12, though only "contains"
+    REQUIRE_EQ(s[1].address, std::string("hans@example.com"));   // 3
+    REQUIRE_EQ(s[2].address, std::string("anna@example.com"));   // never written to
+    // The limit keeps the most written-to.
+    REQUIRE(SuggestRecipients(contacts, "ann", "", 1, &written)[0].address == "jo@example.com");
 }
