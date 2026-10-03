@@ -1,3 +1,18 @@
+#### 2026-10-04 *0.10.25*
+- **A server name that cannot be one is caught before the sign-in is tried.**
+  Typing `mail@interkontakt.net` for the outgoing server - the address's @
+  where the name has a dot - waited out a ten-second timeout and then blamed
+  the server for not answering. Save on the server settings page now checks
+  both names first and says what is wrong, with the likely fix: *Outgoing
+  (SMTP) server "mail@interkontakt.net": A server name has no @ - did you mean
+  mail.interkontakt.net?* It also catches a URL scheme (`imaps://`), a port
+  after a colon, a path, spaces, characters no host name holds and empty or
+  over-long parts; one-word LAN names, IP addresses and international names
+  still pass. The check is `ServerNameProblem` (`UltraMailDiscovery.h`); tests
+  in `test_discovery.cpp`.
+- The preferences reader includes `UltraCanvasPathUtf8.h` once instead of
+  twice.
+
 #### 2026-10-04 *0.10.24*
 - **Settings > Display > Links: where a link's address is shown.** Two
   choices:

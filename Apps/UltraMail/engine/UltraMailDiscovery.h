@@ -4,6 +4,7 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
+// Version: 0.4.0 - ServerNameProblem: a typed server name checked before it is tried
 // Version: 0.3.0 - settings resolved per account (stored, else presets);
 //                  a starting point for the manual settings page
 // Author: UltraCanvas Framework / ULTRA OS
@@ -65,5 +66,15 @@ std::string EmailLocalPart(const std::string& email);
 // It exists to catch typos before an account is created — not to validate
 // RFC 5322, which the mail server does authoritatively.
 bool LooksLikeEmailAddress(const std::string& email);
+
+// Whether a server name typed on the manual settings page can be one at all,
+// before a sign-in is tried with it: empty when it can, else why not, as a
+// sentence the page shows ("A server name has no @ - did you mean
+// mail.example.com?"). Catches an address typed for a name, a URL scheme, a
+// port after a colon, spaces, characters no host name holds and empty or
+// over-long parts. Permissive otherwise: one-word LAN names, IPv4 and
+// bracketed IPv6 literals and international (UTF-8) names pass, and whether the
+// name exists is for the sign-in check to find out.
+std::string ServerNameProblem(const std::string& host);
 
 } // namespace UltraMail
