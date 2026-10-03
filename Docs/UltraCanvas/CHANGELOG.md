@@ -1,3 +1,12 @@
+#### 2026-10-03 *0.9.144*
+- **UltraPassword joins the applications that keep native file dialogs off.**
+  `KnownFileDialogApplications()` lists it beside UltraAuthenticator and
+  UltraMail, so the file-dialog settings page offers it. The new app itself
+  versions from `Docs/UltraPassword/CHANGELOG.md` (declared in
+  `cmake/UltraCanvasVersion.cmake` as `ULTRAPASSWORD_VERSION`), and
+  `Tests/UltraPasswordTests.cpp` joins the headless suites under
+  `BUILD_TESTS`.
+
 #### 2026-10-03 *0.9.143*
 - **A link's address as a tooltip, by choice.**
   - `UltraCanvasLabel::SetShowLinkTooltips(bool)`: while the pointer is on a
