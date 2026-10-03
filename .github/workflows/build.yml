@@ -680,6 +680,11 @@ jobs:
           cmake --install build --prefix "$PWD/$SDK" > install.log
           test -f "$SDK/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake" \
             || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
+          # Windows and macOS: add the headers, import libraries / dylibs
+          # and .pc files of the libraries the framework uses, so the SDK
+          # builds an application on a machine without MSYS2's or
+          # Homebrew's packages (scripts/sdk-bundle-deps.sh; a no-op on Linux).
+          bash scripts/sdk-bundle-deps.sh "$PWD/$SDK"
           cmake -S Tests/PackageConsumer -B build-package-consumer \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DCMAKE_PREFIX_PATH="$PWD/$SDK"
@@ -706,6 +711,31 @@ jobs:
           if [ "$status" -ne 0 ]; then
             echo "::error::PackageConsumer exited with status $status"
             exit "$status"
+          fi
+          # The same consumer once more against the bundled development
+          # files alone: PKG_CONFIG_LIBDIR pointed at an empty directory
+          # hides every .pc file of the runner, so cairo, pango, glib and
+          # the rest can only come from the SDK's deps/. The run puts the
+          # bundled DLLs on PATH on Windows; on macOS the rpath the package
+          # adds finds the bundled dylibs.
+          if [ "${{ runner.os }}" != "Linux" ]; then
+            echo "--- consumer against the bundled development files only"
+            mkdir -p "$PWD/no-pkgconfig"
+            PKG_CONFIG_LIBDIR="$PWD/no-pkgconfig" PKG_CONFIG_PATH="" \
+              cmake -S Tests/PackageConsumer -B build-package-consumer-bundled \
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+                -DCMAKE_PREFIX_PATH="$PWD/$SDK"
+            cmake --build build-package-consumer-bundled --parallel 2
+            exe2=build-package-consumer-bundled/PackageConsumer
+            [ "${{ runner.os }}" = "Windows" ] && exe2="$exe2.exe"
+            set +e
+            PATH="$PWD/$SDK/bin:$PWD/$SDK/deps/bin:$PATH" "$exe2"
+            status=$?
+            set -e
+            if [ "$status" -ne 0 ]; then
+              echo "::error::PackageConsumer built against the bundled files exited with status $status"
+              exit "$status"
+            fi
           fi
 
       # The SDK: that install prefix, with the page that explains it, the
