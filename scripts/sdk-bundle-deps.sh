@@ -67,6 +67,16 @@ if [ -z "$PKG_CONFIG" ]; then
     exit 1
 fi
 
+# Homebrew keeps a keg-only formula's .pc file out of the shared
+# lib/pkgconfig (libarchive, for one, which vips.pc requires), so the closure
+# below would miss it. Every installed formula has an opt/<name> link; put
+# each one's lib/pkgconfig on the search path for the queries that follow.
+if [ "$PLATFORM" = macos ]; then
+    _brew_prefix="$(brew --prefix)"
+    _extra="$(ls -d "$_brew_prefix"/opt/*/lib/pkgconfig 2>/dev/null | tr '\n' ':')"
+    export PKG_CONFIG_PATH="${_extra}${PKG_CONFIG_PATH:-}"
+fi
+
 # ---- the modules and their closure ------------------------------------------
 # What UltraCanvasConfig.cmake asks pkg-config for, plus what the exported
 # targets link by name and what find_dependency() looks for.
@@ -128,7 +138,8 @@ wanted_rel() {
     case "$1" in
         include/*) return 0 ;;
         lib/pkgconfig/*|share/pkgconfig/*|lib/cmake/*) return 0 ;;
-        lib/python*|lib/girepository-1.0/*|lib/*/include/*) return 1 ;;
+        lib/python*|lib/girepository-1.0/*) return 1 ;;
+        lib/*/include/*) return 0 ;;    # glibconfig.h and its kind live in lib/<pkg>/include
         lib/*.a|lib/*.dll.a|lib/*.dylib|lib/*.la) return 0 ;;
         lib/*/*.a|lib/*/*.dylib) return 0 ;;
         bin/*.dll|lib/*/*.dll) [ "$PLATFORM" = windows ] ;;
