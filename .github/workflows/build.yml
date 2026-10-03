@@ -663,26 +663,77 @@ jobs:
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
       # The installed CMake package is what an application outside this tree
-      # builds against (Docs/GettingStarted.md, the out-of-tree route). Install
-      # into a scratch prefix and build Tests/PackageConsumer with nothing but
+      # builds against (Docs/GettingStarted.md, the out-of-tree route), and the
+      # install prefix is what the SDK artifact below ships. Install into a
+      # scratch prefix and build Tests/PackageConsumer with nothing but
       # find_package(UltraCanvas): an export CMake refuses to generate, a
       # header that reaches outside the install, or a dependency the config
       # forgets fails here, on this pull request, rather than on a user's
-      # machine. Linux only: that is the leg that installs every module and
-      # builds the core shared, which is the shape a package is used in.
-      - name: Install and build against the CMake package (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
+      # machine. Every leg, because every leg produces an SDK.
+      - name: Install and build against the CMake package
         run: |
           set -eu
-          cmake --install build --prefix "$PWD/install-prefix" > install.log
-          test -f install-prefix/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake \
+          SDK="UltraCanvas-SDK-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}"
+          echo "SDK_NAME=$SDK" >> "$GITHUB_ENV"
+          cmake --install build --prefix "$PWD/$SDK" > install.log
+          test -f "$SDK/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake" \
             || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
           cmake -S Tests/PackageConsumer -B build-package-consumer \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_PREFIX_PATH="$PWD/install-prefix"
+            -DCMAKE_PREFIX_PATH="$PWD/$SDK"
           cmake --build build-package-consumer --parallel 2
-          LD_LIBRARY_PATH="$PWD/install-prefix/lib" ./build-package-consumer/PackageConsumer
+          exe=build-package-consumer/PackageConsumer
+          [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          # A program that will not start says nothing on its own: under MSYS2
+          # bash a DLL the loader cannot find or resolve is a bare exit code
+          # 127. Print what the executable depends on and how it ended, so the
+          # log names the cause rather than a number.
+          if command -v ldd > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            ldd "$exe" || true
+          elif command -v otool > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            otool -L "$exe" || true
+          fi
+          # The shared core lives in lib/ on Linux and, as a DLL, in bin/ on
+          # Windows; the consumer finds it the way an application would.
+          set +e
+          PATH="$PWD/$SDK/bin:$PATH" LD_LIBRARY_PATH="$PWD/$SDK/lib" "$exe"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PackageConsumer exited with status $status"
+            exit "$status"
+          fi
+
+      # The SDK: that install prefix, with the page that explains it, the
+      # licenses and the consumer example, packed so an application outside
+      # this repository - or UltraCanvasStart setting a machine up - gets the
+      # framework built without building it (Docs/UltraCanvasSDK.md). tar on
+      # Unix so file permissions survive; upload-artifact's own zip loses them.
+      - name: Pack the SDK
+        run: |
+          set -eu
+          cp Docs/UltraCanvasSDK.md "$SDK_NAME/README.md"
+          cp LICENSE THIRD_PARTY_LICENSES.md "$SDK_NAME/"
+          mkdir -p "$SDK_NAME/examples"
+          cp -R Tests/PackageConsumer "$SDK_NAME/examples/PackageConsumer"
+          mkdir -p sdk-dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            zip -qr "sdk-dist/$SDK_NAME.zip" "$SDK_NAME"
+          else
+            tar czf "sdk-dist/$SDK_NAME.tar.gz" "$SDK_NAME"
+          fi
+          ls -la sdk-dist
+
+      - name: Upload the SDK
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.SDK_NAME }}
+          path: sdk-dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
       # What the cache actually did, in the log where anyone can see it. A
       # leg still at a 0% hit rate on a second run of the same commit is

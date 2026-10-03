@@ -1979,6 +1979,22 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::Planned,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
+        // The dialogs every application asks the system for: Open / Save /
+        // Select folder (UltraCanvasFileLoader), Print (RequestPrintSettings +
+        // IODeviceManager) and the message / input dialogs, each shown either
+        // as the ULTRA OS dialog or the host platform's.
+        modulesBuilder.AddItem("systemdialogs", "System dialogs",
+                               "ULTRA OS system dialogs — File Open, File Save, Select Folder, "
+                               "Print, messages and input, as ULTRA OS or native dialogs",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSystemDialogsExamples(); },
+                               "Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSystemDialogs.md")
+                .AddVariant("systemdialogs", "File Open / Open multiple")
+                .AddVariant("systemdialogs", "File Save")
+                .AddVariant("systemdialogs", "Select folder")
+                .AddVariant("systemdialogs", "Print settings / test page")
+                .AddVariant("systemdialogs", "Messages and input");
         // Built module (UltraAI/, targets UltraAI + UltraAI_Core) shipped in an
         // application: Apps/UltraAIApp is written entirely against <UltraAI.h>.
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
