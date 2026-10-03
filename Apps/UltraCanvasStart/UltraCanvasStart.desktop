@@ -1,0 +1,19 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraCanvasStart. Icon=UltraCanvasStart is an
+# icon name, resolved through the installed icon themes; the install rules put
+# media/appicon/UltraCanvasStart.png into share/icons/hicolor/256x256/apps and
+# the .svg into share/icons/hicolor/scalable/apps. Run update-desktop-database
+# after installing for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraCanvasStart
+GenericName=Development Setup
+Comment=Set this computer up for UltraCanvas application development: check and install the libraries, get the SDK, create a project, work with an AI assistant
+Exec=UltraCanvasStart
+TryExec=UltraCanvasStart
+Icon=UltraCanvasStart
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraCanvasStart
+Categories=Development;
+Keywords=UltraCanvas;setup;SDK;install;development;Claude;

@@ -478,6 +478,18 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRACANVASSTART =====
+# Sets a computer up for UltraCanvas development: detects the platform and
+# package manager, checks and installs the development libraries, names the
+# matching SDK artifact, writes a project skeleton and explains the AI
+# workflow. Headless --check / --plan modes for the terminal and CI.
+option(BUILD_ULTRACANVASSTART "Build the UltraCanvasStart application" ON)
+if(BUILD_ULTRACANVASSTART)
+    message(STATUS "")
+    message(STATUS "── Building UltraCanvasStart ──")
+    add_subdirectory(Apps/UltraCanvasStart)
+endif()
+
 # ===== UOS-SETTINGS =====
 # The ULTRA OS settings application: settings that belong to the system rather
 # than to one application, starting with where the file dialogs of all
@@ -1092,6 +1104,18 @@ if(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS AND TARGET UltraCleanerEngine)
     add_subdirectory(Tests/UltraCleaner)
     message(STATUS "")
     message(STATUS "── UltraCleaner engine test suite enabled (target: UltraCleanerEngineTests) ──")
+endif()
+
+# ===== ULTRACANVASSTART ENGINE TESTS =====
+# Headless tests of the setup app's engine: os-release parsing, version
+# comparison, the dependency table, the install command, SDK names, the plan
+# and the project scaffold. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS "Build the UltraCanvasStart engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraCanvasStart)
+    message(STATUS "")
+    message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
