@@ -48,8 +48,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # alone, which is what a server installation runs.
 # `ultramsg` is the UltraMessage command line (Apps/UltraMessageCli): post to,
 # follow and query the per-user message channel.
+# UltraAuthenticator and UltraPassword are built only when libsodium is found
+# (UltraCrypt); without it they are skipped here like any app not built.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude)
+      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
+      UltraAuthenticator UltraPassword)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

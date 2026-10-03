@@ -283,7 +283,18 @@ std::function<void()> onHoverEnter;
 std::function<void()> onHoverLeave;
 std::function<void(const std::string&)> onTextChanged;
 std::function<void(long, long)> onSizeChanged;
+// Text links (SetTextLinks): the clicked link's href, and the hovered one's
+// as the pointer moves onto it ("" as it leaves the link).
+std::function<void(const std::string&)> onLinkActivated;
+std::function<void(const std::string&)> onLinkHovered;
 ```
+
+`SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
+beside the pointer, following it along the link and hidden again as the
+pointer leaves the link. It is off by
+default, for an app that shows the address in its status line instead
+(`HTML::BuildOptions::linkTooltips` sets it on the labels the HTML reader
+builds).
 
 ### Example Event Handling
 

@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.7.0 - linkTooltips: a link's address as a tooltip (Settings > Display >
+//                Links), or only through onLinkHovered
 // Version: 0.6.0 - onLinksShown / onLinkHovered (the links of the shown body, and
 //                the one under the pointer, for the status line)
 // Version: 0.5.0 - Settings: HTML or plain-text view, body text size, and
@@ -108,6 +110,9 @@ public:
     // the message on screen again with them.
     bool  showHtml = true;
     float bodyFontSizePx = 12.f;
+    // Settings > Display > Links: show a link's address as a tooltip over the
+    // link (false: the status line shows it, through onLinkHovered).
+    bool  linkTooltips = false;
     void  ReRender();
 
     // Raised when a body was scanned for the first time (the verdict has been
