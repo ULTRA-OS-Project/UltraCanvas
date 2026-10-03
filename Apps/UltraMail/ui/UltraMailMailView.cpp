@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.8.0 - forwards the reading pane's links and hovered link
 // Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
 //                  (+10 px) or a fixed width
 // Version: 0.6.0 - SetBodyOptions; trusted picture hosts reach the preview
@@ -434,6 +435,12 @@ void MailView::BuildMessageBox() {
     };
     preview_.onViewSource = [this](const std::string& subject, const std::string& raw) {
         if (onViewSource) onViewSource(subject, raw);
+    };
+    preview_.onLinksShown = [this](const std::vector<MessageLink>& links) {
+        if (onLinksShown) onLinksShown(links);
+    };
+    preview_.onLinkHovered = [this](const std::string& href) {
+        if (onLinkHovered) onLinkHovered(href);
     };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.

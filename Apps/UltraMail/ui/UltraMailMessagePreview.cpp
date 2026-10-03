@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.8.0 - reports the body's links and the hovered link (status line);
+//                re-scans verdicts older than the current threat rules
 // Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
 // Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
 // Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
@@ -8,7 +10,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -363,6 +365,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (&body != &lastBody_) lastBody_ = body;
     lastIsHtml_ = isHtml;
     bodyHost_->ClearChildren();
+    // The links the reader can check before clicking one.
+    if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
 
     // Settings > Reading > "as plain text": no layout and nothing fetched.
     if (isHtml && showHtml) {
@@ -385,6 +389,9 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
                 lower.rfind("mailto:", 0) == 0)
                 UltraCanvas::OpenURL(href);
+        };
+        opts.onLinkHovered = [this](const std::string& href) {
+            if (onLinkHovered) onLinkHovered(href);
         };
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
@@ -565,12 +572,15 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    if (!sec.Scanned()) {
+    // Also when the stored verdict came from older rules (kThreatRulesRevision):
+    // what an earlier version let through is judged again.
+    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
     // And its attachment count, for the list's paperclip, when the body was

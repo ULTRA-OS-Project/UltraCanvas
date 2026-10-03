@@ -3,12 +3,14 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.10.2 - the links segment of the status line (ShowMessageLinks /
+//                   ShowHoveredLink)
 // Version: 0.10.1 - Edit / Delete wait for a running send (WhenOutboxIdle)
 // Version: 0.10.0 - the Outbox window (OpenOutbox), outbox work in one queue
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -187,6 +189,11 @@ private:
     void HandleReload();
     // Set the bottom status-line text (UI thread). Empty resets to "Ready".
     void SetStatus(const std::string& text);
+    // The status line's links segment: how many links the shown message has
+    // and where they go (each one, text and target, in its tooltip), and while
+    // the pointer is on a link, that link's real target.
+    void ShowMessageLinks(const std::vector<MessageLink>& links);
+    void ShowHoveredLink(const std::string& href);
     // Runs the status-line ring while a sync, send or mailbox action is in flight.
     void UpdateBusyIndicator();
     // The connection pill at the right end of the status line: the selected
@@ -514,6 +521,8 @@ private:
     // A one-line status at the bottom of the account view saying what the app is
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     linksLabel_;
+    std::string                                        linksSummary_;
     std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
     std::shared_ptr<UltraCanvas::UltraCanvasBadge>     connectionBadge_;
     // What the last contact with each account's mail server came to, for the

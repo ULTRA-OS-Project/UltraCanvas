@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.2.0 - borrowed-brand-pictures rule (a brand's own pictures over links
+//                elsewhere); ExtractImageHosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailThreatScan.h"
@@ -11,6 +13,7 @@
 #include <cctype>
 #include <map>
 #include <regex>
+#include <cstring>
 #include <set>
 
 namespace UltraMail {
@@ -315,6 +318,31 @@ std::string ThreatReport::Summary() const {
 // ---------------------------------------------------------------------------
 // Link extraction
 // ---------------------------------------------------------------------------
+std::vector<std::string> ExtractImageHosts(const std::string& body) {
+    std::vector<std::string> hosts;
+    const std::string lower = Lower(body);
+    // src="…" / background="…" / url(…) with an http(s) source.
+    for (const char* key : { "src=", "background=", "url(" }) {
+        std::size_t pos = 0;
+        while ((pos = lower.find(key, pos)) != std::string::npos) {
+            std::size_t v = pos + std::strlen(key);
+            while (v < lower.size() && (std::isspace(static_cast<unsigned char>(lower[v])) ||
+                                        lower[v] == '"' || lower[v] == '\'')) ++v;
+            if (lower.compare(v, 7, "http://") == 0 || lower.compare(v, 8, "https://") == 0) {
+                std::size_t end = v;
+                while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
+                       lower[end] != '"' && lower[end] != '\'' && lower[end] != ')' && lower[end] != '>')
+                    ++end;
+                const std::string host = HostOf(body.substr(v, end - v));
+                if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
+                    hosts.push_back(host);
+            }
+            pos = v;
+        }
+    }
+    return hosts;
+}
+
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
     std::vector<MessageLink> links;
     if (body.empty()) return links;
@@ -455,6 +483,51 @@ ThreatReport ScanMessage(const ScanInput& input) {
             "The message presents itself as " + claimed->name + ", but it was sent from " +
             (senderDomain.empty() ? std::string("an address with no domain")
                                   : senderDomain) + ", which is not " + claimed->name + ".");
+    }
+
+    // ---- Pictures borrowed from a brand the mail is not from --------------
+    // The message's pictures come from a site its display name (or subject)
+    // names - gotinder.com for "Tinder" - but it was sent from elsewhere and
+    // none of its links go to that site: the look of a well-known service
+    // dressed over links to somewhere else. Needs no brand table.
+    if (input.bodyIsHtml) {
+        std::vector<std::string> nameWords;
+        {
+            const std::string names = Lower(input.fromName + " " + input.subject);
+            std::string word;
+            for (std::size_t i = 0; i <= names.size(); ++i) {
+                const char c = i < names.size() ? names[i] : ' ';
+                if (std::isalnum(static_cast<unsigned char>(c))) word += c;
+                else {
+                    if (word.size() >= 4) nameWords.push_back(word);
+                    word.clear();
+                }
+            }
+        }
+        std::set<std::string> linkRegs;
+        for (const auto& link : links)
+            if (!link.host.empty()) linkRegs.insert(RegistrableDomain(link.host));
+        const std::string senderLower = Lower(senderReg);
+        for (const std::string& imageHost : ExtractImageHosts(input.body)) {
+            const std::string imageReg = RegistrableDomain(imageHost);
+            if (imageReg.empty() || imageReg == senderReg || linkRegs.count(imageReg)) continue;
+            const std::string label = imageReg.substr(0, imageReg.find('.'));
+            std::string named;
+            for (const std::string& w : nameWords)
+                if (label.find(w) != std::string::npos && senderLower.find(w) == std::string::npos) {
+                    named = w;
+                    break;
+                }
+            if (named.empty()) continue;
+            const std::string where = linkRegs.empty() ? std::string("nowhere on that site")
+                                                       : *linkRegs.begin();
+            Add(report, 30, "borrowed-brand-pictures",
+                "The message shows pictures from " + imageReg + " (the \"" + named +
+                "\" it names) but was sent from " +
+                (senderDomain.empty() ? std::string("an unknown address") : senderDomain) +
+                ", and its links go to " + where + ", not to " + imageReg + ".");
+            break;
+        }
     }
 
     // ---- Link rules --------------------------------------------------------

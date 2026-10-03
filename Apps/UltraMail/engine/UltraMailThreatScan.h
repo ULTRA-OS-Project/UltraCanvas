@@ -14,7 +14,8 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
-// Version: 0.1.0
+// Version: 0.2.0 - borrowed-pictures rule; kThreatRulesRevision (re-scan older verdicts);
+//                ExtractImageHosts
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -83,6 +84,15 @@ struct ScanInput {
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
 };
+
+// When the rules last changed (epoch seconds). A stored verdict made before it
+// came from older rules: the reader scans the message again when it is opened,
+// so a phishing mail an earlier version let through is caught on its next read.
+constexpr long long kThreatRulesRevision = 1791072000;   // 2026-10-04 00:00 UTC
+
+// The hosts the body's pictures (<img src>, background images) are loaded from,
+// lowercased; http(s) sources only.
+std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.
 ThreatReport ScanMessage(const ScanInput& input);

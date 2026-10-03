@@ -2,8 +2,9 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
 // Version: 4.3.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -24,6 +25,12 @@ namespace UltraCanvas {
 
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
+        // Children are drawn clipped to the content area (the default), or -
+        // false, CSS's overflow: visible - wherever they reach, a child that
+        // is wider than its box drawing past it (only the clip of the
+        // containers around applies). HTML boxes use false.
+        bool clipChildren = true;
+
         // Scrolling behavior.
         //
         // OFF by default: a container arranges its children, and most of them

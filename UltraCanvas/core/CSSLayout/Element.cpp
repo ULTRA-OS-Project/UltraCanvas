@@ -1,6 +1,12 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.8.0 - floats: a float: left / right child sits at that edge and
+// Version: 1.11.0 - min / max limits apply to the box its box-sizing names (border
+//                  box for widgets), as in the flex path and the docs
+// Version: 1.10.0 - merged with main's floats (1.8.0 there)
+// Version: 1.9.0 - a percentage height resolves against percentHeightBase too
+// Version: 1.8.0 - percentage min-height / max-height resolve against a block
+//                 parent's set height (percentHeightBase)
+// Version: 1.8.0 (main) - floats: a float: left / right child sits at that edge and
 //                 the blocks beside it are narrowed (flow-around, per block).
 // Version: 1.7.0 - dispatch display: table to MeasureTable / ArrangeTable.
 // Version: 1.6.0 - block layout honours in-flow children's margins: offset,
@@ -42,6 +48,18 @@ namespace UltraCanvas {
             // *itself* occupies as a content-box, given its constraints and its
             // own size property. Returns {std::nullopt} on either axis when the
             // size is to be derived from children (auto).
+            // min / max-width and -height limit the box its box-sizing names:
+            // for a border-box element (every widget) the whole box, as a flex
+            // container's own limits and a stretched item's already are; for a
+            // content-box element the content. `frame` is the padding and border
+            // on that axis.
+            float clampContentBox(const Element& e, float content, bool isWidth, float frame,
+                                  std::optional<float> ref, const LayoutContext& ctx) {
+                if (e.box.boxSizing == BoxSizing::BorderBox)
+                    return clampToConstraints(content + frame, e.boxConstraints, isWidth, ref, ctx) - frame;
+                return clampToConstraints(content, e.boxConstraints, isWidth, ref, ctx);
+            }
+
             struct ResolvedOwnSize {
                 std::optional<float> contentWidth;
                 std::optional<float> contentHeight;
@@ -89,18 +107,18 @@ namespace UltraCanvas {
                     if (authoritative) {
                         // Used size wins over an explicit width (stretched/grown box).
                         float cw = borderBoxToContent(c.horizontal.available, padH, bordH);
-                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
+                        cw = clampContentBox(e, cw, true, padH + bordH, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else if (specW.has_value()) {
                         float cw = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specW, padH, bordH)
                             : *specW;
-                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
+                        cw = clampContentBox(e, cw, true, padH + bordH, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else if (c.horizontal.mode == ConstraintMode::Exact) {
                         float bb = c.horizontal.available;
                         float cw = borderBoxToContent(bb, padH, bordH);
-                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
+                        cw = clampContentBox(e, cw, true, padH + bordH, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else {
                         // AtMost / Unbounded → derive from children, but clamp later
@@ -109,24 +127,27 @@ namespace UltraCanvas {
                     }
                 }
 
-                // Height
+                // Height. A percentage height, min-height or max-height also
+                // resolves against a block parent's set height
+                // (percentHeightBase) when no definite height comes down.
+                const std::optional<float> limitBlock = parentBlock ? parentBlock : e.percentHeightBase;
                 {
-                    auto specH = resolveDimension(e.size.height, parentBlock, ctx);
+                    auto specH = resolveDimension(e.size.height, limitBlock, ctx);
                     if (authoritative) {
                         // Used size wins over an explicit height (stretched/grown box).
                         float ch = borderBoxToContent(c.vertical.available, padV, bordV);
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampContentBox(e, ch, false, padV + bordV, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (specH.has_value()) {
                         float ch = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specH, padV, bordV)
                             : *specH;
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampContentBox(e, ch, false, padV + bordV, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (c.vertical.mode == ConstraintMode::Exact) {
                         float bb = c.vertical.available;
                         float ch = borderBoxToContent(bb, padV, bordV);
-                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
+                        ch = clampContentBox(e, ch, false, padV + bordV, limitBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else {
                         out.contentHeight = std::nullopt;
@@ -479,6 +500,12 @@ namespace UltraCanvas {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
                 auto m = resolveEdgeSizes(kid->box.margin, marginBasis, ctx);
+                // This box's set height: the base of the child's percentage
+                // height / min / max-height. A changed base voids its cached measure.
+                if (kid->percentHeightBase != own.contentHeight) {
+                    kid->percentHeightBase = own.contentHeight;
+                    kid->measured.valid = false;
+                }
                 AxisConstraint kh = narrowByMargins(childH, m.horizontal());
                 // A float is shrink-to-fit, never stretched to the line.
                 if (isFloat(*kid) && kh.mode == ConstraintMode::Exact) kh.mode = ConstraintMode::AtMost;
@@ -511,7 +538,7 @@ namespace UltraCanvas {
                 float maxContent = std::max(0.f, c.horizontal.available - padH - bordH);
                 contentW = std::min(contentW, maxContent);
             }
-            contentW = clampToConstraints(contentW, e.boxConstraints, true, parentInline, ctx);
+            contentW = clampContentBox(e, contentW, true, padH + bordH, parentInline, ctx);
 
             // With floats the height is the flow at the resolved width.
             if (floats) stackedHeight = flowWithFloats(e, contentW, ctx, false, 0.f, 0.f, 0.f);
@@ -524,7 +551,8 @@ namespace UltraCanvas {
                 (c.vertical.mode == ConstraintMode::Unbounded)
                     ? std::nullopt
                     : std::optional<float>{c.vertical.available};
-            contentH = clampToConstraints(contentH, e.boxConstraints, false, parentBlock, ctx);
+            contentH = clampContentBox(e, contentH, false, padV + bordV,
+                                       parentBlock ? parentBlock : e.percentHeightBase, ctx);
 
             // AbsoluteUI children contribute to the container's measured size
             // (unlike plain Absolute). Grow the *auto* content dimension to cover

@@ -4,8 +4,16 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.0.3
-// Last Modified: 2026-07-02
+// Version: 2.6.0 - onLinkHovered: the link under the pointer (a status line shows
+//                 where it goes)
+// Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
+// Version: 2.4.0 - LabelStyle::lineHeightPx (CSS line-height)
+// Version: 2.3.0 - an inline image's border per side (LabelInlineImageBorder)
+// Version: 2.2.0 - an inline image has a frame: margin, border, padding,
+//                 background, rounded corners (LabelInlineImageFrame)
+// Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
+//                 object-position)
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -33,6 +41,10 @@ namespace UltraCanvas {
         VerticalAlignment verticalAlign = VerticalAlignment::Middle;
         // Word wrapping
         TextWrap wrap = TextWrap::WrapNone;
+        // Height of each line in px (CSS line-height), the text centred in it;
+        // 0: the font's own. A line holding a taller inline image still grows
+        // to hold it.
+        float lineHeightPx = 0.f;
 
         // Text effects
         bool hasShadow = false;
@@ -68,12 +80,54 @@ namespace UltraCanvas {
     // top at the text's top, or its bottom at the text's bottom.
     enum class LabelInlineImageAlign { Baseline, Middle, Top, Bottom };
 
+    // The box around an inline image, as CSS draws it around an inline <img>:
+    // margins keep the text away, the background fills the border box, the
+    // border is drawn inside it, and padding separates the picture from the
+    // border. The picture is clipped to the rounded corners.
+    struct LabelInlineImageBorder {
+        float width = 0.f;
+        Color color = Colors::Black;
+        UCDashPattern dash;             // empty: solid
+    };
+
+    struct LabelInlineImageFrame {
+        float marginTop = 0.f, marginRight = 0.f, marginBottom = 0.f, marginLeft = 0.f;
+        float paddingTop = 0.f, paddingRight = 0.f, paddingBottom = 0.f, paddingLeft = 0.f;
+        // Each side its own width, colour and dash (empty: solid).
+        LabelInlineImageBorder borderTop, borderRight, borderBottom, borderLeft;
+        float borderRadius = 0.f;           // of the border box's outer corners
+        Color background = Colors::Transparent;
+
+        // Everything the frame adds around the picture, across and down.
+        float Horizontal() const {
+            return marginLeft + marginRight + paddingLeft + paddingRight +
+                   borderLeft.width + borderRight.width;
+        }
+        float Vertical() const {
+            return marginTop + marginBottom + paddingTop + paddingBottom +
+                   borderTop.width + borderBottom.width;
+        }
+        // One border all round.
+        void SetBorders(float width, const Color& color) {
+            borderTop = borderRight = borderBottom = borderLeft = LabelInlineImageBorder{ width, color, {} };
+        }
+        bool HasBorder() const {
+            return borderTop.width > 0.f || borderRight.width > 0.f ||
+                   borderBottom.width > 0.f || borderLeft.width > 0.f;
+        }
+    };
+
     struct LabelInlineImage {
         int   byteOffset = 0;       // of the U+FFFC placeholder in the rendered text
         float width = 0.f;          // display size in px (before any fit-to-line)
         float height = 0.f;
         std::shared_ptr<UCImage> image;
         LabelInlineImageAlign align = LabelInlineImageAlign::Baseline;
+        // How the picture fills its box (CSS object-fit; Fill stretches it,
+        // the CSS default) and where it sits when it does not (object-position).
+        ImageFitMode  fit = ImageFitMode::Fill;
+        ImagePosition position;
+        LabelInlineImageFrame frame;   // none by default: the picture alone
     };
 
 // ===== LABEL COMPONENT =====
@@ -133,9 +187,13 @@ namespace UltraCanvas {
         // Images drawn at U+FFFC placeholders of the text (see LabelInlineImage).
         void SetInlineImages(std::vector<LabelInlineImage> images);
         const std::vector<LabelInlineImage>& GetInlineImages() const { return inlineImages; }
-        // Where an inline image is drawn, label-local; empty before the first
-        // layout or for an index out of range.
+        // Where an inline image's picture is drawn (its content box),
+        // label-local; empty before the first layout or for an index out of
+        // range.
         Rect2Df InlineImageRect(size_t index);
+        // The image's border box: its frame's background and border, inside
+        // the margins.
+        Rect2Df InlineImageBoxRect(size_t index);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -194,6 +252,10 @@ namespace UltraCanvas {
         std::function<void()> onClick;
         // Fired with LabelTextLink::href when a text link is clicked.
         std::function<void(const std::string&)> onLinkActivated;
+        // Fired with a text link's href when the pointer comes onto it, and with
+        // "" when it leaves the link (onto plain text, or out of the label) -
+        // what a mail reader shows in its status line before the click.
+        std::function<void(const std::string&)> onLinkHovered;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;
@@ -215,6 +277,10 @@ namespace UltraCanvas {
     private:
         // The display size of an inline image on a line `inlineFitWidth` wide.
         Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        // Natural (max-content) text width that keeps the natural line breaks.
+        float NaturalTextWidth();
+        // The margin box an inline image reserves on its line, label-local.
+        Rect2Df InlineImageMarginRect(size_t index);
         // Size the images for a line `width` wide (-1: unbounded); drops the
         // text layout when that changes an image's box, so it is rebuilt.
         void FitInlineImages(float width);

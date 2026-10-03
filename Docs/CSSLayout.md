@@ -280,6 +280,24 @@ measurement.
 > `UltraCanvasToolbar` does exactly this with the thickness its host constructs
 > it with — see `Tests/ToolbarThicknessTest.cpp`.
 
+Sizes and limits may be percentages of the container. A width percentage
+resolves against the width the parent offers. A height percentage - `size.height`,
+`minHeight`, `maxHeight` - needs a definite height: one passed down as a
+constraint (flex, grid, table), or - for a child of a block layout, which stacks
+its children with unbounded height - the block parent's own set height, which it
+records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
+`Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
+percentage height is auto and a percentage limit limits nothing.
+
+A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
+`Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
+offset is added when the value resolves (px, %, vw / vh, em / rem); a percentage
+that cannot resolve stays unresolved. The HTML reader uses it for a percentage
+`max-width` under `box-sizing: border-box`, where the limit loses the box's
+padding and border, and for a content-box percentage width or height, where the
+border-box size gains them (`width: 50%; padding: 0 10px` is
+`PctPlus(50, 20)`).
+
 `Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that
 widens as the counts grow.

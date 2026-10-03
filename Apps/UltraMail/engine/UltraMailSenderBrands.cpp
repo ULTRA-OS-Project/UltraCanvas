@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSenderBrands.cpp
+// Version: 0.2.0 - dating services (Tinder, Bumble, Hinge, OkCupid, Parship)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBrands.h"
@@ -108,6 +109,18 @@ const std::vector<BrandRule>& Rules() {
           {"stripe.com"}, {}, {"stripe"} },
         { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238, BrandCategory::Shopping},
           {}, {"ebay"}, {"ebay"} },
+        // Dating services: favourite disguises of "you have a match" phishing.
+        // ("Match" itself is left out - the word is in every such subject.)
+        { {"tinder",    "Tinder",    "https://tinder.com/favicon.ico",        0xFD5068, BrandCategory::Social},
+          {"tinder.com", "gotinder.com"}, {}, {"tinder"} },
+        { {"bumble",    "Bumble",    "https://bumble.com/favicon.ico",        0xFFC629, BrandCategory::Social},
+          {"bumble.com", "team.bumble.com"}, {}, {"bumble"} },
+        { {"hinge",     "Hinge",     "https://hinge.co/favicon.ico",          0x111111, BrandCategory::Social},
+          {"hinge.co"}, {}, {"hinge app"} },
+        { {"okcupid",   "OkCupid",   "https://www.okcupid.com/favicon.ico",   0x0500BE, BrandCategory::Social},
+          {"okcupid.com"}, {}, {"okcupid"} },
+        { {"parship",   "Parship",   "https://www.parship.com/favicon.ico",   0xC6004B, BrandCategory::Social},
+          {"parship.com", "parship.de"}, {}, {"parship"} },
         { {"netflix",   "Netflix",   "https://www.netflix.com/favicon.ico",   0xE50914, BrandCategory::Media},
           {"netflix.com"}, {}, {"netflix"} },
         { {"spotify",   "Spotify",   "https://www.spotify.com/favicon.ico",   0x1DB954, BrandCategory::Media},

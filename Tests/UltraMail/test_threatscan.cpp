@@ -6,6 +6,7 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -285,4 +286,75 @@ TEST(a_large_number_without_the_story_is_not_advance_fee) {
     story.fromAddr = "aunt@example.test";
     story.body     = "Grandpa passed away last week; the funeral is on Friday.";
     REQUIRE(!HasFinding(ScanMessage(story), "advance-fee-fraud"));
+}
+
+// ---------------------------------------------------------------------------
+// A brand's own pictures over links somewhere else (a fake "It's a Match!")
+// ---------------------------------------------------------------------------
+namespace {
+// The shape of the real phishing mail: Tinder's name and its pictures from
+// gotinder.com, sent from an unrelated domain, every link to a third one.
+ScanInput FakeTinderMatch() {
+    ScanInput in;
+    in.fromName = "Tinder";
+    in.fromAddr = "cmcgavnn@amega.com";
+    in.subject  = "It's a Match!";
+    in.body =
+        "<table><tr><td><img src=\"https://marketing-images.gotinder.com/3d7c/0.jpg\" "
+        "width=\"39\" height=\"45\" alt=\"Tinder Logo\"></td></tr>"
+        "<tr><td><div>Someone matched with you on Tinder!</div></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<span>FIND OUT WHO</span></a></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<img src=\"https://marketing-images.gotinder.com/f91f/0.png\" alt=\"Tinder Logo\"></a>"
+        " This email was sent by Tinder. <a href=\"http://vakantiehuiseichenbach.nl/x\">"
+        "Privacy Policy</a></td></tr></table>";
+    in.bodyIsHtml = true;
+    return in;
+}
+} // namespace
+
+TEST(a_fake_match_mail_with_borrowed_pictures_is_a_scam) {
+    const ThreatReport r = ScanMessage(FakeTinderMatch());
+    REQUIRE(HasFinding(r, "brand-impersonation"));
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(borrowed_pictures_need_no_brand_table) {
+    ScanInput in = FakeTinderMatch();
+    in.fromName = "Glimmerdate";                // a name no table knows
+    in.subject  = "New message on Glimmerdate";
+    for (std::string::size_type p; (p = in.body.find("gotinder")) != std::string::npos;)
+        in.body.replace(p, 8, "glimmerdate");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(a_brand_mailing_its_own_pictures_and_links_is_not_borrowing) {
+    ScanInput in = FakeTinderMatch();
+    in.fromAddr = "no-reply@gotinder.com";
+    for (std::string::size_type p; (p = in.body.find("vakantiehuiseichenbach.nl")) != std::string::npos;)
+        in.body.replace(p, 25, "tinder.com");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(!HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(!HasFinding(r, "brand-impersonation"));
+}
+
+TEST(pictures_from_a_cdn_the_name_does_not_name_are_not_borrowing) {
+    ScanInput in;
+    in.fromName = "Garden Club";
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "<img src=\"https://cdn.mailservice.example/a.png\">"
+              "<a href=\"https://gardenclub.example/events\">Events</a>";
+    in.bodyIsHtml = true;
+    REQUIRE(!HasFinding(ScanMessage(in), "borrowed-brand-pictures"));
+}
+
+TEST(image_hosts_are_read_from_src_and_background) {
+    const auto hosts = ExtractImageHosts(
+        "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
+        "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
+    REQUIRE(hosts.size() == 3);
 }

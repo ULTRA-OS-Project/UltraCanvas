@@ -24,7 +24,13 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
-// Version: 1.2.0 - MinContentWidth shared with block layout (floats)
+// Version: 1.4.0 - merged with main's 1.2.0 (MinContentWidth shared with block
+//                 layout for floats)
+// Version: 1.3.0 - a table's extra height goes to rows without a set height; a
+//                 cell's percentage height / min-height / max-height resolves
+//                 against the table's set height (the cells' percentHeightBase)
+// Version: 1.2.0 - a percentage height resolves against a block parent's set height
+// Version: 1.2.0 (main) - MinContentWidth shared with block layout (floats)
 // Version: 1.1.0 - max-width caps the table's width
 // Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
@@ -403,8 +409,20 @@ namespace UltraCanvas {
                 auto cellWidth = [&](const Cell& cell) {
                     return std::max(0.f, colOrigin[cell.col + cell.colSpan] - colOrigin[cell.col] - ti.spacingH);
                 };
+                // The table's own set height: what a cell's percentage height,
+                // min-height or max-height is a share of (none: auto, as in CSS).
+                std::optional<float> tableH;
+                if (auto specH = resolveDimension(e.size.height,
+                                                  parentBlock ? parentBlock : e.percentHeightBase, ctx)) {
+                    tableH = e.box.boxSizing == BoxSizing::BorderBox
+                        ? std::max(0.f, *specH - s.padV - s.bordV) : *specH;
+                }
                 std::vector<std::pair<const Cell*, float>> tall;
                 for (const auto& cell : ti.cells) {
+                    if (cell.el->percentHeightBase != tableH) {
+                        cell.el->percentHeightBase = tableH;
+                        cell.el->measured.valid = false;
+                    }
                     MeasureConstraints mc{
                         { ConstraintMode::Exact, cellWidth(cell) },
                         { ConstraintMode::Unbounded, INFINITY }
@@ -430,13 +448,27 @@ namespace UltraCanvas {
                 std::optional<float> wantH;
                 if (authoritative) {
                     wantH = std::max(0.f, c.vertical.available - s.padV - s.bordV);
-                } else if (auto specH = resolveDimension(e.size.height, parentBlock, ctx)) {
+                } else if (auto specH = resolveDimension(e.size.height,
+                               parentBlock ? parentBlock : e.percentHeightBase, ctx)) {
                     wantH = e.box.boxSizing == BoxSizing::BorderBox
                         ? std::max(0.f, *specH - s.padV - s.bordV) : *specH;
                 }
                 if (wantH && *wantH > contentH + 0.5f && ti.numRows > 0) {
-                    const float per = (*wantH - contentH) / float(ti.numRows);
-                    for (float& h : s.rowHeights) h += per;
+                    // The extra goes to the rows whose height nothing set (no
+                    // cell with a height or min-height of its own), as in
+                    // browsers; when every row has one, to all.
+                    std::vector<bool> setRow(ti.numRows, false);
+                    for (const auto& cell : ti.cells) {
+                        if (cell.rowSpan != 1) continue;
+                        const bool minSet = cell.el->boxConstraints &&
+                                            !cell.el->boxConstraints->minHeight.isAuto();
+                        if (!cell.el->size.height.isAuto() || minSet) setRow[cell.row] = true;
+                    }
+                    int open = 0;
+                    for (int r = 0; r < ti.numRows; ++r) if (!setRow[r]) ++open;
+                    const float per = (*wantH - contentH) / float(open > 0 ? open : ti.numRows);
+                    for (int r = 0; r < ti.numRows; ++r)
+                        if (open == 0 || !setRow[r]) s.rowHeights[r] += per;
                     contentH = *wantH;
                 }
                 s.contentH = wantH ? std::max(contentH, *wantH) : contentH;

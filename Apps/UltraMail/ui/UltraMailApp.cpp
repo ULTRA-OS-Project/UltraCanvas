@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.17 - the status line lists a message's links (summary, every link in
+//                   its tooltip) and shows where the link under the pointer goes
 // Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
 //                   send instead of refusing; a Drafts copy that cannot be
 //                   deleted now is deleted by a later pass
@@ -21,7 +23,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 #include "UltraMailHeaderText.h"
@@ -73,6 +75,8 @@
 #include <string>
 #include <thread>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraMailSenderBrands.h"   // RegistrableDomain
+#include <map>
 
 // ULTRAMAIL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -513,6 +517,8 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onViewSource = [this](const std::string& subject, const std::string& raw) {
         OpenSourceViewer(subject, raw);
     };
+    mailView_.onLinksShown = [this](const std::vector<MessageLink>& links) { ShowMessageLinks(links); };
+    mailView_.onLinkHovered = [this](const std::string& href) { ShowHoveredLink(href); };
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
@@ -578,6 +584,14 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                    Theme::kSizeSecondary, Theme::kTextSecondary);
     statusRow->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+    // The links of the message being read, so the reader can check where they
+    // go before clicking: a summary, every link in its tooltip, and the target
+    // of the link under the pointer while it is on one.
+    linksLabel_ = Theme::MakeLine("umLinks", "", statusHeight,
+                                  Theme::kSizeSecondary, Theme::kTextSecondary);
+    linksLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    statusRow->AddChild(linksLabel_);
 
     // The connection pill, right-aligned: the selected account's last contact
     // with its mail server. Hovering it tells the server, when it was last
@@ -717,6 +731,51 @@ void UltraMailApp::UpdateConnectionIndicator() {
 void UltraMailApp::SetStatus(const std::string& text) {
     if (statusLabel_) statusLabel_->SetText(text.empty() ? "Ready" : text);
     UpdateBusyIndicator();
+}
+
+void UltraMailApp::ShowMessageLinks(const std::vector<MessageLink>& links) {
+    if (!linksLabel_) return;
+    // Sites by registrable domain, most links first.
+    std::map<std::string, int> perSite;
+    for (const auto& link : links) {
+        if (link.host.empty()) continue;
+        ++perSite[RegistrableDomain(link.host)];
+    }
+    std::vector<std::pair<std::string, int>> sites(perSite.begin(), perSite.end());
+    std::stable_sort(sites.begin(), sites.end(),
+                     [](const auto& a, const auto& b) { return a.second > b.second; });
+    if (links.empty()) {
+        linksSummary_ = "No links";
+    } else {
+        const std::size_t n = links.size();
+        linksSummary_ = std::to_string(n) + (n == 1 ? " link" : " links") + " \xE2\x86\x92 ";
+        if (sites.empty()) linksSummary_ += "no web site";
+        for (std::size_t i = 0; i < sites.size() && i < 3; ++i) {
+            if (i) linksSummary_ += ", ";
+            linksSummary_ += sites[i].first;
+        }
+        if (sites.size() > 3) linksSummary_ += " +" + std::to_string(sites.size() - 3);
+    }
+    linksLabel_->SetText(linksSummary_);
+    // Every link: what it shows, and where it really goes.
+    std::string list;
+    const std::size_t shown = std::min<std::size_t>(links.size(), 40);
+    for (std::size_t i = 0; i < shown; ++i) {
+        std::string text = links[i].text;
+        for (char& c : text) if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+        if (text.size() > 50) text = text.substr(0, 47) + "...";
+        std::string href = links[i].href;
+        if (href.size() > 90) href = href.substr(0, 87) + "...";
+        if (!list.empty()) list += "\n";
+        list += (text.empty() ? std::string("(no text)") : "\"" + text + "\"") + "  \xE2\x86\x92  " + href;
+    }
+    if (links.size() > shown) list += "\n... and " + std::to_string(links.size() - shown) + " more";
+    linksLabel_->SetTooltip(list);
+}
+
+void UltraMailApp::ShowHoveredLink(const std::string& href) {
+    if (!linksLabel_) return;
+    linksLabel_->SetText(href.empty() ? linksSummary_ : "\xE2\x86\x92 " + href);
 }
 
 void UltraMailApp::UpdateBusyIndicator() {
