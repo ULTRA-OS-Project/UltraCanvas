@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.9.0 - SetLinkTooltips
 // Version: 0.8.0 - forwards the reading pane's links and hovered link
 // Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
 //                  (+10 px) or a fixed width
@@ -535,6 +536,12 @@ void MailView::SetBodyOptions(bool showHtml, float textSizePx) {
     if (preview_.showHtml == showHtml && preview_.bodyFontSizePx == textSizePx) return;
     preview_.showHtml = showHtml;
     preview_.bodyFontSizePx = textSizePx;
+    preview_.ReRender();
+}
+
+void MailView::SetLinkTooltips(bool tooltips) {
+    if (preview_.linkTooltips == tooltips) return;
+    preview_.linkTooltips = tooltips;
     preview_.ReRender();
 }
 

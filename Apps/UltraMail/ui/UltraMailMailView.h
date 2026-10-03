@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.9.0 - SetLinkTooltips (Settings > Display > Links)
 // Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
 // Version: 0.7.0 - folder tree width: fitted to its names (+10 px) or fixed.
 // Version: 0.6.0 - reading options (HTML / plain text, text size) and trusted
@@ -100,6 +101,10 @@ public:
     // Settings > Reading > Messages: HTML mail formatted or as plain text, and
     // the body text size (CSS px). The message on screen is shown again.
     void SetBodyOptions(bool showHtml, float textSizePx);
+    // Settings > Display > Links: a link's address as a tooltip over the link
+    // (false: only reported through onLinkHovered, for the status line). The
+    // message on screen is shown again.
+    void SetLinkTooltips(bool tooltips);
 
     // Settings > Reading > Layout: the folder tree's width. Fitted, it is as
     // wide as its longest row (account address or folder name) needs plus

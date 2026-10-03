@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.7.0 - SetShowLinkTooltips: a text link's href as a tooltip while hovered
 // Version: 2.6.0 - onLinkHovered: the link under the pointer (a status line shows
 //                 where it goes)
 // Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
@@ -138,6 +139,7 @@ namespace UltraCanvas {
         LabelStyle style;
         std::vector<LabelTextLink> textLinks;
         int hoveredLink = -1;
+        bool showLinkTooltips = false;
         std::vector<LabelInlineImage> inlineImages;
         float inlineFitWidth = -1.f;   // line width the image shapes were sized for; -1 = none
         std::vector<float> inlineAscents;   // per image: its top above the baseline, as laid out
@@ -180,6 +182,10 @@ namespace UltraCanvas {
             hoveredLink = -1;
         }
         const std::vector<LabelTextLink> &GetTextLinks() const { return textLinks; }
+        // Show the href of the text link under the pointer as a tooltip (off
+        // by default: an app may show it in its status line instead).
+        void SetShowLinkTooltips(bool show) { showLinkTooltips = show; }
+        bool GetShowLinkTooltips() const { return showLinkTooltips; }
         // Index into GetTextLinks() of the link at a label-local point, or -1.
         int LinkIndexAtPoint(const Point2Di& localPoint);
 
