@@ -14,7 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips)
+// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips),
+//                  following the pointer along the link
 // Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
 // Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
 //                 spacing: Pango breaks on spacing its extents leave out)
@@ -469,6 +470,11 @@ namespace UltraCanvas {
                                 else
                                     UltraCanvasTooltipManager::HideTooltip();
                             }
+                        } else if (showLinkTooltips && hoveredLink >= 0 &&
+                                   (UltraCanvasTooltipManager::IsVisible() ||
+                                    UltraCanvasTooltipManager::IsPending())) {
+                            // Along the same link: the tooltip follows the pointer.
+                            UltraCanvasTooltipManager::UpdateTooltipPosition(event.pointerWindow);
                         }
                     }
                     if (!IsHovered()) {

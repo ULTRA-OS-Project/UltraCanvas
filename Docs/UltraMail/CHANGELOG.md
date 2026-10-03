@@ -5,8 +5,8 @@
     message's links and names the sites they go to, its tooltip lists every
     link, and pointing at a link shows its address there.
   - **Show as tooltip**: the address of the link under the pointer - a text
-    link or a linked picture - appears in a tooltip beside it, and the status
-    line's links segment is hidden.
+    link or a linked picture - appears in a tooltip beside it that follows the
+    pointer along the link, and the status line's links segment is hidden.
   The choice applies at once to the message on screen and is remembered
   (`link_display` in `preferences.ini`).
 
