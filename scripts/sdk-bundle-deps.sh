@@ -131,7 +131,7 @@ wanted_rel() {
         lib/python*|lib/girepository-1.0/*|lib/*/include/*) return 1 ;;
         lib/*.a|lib/*.dll.a|lib/*.dylib|lib/*.la) return 0 ;;
         lib/*/*.a|lib/*/*.dylib) return 0 ;;
-        bin/*.dll) [ "$PLATFORM" = windows ] ;;
+        bin/*.dll|lib/*/*.dll) [ "$PLATFORM" = windows ] ;;
         *) return 1 ;;
     esac
 }
@@ -275,6 +275,28 @@ if [ "$PLATFORM" = macos ]; then
         done
         echo "  system-library stubs from $stubdir"
     fi
+fi
+
+# A package's CMake config may name a program next to its library
+# (MSYS2's CURLConfig.cmake imports CURL::curl as bin/curl.exe), and CMake
+# refuses the whole config when one referenced file is missing. Carry the
+# programs the bundled configs name, and nothing else from bin/.
+if [ -d "$DEPS/lib/cmake" ]; then
+    grep -rhoE '\$\{_IMPORT_PREFIX\}/bin/[^"]+' "$DEPS/lib/cmake" 2>/dev/null | sort -u | while read -r ref; do
+        name="${ref#*/bin/}"
+        for root in "${PREFIX:-}" "${CELLAR:-}"; do
+            [ -n "$root" ] || continue
+            if [ "$PLATFORM" = macos ]; then
+                src="$(ls -d "$root"/*/*/bin/"$name" 2>/dev/null | head -1 || true)"
+            else
+                src="$root/bin/$name"
+            fi
+            if [ -n "$src" ] && [ -f "$src" ] && [ ! -f "$DEPS/bin/$name" ]; then
+                mkdir -p "$DEPS/bin"
+                cp "$src" "$DEPS/bin/$name"
+            fi
+        done
+    done || true
 fi
 
 echo "bundled into $DEPS:"
