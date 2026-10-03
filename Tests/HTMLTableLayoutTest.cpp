@@ -529,12 +529,6 @@ void TestFloats() {
     Check(after->rect.x + after->rect.width <= right->rect.x + 0.5f, "... left of float:right");
 }
 
-const Placed* WithIdPrefix(const std::vector<Placed>& all, const std::string& prefix) {
-    for (const auto& p : all)
-        if (p.element->GetIdentifier().rfind(prefix, 0) == 0) return &p;
-    return nullptr;
-}
-
 // Text after a float runs beside it; clear starts below it; a block that does
 // not fit in the room beside a float (a 300px table beside a 500px float)
 // goes below it.
@@ -570,15 +564,21 @@ void TestFlowAroundFloats() {
 // cell, and its button - left in its cell, not centred across the line.
 void TestShrinkToFitTable() {
     std::printf("a table without a width is shrink-to-fit\n");
+    // In a table cell, as mail nests them: the cell stretched them to its width.
     Laid laid = LayOut(
+        "<table width='600' cellpadding='0' cellspacing='0'><tr><td>"
         "<table cellpadding='0' cellspacing='0'><tr><td style='width:30px'>L</td></tr></table>"
         "<table cellpadding='0' cellspacing='0'><tr>"
-        "<td align='center' style='padding:10px 25px'><a href='#'>BUTTON</a></td></tr></table>", 640.f);
+        "<td align='center' style='padding:10px 25px'><a href='#'>BUTTON</a></td></tr></table>"
+        "</td></tr></table>", 640.f);
     Check(laid.root != nullptr, "built");
     if (!laid.root) return;
     std::vector<Placed> all;
     Collect(laid.root.get(), 0, 0, all);
-    const Placed* logo = WithIdPrefix(all, "html_table_");
+    std::vector<const Placed*> tables;
+    for (const auto& p : all)
+        if (p.element->GetIdentifier().rfind("html_table_", 0) == 0) tables.push_back(&p);
+    const Placed* logo = tables.size() > 1 ? tables[1] : nullptr;   // the first one inside
     const Placed* button = LabelWith(all, "BUTTON");
     Check(logo && button, "both built");
     if (!logo || !button) return;
