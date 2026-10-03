@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.22 - recipient suggestions ranked by how often each address is written to
+// Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
+// Version: 0.9.20 - a mailto: link's cc and bcc go into the new message
+// Version: 0.9.19 - a clicked mail address in a message opens a new message to it
 // Version: 0.9.18 - Settings > Display > Links: a link's address in the status line or
 //                   as a tooltip (ApplyLinkDisplay)
 // Version: 0.9.17 - the status line lists a message's links (summary, every link in
@@ -522,6 +526,21 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     };
     mailView_.onLinksShown = [this](const std::vector<MessageLink>& links) { ShowMessageLinks(links); };
     mailView_.onLinkHovered = [this](const std::string& href) { ShowHoveredLink(href); };
+    // A mail address clicked in a message (mailto: or written in plain text):
+    // a new message to it, with the copies, subject and text the link carries.
+    // A blind copy is shown in the composer's Bcc row, never sent unseen.
+    mailView_.onComposeTo = [this](const std::string& selfName, const std::string& selfAddr,
+                                   const std::string& href) {
+        const MailtoTarget target = ParseMailto(href);
+        if (target.to.empty() && target.cc.empty() && target.bcc.empty()) return;
+        Draft draft = Composer::NewMessage(selfName, selfAddr);
+        draft.to  = target.to;
+        draft.cc  = target.cc;
+        draft.bcc = target.bcc;
+        draft.subject = target.subject;
+        draft.body    = target.body;
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::NewMessage));
+    };
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
@@ -940,6 +959,18 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetDraft(draft);
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_.get());
+    // To / Cc / Bcc complete from the address book as it is when the window
+    // opens (one read, then matched in memory as the writer types), the
+    // addresses written to most often - by the mail in the Sent folders -
+    // first.
+    auto book = std::make_shared<std::vector<Contact>>();
+    if (contacts_.IsOpen()) contacts_.ListAll(*book);
+    auto written = std::make_shared<std::map<std::string, int>>();
+    store_.CountSentRecipients(*written);
+    view->suggestRecipients = [book, written](const std::string& query,
+                                              const std::string& fieldText) {
+        return SuggestRecipients(*book, query, fieldText, 8, written.get());
+    };
     UltraCanvasWindow* raw = win.get();
     // Sent, or safely queued in the outbox: the window has done its job. It
     // stays open when the message was not queued (no recipient, no outbox),

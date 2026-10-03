@@ -6,11 +6,14 @@
 //
 // Headless: only parsing lives here. The app decides what to do with the
 // result (POST it, open the page, or pre-fill a message) after asking the user.
+// Version: 0.3.0 - ParseMailto: to / cc / bcc recipient lists
+// Version: 0.2.0 - ParseMailto (also for mailto: links in a message)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace UltraMail {
 
@@ -27,6 +30,19 @@ struct UnsubscribeInfo {
 
     bool Any() const { return !webUrl.empty() || !mailtoAddress.empty(); }
 };
+
+// A mailto: address (RFC 6068) split into its parts, percent-decoded:
+// "mailto:a@example.com?cc=b@example.com&subject=Hi&body=..." → address,
+// recipients, subject, body. All empty when `href` is not a mailto: address.
+struct MailtoTarget {
+    std::string address;            // the part before '?', as written
+    std::vector<std::string> to;    // that address list plus any to= field
+    std::vector<std::string> cc;    // cc= fields
+    std::vector<std::string> bcc;   // bcc= fields
+    std::string subject;
+    std::string body;
+};
+MailtoTarget ParseMailto(const std::string& href);
 
 // Parse the two header values (either may be empty).
 UnsubscribeInfo ParseListUnsubscribe(const std::string& listUnsubscribe,

@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.10.0 - To / Cc / Bcc complete names and addresses from the address book
+// Version: 0.9.0 - a Bcc toggle beside Cc shows the Bcc row; a draft with blind
+//                  copies (a mailto: link's bcc) opens with it shown, so none is
+//                  sent without being seen
 // Version: 0.8.0 - Quote + / Quote − in the formatting toolbar
 // Version: 0.7.0 - one view per compose window: what answers after the window
 //                  closed holds the view weakly
@@ -10,7 +14,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -86,7 +90,8 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     // Header fields: a quiet label beside a full-width input.
     auto addField = [this](const std::string& id, const std::string& caption,
-                           const std::shared_ptr<UltraCanvasTextInput>& input) {
+                           const std::shared_ptr<UltraCanvasTextInput>& input)
+                           -> std::shared_ptr<UltraCanvasContainer> {
         auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
         row->layout.SetFlexRow()
                    .SetFlexGap(Theme::kInnerGap)
@@ -100,17 +105,68 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
         input->layoutItem.SetFlexGrow(1);
         root_->AddChild(row);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return row;
     };
 
-    to_ = CreateTextInput("cTo", 0, 0, 0, Theme::kControlHeight);
+    // A recipient field: a comma-separated list whose last entry, while it is
+    // typed, pops up the address book's matches; picking one puts in
+    // "Name <address>, " and keeps the recipients before it.
+    auto makeRecipientField = [this](const std::string& id) {
+        auto field = std::make_shared<UltraCanvasAutoComplete>(id, 0, 0, 0, Theme::kControlHeight);
+        field->SetMinCharsToTrigger(1);
+        std::weak_ptr<UltraCanvasAutoComplete> weak = field;
+        field->onRequestSuggestions = [this](const std::string& text) {
+            std::vector<AutoCompleteItem> items;
+            if (!suggestRecipients) return items;
+            const std::string query = RecipientQuery(text);
+            if (query.empty()) return items;
+            for (const auto& s : suggestRecipients(query, text))
+                items.emplace_back(s.recipient, CompleteRecipient(text, s.recipient));
+            return items;
+        };
+        field->onItemSelected = [weak](int, const AutoCompleteItem& item) {
+            auto f = weak.lock();
+            if (!f) return;
+            f->SetText(item.value);   // the whole list, the pick in place of the typed part
+            f->SetCaretPosition(item.value.size());
+        };
+        return field;
+    };
+
+    to_ = makeRecipientField("cTo");
     to_->SetText(Join(draft_.to));
     to_->SetPlaceholder("recipient@example.com, …");
     addField("cTo", "To", to_);
 
-    cc_ = CreateTextInput("cCc", 0, 0, 0, Theme::kControlHeight);
+    cc_ = makeRecipientField("cCc");
     cc_->SetText(Join(draft_.cc));
     cc_->SetPlaceholder("Optional");
-    addField("cCc", "Cc", cc_);
+    auto ccRow = addField("cCc", "Cc", cc_);
+
+    // Blind copies: the Bcc toggle at the end of the Cc row shows their row.
+    // A draft that has some (a mailto: link's bcc, a reopened draft) opens
+    // with it shown, so the writer sees every recipient. Hiding the row
+    // empties it - nothing is sent to an address that is out of sight.
+    bcc_ = makeRecipientField("cBcc");
+    bcc_->SetText(Join(draft_.bcc));
+    bcc_->SetPlaceholder("Hidden from the other recipients");
+    bccRow_ = addField("cBcc", "Bcc", bcc_);
+    const bool showBcc = !draft_.bcc.empty();
+    bccRow_->SetVisible(showBcc);
+
+    bccToggle_ = CreateButton("cBccToggle", 0, 0, 48, Theme::kControlHeight, "Bcc");
+    Theme::FitToLabel(bccToggle_, 48);
+    Theme::StyleSecondary(bccToggle_);
+    bccToggle_->SetCanToggled(true);
+    bccToggle_->SetPressed(showBcc);
+    bccToggle_->SetTooltip("Show or hide the Bcc row: blind copies the other recipients don't see");
+    bccToggle_->onToggle = [this](bool shown) {
+        if (!shown && bcc_) bcc_->SetText("");
+        if (bccRow_) bccRow_->SetVisible(shown);
+        if (shown && bcc_) bcc_->SetFocus(true);
+        if (root_) root_->RequestRedraw();
+    };
+    ccRow->AddChild(bccToggle_);
 
     subject_ = CreateTextInput("cSubj", 0, 0, 0, Theme::kControlHeight);
     subject_->SetText(draft_.subject);
@@ -348,6 +404,8 @@ Draft ComposeView::CollectDraft() const {
     Draft d = draft_;   // keep from/identity, in-reply-to, references, attachments
     if (to_)      d.to = Split(to_->GetText());
     if (cc_)      d.cc = Split(cc_->GetText());
+    if (bcc_)     d.bcc = bccRow_ && bccRow_->IsVisible() ? Split(bcc_->GetText())
+                                                       : std::vector<std::string>();
     if (subject_) d.subject = subject_->GetText();
     if (formatted_ && rich_) {
         // The edited document goes out as HTML with a plain-text version.

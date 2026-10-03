@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.3.0 - CountSentRecipients
 // Version: 0.2.0 - schema 8: the account's signature (SetAccountSignature)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -410,6 +412,33 @@ UltraDbResult LocalStore::GetMaxUid(const std::string& accountId,
         "WHERE account_id=? AND folder=?", { accountId, folder }, rs);
     if (!q) return q;
     if (!rs.Empty()) out = rs.Row(0)["m"].AsInt64();
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult LocalStore::CountSentRecipients(std::map<std::string, int>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT s.to_addrs AS t FROM messages s JOIN folders sf "
+        "ON sf.account_id = s.account_id AND sf.name = s.folder "
+        "WHERE sf.role = 'sent' AND (s.flags & " + std::to_string(Flag_Deleted) + ")=0",
+        {}, rs);
+    if (!q) return q;
+    for (const auto& row : rs) {
+        std::set<std::string> once;   // an address listed twice counts once
+        for (std::string addr : Split(row["t"].AsString(), '\n')) {
+            // "Name <addr>" or a bare address.
+            const std::size_t lt = addr.rfind('<'), gt = addr.rfind('>');
+            if (lt != std::string::npos && gt != std::string::npos && gt > lt)
+                addr = addr.substr(lt + 1, gt - lt - 1);
+            std::size_t b = 0, e = addr.size();
+            while (b < e && std::isspace(static_cast<unsigned char>(addr[b]))) ++b;
+            while (e > b && std::isspace(static_cast<unsigned char>(addr[e - 1]))) --e;
+            addr = addr.substr(b, e - b);
+            for (char& c : addr) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!addr.empty() && once.insert(addr).second) ++out[addr];
+        }
+    }
     return UltraDbResult::Ok();
 }
 
