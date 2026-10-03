@@ -1,12 +1,15 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.7.0 - onHoverEnter / onHoverLeave
+// Version: 1.6.0 - merged with main's 1.2.0 (a %-sized picture has no min-content
+//                 width: it can shrink to nothing)
 // Version: 1.5.0 - SetHeightFollowsWidth: a wider set width grows the height too
 // Version: 1.4.0 - rounded corners (border-radius) clip the picture, inside the border
 // Version: 1.3.0 - a repeating image (SetImageRepeat) is one pattern fill over the
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -180,6 +183,15 @@ namespace UltraCanvas {
         intrinsic.valid = true;
         intrinsic.maxContentWidth  = content.width  + padH;
         intrinsic.minContentWidth  = content.width  + padH;
+        // A picture sized in % of its container (width:100% - every mail
+        // template's images - or a max-width in %) can shrink to nothing, so
+        // its natural width is no minimum (CSS Sizing 3 §5.2.2, compressible
+        // replaced elements). Otherwise a 2000px photo widened the 600px
+        // table around it, and the message ran off the right of the pane.
+        const bool pctWidth = size.width.unit == CSSLayout::DimensionUnit::Percent;
+        const bool pctMax = boxConstraints &&
+                            boxConstraints->maxWidth.unit == CSSLayout::DimensionUnit::Percent;
+        if (pctWidth || pctMax) intrinsic.minContentWidth = padH;
         intrinsic.maxContentHeight = content.height + padV;
         intrinsic.minContentHeight = content.height + padV;
     }
@@ -232,9 +244,22 @@ namespace UltraCanvas {
                 HandleMouseDown(event);
                 return true;
 
-            case UCEventType::MouseMove:
+            case UCEventType::MouseMove: {
+                const bool inside = Contains(event.pointer);
+                if (inside != hoverNotified) {
+                    hoverNotified = inside;
+                    if (inside && onHoverEnter) onHoverEnter();
+                    if (!inside && onHoverLeave) onHoverLeave();
+                }
                 HandleMouseMove(event);
                 return true;
+            }
+            case UCEventType::MouseLeave:
+                if (hoverNotified) {
+                    hoverNotified = false;
+                    if (onHoverLeave) onHoverLeave();
+                }
+                break;
 
             case UCEventType::MouseUp:
                 HandleMouseUp(event);

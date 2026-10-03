@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.16.0 - merged with main's 1.4.0-1.7.0
 // Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
 // Version: 1.13.0 - height in percent
@@ -13,10 +14,15 @@
 // Version: 1.6.0 - object-fit, object-position
 // Version: 1.5.0 - background-repeat
 // Version: 1.4.0 - background-position
+// From main:
+// Version: 1.7.0 - structural pseudo-classes
+// Version: 1.6.0 - attribute selectors
+// Version: 1.5.0 - a later width declaration replaces an earlier one
+// Version: 1.4.0 - width/height="auto" on <img> is no size
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -456,6 +462,207 @@ static void TestHtml4Entities() {
 }
 
 // The presentational table attributes of mail HTML, <nobr>, and a:link.
+// Mail templates (Beefree, Braze) write width="580" height="auto" on every
+// <img>: "auto" is no height, so the picture keeps its aspect ratio. Read as
+// 0px it drew every image of such a newsletter zero pixels tall.
+static void TestImageAutoAttributes() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><body>"
+        "<img id='a' src='a.png' width='580' height='auto' style='width:100%;height:auto'>"
+        "<img id='b' src='b.png' width='auto' height='auto'>"
+        "<img id='c' src='c.png' width='32' height='24'>"
+        "</body></html>");
+    StyleResolver resolver;
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    Node* a = find(doc.root.get(), "a");
+    Node* b = find(doc.root.get(), "b");
+    Node* c = find(doc.root.get(), "c");
+    CHECK(a && b && c);
+    if (!a || !b || !c) return;
+    const ComputedStyle& sa = resolver.StyleOf(a);
+    CHECK(!sa.heightPx.has_value());
+    CHECK(sa.widthPercent.has_value() && Near(*sa.widthPercent, 100.f));
+    const ComputedStyle& sb = resolver.StyleOf(b);
+    CHECK(!sb.heightPx.has_value());
+    CHECK(!sb.widthPx.has_value());
+    CHECK(!sb.widthPercent.has_value());
+    const ComputedStyle& sc = resolver.StyleOf(c);
+    CHECK(sc.widthPx.has_value() && Near(*sc.widthPx, 32.f));
+    CHECK(sc.heightPx.has_value() && Near(*sc.heightPx, 24.f));
+}
+
+// A newsletter's narrow-screen rule .row-content{width:100%!important}
+// over the table's inline width:600px: the later width replaces the
+// earlier, so the table is 100% - not 600px, which won while both were kept.
+static void TestImportantWidthReplacesInlineWidth() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>@media (max-width:620px){.rc{width:100%!important}"
+        ".px{width:300px!important}.au{width:auto!important}}</style></head><body>"
+        "<table id='t' class='rc' style='width:600px' width='600'><tr><td>x</td></tr></table>"
+        "<div id='d' class='px' style='width:50%'>y</div>"
+        "<div id='a' class='au' style='width:200px'>z</div>"
+        "</body></html>");
+    StyleResolver resolver;
+    resolver.SetMediaWidth(580.f);
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    Node* t = find(doc.root.get(), "t");
+    Node* d = find(doc.root.get(), "d");
+    Node* a = find(doc.root.get(), "a");
+    CHECK(t && d && a);
+    if (!t || !d || !a) return;
+    const ComputedStyle& st = resolver.StyleOf(t);
+    CHECK(!st.widthPx.has_value());
+    CHECK(st.widthPercent.has_value() && Near(*st.widthPercent, 100.f));
+    const ComputedStyle& sd = resolver.StyleOf(d);
+    CHECK(sd.widthPx.has_value() && Near(*sd.widthPx, 300.f));
+    CHECK(!sd.widthPercent.has_value());
+    const ComputedStyle& sa = resolver.StyleOf(a);
+    CHECK(!sa.widthPx.has_value());
+    CHECK(!sa.widthPercent.has_value());
+}
+
+// Attribute selectors, as Mailchimp writes its narrow-screen rules:
+// table[id=templateBody]{width:100% !important}, td[class=mcnTextContent].
+static void TestAttributeSelectors() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "table[id=templateBody]{width:100% !important}"
+        "td[class=mcnTextContent]{color:#ff0000}"
+        "td[class=other]{color:#00ff00}"
+        "[data-x]{font-weight:bold}"
+        "a[href^=\"mailto:\"]{color:#0000ff}"
+        "a[href$='.pdf' i]{font-style:italic}"
+        "p[class~=b]{text-align:center}"
+        "p[lang|=de]{text-align:right}"
+        "span[title*=\"a b\"]{text-decoration:underline}"
+        "div[class=x] > span[id=deep]{color:#123456}"
+        "</style></head><body>"
+        "<table id='templateBody' width='600'><tr><td id='c' class='mcnTextContent'>t</td></tr></table>"
+        "<div id='dx' data-x=''>x</div>"
+        "<a id='m' href='mailto:a@b'>m</a><a id='f' href='/X.PDF'>f</a>"
+        "<p id='pb' class='a b c'>p</p><p id='pl' lang='de-AT'>q</p>"
+        "<span id='sp' title='say a b c'>s</span>"
+        "<div class='x'><b><span id='deep'>d</span></b></div>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    const ComputedStyle& t = style("templateBody");
+    CHECK(t.widthPercent.has_value() && Near(*t.widthPercent, 100.f));
+    CHECK(!t.widthPx.has_value());
+    CHECK(style("c").color.r == 255 && style("c").color.g == 0);
+    CHECK(style("dx").bold);
+    CHECK(style("m").color.b == 255 && style("m").color.r == 0);
+    CHECK(style("f").italic);
+    CHECK(style("pb").textAlign == TextAlignMode::Center);
+    CHECK(style("pl").textAlign == TextAlignMode::Right);
+    CHECK(style("sp").underline);
+    CHECK(style("deep").color.r == 0x12 && style("deep").color.b == 0x56);
+}
+
+// Structural pseudo-classes, as mail templates use them
+// (Mailchimp: .mcnCaptionBottomContent:last-child ...).
+static void TestStructuralPseudoClasses() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "li:first-child{font-weight:bold}"
+        "li:last-child{font-style:italic}"
+        "li:nth-child(2n){text-align:right}"
+        "li:nth-child( odd ){color:#0000ff}"
+        "li:nth-last-child(2){text-decoration:underline}"
+        "p:only-child{text-align:center}"
+        "span:first-of-type{color:#ff0000}"
+        "span:last-of-type{font-weight:bold}"
+        "td[class=a] table.cap:last-child td.t{color:#00ff00}"
+        "div:empty{text-align:right}"
+        "a:hover{color:#123456}"
+        "</style></head><body>"
+        "<ul><li id='l1'>1</li><li id='l2'>2</li><li id='l3'>3</li><li id='l4'>4</li></ul>"
+        "<div><p id='only'>x</p></div><div><p id='notonly'>x</p><p>y</p></div>"
+        "<div><b>x</b><span id='s1'>a</span><i>y</i><span id='s2'>b</span></div>"
+        "<table><tr><td class='a'><table class='cap'><tr><td class='t' id='first'>1</td></tr></table>"
+        "<table class='cap'><tr><td class='t' id='last'>2</td></tr></table></td></tr></table>"
+        "<div id='empty'></div><div id='full'>t</div>"
+        "<a id='hov' href='x'>h</a>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    CHECK(style("l1").bold);
+    CHECK(!style("l2").bold);
+    CHECK(style("l4").italic);
+    CHECK(!style("l3").italic);
+    CHECK(style("l2").textAlign == TextAlignMode::Right);
+    CHECK(style("l4").textAlign == TextAlignMode::Right);
+    CHECK(style("l1").textAlign != TextAlignMode::Right);
+    CHECK(style("l1").color.b == 255 && style("l3").color.b == 255);
+    CHECK(style("l2").color.b != 255);
+    CHECK(style("l3").underline);
+    CHECK(!style("l4").underline);
+    CHECK(style("only").textAlign == TextAlignMode::Center);
+    CHECK(style("notonly").textAlign != TextAlignMode::Center);
+    CHECK(style("s1").color.r == 255);
+    CHECK(style("s2").color.r != 255);
+    CHECK(style("s2").bold);
+    CHECK(!style("s1").bold);
+    CHECK(style("last").color.g == 255);
+    CHECK(style("first").color.g != 255);
+    CHECK(style("empty").textAlign == TextAlignMode::Right);
+    CHECK(style("full").textAlign != TextAlignMode::Right);
+    CHECK(style("hov").color.r != 0x12);   // :hover never matches a static render
+}
+
 static void TestMailTableStyles() {
     Parser parser;
     Document doc = parser.Parse(
@@ -728,9 +935,9 @@ static void TestBorderSides() {
     CHECK(!st.HasBorder());
     st = styleOf("border:thin solid");
     CHECK(st.borderLeft.Width() == 1.f);
-    CHECK(!st.borderBoxSizing);                             // content-box by default
-    CHECK(styleOf("box-sizing:border-box").borderBoxSizing);
-    CHECK(!styleOf("box-sizing:border-box;box-sizing:content-box").borderBoxSizing);
+    CHECK(!st.borderBox);                             // content-box by default
+    CHECK(styleOf("box-sizing:border-box").borderBox);
+    CHECK(!styleOf("box-sizing:border-box;box-sizing:content-box").borderBox);
     st = styleOf("min-width:120px;min-height:2em;max-height:50px");
     CHECK(st.minWidthPx && *st.minWidthPx == 120.f);
     CHECK(st.minHeightPx && *st.minHeightPx == 32.f);
@@ -835,6 +1042,10 @@ int main() {
     TestReadingModeOverride();
     TestHtml4Entities();
     TestMailTableStyles();
+    TestImageAutoAttributes();
+    TestImportantWidthReplacesInlineWidth();
+    TestAttributeSelectors();
+    TestStructuralPseudoClasses();
     TestMediaAndBackgrounds();
     TestBackgroundPosition();
     TestBackgroundRepeat();

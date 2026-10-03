@@ -61,6 +61,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTrash.h"   // TrashDisplayName
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
@@ -113,6 +114,7 @@ namespace {
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
+    constexpr const char* kPageFileOperations = "handling/file-operations";
     constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageOpeningFiles = "handling/opening-files";
     constexpr const char* kPageExtras = "extras";
@@ -214,11 +216,23 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       dropCopyRadio;
         UltraCanvasRadioGroup                   dropOnFolderGroup;
 
-        // Handling > Drag & Drop: whether a drop asks first.
-        std::shared_ptr<UltraCanvasRadio>       confirmAlwaysRadio;
-        std::shared_ptr<UltraCanvasRadio>       confirmMoveRadio;
-        std::shared_ptr<UltraCanvasRadio>       confirmNeverRadio;
-        UltraCanvasRadioGroup                   dropConfirmGroup;
+        // Handling > File operations: what asks first, the standing answers
+        // to a taken name and to a failure, and the progress window's delay.
+        std::shared_ptr<UltraCanvasCheckbox>    confirmMovesBox;
+        std::shared_ptr<UltraCanvasCheckbox>    confirmCopiesBox;
+        std::shared_ptr<UltraCanvasCheckbox>    confirmTrashBox;
+        std::shared_ptr<UltraCanvasCheckbox>    confirmPermanentBox;   // always on
+        std::vector<std::pair<FilerConflictPolicy,
+                              std::shared_ptr<UltraCanvasRadio>>> conflictRadios;
+        UltraCanvasRadioGroup                   conflictGroup;
+        std::shared_ptr<UltraCanvasRadio>       folderMergeRadio;
+        std::shared_ptr<UltraCanvasRadio>       folderAskRadio;
+        UltraCanvasRadioGroup                   folderConflictGroup;
+        std::shared_ptr<UltraCanvasRadio>       failureAskRadio;
+        std::shared_ptr<UltraCanvasRadio>       failureSkipRadio;
+        UltraCanvasRadioGroup                   failureGroup;
+        std::shared_ptr<UltraCanvasSlider>      progressDelaySlider;
+        std::shared_ptr<UltraCanvasLabel>       progressDelayValue;
 
         // Handling > Tabs: what the tab strip's "+" opens.
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
@@ -251,6 +265,7 @@ namespace {
         std::shared_ptr<UltraCanvasLabel>  cacheMemoryLine;
         std::shared_ptr<UltraCanvasLabel>  cacheIconLine;
         std::shared_ptr<UltraCanvasLabel>  cacheHotLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheMissingLine;
         std::shared_ptr<UltraCanvasLabel>  cacheLocationLine;
         std::shared_ptr<UltraCanvasLabel>  cacheStatus;
 
@@ -1512,48 +1527,176 @@ namespace {
         parts.body->AddChild(d->dropMoveRadio);
         parts.body->AddChild(d->dropCopyRadio);
 
-        AddBodyCaption(parts, "ufl-set-dd-confirm-caption",
-                "Confirmation - whether a drop asks before it is carried out:");
-
-        const FilerDropConfirmation confirm = d->settings->dropConfirmation;
-
-        d->confirmAlwaysRadio = MakeChoice("ufl-set-dd-confirm-always",
-                "Always", confirm == FilerDropConfirmation::AlwaysConfirm);
-        d->confirmMoveRadio = MakeChoice("ufl-set-dd-confirm-move",
-                "Only when files are moved",
-                confirm == FilerDropConfirmation::MoveOnly);
-        d->confirmNeverRadio = MakeChoice("ufl-set-dd-confirm-none",
-                "None", confirm == FilerDropConfirmation::NeverConfirm);
-        d->dropConfirmGroup.AddRadioButton(d->confirmAlwaysRadio);
-        d->dropConfirmGroup.AddRadioButton(d->confirmMoveRadio);
-        d->dropConfirmGroup.AddRadioButton(d->confirmNeverRadio);
-        d->dropConfirmGroup.onSelectionChanged =
-                [d](std::shared_ptr<UltraCanvasRadio> selected) {
-            if (!selected || !d->settings) return;
-            d->settings->dropConfirmation =
-                    selected == d->confirmAlwaysRadio
-                            ? FilerDropConfirmation::AlwaysConfirm
-                    : selected == d->confirmNeverRadio
-                            ? FilerDropConfirmation::NeverConfirm
-                            : FilerDropConfirmation::MoveOnly;
-            ApplyAndSave(d);
-        };
-        parts.body->AddChild(d->confirmAlwaysRadio);
-        parts.body->AddChild(d->confirmMoveRadio);
-        parts.body->AddChild(d->confirmNeverRadio);
-
         AddNote(parts, "ufl-set-dd-note1",
                 "Whatever is chosen here, Ctrl while dropping always copies "
                 "and Shift always moves.");
         AddNote(parts, "ufl-set-dd-note2",
-                "The question names what is about to happen - how many "
-                "entries, moved or copied, and into which folder - and nothing "
-                "is touched until it is answered. A drag is the one file "
-                "operation that can be started by accident, which is why moves "
-                "ask by default.");
-        AddNote(parts, "ufl-set-dd-note3",
-                "Files dragged in from another program are copied, so only "
-                "\"Always\" asks about those.");
+                "Whether a drop asks before it is carried out is set under "
+                "Handling > File operations, together with the other questions "
+                "a copy, move or delete asks.");
+        return parts.page;
+    }
+
+    // ===== HANDLING > FILE OPERATIONS =====
+
+    // A row of radio buttons for one of the page's choices.
+    std::shared_ptr<UltraCanvasContainer> MakeChoiceRow(const std::string& id) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(6).SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        return row;
+    }
+
+    void UpdateProgressDelayLabel(DialogState* d) {
+        if (!d->progressDelayValue || !d->settings) return;
+        const int s = d->settings->progressDelaySeconds;
+        d->progressDelayValue->SetText(s == 0 ? std::string("at once")
+                                              : std::to_string(s) + (s == 1 ? " second" : " seconds"));
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFileOperationsPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-fileops", "File operations",
+                "The questions a copy, move or delete asks, and the answers "
+                "that stand for good:", /*scrolls=*/true);
+        UltraFilerSettings* st = d->settings;
+
+        AddBodyCaption(parts, "ufl-set-fo-ask-caption", "Ask before:");
+        auto applyConfirmation = [d]() {
+            if (!d->settings || !d->confirmMovesBox || !d->confirmCopiesBox) return;
+            d->settings->dropConfirmation = UltraFilerSettings::DropConfirmationFor(
+                    d->confirmMovesBox->IsChecked(), d->confirmCopiesBox->IsChecked());
+            ApplyAndSave(d);
+        };
+        d->confirmMovesBox = MakeCheckbox("ufl-set-fo-confirm-moves",
+                "Moving files, by drag & drop or with Cut and Paste", kTextWidth,
+                UltraFilerSettings::ConfirmsMoves(st->dropConfirmation),
+                [applyConfirmation](bool) { applyConfirmation(); });
+        d->confirmCopiesBox = MakeCheckbox("ufl-set-fo-confirm-copies",
+                "Copying files by drag & drop", kTextWidth,
+                UltraFilerSettings::ConfirmsCopies(st->dropConfirmation),
+                [applyConfirmation](bool) { applyConfirmation(); });
+        d->confirmTrashBox = MakeCheckbox("ufl-set-fo-confirm-trash",
+                "Moving files to the " + TrashDisplayName(), kTextWidth,
+                st->confirmTrashDelete, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->confirmTrashDelete = on;
+            ApplyAndSave(d);
+        });
+        d->confirmPermanentBox = MakeCheckbox("ufl-set-fo-confirm-permanent",
+                "Deleting files permanently (always asks)", kTextWidth, true, nullptr);
+        d->confirmPermanentBox->SetDisabled(true);
+        parts.body->AddChild(d->confirmMovesBox);
+        parts.body->AddChild(d->confirmCopiesBox);
+        parts.body->AddChild(d->confirmTrashBox);
+        parts.body->AddChild(d->confirmPermanentBox);
+
+        AddBodyCaption(parts, "ufl-set-fo-conflict-caption",
+                "When a name is already taken:");
+        {
+            auto row = MakeChoiceRow("ufl-set-fo-conflict-row");
+            const std::vector<std::pair<FilerConflictPolicy, const char*>> choices = {
+                {FilerConflictPolicy::Ask,      "Ask"},
+                {FilerConflictPolicy::KeepBoth, "Keep both"},
+                {FilerConflictPolicy::Replace,  "Replace"},
+                {FilerConflictPolicy::Skip,     "Skip"},
+            };
+            for (const auto& [policy, label] : choices) {
+                auto radio = MakeChoice("ufl-set-fo-conflict-" + std::string(label), label,
+                                        st->conflictPolicy == policy, 100);
+                d->conflictRadios.emplace_back(policy, radio);
+                d->conflictGroup.AddRadioButton(radio);
+                row->AddChild(radio);
+            }
+            d->conflictGroup.onSelectionChanged =
+                    [d](std::shared_ptr<UltraCanvasRadio> selected) {
+                if (!selected || !d->settings) return;
+                for (const auto& [policy, radio] : d->conflictRadios)
+                    if (radio == selected) d->settings->conflictPolicy = policy;
+                ApplyAndSave(d);
+            };
+            parts.body->AddChild(row);
+        }
+
+        AddBodyCaption(parts, "ufl-set-fo-folder-caption",
+                "When a folder is pasted over a folder:");
+        {
+            auto row = MakeChoiceRow("ufl-set-fo-folder-row");
+            d->folderMergeRadio = MakeChoice("ufl-set-fo-folder-merge",
+                    "Merge into the existing folder",
+                    st->folderConflictPolicy == FilerFolderConflictPolicy::Merge, 230);
+            d->folderAskRadio = MakeChoice("ufl-set-fo-folder-ask", "Ask",
+                    st->folderConflictPolicy == FilerFolderConflictPolicy::Ask, 100);
+            d->folderConflictGroup.AddRadioButton(d->folderMergeRadio);
+            d->folderConflictGroup.AddRadioButton(d->folderAskRadio);
+            d->folderConflictGroup.onSelectionChanged =
+                    [d](std::shared_ptr<UltraCanvasRadio> selected) {
+                if (!selected || !d->settings) return;
+                d->settings->folderConflictPolicy = selected == d->folderAskRadio
+                        ? FilerFolderConflictPolicy::Ask : FilerFolderConflictPolicy::Merge;
+                ApplyAndSave(d);
+            };
+            row->AddChild(d->folderMergeRadio);
+            row->AddChild(d->folderAskRadio);
+            parts.body->AddChild(row);
+        }
+
+        AddBodyCaption(parts, "ufl-set-fo-failure-caption",
+                "When a file cannot be copied, moved or deleted:");
+        {
+            auto row = MakeChoiceRow("ufl-set-fo-failure-row");
+            d->failureAskRadio = MakeChoice("ufl-set-fo-failure-ask", "Ask each time",
+                    st->problemPolicy == FilerProblemPolicy::Ask, 130);
+            d->failureSkipRadio = MakeChoice("ufl-set-fo-failure-skip",
+                    "Skip it and report at the end",
+                    st->problemPolicy == FilerProblemPolicy::SkipAndReport, 230);
+            d->failureGroup.AddRadioButton(d->failureAskRadio);
+            d->failureGroup.AddRadioButton(d->failureSkipRadio);
+            d->failureGroup.onSelectionChanged =
+                    [d](std::shared_ptr<UltraCanvasRadio> selected) {
+                if (!selected || !d->settings) return;
+                d->settings->problemPolicy = selected == d->failureSkipRadio
+                        ? FilerProblemPolicy::SkipAndReport : FilerProblemPolicy::Ask;
+                ApplyAndSave(d);
+            };
+            row->AddChild(d->failureAskRadio);
+            row->AddChild(d->failureSkipRadio);
+            parts.body->AddChild(row);
+        }
+
+        AddBodyCaption(parts, "ufl-set-fo-progress-caption",
+                "Progress window - shown once the operation has been running for:");
+        d->progressDelaySlider = MakeIntSlider("ufl-set-fo-progress-delay",
+                UltraFilerSettings::kMinProgressDelaySeconds,
+                UltraFilerSettings::kMaxProgressDelaySeconds,
+                st->progressDelaySeconds, [d](int seconds) {
+            if (!d->settings || d->settings->progressDelaySeconds == seconds) return;
+            d->settings->progressDelaySeconds = seconds;
+            UpdateProgressDelayLabel(d);
+            ApplyAndSave(d);
+        });
+        d->progressDelayValue = MakeSliderValueLabel("ufl-set-fo-progress-value", 90);
+        UpdateProgressDelayLabel(d);
+        parts.body->AddChild(MakeSliderRow("ufl-set-fo-progress-row", "Delay",
+                d->progressDelaySlider, d->progressDelayValue, 0, 60));
+
+        AddNote(parts, "ufl-set-fo-note1",
+                "Every question offers its answers as buttons - Move or Copy, "
+                "Keep both / Replace / Skip, Move to the Trash or Delete "
+                "permanently - with the safe answer coloured; Return takes it, "
+                "Escape stops. An \"Apply to all\" checkbox beside the buttons "
+                "answers the remaining entries of the same operation at once.");
+        AddNote(parts, "ufl-set-fo-note2",
+                "A move asks because it changes where the files live; a Ctrl+V "
+                "copy is deliberate and never asks. Moving to the Trash can be "
+                "undone from there, which is why its question can be switched "
+                "off; a permanent delete cannot, and always asks.");
+        AddNote(parts, "ufl-set-fo-note3",
+                "Merging a folder puts its entries into the folder that is "
+                "there and asks about any name that is taken inside it; "
+                "Replace deletes the existing folder first. Until the progress "
+                "window opens, the pointer shows that the work is under way.");
         return parts.page;
     }
 
@@ -1918,11 +2061,14 @@ namespace {
     // of 96 MB" is three facts where one will do.
     std::string FormatUsage(uint64_t used, uint64_t budget, size_t entries,
                             const char* noun) {
-        if (entries == 0) return "nothing of " + FormatBytes(budget);
+        // "nothing of 96 MB" read as a riddle; say what it is: what is held
+        // now, and the most it may hold.
+        const std::string limit = " (room for " + FormatBytes(budget) + ")";
+        if (entries == 0) return "empty" + limit;
         const std::string count = entries == 1
                 ? "1 " + std::string(noun)
                 : std::to_string(entries) + " " + std::string(noun) + "s";
-        return count + ", " + FormatBytes(used) + " of " + FormatBytes(budget);
+        return count + ", " + FormatBytes(used) + limit;
     }
 
     void SetLine(const std::shared_ptr<UltraCanvasLabel>& label,
@@ -1967,6 +2113,7 @@ namespace {
             SetLine(d->cacheMemoryLine, "In memory: not available.");
             SetLine(d->cacheIconLine, "");
             SetLine(d->cacheHotLine, "");
+            SetLine(d->cacheMissingLine, "");
             return;
         }
         const UltraCanvasFilerWidget::ThumbCacheStats memory =
@@ -1997,6 +2144,25 @@ namespace {
                           "the display is not being drawn."
                         : "In memory, unpacked for drawing: not used while "
                           "thumbnails are held uncompressed.");
+        // The thumbnails the display in front does NOT have, and why: the
+        // one figure that tells "still on its way" from "the workers are
+        // stuck" (waiting, nothing being made) and from "the files would not
+        // decode" (could not be made - the log names each file).
+        const size_t waiting = memory.pendingEntries -
+                std::min(memory.pendingEntries, memory.inFlightEntries);
+        SetLine(d->cacheMissingLine,
+                "Not shown yet: " + std::to_string(waiting) + " waiting, " +
+                std::to_string(memory.inFlightEntries) + " being made, " +
+                std::to_string(memory.failedEntries) +
+                " could not be made (the tile keeps its type icon)." +
+                // A job running this long is what holds up a whole folder;
+                // naming it is how the culprit is found.
+                (memory.longestJobSeconds >= 10
+                         ? " Slowest job: \"" + memory.longestJobPath +
+                           "\", running for " +
+                           std::to_string(memory.longestJobSeconds) + " s (" +
+                           std::to_string(memory.workerCount) + " workers)."
+                         : std::string()));
     }
 
     // A switch in the window's text size, laid out like the page's other
@@ -2055,10 +2221,12 @@ namespace {
         d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", "");
         d->cacheIconLine = MakeText("ufl-set-cache-icon-line", "");
         d->cacheHotLine = MakeText("ufl-set-cache-hot-line", "");
+        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", "");
         parts.body->AddChild(d->cacheDiskLine);
         parts.body->AddChild(d->cacheMemoryLine);
         parts.body->AddChild(d->cacheIconLine);
         parts.body->AddChild(d->cacheHotLine);
+        parts.body->AddChild(d->cacheMissingLine);
 
         d->cacheLocationLine = MakeText("ufl-set-cache-location", "", kTextWidth,
                                         kNoteFontSize, kNoteTextColor);
@@ -2278,6 +2446,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageDetailView, "Detail view");
         AddTreeNode(d, "settings", kPageHandling, "Handling");
         AddTreeNode(d, kPageHandling, kPageDragDrop, "Drag & Drop");
+        AddTreeNode(d, kPageHandling, kPageFileOperations, "File operations");
         AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
         AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
@@ -2314,6 +2483,7 @@ namespace {
         AddPage(d, kPageDetailView,
                 BuildFormatSwitchPage(d, FilerPreviewTarget::DetailView));
         AddPage(d, kPageDragDrop, BuildDragDropPage(d));
+        AddPage(d, kPageFileOperations, BuildFileOperationsPage(d));
         AddPage(d, kPageOpeningFiles, BuildOpeningFilesPage(d));
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));

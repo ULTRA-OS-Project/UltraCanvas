@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.16.0 - merged with main's 1.2.1-1.4.0 (attribute selectors,
+//                  structural pseudo-classes, float / clear, box-sizing as borderBox)
 // Version: 1.15.0 - letter-spacing (px / em, inherited; normal = 0)
 // Version: 1.14.0 - line-height kept for labels (px for lengths / %, a factor for
 //                  numbers, normal clears it); overflow
@@ -23,6 +25,13 @@
 //                  one or two values, per layer (initial: repeat).
 // Version: 1.3.0 - background-position (keywords, %, lengths, edge offsets);
 //                  background size and position kept per layer.
+// From main:
+// Version: 1.4.0 - structural pseudo-classes match; float, and <table
+//                  align="left|right"> / <img align="left|right"> floats;
+//                  clear and <br clear>
+// Version: 1.3.0 - attribute selectors match; box-sizing
+// Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
+// Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
 //                  border-collapse / border-spacing / border-radius; cells
@@ -116,6 +125,18 @@ void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& styl
 // so any CSS for the same property wins, as in a browser.
 void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& style) {
     const bool colorsAllowed = !opts.overrideAuthorColors;
+    // <table align="left|right"> floats, as in browsers - two 300px tables
+    // in a 600px cell sit side by side (Mailchimp's two-column blocks).
+    // So does <img align="left|right">: the text beside it runs around it.
+    if (element.tag == "table" || element.tag == "img") {
+        const std::string align = TrimLower(element.GetAttribute("align"));
+        if (align == "left") style.floatMode = FloatMode::Left;
+        else if (align == "right") style.floatMode = FloatMode::Right;
+    }
+    // <br clear="all|left|right">: what follows starts below the floats.
+    if (element.tag == "br" && element.HasAttribute("clear")) {
+        style.clear = TrimLower(element.GetAttribute("clear")) != "none";
+    }
     if (element.tag == "font") {
         if (colorsAllowed) {
             if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("color")))) style.color = *color;
@@ -280,13 +301,15 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
         ApplyDeclaration(*decl, style, parentStyle);
     }
 
-    // Presentational attributes still common in eBook markup.
+    // Presentational attributes still common in eBook markup. "auto" (mail
+    // templates write height="auto" on every <img>) is no size at all, as in
+    // CSS - read as 0px it drew the picture zero pixels tall.
     if (element.tag == "img" || element.tag == "table" ||
         element.tag == "td" || element.tag == "th") {
         std::string w = element.GetAttribute("width");
         std::string h = element.GetAttribute("height");
         if (!w.empty() && !style.widthPx && !style.widthPercent) {
-            if (auto len = CssLength::Parse(w)) {
+            if (auto len = CssLength::Parse(w); len && len->unit != CssUnit::Auto) {
                 if (len->unit == CssUnit::Percent) style.widthPercent = len->value;
                 else style.widthPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
             }
@@ -294,7 +317,8 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
         if (!h.empty() && !style.heightPx && !style.heightPercent) {
             if (auto len = CssLength::Parse(h)) {
                 if (len->unit == CssUnit::Percent) style.heightPercent = len->value;
-                else style.heightPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                else if (len->unit != CssUnit::Auto)
+                    style.heightPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
             }
         }
     }
@@ -325,6 +349,10 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
 
 void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& s) {
     const float em = s.fontSizePx;
+
+    if (tag == "table" || tag == "input" || tag == "select" || tag == "button" ||
+        tag == "textarea")
+        s.borderBox = true;
 
     auto block = [&]() { s.display = DisplayMode::Block; };
     auto marginsV = [&](float m) { s.marginTop = m; s.marginBottom = m; };
@@ -445,6 +473,70 @@ bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& elem
         if (!element.HasClass(cls)) return false;
     }
     if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
+    for (const auto& pc : part.pseudos) {
+        if (pc.kind == PseudoClass::Kind::Root) {
+            if (element.tag != "html") return false;
+            continue;
+        }
+        if (pc.kind == PseudoClass::Kind::Empty) {
+            for (const auto& child : element.children)
+                if (child->IsElement() ||
+                    (child->type == NodeType::Text && !child->text.empty()))
+                    return false;
+            continue;
+        }
+        // The element's 1-based position among its element siblings (of its
+        // tag, for -of-type), from the first or from the last.
+        const Node* parent = element.parent;
+        if (!parent) return false;
+        int index = 0, count = 0;
+        for (const auto& sib : parent->children) {
+            if (!sib->IsElement()) continue;
+            if (pc.ofType && sib->tag != element.tag) continue;
+            ++count;
+            if (sib.get() == &element) index = count;
+        }
+        if (index == 0) return false;
+        const int pos = pc.fromEnd ? count - index + 1 : index;
+        // pos == a*n + b for some n >= 0.
+        if (pc.a == 0) {
+            if (pos != pc.b) return false;
+        } else {
+            const int diff = pos - pc.b;
+            if (diff % pc.a != 0 || diff / pc.a < 0) return false;
+        }
+    }
+    for (const auto& attr : part.attributes) {
+        if (!element.HasAttribute(attr.name)) return false;
+        if (attr.op == 0) continue;
+        std::string have = element.GetAttribute(attr.name);
+        std::string want = attr.value;
+        if (attr.ignoreCase) {
+            for (char& ch : have) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            for (char& ch : want) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        bool ok = false;
+        switch (attr.op) {
+            case '=': ok = have == want; break;
+            case '^': ok = !want.empty() && have.compare(0, want.size(), want) == 0; break;
+            case '$': ok = !want.empty() && have.size() >= want.size() &&
+                           have.compare(have.size() - want.size(), want.size(), want) == 0; break;
+            case '*': ok = !want.empty() && have.find(want) != std::string::npos; break;
+            case '|': ok = have == want || have.compare(0, want.size() + 1, want + "-") == 0; break;
+            case '~': {
+                size_t pos = 0;
+                while (!ok && pos < have.size()) {
+                    while (pos < have.size() && std::isspace(static_cast<unsigned char>(have[pos]))) ++pos;
+                    size_t end = pos;
+                    while (end < have.size() && !std::isspace(static_cast<unsigned char>(have[end]))) ++end;
+                    ok = end > pos && have.compare(pos, end - pos, want) == 0 && end - pos == want.size();
+                    pos = end;
+                }
+                break;
+            }
+        }
+        if (!ok) return false;
+    }
     return true;
 }
 
@@ -955,9 +1047,19 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.overflowHidden = lower == "hidden" || lower == "clip" || lower == "scroll" ||
                            lower == "auto";
     }
+    else if (prop == "clear") {
+        if (lower == "left" || lower == "right" || lower == "both" ||
+            lower == "inline-start" || lower == "inline-end") s.clear = true;
+        else if (lower == "none") s.clear = false;
+    }
+    else if (prop == "float") {
+        if (lower == "left") s.floatMode = FloatMode::Left;
+        else if (lower == "right") s.floatMode = FloatMode::Right;
+        else if (lower == "none") s.floatMode = FloatMode::NoFloat;
+    }
     else if (prop == "box-sizing") {
-        if (lower == "border-box") s.borderBoxSizing = true;
-        else if (lower == "content-box") s.borderBoxSizing = false;
+        if (lower == "border-box") s.borderBox = true;
+        else if (lower == "content-box") s.borderBox = false;
     }
     else if (prop == "border-collapse") {
         s.borderCollapse = (lower == "collapse");

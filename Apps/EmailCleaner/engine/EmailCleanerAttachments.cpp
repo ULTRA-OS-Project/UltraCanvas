@@ -5,6 +5,7 @@
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerClassifier.h"
+#include "UltraMailAttachmentCache.h"   // the write and the pruning
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -29,7 +30,7 @@ std::string Lower(std::string s) {
 }
 
 bool ReadFile(const std::string& path, std::string& out) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -80,7 +81,7 @@ std::string CachedMessagePath(const std::string& mailCacheDir,
                               int64_t uid) {
     if (mailCacheDir.empty() || accountId.empty() || folder.empty() || uid <= 0)
         return "";
-    std::filesystem::path p = PathFromUtf8(mailCacheDir) / accountId / folder;
+    std::filesystem::path p = PathFromUtf8(mailCacheDir) / PathFromUtf8(accountId) / PathFromUtf8(folder);
     p /= (std::to_string(uid) + ".eml");
     return PathToUtf8(p);
 }
@@ -143,7 +144,7 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
     if (path.empty()) return AttachmentFetch::NoSuchMessage;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) return AttachmentFetch::NoSuchMessage;
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec)) return AttachmentFetch::NoSuchMessage;
 
     std::string raw;
     if (!ReadFile(path, raw) || raw.empty()) return AttachmentFetch::Unreadable;
@@ -182,26 +183,38 @@ std::string WriteToCache(const std::string& cacheDir,
     if (cacheDir.empty()) return "";
 
     std::error_code ec;
-    std::filesystem::create_directories(cacheDir, ec);
+    const std::filesystem::path dir = PathFromUtf8(cacheDir);
+    std::filesystem::create_directories(dir, ec);
 
-    const std::string safe = SafeAttachmentName(filename, mediaType);
-    std::filesystem::path target = PathFromUtf8(cacheDir) / safe;
+    // The write itself is UltraMail's AttachmentCache: identical bytes reuse
+    // the copy already there (and mark it as just opened, for the pruning),
+    // and a *different* attachment with the same name - two "invoice.pdf"
+    // from two senders - gets "invoice (1).pdf" instead of overwriting the
+    // first, which may still be open in a viewer.
+    UltraMail::Attachment attachment;
+    attachment.filename  = SafeAttachmentName(filename, mediaType);
+    attachment.mediaType = mediaType;
+    attachment.data      = bytes;
+    const std::string written = UltraMail::AttachmentCache(cacheDir).Write(attachment);
+    if (written.empty()) return "";
 
-    // Belt and braces: whatever the sanitiser produced, the result has to sit
-    // inside the cache directory.
-    const std::filesystem::path root = std::filesystem::weakly_canonical(cacheDir, ec);
+    // Belt and braces: whatever the sanitisers produced, the file has to sit
+    // inside the cache directory. One that does not is removed, not returned.
+    const std::filesystem::path target = PathFromUtf8(written);
+    const std::filesystem::path root = std::filesystem::weakly_canonical(dir, ec);
     const std::filesystem::path resolved =
         std::filesystem::weakly_canonical(target.parent_path(), ec);
-    if (ec || resolved != root) return "";
+    if (ec || resolved != root) {
+        std::filesystem::remove(target, ec);
+        return "";
+    }
+    return written;
+}
 
-    std::ofstream out(target, std::ios::binary | std::ios::trunc);
-    if (!out) return "";
-    if (!bytes.empty())
-        out.write(reinterpret_cast<const char*>(bytes.data()),
-                  static_cast<std::streamsize>(bytes.size()));
-    if (!out.good()) return "";
-    out.close();
-    return PathToUtf8(target);
+int PruneAttachmentCache(const std::string& cacheDir, int64_t maxAgeSeconds,
+                         uint64_t maxBytes) {
+    if (cacheDir.empty()) return 0;
+    return UltraMail::AttachmentCache(cacheDir).Prune(maxAgeSeconds, maxBytes).removed;
 }
 
 } // namespace EmailCleaner

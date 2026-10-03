@@ -92,7 +92,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert the database matches the code
     // without a literal that has to be chased each time.
-    static constexpr int kSchemaVersion = 4;
+    static constexpr int kSchemaVersion = 5;
 
     // Register the connection and bring the schema up to date. `databasePath`
     // is a file path (created if absent) or ":memory:". Calling it again with
@@ -138,6 +138,27 @@ public:
     // Re-classify support: drop everything analysed for an account (or for
     // everything, when accountId is empty) so the ingest can run again.
     UltraDbResult ClearMessages(const std::string& accountId);
+
+    // ---- Messages moved away ------------------------------------------------
+    // A message EmailCleaner moved to Trash leaves the analysis: its row, its
+    // attachments and its keyword hits are deleted, and the move is recorded,
+    // because the body stays in the mail cache it was read from - UltraMail
+    // removes it only at its own next sync of the folder, and a cache copied
+    // over for analysis never - and the next scan would otherwise analyse it
+    // again. One transaction.
+    UltraDbResult RecordMovedAway(const std::vector<AnalyzedMessage>& messages,
+                                  int64_t movedAt = 0);
+    // Whether this account/folder/uid was moved away, and the Message-ID it
+    // had then ("" when it had none). A server can reuse a UID after a
+    // UIDVALIDITY reset, so the ingest compares the Message-ID before skipping.
+    bool FindMovedAway(const std::string& accountId, const std::string& folder,
+                       int64_t uid, std::string& messageId) const;
+    // Drop the record - the UID now holds a different message.
+    UltraDbResult ForgetMovedAway(const std::string& accountId, const std::string& folder,
+                                  int64_t uid);
+    // Delete everything analysed for one folder of an account - for a folder
+    // the analysis leaves out (Trash), whose rows an earlier scan stored.
+    UltraDbResult ClearFolder(const std::string& accountId, const std::string& folder);
 
     // ---- Aggregates: the map view -----------------------------------------
     // One block per sender address matching the filter, largest first by the

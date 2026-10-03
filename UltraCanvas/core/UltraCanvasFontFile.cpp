@@ -32,6 +32,7 @@
 #include <map>
 #include <utility>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -564,7 +565,7 @@ namespace UltraCanvas {
             return false;
 
         std::error_code ec;
-        const auto size = std::filesystem::file_size(filePath, ec);
+        const auto size = std::filesystem::file_size(UltraCanvas::PathFromUtf8(filePath), ec);
         if (!ec) out.fileSize = static_cast<uint64_t>(size);
 
         const std::string ext = LowerExtensionOf(filePath);

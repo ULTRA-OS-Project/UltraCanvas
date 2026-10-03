@@ -257,6 +257,7 @@ jobs:
             ${{ matrix.msys_prefix }}-lcms2
             ${{ matrix.msys_prefix }}-icu
             ${{ matrix.msys_prefix }}-boost
+            ${{ matrix.msys_prefix }}-python
             zip
 
       # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
@@ -323,6 +324,11 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           sudo apt-get install -y libudev-dev libcups2-dev libsane-dev
+          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest,
+          # and the DNS-SD daemon it needs to start at all (even with -r off).
+          # The test skips without them, and "Run unit tests" turns that skip
+          # into a failure, so it cannot quietly stop running.
+          sudo apt-get install -y cups-ipp-utils avahi-daemon
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
@@ -526,6 +532,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -655,6 +662,28 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
+      # The installed CMake package is what an application outside this tree
+      # builds against (Docs/GettingStarted.md, the out-of-tree route). Install
+      # into a scratch prefix and build Tests/PackageConsumer with nothing but
+      # find_package(UltraCanvas): an export CMake refuses to generate, a
+      # header that reaches outside the install, or a dependency the config
+      # forgets fails here, on this pull request, rather than on a user's
+      # machine. Linux only: that is the leg that installs every module and
+      # builds the core shared, which is the shape a package is used in.
+      - name: Install and build against the CMake package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cmake --install build --prefix "$PWD/install-prefix" > install.log
+          test -f install-prefix/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake \
+            || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
+          cmake -S Tests/PackageConsumer -B build-package-consumer \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="$PWD/install-prefix"
+          cmake --build build-package-consumer --parallel 2
+          LD_LIBRARY_PATH="$PWD/install-prefix/lib" ./build-package-consumer/PackageConsumer
+
       # What the cache actually did, in the log where anyone can see it. A
       # leg still at a 0% hit rate on a second run of the same commit is
       # misconfigured rather than merely cold, and the counters are the only
@@ -675,8 +704,9 @@ jobs:
       # need libsodium, which every row installs.
       #
       # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
-      # Linux one that runs ctest: the suite is headless (no display, no
-      # network), so building it on macOS and Windows costs seconds and gates
+      # Linux one that runs ctest (Windows runs it and UltraMail's, in their own step below):
+      # the suite is headless (no display, no network), so building it on
+      # macOS and Windows costs seconds and gates
       # the thing those rows uniquely exercise — the STATIC UltraCanvas link,
       # where the core archive has to follow UltraNet on the link line.
       #
@@ -735,6 +765,37 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
+      # The file display against Thai, CJK and emoji names, on Windows: the
+      # name-encoding test writes such files to a real folder and lists it
+      # through UltraCanvasFilerWidget, which on Windows goes through the
+      # UTF-16 file APIs - and through the runner's code page 1252 wherever a
+      # conversion was missed. The host-icons test asks the real shell for
+      # its icons, and the shortcut test reads .lnk files on the system they
+      # come from. ULTRACANVAS_BUILD_FILER_TESTS builds the four without the
+      # Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      - name: Run Filer tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
+
+      # EmailCleaner's and UltraMail's engine suites on Windows. Both were
+      # built here (see the note above "Run UltraNet tests") but only Linux
+      # ran them, so the code that most needs Windows - account, mail, body
+      # and attachment cache paths with Thai and emoji names, opened through
+      # the UTF-16 file APIs on a code page 1252 runner - was checked on the
+      # platform where it cannot fail. Both suites are headless: no display,
+      # no network, temp folders only.
+      #
+      # UltraNetPluginHostImports reads each plug-in DLL's import table: a
+      # plug-in must import nothing from the core (libUltraCanvas, UltraNet)
+      # and no core function from any DLL - everything reaches the core
+      # through the UltraNetPluginHost table. Python comes from MSYS2 (the
+      # test is registered only when CMake finds it, hence --no-tests=error).
+      - name: Run EmailCleaner, UltraMail and plug-in import tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(EmailCleanerEngine|UltraMailEngine|UltraNetPluginHostImports|UltraNetPluginHostImportsSelfTest)$"
+
       # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
       # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"
       # on a name outside the ANSI code page and quit UltraFiler. The runner's
@@ -749,10 +810,27 @@ jobs:
               Tests/PathUtf8Test.cpp -o build/PathUtf8Test.exe
           ./build/PathUtf8Test.exe
 
+      # ippeveprinter stops with "Unable to initialize DNS-SD" when no daemon is
+      # running, so IODevicePrinterIPPLiveTest needs Avahi up. Installing the
+      # package normally starts it; this makes sure, and fails here - where the
+      # cause is named - rather than as a skip inside ctest.
+      - name: Start Avahi for the live IPP printer test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo systemctl start avahi-daemon || sudo service avahi-daemon start
+          avahi-daemon --check
+          # ippeveprinter also listens on IPv6 and exits if it cannot; say so
+          # here if the runner has no IPv6 loopback.
+          ip -6 addr show dev lo | grep -q '::1' || echo "::warning::no IPv6 loopback - ippeveprinter will not start"
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
         env:
+          # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
+          # would look like a pass, so forbid it, as for the database test.
+          ULTRACANVAS_TEST_IPP_REQUIRED: 1
           ULTRAFIBU_TEST_PG_HOST: /var/run/postgresql
           ULTRAFIBU_TEST_PG_PORT: 5432
           # ULTRAFIBU_TEST_PG_USER comes from the step above via GITHUB_ENV:
@@ -875,7 +953,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign
+        run: ./package-macos.sh --no-sign --dmg
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -884,7 +962,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize
+        run: ./package-macos.sh --notarize --dmg
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -903,13 +981,20 @@ jobs:
             dist/
           retention-days: 7
 
+      # The disk image only, not the dist-macos/ folders: upload-artifact
+      # does not keep file permissions, so an app unpacked from a zip of the
+      # .app folders has lost its executable bit and does not start. The DMG
+      # keeps it, is already LZMA-compressed (hence compression-level 0 -
+      # zipping it again only costs time) and is signed, and on main
+      # notarized and stapled, as one file.
       - name: Upload build artifacts (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
-          path: |
-            dist-macos/
+          path: dist-macos/*.dmg
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       - name: Upload build artifacts (Linux)

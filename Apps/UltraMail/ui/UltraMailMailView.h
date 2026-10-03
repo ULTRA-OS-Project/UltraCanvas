@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
+// Version: 0.7.0 - folder tree width: fitted to its names (+10 px) or fixed.
 // Version: 0.6.0 - reading options (HTML / plain text, text size) and trusted
 //                  picture hosts forwarded to the preview.
 // Version: 0.5.0 - sender-badge column between From and Subject (address book,
@@ -99,6 +101,13 @@ public:
     // the body text size (CSS px). The message on screen is shown again.
     void SetBodyOptions(bool showHtml, float textSizePx);
 
+    // Settings > Reading > Layout: the folder tree's width. Fitted, it is as
+    // wide as its longest row (account address or folder name) needs plus
+    // 10 px, and follows the rows as folders arrive or a branch is opened or
+    // closed; otherwise it is `fixedPx` wide. Dragging the divider still
+    // resizes it until the next change here (or, fitted, the next refit).
+    void SetFolderTreeWidth(bool fitToText, int fixedPx);
+
     // Narrow the list to one kind of mail ("Show emails ▸" in the row menu);
     // a filter with kind All shows everything again. Switching folder or
     // account clears it.
@@ -141,6 +150,9 @@ public:
     std::function<void(const MessageEnvelope&)> onAddContact;
     std::function<void(const MessageEnvelope&)> onEditContact;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // The reading pane's links (MessagePreview::onLinksShown / onLinkHovered).
+    std::function<void(const std::vector<MessageLink>&)> onLinksShown;
+    std::function<void(const std::string& href)> onLinkHovered;
     // Forwarded to the preview: which senders' remote images load without asking.
     std::function<bool(const std::string& address)> remoteImagesAllowed;
     std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
@@ -166,6 +178,10 @@ private:
 
     // Folder tree -----------------------------------------------------------
     void RebuildFolderTree();
+    // Apply the folder tree width chosen in SetFolderTreeWidth. Fitting needs
+    // the window's render context to measure the text: without one yet it
+    // tries once more on the next turn of the event loop (allowRetry).
+    void ApplyFolderTreeWidth(bool allowRetry = true);
     void SelectFolderNode(const std::string& accountId, const std::string& folder);
 
     // Message list ----------------------------------------------------------
@@ -246,6 +262,9 @@ private:
     int                          shownUnread_ = 0;
     bool                         readingPane_ = true;
     bool                         suppressTreeCallback_ = false;
+    bool                         folderTreeFitToText_ = true;
+    int                          folderTreeFixedWidth_ = 200;
+    bool                         folderTreeRetryPosted_ = false;
     // True while RebuildList drives a programmatic row selection, so the
     // selection-changed callback does not mark that auto-selected row read.
     bool                         suppressAutoRead_ = false;

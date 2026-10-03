@@ -25,7 +25,42 @@ namespace fs = std::filesystem;
 
 namespace UltraCanvas {
 
+// One entry the walk found, with everything an export may show of it - read
+// once, so switching sizes or dates on and off needs no second walk.
+struct FolderExportEntry {
+    std::string name;          // UTF-8
+    fs::path    path;
+    std::string linkTarget;    // UTF-8, empty unless isLink
+    bool        isDirectory = false;
+    bool        isLink = false;
+    uint64_t    size = 0;
+    std::time_t modified = 0;
+};
+
+// One line of the export: an entry, or the note for a folder that could not
+// be read. `prefix` is the tree's "│   " / "    " columns of the levels
+// above; `last` picks "└── " over "├── ".
+struct FolderExportRow {
+    FolderExportEntry entry;
+    std::string prefix;
+    bool last = false;
+    bool unreadable = false;
+};
+
+struct FolderExportListing {
+    std::string folder;
+    FolderExportKind kind = FolderExportKind::Content;
+    bool includeHidden = false;
+    std::time_t readAt = 0;
+    bool folderReadable = true;   // false: the folder itself could not be read
+    bool truncated = false;       // stopped at kMaxFolderExportEntries
+    bool stopped = false;         // cancelled before the end
+    std::vector<FolderExportRow> rows;
+};
+
 namespace {
+
+    using ExportItem = FolderExportEntry;
 
     constexpr float kFontSize = 9.0f;   // matches the main window's UI font
 
@@ -34,15 +69,6 @@ namespace {
     const char* const kLastBranch = "\xE2\x94\x94\xE2\x94\x80\xE2\x94\x80 ";  // "└── "
     const char* const kPipe       = "\xE2\x94\x82   ";                          // "│   "
     const char* const kGap        = "    ";
-
-    struct ExportItem {
-        std::string name;        // UTF-8
-        fs::path    path;
-        bool        isDirectory = false;
-        bool        isLink = false;
-        uint64_t    size = 0;
-        std::time_t modified = 0;
-    };
 
     std::string FoldAscii(const std::string& s) {
         std::string out = s;
@@ -83,6 +109,37 @@ namespace {
         return buf;
     }
 
+    // To the second, the way a spreadsheet reads a date and time.
+    std::string FormatTimeSeconds(std::time_t t) {
+        if (t == 0) return "";
+        std::tm tmv{};
+#ifdef _WIN32
+        localtime_s(&tmv, &t);
+#else
+        localtime_r(&t, &tmv);
+#endif
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tmv);
+        return buf;
+    }
+
+    // The field separator. A semicolon, as a spreadsheet set up for a
+    // decimal comma (German Excel, for one) expects it - there a comma is
+    // the decimal separator, and a comma-separated file opens as one column.
+    constexpr char kCsvSeparator = ';';
+
+    // One CSV field (RFC 4180 quoting): quoted when it holds the separator,
+    // a comma, a quote or a line break, with its quotes doubled.
+    std::string CsvField(const std::string& s) {
+        if (s.find_first_of(";,\"\r\n") == std::string::npos) return s;
+        std::string out = "\"";
+        for (char c : s) {
+            if (c == '"') out += '"';
+            out += c;
+        }
+        return out + "\"";
+    }
+
     // Characters, not bytes, so the columns line up behind "Übersicht".
     size_t Utf8Length(const std::string& s) {
         size_t n = 0;
@@ -105,8 +162,9 @@ namespace {
         return std::to_string(n) + " " + (n == 1 ? one : many);
     }
 
-    // The entries of `dir`, sorted; false when the folder cannot be read.
-    bool ReadFolder(const fs::path& dir, bool includeHidden, bool withDetails,
+    // The entries of `dir` with their sizes, dates and link targets, sorted;
+    // false when the folder cannot be read.
+    bool ReadFolder(const fs::path& dir, bool includeHidden,
                     const std::atomic<bool>* cancelled,
                     std::vector<ExportItem>& items) {
         std::error_code ec;
@@ -125,15 +183,18 @@ namespace {
             item.isLink = it->is_symlink(dec) && !dec;
             dec.clear();
             item.isDirectory = it->is_directory(dec) && !dec;
-            if (withDetails) {
+            dec.clear();
+            if (!item.isDirectory) {
+                item.size = it->file_size(dec);
+                if (dec) item.size = 0;
+            }
+            dec.clear();
+            const fs::file_time_type mt = it->last_write_time(dec);
+            if (!dec) item.modified = ToTimeT(mt);
+            if (item.isLink) {
                 dec.clear();
-                if (!item.isDirectory) {
-                    item.size = it->file_size(dec);
-                    if (dec) item.size = 0;
-                }
-                dec.clear();
-                const fs::file_time_type mt = it->last_write_time(dec);
-                if (!dec) item.modified = ToTimeT(mt);
+                const fs::path target = fs::read_symlink(item.path, dec);
+                if (!dec) item.linkTarget = PathToUtf8(target);
             }
             items.push_back(std::move(item));
         }
@@ -142,37 +203,86 @@ namespace {
     }
 
     std::string LinkSuffix(const ExportItem& item) {
-        std::error_code ec;
-        const fs::path target = fs::read_symlink(item.path, ec);
-        return ec ? std::string() : " -> " + PathToUtf8(target);
+        return item.linkTarget.empty() ? std::string() : " -> " + item.linkTarget;
     }
 
-    // ----- Folder content -----
+    // ----- The walk -----
 
-    std::string BuildContentText(const fs::path& root, bool includeHidden,
-                                 const std::atomic<bool>* cancelled) {
-        std::vector<ExportItem> items;
-        if (!ReadFolder(root, includeHidden, true, cancelled, items))
-            return "The folder cannot be read.\n";
+    struct Walker {
+        bool includeHidden = false;
+        const std::atomic<bool>* cancelled = nullptr;
+        FolderExportListing* listing = nullptr;
+
+        bool Stopped() const {
+            return listing->truncated || (cancelled && cancelled->load());
+        }
+
+        // The entries of `dir` in output order - each folder followed by
+        // what it holds - down to the bottom of the tree when `recurse`.
+        // `prefix` is the tree columns of the levels above.
+        bool Walk(const fs::path& dir, const std::string& prefix, bool recurse) {
+            std::vector<ExportItem> items;
+            if (!ReadFolder(dir, includeHidden, cancelled, items)) {
+                FolderExportRow note;
+                note.prefix = prefix;
+                note.last = true;
+                note.unreadable = true;
+                listing->rows.push_back(std::move(note));
+                return false;
+            }
+            for (size_t i = 0; i < items.size(); ++i) {
+                if (Stopped()) return true;
+                if (listing->rows.size() >= kMaxFolderExportEntries) {
+                    listing->truncated = true;
+                    return true;
+                }
+                FolderExportRow row;
+                row.entry = std::move(items[i]);
+                row.prefix = prefix;
+                row.last = i + 1 == items.size();
+                const bool enter = recurse && row.entry.isDirectory && !row.entry.isLink;
+                const fs::path sub = row.entry.path;
+                const bool last = row.last;
+                listing->rows.push_back(std::move(row));
+                if (enter) Walk(sub, prefix + (last ? kGap : kPipe), true);
+            }
+            return true;
+        }
+    };
+
+    // ----- Writing it out -----
+
+    std::string FormatContent(const FolderExportListing& listing,
+                              const FolderExportOptions& options) {
+        if (!listing.folderReadable) return "The folder cannot be read.\n";
 
         // The name column is as wide as the longest name, within reason: one
         // very long name should not push every size off the screen.
         size_t nameWidth = 4;
-        for (const ExportItem& item : items)
-            nameWidth = std::max(nameWidth,
-                                 Utf8Length(item.name) + (item.isDirectory ? 1 : 0));
+        for (const FolderExportRow& row : listing.rows)
+            nameWidth = std::max(nameWidth, Utf8Length(row.entry.name) +
+                                            (row.entry.isDirectory ? 1 : 0));
         nameWidth = std::min<size_t>(nameWidth, 60);
         constexpr size_t kSizeWidth = 10;
+        constexpr size_t kDateWidth = 16;
 
-        std::string text;
-        text += PadRight("Name", nameWidth) + "  " + PadLeft("Size", kSizeWidth) +
-                "  Modified\n";
-        text += std::string(nameWidth, '-') + "  " + std::string(kSizeWidth, '-') +
-                "  " + std::string(16, '-') + "\n";
+        std::string head = PadRight("Name", nameWidth);
+        std::string rule = std::string(nameWidth, '-');
+        if (options.showSize) {
+            head += "  " + PadLeft("Size", kSizeWidth);
+            rule += "  " + std::string(kSizeWidth, '-');
+        }
+        if (options.showDate) {
+            head += "  Modified";
+            rule += "  " + std::string(kDateWidth, '-');
+        }
+        while (!head.empty() && head.back() == ' ') head.pop_back();
+        std::string text = head + "\n" + rule + "\n";
 
         size_t folders = 0, files = 0;
         uint64_t bytes = 0;
-        for (const ExportItem& item : items) {
+        for (const FolderExportRow& row : listing.rows) {
+            const ExportItem& item = row.entry;
             std::string name = item.name, size;
             if (item.isDirectory) {
                 name += "/";
@@ -183,98 +293,159 @@ namespace {
                 bytes += item.size;
                 ++files;
             }
-            std::string line = PadRight(name, nameWidth) + "  " +
-                               PadLeft(size, kSizeWidth) + "  " +
-                               FormatTime(item.modified);
+            std::string line = PadRight(name, nameWidth);
+            if (options.showSize) line += "  " + PadLeft(size, kSizeWidth);
+            if (options.showDate) line += "  " + FormatTime(item.modified);
             if (item.isLink) line += LinkSuffix(item);
             while (!line.empty() && line.back() == ' ') line.pop_back();
             text += line + "\n";
         }
-        if (cancelled && cancelled->load()) text += "... (stopped)\n";
+        if (listing.stopped) text += "... (stopped)\n";
         text += "\n" + CountText(folders, "folder", "folders") + ", " +
-                CountText(files, "file", "files") + ", " +
-                FormatFileSize(static_cast<size_t>(bytes)) + "\n";
-        return text;
+                CountText(files, "file", "files");
+        if (options.showSize) text += ", " + FormatFileSize(static_cast<size_t>(bytes));
+        return text + "\n";
     }
 
-    // ----- Folder tree content -----
-
-    struct TreeWalk {
-        bool includeHidden = false;
-        const std::atomic<bool>* cancelled = nullptr;
-        size_t folders = 0;
-        size_t files = 0;
-        bool truncated = false;
-        std::string text;
-
-        bool Stopped() const {
-            return truncated || (cancelled && cancelled->load());
-        }
-
-        // Writes the entries of `dir`, each line led by `prefix` - the
-        // "│   " / "    " columns of the levels above.
-        void Walk(const fs::path& dir, const std::string& prefix) {
-            std::vector<ExportItem> items;
-            if (!ReadFolder(dir, includeHidden, false, cancelled, items)) {
-                text += prefix + kLastBranch + "[cannot read this folder]\n";
-                return;
-            }
-            for (size_t i = 0; i < items.size(); ++i) {
-                if (Stopped()) return;
-                if (folders + files >= kMaxFolderExportEntries) {
-                    truncated = true;
-                    return;
-                }
-                const ExportItem& item = items[i];
-                const bool last = i + 1 == items.size();
-                std::string line = prefix + (last ? kLastBranch : kBranch) + item.name;
-                if (item.isDirectory) {
-                    line += "/";
-                    ++folders;
-                } else {
-                    ++files;
-                }
-                if (item.isLink) line += LinkSuffix(item);
-                text += line + "\n";
-                if (item.isDirectory && !item.isLink)
-                    Walk(item.path, prefix + (last ? kGap : kPipe));
-            }
-        }
-    };
-
-    std::string BuildTreeText(const fs::path& root, bool includeHidden,
-                              const std::atomic<bool>* cancelled) {
-        TreeWalk walk;
-        walk.includeHidden = includeHidden;
-        walk.cancelled = cancelled;
+    std::string FormatTree(const FolderExportListing& listing,
+                           const FolderExportOptions& options) {
+        const fs::path root = PathFromUtf8(listing.folder);
         std::string name = PathToUtf8(root.filename());
-        if (name.empty()) name = PathToUtf8(root);   // a drive root: "C:\", "/"
-        walk.text = name + "\n";
-        walk.Walk(root, "");
-        if (walk.truncated)
-            walk.text += "... (stopped after " +
-                         std::to_string(kMaxFolderExportEntries) + " entries)\n";
-        else if (cancelled && cancelled->load())
-            walk.text += "... (stopped)\n";
-        walk.text += "\n" + CountText(walk.folders, "folder", "folders") + ", " +
-                     CountText(walk.files, "file", "files") + "\n";
-        return walk.text;
+        if (name.empty()) name = listing.folder;   // a drive root: "C:\", "/"
+        std::string text = name + "\n";
+
+        size_t folders = 0, files = 0;
+        uint64_t bytes = 0;
+        for (const FolderExportRow& row : listing.rows) {
+            const char* branch = row.last ? kLastBranch : kBranch;
+            if (row.unreadable) {
+                text += row.prefix + branch + "[cannot read this folder]\n";
+                continue;
+            }
+            const ExportItem& item = row.entry;
+            std::string line = row.prefix + branch + item.name;
+            // What the options add, in brackets behind the name: the size of
+            // a file, the date of anything.
+            std::string details;
+            if (item.isDirectory) {
+                line += "/";
+                ++folders;
+            } else {
+                ++files;
+                bytes += item.size;
+                if (options.showSize)
+                    details = FormatFileSize(static_cast<size_t>(item.size));
+            }
+            if (options.showDate && item.modified != 0)
+                details += (details.empty() ? "" : ", ") + FormatTime(item.modified);
+            if (!details.empty()) line += "  (" + details + ")";
+            if (item.isLink) line += LinkSuffix(item);
+            text += line + "\n";
+        }
+        if (listing.truncated)
+            text += "... (stopped after " +
+                    std::to_string(kMaxFolderExportEntries) + " entries)\n";
+        else if (listing.stopped)
+            text += "... (stopped)\n";
+        text += "\n" + CountText(folders, "folder", "folders") + ", " +
+                CountText(files, "file", "files");
+        if (options.showSize) text += ", " + FormatFileSize(static_cast<size_t>(bytes));
+        return text + "\n";
+    }
+
+    std::string CsvTypeOf(const ExportItem& item) {
+        if (item.isLink) return "Link";
+        if (item.isDirectory) return "Folder";
+        std::string ext = PathToUtf8(item.path.extension());
+        if (ext.size() <= 1) return "File";
+        ext.erase(0, 1);
+        for (char& c : ext)
+            if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        return ext + " file";
+    }
+
+    // One row per entry, in the order of the tree. Size and Modified are
+    // columns the options add or leave out.
+    std::string FormatCsv(const FolderExportListing& listing,
+                          const FolderExportOptions& options) {
+        std::string text = std::string("Name") + kCsvSeparator + "Path" +
+                           kCsvSeparator + "Type";
+        if (options.showSize) text += std::string(1, kCsvSeparator) + "Size";
+        if (options.showDate) text += std::string(1, kCsvSeparator) + "Modified";
+        text += "\n";
+        for (const FolderExportRow& row : listing.rows) {
+            if (row.unreadable) continue;   // a table has no place for a note
+            const ExportItem& item = row.entry;
+            const std::string path = PathToUtf8(item.path);
+            text += CsvField(item.name) + kCsvSeparator +
+                    CsvField(options.csvTextMarker ? "'" + path : path) +
+                    kCsvSeparator + CsvField(CsvTypeOf(item));
+            // The size in plain bytes: a number any spreadsheet sums,
+            // whatever its decimal separator. Folders have none.
+            if (options.showSize)
+                text += kCsvSeparator +
+                        (item.isDirectory ? std::string() : std::to_string(item.size));
+            if (options.showDate)
+                text += kCsvSeparator + FormatTimeSeconds(item.modified);
+            text += "\n";
+        }
+        return text;
     }
 
 } // namespace
 
-std::string BuildFolderExportText(const std::string& folder, FolderExportKind kind,
-                                  bool includeHidden,
-                                  const std::atomic<bool>* cancelled) {
-    const fs::path root = PathFromUtf8(folder);
-    std::string text = (kind == FolderExportKind::Tree ? "Folder tree: " : "Folder: ") +
-                       folder + "\n" +
-                       "Exported: " + FormatTime(std::time(nullptr)) +
-                       (includeHidden ? "" : "  (hidden entries left out)") + "\n\n";
-    text += kind == FolderExportKind::Tree
-                    ? BuildTreeText(root, includeHidden, cancelled)
-                    : BuildContentText(root, includeHidden, cancelled);
+FolderExportOptions DefaultFolderExportOptions(FolderExportKind kind) {
+    FolderExportOptions options;
+    options.showSize = true;
+    options.showDate = kind != FolderExportKind::Tree;
+    return options;
+}
+
+std::shared_ptr<const FolderExportListing> ReadFolderForExport(
+        const std::string& folder, FolderExportKind kind, bool includeHidden,
+        const std::atomic<bool>* cancelled) {
+    auto listing = std::make_shared<FolderExportListing>();
+    listing->folder = folder;
+    listing->kind = kind;
+    listing->includeHidden = includeHidden;
+    listing->readAt = std::time(nullptr);
+
+    Walker walker;
+    walker.includeHidden = includeHidden;
+    walker.cancelled = cancelled;
+    walker.listing = listing.get();
+    const bool recurse = kind != FolderExportKind::Content;
+    if (!walker.Walk(PathFromUtf8(folder), "", recurse) && !recurse) {
+        // The listing's one folder could not be read: it says so in place of
+        // the table, rather than as a row.
+        listing->rows.clear();
+        listing->folderReadable = false;
+    }
+    listing->stopped = cancelled && cancelled->load();
+    return listing;
+}
+
+std::string FormatFolderExport(const FolderExportListing& listing,
+                               const FolderExportOptions& options) {
+    // A CSV file is a table and nothing else: a heading above it would be
+    // read as data rows.
+    if (listing.kind == FolderExportKind::Csv) return FormatCsv(listing, options);
+    std::string text = (listing.kind == FolderExportKind::Tree ? "Folder tree: "
+                                                               : "Folder: ") +
+                       listing.folder + "\n" +
+                       "Exported: " + FormatTime(listing.readAt) +
+                       (listing.includeHidden ? "" : "  (hidden entries left out)") +
+                       "\n\n";
+    text += listing.kind == FolderExportKind::Tree ? FormatTree(listing, options)
+                                                   : FormatContent(listing, options);
     return text;
+}
+
+std::string BuildFolderExportText(const std::string& folder, FolderExportKind kind,
+                                  bool includeHidden, const FolderExportOptions& options,
+                                  const std::atomic<bool>* cancelled) {
+    return FormatFolderExport(*ReadFolderForExport(folder, kind, includeHidden, cancelled),
+                              options);
 }
 
 std::string FolderExportFileName(const std::string& folder, FolderExportKind kind) {
@@ -284,7 +455,11 @@ std::string FolderExportFileName(const std::string& folder, FolderExportKind kin
     // is not something a file name may carry.
     for (char& c : name)
         if (c == ':' || c == '\\' || c == '/') c = '_';
-    return name + (kind == FolderExportKind::Tree ? " - tree.txt" : " - content.txt");
+    switch (kind) {
+        case FolderExportKind::Tree: return name + " - tree.txt";
+        case FolderExportKind::Csv:  return name + " - files.csv";
+        default:                     return name + " - content.txt";
+    }
 }
 
 // ===== THE EXPORT WINDOW =====
@@ -301,11 +476,13 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
                                         UltraCanvasWindowBase* parent) {
     folder_ = folder;
     kind_ = kind;
+    options_ = DefaultFolderExportOptions(kind);
 
     const std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
     WindowConfig wc;
-    wc.title = std::string(kind == FolderExportKind::Tree ? "Folder tree content"
-                                                          : "Folder content") +
+    wc.title = std::string(kind == FolderExportKind::Tree  ? "Folder tree content"
+                           : kind == FolderExportKind::Csv ? "Folder tree as CSV"
+                                                           : "Folder content") +
                " - " + (folderName.empty() ? folder : folderName) + " - UltraFiler";
     wc.width = 760;
     wc.height = 560;
@@ -336,8 +513,8 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     textArea_->SetFont("monospace", 10.0f);
     textArea_->SetWordWrap(false);
     textArea_->SetShowLineNumbers(false);
-    textArea_->SetText(kind == FolderExportKind::Tree ? "Reading the folder tree ..."
-                                                      : "Reading the folder ...",
+    textArea_->SetText(kind == FolderExportKind::Content ? "Reading the folder ..."
+                                                         : "Reading the folder tree ...",
                        false);
     textArea_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -350,6 +527,48 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     bottom->SetPadding(8, 12, 8, 12);
     bottom->SetBorderTop(1, Color(225, 225, 230, 255));
+
+    // Weak: the host may drop this object while its window is still open.
+    std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();
+
+    // What the text shows besides the names. A change writes the text again
+    // from what the walk already read - the disk is not walked a second time.
+    auto makeCheck = [](const std::string& id, const std::string& label,
+                        float width, bool checked) {
+        auto c = UltraCanvasCheckbox::CreateCheckbox(id, -1, -1, width, 22, label, checked);
+        c->SetFontSize(kFontSize);
+        c->size.width  = CSSLayout::Dimension::Px(width);
+        c->size.height = CSSLayout::Dimension::Px(22);
+        c->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return c;
+    };
+    sizeCheck_ = makeCheck("uf-export-size", "File size", 84, options_.showSize);
+    sizeCheck_->onStateChanged = [self](CheckedState, CheckedState now) {
+        if (auto exportWindow = self.lock()) {
+            exportWindow->options_.showSize = now == CheckedState::Checked;
+            exportWindow->Reformat();
+        }
+    };
+    bottom->AddChild(sizeCheck_);
+    dateCheck_ = makeCheck("uf-export-date", "Date", 64, options_.showDate);
+    dateCheck_->onStateChanged = [self](CheckedState, CheckedState now) {
+        if (auto exportWindow = self.lock()) {
+            exportWindow->options_.showDate = now == CheckedState::Checked;
+            exportWindow->Reformat();
+        }
+    };
+    bottom->AddChild(dateCheck_);
+    if (kind == FolderExportKind::Csv) {
+        textMarkerCheck_ = makeCheck("uf-export-textmarker", "Add text marker", 124,
+                                     options_.csvTextMarker);
+        textMarkerCheck_->onStateChanged = [self](CheckedState, CheckedState now) {
+            if (auto exportWindow = self.lock()) {
+                exportWindow->options_.csvTextMarker = now == CheckedState::Checked;
+                exportWindow->Reformat();
+            }
+        };
+        bottom->AddChild(textMarkerCheck_);
+    }
 
     statusLabel_ = std::make_shared<UltraCanvasLabel>("uf-export-status", 0, 0, 0, 20);
     statusLabel_->SetFontSize(kFontSize);
@@ -368,8 +587,6 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;
     };
-    // Weak: the host may drop this object while its window is still open.
-    std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();
     saveButton_ = makeButton("uf-export-save", "Save...");
     saveButton_->SetOnClick([self]() {
         if (auto exportWindow = self.lock()) exportWindow->Save();
@@ -390,25 +607,35 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     // over on the UI thread, where this object is also destroyed - so the
     // weak pointer either finds it whole or not at all.
     worker_ = std::thread([self, cancelled, folder, kind, includeHidden]() {
-        std::string text = BuildFolderExportText(folder, kind, includeHidden,
-                                                 cancelled.get());
+        std::shared_ptr<const FolderExportListing> listing =
+                ReadFolderForExport(folder, kind, includeHidden, cancelled.get());
         if (cancelled->load()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
-        app->PostToUIThread([self, text = std::move(text)]() {
-            if (auto exportWindow = self.lock()) exportWindow->ShowText(text);
+        app->PostToUIThread([self, listing = std::move(listing)]() {
+            if (auto exportWindow = self.lock()) exportWindow->ShowListing(listing);
         });
     });
 }
 
-void UltraFilerFolderExportWindow::ShowText(const std::string& text) {
+void UltraFilerFolderExportWindow::ShowListing(
+        std::shared_ptr<const FolderExportListing> listing) {
     if (worker_.joinable()) worker_.join();   // it posted this as its last act
-    text_ = text;
-    if (textArea_) textArea_->SetText(text, false);
+    listing_ = std::move(listing);
     if (saveButton_) saveButton_->SetDisabled(false);
+    Reformat();
+}
+
+void UltraFilerFolderExportWindow::Reformat() {
+    // Still reading: the walk's result is written with whatever the
+    // checkboxes say by the time it arrives.
+    if (!listing_) return;
+    // The text is written anew, so an edit made in it is replaced too.
+    text_ = FormatFolderExport(*listing_, options_);
+    if (textArea_) textArea_->SetText(text_, false);
     if (statusLabel_) {
         size_t lines = 0;
-        for (char c : text)
+        for (char c : text_)
             if (c == '\n') ++lines;
         statusLabel_->SetText(std::to_string(lines) + " lines");
     }
@@ -417,14 +644,27 @@ void UltraFilerFolderExportWindow::ShowText(const std::string& text) {
 void UltraFilerFolderExportWindow::Save() {
     if (text_.empty() || !window_) return;
     // What is in the text area, so an edit made before saving is kept.
-    const std::string text = textArea_ ? textArea_->GetText() : text_;
+    std::string text = textArea_ ? textArea_->GetText() : text_;
+    const bool csv = kind_ == FolderExportKind::Csv;
+    if (csv) {
+        // The way spreadsheets expect it: CRLF rows (RFC 4180), and a UTF-8
+        // byte order mark - without it Excel reads "Übersicht" as ANSI.
+        std::string crlf = "\xEF\xBB\xBF";
+        crlf.reserve(text.size() + text.size() / 16 + 3);
+        for (char c : text) {
+            if (c == '\n') crlf += '\r';
+            crlf += c;
+        }
+        text = std::move(crlf);
+    }
 
     FileDialogOptions opts;
     opts.SetTitle("Save export")
         .SetInitialDirectory(folder_)
         .SetDefaultFileName(FolderExportFileName(folder_, kind_))
         .SetParentWindow(window_.get());
-    opts.AddFilter("Text files", std::vector<std::string>{"txt"});
+    if (csv) opts.AddFilter("CSV files", std::vector<std::string>{"csv"});
+    else     opts.AddFilter("Text files", std::vector<std::string>{"txt"});
     opts.AddFilter("All files", "*");
 
     std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();

@@ -188,7 +188,7 @@ namespace UltraCanvas {
         bool FindChildNoCase(const fs::path& dir, const std::string& name,
                              fs::path& out) {
             std::error_code ec;
-            fs::path direct = dir / name;
+            fs::path direct = dir / PathFromUtf8(name);
             if (fs::exists(direct, ec) && !ec) { out = direct; return true; }
             for (fs::directory_iterator it(dir, ec), end; it != end;
                  it.increment(ec)) {
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         // folder tree lists it.
         std::string CanonicalOrSelf(const fs::path& path) {
             std::error_code ec;
-            const fs::path canonical = fs::weakly_canonical(path, ec);
+            const fs::path canonical = fs::weakly_canonical(UltraCanvas::PathFromUtf8(path), ec);
             if (ec || canonical.empty()) return PathToUtf8(path);
             return PathToUtf8(canonical);
         }
@@ -285,7 +285,7 @@ namespace UltraCanvas {
         // exactly the mapping wanted here.
         void AddPrefixCandidate(std::vector<fs::path>& out,
                                 const fs::path& prefix, char letter) {
-            AddCandidate(out, prefix / "dosdevices" / (std::string(1, letter) + ":"));
+            AddCandidate(out, prefix / "dosdevices" / PathFromUtf8(std::string(1, letter) + ":"));
             if (letter == 'c') AddCandidate(out, prefix / "drive_c");
         }
 
@@ -397,11 +397,11 @@ namespace UltraCanvas {
         // ===== READING THE FILE =====
         bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
             std::error_code ec;
-            if (!fs::is_regular_file(path, ec) || ec) return false;
-            const uintmax_t size = fs::file_size(path, ec);
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+            const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
             if (ec || size < kShellLinkHeaderSize || size > kMaxShellLinkBytes)
                 return false;
-            std::ifstream in(path, std::ios::binary);
+            std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!in) return false;
             out.resize(static_cast<size_t>(size));
             in.read(reinterpret_cast<char*>(out.data()),
@@ -549,13 +549,13 @@ namespace UltraCanvas {
         // The path is already a path this system understands.
         std::string native = expanded;
         std::replace(native.begin(), native.end(), '/', '\\');
-        if (fs::exists(native, ec) && !ec) return CanonicalOrSelf(native);
+        if (fs::exists(UltraCanvas::PathFromUtf8(native), ec) && !ec) return CanonicalOrSelf(native);
         return {};
 #else
         // A path that is already a host path (a shortcut whose target was
         // written by Wine's own tooling, or a caller passing one through).
         if (!expanded.empty() && expanded.front() == '/') {
-            if (fs::exists(expanded, ec) && !ec) return CanonicalOrSelf(expanded);
+            if (fs::exists(UltraCanvas::PathFromUtf8(expanded), ec) && !ec) return CanonicalOrSelf(expanded);
             return {};
         }
         char letter = 0;

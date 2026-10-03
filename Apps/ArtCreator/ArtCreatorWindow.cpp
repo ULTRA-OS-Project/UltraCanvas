@@ -411,7 +411,38 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->AddSeparator("ac-tb-s4");
     toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
     toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
+    toolbar->AddSeparator("ac-tb-s5");
+    // Display quality: outlines only, fills and lines, or antialiased.
+    auto qualityCaption = toolbar->AddLabel("ac-tb-quality-caption", "Quality");
+    qualityCaption->SetFontSize(11);
+    qualityCaption->SetElementSize(Size2Df(48, 24));
+    qualitySlider = CreateHorizontalSlider("ac-tb-quality", 0, 0, 90, 24, 0, 2);
+    qualitySlider->SetStep(1);
+    qualitySlider->SetValue(static_cast<float>(VectorDisplayQuality::Normal));
+    qualitySlider->SetValueDisplay(SliderValueDisplay::NoDisplay);
+    qualitySlider->SetTooltip("Display quality: outlines / fills and lines / antialiased");
+    qualitySlider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    qualitySlider->onValueChanging = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
+    qualitySlider->onValueChanged = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
+    toolbar->AddChild(qualitySlider);
+    qualityLabel = toolbar->AddLabel("ac-tb-quality-value", DisplayQualityName(VectorDisplayQuality::Normal));
+    qualityLabel->SetFontSize(11);
+    qualityLabel->SetElementSize(Size2Df(84, 24));
     window->AddChild(toolbar);
+}
+
+const char* ArtCreatorWindow::DisplayQualityName(VectorDisplayQuality quality) {
+    switch (quality) {
+        case VectorDisplayQuality::Outline: return "Outlines";
+        case VectorDisplayQuality::Simple:  return "Fills + lines";
+        default:                            return "Antialiased";
+    }
+}
+
+void ArtCreatorWindow::SetDisplayQuality(int level) {
+    const auto quality = static_cast<VectorDisplayQuality>(std::clamp(level, 0, 2));
+    if (qualityLabel) qualityLabel->SetText(DisplayQualityName(quality));
+    if (canvas) canvas->SetDisplayQuality(quality);
 }
 
 void ArtCreatorWindow::BuildToolPalette() {

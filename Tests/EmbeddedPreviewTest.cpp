@@ -21,6 +21,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -77,7 +78,7 @@ void CheckSamples(const fs::path& dir, const std::string& extension) {
 // byte for byte, which is what makes the polarity check below meaningful.
 
 void WriteFile(const fs::path& path, const std::vector<uint8_t>& bytes) {
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
 }

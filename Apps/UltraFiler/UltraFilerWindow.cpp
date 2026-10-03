@@ -19,10 +19,10 @@
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
 // submenu ends with an app-provided block (extrasMenuProvider): "Find
-// text", an Export submenu - "Folder content" / "Folder tree content" open a
-// text window with the folder written out as a listing or as a tree drawn
-// with line characters, and save it (UltraFilerFolderExport) - "Open
-// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// text", an Export submenu - "Folder content" / "Folder tree content" / "Folder
+// tree as CSV" open a text window with the folder written out as a listing,
+// as a tree drawn with line characters or as a CSV table, and save it
+// (UltraFilerFolderExport) - "Open prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
 // (media/icons), and any folder can be given a picture through "Set folder
@@ -65,6 +65,7 @@
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -106,6 +107,7 @@
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -189,7 +191,7 @@ namespace {
     // same way). Binary and unreadable files never match.
     bool FileContainsText(const fs::path& path, const std::string& needle,
                           bool foldCase, const std::atomic<bool>& cancelled) {
-        std::ifstream in(path, std::ios::binary);
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         if (!in) return false;
         std::vector<char> chunk(kContentSearchChunkBytes);
         // The tail of the previous piece is carried over, so a match that
@@ -419,7 +421,7 @@ namespace {
         // throws filesystem_error when a read fails part-way through (a
         // removable or network drive going away), and this runs on the probe
         // worker thread, where a throw ends the process.
-        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
             if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
@@ -453,7 +455,7 @@ namespace {
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
-        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
             if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
@@ -725,7 +727,7 @@ namespace {
             if (e.extension == ext) return true;
         if (!e.extension.empty()) return false;
         std::error_code ec;
-        const fs::perms p = fs::status(e.path, ec).permissions();
+        const fs::perms p = fs::status(UltraCanvas::PathFromUtf8(e.path), ec).permissions();
         if (ec) return false;
         return (p & (fs::perms::owner_exec | fs::perms::group_exec |
                      fs::perms::others_exec)) != fs::perms::none;
@@ -1092,10 +1094,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // Resolved against the working directory while that is still the one we
     // were started in - the move below changes what a relative path means.
     if (!start.empty()) {
-        fs::path absolute = fs::absolute(start, ec);
+        fs::path absolute = fs::absolute(UltraCanvas::PathFromUtf8(start), ec);
         if (!ec) start = PathToUtf8(absolute.lexically_normal());
     }
-    if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
+    if (start.empty() || !fs::is_directory(UltraCanvas::PathFromUtf8(start), ec)) start = UserHomeDir();
     if (start.empty()) start = PathToUtf8(fs::current_path(ec));
 
     // A process holds its working directory open, and on Windows that handle
@@ -1108,7 +1110,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // folder), so the working directory moves to the home folder, which is
     // not a folder anybody replaces.
     const std::string home = UserHomeDir();
-    if (!home.empty() && fs::is_directory(home, ec)) {
+    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec)) {
         fs::current_path(home, ec);   // a refusal changes nothing but the lock
     }
 
@@ -1358,6 +1360,15 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     applyingDisplayFormats = wasApplying;
 }
 
+void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target) {
+    target.SetConfirmTrashDelete(settings.confirmTrashDelete);
+    target.SetConflictPolicy(settings.conflictPolicy);
+    target.SetFolderConflictPolicy(settings.folderConflictPolicy);
+    target.SetProblemPolicy(settings.problemPolicy);
+    target.SetProgressWindowDelay(
+            static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -1381,11 +1392,13 @@ void UltraFilerWindow::ApplySettings() {
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
         state->filer->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*state->filer);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*folderPreview);
     }
     // Extras > Cache. The disk cache is one per process, so it is set once
     // rather than per display; how thumbnails are held in memory is each
@@ -1608,7 +1621,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
     if (!historyShown && !favoritesShown && !computerShown) {
         const std::string path = f->GetPath();
         std::error_code ec;
-        if (!path.empty() && fs::is_directory(path, ec) && !ec) {
+        if (!path.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec) {
             FilerEntry folder;
             folder.path = path;
             folder.name = PathToUtf8(PathFromUtf8(path).filename());
@@ -1692,10 +1705,13 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     MenuItemData exportTree = MenuItemData::Action("Folder tree content",
             [this]() { ExportFolder(FolderExportKind::Tree); });
     exportTree.enabled = canExport;
+    MenuItemData exportCsv = MenuItemData::Action("Folder tree as CSV",
+            [this]() { ExportFolder(FolderExportKind::Csv); });
+    exportCsv.enabled = canExport;
 
     return {
             findText,
-            MenuItemData::Submenu("Export", {exportContent, exportTree}),
+            MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -2224,12 +2240,23 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     std::string name = mountPath;
     for (const auto& disc : UltraFilerRamDisks::List())
         if (disc.mountPath == mountPath) name = disc.name;
-    UltraCanvasAlert::Confirm(
-            "Eject the RAM disc \"" + name + "\"?\n\nEverything on it is "
-            "deleted and cannot be recovered.",
-            "Eject RAM disc",
-            [this, mountPath, name](bool confirmed) {
-        if (!confirmed) return;
+    // The answer on the button, the way the file display's own questions
+    // put it: Eject, red, since everything on the disc goes with it.
+    DialogConfig cfg;
+    cfg.title = "Eject RAM disc";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = "Eject the RAM disc \"" + name + "\"?";
+    cfg.details = "Everything on it is deleted and cannot be recovered.";
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 480;
+    cfg.height = 180;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is ejected unasked
+    dialog->AddCustomButton("Eject", DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, mountPath, name](DialogResult result) {
+        if (result != DialogResult::Yes) return;
         // Tabs leave first: a display still listing the disc keeps no file
         // open, but it would show a folder that no longer exists.
         const std::string home = UserHomeDir();
@@ -2250,7 +2277,8 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         // when the platform reports the unmount.
         RefreshDriveNodes();
         if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
-    }, window.get());
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
@@ -3377,7 +3405,7 @@ void UltraFilerWindow::BuildFolderTree() {
         // path that looks like a dead mount. The drive answers for itself.
         if (IsRemoteFilerPath(path)) { NavigateTo(path); return; }
         std::error_code ec;
-        if (fs::is_directory(path, ec) && !ec) NavigateTo(path);
+        if (fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec) NavigateTo(path);
     };
     folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowTreeContextMenu(node, event);
@@ -3408,7 +3436,7 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
         return remoteDrives && remoteDrives->CanUpload(path);
     // A regular folder node accepts a move into the folder it stands for.
     std::error_code ec;
-    return fs::is_directory(path, ec) && !ec;
+    return fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec;
 }
 
 
@@ -3425,7 +3453,7 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         bool changed = false;
         for (const std::string& f : files) {
             std::error_code ec;
-            if (fs::is_directory(f, ec) && !ec)
+            if (fs::is_directory(PathFromUtf8(f), ec) && !ec)
                 changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
         }
         if (changed) {
@@ -3450,7 +3478,7 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         return true;
     }
     std::error_code ec;
-    if (!fs::is_directory(dest, ec) || ec) return false;
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(dest), ec) || ec) return false;
 
     // Entries dragged off a drive onto a local folder row: those come DOWN,
     // and none of the local move machinery below applies to them - it would
@@ -3773,7 +3801,7 @@ void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     std::error_code ec;
     // The changed folder can be the one that went away: a move reports the
     // folder an entry left, and that folder may itself have been moved.
-    if (!fs::is_directory(folder, ec) || ec) {
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec) || ec) {
         DropTreeSubtree(folder);
         RefreshPinnedTreeNodes();
         folderTree->RequestRedraw();
@@ -4037,7 +4065,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
             for (std::string p = path; !p.empty(); p = RemoteFilerParent(p))
                 chain.push_back(p);
         } else {
-            fs::path p(path);
+            fs::path p(UltraCanvas::PathFromUtf8(path));
             while (true) {
                 chain.push_back(PathToUtf8(p));
                 const fs::path parent = p.parent_path();
@@ -4399,6 +4427,9 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->SetDropConfirmation(settings.dropConfirmation);
+    // Handling > File operations: the standing answers to a copy, move or
+    // delete's questions.
+    ApplyFileOperationSettings(*state->filer);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
     // Display > Files: what this display starts with. Its own Display >
@@ -4491,7 +4522,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // those through VirtualFS, and is the only thing that can show them.
         if (settings.doubleClickOpensRegisteredApp) {
             std::error_code ec;
-            if (fs::is_regular_file(entry.path, ec) && !ec &&
+            if (fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) && !ec &&
                 HasRegisteredApplication(entry.path)) {
                 if (tab->filer) tab->filer->OpenEntryWithOS(entry);
                 return;
@@ -4969,7 +5000,7 @@ void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
     // Archive interiors are not real directories - they would only be pruned
     // from the list again on the next read.
     std::error_code ec;
-    if (folder.empty() || !fs::is_directory(folder, ec) || ec) return;
+    if (folder.empty() || !fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec) || ec) return;
     history.Record(FilerHistoryKind::Folder, folder);
     // The Folders tab is stale now if it is on screen.
     if (historyShown && historyFilers[HistoryFolders]) {
@@ -5293,7 +5324,7 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
     std::vector<std::string> paths;
     const std::string home = UserHomeDir();
     std::error_code ec;
-    if (!home.empty() && fs::is_directory(home, ec) && !ec) paths.push_back(home);
+    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec) paths.push_back(home);
     // The cloud folders are the ones the tree's Cloud Storage section holds:
     // found once, off the UI thread, by QueueCloudStorageDiscovery.
     if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
@@ -5543,7 +5574,7 @@ void UltraFilerWindow::NavigateUp() {
         else SetComputerPageVisible(true);
         return;
     }
-    const fs::path p(current);
+    const fs::path p(UltraCanvas::PathFromUtf8(current));
     if (p.has_parent_path() && p.parent_path() != p) {
         NavigateTo(PathToUtf8(p.parent_path()));
         return;
@@ -6328,7 +6359,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             std::string start = settings.splitSecondFolder;
             std::error_code ec;
             if (start.empty() || (!IsRemoteFilerPath(start) &&
-                                  (!fs::is_directory(start, ec) || ec)))
+                                  (!fs::is_directory(UltraCanvas::PathFromUtf8(start), ec) || ec)))
                 start = filer ? filer->GetPath() : std::string();
             if (start.empty()) start = UserHomeDir();
             secondPane->filer->SetPath(start);

@@ -1,22 +1,21 @@
 // Apps/UltraMail/ui/UltraMailSignatureDialog.cpp
+// Version: 0.2.0 - the formatting tools moved to UltraMailFormatBar (shared with
+//                  the compose window)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSignatureDialog.h"
 
+#include "UltraMailFormatBar.h"
 #include "UltraMailTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
-#include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasDropdown.h"
-#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTextArea.h"
-#include "UltraCanvasTextUtils.h"   // Trim
 
 #include "UltraCanvasRichDocument.h"
 #include "UltraMailSignature.h"
@@ -32,7 +31,6 @@ namespace UltraMail {
 namespace {
 
 constexpr float kLabelWidth  = 70.0f;
-constexpr float kToolButton  = 30.0f;
 
 // Segment order of the kind switch.
 constexpr int kSegmentNone = 0;
@@ -52,23 +50,6 @@ SignatureKind KindAt(int segment) {
     return segment == kSegmentText ? SignatureKind::Text
          : segment == kSegmentHtml ? SignatureKind::Html
                                    : SignatureKind::Off;
-}
-
-// Fonts every mail program can show: a signature in a font the reader lacks
-// falls back to theirs anyway.
-const char* const kFonts[] = {
-    "Arial", "Helvetica", "Verdana", "Tahoma", "Trebuchet MS",
-    "Georgia", "Times New Roman", "Courier New",
-};
-const int kSizes[] = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 24 };
-
-// A small palette of text colours that read on white.
-std::vector<Color> TextPalette() {
-    return {
-        Color(0, 0, 0),       Color(68, 68, 68),    Color(128, 128, 128),
-        Color(192, 57, 43),   Color(230, 126, 34),  Color(39, 174, 96),
-        Color(37, 99, 235),   Color(30, 58, 138),   Color(124, 58, 237),
-    };
 }
 
 // The controls the callbacks work on. Raw pointers: the dialog owns every
@@ -195,18 +176,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     kindLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     kindRow->AddChild(kindLabel);
     auto kind = CreateSegmentedControl("sigKind", 0, 0, 270, Theme::kControlHeight);
-    {
-        SegmentedControlStyle style = kind->GetStyle();
-        style.fontSize = Theme::kSizeBody;
-        style.selectedColor = Theme::kAccent;
-        style.hoverColor = Theme::kAccentSoft;
-        style.normalColor = Theme::kCardBackground;
-        style.borderColor = Theme::kCardBorder;
-        style.separatorColor = Theme::kCardBorder;
-        style.cornerRadius = Theme::kControlRadius;
-        style.paddingVertical = 3;
-        kind->SetStyle(style);
-    }
+    Theme::StyleSegmented(kind);
     kind->AddSegment("None");
     kind->AddSegment("Plain text");
     kind->AddSegment("HTML");
@@ -243,164 +213,19 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     }
     state->htmlPane = htmlPane.get();
 
-    auto formatRows = CreateContainer("sigFormat", 0, 0, 0, 2 * Theme::kControlHeight + 4.0f);
-    formatRows->layout.SetFlexColumn()
-                      .SetFlexGap(4.0f)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    {
-        ContainerStyle style;
-        style.autoShowScrollbars = false;
-        formatRows->SetContainerStyle(style);
-    }
-    state->formatRows = formatRows.get();
-
-    // A formatting button: runs `action` on the editor, then gives it the
-    // keyboard back so typing continues where it was.
-    auto addTool = [state](const std::shared_ptr<UltraCanvasContainer>& row,
-                           const std::string& id, const std::string& label,
-                           const std::string& tooltip, float width,
-                           std::function<void(UltraCanvasRichTextEdit&)> action) {
-        auto button = CreateButton(id, 0, 0, width, Theme::kControlHeight, label);
-        Theme::FitToLabel(button, width);
-        Theme::StyleSecondary(button);
-        button->SetTooltip(tooltip);
-        button->onClick = [state, action]() {
-            action(*state->rich);
-            state->rich->SetFocus(true);
-        };
-        row->AddChild(button);
-        return button;
-    };
-
-    // Row 1: character formatting.
-    auto charRow = MakeRow("sigCharRow");
-    auto bold = addTool(charRow, "sigBold", "B", "Bold (Ctrl+B)", kToolButton,
-                        [](UltraCanvasRichTextEdit& e) { e.ToggleBold(); });
-    bold->SetFont("", Theme::kSizeBody, FontWeight::Bold);
-    addTool(charRow, "sigItalic", "I", "Italic (Ctrl+I)", kToolButton,
-            [](UltraCanvasRichTextEdit& e) { e.ToggleItalic(); });
-    addTool(charRow, "sigUnderline", "U", "Underline (Ctrl+U)", kToolButton,
-            [](UltraCanvasRichTextEdit& e) { e.ToggleUnderline(); });
-    addTool(charRow, "sigStrike", "S", "Strikethrough", kToolButton,
-            [](UltraCanvasRichTextEdit& e) { e.ToggleStrikethrough(); });
-
-    auto font = CreateDropdown("sigFont", 0, 0, 130, Theme::kControlHeight);
-    font->AddItem("Font", "");
-    for (const char* name : kFonts) font->AddItem(name, name);
-    Theme::StyleDropdown(font);
-    font->SetSelectedIndex(0, /*runNotifications=*/false);
-    font->SetTooltip("Font of the selected text");
-    font->onSelectionChanged = [state](int, const DropdownItem& item) {
-        state->rich->SetFontFamily(item.value);   // "" = the reader's default
-        state->rich->SetFocus(true);
-    };
-    charRow->AddChild(font);
-
-    auto size = CreateDropdown("sigSize", 0, 0, 64, Theme::kControlHeight);
-    size->AddItem("Size", "");
-    for (int pt : kSizes) size->AddItem(std::to_string(pt), std::to_string(pt));
-    Theme::StyleDropdown(size);
-    size->SetSelectedIndex(0, /*runNotifications=*/false);
-    size->SetTooltip("Size of the selected text, in points");
-    size->onSelectionChanged = [state](int index, const DropdownItem&) {
-        // The items after "Size" are kSizes in order; "Size" itself = default.
-        state->rich->SetFontSize(index > 0 ? static_cast<float>(kSizes[index - 1]) : 0.0f);
-        state->rich->SetFocus(true);
-    };
-    charRow->AddChild(size);
-
-    auto colourLabel = Theme::MakeLine("sigColourLbl", "Colour", Theme::kControlHeight,
-                                       Theme::kSizeBody, Theme::kTextSecondary);
-    colourLabel->SetElementSize(Size2Df(44, Theme::kControlHeight));
-    colourLabel->SetAlignment(TextAlignment::Right);
-    charRow->AddChild(colourLabel);
-    auto colours = CreateColorSwatchBar("sigColour", 0, 0, 0, Theme::kControlHeight - 4.0f,
-                                        TextPalette());
-    colours->SetElementSize(Size2Df(colours->GetPreferredWidth(), Theme::kControlHeight - 4.0f));
-    colours->SetTooltip("Colour of the selected text");
-    colours->onColorSelected = [state](const Color& c) {
-        state->rich->SetTextColor(c.ToHexString());
-        state->rich->SetFocus(true);
-    };
-    charRow->AddChild(colours);
-    charRow->AddStretchSpacer(1);
-    formatRows->AddChild(charRow);
-
-    // Row 2: paragraphs, links, pictures - and the switch to the HTML source.
-    auto paraRow = MakeRow("sigParaRow");
-    addTool(paraRow, "sigLeft", "Left", "Align left", 40,
-            [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Left); });
-    addTool(paraRow, "sigCenter", "Centre", "Centre", 50,
-            [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Center); });
-    addTool(paraRow, "sigRight", "Right", "Align right", 44,
-            [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Right); });
-    addTool(paraRow, "sigBullets", "\xE2\x80\xA2 List", "Bulleted list", 50,
-            [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); });
-    addTool(paraRow, "sigNumbers", "1. List", "Numbered list", 50,
-            [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); });
-    addTool(paraRow, "sigRule", "Line", "A horizontal line", 40,
-            [](UltraCanvasRichTextEdit& e) { e.InsertHorizontalRule(); });
-
-    // Link: the address for the selected text (or for the address itself,
-    // typed at the caret, when nothing is selected).
+    // The formatting tools (shared with the compose window). The editor is
+    // looked up through the dialog: once it has closed, a Link… or Picture…
+    // answer that arrives late finds nothing to change.
     std::weak_ptr<UltraCanvasModalDialog> weak = dialog;
-    auto link = CreateButton("sigLink", 0, 0, 50, Theme::kControlHeight, "Link\xE2\x80\xA6");
-    Theme::FitToLabel(link, 50);
-    Theme::StyleSecondary(link);
-    link->SetTooltip("Link the selected text to a web page or an e-mail address");
-    link->onClick = [state, weak, dlg]() {
-        UltraCanvasDialogManager::ShowInputDialog(
-            "Web page or e-mail address", "Link", "https://", InputType::Text,
-            [state, weak](DialogResult result, const std::string& value) {
-                if (result != DialogResult::OK || !weak.lock()) return;
-                std::string target = UltraCanvas::Trim(value);
-                if (target.empty() || target == "https://" || target == "http://") return;
-                // A bare address is an e-mail link.
-                if (target.find(':') == std::string::npos && target.find('@') != std::string::npos)
-                    target = "mailto:" + target;
-                UltraCanvasRichTextEdit& e = *state->rich;
-                if (!e.HasSelection()) {
-                    UCRichDocumentEditor& editor = e.GetEditor();
-                    const RichDocPosition start = editor.GetCaret();
-                    e.InsertText(target.rfind("mailto:", 0) == 0 ? target.substr(7) : target);
-                    editor.SetSelection(start, editor.GetCaret());
-                }
-                e.SetLink(target);
-                e.InvalidateDocument();
-                e.SetFocus(true);
-            },
-            dlg);
+    FormatBar::Options barOptions;
+    barOptions.idPrefix = "sig";
+    barOptions.dialogParent = dlg;
+    barOptions.editor = [state, weak]() -> UltraCanvasRichTextEdit* {
+        return weak.lock() ? state->rich : nullptr;
     };
-    paraRow->AddChild(link);
-
-    // Picture: a logo or a photo, inside the line at the caret. It travels
-    // with the signature (stored inline) and is sent as part of the message.
-    auto picture = CreateButton("sigPicture", 0, 0, 64, Theme::kControlHeight,
-                                "Picture\xE2\x80\xA6");
-    Theme::FitToLabel(picture, 64);
-    Theme::StyleSecondary(picture);
-    picture->SetTooltip("Put a picture (a logo, a photo) at the cursor");
-    picture->onClick = [state, weak, dlg]() {
-        FileDialogOptions options;
-        options.title = "Picture for the signature";
-        options.parentWindow = dlg;
-        options.AddFilter("Pictures", std::vector<std::string>{"png", "jpg", "jpeg", "gif"});
-        UltraCanvasFileLoader::OpenFileDialog(
-            options, [state, weak, dlg](DialogResult result, const std::string& path) {
-                if (result != DialogResult::OK || path.empty() || !weak.lock()) return;
-                if (!state->rich->InsertInlineImageFromFile(path)) {
-                    UltraCanvasDialogManager::ShowError("Could not read the picture " + path,
-                                                        "Signature", nullptr, dlg);
-                    return;
-                }
-                state->rich->SetFocus(true);
-            });
-    };
-    paraRow->AddChild(picture);
-
-    paraRow->AddStretchSpacer(1);
-    formatRows->AddChild(paraRow);
-    htmlPane->AddChild(formatRows);
+    FormatBar bar = FormatBar::Build(barOptions);
+    htmlPane->AddChild(bar.root);
+    state->formatRows = bar.root.get();
 
     auto rich = CreateRichTextEdit("sigRich", 0, 0, 0, 0);
     {

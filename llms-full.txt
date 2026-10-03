@@ -111,6 +111,10 @@ UltraCanvas/
 
 ## Building
 
+New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
+step list for building an application on UltraCanvas and its modules, with an
+AI coding assistant (Claude Code in particular) doing most of the typing.
+
 **Prerequisites**
 
 Install the required dependencies for your platform:
@@ -551,6 +555,21 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
+
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
   `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
@@ -823,13 +842,15 @@ the backing implementation can be replaced without affecting callers.
   `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
 
 - **UltraCanvasToolbar item badges, reordering and scrolling**
-  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  (`UltraCanvasToolbar.h`, 1.6.0) — `SetItemBadge` / `SetItemBadgeCount` /
   `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
   `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
   item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
   `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
   `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
-  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  bar with the mouse wheel, with a chevron over the edge the items continue
+  past that scrolls a page when clicked (`SetScrollHints`).
+  `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
@@ -1122,6 +1143,45 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
+  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
+  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
+  the Text pattern), sharing the tree, ids, geometry and text diffing in
+  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateForFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent, pages)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+  The optional `pages` (`IOPrintJob::pages`, an `IPrintPageSource`) is the
+  same document as pages to draw, for the renderers that cannot lay out a
+  PDF - Windows GDI, GutenPrint, IPP without PDF - which draw them instead of
+  refusing the job. `IPrintPageTarget::GetRenderContext()` lets a source draw
+  straight into a target's render context.
+- **RichDocumentPrintPages** / `CreateRichDocumentPrintPages(editor)`
+  (`UltraCanvasRichTextPrint.h`) — a word-processing document's pages as an
+  `IPrintPageSource`, the pages `ExportToPdf` writes, laid out by a hidden
+  element of its own. `UltraCanvasRichTextEdit::BeginPrintLayout` /
+  `RenderPrintPage` / `EndPrintLayout` draw them into any context. Tested by
+  `RichTextPrintTest`.
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -1140,6 +1200,15 @@ bytes) is transparently decompressed via the VirtualFS compression API, so
 applications never deal with compression formats themselves;
 `FileBytesResult::decompressedFrom` records the source format and
 `autoDecompress = false` opts out.
+
+The file dialogs follow `UltraCanvasDialogManager::SetUseNativeDialogs`: the
+platform's picker, or the framework's `UltraCanvasFileDialog`. What the
+framework's dialog remembers (view, size, Details column widths, last used
+folder - shared by all applications or per application) is
+`UltraCanvas::FileDialogSettings` in `UltraCanvasFileDialogSettings.h`, the
+file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
+settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
+folder scope. Every write goes through `FileDialogSettings::Update()`.
 
 ### **4. Plug-ins for File Types**
 
@@ -1953,9 +2022,10 @@ time: without it the same API links from a stub whose calls return
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
 frame, still images with sub-pixel pan and zoom and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
-multi-track audio mixing, hardware encoders beyond the platform ones picked
+several free audio tracks, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
@@ -1965,7 +2035,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1997,8 +2068,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
-  ContainViewRect, MakeBlurredBackdrop, RenderView}`
-  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
+  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
+  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -3164,6 +3236,480 @@ configure time naming what is missing.
 
 *Part of ULTRA OS · Generated to accompany the UltraCanvas demo app's
 "Dependencies & Third Party" screen.*
+
+==============================================================================
+FILE: Docs/GettingStarted.md
+==============================================================================
+
+# Getting started: building an application with UltraCanvas and an AI assistant
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-01
+**Author:** UltraCanvas Framework
+
+This page is the step list for a programmer who has never built on UltraCanvas
+and wants to ship an application with it, using an AI coding assistant for most
+of the typing. It is written around **Claude Code**, because the repository
+carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
+and the hooks), but every step names what to do with another assistant too.
+
+The short version: **the repository already teaches the assistant how to work
+here.** Your job is to build it once, keep the assistant pointed at the docs,
+ask for one bounded change at a time, and run the checks before every push.
+Skip a step and the assistant starts guessing APIs from other frameworks,
+hand-paints controls, or leaves work in a container that is thrown away.
+
+---
+
+## Step 1 — Install the toolchain
+
+UltraCanvas is C++20 built with CMake ≥ 3.16. Clang is the default compiler on
+Linux.
+
+```bash
+# Ubuntu / Debian — the core set
+sudo apt install build-essential cmake pkg-config clang \
+    libcairo2-dev libpango1.0-dev libharfbuzz-dev libfreetype6-dev \
+    libvips-dev libglib2.0-dev libtinyxml2-dev libfmt-dev \
+    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+
+# macOS
+brew install cmake cairo pango freetype vips harfbuzz
+
+# Windows — MSYS2 CLANG64 shell (see build-win.cmd for the package list)
+pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake \
+    mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-pkgconf \
+    mingw-w64-clang-x86_64-cairo mingw-w64-clang-x86_64-pango \
+    mingw-w64-clang-x86_64-harfbuzz mingw-w64-clang-x86_64-glib2 \
+    mingw-w64-clang-x86_64-freetype mingw-w64-clang-x86_64-tinyxml2 \
+    mingw-w64-clang-x86_64-libvips
+```
+
+The complete, current three-OS lists are the ones CI installs in
+`.github/workflows/build.yml`; the optional plugins (CDR, PDF via MuPDF, OCR,
+Vectorizer, audio, video) each add a library, and every one of them can be
+switched off with a `-DULTRACANVAS_PLUGIN_<NAME>=OFF` option when you do not
+need it. `Docs/Dependencies.md` says which library each feature pulls in.
+
+## Step 2 — Clone and build the whole tree once
+
+```bash
+git clone https://github.com/ULTRA-OS-Project/UltraCanvas.git
+cd UltraCanvas
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/bin/UltraCanvasDemo
+```
+
+Build everything the first time, even though you only want your own app. Two
+reasons:
+
+- **The demo application is the live catalogue.** Every element, chart,
+  diagram and module has a page in `UltraCanvasDemo`, and the source of each
+  page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
+  `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
+  widget looks like and how it is wired, open the page and then the file.
+- **A green build is your baseline.** When the assistant's first change
+  breaks the build you want to know it was the change.
+
+Turn off the applications you do not need afterwards to shorten rebuilds:
+`-DBUILD_ULTRAFILER_APP=OFF -DBUILD_ULTRAPAINT_APP=OFF …` (the full option
+list is at the top of the root `CMakeLists.txt`).
+
+## Step 3 — Point the AI assistant at the repository's own guidance
+
+The repository is written to be read by an assistant. Make sure yours actually
+reads it.
+
+**Claude Code** (terminal, desktop, web, or IDE extension):
+
+1. Open the repository root. Claude Code loads `CLAUDE.md` automatically, and
+   that file sends it to `AGENTS.md`, the module registry and the docs map.
+   Nothing to configure.
+2. `.claude/settings.json` is committed, so every clone gets the same hooks
+   and permissions: a `SessionStart` hook that restates the delivery rule, a
+   `Stop` hook (`.claude/hooks/check-delivery.sh`) that refuses to end a
+   turn silently on uncommitted or unpushed work, and pre-approved read-only
+   `git` and `scripts/check_*.py` commands so the checks run without
+   prompting. Leave the file in place; it is what keeps a long session
+   honest.
+3. The first thing to say in a fresh session is what you are building, which
+   platforms it must run on and which modules you expect to use. The
+   assistant then knows which docs to read before writing anything.
+
+**Any other assistant** (Copilot, Cursor, Windsurf, ChatGPT, Gemini, …):
+
+- `AGENTS.md` is the vendor-neutral file; most agents pick it up by name.
+  If yours does not, paste it into the system prompt or project instructions.
+- `llms.txt` at the repo root is an index of the whole docs corpus with one
+  line per document; `llms-full.txt` is the entire corpus concatenated.
+  Upload `llms-full.txt` to a Claude.ai Project, a custom GPT or a Gemini
+  Gem and the chat can answer API questions without the repository open.
+- `context7.json` registers the docs with Context7, so an agent with the
+  Context7 MCP server resolves `ultracanvas` to the real docs.
+- There is no vendored MCP documentation server yet; `Docs/AI-Agent-Integration.md`
+  is the plan for one.
+
+**Your own app, outside this repository:** keep UltraCanvas as a git
+submodule and copy `CLAUDE.md`/`AGENTS.md` (or a two-line pointer to the
+submodule's copies) into your root. An assistant that cannot open
+`Docs/UltraCanvas/` will invent `canvas->AddButton(...)`-style APIs.
+
+## Step 4 — Decide where the app lives, then create the skeleton
+
+Two layouts are supported.
+
+| Layout | When | How it links |
+|---|---|---|
+| **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Install the framework once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+
+Both routes are validated on every pull request: CI builds the in-tree
+applications, and it installs the framework into a scratch prefix and builds
+`Tests/PackageConsumer` against it with nothing but `find_package`. That
+directory is the complete out-of-tree starting point, two files long:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+```
+
+The package carries the whole element catalogue, FileLoader, JSON, and
+UltraDatabase and UltraNet when the installed build enabled them, plus
+`UltraCanvas::UltraCrypt` and `UltraCanvas::UltraVault` as separate targets.
+The file-format plug-ins the build produced (CDR, XAR, EPS, the vector and
+3D-model converters, OCR, Vectorizer) are imported as
+`UltraCanvas::UltraCanvas<Name>Plugin` and listed in
+`ULTRACANVAS_PLUGIN_TARGETS`; link that list plus
+`UltraCanvas::UltraCanvasAllFormats` and every format is registered with
+FileLoader before `main()`, exactly as in-tree applications do it. The
+package re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
+pkg-config on your machine, so the `-dev` packages from step 1 are needed
+there too. A static framework built against the vendored libcurl cannot be
+packaged at all and says so at configure time; build it shared, or against
+a system libcurl with WebSocket support.
+
+Ask the assistant to **copy a small existing app, not to invent a structure**.
+`Apps/UltraAuthenticator/` is the cleanest template: a headless core library,
+a GUI target on top, `--version` from the changelog, an icon, a desktop entry.
+The minimum is this:
+
+`Apps/MyApp/CMakeLists.txt`
+
+```cmake
+if(NOT ULTRACANVAS_LIBRARY)
+    message(STATUS "  [−] MyApp - SKIPPED (framework not built)")
+    return()
+endif()
+
+add_executable(MyApp main.cpp MyAppWindow.cpp)
+
+# The version is the first line of Docs/MyApp/CHANGELOG.md, read by
+# cmake/UltraCanvasVersion.cmake once the app is declared there.
+target_compile_definitions(MyApp PRIVATE MYAPP_VERSION="${MYAPP_VERSION}")
+
+target_include_directories(MyApp PRIVATE ${ULTRACANVAS_INCLUDE_DIRS}
+                                         ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARY})
+if(ULTRACANVAS_PLUGIN_TARGETS)
+    target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_PLUGIN_TARGETS})
+endif()
+target_compile_features(MyApp PRIVATE cxx_std_20)
+set_target_properties(MyApp PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+install(TARGETS MyApp RUNTIME DESTINATION bin)
+```
+
+`Apps/MyApp/main.cpp`
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
+
+#ifdef __linux__
+#include <X11/Xlib.h>
+#include <csignal>
+#endif
+#include <iostream>
+
+#ifndef MYAPP_VERSION
+#error "MYAPP_VERSION must come from the CMake target (see cmake/UltraCanvasVersion.cmake)"
+#endif
+
+using namespace UltraCanvas;
+
+#ifdef __linux__
+// The one call a signal handler may make; Run() turns it into RequestExit().
+static void OnSignal(int) { UltraCanvasApplicationBase::RequestExitFromSignal(); }
+#endif
+
+int main(int argc, char* argv[]) {
+#ifdef __linux__
+    XInitThreads();
+    std::signal(SIGINT, OnSignal);
+    std::signal(SIGTERM, OnSignal);
+#endif
+
+    UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) {
+        std::cerr << "Failed to initialize UltraCanvas\n";
+        return EXIT_FAILURE;
+    }
+
+    WindowConfig config;
+    config.title  = "MyApp " MYAPP_VERSION;   // every app shows its version in the title
+    config.width  = 800;
+    config.height = 600;
+    auto window = CreateWindow(config);
+
+    auto label  = CreateLabel("greeting", 20, 20, 300, 24, "Hello from UltraCanvas");
+    auto button = CreateButton("quit", 20, 60, 120, 32, "Quit");
+    // Capture the window raw: the button lives inside it, and a shared_ptr
+    // here would close an ownership cycle (scripts/check_callback_cycles.py).
+    button->onClick = [&app]() { app.RequestExit(); };
+
+    window->AddChild(label);
+    window->AddChild(button);
+    window->Show();
+
+    app.Run();
+    return EXIT_SUCCESS;
+}
+
+#ifdef _WIN32
+#include <windows.h>
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __argv); }
+#endif
+```
+
+Then, in the same change: a `Docs/MyApp/CHANGELOG.md` whose first line is
+`#### 2026-10-01 *0.1.0*`, one `_ultracanvas_declare_product()` line in
+`cmake/UltraCanvasVersion.cmake`, and the `option()`/`add_subdirectory()`
+block in the root `CMakeLists.txt`. That is the whole registration; the
+version then flows from the changelog into the title and `--version`.
+
+## Step 5 — Build the UI from the element catalogue
+
+This is where AI-written code goes wrong most often, so the rule is a
+prohibition: **if it takes input, shows a picture or presents a value, it is
+an element.** The assistant must not paint a text field, button, progress bar
+or gauge with `DrawText` / `FillRoundedRectangle` and a private buffer.
+
+The working order for every screen:
+
+1. Read `Docs/UltraCanvas/UltraCanvasUIElements.md` — the catalogue of the
+   ~60 core elements and ~70 plugin elements (charts, diagrams, gauges,
+   codes, document views), each with its header.
+2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
+   and, for a non-trivial one, its page in `Apps/DemoApp/`.
+3. Lay out with the layout engines, not with hand-computed coordinates:
+   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
+   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+   with `PlaceChildAt()`, never `SetBounds()`.
+4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
+   widget `std::shared_ptr`-managed.
+5. Dialogs, menus, tooltips and toasts come from `UltraCanvasModalDialog`,
+   `UltraCanvasMenu`, `UltraCanvasTooltipManager` and
+   `UltraCanvasDialogManager`; a progress bar is
+   `UltraCanvasGaugeDiagramElement` in `GaugeMode::LinearBar`.
+
+A prompt that gets this right names the element:
+
+> Add a settings dialog to MyApp using `UltraCanvasModalDialog`, with an
+> `UltraCanvasTextInput` for the server name, an `UltraCanvasSpinner` for
+> the port and an `UltraCanvasSwitch` for TLS. Read the three component
+> docs in `Docs/UltraCanvas/` first and follow the dialog keyboard rules in
+> `UltraCanvasDialogKeyboard.md`.
+
+A prompt that gets it wrong says "draw a settings panel".
+
+Four conventions the checks enforce, and that the assistant must be told
+about when it works on an out-of-tree app (in-tree it reads them from
+`AGENTS.md`):
+
+- A callback stored on a widget captures that widget, or any container above
+  it, as a raw pointer, never as a `shared_ptr`.
+- File paths are UTF-8 everywhere: `PathToUtf8` / `PathFromUtf8` /
+  `OpenFileUtf8` from `UltraCanvasPathUtf8.h`, never `p.string()` or
+  `fs::path(str)`.
+- Numbers in file formats and protocols are dot-decimal: `TryParseFloat` /
+  `FormatFloatClassic`, never `std::stof` / `std::to_string(double)`.
+- No function named like a Win32 A/W macro (`CreateFile`, `LoadImage`,
+  `SendMessage`), and platform code only under `UltraCanvas/OS/<Platform>/`.
+
+## Step 6 — Add the modules you need, through their public surfaces
+
+Every module is wrapped behind an UltraCanvas-owned API; app code never calls
+a vendored third-party library directly. Read the module's entry in
+`Masterfile_modules.md` and its `Docs/Modules/<Name>/README.md` before asking
+the assistant to use it, and tell the assistant to do the same.
+
+| You need | Module | CMake target | Doc |
+|---|---|---|---|
+| HTTP, WebSocket, FTP, TCP/UDP, TLS, DNS | UltraNet | `UltraNet` (built when `ULTRACANVAS_ENABLE_NET=ON`) | `Docs/Modules/UltraNet/README.md`; run `UltraNetApiStatus` before relying on an endpoint |
+| SQLite / PostgreSQL with parameter binding, migrations | UltraDatabase | `UltraDatabase` | `Docs/Modules/UltraDatabase/README.md` |
+| Chat, embeddings, speech, image/video/music generation, vision, translation, code assist | UltraAI | `UltraAI::UltraAI` (+ `UltraAI::Core`) | `Docs/Modules/UltraAI/README.md`, `Docs/UltraCanvas/UltraCanvasAIExamples.md` |
+| Open or save any image, audio, video, document, 3D model | FileLoader | part of the core library; link `UltraCanvasAllFormats` to register every built format before `main()` | `Docs/Modules/FileLoader/README.md` |
+| Encryption, sealed envelopes, secure buffers | UltraCrypt | `UltraCrypt` | `Docs/Modules/UltraCrypt/` |
+| Secrets and API keys | UltraVault | with UltraCrypt | `Docs/Modules/UltraVault/` |
+| Virtual filesystem, archives, compression | VirtualFS | `VirtualFS::VirtualFS` | `Docs/Modules/VirtualFS/` |
+| Video probe, trim, effects, export | VideoFX | `VideoFX::VideoFX` | `Docs/Modules/VideoFX/` |
+| Notifications and the message centre | UltraMessage | `UltraMessage`, `UltraMessageCenter` | `Docs/Modules/UltraMessage/` |
+| JSON | UltraCanvasJSON (core) | core | `Docs/UltraCanvas/UltraCanvasJSON.md` |
+| Cloud sync, OCR, QR codes, PDF, smart-home, network monitor, Windows tier | UltraCloud, OCR, QRCode, PDF, SmartHome, NetworkMonitor, UltraWin | see each README | `Docs/Modules/<Name>/` |
+
+Two rules carry across all of them: **TLS verification stays on by default**
+and **SQL uses parameter binding only**. An assistant that proposes
+`verify = false` or string-concatenated SQL is to be corrected, not merged.
+
+If your application itself talks to Claude (an in-app assistant, a summariser,
+a translator), use UltraAI's `ITextLLM` with the `anthropic` adapter rather
+than calling the HTTP API by hand: the adapter owns the key vault, retries,
+SSE streaming and tool calls, and the `mock` adapter lets your tests run with
+no network.
+
+## Step 7 — Verify before every push
+
+Run what CI runs, locally, and make the assistant run it too. The
+`.claude/settings.json` permissions pre-approve exactly these commands so
+Claude Code never has to ask.
+
+```bash
+cmake --build build --parallel                # it still builds
+python3 scripts/check_ui_reuse.py --strict    # no hand-painted controls
+python3 scripts/check_callback_cycles.py      # no shared_ptr cycles in callbacks
+python3 scripts/check_path_string.py          # UTF-8 paths only
+python3 scripts/check_locale_numbers.py       # dot-decimal in file formats
+python3 scripts/check_win32_names.py          # no A/W macro collisions
+python3 scripts/check_element_catalogue.py    # every element is on the catalogue page
+git fetch origin main && python3 scripts/check_changelog.py --base origin/main
+```
+
+Tests live under `Tests/` (`-DBUILD_TESTS=ON`, then `ctest --test-dir build`);
+module suites have their own switches (`ULTRACANVAS_BUILD_NET_TESTS`,
+`ULTRACANVAS_BUILD_DATABASE_TESTS`, …). An app with logic worth testing
+splits it into a headless core library the way UltraAuthenticator does, so
+the tests run in CI without a display.
+
+Then **run the app and look at it.** A screenshot from the assistant is
+evidence; a description of what it "should" look like is not.
+
+## Step 8 — Version, document, regenerate
+
+- **The app's changelog is its version.** A release is a new
+  `#### YYYY-MM-DD *x.y.z*` line at the top of `Docs/MyApp/CHANGELOG.md`;
+  nothing else is hand-edited. A framework change the app needed goes in
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` as bullets with no header;
+  CI assigns the framework number on `main`.
+- **A new or changed public API gets its doc in the same change**:
+  `Docs/UltraCanvas/UltraCanvas<Name>.md` for a component, a row on the
+  catalogue page for a new element, the module README for a module.
+- **After any docs edit**: `python3 scripts/generate_llms_txt.py`. CI
+  verifies `llms.txt` and `llms-full.txt` are in sync, and they are what the
+  next assistant session reads.
+- A new third-party dependency is recorded in `Docs/Dependencies.md`,
+  `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`, or it does not go
+  in.
+
+## Step 9 — Work in bounded sessions, on a branch, through a pull request
+
+How you drive the assistant matters as much as what it knows.
+
+1. **One change per session.** "Add the settings dialog" is a session; "build
+   the app" is not. A session that runs for hours loses the thread, and its
+   container is discarded at the end, so work that was never pushed is
+   gone, not pending.
+2. **Branch, commit, push, then open a pull request.** CI (`build.yml`, the
+   checks, the llms sync) runs on pull requests and on `main`, not on a bare
+   feature branch. A branch with no PR gets no CI validation.
+   Titles say what changed and why, never the branch name.
+3. **Read the `## Delivery` block.** Every reply from an assistant session
+   here ends with three blocks (`## Delivery`, `## Next Task`,
+   `## Other recommendations`) and the line `Code needs to be PRed (N lines)`.
+   The `Stop` hook measures `N` and blocks a reply that misreports it. If
+   `Delivery` says *uncommitted* or *no pull request*, nothing has reached
+   anyone yet; act on it.
+4. **Do not merge while the session may still push.** A merged PR cannot
+   receive new commits; a session that keeps pushing to a merged branch
+   strands its work. Merge when the session says it is done, or tell it to
+   restart from `main`.
+5. **When the assistant pushes back, read why.** `AGENTS.md` tells it to
+   state a concern and continue, and to put out-of-scope defects under
+   `## Other recommendations` rather than fix them silently. Those bullets
+   are your backlog.
+
+## Step 10 — Package
+
+- Linux: `./package-linux.sh` (portable tree with every app and a shared
+  `lib/`) or `appimage/` for a single-app AppImage.
+- Windows: `./package-win.sh`; `./set-version.sh` refreshes the `.rc` and
+  manifest literals that windres needs.
+- macOS: `./package-macos.sh`, or `package_and_notarize-macos.sh` for a
+  signed, notarised bundle (`Docs/UltraCanvas/UltraCanvasMacBundle.md`).
+- WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
+  lists what differs in the browser (`Run()` never returns, no synchronous
+  file pickers, text-only clipboard).
+
+---
+
+## Prompt recipes for Claude Code
+
+What to say, in the order a project needs it. Each one names the documents the
+assistant must read, which is what stops it guessing.
+
+**Starting the app**
+
+> Create a new application `Apps/MyApp` modelled on `Apps/UltraAuthenticator`:
+> a headless core library plus a GUI target, `--version` from
+> `Docs/MyApp/CHANGELOG.md` through `cmake/UltraCanvasVersion.cmake`, the
+> version in the window title, an icon under `media/appicon/`, and the
+> `option()` block in the root `CMakeLists.txt`. It should open one window with
+> an `UltraCanvasToolbar` and an `UltraCanvasSplitPane`. Read `AGENTS.md`,
+> `Docs/UltraCanvas/UltraCanvasUIElements.md` and the two component docs first.
+
+**Adding a screen**
+
+> Add an import page: an `UltraCanvasListView` of the files on the left and an
+> `UltraCanvasMediaViewer` preview on the right, inside the existing split
+> pane. Files are chosen with `UltraCanvasDialogManager`. Read
+> `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
+> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+
+**Using a module**
+
+> Fetch the catalogue JSON over HTTPS with UltraNet (`Docs/Modules/UltraNet/README.md`,
+> `Masterfile_modules.md` §UltraNet), parse it with `UltraCanvasJSON`, and
+> cache it in an UltraDatabase SQLite table with parameter binding. Keep TLS
+> verification on. Add a test under `Tests/` that runs against the mock.
+
+**Before pushing**
+
+> Run the build and every `scripts/check_*.py`, fix what they report, regenerate
+> `llms.txt` if you touched docs, commit with a subject that says what changed
+> and why, push, and report the `## Delivery` block.
+
+**When something looks wrong**
+
+> Run `./build/bin/MyApp`, take a screenshot of the import page, and compare it
+> with `Apps/DemoApp`'s list view page. Tell me what differs before changing
+> anything.
+
+## Checklist
+
+- [ ] Toolchain installed; the full tree builds and `UltraCanvasDemo` runs
+- [ ] The assistant has read `AGENTS.md` (Claude Code: automatic via `CLAUDE.md`)
+- [ ] App skeleton copied from an existing app (in-tree) or from `Tests/PackageConsumer` (out-of-tree); changelog, version line and CMake option in place
+- [ ] Every control comes from the catalogue; layouts from the layout engines
+- [ ] Modules used only through their public surfaces; TLS on, SQL bound
+- [ ] Build and all `scripts/check_*.py` are green locally
+- [ ] Docs updated and `llms.txt` regenerated in the same change
+- [ ] Committed, pushed, pull request open, `## Delivery` block read
+- [ ] App run and looked at on each platform you ship to
 
 ==============================================================================
 FILE: Docs/UltraCanvas/AndroidOnLinuxInvestigation.md
@@ -5376,6 +5922,147 @@ fallback route, not the private-data one.
 - [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
 - [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
 - [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasAccessibility.md
+==============================================================================
+
+# UltraCanvasAccessibility
+
+What assistive technology — screen readers, magnifiers, braille displays —
+needs to know about an element, in a form that does not depend on the
+platform: its **role**, its **name**, for text a **text interface** (content,
+caret, selection, character boxes, formatting, words, lines, sentences) and an
+**event stream** saying what changed. A platform bridge hands this to the
+operating system, where screen readers find it: **AT-SPI** on Linux (Orca)
+and **UI Automation** on Windows (Narrator, NVDA, JAWS) - see
+[Platform bridges](#platform-bridges). There is no macOS bridge
+(NSAccessibility) yet. The same layer serves tests and in-application readers
+(read aloud, a braille panel).
+
+Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
+
+## Elements
+
+```cpp
+AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
+std::string name = element->GetAccessibleName();
+IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+```
+
+An element describes itself by overriding these three virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
+`Document`, name the document's title (else the element's identifier), and a
+text interface over the whole document.
+
+## Text
+
+Offsets count characters (Unicode code points), not bytes.
+
+```cpp
+std::string all = text->GetAccessibleText();
+int caret = text->GetCaretOffset();
+text->SetSelection(10, 20);
+int start = 0, end = 0;
+std::string word = text->GetTextAtOffset(caret, AccessibleTextBoundary::Word, start, end);
+AccessibleTextAttributes look = text->GetAttributesAt(caret, start, end);   // bold, heading level, link, ...
+Rect2Df box = text->GetCharacterBounds(caret);                              // window coordinates
+int under = text->GetOffsetAtPoint(Point2Df(120, 80));
+```
+
+Words, sentences and paragraphs come from the text
+(`UltraCanvasAccessibility::TextUnitAt`); an element can override
+`GetTextAtOffset` for units only its layout knows — the rich text element does
+so for lines. In the rich text element the text is the paragraphs one per line,
+a table's cells separated by tabs and its rows by line breaks; attributes include
+headings, list items, links, tracked insertions and deletions and comments.
+
+## Events
+
+```cpp
+int id = UltraCanvasAccessibility::AddListener([](const AccessibilityEvent& e) {
+    // e.type: FocusChanged, TextChanged, CaretMoved, SelectionChanged, NameChanged
+    // e.element, e.offset (caret for CaretMoved), e.length
+});
+UltraCanvasAccessibility::RemoveListener(id);
+```
+
+The window announces `FocusChanged` when an element gains the focus; the rich
+text element announces edits, caret moves and selection changes. Every element
+announces `ElementDestroyed` from its destructor, so a bridge can drop the id
+it gave it. Elements build events only while someone listens
+(`HasListeners()`), so the layer costs nothing otherwise. Listeners are called
+on the thread that made the change (the UI thread).
+
+`IAccessibleText::IsReadOnly()` (default false) tells a screen reader not to
+announce the text as editable; the rich text element answers its
+`IsReadOnly()`.
+
+## Helpers
+
+`CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
+between the characters of the accessibility API and UTF-8 byte offsets.
+
+## Platform bridges
+
+Nothing to call: the application starts the bridge for its platform, and an
+element that describes itself (the three virtuals above) is reachable.
+
+**The tree.** The application holds its windows; a window holds its elements
+in container order. An element that has not described itself
+(`AccessibleRole::Unknown`) still appears - as a panel when it holds others,
+so a reader walks into it, else as a filler (AT-SPI) or custom control that is
+neither control nor content (UI Automation). Names are `GetAccessibleName()`,
+a window's title for a window. Positions are the element's place on the
+screen: window coordinates scaled by the window's device scale, from the
+window's content origin (`UltraCanvasWindowBase::GetContentScreenOrigin()`,
+below the title bar on Windows).
+
+**AT-SPI (Linux)** - `OS/Linux/UltraCanvasLinuxAccessibility`. The application
+registers on the accessibility bus with the registry (`Socket.Embed`) and
+answers there for the application (`Accessible`, `Application`), its windows
+(frames) and its elements (`Accessible`, `Component`, and `Text` for elements
+with text). Roles map to AT-SPI roles (`Document` → document text, `TextField`
+→ entry, `Button` → push button, ...); states include enabled, visible,
+showing, focusable, focused, editable or read-only, single/multi-line and, for
+a window, active. Text attributes use the names ATK and Orca read: `weight`,
+`style`, `underline`, `strikethrough`, `text-position`, `family-name`, `size`,
+`fg-color`, `bg-color`, `invalid` (spelling), plus `heading-level`,
+`list-item`, `link`, `revision` and `comment`. Events: focus
+(`StateChanged:focused` and `Focus`), window activation, `TextCaretMoved`,
+`TextSelectionChanged` and `TextChanged` as `delete`/`insert` with the text,
+worked out from the text the bridge last sent.
+
+It connects when the desktop has accessibility on (`org.a11y.Status`
+`IsEnabled` or `ScreenReaderEnabled`, which GNOME sets when Orca starts), and
+later when it is turned on; without a session bus it does nothing.
+`NO_AT_BRIDGE=1` keeps it off, `UC_ACCESSIBILITY_ALWAYS_ON=1` connects
+regardless. D-Bus is GIO's (already there through GTK); its calls are answered
+on the UI thread between events, through an fd watch on the event loop, with
+no thread of its own.
+
+**UI Automation (Windows)** - `OS/MSWindows/UltraCanvasWindowsAccessibility`.
+Each window answers `WM_GETOBJECT` with a fragment root; every element is a
+fragment (control type, name, automation id = identifier, framework
+"UltraCanvas", enabled, focusable, focused, offscreen, bounds, navigation,
+`SetFocus`, hit testing). An element with text offers the **Text pattern**:
+document, selection and point ranges that move and expand by character,
+format run, word, line, paragraph and document, find text, select, report one
+rectangle per line, and give font name and size, weight, italic, colours,
+super/subscript, underline/strikethrough, heading style ids, read-only and
+spelling/comment/insertion/deletion annotations (mixed where the runs of a
+range differ). Focus, text and caret/selection changes raise the matching
+events. `UIAutomationCore.dll` is loaded at run time, and the bridge does
+nothing until a client sends the first `WM_GETOBJECT`.
+
+**Testing.** `Tests/AtspiBridgeTest` runs a libatspi client - the library Orca
+uses - against a test application on a private accessibility bus: the tree,
+names, roles, states, text, words, sentences, attributes, extents, hit
+testing, moving the caret, and the insert/delete events of typing. It is built
+when the `atspi-2` development package is installed and skips itself without a
+display or at-spi2-core. The UI Automation bridge has no automated test yet:
+so far it is compile-checked (MinGW GCC and Clang) but has not been run
+against Narrator, NVDA or JAWS.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -7612,6 +8299,42 @@ Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`, `OutputDevice`.
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onPositionChanged`, `onEnded`,
 `onError`.
 
+#### Streaming sink (live audio)
+
+A file or a `UCAudio` is played from a buffer that exists before `Play()`.
+Live audio — the far end of a call, synthesised speech, a network stream —
+does not exist up front, so the player also offers a **sink**: open it at the
+stream's rate and channel count, then push interleaved float PCM as it is
+produced. The device clock pulls from a bounded ring (`AudioFrameRing`,
+`UltraCanvasAudioStreaming.h`); the caller keeps it topped up.
+
+```cpp
+auto p = CreateAudioPlayer();
+AudioSinkConfig sink;
+sink.sampleRate = 48000;
+sink.channels = 1;
+sink.bufferMs = 200;                      // ring capacity = the latency ceiling
+p->OpenSink(sink);                        // opens the device and starts at once
+p->onSinkUnderrun = []{ /* the ring ran dry; silence was played */ };
+
+// From the decoder / network thread (one producer):
+size_t queued = p->PushSinkFrames(pcm, frames);   // < frames: ring was full
+if (p->GetSinkQueuedSeconds() > 0.12) { /* producer is ahead; slow down */ }
+
+p->SetVolume(0.8f);                       // volume, mute and device apply as usual
+p->CloseSink();                           // or Unload()
+```
+
+Sink API: `OpenSink(cfg)`, `IsSinkOpen()`, `PushSinkFrames(samples, frames)`
+(also takes an `AudioLiveFrame` straight from the recorder),
+`GetSinkQueuedFrames()`, `GetSinkQueuedSeconds()`, `ClearSink()`,
+`CloseSink()`, `GetSinkUnderrunCount()`, `GetSinkDroppedFrames()`. While a
+sink is open `Pause` / `Play` / `Stop` apply to it (`Stop` also empties the
+ring), `Seek` returns false, `GetDuration()` is 0 and `GetPosition()` is the
+seconds played. Frames pushed beyond `bufferMs` are dropped and counted, never
+partially written, so latency cannot creep up; an underrun plays silence and
+fires `onSinkUnderrun` once per episode, on the audio thread.
+
 ### Recording (non-visual)
 
 `UltraCanvasAudioRecorder.h` — `UltraCanvasAudioRecorder`
@@ -7635,8 +8358,46 @@ r->SaveToFile("clip.wav");              // or persist directly
 Transport: `Open / Start / Pause / Resume / Stop / Close`.
 Output: `TakeBuffer() -> UCAudio`, `SaveToFile(path, format)`, `Discard()`.
 Callbacks: `onRecordingStateChanged`, `onLevelChanged(peak, rms)`,
-`onBufferAvailable(samples, frames, channels)`, `onSilenceDetected`,
-`onClipping`, `onMaxDurationReached`, `onError`, `onPermissionChanged`.
+`onLiveFrame(frame)`, `onSilenceDetected`, `onClipping`,
+`onMaxDurationReached`, `onError`, `onPermissionChanged`.
+
+#### Live frames and live capture mode
+
+`onLiveFrame` delivers every captured frame as it arrives, in either mode —
+a live waveform, an on-the-fly encoder, a call. (It replaces the earlier
+`onBufferAvailable`, which only fired for 32-bit float capture and handed
+over raw backend bytes; `onLiveFrame` converts any sample type and applies
+gain and mute.) `AudioCaptureMode::Record` (the default) also accumulates
+for `TakeBuffer()` and `SaveToFile()`. A call, a speech recogniser or a
+streaming encoder wants nothing kept, so memory stays flat however long the
+session runs: that is `AudioCaptureMode::Live`, where `onLiveFrame` is the
+only output:
+
+```cpp
+AudioCaptureConfig cfg;
+cfg.sampleRate = 48000;
+cfg.channels = 1;
+cfg.mode = AudioCaptureMode::Live;
+cfg.liveFrameMs = 10;                     // Opus / WebRTC frame; 20 for most speech engines
+
+auto r = CreateAudioRecorderWithConfig(cfg);
+r->onLiveFrame = [&](const AudioLiveFrame& f) {
+    // Audio thread. f.samples: f.frameCount * f.channels floats in [-1, 1],
+    // gain and mute applied, valid until this call returns.
+    encoder.Encode(f.samples, f.frameCount);          // or player->PushSinkFrames(f)
+};
+r->Open();
+r->Start();
+// ... Stop() flushes the partial last frame, zero-padded.
+```
+
+`liveFrameMs > 0` repacketises the backend's chunks (whatever period the
+device uses) into frames of exactly that duration through
+`AudioFramePacketizer`; `0` passes each backend chunk through as one frame.
+`AudioLiveFrame::firstFrameIndex` counts frames since `Start()`, which is the
+timestamp a codec or a jitter buffer needs. Level metering, `onClipping`,
+`onSilenceDetected`, `maxDurationMs` and `onLiveFrame` work in both modes;
+`TakeBuffer()` returns an empty buffer in Live mode.
 
 ### Devices & permission
 
@@ -7749,6 +8510,13 @@ The configure log says which route was taken — `Audio codec: AAC/M4A decode
   the element additionally stops the device. Earlier the device kept pulling
   frames past the end and the track audibly restarted from 0:00 while the
   state said `Stopped`.
+- Live audio: `UltraCanvasAudioStreaming.h` is header-only and backend-free.
+  `AudioFrameRing` is a wait-free single-producer / single-consumer ring of
+  interleaved float frames (the sink's queue); `AudioFramePacketizer` turns
+  arbitrary backend chunks into fixed-duration frames (the recorder's live
+  mode); `AudioLiveFrame` is the block both pass around. A call stack or a
+  codec can use them without a device, and `Tests/AudioStreamingTest.cpp`
+  does.
 - Decoders/encoders beyond miniaudio's built-ins live in
   `libspecific/Audio/AudioCodecsExtra.cpp`, compile-gated on the
   `ULTRACANVAS_HAS_*` defines set by CMake codec detection. The backend
@@ -11104,15 +11872,25 @@ FILE: Docs/UltraCanvas/UltraCanvasBusyIndicator.md
 
 ## Overview
 
-**UltraCanvasBusyIndicator** is the turning ring that says *working on it*
+**UltraCanvasBusyIndicator** is the animation that says *working on it*
 when there is no percentage to show: a mail fetch, a network call, a folder
-scan. A partial arc turns over a faint full track while the indicator runs.
+scan. It comes in five kinds (`BusyIndicatorKind`), all driven by the same
+`Start()` / `Stop()`:
+
+| Kind | What it draws | Box |
+|---|---|---|
+| `Ring` (default) | a partial arc turning over a faint full ring | square, e.g. 16 × 16 |
+| `DualRing` | two concentric arcs turning in opposite directions | square, e.g. 20 × 20 |
+| `Dots` | a row of dots that swell and brighten one after another, left to right | wide, e.g. 36 × 10 |
+| `Bar` | a segment sliding left to right along a track, entering and leaving at the edges | wide, e.g. 120 × 4 |
+| `Pulse` | a filled circle that grows and brightens, then shrinks and pales, over a faint disc | square, e.g. 14 × 14 |
+
 When it stops, the space is left blank by default. The element can therefore
 sit permanently in a status line and costs nothing while idle, because no
 timer runs.
 
 **File Location**: `include/UltraCanvasBusyIndicator.h`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: UltraCanvas Framework
 
 It is not the right element for:
@@ -11125,12 +11903,13 @@ It is not the right element for:
 ## Features
 
 - ✅ `Start()` / `Stop()` / `SetRunning(bool)` / `IsRunning()`, all idempotent
-- ✅ The angle is computed from elapsed time, so a late timer tick never slows
-  the ring down
+- ✅ Five kinds: `Ring`, `DualRing`, `Dots`, `Bar`, `Pulse`
+- ✅ The animation phase is computed from elapsed time, so a late timer tick
+  never slows it down; after `Stop()` it resumes where it rested
 - ✅ The timer runs only while the indicator turns; the destructor stops it
-- ✅ Style: arc colour, track colour (alpha 0 means no track), thickness, arc
-  length, revolutions per second, frame interval, and whether a stopped
-  indicator stays visible
+- ✅ Style: kind, colour of the moving part, track colour (alpha 0 means no
+  track), thickness, arc length, dot count, bar segment length, cycles per
+  second, frame interval, and whether a stopped indicator stays visible
 
 ## Quick Start
 
@@ -11145,12 +11924,19 @@ statusRow->AddChild(busy);
 busy->Start();   // work begins
 // ...
 busy->Stop();    // work done: the ring disappears
+
+// Other kinds: pass the box and the kind.
+auto dots  = CreateBusyIndicator("loadDots", 0, 0, 36, 10, BusyIndicatorKind::Dots);
+auto bar   = CreateBusyIndicator("loadBar",  0, 0, 120, 4, BusyIndicatorKind::Bar);
+auto pulse = CreateBusyIndicator("syncPulse", 0, 0, 14, 14, BusyIndicatorKind::Pulse);
+auto dual  = CreateBusyIndicator("dualRing", 0, 0, 20, 20, BusyIndicatorKind::DualRing);
 ```
 
 ## Style
 
 ```cpp
 BusyIndicatorStyle st = busy->GetStyle();
+st.kind       = BusyIndicatorKind::Ring;
 st.arcColor   = Color(0, 120, 215, 255);
 st.trackColor = Color(0, 0, 0, 0);   // no track
 st.thickness  = 2.0f;                // default: side / 8
@@ -11162,11 +11948,14 @@ busy->SetStyle(st);
 
 | Field | Default | Meaning |
 |---|---|---|
-| `arcColor` | blue `#0078D7` | the turning arc |
-| `trackColor` | black at alpha 28 | the full ring behind it; alpha 0 means none |
-| `thickness` | `0` → side / 8 (at least 1.5 px) | stroke width |
-| `arcDegrees` | `270` | arc length, clamped to 10–350 |
-| `revolutionsPerSecond` | `1.0` | speed |
+| `kind` | `Ring` | which animation, see the table above |
+| `arcColor` | blue `#0078D7` | the moving part: arc, dots, bar segment, pulsing circle |
+| `trackColor` | black at alpha 28 | the still part behind it (ring, dot outlines, bar track, disc); alpha 0 means none |
+| `thickness` | `0` | `Ring` / `DualRing`: stroke width, `0` → side / 8 (at least 1.5 px). `Bar`: bar height, `0` → the element height. Ignored by `Dots` and `Pulse` |
+| `arcDegrees` | `270` | `Ring`: arc length, clamped to 10–350. `DualRing`: each ring's arc is half of this, clamped to 10–175 |
+| `dotCount` | `3` | `Dots`: how many, clamped to 2–12 |
+| `barFraction` | `0.3` | `Bar`: segment length as a share of the width, clamped to 0.05–0.9 |
+| `revolutionsPerSecond` | `1.0` | speed: cycles per second for every kind (one turn, one wave, one pass, one breath) |
 | `frameIntervalMs` | `33` | redraw period while running |
 | `hideWhenStopped` | `true` | draw nothing while stopped |
 
@@ -11204,31 +11993,52 @@ UltraCanvasButton is a customizable button control in the UltraCanvas framework 
 // Using constructor
 auto button = std::make_shared<UltraCanvasButton>(
     "MyButton",    // identifier
-    101,           // id
     100, 50,       // x, y position
     120, 40,       // width, height
     "Click Me"     // button text
 );
 
 // Using factory function
-auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
+auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");
 
-// Using auto-sized button
-auto button = CreateAutoButton("MyButton", 100, 50, "Click Me");
+// Size only: the position comes from the layout it is added to
+auto button = std::make_shared<UltraCanvasButton>("MyButton", 120, 40, "Click Me");
+
+// Text only: the layout sizes it as well
+auto button = std::make_shared<UltraCanvasButton>("MyButton", "Click Me");
+
+// With an icon beside the text
+auto button = CreateIconButton("MyButton", 100, 50, 120, 40, "media/icons/ok.png", "Click Me");
 ```
+
+There is no numeric id argument: an element is identified by its identifier
+string, and a button placed by a layout needs no position at all.
 
 ## Class Reference
 
-### Constructor
+### Constructors
 
 ```cpp
-UltraCanvasButton(
-    const std::string& identifier = "Button",
-    long id = 0,
-    long x = 0, long y = 0,
-    long w = 100, long h = 30,
-    const std::string& buttonText = "Button"
-);
+UltraCanvasButton(const std::string& identifier,
+                  float x, float y, float w, float h,
+                  const std::string& buttonText = "Button");
+UltraCanvasButton(const std::string& identifier,
+                  float w, float h,
+                  const std::string& buttonText = "Button");   // positioned by a layout
+UltraCanvasButton(const std::string& identifier,
+                  const std::string& buttonText);               // sized by a layout too
+```
+
+### Factories
+
+```cpp
+std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
+                                                float x, float y, float w, float h,
+                                                const std::string& text = "Button");
+std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
+                                                    float x, float y, float w, float h,
+                                                    const std::string& iconPath,
+                                                    const std::string& text = "");
 ```
 
 ### Core Methods
@@ -11343,7 +12153,7 @@ button->onContextMenu = [menu, container](int windowX, int windowY) {
 ### Event Usage Example
 
 ```cpp
-auto button = CreateButton("MyButton", 1, 10, 10, 100, 30, "Click Me");
+auto button = CreateButton("MyButton", 10, 10, 100, 30, "Click Me");
 
 // Set click handler
 button->onClick = []() {
@@ -11444,7 +12254,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
 ### Standard Button
 
 ```cpp
-auto standardBtn = CreateButton("StandardButton", 1, 20, 20, 100, 30, "Standard");
+auto standardBtn = CreateButton("StandardButton", 20, 20, 100, 30, "Standard");
 standardBtn->onClick = []() {
     std::cerr << "Standard button clicked" << std::endl;
 };
@@ -11453,7 +12263,7 @@ standardBtn->onClick = []() {
 ### Colored Button
 
 ```cpp
-auto primaryBtn = CreateButton("PrimaryButton", 2, 20, 60, 100, 30, "Primary");
+auto primaryBtn = CreateButton("PrimaryButton", 20, 60, 100, 30, "Primary");
 primaryBtn->SetColors(
     Color(0, 123, 255, 255),  // Normal
     Color(0, 100, 225, 255),  // Hover
@@ -11483,7 +12293,7 @@ a `▾` character: a text renderer draws that glyph at a fraction of the
 section around it, while the icon fills the size it is given.
 
 ```cpp
-auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+auto newButton = CreateButton("New", 10, 10, 138, 28, "New folder");
 newButton->SetSplitEnabled(true);
 newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
 newButton->SetSplitSecondaryText("");        // the icon is the whole content
@@ -11511,7 +12321,7 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
 ### Disabled Button
 
 ```cpp
-auto disabledBtn = CreateButton("DisabledButton", 3, 20, 140, 100, 30, "Disabled");
+auto disabledBtn = CreateButton("DisabledButton", 20, 140, 100, 30, "Disabled");
 disabledBtn->SetEnabled(false);
 ```
 
@@ -14106,6 +14916,88 @@ Diagrams → Class Diagram, five buttons:
 - [`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md) — the full feature list and roadmap
 - [`UltraCanvasUMLModel.md`](UltraCanvasUMLModel.md) — model, notation grammar, C++ reverse engineering, text export
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared orthogonal router
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md
+==============================================================================
+
+# UltraCanvasCoderModuleRepair
+
+**Header:** `UltraCanvas/include/UltraCanvasCoderModuleRepair.h`
+**Sources:** `core/UltraCanvasCoderModuleRepair.cpp` (platform-free half and
+the no-op for every platform but Windows),
+`OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp` (System32 lookup)
+**Test:** `Tests/CoderModuleRepairTest.cpp`
+
+Repairs an installed Windows package in which an ImageMagick coder module
+carries the file name of a Windows system DLL. The image subsystem calls it
+on Windows before anything can load a coder; no application code needs to.
+
+## Why it exists
+
+Windows keys the modules of a process by base name. ImageMagick loads every
+coder into the process the first time libvips asks it whether it recognises
+a file, and with `coders\mpr.dll` (the `MPR:` in-memory image registry) among
+them, every later import of `MPR.dll` by a Windows component the shell loads
+in here - `pcacli.dll` for the `runas` verb behind "Delete as administrator",
+`daxexec.dll` for a Store app - was bound to the coder and failed with
+*The procedure entry point `WNetGetConnectionW` could not be located*.
+`package-win.sh` ships no such file any more, but a package extracted over
+an older folder keeps the old coders, and every extraction of 0.9.92 or older
+has them. See [*"Entry point not found" in a Windows
+DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+## What it does
+
+For every `*.dll` in `<exe>\lib\ImageMagick-*\modules-Q16HDRI\coders` whose
+name is one Windows itself uses (`mpr`, `url`, `dpx`, `vid` always, plus
+whatever the machine's `System32` holds):
+
+- a pseudo-format of no use here (`mpr`, `url`) is deleted, with its `.la`;
+- a real format (`dpx`: SMPTE DPX, which the export dialog offers) is renamed
+  to `<name>-coder.dll` and its `.la` rewritten so `dlname=` and
+  `library_names=` name the new file. ImageMagick opens a coder through its
+  `.la`, so the rename is invisible to it, and the process then holds a
+  module no system DLL is called;
+- a renamable coder with no `.la` beside it is deleted, since nothing could
+  point ImageMagick at the new name.
+
+The repair is idempotent, a missing folder is nothing to do, and a package
+re-extracted over a repaired one (the original back beside the renamed file)
+is repaired again. Every change and every failure is written to the
+framework log (`ULTRACANVAS_DEBUG_LOG`); a folder the process cannot write
+leaves the files in place, where `uc-diagnose.ps1 -CheckOnly` lists them.
+
+## API
+
+```cpp
+namespace UltraCanvas::CoderModuleRepair {
+    struct CoderModuleRepairResult {
+        std::vector<std::string> removed;   // "mpr.dll", "mpr.la"
+        std::vector<std::string> renamed;   // "dpx.dll -> dpx-coder.dll"
+        std::vector<std::string> failed;    // "mpr.dll: <why>"
+        bool Changed() const;
+    };
+    std::string LowerCaseName(const std::string& name);
+    bool IsKnownSystemDllName(const std::string& lowerName);   // mpr, url, dpx, vid
+    bool IsDroppableCoder(const std::string& lowerName);        // mpr, url
+    std::string RenamedCoderFileName(const std::string& dllName);
+    std::string RewriteLibtoolArchive(const std::string& laText, const std::string& dlName);
+    CoderModuleRepairResult RepairCoderModules(const std::string& codersDirUtf8,
+            const std::function<bool(const std::string& lowerName)>& isSystemDllName);
+    CoderModuleRepairResult RepairPackagedCoderModules(const std::string& exeDirUtf8);
+    bool NativeIsSystemDllName(const std::string& lowerName);   // Windows backend
+}
+```
+
+`RepairPackagedCoderModules` is the entry point `UCImageRaster::
+InitializeImageSubsysterm` uses on Windows; on every other platform it
+returns an empty result. `RepairCoderModules` with an explicit predicate is
+what the test drives on any platform.
+
+## Version
+
+- 1.0.0 (2026-10-01): first version.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
@@ -17159,6 +18051,25 @@ path — click, Return, Escape, mnemonic — runs the button's own `onClick`
 handler, so a dialog cannot behave differently depending on how a button was
 reached.
 
+Custom buttons carry no `DialogButton` type, so neither rule can name them —
+they take a **role** instead. `AddCustomButton(text, result, role, callback)`
+with `DialogButtonRole::Default` makes the button what Return takes (before the
+configured default) and draws it in the accent colour; `Destructive` draws it
+red (`DestructiveDefault` filled red, when the red answer is also the default);
+`Cancel` makes it what Escape takes. Buttons are laid out in the order they are
+added, each as wide as its label. `AddFooterElement(element)` puts an element —
+an "Apply to all 7 remaining conflicts" checkbox — at the left of the button
+bar and moves the buttons to its right end; give it an explicit size, the bar
+is laid out before the dialog has a render context to measure text with.
+
+```cpp
+dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default);
+dialog->AddCustomButton("Replace",   DialogResult::Yes, DialogButtonRole::Destructive);
+dialog->AddCustomButton("Skip",      DialogResult::Yes);
+dialog->AddCustomButton("Stop",      DialogResult::Cancel, DialogButtonRole::Cancel);
+dialog->AddFooterElement(applyToAllCheckbox);
+```
+
 ## Mnemonics
 
 Each button is assigned a distinct letter, preferring the initial of its label,
@@ -17262,7 +18173,7 @@ menus, toolbars, custom panels. The button only draws the accent; matching the
 key and invoking the action stays with the owner.
 
 ```cpp
-auto button = CreateButton("Apply", 1, 0, 0, 90, 28, "Apply");
+auto button = CreateButton("Apply", 0, 0, 90, 28, "Apply");
 button->SetMnemonicChar('A');            // underlines the first 'A'
 char letter = button->GetMnemonicChar(); // 'A'
 button->SetMnemonicIndex(3);             // or pick the character by index
@@ -20023,13 +20934,20 @@ code.
 
 ## Version
 
+- 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
+  answered a registered handler that would not start from our process by
+  starting it from Explorer's, which hid the reason; the reason was the
+  packaged `mpr.dll` coder, kept out of the package since and repaired in an
+  installed one on start ([`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)).
+  A default open that fails now names the shell's error. The loader's
+  hard-error box stays off on the launching thread.
 - 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
   "entry point not found" box: the shell loads a packaged app's activation
   DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process. (Why the import failed at all - a packaged ImageMagick coder
+  process (removed again in 1.2.3). (Why the import failed at all - a packaged ImageMagick coder
   named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
   same day; see [*"Entry point not found" in a Windows
   DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
@@ -20196,7 +21114,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension, and a folder shows the first pictures inside it peeking out of the folder shape (see [Folder previews](#folder-previews)). Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension, and a folder shows the first pictures inside it peeking out of the folder shape (see [Folder previews](#folder-previews)). Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image, or a picture whose thumbnail could not be made and draws its glyph instead) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -20899,8 +21817,16 @@ re-queued by the next frame and usually comes straight back from the shared
 `GetThumbnailCacheStats()` reports what is held (entries, stored bytes, and
 the uncompressed size those bytes stand for — they differ under
 `SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
-the decompressed tiles being drawn). Rescanning the folder or changing the
-view drops everything.
+the decompressed tiles being drawn), and what is *not* held: thumbnails still
+waiting for a worker (`pendingEntries`, which includes the ones being made),
+being made right now (`inFlightEntries`) and given up on (`failedEntries`).
+Waiting tiles that never move while nothing is being made mean the workers are
+stuck; failed ones mean the files would not decode, and the log names each of
+them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
+that has kept a worker busy longest: one running past 20 s is taken to be
+stuck, and another worker is started beside it (up to eight extra), so a
+single file that never finishes cannot stop every other thumbnail. Rescanning
+the folder or changing the view drops everything.
 
 ### Thumbnails between runs
 
@@ -21382,6 +22308,36 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Hiding Details columns
+
+`SetDetailsColumnVisible(column, false)` leaves a Details column out of the
+table; `IsDetailsColumnVisible` reads it back. Name cannot be hidden: it is
+the flexible column that takes whatever width the others leave, so every
+column hidden is width the names get. The file dialog shows Name, Size, Type
+and Modified only:
+
+```cpp
+filer->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+```
+
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
@@ -21750,9 +22706,17 @@ filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
 filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
                               // question - for a host that ran its own
                               // confirmation (default mode: Permanently)
+// The standing answers (UltraFiler's Settings > Handling > File operations):
+filer->SetConfirmTrashDelete(false);            // Del goes to the trash unasked
+filer->SetConflictPolicy(FilerConflictPolicy::KeepBoth);   // never ask on a taken name
+filer->SetFolderConflictPolicy(FilerFolderConflictPolicy::Ask);  // Merge / Replace / Skip
+filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go to the summary
+filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
+filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
+                              // a taken name asks Replace (red) / Cancel with the
+                              // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -21763,13 +22727,17 @@ filer->CreateNewDocument({"Text", "txt", ""});
 
 ### Delete: to the Trash, or permanently
 
-**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
-choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
-and **Delete permanently**. Del opens it on the trash, Shift+Del on the
-permanent delete — the keys Explorer gives the two — and the line under the
-question follows the choice: *It can be restored from the Trash.* or *This
-cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
-Permanently** (Shift+Del).
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?` /
+`Delete 212 items?`, an [operation dialog](#the-operation-dialog) whose two
+answers are its two buttons: **Move to Trash** (*Recycle Bin* on Windows) and
+**Delete permanently**, the latter drawn red, plus Cancel. Del makes the trash
+the coloured default (Return takes it), Shift+Del the permanent delete — the
+keys Explorer gives the two — and the note under the list says what each
+means: *Move to Trash can be undone from the Trash. Delete permanently cannot
+be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del). The facts under the question name the folder the
+entries are in (*From*) and, for several, how much is going (*Size:* `3 folders
+and 209 files (1.4 GB in the files)` — the files' own sizes, no tree walk).
 
 The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
 shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
@@ -21777,35 +22745,39 @@ freedesktop.org trash on Linux and the BSDs — the drive's own
 `.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
 Moving to the trash is one move per entry, so a folder of any size goes at
 once, and a write-protected entry is not asked about (moving it does not
-write to it). An entry the trash refuses stops at the problem dialog below
-(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+write to it). An entry the trash refuses stops at the problem dialog below;
+it is **never** deleted for good instead.
 
-Under the choice the dialog lists **what is about to go**, in an
+Under the facts the dialog lists **what is about to go**, in an
 `UltraCanvasListView` with the Details view's columns - the entry's icon (the
 display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
-and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
-Several items selected: the list is those items, under a caption that counts
-the folders and files and adds up the files' size. One folder: the list is
-what the folder holds, folders first and then by name, under *Folder "X"
-contains 147 items (first 40 shown)*. A single file gets no list - the
-question already names it.
+and name, size, modified - at most 200 rows (`kOperationListRows`), ten at a
+time with a scrollbar. Several items selected: the list is those items. One
+folder: the list is what the folder holds, folders first and then by name,
+under *Folder "X" contains 347 items (the first 200 shown)*. A single file
+gets no list - the question already names it.
 
 Where the trash cannot take the entries — no trash on this platform (Android,
-WebAssembly), entries inside an archive, entries on a remote drive — the
-trash option is greyed out, the dialog opens on **Delete permanently**, and
-the line says why. `CanMoveToTrash(victims)` answers the same question for a
-host. A host `confirmDelete` veto replaces the dialog and so has no choice to
-offer: the delete then goes the way `DeleteSelection` was asked for, as far as
-the trash can take the entries.
+WebAssembly), entries inside an archive, entries on a remote drive — only
+**Delete permanently** is offered, and the note says why. `CanMoveToTrash(victims)`
+answers the same question for a host. A host `confirmDelete` veto replaces the
+dialog and so has no choice to offer: the delete then goes the way
+`DeleteSelection` was asked for, as far as the trash can take the entries.
+
+`SetConfirmTrashDelete(false)` switches the question off for the trash: Del then
+moves the selection there straight away (it can be undone from the trash), while
+a permanent delete — Shift+Del, or entries the trash cannot take — always asks.
 
 ### Progress window (copy / move / delete)
 
 Copying, moving and deleting run on a **background worker**, and a
 [progress window](UltraCanvasProgressDialog.md) — the ring with the
 percentage, the file being handled and **Cancel** — opens over them **once the
-operation has been running for two seconds**. Anything shorter never shows a
-window at all: a file manager that flashes a dialog for every copied text file
-is worse than one that shows none. (Packing, unpacking and the
+operation has been running for two seconds** (`SetProgressWindowDelay(ms)`
+changes that; 0 opens it at once). Until then the window shows the busy
+pointer, so a stalled network volume is not two seconds of nothing. Anything
+shorter than the delay never shows a window at all: a file manager that flashes
+a dialog for every copied text file is worse than one that shows none. (Packing, unpacking and the
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
@@ -21865,8 +22837,9 @@ part:
   run directly, detached, with its own folder as working directory
   (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
   executable **script** (`#!` line) is as much a document as a program, so
-  it asks — *""X" is an executable script. Run it, or open it to view its
-  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  it asks — *""X" is an executable script."* with the file's path as the
+  fact, an [operation dialog](#the-operation-dialog) with **Run** (the
+  default) / **Open** / **Cancel** buttons. A file whose
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
@@ -21917,41 +22890,75 @@ shape, and launch feedback there belongs to the Dock's bouncing icon.
 
 ### Delete problems (locked / failing entries)
 
-A delete that runs into trouble pauses on a **problem dialog** styled like the
-paste conflict dialog — two exclusive switches for the action, a scope switch,
-and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
-and drops the rest):
+A delete that runs into trouble pauses on a **problem dialog** — an
+[operation dialog](#the-operation-dialog) with the entry's path and the reason
+as its facts, the answers as buttons, **Stop** as the last of them (it keeps
+what was already deleted and drops the rest), and an *Apply to all …* checkbox
+beside them:
 
 - A **write-protected (locked) entry** asks *before* the attempt —
-  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
-  (Skip preselected) and a *"Do this for all remaining write-protected items"*
-  scope switch. Delete-anyway lifts the protection first, so it also works on
-  Windows, where a read-only file can never be removed directly.
-- A **failed delete** asks *afterwards* — `"X" could not be deleted:
-  Permission denied.` ("The file may be locked or in use by another
-  program.") — with **Try again** / **Skip this file** (Try again
-  preselected) and a *"Do this for all remaining items"* scope switch.
-  A stored try-again-for-all grants each later failing entry one silent
-  retry before asking again, so a stubborn entry can never loop forever.
-- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
+  (red) and an *Apply to all remaining write-protected items* checkbox.
+  Delete-anyway lifts the protection first, so it also works on Windows, where
+  a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
+  *Reason: Permission denied* — with **Try again** (the default) / **Skip**
+  and an *Apply to all later failures* checkbox. A stored try-again-for-all
+  grants each later failing entry one silent retry before asking again, so a
+  stubborn entry can never loop forever. An entry the trash refused gets the
+  same dialog, titled for the trash, and is never deleted for good instead.
+- A failure **inside a folder** is reported for the file that refused, not
+  the folder: the question reads `"libvips-42.dll" in "lib" could not be
+  deleted.` and the facts add a *Stopped at:* line with the file's path under
+  the folder's. A read-only file inside a folder is not a failure at all: it
+  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
+  so a folder unpacked with its read-only bits goes in one pass.
+- A file **a running program holds** — its executable, a DLL it has loaded —
+  answers "Access is denied" on Windows too, but no administrator can delete
+  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
+  Restart Manager) before it decides, and such a file gets **Delete: a file
+  in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
+  program.` with *In use by: UltraFiler (4120)* among the facts — with
+  **Skip** (the default) / **Try again** and an *Apply to all later files in
+  use* checkbox, and no administrator button. When the holder is the running
+  application itself the note says so and tells the user to close it and
+  delete from elsewhere.
+- A delete that fails with **"Access is denied"** on Windows and is held by
+  nobody is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
-  (UltraFiler has), the dialog is **Administrator Permission Needed** —
-  "Deleting this file needs administrator permission. Windows will ask you to
-  confirm before it is deleted." — with **Delete as administrator**
-  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  (UltraFiler has), the dialog is **Delete: administrator permission needed** —
+  "Windows asks you to confirm once, at the end, for every item handed to the
+  administrator." — with **Delete as administrator** (the default) / **Try
+  again** / **Skip** and an *Apply to all later permission failures* checkbox.
   Entries handed to the administrator are collected while the queue runs and go
   to the elevated helper in **one run at the end**, so the whole delete costs
   one consent prompt however many entries need it; a "Deleting as
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
-  helper still could not delete comes back in a **Cannot Delete** dialog with
-  the system's reason per entry; a declined prompt is reported through
+  helper still could not delete comes back in the [summary](#the-summary-at-the-end)
+  (*Delete finished*) with the system's reason beside each entry; a declined
+  prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+A delete that would take **the running application's own installation**
+apart is refused before anything is touched: a victim at or below the folder
+the executable runs from, or a folder holding it, opens **Cannot delete:
+UltraFiler is running from here** and nothing is deleted. The files a running
+program has loaded cannot go, and the ones it has not loaded yet — fonts,
+icons, plugins — would go, and the program crashes the moment it reaches for
+one of them. That is how a Filer started from an unpacked download used to
+end when the download was deleted from inside it; the fix is to close the
+program and delete the folder from another file manager.
+
+With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
+not asked about at all: the entry stays, and the
+[summary](#the-summary-at-the-end) at the end lists it with the reason.
+Write-protected entries are a question, not a failure, and still ask.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
@@ -22077,9 +23084,10 @@ An archive that is **extracted only in part** - entries VirtualFS refused
 because they would have been written outside the destination (`../x`, an
 absolute path, a hard link climbing out), or entries it could not write (a
 file through a symbolic link the archive created) - opens an **Extraction
-Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
-of the archive was unpacked.*, then each kind of problem with the entries it
-held back, one per line. The status line (`onError`) gets one sentence saying
+incomplete** [summary](#the-summary-at-the-end): *Not everything in
+"Download.zip" was extracted. The rest of the archive was unpacked.*, the
+archive's path, and the entries it held back in a list with the kind of
+problem beside each. The status line (`onError`) gets one sentence saying
 the archive was extracted only in part. An archive that could not be extracted
 at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
@@ -22101,33 +23109,85 @@ or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
 
+### The operation dialog
+
+Every question a copy, move or delete asks is the same dialog
+(`ShowOperationDialog`, private): the **question** on top, the **facts** under
+it as Markdown (*From*, *Into*, *Reason*, *Size* — paths in code spans, so a
+Windows backslash survives), an optional **list** of entries with the display's
+own icons (at most 200 rows, ten at a time), a **note** under the list, and a
+footer with an optional **Apply to all …** checkbox at the left and the
+**answers as buttons** at the right. The answer is the button: no switch to set
+and no *Continue* to press afterwards. Each button is as wide as its label, the
+one with `DialogButtonRole::Default` is drawn in the accent colour and is what
+Return takes, a destructive one (*Delete permanently*, *Replace* a folder) is
+drawn red, the one with the Cancel role (*Stop*, *Cancel*) is what Escape
+takes, and every button has an underlined mnemonic letter
+([dialog keyboard handling](UltraCanvasDialogKeyboard.md)). *Stop* on a
+question asked in the middle of a queue keeps what was already done and drops
+the rest.
+
 ### Name conflicts
 
 When a pasted entry's name is already taken in the target folder, the paste
-pauses on the **conflict dialog** — "A file named "X" already exists in this
-folder." — with the choice set by three exclusive switches (the common
-formulations):
+pauses on the **conflict dialog** — `"Report 2026.pdf" already exists in
+"Accounting".` — with the two of them **side by side**: an *Existing* and a
+*Pasted* row, each with icon, name, size and modified date, and which of the
+two is *newer*. The note names what Keep both would call the pasted file
+(*Keep both renames the pasted file to "Report 2026 (2).pdf".*); two files of
+the same size and date are called *identical*, and the default moves to Skip.
+The answers are the buttons:
 
-- **Keep both** — the pasted entry takes the next free " (2)" style name
-  (the default, and what a conflict-free paste always does)
-- **Replace the existing file** — the existing entry is removed first
-- **Skip this file** — the entry is not pasted
+- **Keep both** (the default) — the pasted entry takes the next free " (2)"
+  style name, what a conflict-free paste always does
+- **Replace** — the existing file is removed first
+- **Skip** — the entry is not pasted (and is listed in the summary)
+- **Stop** — keeps what was already pasted and drops the rest
 
-A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
-off (the default) asks again on the next conflict, on applies the same choice
-to every remaining conflict of this paste. **Continue** proceeds with the
-chosen action; **Cancel** keeps what was already pasted and drops the rest.
-Copy-pasting a file alongside its original never asks — the copy simply takes
-the next free name, exactly like Duplicate.
+A **folder pasted over a folder** asks differently: the rows count what each
+folder holds, and the buttons are **Merge** (the default), **Replace** (red),
+**Skip** and **Stop**. *Merge* puts the pasted folder's entries **into** the
+existing folder — spliced into the paste queue right after it, each asked
+about in turn when its own name is taken there — and touches nothing already
+in the existing folder; a move removes the emptied source folder at the end
+(an entry that was skipped keeps it). *Replace* deletes the existing folder
+first, with everything in it that the pasted one does not have, and the note
+says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
+counts the entries still to come whose name is taken (folders and files are
+counted, and answered, apart: *Apply to all 2 remaining folder conflicts*);
+it is absent when there are none. Copy-pasting a file alongside its original
+never asks — the copy simply takes the next free name, exactly like Duplicate.
+
+The host can answer for good: `SetConflictPolicy(FilerConflictPolicy::KeepBoth
+/ Replace / Skip)` stands in for the file dialog, and
+`SetFolderConflictPolicy(FilerFolderConflictPolicy::Merge)` — the default — for
+the folder one; `Ask` restores each dialog.
 
 An entry that **fails** to move or copy (locked, in use, permissions) asks too.
-The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
-full: the operating system's own reason, the source path, the destination folder
-and what usually causes it. The choice is **Try again** / **Skip this file**,
-with a "Do this for all remaining items" scope switch; a stored
-try-again-for-all grants each later failing entry one silent retry before asking
-again. Drag & drop, inside the widget and from other applications, runs through
-the same machinery, so drops get the same dialogs.
+The dialog is titled "Copy: a file could not be copied" (or *Move*, *folder*)
+and spells the failure out: the operating system's own reason, the folder the
+entry is in (*From*), the destination (*Into*) and what usually causes it. The
+buttons are **Try again** (the default) / **Skip** / **Stop**, with an *Apply to
+all later failures* checkbox; a stored try-again-for-all grants each later
+failing entry one silent retry before asking again.
+`SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` skips every failure
+without asking and lists it in the summary. Drag & drop, inside the widget and
+from other applications, runs through the same machinery, so drops get the same
+dialogs.
+
+### The summary at the end
+
+A paste or delete that ran to its end with entries left behind — skipped by
+hand, by a policy, or because they failed — ends on one **summary** instead of
+nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
+skipped entries in a list with the reason beside each (*In use by another
+program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+**Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
+runs the same operation for just those entries, grouped by the folder they
+were headed for. A Stop or a Cancel shows no summary — it already said what
+happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is
 refused while another program still has it open — on Windows outright — and a
@@ -22200,18 +23260,25 @@ can be made to ask first with `SetDropConfirmation(FilerDropConfirmation)`:
 |---|---|
 | `NeverConfirm` | never — the drop is carried out straight away (the default, and what earlier releases did) |
 | `MoveOnly` | only when the drop **moves** the files; a copy is carried out |
+| `CopyOnly` | only when the drop **copies** the files |
 | `AlwaysConfirm` | for every drop, copies and files dragged in from other programs included |
 
 ```cpp
 filer->SetDropConfirmation(FilerDropConfirmation::MoveOnly);
 ```
 
-The question names what is about to happen — how many entries, moved or copied,
-into which folder, with the folder's full path as the detail line — and nothing
-is touched until it is answered; the other answer abandons the drop. Files
+The question is an [operation dialog](#the-operation-dialog) — `Move 3 items
+into "Archive"?` with *From*, *Into* and *Size* as its facts and the entries
+listed under them — and it offers **both verbs as buttons**: the one the
+gesture asked for is the coloured default, the other sits beside it, so a drop
+made with the wrong modifier is put right here instead of by a second drag;
+Cancel abandons the drop. Nothing is touched until it is answered. Files
 arriving from another program (or another pane of the same window) are copies,
-so only `AlwaysConfirm` asks about those. With dialogs disabled the drop is
-carried out rather than lost.
+so only a mode that covers copies asks about those. A move asked for by **Cut
+and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the same
+question when the mode covers moves: it changes where the files live just the
+same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
+is carried out rather than lost.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -22476,11 +23543,56 @@ field filters the shown folder, and the button — like Enter in the field, and
 like the button inside the field — escalates to the background sub-folder
 scan, which feeds its matches in through `AppendToFileList()` while it runs.
 
+## File type filter (load / save dialogs)
+
+A load or save dialog built on the widget wants the listing narrowed to the
+types its filter dropdown stands for — "Images (*.png, *.jpg)" — and has two
+ways of treating the other files. `SetFileTypeFilter(extensions, mode)` sets
+both at once:
+
+```cpp
+// A dialog's dropdown picked a FileFilter (UltraCanvasModalDialog.h):
+filer->SetFileTypeFilter(config.filters[config.selectedFilterIndex],
+                         FilerTypeFilterMode::ShowDimmed);
+// or by extension list — "png", ".png" and "*.png" all name the same type:
+filer->SetFileTypeFilter({"png", "jpg", "jpeg"}, FilerTypeFilterMode::Hide);
+// "*" (or an empty list) is "All files" and ends the filter:
+filer->ClearFileTypeFilter();
+```
+
+| Mode | The files of other types are |
+|---|---|
+| `FilerTypeFilterMode::Hide` (default) | left out of the listing, the way a file dialog lists |
+| `FilerTypeFilterMode::ShowDimmed` | kept in the listing and drawn **greyed out** — name, columns, icon or thumbnail and the badges on it, in every view type — so the user still sees what else the folder holds ("the photo *is* here, it is just not a PNG") while the picks on offer stand out |
+
+A dimmed entry can be selected and looked at (the info bar describes it), but
+it is on display, not on offer: a double-click or Enter on it does nothing and
+`onFileActivated` never fires for one, exactly as a disabled control does
+nothing. `EntryPassesFileTypeFilter(entry)` is the same question for a host —
+a dialog's OK button asks it about the selection before accepting a pick, and
+a save dialog can still adopt the greyed-out file's name from
+`onSelectionChanged` if it wants to. `SetFileTypeFilterMode(mode)` switches
+between the two without restating the extensions (a settings switch), and
+`SetDimmedEntryOpacity(0.38)` sets how faint a dimmed entry is drawn.
+
+Folders always pass the filter: they are how the user reaches the files, and
+so does a shortcut to a folder. An archive is a file and is dimmed like any
+other, but a double-click still enters it the way it enters a folder. The
+filter survives `SetPath()`, every rescan (file operations, the folder watch)
+and a [file list](#file-list-search-results), and combines with the
+[name filter](#name-filter-filter-as-you-type) — the type filter is applied
+first, so widening the name filter never brings a hidden type back.
+`GetTypeFilteredCount()` says how many files the shown listing left out (Hide)
+or dimmed (ShowDimmed); a Hide listing in a folder that has files of other
+types only shows **"No files of the chosen type"** rather than "Folder is
+empty!". The [hidden-items notice](#hidden-items-notice) is not involved: it
+reports what the system hides, not what the host asked for.
+
 ## Callbacks
 
 | Callback | Fired |
 |---|---|
-| `onFileActivated(entry)` | Double-click / Enter on a file |
+| `onFileActivated(entry)` | Double-click / Enter on a file — never on one a [type filter](#file-type-filter-load--save-dialogs) dims |
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
@@ -22535,7 +23647,9 @@ live).
 
 `Apps/DemoApp/UltraCanvasFilerExamples.cpp` (Widgets > Filer) shows the bundled
 `media` folder with buttons for every view type, sort field and direction, an Up
-button, and a status line wired to the callbacks.
+button, a *Types* row (All files / Images / Audio / Video with a "Show other
+types greyed out" switch — the [file type filter](#file-type-filter-load--save-dialogs)
+in both modes), and a status line wired to the callbacks.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFinancialChart.md
@@ -33617,6 +34731,32 @@ folder breadcrumb, two toolbar rows (open / navigation / slideshow /
 transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a Details panel.
 
+The toolbars are **icons with tooltips**, not captions, so two rows still fit
+the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+framework's own set under `media/icons/` and is drawn as a mask, so it takes the
+toolbar's foreground colour and greys out with the button; hovering shows the
+caption, with the key where there is one:
+
+| Row | Icon | Tooltip |
+|---|---|---|
+| 1 | `folder-open` | Open a file or folder |
+| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| 1 | `slideshow` (toggle) | Slideshow (Space) |
+| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| 2 | `curves` | Curves |
+| 2 | `save` | Save as… |
+| 2 | `file-info` | Details |
+
+The three dropdowns stay text because a value picker shows its value; the
+interval and transition ones start on the defaults. The Slideshow toggle
+follows the state however it changed: Space and `PlaySlideshow()` /
+`PauseSlideshow()` press and release it too.
+
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 `SetTopBarsVisible(false)`). To open one file full size in a window of its own —
@@ -33789,8 +34929,9 @@ a summary saying so.
 
 ## Details panel
 
-The **Details** button in the info bar (and **Info** on the second toolbar
-row) opens a scrollable panel over the active view, for every media kind:
+The **Details** button in the info bar (the `file-info` icon; the same icon
+sits at the end of the second toolbar row) opens a scrollable panel over the
+active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
 count for a PDF; container fields for a `*.ucd`) and, for images, the
@@ -33801,8 +34942,20 @@ chunks), or a line saying the file carries none.
 The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
 so each section is a heading over a two-column *Property / Value* table.
 The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+A picture whose header reads but whose pixels do not decode (a HEIC on a
+build without an HEVC decoder, a truncated file) says so instead of leaving
+the area empty: the display shows *Cannot decode this picture*, the info bar
+reads `dice.heic · 800 x 600 · 25.4 KB · cannot decode - heif: Unsupported
+feature: Unsupported codec`, and the Details panel adds a *Decoding* row with
+the same reason. The surface learns it only when it draws (that is when the
+pixels are decoded) and tells the viewer through
+`UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
+frame.
+
 button again closes it. Left / Right keep browsing, and the panel follows
-to the next file.
+to the next file. The panel's text is built only while it is open (on
+opening, then for each file loaded): browsing with it closed reads no
+metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -33918,20 +35071,22 @@ out of the selection before moving it.
 
 ## Image adjustments and saving
 
-The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
+The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
 
 Each slider is **continuous over its whole range** and carries its live value in
-its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
+panel ends in two icon buttons: *Auto-optimise* (the `wand`), a toggle whose
+pressed look says whether it is on, and *Reset* (the `reload` arrow). *Reset*
 puts the controls and the values back in one pass — curves included.
 
 ### Curves (highlights, midtones, shadows)
 
 The sliders move the whole tone range at once. To reach one part of it — lift
 the shadows without blowing the highlights, drop a colour cast out of the
-whites — the *Curves* toolbar button opens
+whites — the *Curves* toolbar button (the `curves` icon) opens
 [`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
 plus one per colour channel, over the histogram of the shown image.
 
@@ -41825,7 +42980,16 @@ bool ExportToSVG(const QRCodeData& data,
 std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                          std::string* errorMessage = nullptr);
 bool IsDecoderAvailable();
+```
 
+Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+distinct ways. An image with no code in it returns an empty vector and leaves
+`errorMessage` untouched; a scan that could not run at all — an unreadable
+file, no decoder built in, bad arguments — returns an empty vector with the
+reason in `errorMessage`. Test the vector to report "nothing found" and the
+string to report a failure; never match the string's text.
+
+```cpp
 // Structured-content builders
 std::string CreateURLContent(const std::string& url);
 std::string CreateEmailContent(const std::string& email,
@@ -44322,7 +45486,9 @@ one bar per level at the block's left and indents it by `style.quoteIndent`
 per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
 `ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
 programs: Enter keeps the level, Enter on an empty quoted line and Backspace
-at the start of a quoted block each step one level out (undoable).
+at the start of a quoted block each step one level out (undoable). For a
+toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
+selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to
@@ -44424,6 +45590,117 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Named styles
+
+```cpp
+editor->ApplyParagraphStyle("Heading2");        // a heading, with its look
+editor->ApplyCharacterStyle("Emphasis");        // on the selection; "" removes it
+RichStyle callout;                              // add one, or change one
+callout.id = "Callout"; callout.name = "Call Out"; callout.basedOn = "Normal";
+callout.character.bold = true;
+callout.paragraph.leftIndentPt = 20.0f;
+editor->UpdateStyle(callout);
+editor->NewStyleFromCaret("My Title");          // from the paragraph at the caret
+editor->UpdateStyleFromCaret();                 // its style redefined to match it
+for (const RichStyle& s : editor->GetStyles()) { /* a style box */ }
+```
+
+`UCRichDocument::styles` holds the document's paragraph and character styles
+(`RichStyle`: id, display name, `basedOn`, `nextStyle`, and optional character
+and paragraph properties). A block names its paragraph style in `styleId`, a
+run its character style in `characterStyleId`. The formatting itself stays on
+the blocks and runs - every view, serializer and writer keeps working as before
+- and the style is what lets a change reach them: `UpdateStyle` changes every
+paragraph and run that has the style, or a style based on it, except in a
+property formatted directly (one whose value is not what the style used to
+give it). Styles and text change as one undo step. A heading style makes a
+heading (`headingLevel`); Enter after a paragraph gives the next one the
+style's `nextStyle` (body text after a heading). A document without styles gets
+`UCRichDocument::DefaultStyles()` - Normal, Title, Subtitle, Heading 1-6,
+Quote, Code; Strong, Emphasis, Source Text - the first time one is applied.
+DOCX (`styles.xml`, `w:pStyle`, `w:rStyle`) and ODT (`office:styles`, text and
+paragraph style names, Writer's "Standard" and "Heading_20_N" read as Normal
+and HeadingN) keep them both ways.
+
+### Contents, captions, bookmarks and cross-references
+
+```cpp
+editor->InsertTableOfContents();                 // headings 1-3, before the caret's paragraph
+std::string fig = editor->InsertCaption("Figure", "The test rig");   // under the picture at the caret
+editor->InsertCrossReference(fig);               // "Figure 1" - renumbers with the captions
+editor->InsertCrossReference(fig, /*pageNumber*/ true);
+editor->AddBookmark("method");                   // on the caret's paragraph
+editor->GoToBookmark("method");
+editor->UpdateTableOfContents();                 // after headings were added or renamed
+```
+
+A caption is a paragraph ("Figure 2: text", in the *Caption* style) whose
+number is a `RichTextRun::Field::Sequence` field: captions number themselves
+per label in document order, and a new one before the others moves them all
+on. A cross-reference (`Field::Reference`) shows its bookmark's caption label
+and number, or the bookmarked paragraph's text; `Field::PageReference` shows
+its page. A table of contents is a run of paragraphs with
+`RichDocBlock::tocLevel`, one per heading, each ending in a page reference to
+a bookmark on its heading (headings without one are given one): in page view
+the numbers are the pages the headings are on, and they follow every edit.
+`UpdateTableOfContents()` rebuilds the entries (new, renamed or removed
+headings); it is one undo step. Ctrl+click on an entry, a cross-reference or a
+link to `#name` goes there. Bookmarks (`RichDocBlock::bookmarks`) are
+paragraph-level; a pasted copy of a bookmarked paragraph does not take its
+bookmark. DOCX (`SEQ`, `REF`, `PAGEREF`, `w:bookmarkStart`, TOC-styled
+paragraphs, `w:hyperlink w:anchor`) and ODT (`text:sequence`,
+`text:bookmark-ref`, `text:bookmark`, `text:table-of-content`) read and write
+all of it; a LibreOffice table of contents' page numbers become page
+references to its headings on the way in.
+
+### Comments
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");
+int c = editor->AddComment("Is this right?");   // on the selection, or the word at the caret
+editor->SetCommentResolved(c, true);
+editor->onCommentActivated = [&](int index) { /* open an editor, then SetCommentText */ };
+```
+
+Commented text is shaded (`style.commentHighlightColor`, not for resolved
+comments) and the comments are shown in a pane at the element's right
+(`style.commentPaneWidth`), each box level with its text or just below the
+box above; the text column narrows to make room, and the pane goes when the
+last comment does (or `SetShowComments(false)`). The comment the caret is in
+is outlined and joined to its text by a dotted line. Clicking a box selects
+its text; double-clicking calls `onCommentActivated`. In the model a comment
+is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
+resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
+so it moves and grows with its text; `RemoveComment` is one undo step, and a
+comment whose text is deleted disappears. Comments are not printed or
+exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
+ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
+them; DOCX does not keep the resolved flag.
+
+### Tracked changes
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
+editor->SetTrackChanges(true);
+// ... typing is marked inserted, deleting marks text deleted ...
+editor->GoToNextChange();                        // selects it
+editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
+```
+
+With tracking on, typed and pasted text is a tracked insertion (underlined,
+`style.insertionColor`) and deleted text stays, struck through
+(`style.deletionColor`), with the caret moving past it (before it for
+Backspace). Deleting a tracked insertion removes it outright. Accepting keeps
+insertions and drops deletions; rejecting does the opposite; each is one undo
+step. In the model a change is `RichTextRun::change` (`Inserted`/`Deleted`)
+with `revision` indexing `UCRichDocument::revisions` (author and date).
+Paragraph breaks, tables and pictures are edited untracked, and so is text
+typed with tracking off, even next to a change. Markdown, HTML and plain-text
+export give the text as it would be with the changes accepted. DOCX (`w:ins`,
+`w:del` with `w:delText`, moves as a deletion plus an insertion - they used to
+be accepted silently on load) and ODT (`text:tracked-changes` with
+change-start/end and deletion points) read and write them.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and
@@ -44506,6 +45783,96 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### Selecting a block of cells
+
+Drag (or Shift+arrow) from one cell into another and the selection becomes a
+block of whole cells - the smallest grid rectangle holding both, grown until no
+merged cell sticks out of it - drawn filled, without a caret:
+
+```cpp
+if (editor->HasCellSelection()) editor->MergeSelectedCells();   // "merge these six"
+editor->GetEditor().SelectCellRange(tableBlock, /*top*/ 0, /*left*/ 0, /*bottom*/ 1, /*right*/ 2);
+```
+
+On a cell selection Delete and Backspace empty the cells (the table keeps its
+shape), typing replaces them from the top-left cell, character formatting and
+`SetAlignment` apply to every cell, and Copy copies the cells as a table (plain
+text: a tab between cells, a line per row). Pasting a copied table into a cell
+fills the grid from that cell on, as a spreadsheet does; pasting paragraphs
+into a cell keeps them in the cell, a line each. Extending a selection out of
+a table stops at its edge; extending one into a table from outside takes the
+whole table.
+
+### Pictures: selecting, resizing, alt text
+
+A click on a picture - a paragraph of its own or one in the line - selects it:
+a frame with eight handles is drawn round it. Dragging a corner handle resizes
+it in proportion, a side handle stretches it; release commits the size as one
+undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
+Delete removes a selected picture. A right-click selects the picture under the
+pointer first, so a host's context menu can offer picture items.
+
+```cpp
+if (editor->HasSelectedImage()) {
+    editor->SetSelectedImageAltText("Quarterly revenue by region");
+    editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+}
+editor->SelectImage(RichDocPosition(imageBlock, 0));
+// Editing core: pictures are addressed by where they sit.
+edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+```
+
+### Floating pictures
+
+A picture run with `imageWrap` other than `Inline` floats: its placeholder stays
+where it is anchored in the text (so it moves with its paragraph and a
+selection or Backspace covers it), but it takes no room in the line. It is
+placed at its paragraph's top plus `imageOffsetYPt`, at the column's left or
+right edge, centred, or `imageOffsetXPt` from the left (`imageFloatAlign`
+`Left` / `Right` / `Center` / `Default`), and text treats it as `imageWrap`
+says:
+
+| `imageWrap` | Text |
+|---|---|
+| `Square` | flows beside it; paragraphs level with it are narrowed |
+| `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
+| `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
+
+DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
+offset from the paragraph) and ODT frames anchored to a paragraph or character
+(`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
+write back out; HTML output floats them with CSS. A floating picture is
+selected, resized and described like any other. In a table cell or a header
+it stays in the line.
+
+The wrap works a paragraph at a time: a paragraph that starts beside a picture
+is narrowed as a whole, so a long one beside a short picture stays narrow below
+it too.
+
+### Check lists
+
+```cpp
+editor->ToggleCheckList();        // the selected paragraphs become to-do items
+editor->ToggleCheckedAtCaret();   // tick / untick (a click on the box does the same)
+```
+
+A check list item is an unordered `ListItem` with `RichDocBlock::checkbox`
+set, ticked when `checked`. The element draws a box where the bullet would
+be; clicking it toggles the tick as one undo step. Enter continues the list
+with an unticked box. Markdown spells it `- [ ]` / `- [x]`; ODT and DOCX have
+no check list, so they carry a ☐ or ☒ in front of the text, which
+`UCRichDocument::ReadCheckboxPrefixes()` (run by every reader) turns back into
+a check list item - Word's own check box content controls read the same way.
+
+### Formulas
+
+A run with `RichTextRun::math` holds LaTeX source and is drawn typeset
+(through `UltraCanvasInlineMath`, on the line's baseline, never broken over
+two lines). Put the caret inside it and the source appears in its place for
+editing; move the caret away and it is typeset again. A `MathBlock` is typeset
+in display style and centred until the caret enters it. Without the LaTeX
+module, both show their source.
+
 ### Structure
 
 ```cpp
@@ -44550,6 +45917,102 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Autoformat as you type
+
+On by default, as in a word processor:
+
+| Typed | Becomes |
+|---|---|
+| `"` `'` | “ ” ‘ ’ (opening after a space or bracket, closing - the apostrophe - after a letter) |
+| `a--b`, `a -- b` | `a—b` (em dash), `a – b` (en dash) |
+| `...` | … |
+| `(c)` `(r)` `(tm)` `->` `<-` `=>` | © ® ™ → ← ⇒ |
+| `1. ` `3) ` `a) ` opening a paragraph | a numbered list (starting at that number / letter) |
+| `- ` `* ` `+ ` | a bullet list |
+| `[ ] ` `[x] ` | a check list item |
+| `# ` … `###### ` | a heading of that level |
+| `> ` | a quote |
+| `---` `***` `___` then Enter | a horizontal rule |
+
+Each correction is its own undo step, so Ctrl+Z right after it takes back only
+the correction and leaves what was typed. Code (inline or a code block) and
+formulas are never corrected, and pasted text is never corrected.
+
+```cpp
+editor->SetAutoFormatEnabled(false);            // everything off
+RichAutoFormatOptions options = editor->GetAutoFormatOptions();
+options.smartQuotes = false;                    // or just one of them
+editor->SetAutoFormatOptions(options);
+```
+
+The editing core has the same switches (off by default there, because a
+programmatic `InsertText` must insert exactly what it is given); typing goes
+through `UCRichDocumentEditor::TypeText` / `TypeEnter`.
+
+## Input methods
+
+An input method's composition (Japanese, Chinese, Korean, dead-key
+sequences) is shown in the text at the caret, underlined, as it is composed,
+and the caret moves inside it; the document only changes when the input
+method commits the text, which arrives as typing (one undo step, autoformat
+and all). Composing over a selection replaces it. The framework delivers the
+composition as `UCEventType::TextComposition` (`event.text`,
+`event.compositionCursor`) to an element whose `DrawsTextComposition()` is
+true: on X11 through an on-the-spot input context used while such an element
+has focus (other widgets keep the input method's own window), on Windows
+through the IMM composition string. `GetCompositionText()` reads it.
+
+## Right-to-left text
+
+Text is shaped and ordered by the Unicode bidirectional rules, so Arabic,
+Hebrew and mixed lines display correctly; a paragraph whose first letter is
+right-to-left starts at the right. `SetRightToLeft(true)` marks the selected
+paragraphs right-to-left (`RichDocBlock::rightToLeft`), so they start at the
+right whatever their first letter; left and right alignment mean what they say
+on the page; a right-to-left list item has its number or bullet on the right. In a paragraph with right-to-left letters Left and Right move the
+caret the way the arrow points; Home/End and word steps stay logical. DOCX
+`w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
+
+## Fonts for other scripts
+
+The element bundles no fonts: a run is drawn in its `fontFamily` (or the
+system UI font), and a character that font lacks is taken from whichever
+installed font has it (fontconfig on Linux and Windows, CoreText on macOS).
+Windows and macOS always include Chinese, Arabic and Myanmar fonts; a Linux
+system may not (minimal installs often lack CJK and Myanmar), and then the
+text falls back to a poor bitmap font or shows boxes. An application that must
+show a script everywhere ships the font and calls
+`UltraCanvasApplication::GetInstance()->RegisterFontFile(path)` before the
+text is laid out, and names that family on the runs. The demo's
+*WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
+(`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
+`media/fonts`, which every application loads at start-up.
+
+## Accessibility
+
+The element describes itself to assistive technology through
+[`UltraCanvasAccessibility`](UltraCanvasAccessibility.md): role `Document`,
+the document's title as its name, and `GetAccessibleTextInterface()` - the
+paragraphs one per line (a table's cells tab-separated), caret and selection,
+character boxes, words, lines and sentences, and per-run formatting including
+headings, lists, links, tracked changes and comments. Edits, caret moves,
+selection changes and focus are announced to listeners, and the platform
+bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
+Automation on Windows (Narrator, NVDA, JAWS) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
+is no macOS bridge yet.
+
+## Drag and drop
+
+Press inside the selection and drag: the text moves to where the drop caret
+shows, and stays selected; hold Ctrl at the drop to copy it instead. One undo
+step takes the move back. A press inside the selection that does not move is
+an ordinary click. Image files dropped from another application are inserted
+where they are dropped, as pictures in the line; `onFilesDropped` lets a host
+take other files (or all of them). `enableDragAndDrop = false` turns dragging
+the selection off. The editing core's `MoveRange(range, target, copy)` does the
+move.
 
 ## Find and replace
 
@@ -44619,17 +46082,26 @@ if (editor->CanUndo()) editor->Undo();
 editor->GetEditor().BreakUndoCoalescing();   // force a new step
 ```
 
+Undo goes back 200 steps by default; `GetEditor().SetMaxUndoSteps(n)` changes
+that (0 = unlimited).
+
 ## Clipboard
 
-Copy puts the selection's plain text on the system clipboard and keeps the
-styled blocks in a process-local buffer. A paste whose clipboard text still
-matches what was copied restores the formatting too, so copy/paste **inside the
-application preserves formatting**; a paste from another application arrives as
-plain text.
+Copy puts the selection on the system clipboard twice: as HTML (formatting,
+lists, tables, pictures inlined as `data:` URIs) and as plain text, so a word
+processor, browser or mail client pastes it formatted and a terminal pastes
+the text. The element also keeps the styled blocks in a process-local buffer:
+a paste whose clipboard text still matches what was copied uses them, so
+copy/paste **inside the application loses nothing** (between two documents the
+pictures come along; notes, comments and bookmarks stay behind).
 
-Full cross-application rich paste needs per-MIME clipboard transport
-(`text/html`), which `UltraCanvasClipboardBackend` does not carry yet — see
-[`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md) §4.
+A paste from another application uses its HTML when it offers some
+(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
+tables, rules, links, inlined pictures and character formatting from tags and
+CSS, Word's list-number spans and conditional comments dropped), and its plain
+text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
+converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
 ## Style
 
@@ -44690,6 +46162,10 @@ out:
   guide when editable. Tables from Markdown or built in the editor keep the
   `style.tableBorderColor` grid. Rows and columns inserted into a framed table
   copy their neighbour's frame and fill.
+- **Border line styles:** each `RichBorder` has a `style` - `Solid`,
+  `Dotted`, `Dashed` or `Double` - read from and written to ODT and DOCX
+  (read from DOC). A double border is drawn as two thin lines together as
+  wide as the border.
 
 Lengths are points and are drawn at 96/72 pixels per point - the scale run
 font sizes get from Pango at the 96 DPI every context is pinned to - so
@@ -44718,10 +46194,19 @@ Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the
 document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
 apart. The text column is the page's, between its side margins, so a table
-sized for the page's column fills it. Blocks go onto pages in order: one
-that does not fit in what is left of a page moves whole to the next, and a
-page break starts one. The space between two blocks is dropped at the top
-of a page.
+sized for the page's column fills it. Blocks go onto pages in order, and a
+page break starts a new one. A paragraph that does not fit in what is left of
+a page continues on the next, broken between lines with widow and orphan
+control (at least two lines stay together at the foot of one page and the
+top of the next; a paragraph of three lines or fewer moves whole). A table
+continues between rows - never through a cell spanning rows - and its
+leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
+ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
+the top of each page it continues on. A heading is kept with the start of the
+paragraph after it. A block taller than a whole page is still broken, between
+any two lines. The space between two blocks is dropped at the top of a page.
+Caret, clicks, selection, spell marks and pictures all follow a block's pieces
+across the page gap.
 
 Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 `firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
@@ -44730,6 +46215,57 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+**Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
+at the caret (`RichDocBlock::sectionStart`, its setup in
+`RichDocBlock::section`; the first section's is `UCRichDocument::firstSection`)
+and `SetSectionColumns(n, gapPt)` sets the caret's section in columns. In page
+view a section's text fills its first column to the foot of the page, then the
+next column from the section's top, then the next page; a continuous section
+starts below the longest column of the one before, a new-page one on a new
+page. A paragraph moves whole to the next column (columns are not balanced, and
+a paragraph taller than a column is not broken across columns); outside page
+view the text is one column. DOCX section breaks (`w:sectPr` in a paragraph,
+`w:cols`, `w:type`) and ODT sections (`text:section` with `style:columns`) are
+read and written.
+
+**Editing a header or footer.** Double-click a page's header or footer - or
+its top or bottom margin, to make one - or call `EditHeader(page)` /
+`EditFooter(page)`. The body is then shown pale behind it, a dashed rule marks
+the header's edge, and everything (typing, formatting, pictures, tables, page
+fields, undo) acts on the header or footer; a header growing a line pushes the
+body down as it is typed. Escape, a click in the body or
+`FinishHeaderFooterEditing()` goes back. A document whose first page differs
+edits the first page's own header on page 0. The changes go into
+`UCRichDocument::pageFurniture` / `firstPageFurniture` as they are made, so
+`GetDocument()` (which is the document, not the header, during editing) can be
+saved at any moment; undo within the header works while it is edited, and the
+edit as a whole is not an undo step of the body. `onHeaderFooterEditingChanged`
+tells a host when to retarget its toolbar. Outside page view, the one header
+and footer above and below the body are edited the same way.
+
+**Footnotes and endnotes.** `InsertFootnote()` / `InsertEndnote()` put a
+reference at the caret and open the new note for typing (it is edited the way
+a header is: body pale behind it, Escape or a click in the body goes back);
+double-clicking a note, or its reference, opens it again, and `EditNote(i)`
+does the same from code. The marks number themselves in document order -
+footnotes 1, 2, 3, endnotes i, ii, iii - and renumber when a reference is
+added, moved or deleted. In page view a footnote sits at the foot of the page
+its reference is on, under a short rule, and the page's text makes room for
+it (the reference's line never ends up below its own note); endnotes follow
+the body, onto further pages as they need. Outside page view both follow the
+body. PDF export prints them. In the model a note is `UCRichDocument::notes`
+(`RichNote`: kind and blocks) and its reference a run with `noteIndex`; DOCX
+(`footnotes.xml` / `endnotes.xml`), ODT (`text:note`) and Markdown (`[^1]`
+references with `[^1]: ...` definitions) read and write them, and HTML and
+plain text put them after the body.
+
+Page fields work in the body too: `InsertPageNumberField()` and
+`InsertPageCountField()` put one at the caret, and in page view each shows
+the page its paragraph landed on (the value is kept in the run's text, so a
+save or plain-text copy carries it; DOCX and ODT save it as a real field).
+Updating them is not an edit - no undo step, and the document stays
+unmodified.
+
 An editable page view marks the corners of each page's text area
 (`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
 read-only one shows neither.
@@ -44737,34 +46273,72 @@ read-only one shows neither.
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
 
+## PDF and printing
+
+```cpp
+std::string error;
+editor->ExportToPdf("/home/me/report.pdf", error);    // or ExportToPdf(bytes, error)
+```
+
+The document goes out as page view lays it out - whether or not the element is
+in page view - with headers, footers, page numbers, floating pictures and
+formulas, as vectors with real (selectable, searchable) text, and without
+anything that belongs to editing: no selection, caret, margin corners, dashed
+page breaks or borderless-cell guides. The element needs no window for it.
+`UltraCanvasPdfSurface` (the PDF writer behind it) draws any element into a
+PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
+prints one - which is what UltraTexter's Print does for a word-processing tab,
+and File > Export as PDF writes.
+
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
+## Zoom and scrolling sideways
+
+```cpp
+editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
+editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+```
+
+Everything is drawn scaled: text, pictures, pages. Outside page view the text
+rewraps to the zoomed width; in page view the page is simply larger, and when
+it (with the desk either side) is wider than the element a horizontal
+scrollbar appears - drag it, Shift+wheel, or let the caret take the view
+along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
+it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A selection cannot span several cells.** Rows, columns, merging and
-  splitting are all there (see *Editing a table's structure*), but they act on
-  the cell the caret is in: there is no drag-select across a block of cells, so
-  "merge these six" has to be done as a merge right and a merge down. The
-  selection model holds a range inside one container, and widening it is a
-  piece of work in its own right — rendering, hit testing and copying all
-  change with it.
-- **Border line styles draw solid.** A double, dotted or dashed cell border
-  from a document is drawn as a solid line of its width.
-- **Page view moves whole blocks.** A paragraph or table is not split across
-  pages (no widow/orphan control, no repeated table header rows), and a block
-  taller than a page runs past its bottom margin.
-- **Headers and footers are shown, not edited.** The caret never enters
-  them; page number fields in the body keep the number they were saved with.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right.
-- **Images are not resized interactively** (insert and delete work).
-- **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
-  typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
-  TextArea's Markdown mode and is the intended path.
-- **No pre-edit (IME composition) display.** Committed text arrives correctly;
-  an inline composition string needs an event the framework does not have yet
-  (the same limit applies to every text widget today).
-- **Cross-application rich paste** — see Clipboard above.
+- **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
+  paragraph's left indent is still on the left.
+- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
+  Automation) have one; VoiceOver does not see the element yet.
+- **The input method's candidate window** is placed by the input method, not
+  next to the caret.
 
 ## Related
 
@@ -49146,8 +50720,10 @@ animator:
   sheet model (`SetScrollPosition(row, col)`), read by the grid painter, the
   header painters, hit-testing and the scrollbar fractions.
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
-- The `UltraCanvasFileDialog` file list and the `UltraCanvasNewDocumentDialog`
-  document list (item indices, also used for click hit-testing).
+- The `UltraCanvasNewDocumentDialog` document list (item indices, also used
+  for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
+  folder tree is an `UltraCanvasTreeView` and its listing an
+  `UltraCanvasFilerWidget`, both of which scroll smoothly.)
 
 ---
 
@@ -50138,7 +51714,7 @@ split->SetPaneMinSize(0, 120);        // sidebar never narrower than 120 px
 
 sidebar->SetBackgroundColor(Color(232, 240, 252, 255));
 sidebar->SetPadding(8);
-sidebar->AddChild(CreateButton("Files", 1, 10, 10, 120, 28, "Files"));
+sidebar->AddChild(CreateButton("Files", 10, 10, 120, 28, "Files"));
 
 editor->SetBackgroundColor(Colors::White);
 editor->AddChild(myEditorWidget);
@@ -54974,7 +56550,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -54989,7 +56565,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 - **Preset Factories**: One-call construction of common toolbar shapes
 - **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
-- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel
+- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
 ## Header Include
 
@@ -55013,6 +56589,8 @@ void SetOrientation(ToolbarOrientation orient);
 void SetToolbarPosition(ToolbarPosition pos);
 void SetAppearance(const ToolbarAppearance& app);
 void SetOverflowMode(ToolbarOverflowMode mode);
+void SetScrollHints(bool show);          // Scroll mode: the chevron at the edge (default on)
+bool ScrollHintsEnabled() const;
 void SetVisibility(ToolbarVisibility vis);
 void SetDragMode(ToolbarDragMode mode);
 
@@ -55151,6 +56729,15 @@ of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
 beyond it, and the mouse wheel scrolls them into view along the toolbar's
 axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
 case: it must not squeeze twenty icons into the room for eight.
+
+While there is something past an edge, a 12 px strip in the toolbar's colour
+covers that edge with a small chevron pointing the way the items go, so a
+clipped bar never looks like a complete one; a click on the strip scrolls a
+page (the visible length less the strip). The strip is drawn over the edge
+of the item under it and takes that press, which is why the hint is a window
+watch like the reorder drag and not a child. Nothing is drawn while the items
+fit, and `SetScrollHints(false)` turns the strips off for a toolbar that
+wants the wheel alone.
 
 ### ToolbarIconSize
 
@@ -55407,7 +56994,7 @@ auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
 ```cpp
 auto running = std::make_shared<UltraCanvasToolbar>("Running", 0, 0, 0, 0);
 running->SetOrientation(ToolbarOrientation::Vertical);
-running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full
+running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full, chevrons at the edges
 running->EnableItemReordering(true);                     // drag to reorder
 running->onItemReordered = [](int from, int to) { /* remember the order */ };
 
@@ -56583,6 +58170,26 @@ tree->SetScrollToTopButtonStyle(style);
 // tree->SetShowScrollToTopButton(false);
 ```
 
+### Measuring the Tree
+
+```cpp
+int GetRequiredWidth(IRenderContext* ctx = nullptr)
+```
+
+The width the tree needs to show its widest row in full: indent, expander and
+check-flag slots, left icon and label text, plus the tree's right padding and
+border, the row's right icon and the vertical scrollbar while one is shown. Only
+the rows on show count - the children of a collapsed node do not. Text is
+measured with `ctx`, or the window's render context when `ctx` is null; the
+call returns 0 while there is neither (the tree is not in a window yet), so try
+again once the window is up.
+
+```cpp
+// Fit a sidebar to its folder names, with 10 px to spare.
+if (int need = tree->GetRequiredWidth(); need > 0)
+    splitPane->SetPaneFixedSize(0, need + 10);
+```
+
 ### Color Properties
 
 ```cpp
@@ -56872,6 +58479,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 |---------|------|---------|
 | 1.0.0 | 2024-12-19 | Initial release with full tree functionality |
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
+| 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 
 ## See Also
 
@@ -56998,7 +58606,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
@@ -57027,10 +58635,10 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
-| Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
-| "Working on it" with no percentage — a turning ring for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
+| "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar or a pulsing circle (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
@@ -57136,7 +58744,7 @@ exists:
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
 auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
-auto accept = CreateButton("ok", 101, 0, 0, 104, 30, "Compress");
+auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
 An element that belongs to a self-rendered view is added as a child of it and
@@ -57798,6 +59406,13 @@ What the element does by itself:
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
   coordinates after the handles and before the rulers, `onViewChanged`,
   `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+- **Display quality** — `SetDisplayQuality(VectorDisplayQuality)`:
+  `Outline` draws every shape's outline as a one-pixel line and fills
+  nothing (no clips, effects or transparency either, so a shape hidden under
+  another or clipped away can still be found), `Simple` draws fills and lines
+  without antialiasing, `Normal` (the default) draws everything antialiased.
+  The same setting is `VectorRenderOptions::DisplayQuality` (with
+  `OutlineColor`) on a `VectorRenderer` drawn outside the canvas.
 - **Invalidation** — `InvalidateDoc(rect)` after an edit, or `Refresh()`.
 
 The element never edits the document and owns no tool: a selector, a pen,
@@ -59823,6 +61438,53 @@ Windows 11 (10.0 build 26100)
 A driver, a codec or a third-party DLL in that field means the framework was
 the victim, not the cause.
 
+**The crash dump.** The same filter writes a minidump before it shows the
+message box, and the box (and the log line after the crash line) names the
+file:
+
+```
+Crash dump: C:\Users\me\AppData\Local\UltraCanvas\CrashDumps\UltraFiler-20261001-143052-4120.dmp
+Attach it to the bug report.
+```
+
+That is `%LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp`
+— paste `%LOCALAPPDATA%\UltraCanvas\CrashDumps` into Explorer's address bar
+to get there. The dump holds every thread's stack, the module list with
+versions, the memory the stacks point at and the modules' globals, which is
+what a debugger needs to say *where* the crash was and *how it got there*,
+and it is written with `MiniDumpWriteDump` from the `dbghelp.dll` every
+Windows ships (resolved at startup, since a crash handler can load nothing).
+Expect a few to a few tens of megabytes; a full memory dump is deliberately
+not taken. To read one: open it in WinDbg (`File → Open Crash Dump`, then
+`!analyze -v`; `.ecxr` and `k` for the faulting stack), or in Visual Studio
+(`File → Open`, *Debug with Native Only*). With the matching `.pdb` or the
+unstripped build beside it the stack has names; without them it still has
+the module and the offset of every frame, which `objdump` or `llvm-symbolizer`
+on the shipped binary turns into source lines.
+
+Two variables adjust it:
+
+| Variable | Effect |
+|---|---|
+| `ULTRACANVAS_CRASH_DUMP_DIR` | Another folder for the dumps (created if missing). |
+| `ULTRACANVAS_NO_CRASH_DUMP=1` | Write none - a test runner, a process that must not leave files behind. |
+
+Windows' own dumps are a separate mechanism and off by default for a desktop
+program: Windows Error Reporting only keeps a `Report.wer` (the exception code
+and the faulting module, no stack) under `%LOCALAPPDATA%\Microsoft\Windows\WER\ReportArchive`,
+and **Event Viewer → Windows Logs → Application** records the same two facts
+as an *Application Error* event. A second dump from Windows itself, for a
+crash the filter could not reach (one in the loader, or before
+`InstallWindowsCrashReporter` ran), needs the LocalDumps registry key:
+
+```
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpFolder /t REG_EXPAND_SZ /d "%LOCALAPPDATA%\CrashDumps" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpType /t REG_DWORD /d 2 /f
+```
+
+(from an administrator prompt; `DumpType` 2 is a full dump, 1 a mini dump).
+Those land in `%LOCALAPPDATA%\CrashDumps\UltraFiler.exe.<pid>.dmp`.
+
 **No log at all.** The process died before any UltraCanvas code ran, so the
 problem is the loader, not the application. Go to the exit code and to
 **Event Viewer → Windows Logs → Application**, which records an entry naming
@@ -60085,11 +61747,17 @@ and `url.dll` are pseudo-formats of no use here and are dropped, with their
 to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
 the file to load), so the rename costs it nothing, and the process holds a
 module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
-a package that carries a system DLL's name anywhere. For a package already
-extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
-named like Windows system DLLs*; deleting them (with the `.la` beside each)
-fixes that installation, and so does extracting a newer package into a fresh
-folder rather than over the old one.
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
 
 The general rule for anyone adding a DLL to the package: **no DLL may carry
 the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
@@ -60181,7 +61849,7 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
-void        InstallWindowsCrashReporter(const std::string& appName);
+void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
 ```
@@ -62337,7 +64005,12 @@ open multiple, save, select folder) follows
 `UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
 it is on, the framework's `UltraCanvasFileDialog` when it is off (the
 default). A native picker blocks and runs the callback before the call
-returns; the framework's runs it when the dialog closes.
+returns; the framework's runs it when the dialog closes. The framework's
+dialog is built from elements: a path field with an *up* button, a folder
+tree (Home, Desktop, Documents, Downloads and the mounted drives) beside the
+listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
+display), and the file-name field and file-type dropdown
+below them.
 
 ```cpp
 // Decode an image into a UCImage
@@ -62923,6 +64596,30 @@ four hold, because its parameter set is the richer one.
 accepting it and falling back at print time: a caller that asked for
 GutenPrint needs to know it is not getting it.
 
+### A document and its pages, together
+
+A formatted document reaches a printer as a PDF (`PrintDocumentWithDialog`),
+which CUPS and a PDF-reading IPP printer print as it is. The Windows GDI
+renderer, GutenPrint and an IPP printer without PDF cannot: they print what
+they can draw, and nothing here lays a PDF out. So a job may carry the same
+document twice - as bytes, and as **`IOPrintJob::pages`**, an
+`IPrintPageSource` that draws it - and each renderer takes the form it can
+use:
+
+| Renderer | Takes |
+|---|---|
+| Native on CUPS | the bytes, unchanged; a job of pages alone is refused by name rather than queued empty |
+| Windows GDI, GutenPrint | the pages: `MakePageSourceForJob` returns them before looking at the bytes |
+| IPP | the bytes when the printer takes them (and can select the page range); otherwise the pages, as PWG raster (`kIppDrawnPagesType`) |
+
+A source that is more than lines of text and pictures draws through the
+rendering stack, so **`IPrintPageTarget::GetRenderContext()`** hands over the
+target's `IRenderContext` where it has one (`RasterPageTarget`: GutenPrint's
+page, IPP's raster page). It is null for a Windows printer DC, where the
+source draws its page off screen and places it with `DrawImage`. A
+word-processing document's pages are `RichDocumentPrintPages`
+(`UltraCanvasRichTextPrint.h`), outside this module.
+
 ### Option resolution
 
 The GutenPrint parameter model — media type → resolution → cartridge → inkset
@@ -63170,7 +64867,9 @@ even to a printer that claims `text/plain`, because what a printer's own text
 path does with UTF-8 is anybody's guess and a page drawn here is the same page
 on every printer. What cannot be done either way is refused by name rather
 than half-printed: a PDF to a printer that takes none (nothing here paginates
-PDF yet), and a page range on a document the printer cannot select pages from.
+PDF yet), and a page range on a document the printer cannot select pages from
+- unless the job carries the document's pages too, which are then drawn (see
+*A document and its pages, together*).
 
 **The transport is one Print-Job request** - the IPP message with the
 document directly after it, POSTed with `Content-Type: application/ipp`. It
@@ -63727,9 +65426,10 @@ absent.
 | GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
 | GutenPrint: per-model options beyond the PPD defaults | 🔨 media, resolution, colour mode and page size reach the raster header; the cartridge and inkset parameters in `IOPrintOptions` are resolved but not yet passed through as PPD options. |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
+| Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, or a Standard TCP/IP port's `HostAddress`). The parsing and the port-to-address guesses are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. WSD ports carry no address the spooler gives out, so a WSD queue gets bidi only. |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
-| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: PDF and other documents | ⚠️ a PDF on its own is still refused by name with `NotSupported`, not half-printed - laying one out needs the PDF plugin. A PDF that comes with its pages (`IOPrintJob::pages`, as a formatted document's does: `CreateRichDocumentPrintPages`) prints: the pages are drawn. |
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
@@ -63744,16 +65444,16 @@ absent.
 | IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
 | IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
-| IPP: PDF to a printer that takes no PDF | ❌ refused by name. Needs the PDF plugin to paginate, the same seam the GDI renderer is waiting on. |
+| IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
 | IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
 | IPP: document streaming | ❌ the request and document go as one HTTP body, so a document is in memory whole. Fine for the PDFs and photos this path carries; PWG raster is the heavier case - an A4 page of text at 300 dpi in grey is about 1.3 MB, because anti-aliased glyphs defeat run-length compression - so a long raster job would want `Create-Job` / `Send-Document` with a chunked body. |
-| IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) - which includes CI today; adding that package to the Linux legs' dependencies would run it there. |
+| IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) or cannot start: it needs a running DNS-SD daemon (Avahi) even with advertising off, and IPv6, so a container without IPv6 always skips. CI's Linux rows install it, start Avahi and set `ULTRACANVAS_TEST_IPP_REQUIRED`, which turns a skip into a failure, so there it must run. |
 | SNMP supply/component monitoring | ⚠️ exists outside the tree; needs net-snmp declared, and should be reconsidered against UltraNet |
 | Maintenance (cleaning, alignment, nozzle check) | ⚠️ two competing architectures were written; pick one. Both shell out to `escputil` with the device path interpolated unquoted into `popen` — fix before landing. |
 | Cloud printing | ❌ architecture only |
 | **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
 | Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
-| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog: printing anything but plain text | ⚠️ `PrintDocumentWithDialog()` prints a document (a PDF), with its pages beside it for the renderers that must draw (`pages`); Texter prints word-processing tabs this way. An image file from a dialog has no bridge yet. |
 | Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
 | Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 
@@ -63980,6 +65680,41 @@ addresses:
 ```sh
 ULTRACANVAS_IPP_PRINTERS=ipp://192.168.1.20/ipp/print ./MyApp
 ```
+
+### Printer Status
+
+`GetStatus()` reports what a printer is doing — idle, printing or stopped, the
+reason (`media-empty`, `door-open`, `paused`), whether it accepts jobs and how
+many are queued — and `GetSupplyLevels()` its ink or toner, with a percentage
+where the printer gives one. Both need an open session and return nothing
+otherwise:
+
+```cpp
+if (printer->Connect()) {
+    IOPrinterStatus status = printer->GetStatus();
+    for (const IOSupplyLevel& supply : printer->GetSupplyLevels()) {
+        if (supply.IsLow()) { /* supply.description, supply.percentRemaining */ }
+    }
+    printer->Disconnect();
+}
+```
+
+CUPS, the Windows spooler and IPP all report status. Supply levels come from
+CUPS (`marker-*`) and IPP (`marker-*` and PWG's `printer-supply`). On Windows
+the spooler itself has no levels, so the backend asks in two steps:
+
+1. The printer driver's bidirectional channel (`IBidiSpl`,
+   `\Printer.Consumables`), which drivers with a status monitor answer.
+2. If the driver says nothing and the queue prints to a network address, the
+   printer itself over IPP (builds with UltraNet). The address comes from the
+   queue's port: an IPP port's URL, or a Standard TCP/IP port's host, tried at
+   `/ipp/print`, `/ipp` and `/` on port 631. A printer that does not answer
+   is left alone for a minute, so a switched-off printer costs the connect
+   timeout (5 s) once, not on every call.
+
+A USB or WSD queue whose driver keeps quiet, or a printer that answers
+neither, gives an empty list rather than zero. DeviceExplorer shows both for
+the selected printer.
 
 ### Your Own Devices
 
@@ -68847,7 +70582,10 @@ ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
 shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
 linkers reject a plug-in that calls the core directly; on Linux the
 `UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
-does, reading every built plug-in's undefined symbols.
+does, reading every built plug-in's undefined symbols. `UltraNet_PluginInit(host)`
+is the only entry point the loader accepts: the old POSIX-only v1 entry,
+`UltraNet_PluginRegister()`, which reached into the host's symbol table, is
+refused (`plugin_loader_refuses_a_v1_only_plugin`).
 
 ---
 
@@ -70297,13 +72035,14 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stages 1 and 2 implemented, plus photos.** Probe, frames, the
-> segment timeline with 26 effects, speed, joins, 30 transitions between
-> segments, text and image overlays, still images with smooth pan and zoom
-> ("Ken Burns") and one-call slideshows, GIF and audio-only output, lossless
-> cut, the background job and the `videofx` command-line tool work today, on
-> FFmpeg 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and
-> project files are planned (see *Roadmap*).
+> **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
+> frames, the segment timeline with 26 effects, speed, joins, 30 transitions
+> between segments, text and image overlays, still images with smooth pan and
+> zoom ("Ken Burns"), one-call slideshows, background music that dips under
+> speech, GIF and audio-only output, lossless cut, the background job and the
+> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
+> Picture-in-picture, keyframes, several free audio tracks and project files
+> are planned (see *Roadmap*).
 
 ---
 
@@ -70479,7 +72218,93 @@ VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
 
 It fades in from and out to black (`fadeInOut`), gives each photo its own
 `Auto` move, shows portrait photos whole on a blurred background, and without a size in the settings makes 1920x1080 at 30 fps.
-Length: `n x secondsPerImage - (n - 1) x transition`.
+Length: `n x secondsPerImage - (n - 1) x transition` — or, with
+`matchMusicLength`, the length of the music (see below).
+
+---
+
+## Background music
+
+`VideoFXExportSettings::music` lays a song under the whole export — any
+timeline, not only slideshows. It is mixed in last, so it plays straight
+through joins and transitions, and where the segments have sound of their own
+it steps back:
+
+```cpp
+VideoFXExportSettings settings = VideoFXExportSettings::WebMP4(1080);
+settings.music = VideoFXMusic::FromFile("summer.mp3", 0.8);   // path, volume
+settings.music.start = 12.0;          // begin 12 s into the song
+settings.music.fadeIn = 1.0;          // seconds, at the start of the export
+settings.music.fadeOut = 3.0;         // and at its end
+settings.music.duckingLevel = 0.25;   // under the clips' own sound
+VideoFX_Export(timeline, "holiday.mp4", settings);
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `volume` | 0.8 | Linear gain, 0..4 |
+| `start` | 0 | Seconds into the song to begin at |
+| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
+| `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
+| `duckingThresholdDb` | −36.5 | The segments' sound counts as present above this RMS level, dBFS, −90..0 |
+| `duckingAttack` | 0.12 s | How fast the music goes down (time constant), 0.001..10 |
+| `duckingHold` | 0.6 s | Quiet needed before it comes back up, 0..30 |
+| `duckingRelease` | 0.8 s | How slowly it comes back (time constant), 0.001..30 |
+
+**Ducking.** VideoFX listens to the segments' own sound block by block. While
+it is present — someone speaking in a clip, a waterfall — the music goes down
+to `duckingLevel` within about a tenth of a second; it waits for a pause of
+over half a second before coming back up, slowly, so speech does not make it
+pump between words. Photos and colour cards have no sound, so under a
+slideshow the music plays at full `volume`.
+
+Those defaults are tuned for **speech**. A clip that is loud the whole way
+through — a concert, a street, the waterfall — stays above −36.5 dBFS, so the
+music sits at `duckingLevel` for its entire length. Raise the threshold above
+the clip's own background so only its louder moments duck, and shorten the
+hold so the music returns between them:
+
+```cpp
+settings.music.duckingThresholdDb = -15.0;   // ignore a steady background below -15 dBFS
+settings.music.duckingHold = 0.2;            // back up after a fifth of a second of calm
+settings.music.duckingRelease = 0.4;
+```
+
+or set `duckingLevel = 1` to never duck at all. `videofx` takes the same as
+`--duck-threshold DB --duck-attack S --duck-hold S --duck-release S`.
+
+**Presets.** An app can offer one choice — the kind of footage — instead of
+four numbers. `SetDuckingPreset` fills in the threshold and the times and
+leaves `duckingLevel` alone; single fields set afterwards refine it:
+
+```cpp
+settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+```
+
+| `VideoFXDuckingPreset` | For | Threshold | Attack | Hold | Release |
+|---|---|---|---|---|---|
+| `Speech` (the defaults) | talking in quiet rooms | −36.5 dBFS | 0.12 s | 0.6 s | 0.8 s |
+| `Outdoor` | talking over wind and traffic | −28 dBFS | 0.12 s | 0.5 s | 0.7 s |
+| `LoudEvent` | crowds, engines, concerts: only the louder moments dip | −15 dBFS | 0.12 s | 0.2 s | 0.4 s |
+
+`videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
+values refine it whichever comes first on the command line.
+
+**Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
+`VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
+photo so the show ends with it:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+Sound-only outputs work too: photos plus music into `.mp3` is a valid,
+correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
@@ -70709,6 +72534,10 @@ videofx testclip pattern.mp4 5 1280 720 30
 videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
 ```
 
 ---
@@ -70739,7 +72568,8 @@ generates its own clips, so it needs no media files.
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
+| 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 
@@ -71498,6 +73328,19 @@ and poll loop are exercised only by their graceful-degradation path ("No
 camera is available"). The decode itself — the `UCVideoFrame` overload the
 dialog calls — is covered by the unit tests above.
 
+**Two more sources, same path** (UltraAuthenticator 0.2.5). The camera is
+the wrong tool for the common desktop case, where the enrolment page and the
+authenticator share one display and no camera can see either. The scan
+dialog therefore also decodes an image file (*From image…*: read by the
+scanner only, never copied, thumbnailed or registered as a recent file, since
+the file already holds the seed in the clear) and the screen (*From screen*).
+The screen capture stays in memory — `UltraCanvasDesktopShell::CaptureScreenImage`
+was added for it, because the existing `CaptureScreen` writes a PNG and a PNG
+of an enrolment QR is the seed in the Pictures folder — and the buffer is
+wiped as soon as it has been decoded. All three sources converge on the one
+acceptance path and the same `AccountStore::AddFromUri`, so the in-memory
+rule of this section holds for every way a code gets in, not only the camera.
+
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:
 
@@ -72034,8 +73877,12 @@ It is that module's user interface: a structured tree of everything found on
 the left, and everything the module knows about the selected entry on the
 right.
 
-It **only looks**. It never opens a session with a device, changes a setting,
-prints, scans or captures. Nothing it shows is written anywhere.
+It **only looks**. It never changes a setting, prints, scans or captures, and
+nothing it shows is written anywhere. The one thing it opens a device for is
+to ask a selected printer for its status and ink or toner — a printer only
+answers that over an open session — and it closes the printer again as soon as
+it has the answer. A printer another part of the application already has open
+is asked without being closed.
 
 - Source: [`Apps/DeviceExplorer`](../../Apps/DeviceExplorer/README.md)
 - Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
@@ -72096,12 +73943,24 @@ Select a row to see everything known about it, in titled sections.
 
 | Section | Contents |
 |---|---|
+| Printer status *(printers)* | State (Ready, Printing, Stopped), the printer's reason (`media-empty`, `door-open`, `paused` …), whether it accepts jobs, how many are queued, and when it was asked |
+| Supplies *(printers)* | Each ink or toner cartridge, drum or waste tank the printer reports, with its level in percent — *low* at 10 % or less, *not reported* when the printer gives no level |
 | General | Name, type, manufacturer, model, serial number (masked), description, location |
 | Connection | Connection (USB, Network, …), backend, connection path (device node, CUPS/IPP URI), device id |
 | Status | State, whether this application holds a session, last error |
 | Backend details | Whatever else the backend reported (driver, PPD, capabilities …) |
 
 Rows the backend left empty are not shown.
+
+For a printer, the two status sections come first. Selecting it shows *Asking
+the printer…* while DeviceExplorer asks — on a worker thread, since a network
+printer can take seconds — and then the answer. The answer is kept for 30
+seconds, so clicking back and forth does not ask again; after that, or after a
+rescan, selecting the printer asks anew. A printer that cannot be reached says
+*Could not ask the printer* and why. On Windows the levels come from the
+printer's driver, or, for a network printer whose driver does not report
+them, from the printer itself over IPP. A printer reached neither way shows
+its state and no *Supplies*.
 
 **A group** — how many devices it holds, how many are open or reporting an
 error, which backends searched it and how many each found, and the list of
@@ -72157,9 +74016,15 @@ found when it was configured; the computer node lists them.
 
 | Category | Linux | Windows | macOS | Network |
 |---|---|---|---|---|
-| Printers | CUPS | Windows spooler | CUPS | — |
+| Printers | CUPS | Windows spooler | CUPS | IPP driverless: IPP Everywhere, AirPrint, Mopria (all platforms) |
 | Scanners | SANE | — | — | eSCL (AirScan / Mopria) |
 | Cameras | V4L2 | — | — | — |
+
+Network scanners and printers are found over DNS-SD. One DNS-SD cannot reach
+— on another subnet — is named in `ULTRACANVAS_ESCL_SCANNERS` or
+`ULTRACANVAS_IPP_PRINTERS` (a comma-separated list of addresses) before
+DeviceExplorer starts. A driverless printer that a CUPS queue already reaches
+is listed once, under CUPS.
 
 Planned categories (microphones, speakers, storage, serial, Bluetooth, GPIO …)
 appear in the tree automatically once IODeviceManager has a backend for them;
@@ -72183,7 +74048,8 @@ shown. `--list --show-serials` prints them in full on the command line.
 DeviceExplorer                         open the window
 DeviceExplorer --group connection      open it grouped by connection
 DeviceExplorer --list                  scan once, print the tree, exit
-DeviceExplorer --list --details        ... with every property of every device
+DeviceExplorer --list --details        ... with every property of every device,
+                                       and each printer's status and supplies
 DeviceExplorer --list --group backend  ... grouped by backend
 DeviceExplorer --list --show-serials   ... with serial numbers unmasked
 DeviceExplorer --version
@@ -72203,6 +74069,23 @@ workstation  (3 devices, grouped by Category)
    └─ Integrated Webcam  [USB, V4L2, Available (not open)]
 ```
 
+With `--details`, a printer is asked for its status the same way the window
+asks, one printer after another, and the answer follows its other sections:
+
+```
+│  └─ OfficeLaser  [Unknown connection, CUPS, Offline]
+│       …  General, Connection, Status, Backend details …
+│       Printer status
+│         State: Stopped
+│         Reason: paused
+│         Accepting jobs: Yes
+│         Jobs queued: 0
+│         Asked at: 2026-09-29 12:23:52
+│       Supplies
+│         Black toner: 7 % - low
+│         Cyan ink: 72 %
+```
+
 ## Troubleshooting
 
 | Symptom | Cause |
@@ -72212,6 +74095,9 @@ workstation  (3 devices, grouped by Category)
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
 | A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
+| A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
+| *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |
 
 ==============================================================================
 FILE: Docs/UltraDesktop/README.md
@@ -72237,7 +74123,9 @@ system.
   which the window title and `--version` print. The app does not move when
   the framework releases.
 - Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
-  `UltraDesktop`.
+  `UltraDesktop`. It runs straight from the build tree: configuring links
+  `build/share/media` to the repository's `media/`, where the bar icons and
+  the default wallpaper are found.
 
 ## Layout
 
@@ -72265,7 +74153,9 @@ On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
 separators:
 
-1. **System** — *ULTRA OS settings* and the *app starter*.
+1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
+   settings* starts **UOS-Settings**, the system's settings application
+   (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
    entry; the first letter of its class when it has none). The active
@@ -72307,6 +74197,11 @@ windows stop short of the bars instead of covering them.
   about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
   keyboard and webcam DeviceExplorer, the rest the Task Manager.
 
+  When the organiser leaves the panel short of room — five or more desktops
+  on a 900 px screen — the panel scrolls rather than losing its last items:
+  a chevron over the edge marks where the icons continue, a click on it
+  scrolls a page, and so does the wheel over the panel.
+
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
@@ -72317,10 +74212,11 @@ windows stop short of the bars instead of covering them.
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
-  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
-  manager program, the number of virtual desktops. *Apply* writes the
-  settings and rebuilds the bars in place.
+- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+  the RAM disc path, the file manager program, the number of virtual
+  desktops - are the *Desktop* page of UOS-Settings. They live in the
+  desktop's settings file; the desktop checks it once a second and rebuilds
+  the bars in place when UOS-Settings changed one of them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.

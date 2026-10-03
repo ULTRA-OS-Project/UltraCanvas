@@ -1,7 +1,7 @@
 // include/IODeviceManager/UltraCanvasIODevicePrinterTypes.h
 // Printer vocabulary: page setup, print options, the GutenPrint parameter
 // model, job description and printer status.
-// Version: 0.1.0
+// Version: 0.1.1
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -9,10 +9,14 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+
+// Declared in UltraCanvasIODevicePrinterPage.h; a job only holds one.
+class IPrintPageSource;
 
 // ============================================================================
 // RENDERER
@@ -336,10 +340,20 @@ struct IOPrintJob {
     std::vector<uint8_t> data;
     std::string mimeType;           // "application/pdf", "image/png", ...
 
+    // The same document as pages that draw themselves, for a renderer that
+    // cannot take it as it is. A PDF reaches CUPS, or an IPP printer that
+    // reads PDF, unchanged - but the Windows GDI renderer, GutenPrint and an
+    // IPP printer without PDF can only print what they can draw, and nothing
+    // here can lay a PDF out. Set it beside the bytes (a formatted document
+    // does: RichDocumentPrintPages in UltraCanvasRichTextPrint.h) and those
+    // renderers draw these pages instead of refusing the job. On its own it
+    // is a job too, for a printer that can draw it.
+    std::shared_ptr<IPrintPageSource> pages;
+
     IOPrintOptions options;
     std::vector<int> pageRange;     // empty = every page
 
-    bool IsValid() const { return !filePath.empty() || !data.empty(); }
+    bool IsValid() const { return !filePath.empty() || !data.empty() || pages != nullptr; }
 };
 
 // ============================================================================
@@ -483,5 +497,33 @@ struct IOPrinterStatus {
 };
 
 const char* IOPrinterStateToString(IOPrinterState state);
+
+// ============================================================================
+// WINDOWS BIDI CONSUMABLES
+// ============================================================================
+//
+// Windows reports supply levels through the printer driver's bidirectional
+// channel (IBidiSpl), not the spooler: a "GetAll" on \Printer.Consumables
+// answers one value per schema path, such as
+//
+//     \Printer.Consumables.BlackToner:Level   BIDI_INT     72
+//     \Printer.Consumables.BlackToner:Color   BIDI_STRING  "Black"
+//     \Printer.Consumables.BlackToner:Type    BIDI_ENUM    "Toner"
+//
+// The COM call lives in the Windows backend; turning its answers into supply
+// levels is plain string work, kept here so it is tested on every platform.
+struct IOBidiConsumableValue {
+    std::string schema;       // the full schema path the driver answered
+    std::string text;         // BIDI_STRING, BIDI_TEXT or BIDI_ENUM
+    int number = 0;           // BIDI_INT
+    bool isNumber = false;
+};
+
+// One supply per consumable name, in the order the driver first named it.
+// A Level outside 0-100 stays "not reported" (-1) rather than being clamped
+// into a number the printer never gave. Values outside \Printer.Consumables
+// are ignored.
+std::vector<IOSupplyLevel> IOSupplyLevelsFromBidi(
+    const std::vector<IOBidiConsumableValue>& values);
 
 } // namespace UltraCanvas

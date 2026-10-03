@@ -41,7 +41,7 @@ std::string ToForwardSlashes(std::string path) {
 
 bool IsDirectory(const std::string& path) {
     std::error_code ec;
-    return std::filesystem::is_directory(path, ec) && !ec;
+    return std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec;
 }
 
 } // namespace

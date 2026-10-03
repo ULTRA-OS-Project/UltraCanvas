@@ -17,6 +17,7 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -26,7 +27,7 @@ std::string StubRoot() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-stub-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     return root;
@@ -37,7 +38,7 @@ std::string StubRoot() {
 // code 7, anything else sleeps until signalled.
 std::string WriteStubWine() {
     std::string path = StubRoot() + "/wine";
-    std::ofstream out(path);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path));
     out << "#!/bin/sh\n"
            "case \"$1\" in\n"
            "  --version) echo 'wine-11.0 (UltraWin stub)'; exit 0;;\n"
@@ -54,7 +55,7 @@ std::string WriteStubWine() {
 
 std::string WriteDummyExe(const std::string& name) {
     std::string path = StubRoot() + "/" + name;
-    std::ofstream(path) << "MZ";
+    std::ofstream(UltraCanvas::PathFromUtf8(path)) << "MZ";
     return path;
 }
 

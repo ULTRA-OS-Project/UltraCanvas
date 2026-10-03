@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraClaude. The install rules put
+# media/appicon/UltraClaude.{png,svg} into the hicolor theme, which is where
+# `Icon=UltraClaude` is looked up.
+Type=Application
+Version=1.5
+Name=UltraClaude
+GenericName=AI Chat
+Comment=Chat with Claude on your Claude subscription, through the Claude Code CLI
+Exec=UltraClaude
+TryExec=UltraClaude
+Icon=UltraClaude
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraClaude
+Categories=Utility;Development;
+Keywords=claude;ai;chat;assistant;ULTRA OS;

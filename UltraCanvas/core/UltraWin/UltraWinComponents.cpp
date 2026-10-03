@@ -36,7 +36,7 @@ bool IsValidComponentName(const std::string& name) {
 }
 
 static bool IsElfFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     char magic[4] = {};
     f.read(magic, 4);
     return f.gcount() == 4 && magic[0] == 0x7f && magic[1] == 'E' &&
@@ -45,7 +45,7 @@ static bool IsElfFile(const std::string& path) {
 
 std::string ResolveWineElfBinary(const std::string& winePath) {
     std::error_code ec;
-    fs::path real = fs::canonical(winePath, ec);
+    fs::path real = fs::canonical(UltraCanvas::PathFromUtf8(winePath), ec);
     if (ec) return winePath;
     if (IsElfFile(PathToUtf8(real))) return PathToUtf8(real);
 
@@ -150,7 +150,7 @@ std::vector<std::string> UltraWin_ListComponents(
     std::vector<std::string> out;
     if (!UltraWin_IsInitialized() || !IsValidEnvironmentName(environment))
         return out;
-    std::ifstream log(PrefixPath(environment) + "/winetricks.log");
+    std::ifstream log(UltraCanvas::PathFromUtf8(PrefixPath(environment) + "/winetricks.log"));
     if (!log) return out;
     std::string line;
     while (std::getline(log, line)) {

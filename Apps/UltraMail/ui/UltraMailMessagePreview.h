@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.6.0 - onLinksShown / onLinkHovered (the links of the shown body, and
+//                the one under the pointer, for the status line)
 // Version: 0.5.0 - Settings: HTML or plain-text view, body text size, and
 //                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
@@ -24,6 +26,7 @@
 #include "UltraMailComposer.h"   // SourceMessage
 #include "UltraMailSenderBadge.h"
 #include "UltraMailTypes.h"
+#include "UltraMailThreatScan.h"   // MessageLink
 
 #include <cstdint>
 #include <functional>
@@ -82,6 +85,11 @@ public:
     std::function<void(const MessageEnvelope&)> onMarkUnread;
     // Delegated to the app: open the raw .eml source in a read-only window.
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // Every link of the body just shown (where each really goes), so the window
+    // can list them for the reader to check; empty for a body without links.
+    std::function<void(const std::vector<MessageLink>&)> onLinksShown;
+    // The link under the pointer in the body (its target), "" when it leaves.
+    std::function<void(const std::string& href)> onLinkHovered;
 
     // Remote images (http/https) are not loaded until the reader asks: a bar
     // above the body offers "Show images" for this message and "Always from
@@ -131,7 +139,8 @@ private:
 
     // Fill (and show) the warning strip above the body, or hide it when the
     // message raised nothing.
-    void ShowSecurityWarning(const SenderStatus& status, const MessageSecurity& security);
+    void ShowSecurityWarning(const SenderStatus& status, const MessageSecurity& security,
+                             const std::string& raw);
 
     std::string          mailDir_;
     std::vector<Account> accounts_;

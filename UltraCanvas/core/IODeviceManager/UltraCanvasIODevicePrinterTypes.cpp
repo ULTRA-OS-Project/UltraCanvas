@@ -1,12 +1,13 @@
 // core/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
 // Printer vocabulary: paper tables, enum names, and the option resolver that
 // folds a requested option set down to what a printer will actually accept.
-// Version: 0.1.0
+// Version: 0.1.1
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinterTypes.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 namespace UltraCanvas {
@@ -418,6 +419,111 @@ const char* IOPrinterStateToString(IOPrinterState state) {
         case IOPrinterState::Unknown:  break;
     }
     return "Unknown";
+}
+
+// ============================================================================
+// WINDOWS BIDI CONSUMABLES
+// ============================================================================
+
+namespace {
+
+std::string LowerAscii(const std::string& text) {
+    std::string lower = text;
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return lower;
+}
+
+// The schema's Type is an enum whose spelling the driver chooses ("Toner",
+// "Ink", "WasteToner", "Staples", "Paper", "Other"), so it is matched by the
+// word it contains rather than compared whole.
+IOSupplyType SupplyTypeFromBidi(const std::string& keyword) {
+    const std::string type = LowerAscii(keyword);
+    if (type.find("waste") != std::string::npos)   return IOSupplyType::WasteTank;
+    if (type.find("toner") != std::string::npos)   return IOSupplyType::Toner;
+    if (type.find("ink") != std::string::npos)     return IOSupplyType::Ink;
+    if (type.find("drum") != std::string::npos ||
+        type.find("opc") != std::string::npos)     return IOSupplyType::Drum;
+    if (type.find("fuser") != std::string::npos)   return IOSupplyType::Fuser;
+    if (type.find("staple") != std::string::npos)  return IOSupplyType::Staples;
+    if (type.find("paper") != std::string::npos)   return IOSupplyType::Paper;
+    return IOSupplyType::Unknown;
+}
+
+// Color is free text ("Black", "Light Cyan", "photo-black").
+IOSupplyColor SupplyColorFromBidi(const std::string& name) {
+    std::string colour;
+    for (char c : LowerAscii(name)) {
+        if (c != '-' && c != '_' && c != ' ') colour += c;
+    }
+    if (colour == "black")        return IOSupplyColor::Black;
+    if (colour == "cyan")         return IOSupplyColor::Cyan;
+    if (colour == "magenta")      return IOSupplyColor::Magenta;
+    if (colour == "yellow")       return IOSupplyColor::Yellow;
+    if (colour == "lightcyan")    return IOSupplyColor::LightCyan;
+    if (colour == "lightmagenta") return IOSupplyColor::LightMagenta;
+    if (colour == "lightblack" || colour == "lightgray" || colour == "lightgrey")
+        return IOSupplyColor::LightBlack;
+    if (colour == "gray" || colour == "grey") return IOSupplyColor::Gray;
+    if (colour == "red")          return IOSupplyColor::Red;
+    if (colour == "blue")         return IOSupplyColor::Blue;
+    if (colour == "photoblack")   return IOSupplyColor::PhotoBlack;
+    if (colour == "matteblack")   return IOSupplyColor::MatteBlack;
+    return IOSupplyColor::None;
+}
+
+} // namespace
+
+std::vector<IOSupplyLevel> IOSupplyLevelsFromBidi(
+    const std::vector<IOBidiConsumableValue>& values) {
+    static const std::string kPrefix = "\\printer.consumables.";
+
+    std::vector<std::string> names;             // first-seen order
+    std::vector<IOSupplyLevel> supplies;
+    std::vector<bool> described;
+
+    for (const IOBidiConsumableValue& value : values) {
+        // Schema paths are case-insensitive; the consumable's own name keeps
+        // the driver's spelling, since it may end up on screen.
+        if (LowerAscii(value.schema).rfind(kPrefix, 0) != 0) continue;
+        const std::string rest = value.schema.substr(kPrefix.size());
+        const size_t colon = rest.find(':');
+        if (colon == 0 || colon == std::string::npos) continue;
+        const std::string name = rest.substr(0, colon);
+        const std::string field = LowerAscii(rest.substr(colon + 1));
+
+        size_t index = 0;
+        while (index < names.size() && LowerAscii(names[index]) != LowerAscii(name)) {
+            ++index;
+        }
+        if (index == names.size()) {
+            names.push_back(name);
+            IOSupplyLevel supply;
+            supply.description = name;          // until a Description says better
+            supplies.push_back(supply);
+            described.push_back(false);
+        }
+        IOSupplyLevel& supply = supplies[index];
+
+        if (field == "level") {
+            if (value.isNumber && value.number >= 0 && value.number <= 100) {
+                supply.percentRemaining = value.number;
+            }
+        } else if (field == "type") {
+            supply.type = SupplyTypeFromBidi(value.text);
+        } else if (field == "color") {
+            supply.color = SupplyColorFromBidi(value.text);
+        } else if (field == "description" || field == "model") {
+            // A Description is what the vendor meant people to read; a Model
+            // ("HP 305A") only stands in for one.
+            if (!value.text.empty() && (field == "description" || !described[index])) {
+                supply.description = value.text;
+                described[index] = (field == "description");
+            }
+        }
+    }
+    return supplies;
 }
 
 // ============================================================================

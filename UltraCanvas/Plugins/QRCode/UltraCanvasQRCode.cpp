@@ -19,6 +19,7 @@
 
 #include <cairo/cairo.h>
 #include <vips/vips8>
+#include "UltraCanvasPathUtf8.h"
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
 #include <zbar.h>
 #endif
@@ -166,7 +167,7 @@ namespace UltraCanvas {
         const int totalModules = data.size + 2 * quiet;
         const int px = totalModules * moduleSize;
 
-        std::ofstream f(filename);
+        std::ofstream f(UltraCanvas::PathFromUtf8(filename));
         if (!f) return false;
 
         f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -363,7 +364,11 @@ namespace UltraCanvas {
         zbar_image_destroy(zimg);
         zbar_image_scanner_destroy(scanner);
 
-        if (results.empty()) setErr("No QR codes detected");
+        // An image with no code in it is an answer, not a failure: the result
+        // is empty and the error stays empty. A caller that wants to say
+        // "nothing found" tests the vector; one that wants the reason a scan
+        // could not run tests the string. Setting a message here made the two
+        // indistinguishable and left callers matching its text.
         return results;
     }
 

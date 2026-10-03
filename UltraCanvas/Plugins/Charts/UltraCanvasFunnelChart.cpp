@@ -12,6 +12,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -79,7 +80,7 @@ namespace {
 // =============================================================================
 
     void FunnelDataSource::LoadFromCSV(const std::string& filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return;
 
         stages.clear();

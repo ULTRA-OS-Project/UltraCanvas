@@ -19,11 +19,13 @@ set(ULTRAMAIL_TEST_SOURCES
     test_richcomposer.cpp
     test_signature.cpp
     test_outbox.cpp
+    test_draftscopy.cpp
     test_scheduler.cpp
     test_oauth.cpp
     test_logincheck.cpp
     test_feedpublisher.cpp
     test_preferences.cpp
+    test_headertext.cpp
     # The Settings window's preferences file: plain C++, no UI.
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailPreferences.cpp
 )

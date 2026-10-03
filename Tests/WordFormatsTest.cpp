@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -56,7 +57,7 @@ static std::string gTmpDir;
 static std::string TmpPath(const std::string& name) { return gTmpDir + "/" + name; }
 
 static void WriteFile(const std::string& path, const void* data, size_t size) {
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
 }
 
@@ -443,7 +444,7 @@ static void CheckModelShape(const UCRichDocument& doc, const char* label) {
 
 int main(int argc, char** argv) {
     gTmpDir = (argc > 1) ? argv[1] : ".";
-    std::filesystem::create_directories(gTmpDir);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir));
 
     // ===== 1. Markdown parse sanity =====
     UCRichDocument doc = BuildSampleDocument();
@@ -525,7 +526,7 @@ int main(int argc, char** argv) {
 #ifdef WORDTEST_FIXTURE_DIR
     {
         std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/legacy-word97.doc";
-        if (std::ifstream(fixture, std::ios::binary).good()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(fixture), std::ios::binary).good()) {
             UCRichDocument legacy;
             std::string err;
             CHECK_MSG(UCWordDocumentIO::Load(fixture, legacy, err), err);
@@ -680,6 +681,488 @@ int main(int argc, char** argv) {
                       && added.borderLeft.IsVisible());
             }
         }
+    }
+
+    // ===== 5g2. Border line styles survive ODT and DOCX =====
+    {
+        CHECK(RichBorderStyleFromName("double") == RichBorderStyle::Double);
+        CHECK(RichBorderStyleFromName("thinThickSmallGap") == RichBorderStyle::Double);
+        CHECK(RichBorderStyleFromName("dotDash") == RichBorderStyle::Dashed);
+        CHECK(RichBorderStyleFromName("dotted") == RichBorderStyle::Dotted);
+        CHECK(RichBorderStyleFromName("single") == RichBorderStyle::Solid);
+
+        UCRichDocument styled;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        cell.borderTop = {1.5f, "#000000", RichBorderStyle::Double};
+        cell.borderBottom = {1.0f, "#000000", RichBorderStyle::Dotted};
+        cell.borderLeft = {1.0f, "#000000", RichBorderStyle::Dashed};
+        cell.borderRight = {1.0f, "#000000", RichBorderStyle::Solid};
+        RichTextRun run;
+        run.text = "styled border cell";
+        cell.runs.push_back(run);
+        table.tableRows[0].cells = {cell};
+        styled.blocks.push_back(table);
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        para.paragraphBorderBottom = {1.0f, "#000000", RichBorderStyle::Dashed};
+        run.text = "framed paragraph";
+        para.runs.push_back(run);
+        styled.blocks.push_back(para);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("borderstyles.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, styled, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichTableCell* found = FindCell(back, "styled border cell");
+            CHECK_MSG(found, ext);
+            if (found) {
+                CHECK_MSG(found->borderTop.style == RichBorderStyle::Double, ext);
+                CHECK_MSG(found->borderBottom.style == RichBorderStyle::Dotted, ext);
+                CHECK_MSG(found->borderLeft.style == RichBorderStyle::Dashed, ext);
+                CHECK_MSG(found->borderRight.style == RichBorderStyle::Solid, ext);
+            }
+            const RichDocBlock* framed = FindBlock(back, "framed paragraph");
+            CHECK_MSG(framed && framed->paragraphBorderBottom.style == RichBorderStyle::Dashed, ext);
+        }
+    }
+
+    // ===== 5g3. Check lists: Markdown, ODT, DOCX, editing =====
+    {
+        UCRichDocument md = UCRichDocument::FromMarkdown("- [ ] buy milk\n- [x] pay rent\n- plain bullet\n");
+        CHECK(md.blocks.size() == 3);
+        if (md.blocks.size() == 3) {
+            CHECK(md.blocks[0].checkbox && !md.blocks[0].checked);
+            CHECK(md.blocks[1].checkbox && md.blocks[1].checked);
+            CHECK(!md.blocks[2].checkbox);
+            CHECK(UCRichDocument::ConcatenateRunText(md.blocks[0].runs) == "buy milk");
+        }
+        const std::string back = md.ToMarkdown();
+        CHECK_MSG(back.find("- [ ] buy milk") != std::string::npos && back.find("- [x] pay rent") != std::string::npos, back);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("checklist.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, md, err), err);
+            UCRichDocument loaded;
+            CHECK_MSG(UCWordDocumentIO::Load(path, loaded, err), err);
+            const RichDocBlock* milk = FindBlock(loaded, "buy milk");
+            const RichDocBlock* rent = FindBlock(loaded, "pay rent");
+            const RichDocBlock* plain = FindBlock(loaded, "plain bullet");
+            CHECK_MSG(milk && milk->checkbox && !milk->checked
+                      && UCRichDocument::ConcatenateRunText(milk->runs) == "buy milk", ext);
+            CHECK_MSG(rent && rent->checkbox && rent->checked, ext);
+            CHECK_MSG(plain && !plain->checkbox, ext);
+        }
+
+        // A Word check box: a paragraph opening with the box glyph.
+        UCRichDocument word;
+        RichDocBlock para;
+        RichTextRun run;
+        run.text = "\xE2\x98\x92 done already";
+        para.runs.push_back(run);
+        word.blocks.push_back(para);
+        CHECK(word.ReadCheckboxPrefixes() == 1);
+        CHECK(word.blocks[0].type == RichBlockType::ListItem && word.blocks[0].checkbox && word.blocks[0].checked);
+        CHECK(UCRichDocument::ConcatenateRunText(word.blocks[0].runs) == "done already");
+
+        auto editDoc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("one\n\ntwo\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(editDoc);
+        editor.SelectAll();
+        editor.ToggleCheckList();
+        CHECK(editDoc->blocks[0].checkbox && editDoc->blocks[1].checkbox);
+        CHECK(editor.ToggleChecked(1) && editDoc->blocks[1].checked);
+        editor.Undo();
+        CHECK(!editDoc->blocks[1].checked);
+        editor.SetCaret(RichDocPosition(0, 3));
+        editor.SplitBlock();
+        CHECK(editDoc->blocks[1].checkbox && !editDoc->blocks[1].checked);
+        editor.SelectAll();
+        editor.ToggleCheckList();
+        CHECK(editDoc->blocks[0].type == RichBlockType::Paragraph && !editDoc->blocks[0].checkbox);
+    }
+
+    // ===== 5g4. Floating pictures keep their wrap and place =====
+    {
+        UCRichDocument floating;
+        const std::vector<uint8_t> png(kTinyPng, kTinyPng + sizeof(kTinyPng));
+        const int media = floating.AddMedia("dot.png", "image/png", png);
+        auto paragraph = [&](RichTextRun::ImageWrap wrap, RichTextAlign align, float offsetX,
+                             const std::string& text) {
+            RichDocBlock block;
+            RichTextRun picture;
+            picture.text = RichTextRun::kObjectReplacement;
+            picture.mediaIndex = media;
+            picture.imageWidthPt = 60.0f;
+            picture.imageHeightPt = 40.0f;
+            picture.imageAltText = "dot";
+            picture.imageWrap = wrap;
+            picture.imageFloatAlign = align;
+            picture.imageOffsetXPt = offsetX;
+            picture.imageOffsetYPt = 12.0f;
+            RichTextRun words;
+            words.text = text;
+            block.runs = {picture, words};
+            return block;
+        };
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::Square, RichTextAlign::Right, 0, "square right"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::TopAndBottom, RichTextAlign::Left, 0, "top bottom"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::BehindText, RichTextAlign::Default, 100, "behind"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::InFrontOfText, RichTextAlign::Center, 0, "in front"));
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("floating.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, floating, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            auto pictureIn = [&](const std::string& text) -> const RichTextRun* {
+                const RichDocBlock* block = FindBlock(back, text);
+                if (!block) return nullptr;
+                for (const auto& run : block->runs) if (run.IsInlineImage()) return &run;
+                return nullptr;
+            };
+            const RichTextRun* square = pictureIn("square right");
+            CHECK_MSG(square && square->imageWrap == RichTextRun::ImageWrap::Square
+                      && square->imageFloatAlign == RichTextAlign::Right, ext);
+            CHECK_MSG(square && Near(square->imageOffsetYPt, 12.0f) && Near(square->imageWidthPt, 60.0f), ext);
+            const RichTextRun* topBottom = pictureIn("top bottom");
+            CHECK_MSG(topBottom && topBottom->imageWrap == RichTextRun::ImageWrap::TopAndBottom, ext);
+            const RichTextRun* behind = pictureIn("behind");
+            CHECK_MSG(behind && behind->imageWrap == RichTextRun::ImageWrap::BehindText
+                      && behind->imageFloatAlign == RichTextAlign::Default && Near(behind->imageOffsetXPt, 100.0f), ext);
+            const RichTextRun* front = pictureIn("in front");
+            CHECK_MSG(front && front->imageWrap == RichTextRun::ImageWrap::InFrontOfText
+                      && front->imageFloatAlign == RichTextAlign::Center, ext);
+        }
+        // A floating picture alone in its paragraph stays floating there.
+        RichDocBlock promoted;
+        RichTextRun lone = floating.blocks[0].runs[0];
+        CHECK(!WordFormatInternal::ParagraphIsOneInlineImage({lone}, promoted));
+    }
+
+    // ===== 5g5. Named styles survive ODT and DOCX =====
+    {
+        auto styled = std::make_shared<UCRichDocument>();
+        styled->styles = UCRichDocument::DefaultStyles();
+        RichStyle callout;
+        callout.id = "Callout";
+        callout.name = "Call Out";
+        callout.basedOn = "Normal";
+        callout.nextStyle = "Normal";
+        callout.character.bold = true;
+        callout.character.color = "#AA0000";
+        callout.paragraph.leftIndentPt = 20.0f;
+        callout.paragraph.align = RichTextAlign::Center;
+        styled->styles.push_back(callout);
+        RichStyle term;
+        term.id = "KeyTerm";
+        term.name = "Key Term";
+        term.kind = RichStyle::Kind::Character;
+        term.character.italic = true;
+        styled->styles.push_back(term);
+
+        RichDocBlock heading;
+        heading.type = RichBlockType::Heading;
+        heading.headingLevel = 2;
+        heading.styleId = "Heading2";
+        RichTextRun run;
+        run.text = "Styled heading";
+        heading.runs = {run};
+        styled->blocks.push_back(heading);
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(styled);
+        editor.SetCaret(RichDocPosition(0, editor.BlockTextLength(0)));
+        editor.SplitBlock();
+        editor.InsertText("A callout with a key term inside");
+        CHECK(editor.ApplyParagraphStyle("Callout"));
+        editor.SetSelection(RichDocPosition(1, 17), RichDocPosition(1, 25));
+        CHECK(editor.ApplyCharacterStyle("KeyTerm"));
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("styles.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *styled, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichStyle* readCallout = back.FindStyle("Callout");
+            CHECK_MSG(readCallout, ext);
+            if (readCallout) {
+                CHECK_MSG(readCallout->name == "Call Out" && readCallout->basedOn == "Normal"
+                          && readCallout->nextStyle == "Normal", ext);
+                CHECK_MSG(readCallout->character.bold.value_or(false) && readCallout->character.color.value_or("") == "#AA0000"
+                          && Near(readCallout->paragraph.leftIndentPt.value_or(0), 20.0f), ext);
+            }
+            const RichStyle* readTerm = back.FindStyle("KeyTerm");
+            CHECK_MSG(readTerm && readTerm->kind == RichStyle::Kind::Character
+                      && readTerm->character.italic.value_or(false), ext);
+            const RichDocBlock* paragraph = FindBlock(back, "A callout");
+            CHECK_MSG(paragraph && paragraph->styleId == "Callout" && paragraph->align == RichTextAlign::Center, ext);
+            bool termRun = false;
+            if (paragraph) {
+                for (const auto& r : paragraph->runs) {
+                    if (r.text == "key term") termRun = r.characterStyleId == "KeyTerm" && r.italic && r.bold;
+                }
+            }
+            CHECK_MSG(termRun, ext);
+            const RichDocBlock* h = FindBlock(back, "Styled heading");
+            CHECK_MSG(h && h->type == RichBlockType::Heading && h->headingLevel == 2 && h->styleId == "Heading2", ext);
+        }
+    }
+
+    // ===== 5g6. Footnotes and endnotes survive ODT and DOCX =====
+    {
+        auto noted = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "A claim that needs support.";
+        paragraph.runs = {run};
+        noted->blocks.push_back(paragraph);
+        run.text = "Closing words.";
+        paragraph.runs = {run};
+        noted->blocks.push_back(paragraph);
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(noted);
+        editor.SetCaret(RichDocPosition(0, 7));                 // after "A claim"
+        const int footnote = editor.InsertNote(RichNote::Kind::Footnote);
+        editor.SetCaret(RichDocPosition(1, editor.BlockTextLength(1)));
+        const int endnote = editor.InsertNote(RichNote::Kind::Endnote);
+        CHECK(footnote == 0 && endnote == 1);
+        RichTextRun noteText;
+        noteText.text = "See the appendix.";
+        noted->notes[0].blocks[0].runs = {noteText};
+        noteText.text = "Written in 2026.";
+        noted->notes[1].blocks[0].runs = {noteText};
+        RichDocBlock second;
+        noteText.text = "A second paragraph of the note.";
+        second.runs = {noteText};
+        noted->notes[0].blocks.push_back(second);
+        CHECK(editor.BlockText(0) == "A claim1 that needs support.");
+        CHECK(editor.BlockText(1) == "Closing words.i");
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("notes.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *noted, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            CHECK_MSG(back.notes.size() == 2, ext);
+            const RichDocBlock* claim = FindBlock(back, "A claim");
+            int footnoteIndex = -1, endnoteIndex = -1;
+            if (claim) {
+                for (const auto& r : claim->runs) if (r.IsNoteReference()) footnoteIndex = r.noteIndex;
+            }
+            const RichDocBlock* closing = FindBlock(back, "Closing");
+            if (closing) {
+                for (const auto& r : closing->runs) if (r.IsNoteReference()) endnoteIndex = r.noteIndex;
+            }
+            CHECK_MSG(claim && UCRichDocument::ConcatenateRunText(claim->runs) == "A claim1 that needs support.", ext);
+            CHECK_MSG(footnoteIndex >= 0 && endnoteIndex >= 0 && footnoteIndex != endnoteIndex, ext);
+            if (footnoteIndex >= 0 && endnoteIndex >= 0 && back.notes.size() == 2) {
+                const RichNote& f = back.notes[static_cast<size_t>(footnoteIndex)];
+                const RichNote& e = back.notes[static_cast<size_t>(endnoteIndex)];
+                CHECK_MSG(f.kind == RichNote::Kind::Footnote && e.kind == RichNote::Kind::Endnote, ext);
+                CHECK_MSG(f.blocks.size() == 2 && UCRichDocument::ConcatenateRunText(f.blocks[0].runs) == "See the appendix."
+                          && UCRichDocument::ConcatenateRunText(f.blocks[1].runs) == "A second paragraph of the note.",
+                          std::string(ext) + ": " + (f.blocks.empty() ? "" : UCRichDocument::ConcatenateRunText(f.blocks[0].runs)));
+                CHECK_MSG(!e.blocks.empty() && UCRichDocument::ConcatenateRunText(e.blocks[0].runs) == "Written in 2026.", ext);
+            }
+        }
+        // Markdown: footnote syntax both ways.
+        const std::string md = noted->ToMarkdown();
+        CHECK_MSG(md.find("A claim[^1] that") != std::string::npos && md.find("[^1]: See the appendix.") != std::string::npos, md);
+        UCRichDocument fromMd = UCRichDocument::FromMarkdown(md);
+        CHECK(fromMd.notes.size() == 2);
+    }
+
+    // ===== 5g7. Bookmarks, captions, cross-references and contents survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "# Introduction\n\nThe method.\n\n## Results\n\nSee the figure.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetCaret(RichDocPosition(1, 0));
+        const std::string caption = editor.InsertCaption("Figure", "The setup");
+        editor.SetCaret(RichDocPosition(editor.GetBlockCount() - 1, editor.BlockTextLength(editor.GetBlockCount() - 1)));
+        editor.InsertText(" ");
+        CHECK(editor.InsertCrossReference(caption, RichTextRun::Field::Reference));
+        editor.InsertText(" on page ");
+        CHECK(editor.InsertCrossReference(caption, RichTextRun::Field::PageReference));
+        editor.SetCaret(RichDocPosition(0, 0));
+        CHECK(editor.InsertTableOfContents());
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("fields.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            int tocEntries = 0, tocLevel2 = 0;
+            for (const auto& b : back.blocks) {
+                if (b.tocLevel > 0) tocEntries++;
+                if (b.tocLevel == 2) tocLevel2++;
+            }
+            CHECK_MSG(tocEntries == 2 && tocLevel2 == 1, std::string(ext) + " toc entries " + std::to_string(tocEntries));
+            const RichDocBlock* captionBlock = FindBlock(back, "Figure 1");
+            CHECK_MSG(captionBlock && !captionBlock->bookmarks.empty() && captionBlock->bookmarks[0] == caption, ext);
+            bool sequence = false;
+            if (captionBlock) {
+                for (const auto& r : captionBlock->runs) {
+                    sequence = sequence || (r.field == RichTextRun::Field::Sequence && r.fieldArgument == "Figure" && r.text == "1");
+                }
+            }
+            CHECK_MSG(sequence, ext);
+            const RichDocBlock* seeBlock = FindBlock(back, "See the figure.");
+            bool reference = false, pageReference = false;
+            if (seeBlock) {
+                for (const auto& r : seeBlock->runs) {
+                    reference = reference || (r.field == RichTextRun::Field::Reference && r.fieldArgument == caption
+                                              && r.text == "Figure 1");
+                    pageReference = pageReference || (r.field == RichTextRun::Field::PageReference && r.fieldArgument == caption);
+                }
+            }
+            CHECK_MSG(reference && pageReference, ext);
+            // The contents' page numbers still point at the headings.
+            bool entryPoints = false;
+            for (const auto& b : back.blocks) {
+                if (b.tocLevel != 1 || b.runs.empty()) continue;
+                const RichTextRun& number = b.runs.back();
+                const int target = back.FindBookmark(number.fieldArgument);
+                entryPoints = number.field == RichTextRun::Field::PageReference && target >= 0
+                              && back.blocks[static_cast<size_t>(target)].type == RichBlockType::Heading;
+            }
+            CHECK_MSG(entryPoints, ext);
+        }
+    }
+
+    // ===== 5g8. Comments survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "First paragraph with a remark.\n\nSecond paragraph goes on.\n\nThird one.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 15));
+        editor.AddComment("Say more.\nWith two lines.", "Ada Lovelace", "2026-09-29T10:00:00Z");
+        // One crossing a paragraph break.
+        editor.SetSelection(RichDocPosition(0, 23), RichDocPosition(1, 6));
+        const int crossing = editor.AddComment("Across paragraphs", "Grace Hopper");
+        editor.SetCommentResolved(crossing, true);
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("comments.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const std::vector<int> active = back.ActiveComments();
+            CHECK_MSG(active.size() == 2, std::string(ext) + " " + std::to_string(active.size()));
+            if (active.size() != 2) continue;
+            UCRichDocumentEditor reader;
+            reader.SetDocument(std::make_shared<UCRichDocument>(back));
+            RichDocRange range;
+            const RichComment& a = back.comments[static_cast<size_t>(active[0])];
+            CHECK_MSG(a.author == "Ada Lovelace" && a.text == "Say more.\nWith two lines." && a.date == "2026-09-29T10:00:00Z", ext);
+            CHECK_MSG(reader.CommentRange(active[0], range) && range.start == RichDocPosition(0, 6)
+                      && range.end == RichDocPosition(0, 15), ext);
+            const RichComment& b = back.comments[static_cast<size_t>(active[1])];
+            CHECK_MSG(b.author == "Grace Hopper" && b.text == "Across paragraphs", ext);
+            CHECK_MSG(reader.CommentRange(active[1], range) && range.start == RichDocPosition(0, 23)
+                      && range.end == RichDocPosition(1, 6), ext);
+            if (std::string(ext) == "odt") CHECK_MSG(b.resolved, ext);
+        }
+    }
+
+    // ===== 5g9. Tracked changes survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("The quick brown fox.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetRevisionAuthor("Ada Lovelace", "2026-09-29T10:00:00Z");
+        editor.SetTrackChanges(true);
+        editor.SetCaret(RichDocPosition(0, 4));
+        editor.InsertText("very ");
+        editor.SetSelection(RichDocPosition(0, 15), RichDocPosition(0, 21));
+        editor.DeleteSelection();
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("changes.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* block = FindBlock(back, "The ");
+            bool inserted = false, deleted = false;
+            std::string all;
+            if (block) {
+                for (const auto& r : block->runs) {
+                    all += r.text;
+                    const RichRevision* rev = r.revision >= 0 && r.revision < static_cast<int>(back.revisions.size())
+                                            ? &back.revisions[static_cast<size_t>(r.revision)] : nullptr;
+                    const bool byAda = rev && rev->author == "Ada Lovelace" && rev->date == "2026-09-29T10:00:00Z";
+                    inserted = inserted || (r.text == "very " && r.change == RichTextRun::Change::Inserted && byAda);
+                    deleted = deleted || (r.text == "brown " && r.IsDeleted() && byAda);
+                }
+            }
+            CHECK_MSG(all == "The very quick brown fox.", std::string(ext) + ": " + all);
+            CHECK_MSG(inserted && deleted, ext);
+            CHECK_MSG(back.ToPlainText().find("The very quick fox.") != std::string::npos, ext);
+        }
+    }
+
+    // ===== 5g10. Sections and columns survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "Intro across the page.\n\nColumn text one.\n\nColumn text two.\n\nBack to one column.\n"));
+        doc->blocks[1].sectionStart = true;
+        doc->blocks[1].section.columns = 2;
+        doc->blocks[1].section.columnGapPt = 18.0f;
+        doc->blocks[3].sectionStart = true;
+        doc->blocks[3].section.columns = 1;
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("sections.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            int columnBlock = -1, afterBlock = -1, introBlock = -1;
+            for (size_t i = 0; i < back.blocks.size(); i++) {
+                const std::string text = UCRichDocument::ConcatenateRunText(back.blocks[i].runs);
+                if (text == "Column text one.") columnBlock = static_cast<int>(i);
+                if (text == "Back to one column.") afterBlock = static_cast<int>(i);
+                if (text == "Intro across the page.") introBlock = static_cast<int>(i);
+            }
+            CHECK_MSG(columnBlock >= 0 && afterBlock >= 0 && introBlock >= 0, ext);
+            if (columnBlock < 0 || afterBlock < 0 || introBlock < 0) continue;
+            CHECK_MSG(back.SectionFor(introBlock).columns == 1, ext);
+            CHECK_MSG(back.SectionFor(columnBlock).columns == 2 && Near(back.SectionFor(columnBlock).columnGapPt, 18.0f),
+                      std::string(ext) + " columns " + std::to_string(back.SectionFor(columnBlock).columns));
+            CHECK_MSG(back.SectionFor(columnBlock + 1).columns == 2, ext);
+            CHECK_MSG(back.SectionFor(afterBlock).columns == 1, ext);
+        }
+    }
+
+    // ===== 5g11. Right-to-left paragraphs survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("Mixed paragraph.\n\nPlain.\n"));
+        doc->blocks[0].rightToLeft = true;
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("rtl.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* mixed = FindBlock(back, "Mixed");
+            const RichDocBlock* plain = FindBlock(back, "Plain");
+            CHECK_MSG(mixed && mixed->rightToLeft && plain && !plain->rightToLeft, ext);
+        }
+        CHECK(doc->ToHTML().find("<p dir=\"rtl\">Mixed") != std::string::npos);
+        CHECK(UCRichDocument::FromHTML(doc->ToHTML()).blocks[0].rightToLeft);
     }
 
     // ===== 5h. List labels: formats, templates, editing =====

@@ -8,7 +8,11 @@
 #include "test_framework.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <UltraDatabase/UltraDatabase.h>
+
+#include <filesystem>
 #include <string>
 
 using namespace UltraMail;
@@ -407,4 +411,43 @@ TEST(attachment_count_kept_beside_the_scan_verdict) {
     REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
     REQUIRE_EQ(all[1].attachments, 0);
     REQUIRE_EQ(all[2].attachments, 4);
+}
+
+// UltraMail opens mail.db twice: the UI thread's connection and the sync
+// workers'. In WAL mode the UI's reads never queue behind a sync's writes (a
+// shared connection made switching accounts mid-sync take 10-20 seconds), and
+// each connection sees what the other committed.
+TEST(file_store_uses_wal_and_shares_rows_across_connections) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "ultramail_wal_test";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const std::string db = UltraCanvas::PathToUtf8(dir / "mail.db");
+
+    LocalStore ui, worker;
+    REQUIRE(ui.Open("umtest-wal-ui", db).success);
+    REQUIRE(worker.Open("umtest-wal-worker", db).success);
+
+    UltraDbResultSet rs;
+    REQUIRE(UltraDb_Query("umtest-wal-ui", "PRAGMA journal_mode", rs).success);
+    REQUIRE_EQ(rs.Size(), (size_t)1);
+    REQUIRE_EQ(rs.Row(0)[0].AsString(), std::string("wal"));
+
+    AddAccountWithInbox(worker, "erika", "erika@example.org", "erika");
+    MessageEnvelope m;
+    m.accountId = "erika"; m.folder = "INBOX"; m.uid = 7; m.subject = "Hello";
+    REQUIRE(worker.UpsertMessage(m).success);
+
+    std::vector<Account> accs;
+    REQUIRE(ui.ListAccounts(accs).success);
+    REQUIRE_EQ(accs.size(), (size_t)1);
+    std::vector<MessageEnvelope> msgs;
+    REQUIRE(ui.ListMessages("erika", "INBOX", 0, msgs).success);
+    REQUIRE_EQ(msgs.size(), (size_t)1);
+    REQUIRE_EQ(msgs[0].uid, (int64_t)7);
+
+    UltraDb_CloseConnection("umtest-wal-ui");
+    UltraDb_CloseConnection("umtest-wal-worker");
+    fs::remove_all(dir, ec);
 }

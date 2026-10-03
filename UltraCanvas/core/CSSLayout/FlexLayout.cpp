@@ -2,6 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.4.0 - merged with main's 1.3.7 (a stretched item is clamped by its min /
+//                 max cross size)
 // Version: 1.3.9 - a flex container's own min / max-height percentages use
 //                 percentHeightBase too
 // Version: 1.3.8 - a percentage height resolves against a block parent's set height
@@ -9,6 +11,8 @@
 // Version: 1.3.7 - an item's own main size (width / height) is its content box when
 //                 it is box-sizing: content-box: the flex base size adds its
 //                 padding and border, as the block path already did.
+// Version: 1.3.7 (main) - a stretched item is clamped by its min / max cross size
+//                 (a max-width block in a wider stretch column keeps its width)
 // Version: 1.3.6 - align-items / align-self are SAFE: an item that does not fit
 //                 its line aligns to the line's start instead of being placed at
 //                 a negative offset, so the leading part of oversized content
@@ -774,6 +778,19 @@ namespace UltraCanvas {
                     if (as == AlignSelf::Stretch) {
                         float marginsCross = it->marginCrossStart + it->marginCrossEnd;
                         itemCross = std::max(0.f, ln.lineCrossSize - marginsCross);
+                        // A stretched item still obeys its min / max cross
+                        // size (CSS Flexbox 9.4 step 11): a max-width:280px
+                        // block in a wider column stays 280px - stretched
+                        // past it, the picture inside drew taller than the
+                        // height it was measured at, over the text below.
+                        if (it->el->boxConstraints.has_value()) {
+                            const auto& bc = *it->el->boxConstraints;
+                            const Dimension& minD = s.axis.isRow ? bc.minHeight : bc.minWidth;
+                            const Dimension& maxD = s.axis.isRow ? bc.maxHeight : bc.maxWidth;
+                            const float maxC = resolveMinMax(maxD, availCross, ctx, INFINITY);
+                            const float minC = resolveMinMax(minD, availCross, ctx, 0.f);
+                            itemCross = std::max(minC, std::min(itemCross, maxC));
+                        }
                         // Re-measure with cross=Exact so descendants lay out correctly.
                         MeasureConstraints mc = s.axis.constraints(
                             ConstraintMode::Exact, it->mainSize,

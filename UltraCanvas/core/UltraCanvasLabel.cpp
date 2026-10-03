@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
 // Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
 //                 spacing: Pango breaks on spacing its extents leave out)
 // Version: 2.8.0 - LabelStyle::lineHeightPx: every line that height, but a line
@@ -452,7 +453,13 @@ namespace UltraCanvas {
             case UCEventType::MouseMove:
                 if (Contains(event.pointer)) {
                     if (!textLinks.empty()) {
+                        const int was = hoveredLink;
                         hoveredLink = LinkIndexAtPoint(event.pointer);
+                        if (hoveredLink != was && onLinkHovered) {
+                            onLinkHovered(hoveredLink >= 0
+                                              ? textLinks[static_cast<size_t>(hoveredLink)].href
+                                              : std::string());
+                        }
                     }
                     if (!IsHovered()) {
                         SetHovered(true);
@@ -461,6 +468,7 @@ namespace UltraCanvas {
                         }
                     }
                 } else {
+                    if (hoveredLink >= 0 && onLinkHovered) onLinkHovered(std::string());
                     hoveredLink = -1;
                     if (IsHovered()) {
                         SetHovered(false);
@@ -472,6 +480,7 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseLeave:
+                if (hoveredLink >= 0 && onLinkHovered) onLinkHovered(std::string());
                 hoveredLink = -1;
                 break;
 

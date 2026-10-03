@@ -13,6 +13,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud;
 namespace fs = std::filesystem;
@@ -129,7 +130,7 @@ TEST(service_upload_and_share_through_default_account) {
 
     const std::string dir = TempDir("service-files");
     const std::string local = dir + "/Q3 report.pdf";
-    std::ofstream(local) << "%PDF-1.4 demo";
+    std::ofstream(UltraCanvas::PathFromUtf8(local)) << "%PDF-1.4 demo";
 
     ShareLink link; std::string remotePath;
     Account def;
@@ -191,7 +192,7 @@ TEST(memory_provider_round_trip) {
     REQUIRE(service.CreateShareLink(a.accountId, "/missing", {}, link).code == ResultCode::NotFound);
 
     const std::string dir = TempDir("memory-files");
-    std::ofstream(dir + "/up.bin") << "12345";
+    std::ofstream(UltraCanvas::PathFromUtf8(dir + "/up.bin")) << "12345";
     std::string remote;
     REQUIRE(service.UploadAndShare(a.accountId, dir + "/up.bin", "/Documents", {}, link, &remote));
     REQUIRE_EQ(remote, std::string("/Documents/up.bin"));

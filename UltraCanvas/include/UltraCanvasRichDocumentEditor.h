@@ -15,7 +15,7 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -100,11 +100,13 @@ struct RichCharFormatDelta {
     bool setFontSize = false;      float fontSizePt = 0.0f;
     bool setColor = false;         std::string color;        // "#RRGGBB", empty = inherit
     bool setLink = false;          std::string linkTarget;   // empty = remove the link
+    int addComment = -1;           // put the text under this comment
+    int removeComment = -1;        // take it out from under this one
 
     bool IsEmpty() const {
         return !setBold && !setItalic && !setUnderline && !setStrikethrough && !setCode
             && !setSubscript && !setSuperscript && !setFontFamily && !setFontSize
-            && !setColor && !setLink;
+            && !setColor && !setLink && addComment < 0 && removeComment < 0;
     }
     // Applies this delta to one run's attributes.
     void ApplyTo(RichTextRun& run) const;
@@ -145,6 +147,24 @@ struct RichFindOptions {
     bool caseSensitive = false;
     bool wholeWord = false;
     bool wrapAround = true;
+};
+
+// ===== AUTOCORRECT / AUTOFORMAT AS YOU TYPE =====
+// What a word processor does to typed text. Each is applied as its own undo
+// step (except the quotes, which change the character as it is typed), so
+// Ctrl+Z right after takes back only the correction and keeps what was typed.
+struct RichAutoFormatOptions {
+    bool smartQuotes = true;    // " and ' become “ ” ‘ ’ by context
+    bool dashes = true;         // "a--b" becomes "a—b", "a -- b" becomes "a – b"
+    bool ellipsis = true;       // "..." becomes "…"
+    bool symbols = true;        // (c) (r) (tm) -> <- => become © ® ™ → ← ⇒
+    bool lists = true;          // "1. " / "a) " / "- " / "* " / "[ ] " opening a paragraph start a list
+    bool headings = true;       // "# " .. "###### " opening a paragraph make it a heading
+    bool rules = true;          // a paragraph of "---", "***" or "___" becomes a rule on Enter
+
+    bool AnyEnabled() const {
+        return smartQuotes || dashes || ellipsis || symbols || lists || headings || rules;
+    }
 };
 
 // ===== THE EDITOR =====
@@ -216,6 +236,27 @@ public:
     bool HasSelection() const { return caret != anchor; }
     RichDocRange GetSelectionRange() const { return RichDocRange(anchor, caret); }
 
+    // ===== CELL SELECTION =====
+    // When the anchor and the caret are in two different cells of one table,
+    // the selection is not a run of text but a block of whole cells: the
+    // smallest grid rectangle holding both cells, grown until no merged cell
+    // sticks out of it. Deleting clears those cells, formatting applies to all
+    // of their text, typing replaces them, copying copies them as a table, and
+    // MergeSelectedCells() merges them.
+    bool HasCellSelection() const;
+    // The rectangle in grid rows and columns, inclusive. False without a cell
+    // selection.
+    bool GetCellSelectionRect(int& top, int& left, int& bottom, int& right) const;
+    // The model cells in it, as {block, row, cellIndex, 0} positions in
+    // document order.
+    std::vector<RichDocPosition> SelectedCells() const;
+    // Selects grid rectangle [top..bottom] x [left..right] of a table (grown
+    // over merged cells as above).
+    bool SelectCellRange(int blockIndex, int top, int left, int bottom, int right);
+    // Merges every selected cell into the top-left one. False without a cell
+    // selection, or when the rectangle cannot be one cell.
+    bool MergeSelectedCells();
+
     // ===== NAVIGATION (positions only; no mutation) =====
     RichDocPosition ClampPosition(const RichDocPosition& pos) const;
     RichDocPosition NextCharacter(const RichDocPosition& pos) const;   // crosses blocks
@@ -275,12 +316,56 @@ public:
     void SetBlockType(RichBlockType type, int headingLevel = 0);
     void SetHeadingLevel(int level);          // 0 = plain paragraph
     void SetAlignment(RichTextAlign align);
+    // The selected paragraphs' writing direction (RichDocBlock::rightToLeft).
+    void SetRightToLeft(bool rightToLeft);
+    // True when text holds right-to-left letters (Hebrew, Arabic, ...).
+    static bool ContainsRightToLeft(const std::string& utf8);
+    // The direction of the first letter with one: +1 right-to-left, -1
+    // left-to-right, 0 none (digits and punctuation only).
+    static int FirstStrongDirection(const std::string& utf8);
     void SetListStyle(bool ordered);          // turns blocks into list items
     void ToggleList(bool ordered);            // ... or back into paragraphs
     void IndentList();                        // deeper nesting (list blocks only)
     void OutdentList();
+    // One quote level more / less for every block the selection touches (a
+    // mail reply's quote bars; see RichDocBlock::quoteLevel). Unlike the
+    // paragraph commands this works in a table cell too: the level belongs
+    // to the whole table, and restyles none of its cells.
+    void IncreaseQuoteLevel();
+    void DecreaseQuoteLevel();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
+    // Check lists: turns the selected blocks into unticked check list items,
+    // or, when they all are check list items already, back into paragraphs.
+    void ToggleCheckList();
+    // Ticks or unticks one check list item. False when it is not one.
+    bool ToggleChecked(int blockIndex);
+
+    // ===== NAMED STYLES =====
+    // The document's styles; a document without any gets
+    // UCRichDocument::DefaultStyles() the first time one is applied.
+    std::vector<RichStyle> GetStyles() const;
+    // Gives the selected paragraphs style `id`: its paragraph and character
+    // properties are applied (a heading style makes them headings), and the
+    // properties the old style set that the new one does not are taken back
+    // where the text still has them. One undo step.
+    bool ApplyParagraphStyle(const std::string& id);
+    // Gives the selected text character style `id` ("" removes it).
+    bool ApplyCharacterStyle(const std::string& id);
+    // Adds a style, or changes one: every paragraph and run that has it (or
+    // a style based on it) follows, except in a property formatted directly
+    // (one whose value is not what the style used to give it). Styles and
+    // text change as one undo step.
+    bool UpdateStyle(const RichStyle& style);
+    // Removes a style; what had it takes the style it was based on.
+    bool DeleteStyle(const std::string& id);
+    // A new style from the paragraph at the caret: its alignment, indents and
+    // spacing, and its first run's character formatting.
+    RichStyle StyleFromCaret(const std::string& id, const std::string& name) const;
+    // The caret paragraph's style ("Normal" when it states none; a heading
+    // without one reads as its heading style).
+    std::string CurrentParagraphStyle() const;
+    std::string CurrentCharacterStyle() const;
 
     // ===== STRUCTURE =====
     void InsertHorizontalRule();
@@ -296,6 +381,89 @@ public:
                           const std::vector<uint8_t>& data,
                           const std::string& altText = "");
     void DeleteBlock(int blockIndex);
+
+    // ===== PICTURES =====
+    // A picture is addressed by where it sits: an Image block by {block, 0},
+    // a picture in the line by the offset of its placeholder in its
+    // container. These return false when nothing is there.
+    bool IsImageAt(const RichDocPosition& image) const;
+    // Its size in points (0 = its own pixel size), its alt text and media.
+    bool GetImageInfo(const RichDocPosition& image, float& widthPt, float& heightPt,
+                      std::string& altText, int& mediaIndex) const;
+    // Resizes it, one undo step. Sizes <= 0 are refused.
+    bool SetImageSize(const RichDocPosition& image, float widthPt, float heightPt);
+    // Sets the description a screen reader or a text export gives for it.
+    bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
+    // Inserts a footnote or endnote reference at the caret, with a new note
+    // holding one empty paragraph. Returns the note's index, or -1.
+    int InsertNote(RichNote::Kind kind);
+    // The note a reference at `pos` (the caret, typically) points to, or -1:
+    // the reference just before or after the position.
+    int NoteAt(const RichDocPosition& pos) const;
+
+    // ===== SECTIONS =====
+    // A section break before the caret's paragraph (splitting it at the
+    // caret first when the caret is inside it): what follows is a new
+    // section, like the one it was in, starting on a new page or not.
+    bool InsertSectionBreak(bool newPage);
+    // The caret's section in `columns` columns, `gapPt` apart.
+    bool SetSectionColumns(int columns, float gapPt = 36.0f);
+    RichSectionSetup CurrentSection() const;
+
+    // ===== TRACKED CHANGES =====
+    // With tracking on, typed and pasted text is marked inserted, and deleted
+    // text stays, marked deleted, until the change is accepted (deleted text
+    // goes, inserted text stays) or rejected (the other way round). Deleting
+    // text that is itself a tracked insertion removes it outright. Paragraph
+    // breaks, tables and pictures are edited untracked.
+    void SetTrackChanges(bool enabled);
+    bool IsTrackingChanges() const { return trackChanges; }
+    void SetRevisionAuthor(const std::string& author, const std::string& date = "");
+    bool AcceptAllChanges();
+    bool RejectAllChanges();
+    // The change at a position (the run it is in), or every change in the
+    // selection when there is one.
+    bool AcceptChangeAt(const RichDocPosition& pos);
+    bool RejectChangeAt(const RichDocPosition& pos);
+    // The start of the next tracked change after `pos` (wrapping), or false.
+    bool NextChange(const RichDocPosition& pos, RichDocRange& out) const;
+
+    // ===== COMMENTS =====
+    // A comment on the selection (the word at the caret when nothing is
+    // selected). Returns its index in UCRichDocument::comments, or -1.
+    int AddComment(const std::string& text, const std::string& author = "", const std::string& date = "");
+    // Takes the comment off its text (one undo step); it is then not shown or
+    // saved.
+    bool RemoveComment(int index);
+    bool SetCommentText(int index, const std::string& text);
+    bool SetCommentResolved(int index, bool resolved);
+    // The comments the text at a position is under.
+    std::vector<int> CommentsAt(const RichDocPosition& pos) const;
+    // The span a comment covers (first to last covered character).
+    bool CommentRange(int index, RichDocRange& out) const;
+
+    // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
+    // A bookmark on the caret's paragraph (the table's, in a cell). False
+    // when the name is empty or taken.
+    bool AddBookmark(const std::string& name);
+    bool RemoveBookmark(const std::string& name);
+    // A field at the caret showing the bookmark's text (Field::Reference:
+    // "Figure 3" for a caption) or its page (Field::PageReference).
+    bool InsertCrossReference(const std::string& bookmark, RichTextRun::Field kind);
+    // A numbered caption - "Figure 2: text", the number a Sequence field - as
+    // a paragraph after the caret's block (a picture's or a table's), in the
+    // Caption style when the document has one. It is bookmarked, so it can be
+    // referred to; the bookmark's name is returned ("" on failure).
+    std::string InsertCaption(const std::string& label, const std::string& text);
+    // A table of contents of the headings of level 1..maxLevel, before the
+    // caret's paragraph (in its place when it is empty); and the same rebuilt
+    // where it is. Page numbers are PageReference fields a paged view fills.
+    bool InsertTableOfContents(int maxLevel = 3);
+    bool UpdateTableOfContents(int maxLevel = 3);
+
+    // Inserts a page number (Field::PageNumber) or page count field at the
+    // caret. Its text is a placeholder until a paged view numbers it.
+    bool InsertField(RichTextRun::Field field);
 
     // ===== TABLES =====
     // Cells are stored sparsely (see RichTableGrid), so a cell's index within
@@ -331,6 +499,23 @@ public:
     // Back to 1x1, with fresh empty cells filling the slots it gives up.
     bool SplitTableCell(int blockIndex, int row, int cellIndex);
 
+    // ===== AUTOFORMAT =====
+    // Off by default in the editing core (a programmatic InsertText must
+    // insert exactly what it is given); the element turns it on for typing.
+    void SetAutoFormatOptions(const RichAutoFormatOptions& options) { autoFormat = options; }
+    const RichAutoFormatOptions& GetAutoFormatOptions() const { return autoFormat; }
+    void SetAutoFormatEnabled(bool enabled) { autoFormatEnabled = enabled; }
+    bool IsAutoFormatEnabled() const { return autoFormatEnabled; }
+    // Typing, as a keyboard delivers it: the text is inserted (with smart
+    // quotes applied), then any correction the text now ends in is made as a
+    // separate undo step. Returns true when a correction was made.
+    bool TypeText(const std::string& utf8);
+    // Enter, as typed: a paragraph of "---" becomes a rule first. Then splits.
+    void TypeEnter();
+    // The corrections alone, for callers that insert text themselves.
+    std::string ApplySmartQuotes(const std::string& typed) const;
+    bool AutoFormatBeforeCaret();
+
     // ===== CLIPBOARD SUPPORT =====
     // Blocks covered by `range`, trimmed to the selected text — the payload of
     // a rich copy. Media referenced by an image block is NOT copied; callers
@@ -341,6 +526,10 @@ public:
     // block merges into the current paragraph and the last one keeps the text
     // that followed the caret, which is what makes pasting mid-sentence work.
     void InsertBlocks(const std::vector<RichDocBlock>& blocks);
+    // Drag and drop: moves (or, with `copy`, duplicates) the text of `range`
+    // to `target`, as one undo step, and leaves the moved text selected. False
+    // when the target is inside the range, or the range is a block of cells.
+    bool MoveRange(const RichDocRange& range, const RichDocPosition& target, bool copy = false);
 
     // ===== SEARCH =====
     // Matches are found in block text, so a match never spans a block boundary
@@ -380,6 +569,11 @@ public:
     bool Undo();
     bool Redo();
     void ClearUndoHistory();
+    // How many steps Undo can go back (default 200). The oldest steps are
+    // dropped past it; 0 = no limit. A step costs the blocks it touched, so a
+    // long history of typing is cheap, one of whole-document replaces is not.
+    void SetMaxUndoSteps(size_t steps);
+    size_t GetMaxUndoSteps() const { return maxUndoSteps; }
     // Ends the current typing run, so the next keystroke starts a new undo
     // step. Call it when the caret moves by any means other than typing.
     void BreakUndoCoalescing() { coalescing = false; }
@@ -417,6 +611,9 @@ private:
         RichDocPosition caretBefore, anchorBefore;
         RichDocPosition caretAfter, anchorAfter;
         bool typing = false;        // eligible to absorb the next keystroke
+        // Set when the step also changed the document's named styles.
+        bool stylesChanged = false;
+        std::vector<RichStyle> stylesBefore, stylesAfter;
     };
 
     // Records the blocks about to change, and on close records what they
@@ -432,8 +629,12 @@ private:
         std::vector<RichDocBlock> before;
         RichDocPosition caretBefore, anchorBefore;
         bool typing = false;
+        bool captureStyles = false;
+        std::vector<RichStyle> stylesBefore;
         EditScope(UCRichDocumentEditor& e, int first, int count, bool isTyping = false);
         ~EditScope();
+        // The step also records the named styles (a style edit).
+        void CaptureStyles() { captureStyles = true; stylesBefore = ed.doc->styles; }
     };
     friend struct EditScope;
 
@@ -442,14 +643,30 @@ private:
     void DeleteRangeInternal(const RichDocRange& range);
     void InsertTextInternal(const std::string& utf8);
     RichDocPosition ClampToAnchorContainer(const RichDocPosition& pos) const;
+    // Clears the text of every selected cell; the caret goes to the start of
+    // the top-left one. No undo step of its own.
+    void ClearSelectedCellsInternal();
+    void InsertBlocksIntoCellInternal(const std::vector<RichDocBlock>& blocks);
+    void InsertBlocksInternal(const std::vector<RichDocBlock>& blocks);
+    // Grid rectangle of a cell selection between two cell positions.
+    bool CellRectBetween(const RichDocPosition& a, const RichDocPosition& b,
+                         int& top, int& left, int& bottom, int& right) const;
     void InsertLineBreakInternal();
     void ReplaceRangeInternal(const RichDocRange& range, const std::string& utf8);
     void ApplyCharFormatToRangeInternal(const RichDocRange& range,
                                         const RichCharFormatDelta& delta);
     void SplitBlockInternal();
+    void ChangeQuoteLevel(int delta);
+    static constexpr int kMaxQuoteLevel = 8;
     void InsertStructuralBlock(RichBlockType type);
 
     void CommitStep(UndoStep step);
+    // Puts `id`'s properties onto a block and its runs, taking back those of
+    // `previousId` it still carries. force: the new style's properties are set
+    // everywhere (applying a style); otherwise only where the text still had
+    // the old value (a style being changed).
+    void RestyleBlock(RichDocBlock& block, const RichStyle& before, const RichStyle& after, bool force) const;
+    void EnsureStyles();
     void NotifyChanged();
     void NotifySelectionChanged();
     void EnsureNotEmpty();
@@ -463,9 +680,10 @@ private:
     static void EraseRunRange(std::vector<RichTextRun>& runs, int startByte, int endByte);
     // Inserts text at `byteOffset` carrying `format`; when `format` is null the
     // text inherits the formatting of the run it lands in.
-    static void InsertIntoRuns(std::vector<RichTextRun>& runs, int byteOffset,
-                               const std::string& text, const RichTextRun* format,
-                               bool lineBreakBefore = false);
+    // With tracking on, the text is a tracked insertion.
+    void InsertIntoRuns(std::vector<RichTextRun>& runs, int byteOffset,
+                        const std::string& text, const RichTextRun* format,
+                        bool lineBreakBefore = false);
     static std::vector<RichTextRun> SliceRuns(const std::vector<RichTextRun>& runs,
                                               int startByte, int endByte);
     // The run covering `byteOffset` (preferring the one to its left, which is
@@ -491,9 +709,25 @@ private:
     bool applyingUndo = false;      // suppresses step recording while reverting
     bool modified = false;
 
+    RichAutoFormatOptions autoFormat;
+    bool autoFormatEnabled = false;
+
     // Format armed by a toolbar press at a collapsed caret.
     RichTextRun pendingFormat;
     bool pendingFormatValid = false;
+
+    // Tracked changes.
+    bool trackChanges = false;
+    bool trackBackward = false;       // Backspace: the caret stays before what it marked
+    std::string revisionAuthor;
+    std::string revisionDate;
+    int currentRevision = -1;         // this session's UCRichDocument::revisions entry
+    int CurrentRevision();
+    // Marks `range` deleted (tracked); true when it handled the range.
+    bool MarkRangeDeleted(const RichDocRange& range);
+    // Applies accept (true) or reject to the changes in [from, to) of every
+    // run list in blocks first..last (all runs of middle blocks).
+    void ResolveChanges(const RichDocRange& range, bool accept, bool wholeDocument);
 };
 
 } // namespace UltraCanvas

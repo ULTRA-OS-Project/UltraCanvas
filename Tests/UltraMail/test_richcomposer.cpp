@@ -187,3 +187,37 @@ TEST(outbox_keeps_html_alternative_and_inline_parts) {
     REQUIRE_EQ(back.inlineParts[0].contentId, d.inlineParts[0].contentId);
     REQUIRE(back.inlineParts[0].data == d.inlineParts[0].data);
 }
+
+TEST(richedit_brings_a_queued_html_message_back_with_its_pictures) {
+    const SourceMessage src = HtmlSource();
+    Draft d = Composer::Reply(src, "Erika", "erika@example.com", false);
+    MakeRichReply(d, src);
+    UltraCanvas::RichTextRun answer;
+    answer.text = "Great, thank you!";
+    d.richBody->blocks[0].runs.push_back(answer);
+    RenderRichBody(d);
+    const std::string id = d.inlineParts[0].contentId;
+    const std::vector<uint8_t> picture = d.inlineParts[0].data;
+
+    // As the outbox gives it back: the HTML, its text and its parts, no document.
+    Draft queued = d;
+    queued.richBody.reset();
+    REQUIRE(MakeRichEdit(queued));
+    REQUIRE(queued.richBody != nullptr);
+    REQUIRE(Has(queued.richBody->ToPlainText(), "Great, thank you!"));
+    REQUIRE_EQ(queued.richBody->media.size(), (size_t)1);
+    REQUIRE(queued.richBody->media[0].data == picture);
+
+    // Sent again: the same text, the same picture under the same Content-ID.
+    RenderRichBody(queued);
+    REQUIRE(Has(queued.body, "Great, thank you!"));
+    REQUIRE(Has(queued.body, "<blockquote type=\"cite\""));
+    REQUIRE_EQ(queued.inlineParts.size(), (size_t)1);
+    REQUIRE_EQ(queued.inlineParts[0].contentId, id);
+
+    // A plain-text message stays plain text.
+    Draft plain = Composer::NewMessage("Erika", "erika@example.com");
+    plain.body = "Hello";
+    REQUIRE(!MakeRichEdit(plain));
+    REQUIRE(plain.richBody == nullptr);
+}

@@ -13,8 +13,15 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasAccessibilityBridge.h"
 
 #include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -40,6 +47,14 @@ static int failCount = 0;
     } while (0)
 
 namespace {
+
+// A 1x1 PNG, for pictures that have to decode.
+const std::vector<uint8_t> kDotPng = {
+    0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+    0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+    0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x78,0x9C,0x63,0xF8,0xCF,0xC0,0x00,
+    0x00,0x03,0x01,0x01,0x00,0xC9,0xFE,0x92,0xEF,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,
+    0x44,0xAE,0x42,0x60,0x82};
 
 UCEvent MouseEvent(UCEventType type, float x, float y, bool shift = false) {
     UCEvent event;
@@ -882,6 +897,760 @@ int main() {
             for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return false;
             return true;
         }());
+    }
+
+    // ===== CHECK LISTS =====
+    std::cerr << "\n--- Check lists ---" << std::endl;
+    {
+        edit->SetMarkdown("- [ ] first task\n- [x] second task\n");
+        window->UpdateAndRender();
+        TEST("Two check list items", editor.GetBlockCount() == 2 && editor.GetBlock(0).checkbox);
+        // The box sits left of the text, inside the list indent.
+        const float y = 4.0f + 8.0f + 6.0f;       // padding + half a line
+        edit->SetFocus(true);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 8.0f + 10.0f, y));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 8.0f + 10.0f, y));
+        window->UpdateAndRender();
+        TEST("Clicking the box ticks it", editor.GetBlock(0).checked);
+        TEST("...and does not tick the other", editor.GetBlock(1).checked);
+        TEST("Undo takes the tick back", edit->Undo() && !editor.GetBlock(0).checked);
+        editor.SetCaret(RichDocPosition(1, 3));
+        TEST("Ticking from the keyboard", edit->ToggleCheckedAtCaret() && !editor.GetBlock(1).checked);
+        TEST("The Markdown keeps the boxes", edit->GetMarkdown().find("- [ ] first task") != std::string::npos);
+    }
+
+    // ===== MATH =====
+    std::cerr << "\n--- Math ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun before, formula, after;
+        before.text = "Energy ";
+        formula.text = "E = mc^2";
+        formula.math = true;
+        after.text = " holds.";
+        paragraph.runs = {before, formula, after};
+        document->blocks.push_back(paragraph);
+        RichDocBlock display;
+        display.type = RichBlockType::MathBlock;
+        RichTextRun source;
+        source.text = "\\int_0^1 x\\,dx";
+        display.runs.push_back(source);
+        document->blocks.push_back(display);
+        edit->SetDocument(document);
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        TEST("A document with formulas lays out", edit->GetContentHeight() > 0.0f);
+        std::cerr << "  (math engine " << (UltraCanvasInlineMath::IsAvailable() ? "loaded" : "not available")
+                  << ")" << std::endl;
+        // Wherever the caret goes, the formula's source stays the text.
+        editor.SetCaret(RichDocPosition(0, 9));
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(1, 2));
+        window->UpdateAndRender();
+        TEST("Formulas keep their source", edit->GetPlainText().find("E = mc^2") != std::string::npos);
+    }
+
+    // ===== CELL SELECTION =====
+    std::cerr << "\n--- Cell selection ---" << std::endl;
+    {
+        edit->SetMarkdown("| a | b |\n|---|---|\n| c | d |\n");
+        window->UpdateAndRender();
+        // Drag from the first cell to the last.
+        editor.SetCaret(RichDocPosition(0, 0, 0, 0));
+        window->UpdateAndRender();
+        const RichDocPosition last(0, 1, 1, 1);
+        editor.SetCaret(last, true);
+        window->UpdateAndRender();
+        TEST("A drag across cells is a cell selection", edit->HasCellSelection());
+        TEST("Copy of a cell selection is tab separated",
+             edit->GetSelectedText() == "a\tb\nc\td\n");
+        TEST("The selected cells merge into one", edit->MergeSelectedCells()
+             && editor.GetBlock(0).tableRows[0].cells[0].columnSpan == 2
+             && editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
+        window->UpdateAndRender();
+    }
+
+    // ===== DRAG AND DROP =====
+    std::cerr << "\n--- Drag and drop ---" << std::endl;
+    {
+        edit->SetMarkdown("alpha beta gamma\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 6));   // "alpha "
+        window->UpdateAndRender();
+        // Press inside "alpha", drag past the end of the line, release.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 60, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 600, 18));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 600, 18));
+        window->UpdateAndRender();
+        TEST("Dragging a selection moves it: " + editor.BlockText(0), editor.BlockText(0) == "beta gammaalpha ");
+        TEST("...and it stays selected", edit->GetSelectedText() == "alpha ");
+        TEST("One undo puts it back", edit->Undo() && editor.BlockText(0) == "alpha beta gamma");
+
+        // A press inside the selection without moving is a click.
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 6));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 20, 18));
+        window->UpdateAndRender();
+        TEST("A click inside the selection just places the caret", !edit->HasSelection());
+        // A picture file dropped from another application lands in the line.
+        const std::string file = PathToUtf8(std::filesystem::temp_directory_path() / "rte-drop-dot.png");
+        {
+            std::ofstream out(PathFromUtf8(file), std::ios::binary);
+            out.write(reinterpret_cast<const char*>(kDotPng.data()), static_cast<std::streamsize>(kDotPng.size()));
+        }
+        UCEvent drop = MouseEvent(UCEventType::Drop, 600, 18);
+        drop.droppedFiles = {file};
+        TEST("A dropped image file is accepted", edit->OnEvent(drop));
+        TEST("...as a picture in the line", [&]() {
+            for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return true;
+            return false;
+        }());
+        std::filesystem::remove(PathFromUtf8(file));
+    }
+
+    // ===== PICTURES: SELECT, RESIZE, ALT TEXT =====
+    std::cerr << "\n--- Picture resize ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock image;
+        image.type = RichBlockType::Image;
+        image.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        image.imageWidthPt = 60.0f;       // 80 x 40 px at 96/72
+        image.imageHeightPt = 30.0f;
+        document->blocks.push_back(image);
+        RichDocBlock after;
+        RichTextRun text;
+        text.text = "Below the picture.";
+        after.runs.push_back(text);
+        document->blocks.push_back(after);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 30, 20));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 30, 20));
+        window->UpdateAndRender();
+        TEST("Clicking a picture selects it", edit->HasSelectedImage());
+
+        // Drag the bottom-right handle 40 px to the right: a corner keeps the
+        // proportions, so 80x40 becomes 120x60 px = 90x45 pt.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 88, 48));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 110, 48));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 128, 48));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 128, 48));
+        window->UpdateAndRender();
+        const RichDocBlock& resized = editor.GetBlock(0);
+        TEST("A corner handle resizes in proportion: " + std::to_string(resized.imageWidthPt) + "x"
+             + std::to_string(resized.imageHeightPt),
+             std::abs(resized.imageWidthPt - 90.0f) < 1.0f && std::abs(resized.imageHeightPt - 45.0f) < 1.0f);
+        TEST("One undo restores the size", edit->Undo() && std::abs(editor.GetBlock(0).imageWidthPt - 60.0f) < 0.01f);
+
+        TEST("Alt text on the selected picture", edit->SelectImage(RichDocPosition(0, 0))
+             && edit->SetSelectedImageAltText("A red dot") && editor.GetBlock(0).imageAltText == "A red dot"
+             && edit->GetSelectedImageAltText() == "A red dot");
+        TEST("Delete removes a selected picture", [&]() {
+            edit->OnEvent(KeyEvent(UCKeys::Delete));
+            window->UpdateAndRender();
+            return editor.GetBlock(0).type != RichBlockType::Image;
+        }());
+    }
+
+    // ===== FLOATING PICTURES =====
+    std::cerr << "\n--- Floating pictures ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        picture.imageWidthPt = 60.0f;          // 80 x 53 px
+        picture.imageHeightPt = 40.0f;
+        picture.imageWrap = RichTextRun::ImageWrap::Square;
+        picture.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun words;
+        words.text = std::string(400, 'x').replace(0, 400, 400 / 5, 'w') + " "
+                   + std::string("the quick brown fox jumps over the lazy dog ") + "the quick brown fox";
+        paragraph.runs = {picture, words};
+        document->blocks.push_back(paragraph);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        // The picture sits at the column's right edge, the text beside it.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 740, 30));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 740, 30));
+        window->UpdateAndRender();
+        TEST("A floating picture sits at the right edge, where a click selects it", edit->HasSelectedImage());
+        TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
+    }
+
+    // ===== BLOCKS RUNNING OVER PAGES =====
+    std::cerr << "\n--- Page splitting ---" << std::endl;
+    {
+        // One paragraph longer than a page: it continues on the next page
+        // instead of running past the first one's bottom margin.
+        std::string words;
+        for (int i = 0; i < 700; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown(words + "\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A paragraph taller than a page runs onto the next: " + std::to_string(edit->GetPageCount()) + " pages",
+             edit->GetPageCount() >= 2);
+        // The caret at its end is on the last page: scrolling to it goes down.
+        editor.SetCaret(editor.DocumentEnd());
+        edit->ScrollToCaret();
+        TEST("The caret at its end is scrolled to on a later page", edit->GetScrollOffset() > 600.0f);
+        // Typing there lands in the same paragraph.
+        edit->InsertText("END");
+        window->UpdateAndRender();
+        TEST("...and typing there continues it", editor.GetBlockCount() == 1
+             && editor.BlockText(0).find("END") != std::string::npos);
+
+        // A long table with a header row continues on the next page too.
+        std::string table = "| Item | Qty |\n|---|---|\n";
+        for (int r = 0; r < 80; r++) table += "| row " + std::to_string(r) + " | " + std::to_string(r) + " |\n";
+        edit->SetMarkdown(table);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A table longer than a page runs over pages", edit->GetPageCount() >= 2);
+        edit->SetPageView(false);
+    }
+
+    // ===== ZOOM AND SIDEWAYS SCROLLING =====
+    std::cerr << "\n--- Zoom ---" << std::endl;
+    {
+        edit->SetMarkdown("alpha beta gamma delta\n");
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 60, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 60, 18));
+        window->UpdateAndRender();
+        const int atOne = editor.GetCaret().byteOffset;
+        edit->SetZoom(2.0f);
+        window->UpdateAndRender();
+        // The same document point is twice as far from the view's origin.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 8 + 2 * (60 - 8), 8 + 2 * (18 - 8)));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 8 + 2 * (60 - 8), 8 + 2 * (18 - 8)));
+        window->UpdateAndRender();
+        TEST("A click lands on the same text at 200%", editor.GetCaret().byteOffset == atOne && atOne > 0);
+        TEST("Zoom is clamped", [&]() { edit->SetZoom(50.0f); return edit->GetZoom() <= 5.0f; }());
+
+        edit->SetZoom(2.0f);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        edit->SetHorizontalScrollOffset(200.0f);
+        TEST("A page wider than the view scrolls sideways", edit->GetHorizontalScrollOffset() > 0.0f);
+        edit->SetZoom(0.5f);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("...and not when it fits", edit->GetHorizontalScrollOffset() == 0.0f);
+        edit->SetPageView(false);
+        edit->SetZoom(1.0f);
+        window->UpdateAndRender();
+    }
+
+    // ===== PDF =====
+    std::cerr << "\n--- PDF export ---" << std::endl;
+    {
+        std::string words;
+        for (int i = 0; i < 700; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown("# Report\n\n" + words + "\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(1, 0), RichDocPosition(1, 20));
+        std::vector<uint8_t> pdf;
+        std::string error;
+        TEST("The document exports as a PDF: " + error, edit->ExportToPdf(pdf, error));
+        TEST("...which is a PDF", pdf.size() > 1000 && std::string(pdf.begin(), pdf.begin() + 5) == "%PDF-");
+        TEST("Exporting leaves the view as it was", !edit->IsPageView() && edit->HasSelection());
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 20));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 20, 20));
+        window->UpdateAndRender();
+        TEST("...and clicks still land in it", editor.GetCaret().blockIndex == 0);
+    }
+
+    // ===== EDITING HEADERS AND FOOTERS =====
+    std::cerr << "\n--- Header and footer editing ---" << std::endl;
+    {
+        edit->SetMarkdown("Body text on the page.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A header opens for editing", edit->EditHeader(0) && edit->IsEditingHeaderOrFooter());
+        window->UpdateAndRender();
+        edit->OnEvent(TextEvent("M"));
+        edit->OnEvent(TextEvent("y"));
+        edit->InsertText(" letterhead");
+        window->UpdateAndRender();
+        TEST("Typing goes into the header", edit->GetDocument()->pageFurniture.header.size() == 1
+             && UCRichDocument::ConcatenateRunText(edit->GetDocument()->pageFurniture.header[0].runs) == "My letterhead");
+        TEST("...not into the body", edit->GetDocument()->blocks.size() == 1
+             && edit->GetPlainText().find("Body text") != std::string::npos);
+        TEST("The document is modified", edit->IsModified());
+        edit->OnEvent(KeyEvent(UCKeys::Escape));
+        window->UpdateAndRender();
+        TEST("Escape goes back to the body", !edit->IsEditingHeaderOrFooter()
+             && editor.BlockText(0) == "Body text on the page.");
+        TEST("...keeping the header", !edit->GetDocument()->pageFurniture.header.empty());
+
+        // A double-click in the bottom margin of the page opens its footer.
+        window->UpdateAndRender();
+        const float pageTop = 16.0f;             // style.pageGap
+        const float footerY = 8.0f + pageTop + 1100.0f - 20.0f;   // near the page's foot
+        edit->SetScrollOffset(footerY - 300.0f);
+        window->UpdateAndRender();
+        const float y = footerY - edit->GetScrollOffset() ;
+        UCEvent click = MouseEvent(UCEventType::MouseDoubleClick, 300.0f, y);
+        edit->OnEvent(click);
+        window->UpdateAndRender();
+        TEST("A double-click in the bottom margin edits the footer", edit->IsEditingFooter());
+        edit->InsertText("Page footer");
+        edit->FinishHeaderFooterEditing();
+        TEST("...which the document now has", !edit->GetDocument()->pageFurniture.footer.empty());
+        edit->SetPageView(false);
+        edit->ScrollToTop();
+    }
+
+    // ===== NAMED STYLES =====
+    std::cerr << "\n--- Named styles ---" << std::endl;
+    {
+        edit->SetMarkdown("Title text\n\nBody text\n");
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 2));
+        const float before = edit->GetContentHeight();
+        TEST("A paragraph takes the Title style", edit->ApplyParagraphStyle("Title")
+             && edit->GetCurrentParagraphStyle() == "Title");
+        window->UpdateAndRender();
+        TEST("...and grows with its larger text", edit->GetContentHeight() > before);
+        TEST("A new style from the paragraph", edit->NewStyleFromCaret("My Title")
+             && edit->GetCurrentParagraphStyle() == "MyTitle");
+        TEST("The styles list has it", [&]() {
+            for (const auto& s : edit->GetStyles()) if (s.id == "MyTitle" && s.name == "My Title") return true;
+            return false;
+        }());
+    }
+
+    // ===== PAGE FIELDS IN THE BODY =====
+    std::cerr << "\n--- Page fields ---" << std::endl;
+    {
+        edit->SetMarkdown("First page\n\nSecond page\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->InsertPageBreak();
+        window->UpdateAndRender();
+        const int secondBlock = editor.GetBlockCount() - 1;
+        editor.SetCaret(editor.ContainerEnd(RichDocPosition(secondBlock, 0)));
+        edit->InsertText(" is page ");
+        edit->InsertPageNumberField();
+        edit->InsertText(" of ");
+        edit->InsertPageCountField();
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("Two pages", edit->GetPageCount() == 2);
+        const std::string text = editor.BlockText(secondBlock);
+        TEST("The body's page field numbers its own page: " + text,
+             text.find("is page 2 of 2") != std::string::npos);
+        TEST("Typing after a field is not part of it", [&]() {
+            for (const auto& r : editor.GetBlock(secondBlock).runs) {
+                if (r.field != RichTextRun::Field::Plain && r.text.find("of") != std::string::npos) return false;
+            }
+            return true;
+        }());
+        edit->SetPageView(false);
+    }
+
+    // ===== FOOTNOTES AND ENDNOTES =====
+    std::cerr << "\n--- Footnotes and endnotes ---" << std::endl;
+    {
+        edit->SetMarkdown("Alpha beta gamma.\n\nSecond paragraph.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 5));             // after "Alpha"
+        TEST("A footnote is inserted and opened", edit->InsertFootnote() && edit->IsEditingNote());
+        window->UpdateAndRender();
+        edit->InsertText("The first note.");
+        window->UpdateAndRender();
+        edit->OnEvent(KeyEvent(UCKeys::Escape));
+        window->UpdateAndRender();
+        const auto doc = edit->GetDocument();
+        TEST("Escape goes back to the body", !edit->IsEditingNote());
+        TEST("The note holds what was typed", doc->notes.size() == 1 && !doc->notes[0].blocks.empty()
+             && UCRichDocument::ConcatenateRunText(doc->notes[0].blocks[0].runs) == "The first note.");
+        TEST("The reference is marked 1: " + editor.BlockText(0), editor.BlockText(0) == "Alpha1 beta gamma.");
+
+        // One before it takes 1; the first becomes 2.
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->InsertFootnote();
+        edit->InsertText("Earlier note.");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("Marks renumber in document order: " + editor.BlockText(0), editor.BlockText(0) == "1Alpha2 beta gamma.");
+
+        editor.SetCaret(editor.ContainerEnd(RichDocPosition(1, 0)));
+        edit->InsertEndnote();
+        edit->InsertText("An endnote.");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("An endnote is marked i: " + editor.BlockText(1), editor.BlockText(1) == "Second paragraph.i");
+        TEST("The plain text carries the notes", edit->GetPlainText().find("An endnote.") != std::string::npos);
+        TEST("Markdown carries them as footnotes", edit->GetMarkdown().find("[^2]: The first note.") != std::string::npos);
+        TEST("Typing after a mark is not raised", [&]() {
+            editor.SetCaret(editor.ContainerEnd(RichDocPosition(1, 0)));
+            edit->InsertText("!");
+            const auto& runs = editor.GetBlock(1).runs;
+            return !runs.empty() && runs.back().text == "!" && !runs.back().superscript && runs.back().noteIndex < 0;
+        }());
+        TEST("A note can be opened again", edit->EditNote(0) && edit->IsEditingNote());
+        edit->FinishHeaderFooterEditing();
+
+        // A long document: the footnote stays on its reference's page, and
+        // the page's text makes room for it.
+        std::string words;
+        for (int i = 0; i < 900; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown(words + "\n");
+        window->UpdateAndRender();
+        const int pagesBefore = edit->GetPageCount();
+        editor.SetCaret(RichDocPosition(0, 40));
+        edit->InsertFootnote();
+        std::string longNote;
+        for (int i = 0; i < 60; i++) longNote += "note" + std::to_string(i) + " ";
+        edit->InsertText(longNote);
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("A long footnote pushes text on to more pages", edit->GetPageCount() >= pagesBefore);
+        std::vector<uint8_t> pdf;
+        std::string error;
+        TEST("A document with notes exports as a PDF: " + error, edit->ExportToPdf(pdf, error) && pdf.size() > 1000);
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        TEST("Outside page view the notes follow the body", edit->GetContentHeight() > 0.0f);
+    }
+
+    // ===== CONTENTS AND CROSS-REFERENCES =====
+    std::cerr << "\n--- Contents and cross-references ---" << std::endl;
+    {
+        std::string words;
+        for (int i = 0; i < 500; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown("# First\n\n" + words + "\n\n# Second\n\n" + words + "\n\n# Third\n\nEnd.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        TEST("A table of contents is inserted", edit->InsertTableOfContents());
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const std::string third = editor.BlockText(2);
+        TEST("Its page numbers are the headings' pages: " + editor.BlockText(0) + " | " + third,
+             editor.BlockText(0) == "First\t1" && third.rfind("Third\t", 0) == 0 && third != "Third\t1");
+        TEST("Several pages", edit->GetPageCount() >= 2);
+        // Ctrl+click on an entry goes to its heading: tried down the top of
+        // the first page until the third entry is hit.
+        bool reached = false;
+        for (float y = 40.0f; y < 320.0f && !reached; y += 4.0f) {
+            edit->ScrollToTop();
+            editor.SetCaret(RichDocPosition(0, 0));
+            window->UpdateAndRender();
+            UCEvent click = MouseEvent(UCEventType::MouseDown, 300.0f, y);
+            click.ctrl = true;
+            edit->OnEvent(click);
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 300.0f, y));
+            const int caretBlock = editor.GetCaret().blockIndex;
+            reached = editor.GetBlock(caretBlock).type == RichBlockType::Heading && editor.BlockText(caretBlock) == "Third";
+        }
+        TEST("Ctrl+click on an entry goes to its heading", reached);
+        window->UpdateAndRender();
+        TEST("...scrolled into view", edit->GetScrollOffset() > 100.0f);
+        edit->SetPageView(false);
+    }
+
+    // ===== COMMENTS =====
+    std::cerr << "\n--- Comments ---" << std::endl;
+    {
+        edit->SetMarkdown("A sentence someone will comment on.\n\nAnother paragraph.\n");
+        window->UpdateAndRender();
+        const float widthBefore = edit->GetContentHeight();
+        TEST("No pane without comments", !edit->IsCommentPaneVisible());
+        edit->SetCommentAuthor("Reviewer");
+        editor.SetSelection(RichDocPosition(0, 2), RichDocPosition(0, 10));
+        const int comment = edit->AddComment("Clarify.");
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A comment is added", comment >= 0 && edit->GetDocument()->comments[static_cast<size_t>(comment)].author == "Reviewer");
+        TEST("...and the pane appears", edit->IsCommentPaneVisible());
+        (void)widthBefore;
+        int activated = -1;
+        edit->onCommentActivated = [&](int index) { activated = index; };
+        editor.SetCaret(RichDocPosition(1, 0));
+        bool selected = false;
+        const float paneX = static_cast<float>(edit->GetWidth()) - 15.0f - 110.0f;
+        for (float y = 2.0f; y < 200.0f && !selected; y += 4.0f) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, paneX, y));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, paneX, y));
+            selected = editor.HasSelection() && editor.GetSelectionRange().start == RichDocPosition(0, 2);
+            if (selected) edit->OnEvent(MouseEvent(UCEventType::MouseDoubleClick, paneX, y));
+        }
+        TEST("Clicking the comment selects its text", selected);
+        TEST("Double-clicking it asks the host to edit it", activated == comment);
+        TEST("Hiding comments hides the pane", [&]() {
+            edit->SetShowComments(false);
+            window->UpdateAndRender();
+            const bool hidden = !edit->IsCommentPaneVisible();
+            edit->SetShowComments(true);
+            return hidden;
+        }());
+        TEST("Removing it removes the pane", [&]() {
+            edit->RemoveComment(comment);
+            window->UpdateAndRender();
+            return !edit->IsCommentPaneVisible();
+        }());
+        edit->onCommentActivated = nullptr;
+    }
+
+    // ===== TRACKED CHANGES =====
+    std::cerr << "\n--- Tracked changes ---" << std::endl;
+    {
+        edit->SetMarkdown("Some text to review.\n");
+        window->UpdateAndRender();
+        edit->SetCommentAuthor("Reviewer");
+        edit->SetTrackChanges(true);
+        TEST("Tracking is on", edit->IsTrackingChanges());
+        editor.SetCaret(RichDocPosition(0, 5));
+        edit->OnEvent(TextEvent("n"));
+        edit->OnEvent(TextEvent("e"));
+        edit->OnEvent(TextEvent("w"));
+        edit->OnEvent(TextEvent(" "));
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->OnEvent(KeyEvent(UCKeys::Delete));
+        window->UpdateAndRender();
+        TEST("Typed and deleted text both stay: " + editor.BlockText(0), editor.BlockText(0) == "Some new text to review.");
+        TEST("...marked by Reviewer", [&]() {
+            const auto& doc = edit->GetDocument();
+            for (const auto& r : editor.GetBlock(0).runs) {
+                if (r.change != RichTextRun::Change::Unchanged
+                    && (r.revision < 0 || doc->revisions[static_cast<size_t>(r.revision)].author != "Reviewer")) return false;
+            }
+            return true;
+        }());
+        TEST("The next change is found", edit->GoToNextChange() && editor.HasSelection());
+        TEST("All changes accepted", edit->AcceptAllChanges() && editor.BlockText(0) == "ome new text to review.");
+        edit->SetTrackChanges(false);
+    }
+
+    // ===== COLUMNS =====
+    std::cerr << "\n--- Sections in columns ---" << std::endl;
+    {
+        std::string md = "Intro.\n\n";
+        for (int i = 0; i < 30; i++) md += "Paragraph " + std::to_string(i) + " with some words to fill a narrow column of text in two.\n\n";
+        edit->SetMarkdown(md);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(1, 0));
+        TEST("A section break", edit->InsertSectionBreak(false));
+        TEST("...in two columns", edit->SetSectionColumns(2) && edit->GetCurrentSection().columns == 2);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        // The section fills the first column, then the second.
+        editor.SetCaret(RichDocPosition(1, 0));
+        window->UpdateAndRender();
+        const Rect2Df first = edit->GetCaretRectForTest();
+        int second = -1;
+        Rect2Df secondRect;
+        for (int i = 2; i < editor.GetBlockCount(); i++) {
+            editor.SetCaret(RichDocPosition(i, 0));
+            window->UpdateAndRender();
+            const Rect2Df r = edit->GetCaretRectForTest();
+            if (r.x > first.x + 100.0f) { second = i; secondRect = r; break; }
+        }
+        TEST("Later paragraphs go into the second column", second > 1);
+        TEST("...which starts level with the first", second > 1 && std::abs(secondRect.y - first.y) < 60.0f);
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(second > 1 ? second : 2, 0));
+        window->UpdateAndRender();
+        TEST("Outside page view the text is one column", edit->GetCaretRectForTest().x < first.x + 100.0f);
+    }
+
+    // ===== RICH PASTE =====
+    std::cerr << "\n--- Rich copy and paste ---" << std::endl;
+    {
+        edit->SetMarkdown("Some **bold** text.\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 14));
+        edit->Copy();
+        std::string html;
+        TEST("Copy puts HTML on the clipboard", GetClipboardHtml(html) && html.find("<b>bold</b>") != std::string::npos);
+        // Into another document: formatted, pictures and all.
+        auto other = std::make_shared<UltraCanvasRichTextEdit>("Other", 0, 0, 300, 200);
+        window->AddChild(other);
+        other->SetMarkdown("\n");
+        window->UpdateAndRender();
+        other->Paste();
+        bool bold = false;
+        for (const auto& r : other->GetEditor().GetBlock(0).runs) bold = bold || (r.text == "bold" && r.bold);
+        TEST("...and another document pastes it formatted", bold);
+        // From another application: only its HTML and text.
+        SetClipboardHtml("<p>From <i>elsewhere</i> with <span style=\"color:#00ff00\">green</span></p>",
+                         "From elsewhere with green");
+        other->SetMarkdown("\n");
+        window->UpdateAndRender();
+        other->Paste();
+        bool italic = false, green = false;
+        for (const auto& r : other->GetEditor().GetBlock(0).runs) {
+            italic = italic || (r.text == "elsewhere" && r.italic);
+            green = green || (r.text == "green" && r.color == "#00FF00");
+        }
+        TEST("HTML from another application pastes formatted: " + other->GetEditor().BlockText(0),
+             italic && green && other->GetEditor().BlockText(0) == "From elsewhere with green");
+        window->RemoveChild(other);
+    }
+
+    // ===== INPUT METHOD COMPOSITION =====
+    std::cerr << "\n--- Input method composition ---" << std::endl;
+    {
+        edit->SetMarkdown("ab\n");
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 1));
+        window->UpdateAndRender();
+        const Rect2Df before = edit->GetCaretRectForTest();
+        TEST("The element draws compositions itself", edit->DrawsTextComposition());
+        UCEvent compose;
+        compose.type = UCEventType::TextComposition;
+        compose.text = "\xE3\x81\x8B\xE3\x81\xAA";          // kana, being composed
+        compose.compositionCursor = static_cast<int>(compose.text.size());
+        TEST("A composition is taken", edit->OnEvent(compose));
+        window->UpdateAndRender();
+        const Rect2Df during = edit->GetCaretRectForTest();
+        TEST("It shows at the caret, which moves to its end", during.x > before.x + 5.0f);
+        TEST("...without entering the document", editor.BlockText(0) == "ab" && edit->GetCompositionText() == compose.text);
+        // The input method commits: the text arrives typed.
+        UCEvent commit = TextEvent("\xE4\xBB\xAE");
+        edit->OnEvent(commit);
+        window->UpdateAndRender();
+        TEST("The committed text is typed and the composition gone",
+             editor.BlockText(0) == "a\xE4\xBB\xAE" "b" && edit->GetCompositionText().empty());
+        compose.text.clear();
+        edit->OnEvent(compose);
+        TEST("An empty composition ends it", edit->GetCompositionText().empty());
+    }
+
+    // ===== RIGHT TO LEFT =====
+    std::cerr << "\n--- Right-to-left text ---" << std::endl;
+    {
+        // Hebrew: shalom olam.
+        edit->SetMarkdown("\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D \xD7\xA2\xD7\x95\xD7\x9C\xD7\x9D\n\nleft text\n");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        const Rect2Df start = edit->GetCaretRectForTest();
+        editor.SetCaret(RichDocPosition(1, 0));
+        window->UpdateAndRender();
+        const Rect2Df leftStart = edit->GetCaretRectForTest();
+        TEST("A Hebrew paragraph starts at the right", start.x > leftStart.x + 200.0f);
+        // At its logical start (the right end), Left moves into the text.
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        edit->OnEvent(KeyEvent(UCKeys::Left));
+        window->UpdateAndRender();
+        const Rect2Df afterLeft = edit->GetCaretRectForTest();
+        TEST("Left moves the caret left through it", editor.GetCaret().blockIndex == 0 && editor.GetCaret().byteOffset == 2
+             && afterLeft.x < start.x);
+        edit->OnEvent(KeyEvent(UCKeys::Right));
+        TEST("...and Right back", editor.GetCaret() == RichDocPosition(0, 0));
+        // A left-to-right paragraph marked right-to-left starts at the right.
+        editor.SetCaret(RichDocPosition(1, 0));
+        edit->SetRightToLeft(true);
+        window->UpdateAndRender();
+        TEST("A paragraph marked right-to-left", edit->IsRightToLeft() && edit->GetCaretRectForTest().x > leftStart.x + 200.0f);
+    }
+
+    // ===== ACCESSIBILITY =====
+    std::cerr << "\n--- Accessibility ---" << std::endl;
+    {
+        edit->SetMarkdown("# Title\n\nA **bold** caf\xC3\xA9 sentence. Another one.\n\n| a | b |\n|---|---|\n| c | d |\n");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        TEST("The element is a document", edit->GetAccessibleRole() == AccessibleRole::Document);
+        IAccessibleText* text = edit->GetAccessibleTextInterface();
+        TEST("It has a text interface", text != nullptr);
+        if (text) {
+            const std::string all = text->GetAccessibleText();
+            TEST("Its text is the paragraphs, a line each, cells tab-separated: " + all,
+                 all == "Title\nA bold caf\xC3\xA9 sentence. Another one.\na\tb\nc\td");
+            TEST("Offsets count characters", text->GetCharacterCount() == 48);
+            std::vector<AccessibilityEventType> events;
+            const int listener = UltraCanvasAccessibility::AddListener([&](const AccessibilityEvent& e) {
+                if (e.element == edit.get()) events.push_back(e.type);
+            });
+            text->SetCaretOffset(17);                       // after "café"
+            TEST("The caret maps to the document", editor.GetCaret() == RichDocPosition(1, 12) && text->GetCaretOffset() == 17);
+            TEST("...and moving it is announced", !events.empty() && events.back() == AccessibilityEventType::CaretMoved);
+            int start = 0, end = 0;
+            TEST("Words", text->GetTextAtOffset(14, AccessibleTextBoundary::Word, start, end) == "caf\xC3\xA9 " && start == 13);
+            TEST("Sentences", text->GetTextAtOffset(30, AccessibleTextBoundary::Sentence, start, end) == "Another one.\n"
+                 || text->GetTextAtOffset(30, AccessibleTextBoundary::Sentence, start, end) == "Another one.");
+            TEST("Lines as laid out", text->GetTextAtOffset(8, AccessibleTextBoundary::Line, start, end).find("bold") != std::string::npos);
+            AccessibleTextAttributes attributes = text->GetAttributesAt(8, start, end);
+            TEST("Formatting of a run", attributes.bold && start == 8 && end == 12);
+            TEST("A heading's level", text->GetAttributesAt(1, start, end).headingLevel == 1);
+            const Rect2Df box = text->GetCharacterBounds(8);
+            TEST("Character boxes are on the screen", box.height > 0.0f && box.width > 0.0f);
+            TEST("...and lead back to the character", text->GetOffsetAtPoint(Point2Df(box.x + box.width * 0.5f, box.y + box.height * 0.5f)) == 8);
+            TEST("Cells are addressable", text->SetSelection(41, 42) && editor.GetSelectionRange().start.InCell());
+            events.clear();
+            editor.SetCaret(RichDocPosition(1, 0));
+            edit->InsertText("x");
+            TEST("Edits are announced", std::find(events.begin(), events.end(), AccessibilityEventType::TextChanged) != events.end());
+            TEST("An editable document is not read-only", !text->IsReadOnly());
+            edit->SetReadOnly(true);
+            TEST("...a read-only one says so", text->IsReadOnly());
+            edit->SetReadOnly(false);
+            UltraCanvasAccessibility::RemoveListener(listener);
+        }
+
+        // What the platform bridges (AT-SPI, UI Automation) build on.
+        namespace AB = AccessibilityBridge;
+        TEST("The editor's parent in the tree is its window", AB::Parent(edit.get()) == window.get());
+        TEST("A window has no parent element", AB::Parent(window.get()) == nullptr);
+        TEST("The window lists the editor", AB::IndexInParent(edit.get()) >= 0);
+        TEST("The window is one of the application's", AB::IndexInParent(window.get()) >= 0);
+        TEST("The editor is live", AB::IsLive(edit.get()));
+        const AB::ScreenRect onScreen = AB::ScreenBounds(edit.get());
+        TEST("It has a size on the screen", onScreen.width > 0 && onScreen.height > 0);
+        TEST("Hit testing its middle finds it",
+             AB::HitTest(window.get(), onScreen.x + onScreen.width / 2, onScreen.y + onScreen.height / 2) == edit.get());
+        int start = 0;
+        std::string removed, inserted;
+        TEST("A typed word is an insertion",
+             AB::Difference("caf\xC3\xA9 au lait", "caf\xC3\xA9 noir au lait", start, removed, inserted) &&
+             start == 5 && removed.empty() && inserted == "noir ");
+        TEST("A replaced character is a deletion and an insertion, whole characters",
+             AB::Difference("a\xC3\xA9" "b", "a\xC3\xA8" "b", start, removed, inserted) &&
+             start == 1 && removed == "\xC3\xA9" && inserted == "\xC3\xA8");
+        TEST("Equal texts are no change", !AB::Difference("same", "same", start, removed, inserted));
+        TEST("Substrings count characters", AB::Substring("caf\xC3\xA9s", 3, 5) == "\xC3\xA9s" && AB::Substring("abc", 1, -1) == "bc");
+        TEST("Code points", AB::CodePointAt("a\xC3\xA9\xE2\x82\xAC", 1) == 0xE9 && AB::CodePointAt("a\xC3\xA9\xE2\x82\xAC", 2) == 0x20AC);
+
+        AB::IdMap ids;
+        auto temporary = std::make_shared<UltraCanvasRichTextEdit>("temporary", 0, 0, 10, 10);
+        const uint32_t id = ids.IdOf(temporary.get());
+        TEST("Ids are stable", id != 0 && ids.IdOf(temporary.get()) == id && ids.ElementOf(id) == temporary.get());
+        UltraCanvasUIElement* raw = temporary.get();
+        UltraCanvasUIElement* destroyed = nullptr;
+        const int listener = UltraCanvasAccessibility::AddListener([&](const AccessibilityEvent& e) {
+            if (e.type == AccessibilityEventType::ElementDestroyed) {
+                if (e.element == raw) destroyed = e.element;
+                ids.Forget(e.element);
+            }
+        });
+        temporary.reset();
+        TEST("A destroyed element is announced", destroyed == raw);
+        TEST("...so a bridge drops its id", ids.ElementOf(id) == nullptr);
+        UltraCanvasAccessibility::RemoveListener(listener);
     }
 
     std::cerr << "\n========================================" << std::endl;

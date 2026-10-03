@@ -32,6 +32,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -662,7 +663,7 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
 }
 
 std::string ReadFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f.is_open()) return {};
     std::ostringstream ss;
     ss << f.rdbuf();
@@ -670,7 +671,7 @@ std::string ReadFile(const std::string& path) {
 }
 
 bool WriteFile(const std::string& path, const std::string& data) {
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!f.is_open()) return false;
     f.write(data.data(), static_cast<std::streamsize>(data.size()));
     return f.good();

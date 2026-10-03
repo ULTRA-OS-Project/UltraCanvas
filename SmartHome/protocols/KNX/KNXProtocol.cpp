@@ -13,6 +13,7 @@
 #include <cmath>
 #include <fstream>
 #include <regex>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 // Platform-specific socket includes
 #ifdef _WIN32
@@ -1302,7 +1303,7 @@ bool KNXProtocol::ImportProject(const std::string& filePath) {
 }
 
 bool KNXProtocol::ImportGroupAddresses(const std::string& filePath) {
-    std::ifstream file(filePath);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
     if (!file.is_open()) {
         std::cerr << "[KNX] Failed to open CSV file: " << filePath << std::endl;
         return false;

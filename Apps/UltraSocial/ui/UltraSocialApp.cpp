@@ -21,6 +21,7 @@
 #include <ctime>
 #include <filesystem>
 #include <thread>
+#include "UltraCanvasPathUtf8.h"
 
 // ULTRASOCIAL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -36,7 +37,7 @@ namespace UltraSocial {
 
 bool UltraSocialApp::Initialize(const std::string& dataDir) {
     std::error_code ec;
-    std::filesystem::create_directories(dataDir, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dataDir), ec);
 
     if (!store_.Open("ultrasocial", dataDir + "/social.db")) return false;
     vault_ = CredentialVault(dataDir + "/vault");

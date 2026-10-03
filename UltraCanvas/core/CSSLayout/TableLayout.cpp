@@ -24,10 +24,13 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
+// Version: 1.4.0 - merged with main's 1.2.0 (MinContentWidth shared with block
+//                 layout for floats)
 // Version: 1.3.0 - a table's extra height goes to rows without a set height; a
 //                 cell's percentage height / min-height / max-height resolves
 //                 against the table's set height (the cells' percentHeightBase)
 // Version: 1.2.0 - a percentage height resolves against a block parent's set height
+// Version: 1.2.0 (main) - MinContentWidth shared with block layout (floats)
 // Version: 1.1.0 - max-width caps the table's width
 // Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
@@ -485,6 +488,10 @@ namespace UltraCanvas {
             }
 
         } // namespace
+
+        float MinContentWidth(Element& e, const LayoutContext& ctx) {
+            return MinContentWidthOf(e, ctx);
+        }
 
         void MeasureTable(Element& e, const MeasureConstraints& c, const LayoutContext& ctx) {
             TableState& s = ObtainState(e, c, ctx);

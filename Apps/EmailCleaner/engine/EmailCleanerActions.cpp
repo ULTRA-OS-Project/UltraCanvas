@@ -132,7 +132,7 @@ ActionPlan ActionPlanner::Plan(const ActionRequest& request,
                 continue;
             }
             plan.messages.push_back(PlannedMessage{ m.accountId, m.folder, m.uid,
-                                                    m.subject, m.category });
+                                                    m.subject, m.category, m.messageId });
         }
         if (plan.messages.empty()) {
             plan.willDelete = false;
@@ -181,6 +181,33 @@ std::string ActionOutcome::Describe() const {
 }
 
 ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
+    ActionOutcome outcome = ExecuteLocal(plan);
+    ExecuteRemote(plan, outcome);
+    RecordMoves(outcome);
+    return outcome;
+}
+
+void ActionExecutor::RecordMoves(ActionOutcome& outcome) {
+    if (outcome.movedMessages.empty()) return;
+    std::vector<AnalyzedMessage> moved;
+    moved.reserve(outcome.movedMessages.size());
+    for (const PlannedMessage& m : outcome.movedMessages) {
+        AnalyzedMessage row;
+        row.accountId = m.accountId;
+        row.folder    = m.folder;
+        row.uid       = m.uid;
+        row.messageId = m.messageId;
+        moved.push_back(std::move(row));
+    }
+    const UltraDbResult r = store_.RecordMovedAway(moved, now);
+    if (!r) {
+        // The mail did move; only the analysis still shows it until the next
+        // re-analyse. Worth saying, not worth calling the action failed.
+        outcome.errors.push_back("the moved messages are still listed here: " + r.message);
+    }
+}
+
+ActionOutcome ActionExecutor::ExecuteLocal(const ActionPlan& plan) {
     ActionOutcome outcome;
     if (plan.Empty()) return outcome;
 
@@ -202,6 +229,12 @@ ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
             outcome.errors.push_back("could not block: " + r.message);
         }
     }
+
+    return outcome;
+}
+
+void ActionExecutor::ExecuteRemote(const ActionPlan& plan, ActionOutcome& outcome) {
+    if (plan.Empty()) return;
 
     // ---- Unsubscribe -------------------------------------------------------
     if (plan.willUnsubscribe) {
@@ -255,6 +288,7 @@ ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
                 std::string error;
                 if (backend_->MoveToTrash(m.accountId, m.folder, m.uid, error)) {
                     ++outcome.moved;
+                    outcome.movedMessages.push_back(m);
                 } else {
                     outcome.ok = false;
                     ++outcome.failed;
@@ -268,8 +302,6 @@ ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
             }
         }
     }
-
-    return outcome;
 }
 
 } // namespace EmailCleaner

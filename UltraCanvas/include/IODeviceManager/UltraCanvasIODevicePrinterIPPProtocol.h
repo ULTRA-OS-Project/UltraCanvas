@@ -12,7 +12,7 @@
 // turning print options into the attributes a job carries, and working out
 // whether a document goes to the printer as it is or has to be drawn first.
 // UltraCanvasIODevicePrinterIPP.cpp holds the part that needs a network.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -271,6 +271,24 @@ std::string IppHttpUrlFor(const std::string& printerUri);
 // an ipp, ipps, http or https address.
 std::string IppNormalizePrinterUri(const std::string& address);
 
+// The IPP printer URIs worth asking a Windows print queue's printer at, most
+// likely first, given the queue's port. Windows keeps no printer URI for a
+// queue, only a port, so this is the best guess the port allows:
+//
+//   http://10.0.0.5:631/ipp/print    an IPP port: that address, as IPP
+//   IP_10.0.0.5, 10.0.0.5_1          a Standard TCP/IP port named after its
+//                                    address: IPP Everywhere's /ipp/print on
+//                                    631, then /ipp and the root, where older
+//                                    printers answer
+//
+// `hostAddress` is the address a Standard TCP/IP port is configured with,
+// when the caller could read it (the port monitor's "HostAddress"); it wins
+// over whatever the port is called, since a port can be named anything. A
+// port with no address in it - USB001, LPT1:, FILE:, a WSD-... port - and no
+// host address gives none.
+std::vector<std::string> IppUrisForWindowsPort(const std::string& portName,
+                                               const std::string& hostAddress);
+
 // The printer URI a DNS-SD advertisement describes. `rp` in the TXT record is
 // the resource path ("ipp/print"); absent, the printer is at the root, which
 // is what the Bonjour printing specification says an absent `rp` means.
@@ -410,8 +428,13 @@ void AddIppJobTemplate(IppGroup& job, const IOPrintOptions& options,
 // SENDING A DOCUMENT AS IT IS, OR DRAWING IT
 // ============================================================================
 
+// The type a job of pages that draw themselves (IOPrintJob::pages) is planned
+// as. No printer names it, so such a job is always drawn here, as PWG raster.
+extern const char* const kIppDrawnPagesType;
+
 // The MIME type of what a job holds: its declared type, or one inferred from
-// the file name. Empty when neither says.
+// the file name; kIppDrawnPagesType for a job that is only pages. Empty when
+// nothing says.
 std::string IppJobDocumentType(const IOPrintJob& job);
 
 struct IppDocumentPlan {

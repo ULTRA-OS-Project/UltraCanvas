@@ -7,6 +7,7 @@
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasImage.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "UltraCanvasWindowsAccessibility.h"
 #include <iostream>
 #include "UltraCanvasDebug.h"
 
@@ -475,7 +476,16 @@ namespace UltraCanvas {
             }
 
             case WM_DESTROY: {
+                WindowsAccessibility::WindowDestroyed(h);
                 return 0;
+            }
+
+            case WM_GETOBJECT: {
+                // UI Automation asking for the window's accessibility tree.
+                bool handled = false;
+                const LRESULT result = WindowsAccessibility::HandleGetObject(this, h, wParam, lParam, handled);
+                if (handled) return result;
+                break;
             }
 
             case WM_ERASEBKGND: {
@@ -532,6 +542,14 @@ namespace UltraCanvas {
                         return TRUE;
                     }
                 }
+                break;
+            }
+
+            case WM_IME_STARTCOMPOSITION: {
+                // An element that draws the composition itself: no input
+                // method composition window over it.
+                UltraCanvasUIElement* focused = GetFocusedElement();
+                if (focused && focused->DrawsTextComposition()) return 0;
                 break;
             }
         }
@@ -855,6 +873,18 @@ namespace UltraCanvas {
         } else {
             x = config_.x;
             y = config_.y;
+        }
+    }
+
+    void UltraCanvasWindowsWindow::GetContentScreenOrigin(int& x, int& y) const {
+        // GetWindowPosition() is the outer frame; content starts below the
+        // title bar and inside the borders.
+        POINT origin = {0, 0};
+        if (hwnd && ClientToScreen(hwnd, &origin)) {
+            x = origin.x;
+            y = origin.y;
+        } else {
+            GetWindowPosition(x, y);
         }
     }
 

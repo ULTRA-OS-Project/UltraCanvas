@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelConverter;
@@ -344,7 +345,7 @@ static void TestSamples(const std::string& mediaRoot) {
     };
 
     for (const Case& item : cases) {
-        const std::filesystem::path source = std::filesystem::path(mediaRoot) / item.source;
+        const std::filesystem::path source = UltraCanvas::PathFromUtf8(mediaRoot) / item.source;
         if (!std::filesystem::exists(source)) {
             std::printf("  [SKIP] %s (sample not present)\n", item.label);
             continue;

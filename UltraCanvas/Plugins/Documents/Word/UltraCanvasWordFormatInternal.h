@@ -82,6 +82,9 @@ inline bool ParagraphIsOneInlineImage(const std::vector<RichTextRun>& runs,
     const RichTextRun* picture = nullptr;
     for (const auto& run : runs) {
         if (run.IsInlineImage()) {
+            // A floating picture belongs to its paragraph, which text after it
+            // wraps round; it does not become a paragraph of its own.
+            if (run.IsFloatingImage()) return false;
             if (picture) return false;          // two pictures: leave them inline
             picture = &run;
             continue;

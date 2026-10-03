@@ -23,6 +23,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -51,7 +52,7 @@ std::string ToUpperAscii(std::string s) {
 bool SamePath(const std::string& got, const fs::path& expected) {
     if (got.empty()) return false;
     std::error_code ec;
-    return fs::equivalent(got, expected, ec) && !ec;
+    return fs::equivalent(UltraCanvas::PathFromUtf8(got), UltraCanvas::PathFromUtf8(expected), ec) && !ec;
 }
 
 void CheckEqual(const std::string& got, const std::string& expected,

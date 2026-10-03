@@ -8,6 +8,32 @@ folder breadcrumb, two toolbar rows (open / navigation / slideshow /
 transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a Details panel.
 
+The toolbars are **icons with tooltips**, not captions, so two rows still fit
+the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+framework's own set under `media/icons/` and is drawn as a mask, so it takes the
+toolbar's foreground colour and greys out with the button; hovering shows the
+caption, with the key where there is one:
+
+| Row | Icon | Tooltip |
+|---|---|---|
+| 1 | `folder-open` | Open a file or folder |
+| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| 1 | `slideshow` (toggle) | Slideshow (Space) |
+| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| 2 | `curves` | Curves |
+| 2 | `save` | Save as… |
+| 2 | `file-info` | Details |
+
+The three dropdowns stay text because a value picker shows its value; the
+interval and transition ones start on the defaults. The Slideshow toggle
+follows the state however it changed: Space and `PlaySlideshow()` /
+`PauseSlideshow()` press and release it too.
+
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 `SetTopBarsVisible(false)`). To open one file full size in a window of its own —
@@ -180,8 +206,9 @@ a summary saying so.
 
 ## Details panel
 
-The **Details** button in the info bar (and **Info** on the second toolbar
-row) opens a scrollable panel over the active view, for every media kind:
+The **Details** button in the info bar (the `file-info` icon; the same icon
+sits at the end of the second toolbar row) opens a scrollable panel over the
+active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
 count for a PDF; container fields for a `*.ucd`) and, for images, the
@@ -192,8 +219,20 @@ chunks), or a line saying the file carries none.
 The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
 so each section is a heading over a two-column *Property / Value* table.
 The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+A picture whose header reads but whose pixels do not decode (a HEIC on a
+build without an HEVC decoder, a truncated file) says so instead of leaving
+the area empty: the display shows *Cannot decode this picture*, the info bar
+reads `dice.heic · 800 x 600 · 25.4 KB · cannot decode - heif: Unsupported
+feature: Unsupported codec`, and the Details panel adds a *Decoding* row with
+the same reason. The surface learns it only when it draws (that is when the
+pixels are decoded) and tells the viewer through
+`UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
+frame.
+
 button again closes it. Left / Right keep browsing, and the panel follows
-to the next file.
+to the next file. The panel's text is built only while it is open (on
+opening, then for each file loaded): browsing with it closed reads no
+metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -309,20 +348,22 @@ out of the selection before moving it.
 
 ## Image adjustments and saving
 
-The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
+The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
 
 Each slider is **continuous over its whole range** and carries its live value in
-its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
+panel ends in two icon buttons: *Auto-optimise* (the `wand`), a toggle whose
+pressed look says whether it is on, and *Reset* (the `reload` arrow). *Reset*
 puts the controls and the values back in one pass — curves included.
 
 ### Curves (highlights, midtones, shadows)
 
 The sliders move the whole tone range at once. To reach one part of it — lift
 the shadows without blowing the highlights, drop a colour cast out of the
-whites — the *Curves* toolbar button opens
+whites — the *Curves* toolbar button (the `curves` icon) opens
 [`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
 plus one per colour channel, over the histogram of the shown image.
 

@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailRichComposer.cpp
+// Version: 0.2.0 - MakeRichEdit
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailRichComposer.h"
@@ -96,6 +97,28 @@ bool MakeRichForward(Draft& draft, const SourceMessage& src) {
     AppendHTMLToRichDocument(*doc, src.bodyHtml, ImportOptions(src, 0));
     draft.richBody = doc;
     draft.bodyIsHtml = true;
+    return true;
+}
+
+bool MakeRichEdit(Draft& draft) {
+    if (!draft.bodyIsHtml || !HasContent(draft.body)) return false;
+    HTMLRichImportOptions options;
+    const std::vector<Attachment>& parts = draft.inlineParts;
+    options.resolveImage = [&parts](const std::string& url, HTMLRichImportImage& out) {
+        if (url.compare(0, 4, "cid:") != 0) return false;
+        const std::string id = url.substr(4);
+        for (const auto& part : parts) {
+            std::string cid = part.contentId;
+            if (cid.size() >= 2 && cid.front() == '<' && cid.back() == '>')
+                cid = cid.substr(1, cid.size() - 2);
+            if (cid != id) continue;
+            out.mimeType = part.mediaType;
+            out.data = part.data;
+            return !out.data.empty();
+        }
+        return false;
+    };
+    draft.richBody = std::make_shared<UCRichDocument>(ImportHTMLToRichDocument(draft.body, options));
     return true;
 }
 

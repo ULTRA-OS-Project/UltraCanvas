@@ -1,6 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-09-08
+// Last Modified: 2026-10-02 - GetRequiredWidth (the width the widest row on show needs)
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <vector>
@@ -9,6 +9,7 @@
 #include <functional>
 #include <unordered_map>
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 
 namespace UltraCanvas {
@@ -567,6 +568,42 @@ namespace UltraCanvas {
             ClampScrollOffset();
         }
         RequestRedraw();
+    }
+
+    // ===== MEASURING =====
+
+    int UltraCanvasTreeView::GetRequiredWidth(IRenderContext *ctx) {
+        if (!ctx) ctx = GetRenderContext();
+        if (!ctx || !rootNode) return 0;
+
+        // The x each row's label ends at, laid out as RenderNode does with a
+        // content rect starting at 0.
+        const Rect2Di origin(0, 0, 0, 0);
+        int widest = 0;
+        ctx->PushState();
+        ctx->SetFontSize(fontSize);
+        std::function<void(TreeNode*, int)> measure = [&](TreeNode *node, int level) {
+            if (!node || !node->data.visible) return;
+            int textX = GetRowOriginX(origin, level) + (showExpandButtons ? kExpanderSlot : 0)
+                        + (showCheckboxes ? kCheckboxSlot : 0) + textPadding;
+            if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty())
+                textX += node->data.leftIcon.width + iconSpacing;
+            int rowEnd = textX + (node->data.text.empty() ? 0 : ctx->GetTextLineWidth(node->data.text));
+            if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty())
+                rowEnd += textPadding + node->data.rightIcon.width + textPadding;
+            widest = std::max(widest, rowEnd);
+            if (!node->IsExpanded()) return;
+            for (auto &child: node->children) measure(child.get(), level + 1);
+        };
+        if (rootVisible) {
+            measure(rootNode.get(), 0);
+        } else {
+            for (auto &child: rootNode->children) measure(child.get(), 0);
+        }
+        ctx->PopState();
+
+        return widest + static_cast<int>(std::ceil(GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()))
+               + GetVerticalScrollbarWidth();
     }
 
     void UltraCanvasTreeView::SetShowScrollToTopButton(bool show) {

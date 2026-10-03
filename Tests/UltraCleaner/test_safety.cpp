@@ -10,6 +10,7 @@
 #include "UltraCleanerSafety.h"
 
 #include <filesystem>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <sys/stat.h>
@@ -87,7 +88,7 @@ TEST(GuardRefusesProtectedLocationsEvenInsideARoot) {
 
     // And the home directory itself is refused whichever check fires first —
     // a shallow home ("/root") trips the depth rule before the name rule.
-    PathGuard wider = GuardFor(std::filesystem::path(home).parent_path().string());
+    PathGuard wider = GuardFor(UltraCanvas::PathFromUtf8(home).parent_path().string());
     REQUIRE(wider.Check(home).Allowed() == false);
 }
 
@@ -118,7 +119,7 @@ TEST(GuardRefusesASymlinkThatEscapesTheRoot) {
     tree.File("precious/keep.txt", 32);
 
     std::error_code ec;
-    std::filesystem::create_directory_symlink(outside, cache + "/escape", ec);
+    std::filesystem::create_directory_symlink(UltraCanvas::PathFromUtf8(outside), UltraCanvas::PathFromUtf8(cache + "/escape"), ec);
     if (ec) return;   // filesystem without symlinks (some CI Windows runners)
 
     PathGuard guard = GuardFor(cache);
@@ -133,7 +134,7 @@ TEST(GuardRefusesSpecialFiles) {
     TempTree tree;
     const std::string cache = tree.Dir("cache");
     std::error_code ec;
-    std::filesystem::create_directories(cache, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(cache), ec);
 
 #if !defined(_WIN32) && !defined(_WIN64)
     const std::string fifo = cache + "/socketish";

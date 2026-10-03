@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.1
-// Last Modified: 2026-06-22
+// Version: 3.7.2
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 // Constructor
@@ -2558,7 +2559,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
         if (!result) {
-            std::filesystem::path p(filename);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filename));
             std::string ext = PathToUtf8(p.extension());
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);
@@ -2850,16 +2851,10 @@ namespace UltraCanvas {
         if (findText.empty()) return;
 
         SaveState();
-        int findLen = utf8_length(findText);
         int replaceLen = utf8_length(replaceText);
 
         if (all) {
-            int pos = 0;
-            while ((pos = utf8_find(textContent, findText, pos, lastSearchCaseSensitive)) >= 0) {
-                utf8_replace(textContent, pos, findLen, replaceText);
-                pos += replaceLen;
-            }
-            SetText(textContent);
+            SetText(utf8_replace_all(textContent, findText, replaceText, lastSearchCaseSensitive));
         } else {
             if (HasSelection()) {
                 std::string selected = GetSelectedText();
@@ -2913,10 +2908,10 @@ namespace UltraCanvas {
         }
 
         int searchLen = utf8_length(searchText);
-        int pos = 0;
-        while ((pos = utf8_find(textContent, searchText, pos, lastSearchCaseSensitive)) >= 0) {
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, lastSearchCaseSensitive);
+        searchHighlights.reserve(matches.size());
+        for (int pos : matches) {
             searchHighlights.push_back({pos, pos + searchLen});
-            pos += searchLen;
         }
         RequestRedraw();
     }
@@ -3123,15 +3118,7 @@ namespace UltraCanvas {
             return count;
         }
 
-        int count = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            count++;
-            pos += searchLen;
-        }
-        return count;
+        return static_cast<int>(utf8_find_all(textContent, searchText, caseSensitive).size());
     }
 
     int UltraCanvasTextArea::GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive) const {
@@ -3163,16 +3150,9 @@ namespace UltraCanvas {
         int currentPos = GetSelectionMinGrapheme();
         if (currentPos < 0) currentPos = 0;
 
-        int index = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            index++;
-            if (pos == currentPos) {
-                return index;
-            }
-            pos += searchLen;
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, caseSensitive);
+        for (size_t i = 0; i < matches.size(); i++) {
+            if (matches[i] == currentPos) return static_cast<int>(i) + 1;
         }
         return 0; // Current selection doesn't match any occurrence
     }
@@ -3315,16 +3295,22 @@ namespace UltraCanvas {
     }
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
-        LineLayoutBase* line;
-        if (lineLayouts.empty()) {
-            UpdateLineLayouts(GetRenderContext());
-        }
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
         }
-        if (idx >= 0 && idx <= (int)lineLayouts.size()) {
+        // Layouts are built through the render context, and an element that is
+        // not in a window yet has none (a ScrollTo() or a cursor query straight
+        // after SetText() on a detached text area). Nothing is laid out then;
+        // the first Render builds the layouts.
+        IRenderContext* ctx = GetRenderContext();
+        if (lineLayouts.empty()) {
+            if (!ctx) return nullptr;
+            UpdateLineLayouts(ctx);
+        }
+        if (idx >= 0 && idx < (int)lineLayouts.size()) {
             if (!lineLayouts[idx]) {
-                UpdateLineLayouts(GetRenderContext());
+                if (!ctx) return nullptr;
+                UpdateLineLayouts(ctx);
             }
             return lineLayouts[idx].get();
         }

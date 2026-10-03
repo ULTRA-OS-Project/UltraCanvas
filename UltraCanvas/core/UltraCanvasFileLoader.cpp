@@ -22,6 +22,7 @@
 #include <cctype>
 #include <fstream>
 #include <iterator>
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetHttp.h"
@@ -159,6 +160,7 @@ namespace UltraCanvas {
         config.defaultFileName  = opts.defaultFileName;
         config.showHiddenFiles  = opts.showHiddenFiles;
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
+        config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
         // A folder has no file filter; a file dialog takes the caller's, and
         // falls back to "everything" rather than the config's sample list.
         if (type == FileDialogType::SelectFolder) {
@@ -169,6 +171,22 @@ namespace UltraCanvas {
             config.filters = { FileFilter("All Files", "*") };
         }
         return config;
+    }
+
+    // A native dialog has no toggle buttons: the filters become its list,
+    // headed by one that matches every kind of file in it (an "All files"
+    // entry left out of that, and kept as a choice at the end).
+    void FoldFilterTogglesForNative(FileDialogOptions& opts) {
+        if (!opts.filterToggles || opts.filters.size() < 2) return;
+        std::vector<std::string> all;
+        for (const FileFilter& filter : opts.filters) {
+            if (std::find(filter.extensions.begin(), filter.extensions.end(), "*") !=
+                filter.extensions.end()) continue;
+            all.insert(all.end(), filter.extensions.begin(), filter.extensions.end());
+        }
+        std::sort(all.begin(), all.end());
+        all.erase(std::unique(all.begin(), all.end()), all.end());
+        if (!all.empty()) opts.filters.insert(opts.filters.begin(), FileFilter("All supported files", all));
     }
 
     // Shows the framework's dialog and hands its selection on. The result
@@ -219,6 +237,7 @@ namespace UltraCanvas {
 
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open File";
+        FoldFilterTogglesForNative(effective);
 
         std::string result = UltraCanvasNativeDialogs::OpenFile(effective);
         deliver(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
@@ -248,6 +267,7 @@ namespace UltraCanvas {
 
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open Files";
+        FoldFilterTogglesForNative(effective);
 
         std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(effective);
         deliver(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
@@ -278,6 +298,7 @@ namespace UltraCanvas {
 
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Save File";
+        FoldFilterTogglesForNative(effective);
 
         std::string result = UltraCanvasNativeDialogs::SaveFile(effective);
         deliver(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
@@ -537,7 +558,7 @@ namespace UltraCanvas {
         const std::string path = SaveFile(options);
         if (path.empty()) return false;   // user cancelled
 
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
         if (!out) return false;
         if (size > 0) {
             out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));

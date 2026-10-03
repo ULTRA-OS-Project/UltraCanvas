@@ -1,9 +1,18 @@
 #!/bin/bash
 set -e
 
-export APPLE_ID="info@riscoscloverleaf.com"
-export APPLE_TEAM_ID="29638T25M9"
-export APPLE_APP_PASSWORD="bhep-idme-ydhq-lrsz"
+# Notarization credentials come from the environment, never from this file:
+# it is committed, and anything written here is readable by everyone with
+# access to the repository (and stays in its history). Set them in the shell,
+# e.g. from the login keychain:
+#   export APPLE_ID=... APPLE_TEAM_ID=...
+#   export APPLE_APP_PASSWORD="$(security find-generic-password -s ultracanvas-notary -w)"
+for var in APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+    if [ -z "${!var:-}" ]; then
+        echo "Error: $var is not set - export APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD first" >&2
+        exit 1
+    fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UC_CHANGELOG="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"

@@ -49,7 +49,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # `ultramsg` is the UltraMessage command line (Apps/UltraMessageCli): post to,
 # follow and query the per-user message channel.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu UltraNetMonitor DeviceExplorer ultramsg)
+      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -143,6 +143,21 @@ fi
 
 if compgen -G "$BUILDDIR/lib/*.so*" > /dev/null; then
     cp -a "$BUILDDIR"/lib/*.so* "$PKG/lib/"
+fi
+
+# --- UltraNet plug-ins (dlopened by UltraMail, UltraNetMonitor, …) -----------
+
+# These are MODULE libraries built to $BUILDDIR/Plugins/UltraNet, not lib/, so
+# the glob above misses them - which is why a CI archive could ship every app
+# yet leave UltraMail reporting "the IMAP plug-in was not found". UltraMail's
+# ResolvePluginDirectory() looks first at <exe>/Plugins/UltraNet, i.e.
+# bin/Plugins/UltraNet in this layout, so land them there: the strip and
+# transitive-dependency passes below both recurse into bin/, so the plug-ins
+# get stripped and their own deps (libcurl/libssl for imap/smtp, …) bundled.
+if compgen -G "$BUILDDIR/Plugins/UltraNet/*.so" > /dev/null; then
+    mkdir -p "$PKG/bin/Plugins/UltraNet"
+    cp -a "$BUILDDIR"/Plugins/UltraNet/*.so "$PKG/bin/Plugins/UltraNet/"
+    log "  plugins UltraNet ($(ls -1 "$PKG/bin/Plugins/UltraNet"/*.so | wc -l) DSOs)"
 fi
 
 # --- strip our own binaries --------------------------------------------------

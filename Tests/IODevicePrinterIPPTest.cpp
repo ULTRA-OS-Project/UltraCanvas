@@ -8,15 +8,17 @@
 // written here from the specification (PWG 5102.4), not from the writer - a
 // round trip through the writer's own idea of the format would pass however
 // wrong that idea was.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterPage.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -462,6 +464,51 @@ void TestAddresses() {
     CheckEqual(IppNormalizePrinterUri("smb://h/q"), std::string(), "an smb address is refused");
 }
 
+void CheckUris(const std::vector<std::string>& got, const std::vector<std::string>& want,
+               const std::string& what) {
+    const bool same = got == want;
+    Check(same, what);
+    if (!same) {
+        std::cout << "         got";
+        for (const std::string& uri : got) std::cout << " \"" << uri << "\"";
+        std::cout << "\n";
+    }
+}
+
+void TestWindowsPortAddresses() {
+    std::cout << "\n=== Windows queue ports as IPP addresses ===\n";
+    using Uris = std::vector<std::string>;
+    const Uris guesses = {"ipp://10.0.0.5:631/ipp/print", "ipp://10.0.0.5:631/ipp",
+                          "ipp://10.0.0.5:631/"};
+
+    CheckUris(IppUrisForWindowsPort("http://10.0.0.5:631/ipp/print", ""),
+               Uris{"ipp://10.0.0.5:631/ipp/print"}, "an IPP port is its own address");
+    CheckUris(IppUrisForWindowsPort("IP_10.0.0.5", ""), guesses,
+               "IP_<address> is guessed at /ipp/print, /ipp and the root, on 631");
+    CheckUris(IppUrisForWindowsPort("10.0.0.5_1", ""), guesses,
+               "  and so is <address>_<n>, the second port Windows makes for one host");
+    CheckUris(IppUrisForWindowsPort("10.0.0.5", ""), guesses, "  and a bare address");
+    CheckUris(IppUrisForWindowsPort("Office laser", "printer.example.com"),
+               Uris{"ipp://printer.example.com:631/ipp/print",
+                    "ipp://printer.example.com:631/ipp", "ipp://printer.example.com:631/"},
+               "a configured host address wins over whatever the port is called");
+    CheckUris(IppUrisForWindowsPort("IP_10.0.0.5", "10.0.0.9"),
+               Uris{"ipp://10.0.0.9:631/ipp/print", "ipp://10.0.0.9:631/ipp",
+                    "ipp://10.0.0.9:631/"},
+               "  even when the name looks like an address");
+    CheckEqual(IppUrisForWindowsPort("x", "fe80::1").front(),
+               std::string("ipp://[fe80::1]:631/ipp/print"), "an IPv6 host is bracketed");
+    CheckUris(IppUrisForWindowsPort("x", "bad host/path"), Uris{},
+               "a host address that would bend the URI is ignored");
+
+    for (const char* port : {"USB001", "LPT1:", "FILE:", "PORTPROMPT:", "nul:",
+                             "WSD-6c3e2a1b-55d2-4b1f-9a9e-0a1b2c3d4e5f", "IP_10.0.0", "10.0.0.256",
+                             "IP_printer", "TS001"}) {
+        CheckUris(IppUrisForWindowsPort(port, ""), Uris{},
+                   std::string("no address in '") + port + "'");
+    }
+}
+
 void TestInstanceNames() {
     std::cout << "\n=== The instance, out of the name the mDNS plugin reports ===\n";
     // Every backend of the plugin reports the full service name; they differ
@@ -902,6 +949,32 @@ void TestDocumentPlan() {
 
     r = PlanIppDocument("", {}, reference, plan);
     Check(!r.success && r.code == IODeviceResultCode::InvalidArgument, "no type, no plan");
+
+    // Pages that draw themselves (a formatted document's): always drawn here,
+    // which is what lets a printer without PDF print a document whose PDF it
+    // cannot take.
+    class OnePage : public IPrintPageSource {
+    public:
+        IODeviceResult Prepare(IPrintPageTarget&) override { return IODeviceResult::Ok(); }
+        int GetPageCount() const override { return 1; }
+        IODeviceResult DrawPage(int, IPrintPageTarget&) override { return IODeviceResult::Ok(); }
+    };
+    IOPrintJob pagesOnly;
+    pagesOnly.pages = std::make_shared<OnePage>();
+    CheckEqual(IppJobDocumentType(pagesOnly), std::string(kIppDrawnPagesType),
+               "a job of pages alone is planned as pages to draw");
+    IOPrintJob pdfWithPages = pagesOnly;
+    pdfWithPages.data = {'%', 'P', 'D', 'F'};
+    pdfWithPages.mimeType = "application/pdf";
+    CheckEqual(IppJobDocumentType(pdfWithPages), std::string("application/pdf"),
+               "  one with a PDF beside them is planned as the PDF first");
+    r = PlanIppDocument(kIppDrawnPagesType, {2}, noPdf, plan);
+    Check(r.success && !plan.passThrough && plan.documentFormat == "image/pwg-raster" &&
+              !plan.sendPageRange,
+          "  pages are drawn as PWG raster, the range selected here, where a PDF was refused");
+    r = PlanIppDocument(kIppDrawnPagesType, {}, pdfOnly, plan);
+    Check(!r.success && r.code == IODeviceResultCode::NotSupported,
+          "  and refused by a printer that takes no PWG raster either");
 }
 
 void TestRasterChoices() {
@@ -1146,6 +1219,7 @@ int main() {
     TestMalformed();
     TestStatus();
     TestAddresses();
+    TestWindowsPortAddresses();
     TestInstanceNames();
     TestCupsMatching();
     TestMediaNames();

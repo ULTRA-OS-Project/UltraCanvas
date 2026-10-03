@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.6.0 - onLinkHovered: the link under the pointer (a status line shows
+//                 where it goes)
 // Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
 // Version: 2.4.0 - LabelStyle::lineHeightPx (CSS line-height)
 // Version: 2.3.0 - an inline image's border per side (LabelInlineImageBorder)
@@ -250,6 +252,10 @@ namespace UltraCanvas {
         std::function<void()> onClick;
         // Fired with LabelTextLink::href when a text link is clicked.
         std::function<void(const std::string&)> onLinkActivated;
+        // Fired with a text link's href when the pointer comes onto it, and with
+        // "" when it leaves the link (onto plain text, or out of the label) -
+        // what a mail reader shows in its status line before the click.
+        std::function<void(const std::string&)> onLinkHovered;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;

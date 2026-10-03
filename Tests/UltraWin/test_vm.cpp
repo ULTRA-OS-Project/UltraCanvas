@@ -14,6 +14,7 @@
 #include <filesystem>
 
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -23,7 +24,7 @@ std::string ScratchRoot() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-vm-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     return root;
@@ -100,8 +101,8 @@ TEST(vm_provision_and_lifecycle_with_real_qemu) {
     opt.cpus = 1;
     REQUIRE(UltraWin_VmProvision(opt));
     REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Stopped);
-    CHECK(fs::exists(ScratchRoot() + "/vm/disk.qcow2"));
-    CHECK(fs::exists(ScratchRoot() + "/vm/unattend/autounattend.xml"));
+    CHECK(fs::exists(UltraCanvas::PathFromUtf8(ScratchRoot() + "/vm/disk.qcow2")));
+    CHECK(fs::exists(UltraCanvas::PathFromUtf8(ScratchRoot() + "/vm/unattend/autounattend.xml")));
 
     // Re-provision with different sizes keeps the existing disk.
     UltraWinVmOptions again;

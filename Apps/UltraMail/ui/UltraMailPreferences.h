@@ -4,6 +4,7 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.4.0 - folder tree width: fixed pixels or fitted to the names
 // Version: 0.3.0 - remote-image policy, trusted websites, message view and text size
 //                  (the Settings window, UltraMailSettingsDialog)
 // Version: 0.2.0 - fetchSenderIcons (download the known senders' icons)
@@ -22,6 +23,12 @@ enum class RemoteImagePolicy {
     LoadAlways,    // every message (except junk and suspicious mail)
     LoadTrusted,   // trusted senders, trusted websites and the address book
     LoadNever      // never by themselves: the "Show images" bar asks each time
+};
+
+// How wide the folder tree on the left of the mail view is.
+enum class FolderTreeWidthMode {
+    FitToText,   // as wide as its longest row needs, plus 10 px
+    FixedWidth   // folderTreeWidth pixels
 };
 
 // The handful of app-wide view options. Add fields here (with a default) and a
@@ -54,6 +61,15 @@ struct Preferences {
     // text - no layout, no pictures), and the body text size in CSS px.
     bool  showHtml = true;
     int   messageTextSize = 12;
+
+    // Settings > Reading > Layout: the folder tree's width - fitted to the
+    // folder and account names it shows, or a fixed number of pixels
+    // (kFolderTreeMinWidth..kFolderTreeMaxWidth).
+    static constexpr int kFolderTreeMinWidth     = 100;
+    static constexpr int kFolderTreeMaxWidth     = 600;
+    static constexpr int kFolderTreeDefaultWidth = 200;
+    FolderTreeWidthMode folderTreeWidthMode = FolderTreeWidthMode::FitToText;
+    int                 folderTreeWidth     = kFolderTreeDefaultWidth;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

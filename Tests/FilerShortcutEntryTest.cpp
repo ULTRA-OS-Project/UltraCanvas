@@ -10,8 +10,10 @@
 // it come from — its info column names the target, and `linkTarget` is that
 // target as THIS host opens it, which is what an application needs to launch
 // the real program. A file that merely ends in ".lnk" is none of this.
-// Version: 1.0.0
-// Last Modified: 2026-09-05
+// Runs on Windows too (Tests/FilerTests.cmake), where the links name real
+// paths and a desktop entry's /bin/sh is a program this machine does not have.
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -22,6 +24,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -54,7 +57,7 @@ void WriteTextFile(const fs::path& path, const std::string& text) {
 bool SamePath(const std::string& got, const fs::path& expected) {
     if (got.empty()) return false;
     std::error_code ec;
-    return fs::equivalent(got, expected, ec) && !ec;
+    return fs::equivalent(UltraCanvas::PathFromUtf8(got), expected, ec) && !ec;
 }
 
 const FilerEntry* FindEntry(const UltraCanvasFilerWidget& filer,
@@ -90,9 +93,11 @@ int main() {
     const fs::path documentTarget =
             root / "drive_c" / "Program Files" / "Etcher" / "readme.txt";
 #ifdef _WIN32
-    const std::string storedExe = exe.string();
-    const std::string storedFolder = folderTarget.string();
-    const std::string storedDocument = documentTarget.string();
+    // UTF-8, as every path in the framework: .string() would go through the
+    // runner's ANSI code page.
+    const std::string storedExe = PathToUtf8(exe);
+    const std::string storedFolder = PathToUtf8(folderTarget);
+    const std::string storedDocument = PathToUtf8(documentTarget);
 #else
     const std::string storedExe = "C:\\Program Files\\Etcher\\Etcher.exe";
     const std::string storedFolder = "C:\\Program Files\\Etcher";
@@ -157,7 +162,7 @@ int main() {
 
     auto filer = std::make_shared<UltraCanvasFilerWidget>("shortcut-test",
                                                           0, 0, 800, 600);
-    filer->SetPath(desktop.string());
+    filer->SetPath(PathToUtf8(desktop));
 
     std::cout << "\nA shortcut to a program\n";
     if (const FilerEntry* e = FindEntry(*filer, "balenaEtcher.lnk")) {
@@ -213,9 +218,20 @@ int main() {
         Check(e->linkDisplayName == "Example Editor",
               "it is drawn by the name it calls itself -> \"" +
                       e->linkDisplayName + "\"");
+#ifdef _WIN32
+        // Windows has no /bin/sh: the program is not on this machine, so
+        // there is nothing to launch - and the entry still says what it runs.
+        Check(e->linkTarget.empty(),
+              "linkTarget stays empty: /bin/sh is not on this machine -> \"" +
+                      e->linkTarget + "\"");
+        Check(e->info.find("/bin/sh") != std::string::npos,
+              "and the info column shows the command it runs -> \"" +
+                      e->info + "\"");
+#else
         Check(SamePath(e->linkTarget, "/bin/sh"),
               "linkTarget is the program, resolved on this machine -> \"" +
                       e->linkTarget + "\"");
+#endif
     } else {
         Check(false, "the desktop entry is listed");
     }

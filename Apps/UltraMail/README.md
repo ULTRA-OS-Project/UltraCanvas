@@ -92,7 +92,16 @@ Apps/UltraMail/
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
                                   (IMailProtocolPlugin)
     UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
-                                  Enqueue + Flush (sent->remove, fail->retry)
+                                  Enqueue + Flush (sent->remove, fail->retry);
+                                  a copy in the Drafts folder (IMAP APPEND)
+                                  until sent, then deleted, and a copy in the
+                                  Sent folder once sent (ServerCopies; none
+                                  where the server files sent mail itself);
+                                  DeleteMessage (a copy the server cannot be
+                                  reached for is deleted by a later pass:
+                                  withdrawn messages), held messages (being
+                                  corrected); OutboxRetryClock: automatic
+                                  retry timing
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
     UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);
@@ -117,18 +126,26 @@ Apps/UltraMail/
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
+                                  waiting messages (To · Subject · From · Tries
+                                  · Status) with Send now, Edit… and Delete
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
-    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
-                                  strip, Send / Attach file / Attach cloud link
+    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject, the formatting
+                                  toolbar with Plain text | Formatted, the body
+                                  (text area or RichTextEdit), attachment strip,
+                                  Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
+    UltraMailFormatBar.{h,cpp}    the formatting toolbar for a RichTextEdit, shared
+                                  by the compose window and the signature editor
+                                  (the compose window's adds Quote + / Quote −)
     UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
                                   as Account Settings also name, password, Signature
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
-                                  HTML (WYSIWYG RichTextEdit + format rows, or
+                                  HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
                                   UltraFiler): Reading > Layout / Messages,

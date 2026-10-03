@@ -3,6 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.17.0 - merged with main's 1.4.0-1.6.0 (float / clear, box-sizing as
+//                  borderBox)
 // Version: 1.16.0 - letter-spacing
 // Version: 1.15.0 - line-height kept as the author gave it (lineHeightSet / lineHeightPx);
 //                  overflow: hidden
@@ -17,6 +19,10 @@
 // Version: 1.6.0 - object-fit / object-position
 // Version: 1.5.0 - background-repeat (per layer)
 // Version: 1.4.0 - background-position; background size and position per layer
+// From main:
+// Version: 1.6.0 - clear; <img align="left|right"> floats
+// Version: 1.5.0 - float (floatMode)
+// Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
 // Last Modified: 2026-10-03
@@ -67,6 +73,9 @@ enum class DisplayMode {
 };
 
 enum class TextAlignMode { Left, Right, Center, Justify };
+
+// float: left / right, and <table align="left|right"> (mail columns).
+enum class FloatMode { NoFloat, Left, Right };   // not None: an X11 macro
 
 // vertical-align, as far as an inline image uses it: where the image sits
 // against the text of its line.
@@ -197,6 +206,13 @@ struct ComputedStyle {
     void SetAllBorders(const BorderSide& side) {
         borderTop = borderRight = borderBottom = borderLeft = side;
     }
+    // box-sizing: a px width / height is the content box (CSS default) unless
+    // border-box - then it includes padding and border. Tables and form
+    // controls are border-box, as in browsers' own style sheets.
+    bool borderBox = false;
+    FloatMode floatMode = FloatMode::NoFloat;
+    // clear: left / right / both (and <br clear>): starts below the floats.
+    bool clear = false;
     float borderRadius = 0;
     // border-radius given in percent (of the box; 50% rounds a square to a
     // circle): kept apart, since only the builder knows the box's size. 0 when
@@ -208,9 +224,6 @@ struct ComputedStyle {
     // CSS's visible (the initial value): content wider or taller than the box
     // is drawn past it.
     bool overflowHidden = false;
-    // box-sizing: border-box - width / height include padding and border.
-    // CSS's initial content-box: they are the content's.
-    bool borderBoxSizing = false;
     std::optional<float> widthPx;
     std::optional<float> heightPx;
     std::optional<float> widthPercent;   // width given in % (builder maps to Dimension::Pct)

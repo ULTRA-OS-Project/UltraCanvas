@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <fstream>
 #include <sstream>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace Authenticator {
@@ -85,7 +86,7 @@ Preferences Preferences::Parse(const std::string& text) {
 }
 
 Preferences Preferences::Load(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return Preferences{};
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -97,7 +98,7 @@ bool Preferences::Save(const std::string& path) const {
     // file intact rather than a truncated one that parses as "all defaults".
     const std::string tmp = path + ".tmp";
     {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(tmp), std::ios::binary | std::ios::trunc);
         if (!out) return false;
         out << Serialize();
         if (!out) return false;

@@ -8,6 +8,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+#include "UltraCanvasCoderModuleRepair.h"
 // The bundled QOI file-format codec (always compiled) - see
 // SavePixmapAsQoiFile at the bottom of this file.
 #include "qoi.h"
@@ -162,6 +163,18 @@ namespace UltraCanvas {
                exeDir + "\\etc\\ImageMagick-7;" + exeDir + "\\lib\\ImageMagick-7.1.2\\config-Q16HDRI");
         setEnv("MAGICK_CODER_MODULE_PATH",
                exeDir + "\\lib\\ImageMagick-7.1.2\\modules-Q16HDRI\\coders");
+        // Before anything can load a coder: a coder carrying a Windows
+        // system DLL's name (mpr.dll in packages up to 0.9.92, or left
+        // behind by a newer package extracted over an older one) would
+        // answer every later import of that name in this process. See
+        // UltraCanvasCoderModuleRepair.h.
+        const auto repair = CoderModuleRepair::RepairPackagedCoderModules(exeDir);
+        for (const std::string& f : repair.removed)
+            debugOutput << "  Coder module removed (a Windows system DLL has its name): " << f << std::endl;
+        for (const std::string& f : repair.renamed)
+            debugOutput << "  Coder module renamed (a Windows system DLL has its name): " << f << std::endl;
+        for (const std::string& f : repair.failed)
+            debugOutput << "  Coder module could not be repaired: " << f << std::endl;
 #endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
@@ -236,23 +249,37 @@ namespace UltraCanvas {
             ownData = false;
         }
         try {
-            std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
-            std::streamsize fileSize = file.tellg();
+            // UTF-8 path: opened as UTF-16 on Windows, where a plain string
+            // goes through the ANSI code page and misses non-ASCII names.
+            std::ifstream file(PathFromUtf8(imagePath), std::ios::binary | std::ios::ate);
+            if (!file) throw std::runtime_error("the file could not be opened");
+            // tellg() answers -1 when the size cannot be had (a stream that
+            // failed after opening, a device that has no size), and that -1
+            // went straight to malloc - which on most platforms means a
+            // request for SIZE_MAX bytes. An empty file is no image either,
+            // and malloc(0) may hand back a pointer that reads as success.
+            const std::streamoff end = file.tellg();
+            if (end < 0) throw std::runtime_error("the file size could not be read");
+            if (end == 0) throw std::runtime_error("the file is empty");
+            const std::streamsize fileSize = static_cast<std::streamsize>(end);
             file.seekg(0);
-            imgDataPtr = (uint8_t *)malloc(fileSize);
-            if (imgDataPtr) {
-                file.read((char*)imgDataPtr, fileSize);
-                imgDataSize = fileSize;
-                ownData = true;
-            } else {
-                throw std::runtime_error("Not enough memory");
-            }
+            imgDataPtr = (uint8_t *)malloc(static_cast<size_t>(fileSize));
+            if (!imgDataPtr) throw std::runtime_error("Not enough memory");
+            ownData = true;
+            file.read((char*)imgDataPtr, fileSize);
+            // A file that shrank, or a read the disk broke off, leaves the
+            // tail of the buffer uninitialised: never hand that to a decoder.
+            if (file.gcount() != fileSize)
+                throw std::runtime_error("the file could not be read to the end");
+            imgDataSize = static_cast<size_t>(fileSize);
             file.close();
         } catch (std::exception& err) {
             if (imgDataPtr) {
                 free(imgDataPtr);
                 imgDataPtr = nullptr;
             }
+            ownData = false;
+            imgDataSize = 0;
             debugOutput << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
             std::string access = DescribeFileReadError(imagePath);
             errorMessage = !access.empty()
@@ -696,14 +723,24 @@ namespace UltraCanvas {
         int w = vipsImage.width();
         int h = vipsImage.height();
 
+        // Failures throw vips::VError, which every caller catches: a file
+        // whose header reads but whose pixels do not decode (a HEIC without
+        // an HEVC decoder) gets here, and data() then returns null.
+        uint32_t *src = (uint32_t*)vipsImage.data();
+        if (!src) {
+            std::string why = vips_error_buffer();
+            vips_error_clear();
+            throw vips::VError("Failed to decode image pixels: " + why);
+        }
         cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-            throw UCImageError("Failed to create Cairo surface");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to create Cairo surface");
         }
-        uint32_t *src = (uint32_t*)vipsImage.data();
         uint32_t *dst = (uint32_t*)cairo_image_surface_get_data(surface);
         if (!dst) {
-            throw UCImageError("Failed to get surface data");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to get surface data");
         }
 
         rgba2bgra_premultiplied(src, dst, w * h);

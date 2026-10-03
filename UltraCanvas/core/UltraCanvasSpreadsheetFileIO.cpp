@@ -29,6 +29,7 @@
 
 // For XML parsing
 #include "tinyxml2.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -1728,7 +1729,7 @@ public:
 
     static bool Save(const std::string& filePath, const SpreadsheetSheet* sheet,
                      const CSVExportOptions& opt) {
-        std::ofstream file(filePath, std::ios::binary);
+        std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) return false;
 
         std::string text = CSVEncodeFromUtf8(Build(sheet, opt), opt.encoding, opt.writeBOM);

@@ -13,6 +13,7 @@
 #include <limits>
 #include <cmath>
 #include <iomanip>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -21,7 +22,7 @@ namespace UltraCanvas {
 // =============================================================================
 
     void FinancialChartDataVector::LoadFromCSV(const std::string& filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return;
 
         std::string line;

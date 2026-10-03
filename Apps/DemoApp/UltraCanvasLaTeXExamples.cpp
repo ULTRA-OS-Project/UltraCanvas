@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -303,7 +304,7 @@ namespace {
         // so newly added examples show up without any code change.
         std::vector<std::filesystem::path> texFiles;
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(latexDir, ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(latexDir), ec)) {
             if (!entry.is_regular_file(ec)) continue;
             std::string ext = ToLowerCopy(PathToUtf8(entry.path().extension()));
             if (ext == ".tex") {

@@ -87,6 +87,20 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
 
     connection_ = connectionName;
 
+    // Write-ahead logging: a reader never waits for a writer, and a commit no
+    // longer forces the disk (synchronous=NORMAL is crash-safe under WAL; only
+    // the last commits before a power cut can be lost, and the next sync
+    // fetches them again). The background sync writes a row per message, and
+    // in the default rollback journal every one of those was its own fsync -
+    // with the UI reading the same file, switching accounts while a sync ran
+    // took 10-20 seconds. journal_mode is stored in the file; synchronous is
+    // per connection, so both are set on every open. Not for ":memory:",
+    // which has no journal file.
+    if (databasePath != ":memory:") {
+        UltraDb_Exec(connection_, "PRAGMA journal_mode=WAL");
+        UltraDb_Exec(connection_, "PRAGMA synchronous=NORMAL");
+    }
+
     std::vector<UltraDbMigration> steps = {
         { 1, "initial schema",
           "CREATE TABLE accounts("

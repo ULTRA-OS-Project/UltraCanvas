@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
+//                  first block)
 // Version: 1.8.0 - ApplyBoxStyle: width / height are the content's (CSS content-box)
 //                  unless box-sizing: border-box or `borderBoxSizes`
 // Version: 1.7.0 - ApplyBorders; collapsed table borders
@@ -15,7 +17,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -58,6 +60,9 @@ struct BuildOptions {
     // its text. Labels carry per-byte-range link data, so a run with several
     // links activates exactly the one under the pointer.
     std::function<void(const std::string& href)> onLinkActivated;
+    // The link under the pointer, as it moves onto one (its href) and off it
+    // (""): text links and linked pictures alike.
+    std::function<void(const std::string& href)> onLinkHovered;
 };
 
 struct BuildResult {
@@ -88,6 +93,9 @@ private:
     int elementCount = 0;
     int nextId = 0;
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+    // A list item's marker not yet placed, handed to the item's first block
+    // child (<li><div>text</div></li>) so it starts that block's first line.
+    std::string carriedMarker;
 
     // Per-inline-run state: the rendered plain text built alongside the Pango
     // markup (same bytes the text layout reports from hit testing) and the

@@ -2,7 +2,8 @@
 // UltraMail settings window - the same window as UltraFiler's settings: the
 // settings-page tree on the left, its sections (Reading, Privacy) closed when
 // the window opens, so it opens on the start page that says what they hold.
-// Pages: Reading > Layout (the message beside the list or in its place),
+// Pages: Reading > Layout (the message beside the list or in its place, and
+// the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
 // the message text), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
@@ -14,8 +15,10 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
+//                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -26,11 +29,13 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSpinner.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <set>
@@ -101,6 +106,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
         std::shared_ptr<UltraCanvasRadio> paneInPlaceRadio;
         UltraCanvasRadioGroup             paneGroup;
+        std::shared_ptr<UltraCanvasRadio>   treeFitRadio;
+        std::shared_ptr<UltraCanvasRadio>   treeFixedRadio;
+        UltraCanvasRadioGroup               treeWidthGroup;
+        std::shared_ptr<UltraCanvasSpinner> treeWidthSpinner;
 
         // Reading > Messages
         std::shared_ptr<UltraCanvasRadio> htmlRadio;
@@ -296,6 +305,10 @@ namespace {
         d->syncing = true;
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
+        if (d->treeFitRadio)
+            d->treeWidthGroup.SelectButton(p.folderTreeWidthMode == FolderTreeWidthMode::FitToText
+                                           ? d->treeFitRadio : d->treeFixedRadio);
+        if (d->treeWidthSpinner) d->treeWidthSpinner->SetValue(p.folderTreeWidth);
         if (d->htmlRadio)
             d->viewGroup.SelectButton(p.showHtml ? d->htmlRadio : d->plainRadio);
         for (const auto& [px, radio] : d->sizeRadios)
@@ -333,9 +346,54 @@ namespace {
         parts.body->AddChild(d->paneBesideRadio);
         parts.body->AddChild(d->paneInPlaceRadio);
 
+        // ----- folder tree width: fitted, or [ 200 px ] -----
+        AddBodyCaption(parts, "um-set-tree-width-caption", "Width of the folder list:");
+        const bool fit = d->prefs->folderTreeWidthMode == FolderTreeWidthMode::FitToText;
+        d->treeFitRadio = MakeChoice("um-set-tree-fit",
+                "Auto - 10 px wider than the longest folder or account name", fit);
+        d->treeFixedRadio = MakeChoice("um-set-tree-fixed", "Fixed width:", !fit, 110);
+        d->treeWidthGroup.AddRadioButton(d->treeFitRadio);
+        d->treeWidthGroup.AddRadioButton(d->treeFixedRadio);
+        d->treeWidthGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->folderTreeWidthMode = selected == d->treeFitRadio
+                    ? FolderTreeWidthMode::FitToText : FolderTreeWidthMode::FixedWidth;
+            ApplyAndSave(d);
+        };
+
+        d->treeWidthSpinner = CreateIntSpinner("um-set-tree-width", 0, 0, 90,
+                static_cast<float>(kControlHeight), Preferences::kFolderTreeMinWidth,
+                Preferences::kFolderTreeMaxWidth, d->prefs->folderTreeWidth, 10);
+        d->treeWidthSpinner->SetSuffix(" px");
+        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = kTextFontSize;
+        d->treeWidthSpinner->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Setting a width is choosing a fixed one.
+        d->treeWidthSpinner->onValueChanged = [d](double value) {
+            if (d->syncing || !d->prefs) return;
+            d->prefs->folderTreeWidth = static_cast<int>(std::lround(value));
+            if (d->prefs->folderTreeWidthMode != FolderTreeWidthMode::FixedWidth) {
+                d->prefs->folderTreeWidthMode = FolderTreeWidthMode::FixedWidth;
+                d->syncing = true;
+                d->treeWidthGroup.SelectButton(d->treeFixedRadio);
+                d->syncing = false;
+            }
+            ApplyAndSave(d);
+        };
+
+        auto fixedRow = std::make_shared<UltraCanvasContainer>("um-set-tree-fixed-row");
+        fixedRow->layout.SetFlexRow().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        fixedRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        fixedRow->AddChild(d->treeFixedRadio);
+        fixedRow->AddChild(d->treeWidthSpinner);
+        parts.body->AddChild(d->treeFitRadio);
+        parts.body->AddChild(fixedRow);
+
         d->resets[kPageLayout] = PageReset{ "Restore default layout", 170, [d]() {
             if (!d->prefs) return;
             d->prefs->showReadingPane = true;
+            d->prefs->folderTreeWidthMode = FolderTreeWidthMode::FitToText;
+            d->prefs->folderTreeWidth = Preferences::kFolderTreeDefaultWidth;
             SyncControls(d);
             ApplyAndSave(d);
         } };
@@ -347,6 +405,10 @@ namespace {
                 "In place of the list, a message gets the whole width of the "
                 "window - better on a small screen - and the list comes back with "
                 "\"Back to list\".");
+        AddNote(parts, "um-set-layout-note3",
+                "Auto fits the folder list to the account and folder names it "
+                "shows, and fits it again as folders arrive. Dragging the divider "
+                "still resizes the list for the moment.");
         return parts.page;
     }
 
@@ -544,8 +606,9 @@ namespace {
         PageParts parts = MakePage("um-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
         AddNote(parts, "um-set-start-note1",
-                "Reading - where a message opens, whether HTML mail is shown "
-                "formatted or as plain text, and the size of its text.");
+                "Reading - where a message opens, how wide the folder list is, "
+                "whether HTML mail is shown formatted or as plain text, and the "
+                "size of its text.");
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "

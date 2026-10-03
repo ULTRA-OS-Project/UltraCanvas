@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.3.0 - Spell checking and an editor context menu
-// Last Modified: 2026-08-28
+// Version: 2.3.2 - Live search starts at two characters
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -18,6 +18,8 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasRichTextPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasClipboard.h"
@@ -38,6 +40,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasPathUtf8.h"
 
 // ULTRATEXTER_VERSION comes from the build alone: CMake reads the first line
 // of Docs/Texter/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
@@ -125,7 +128,7 @@ namespace {
 
         // Create directory if it doesn't exist
         try {
-            std::filesystem::create_directories(dir);
+            std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
         } catch (...) {
             debugOutput << "Failed to create autosave directory: " << dir << std::endl;
             return "";
@@ -138,7 +141,7 @@ namespace {
             filename = "Untitled_" + std::to_string(tabIndex) + ".autosave";
         } else {
             // Extract filename from path
-            std::filesystem::path p(originalPath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(originalPath));
             filename = PathToUtf8(p.filename()) + ".autosave";
         }
 
@@ -155,7 +158,7 @@ namespace {
                                       const std::string& encoding,
                                       const std::string& language) {
         try {
-            std::ofstream file(backupPath, std::ios::binary);
+            std::ofstream file(UltraCanvas::PathFromUtf8(backupPath), std::ios::binary);
             if (!file.is_open()) {
                 return false;
             }
@@ -187,7 +190,7 @@ namespace {
                                       std::string& originalPath, std::string& encoding,
                                       std::string& language) {
         try {
-            std::ifstream file(backupPath, std::ios::binary);
+            std::ifstream file(UltraCanvas::PathFromUtf8(backupPath), std::ios::binary);
             if (!file.is_open()) {
                 return false;
             }
@@ -231,7 +234,7 @@ namespace {
 
     void AutosaveManager::DeleteBackup(const std::string& backupPath) {
         try {
-            std::filesystem::remove(backupPath);
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(backupPath));
         } catch (...) {
             // Ignore errors
         }
@@ -242,11 +245,11 @@ namespace {
 
         try {
             std::string dir = GetDirectory();
-            if (!std::filesystem::exists(dir)) {
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(dir))) {
                 return backups;
             }
 
-            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir))) {
                 if (entry.is_regular_file()) {
                     std::string filename = PathToUtf8(entry.path().filename());
                     if (filename.find(".autosave") != std::string::npos) {
@@ -264,14 +267,14 @@ namespace {
     void AutosaveManager::CleanupOldBackups(int maxAgeHours) {
         try {
             std::string dir = GetDirectory();
-            if (!std::filesystem::exists(dir)) {
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(dir))) {
                 return;
             }
 
             auto now = std::time(nullptr);
             int maxAgeSeconds = maxAgeHours * 3600;
 
-            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir))) {
                 if (entry.is_regular_file()) {
                     std::string filename = PathToUtf8(entry.path().filename());
                     if (filename.find(".autosave") != std::string::npos) {
@@ -359,15 +362,13 @@ namespace {
                         pos += needle.size();
                     }
                 } else {
-                    int pos = 0;
-                    int searchLen = utf8_length(searchText);
-                    while ((pos = utf8_find(textSnapshot, searchText, pos, caseSensitive)) >= 0) {
-                        if (matchCountCancel.load()) return;
-                        count++;
-                        if (pos == selectionPos) {
-                            currentIndex = count;
+                    const std::vector<int> matches = utf8_find_all(textSnapshot, searchText, caseSensitive);
+                    count = static_cast<int>(matches.size());
+                    for (int i = 0; i < count; i++) {
+                        if (matches[i] == selectionPos) {
+                            currentIndex = i + 1;
+                            break;
                         }
-                        pos += searchLen;
                     }
                 }
 
@@ -520,7 +521,7 @@ namespace {
                                 std::vector<std::string> folders;
                                 std::unordered_set<std::string> seen;
                                 for (const auto& filePath : recentFiles) {
-                                    std::filesystem::path p(filePath);
+                                    std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
                                     std::string folder = PathToUtf8(p.parent_path());
                                     if (folder.empty()) continue;
                                     if (seen.insert(folder).second) {
@@ -540,7 +541,7 @@ namespace {
                                     for (const auto& folder : folders) {
                                         std::string folderCopy = folder;
                                         auto entry = MenuItemData::Action(folder, "-", [this, folderCopy]() {
-                                            if (!std::filesystem::exists(folderCopy)) {
+                                            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(folderCopy))) {
                                                 debugOutput << "Recent folder no longer exists: " << folderCopy << std::endl;
                                                 return;
                                             }
@@ -595,7 +596,7 @@ namespace {
                                             : std::string("-");
                                         std::string pathCopy = fullPath;
                                         auto entry = MenuItemData::Action(label, iconPath, [this, pathCopy]() {
-                                            if (std::filesystem::exists(pathCopy)) {
+                                            if (std::filesystem::exists(UltraCanvas::PathFromUtf8(pathCopy))) {
                                                 OpenDocumentFromPath(pathCopy);
                                             } else {
                                                 RemoveFromRecentFiles(pathCopy);
@@ -631,6 +632,9 @@ namespace {
                         // ── ADD THESE TWO LINES ──
                         MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
                             OnFilePrint();
+                        }),
+                        MenuItemData::Action("Export as PDF...", [this]() {
+                            OnFileExportPdf();
                         }),                        MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileClose();
@@ -707,6 +711,9 @@ namespace {
                         }),
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
+                        }),
+                        MenuItemData::Checkbox("Page Layout (documents)", config.documentPageLayout, [this](bool checked) {
+                            OnViewTogglePageLayout(checked);
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Submenu("Toolbars", {
@@ -1771,7 +1778,7 @@ namespace {
         }
 
         // Create new document
-        std::filesystem::path p(filePath);
+        std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
         int docIndex = CreateNewDocument(PathToUtf8(p.filename()));
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
@@ -2162,6 +2169,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
         auto doc = documents[docIndex];
 
+#if !defined(ULTRACANVAS_PLUGIN_PDF)
+        // The PDF view is compiled only when MuPDF was found at configure
+        // time (ULTRACANVAS_PLUGIN_PDF). Without it this build cannot show a
+        // PDF, so say so instead of failing to link.
+        UltraCanvasDialogManager::ShowMessage(
+                "This build of Texter has no PDF support (MuPDF was not found "
+                "when it was built), so " + PathToUtf8(PathFromUtf8(filePath).filename()) +
+                " cannot be opened.",
+                "Open PDF", DialogType::Warning, DialogButtons::OK, nullptr);
+        (void)doc;
+        return false;
+#else
         // Build the PDF view at the same logical size as the textArea slot.
         // The container will resize it on layout passes.
         auto view = UltraCanvas::CreatePDFView(
@@ -2186,7 +2205,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             debugOutput << "[PDF] " << msg << std::endl;
         };
 
-        std::filesystem::path p(filePath);
+        std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
         doc->fileName     = PathToUtf8(p.filename());
         doc->filePath     = filePath;
         doc->isNewFile    = false;
@@ -2218,6 +2237,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         lastOpenedDirectory = PathToUtf8(p.parent_path());
         AddToRecentFiles(filePath);
         return true;
+#endif
     }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
@@ -2227,7 +2247,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         try {
             // Read raw bytes from file in binary mode
-            std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+            std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
                 debugOutput << "Failed to open file: " << filePath << std::endl;
                 return false;
@@ -2245,7 +2265,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = documents[docIndex];
 
             // Update filename from path
-            std::filesystem::path p(filePath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
             doc->fileName = PathToUtf8(p.filename());
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
@@ -2376,7 +2396,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 return LoadFileIntoDocument(docIndex, filePath);
             }
 
-            std::filesystem::path p(filePath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
             doc->fileName = PathToUtf8(p.filename());
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
@@ -2407,6 +2427,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 : std::static_pointer_cast<UltraCanvasUIElement>(doc->textArea);
             doc->richEdit = view;
             doc->language = "Rich Text";
+            // The zoom the other tabs are shown at, on pages unless the user
+            // turned that off.
+            view->SetZoom(static_cast<float>(config.fontZoomPercent) / 100.0f);
+            view->SetPageView(config.documentPageLayout);
 
             // Swap the editor slot inside the tab rather than the whole tab
             // content: editorArea is the flex row that also holds the
@@ -2580,7 +2604,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             text = document->ToPlainText();
         }
 
-        std::ofstream file(filePath, std::ios::binary);
+        std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
             debugOutput << "Failed to save file: " << filePath << std::endl;
             return false;
@@ -2598,13 +2622,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = documents[docIndex];
 
             // PDF documents save via the MuPDF engine, not the text encoder.
+#if defined(ULTRACANVAS_PLUGIN_PDF)
             if (doc->IsPdf() && doc->pdfView) {
                 if (!doc->pdfView->SaveAs(filePath)) {
                     debugOutput << "Failed to save PDF: " << filePath << std::endl;
                     return false;
                 }
                 doc->filePath     = filePath;
-                std::filesystem::path p(filePath);
+                std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
                 doc->fileName     = PathToUtf8(p.filename());
                 doc->isModified   = false;
                 doc->isSaved      = true;
@@ -2616,6 +2641,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 AddToRecentFiles(filePath);
                 return true;
             }
+#endif
 
             std::string targetExt = PathToUtf8(PathFromUtf8(filePath).extension());
             if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);
@@ -2629,7 +2655,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     return false;
                 }
                 doc->filePath = filePath;
-                std::filesystem::path p(filePath);
+                std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
                 doc->fileName = PathToUtf8(p.filename());
                 doc->isNewFile = false;
                 doc->isSaved = true;
@@ -2660,7 +2686,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {
                 std::vector<uint8_t> rawBytes = doc->textArea->GetRawBytes();
-                std::ofstream file(filePath, std::ios::binary);
+                std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
                     debugOutput << "Failed to save file: " << filePath << std::endl;
                     return false;
@@ -2719,7 +2745,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     }
                 }
 
-                std::ofstream file(filePath, std::ios::binary);
+                std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
                     debugOutput << "Failed to save file: " << filePath << std::endl;
                     return false;
@@ -2752,7 +2778,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
             // Update filename
-            std::filesystem::path p(filePath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
             doc->fileName = PathToUtf8(p.filename());
 
             // Detect language from file extension on first save
@@ -2874,7 +2900,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             if (!sd.filePath.empty()) {
                 // Saved file — reopen from disk
-                if (!std::filesystem::exists(sd.filePath)) {
+                if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(sd.filePath))) {
                     debugOutput << "UltraTexter: session file no longer exists: "
                                 << sd.filePath << std::endl;
                     continue;
@@ -2884,7 +2910,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 // If the user had unsaved edits on top of this file, overlay them
                 if (sd.wasModified && !sd.backupPath.empty()
-                    && std::filesystem::exists(sd.backupPath)) {
+                    && std::filesystem::exists(UltraCanvas::PathFromUtf8(sd.backupPath))) {
                     std::string content, origPath, enc, lang;
                     if (autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
                         RecoverBackupIntoDocument(docIndex, sd.backupPath, content, enc, lang);
@@ -2893,7 +2919,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 }
             } else {
                 // Unsaved tab — must have a backup to carry any content forward
-                if (sd.backupPath.empty() || !std::filesystem::exists(sd.backupPath)) {
+                if (sd.backupPath.empty() || !std::filesystem::exists(UltraCanvas::PathFromUtf8(sd.backupPath))) {
                     continue;
                 }
                 std::string content, origPath, enc, lang;
@@ -3038,7 +3064,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // No matching session tab — create a new document
         std::string displayName;
         if (!originalPath.empty()) {
-            std::filesystem::path p(originalPath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(originalPath));
             displayName = PathToUtf8(p.filename());
         } else {
             displayName = GenerateUniqueDocumentName("Recovered");
@@ -3070,11 +3096,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool show = (IsMarkdownMode() || isRich) && config.showMarkdownToolbar;
         markdownToolbar->SetVisible(show);
 
-        // One button still has no rich-document counterpart: a checkbox list
-        // item is not part of UCRichDocument. Disabling beats a button that
-        // quietly does nothing.
+        // Every button has a rich-document counterpart now; a tab switched
+        // from an older state keeps whatever it was left with, so clear it.
         if (auto btn = markdownToolbar->GetWidget("md-checklist")) {
-            btn->SetDisabled(isRich);
+            btn->SetDisabled(false);
         }
         // Insert Table works in both modes now, so it is never disabled here;
         // clearing it matters because a tab switched from Markdown to a word
@@ -3127,9 +3152,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 else InsertMarkdownLinePrefix("1. ", "list item");
                 break;
             case FormatCommand::Checklist:
-                // UCRichDocument has no checkbox list item, so the nearest
-                // thing a word-processing document can hold is a bullet.
-                if (rich) rich->ToggleBulletList();
+                if (rich) rich->ToggleCheckList();
                 else InsertMarkdownLinePrefix("- [ ] ", "list item");
                 break;
             case FormatCommand::Quote:
@@ -3671,11 +3694,67 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    // A word-processing tab as a PDF of its pages (what Print sends to the
+    // printer). Other tabs have no page layout to export.
+    void UltraCanvasTextEditor::OnFileExportPdf() {
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+        if (!doc->IsRichDocument() || !doc->richEdit) {
+            UltraCanvasDialogManager::ShowError(
+                "Export as PDF works on word-processing documents (.docx, .odt, .doc, .md opened as a document).",
+                "Export as PDF", nullptr, GetWindow());
+            return;
+        }
+        std::string stem = doc->fileName.empty() ? std::string("Untitled") : doc->fileName;
+        const size_t dot = stem.find_last_of('.');
+        if (dot != std::string::npos && dot > 0) stem = stem.substr(0, dot);
+
+        FileDialogOptions opts;
+        opts.title = "Export as PDF";
+        opts.filters = {FileFilter("PDF document", std::vector<std::string>{"pdf"})};
+        opts.initialDirectory = lastOpenedDirectory;
+        opts.defaultFileName = stem + ".pdf";
+        opts.parentWindow = GetWindow();
+        const int documentId = doc->documentId;
+        UltraCanvasFileLoader::SaveFileDialog(
+                opts,
+                [this, documentId](DialogResult result, const std::string& filePath) {
+                    if (result != DialogResult::OK || filePath.empty()) return;
+                    const int index = FindDocumentIndexById(documentId);
+                    if (index < 0 || !documents[static_cast<size_t>(index)]->richEdit) return;
+                    std::string error;
+                    if (!documents[static_cast<size_t>(index)]->richEdit->ExportToPdf(filePath, error)) {
+                        UltraCanvasDialogManager::ShowError(error, "Export as PDF", nullptr, GetWindow());
+                    }
+                });
+    }
+
     void UltraCanvasTextEditor::OnFilePrint() {
         auto doc = GetActiveDocument();
         if (!doc) return;
 
         std::string docName = doc->fileName.empty() ? "Untitled" : doc->fileName;
+        // A word-processing tab prints as what it looks like: its pages as a
+        // PDF, fonts, pictures, tables, headers and page numbers included.
+        // (Its text area is detached and empty, which is why reading that
+        // once printed a blank page.) The same pages go along to be drawn by
+        // a printer that cannot take a PDF - Windows, GutenPrint, an IPP
+        // printer without PDF - which otherwise refused the job.
+        if (doc->IsRichDocument() && doc->richEdit) {
+            std::vector<uint8_t> pdf;
+            std::string error;
+            if (!doc->richEdit->ExportToPdf(pdf, error)) {
+                UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
+                return;
+            }
+            const IODeviceResult printed =
+                PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow(),
+                                        CreateRichDocumentPrintPages(*doc->richEdit));
+            if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
+                UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
+            }
+            return;
+        }
         std::string content = doc->textArea ? doc->textArea->GetText() : "";
 
         // Retrieve the native window handle for modal parenting
@@ -3995,6 +4074,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (doc->textArea) {
                 doc->textArea->SetWordWrap(config.wordWrap);
             }
+        }
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewTogglePageLayout(bool checked) {
+        config.documentPageLayout = checked;
+        for (auto& doc : documents) {
+            if (doc->richEdit) doc->richEdit->SetPageView(checked);
         }
         SaveConfig();
     }
@@ -4638,10 +4725,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         doc->richEdit->onLinkClicked = [](const std::string& target) {
-            if (target.empty()) return false;
+            // "#name" is a bookmark in the document: the element goes there.
+            if (target.empty() || target[0] == '#') return false;
             OpenURL(target);
             return true;
         };
+
+        // Comments are signed with the login name; a double-click on one in
+        // the comment pane edits it.
+        const char* user = std::getenv("USER");
+        if (!user) user = std::getenv("USERNAME");
+        doc->richEdit->SetCommentAuthor(user ? user : "");
+        doc->richEdit->onCommentActivated = [this](int index) { EditRichComment(index); };
     }
 
     void UltraCanvasTextEditor::SetupDocumentCallbacks(int docIndex) {
@@ -5124,10 +5219,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         float fontSize = config.defaultFontSize * percent / 100.0;
         fontSize = std::max(4.0f, std::min(72.0f, fontSize));
 
-        // Apply to all open document TextAreas
+        // Apply to all open document TextAreas; a word-processing tab keeps
+        // its document's own sizes and zooms instead.
         for (auto& doc : documents) {
             if (doc->textArea) {
                 doc->textArea->SetFontSize(fontSize);
+            }
+            if (doc->richEdit) {
+                doc->richEdit->SetZoom(static_cast<float>(percent) / 100.0f);
             }
         }
 
@@ -5330,14 +5429,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         // ── Search text changed (handles clearing) ──
+        // Below MinLiveSearchChars no live search runs, so the highlights of the
+        // longer term the user is deleting back from must not stay up.
         searchBar->onSearchTextChanged = [this](const std::string& text) {
-            if (text.empty()) {
+            if (!UltraCanvasSearchBar::IsLiveSearchText(text)) {
                 CancelAsyncMatchCount();
                 auto doc = GetActiveDocument();
                 if (doc && !doc->IsRichDocument() && doc->textArea) {
                     doc->textArea->ClearHighlights();
                 }
-                searchBar->UpdateMatchCount(0, 0);
+                if (searchBar) searchBar->ClearMatchCount();
             }
         };
 
@@ -5691,7 +5792,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 std::string pathCopy = fullPath;
                 auto entry = MenuItemData::Action(label, iconPath, [this, pathCopy]() {
-                    if (std::filesystem::exists(pathCopy)) {
+                    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(pathCopy))) {
                         OpenDocumentFromPath(pathCopy);
                     } else {
                         RemoveFromRecentFiles(pathCopy);
@@ -5760,6 +5861,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
         config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
+        config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
         // config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
@@ -5776,6 +5878,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("darkTheme", isDarkTheme);
         configFile.SetBool("showLineNumbers", config.showLineNumbers);
         configFile.SetBool("wordWrap", config.wordWrap);
+        configFile.SetBool("documentPageLayout", config.documentPageLayout);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
         // configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
@@ -5857,15 +5960,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             const RichBlockType blockType = rich->GetCurrentBlockType();
             const RichDocPosition caret = rich->GetEditor().GetCaret();
-            bool ordered = false;
+            bool ordered = false, checklist = false;
             if (blockType == RichBlockType::ListItem
                 && caret.blockIndex >= 0
                 && caret.blockIndex < rich->GetEditor().GetBlockCount()) {
                 ordered = rich->GetEditor().GetBlock(caret.blockIndex).orderedList;
+                checklist = rich->GetEditor().GetBlock(caret.blockIndex).checkbox;
             }
-            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered);
+            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered && !checklist);
             setChecked("md-ol", blockType == RichBlockType::ListItem && ordered);
-            setChecked("md-checklist", false);
+            setChecked("md-checklist", checklist);
             setChecked("md-quote", blockType == RichBlockType::BlockQuote);
 
             const int level = rich->GetCurrentHeadingLevel();

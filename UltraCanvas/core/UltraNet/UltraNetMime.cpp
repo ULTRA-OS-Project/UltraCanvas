@@ -4,6 +4,7 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.3.1 - MimeBuild takes a Message-ID passed among the extra headers
 // Version: 0.3.0 - HTML messages with a text alternative and cid: pictures
 //                  (multipart/alternative + related)
 // Version: 0.2.0 - every iconv charset (ISO-2022-JP, Shift_JIS, EUC-*, GB*,
@@ -1125,7 +1126,15 @@ std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
     const bool hasAtt = !in.attachments.empty();
     const std::string boundary = in.boundary.empty() ? GenBoundary() : in.boundary;
     const std::string date = in.date.empty() ? Rfc2822Date() : in.date;
-    const std::string msgId = in.messageId.empty() ? GenMessageId() : in.messageId;
+    // The Message-ID: the one given, else one passed among the extra headers
+    // (an SMTP caller's UltraNetMailMessage::headers - a mail client that also
+    // files the message in Sent or Drafts needs the copies to carry the same
+    // ID), else a new one. Message-ID stays reserved there: it is written once.
+    std::string msgId = in.messageId;
+    if (msgId.empty())
+        for (const auto& [name, value] : in.extraHeaders)
+            if (Lower(name) == "message-id" && !value.empty()) msgId = value;
+    if (msgId.empty()) msgId = GenMessageId();
 
     std::string bodyCt = in.bodyMediaType.empty() ? "text/plain" : in.bodyMediaType;
     if (bodyCt.rfind("text/", 0) == 0 && !in.bodyCharset.empty())

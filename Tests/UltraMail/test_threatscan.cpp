@@ -6,6 +6,7 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -220,4 +221,140 @@ TEST(threat_level_names_round_trip) {
                                ThreatLevel::Scam })
         REQUIRE(ThreatLevelFromString(ToString(level)) == level);
     REQUIRE(ThreatLevelFromString("nonsense") == ThreatLevel::Unscanned);
+}
+
+// ---------------------------------------------------------------------------
+// Sender domain vs. button domain (the reading pane's phishing warning)
+// ---------------------------------------------------------------------------
+TEST(domain_mismatch_names_the_sender_and_the_button_domain) {
+    const auto m = FindDomainMismatch(Html("info@riscoscloverleaf.com",
+        "<p>Your mailbox has a temporary restriction.</p>"
+        "<a href=\"https://track.mailer.example/u\">unsubscribe</a>"
+        "<a href=\"https://secure-mail.verify-now.top/login\">Confirm Now</a>"));
+    REQUIRE(m.found);
+    REQUIRE(m.isButton);
+    REQUIRE_EQ(m.senderDomain, std::string("riscoscloverleaf.com"));
+    REQUIRE_EQ(m.linkDomain, std::string("secure-mail.verify-now.top"));
+    REQUIRE_EQ(m.linkText, std::string("Confirm Now"));
+}
+
+TEST(domain_mismatch_is_not_found_when_links_stay_on_the_senders_domain) {
+    const auto m = FindDomainMismatch(Html("news@shop.example.com",
+        "<a href=\"https://www.example.com/offer\">See the offer</a>"
+        "<a href=\"https://example.com/unsubscribe\">unsubscribe</a>"));
+    REQUIRE(!m.found);
+}
+
+TEST(domain_mismatch_falls_back_to_a_bare_link) {
+    ScanInput in;
+    in.fromAddr = "billing@example.com";
+    in.body     = "Pay here: https://pay.elsewhere.test/x";
+    const auto m = FindDomainMismatch(in);
+    REQUIRE(m.found);
+    REQUIRE(!m.isButton);
+    REQUIRE_EQ(m.linkDomain, std::string("pay.elsewhere.test"));
+}
+
+// ---------------------------------------------------------------------------
+// Advance-fee fraud ("Nigeria connection" / 419)
+// ---------------------------------------------------------------------------
+TEST(advance_fee_story_is_a_scam) {
+    ScanInput in;
+    in.fromAddr = "barrister.james@mailbox.example";
+    in.subject  = "Urgent: next of kin";
+    in.body     = "Dear Friend, my late client died in a car accident and left "
+                  "US$ 15,500,000.00 in a dormant account. You will receive 40% as "
+                  "my partner; you only need to pay the taxes and the clearance fee.";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "advance-fee-fraud"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(advance_fee_in_words_millions_is_recognised) {
+    ScanInput in;
+    in.fromAddr = "someone@example.test";
+    in.body     = "The inheritance of 10.5 million united states dollars awaits you.";
+    REQUIRE(HasFinding(ScanMessage(in), "advance-fee-fraud"));
+}
+
+TEST(a_large_number_without_the_story_is_not_advance_fee) {
+    ScanInput in;
+    in.fromAddr = "news@example.test";
+    in.body     = "The city announced a budget of $12,000,000 for new schools.";
+    REQUIRE(!HasFinding(ScanMessage(in), "advance-fee-fraud"));
+    ScanInput story;
+    story.fromAddr = "aunt@example.test";
+    story.body     = "Grandpa passed away last week; the funeral is on Friday.";
+    REQUIRE(!HasFinding(ScanMessage(story), "advance-fee-fraud"));
+}
+
+// ---------------------------------------------------------------------------
+// A brand's own pictures over links somewhere else (a fake "It's a Match!")
+// ---------------------------------------------------------------------------
+namespace {
+// The shape of the real phishing mail: Tinder's name and its pictures from
+// gotinder.com, sent from an unrelated domain, every link to a third one.
+ScanInput FakeTinderMatch() {
+    ScanInput in;
+    in.fromName = "Tinder";
+    in.fromAddr = "cmcgavnn@amega.com";
+    in.subject  = "It's a Match!";
+    in.body =
+        "<table><tr><td><img src=\"https://marketing-images.gotinder.com/3d7c/0.jpg\" "
+        "width=\"39\" height=\"45\" alt=\"Tinder Logo\"></td></tr>"
+        "<tr><td><div>Someone matched with you on Tinder!</div></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<span>FIND OUT WHO</span></a></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<img src=\"https://marketing-images.gotinder.com/f91f/0.png\" alt=\"Tinder Logo\"></a>"
+        " This email was sent by Tinder. <a href=\"http://vakantiehuiseichenbach.nl/x\">"
+        "Privacy Policy</a></td></tr></table>";
+    in.bodyIsHtml = true;
+    return in;
+}
+} // namespace
+
+TEST(a_fake_match_mail_with_borrowed_pictures_is_a_scam) {
+    const ThreatReport r = ScanMessage(FakeTinderMatch());
+    REQUIRE(HasFinding(r, "brand-impersonation"));
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(borrowed_pictures_need_no_brand_table) {
+    ScanInput in = FakeTinderMatch();
+    in.fromName = "Glimmerdate";                // a name no table knows
+    in.subject  = "New message on Glimmerdate";
+    for (std::string::size_type p; (p = in.body.find("gotinder")) != std::string::npos;)
+        in.body.replace(p, 8, "glimmerdate");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(a_brand_mailing_its_own_pictures_and_links_is_not_borrowing) {
+    ScanInput in = FakeTinderMatch();
+    in.fromAddr = "no-reply@gotinder.com";
+    for (std::string::size_type p; (p = in.body.find("vakantiehuiseichenbach.nl")) != std::string::npos;)
+        in.body.replace(p, 25, "tinder.com");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(!HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(!HasFinding(r, "brand-impersonation"));
+}
+
+TEST(pictures_from_a_cdn_the_name_does_not_name_are_not_borrowing) {
+    ScanInput in;
+    in.fromName = "Garden Club";
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "<img src=\"https://cdn.mailservice.example/a.png\">"
+              "<a href=\"https://gardenclub.example/events\">Events</a>";
+    in.bodyIsHtml = true;
+    REQUIRE(!HasFinding(ScanMessage(in), "borrowed-brand-pictures"));
+}
+
+TEST(image_hosts_are_read_from_src_and_background) {
+    const auto hosts = ExtractImageHosts(
+        "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
+        "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
+    REQUIRE(hosts.size() == 3);
 }

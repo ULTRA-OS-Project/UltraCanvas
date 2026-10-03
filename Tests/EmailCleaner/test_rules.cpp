@@ -6,6 +6,10 @@
 
 #include "EmailCleanerRules.h"
 #include "EmailCleanerText.h"
+#include "UltraCanvasPathUtf8.h"
+
+#include <chrono>
+#include <filesystem>
 
 #include <map>
 
@@ -161,4 +165,37 @@ TEST(RuleSet_RejectsEmptyOrZeroWeightRules) {
     set.Add(zero);
 
     REQUIRE(set.Empty());
+}
+
+TEST(RuleSet_FileRoundTripsUnderANonAsciiFolder) {
+    // The rules live in the user's data folder, which can carry any script
+    // (a Thai user name). Saving and loading go through PathFromUtf8.
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("ec_rules_" + std::to_string(stamp));
+    const std::filesystem::path dir =
+        root / UltraCanvas::PathFromUtf8("\xe0\xb8\x9c\xe0\xb8\xb9\xe0\xb9\x89\xe0\xb9\x83\xe0\xb8\x8a\xe0\xb9\x89");
+    std::filesystem::create_directories(dir);
+    const std::string path = UltraCanvas::PathToUtf8(dir / "rules.txt");
+
+    RuleSet rules;
+    std::string term;
+    bool openStart = false, openEnd = false;
+    ParseRulePhrase("half price", term, openStart, openEnd);
+    KeywordRule rule;
+    rule.category = MessageCategory::ProductSpam;
+    rule.field    = MatchField::Subject;
+    rule.weight   = 3.0;
+    rule.term     = term;
+    rules.Add(rule);
+    REQUIRE(rules.SaveFile(path));
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
+
+    RuleSet loaded;
+    REQUIRE(loaded.LoadFile(path));
+    REQUIRE_EQ(loaded.Size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(loaded.Rules().front().term, term);
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }

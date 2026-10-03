@@ -1,5 +1,6 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.6.0 - onHoverEnter / onHoverLeave
 // Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
@@ -53,6 +54,7 @@ private:
     ImageFitMode fitMode = ImageFitMode::Contain;
     ImagePosition imagePosition;   // centred unless set
     bool heightFollowsWidth = false;  // see SetHeightFollowsWidth
+    bool hoverNotified = false;       // onHoverEnter sent, onHoverLeave not yet
     bool repeatX = false;           // tile across / down the element
     bool repeatY = false;
     Color tintColor = Colors::White;
@@ -89,6 +91,10 @@ public:
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;
     std::function<void()> onClick;
+    // The pointer came onto / left the image (a linked picture tells the
+    // status line where it goes).
+    std::function<void()> onHoverEnter;
+    std::function<void()> onHoverLeave;
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====

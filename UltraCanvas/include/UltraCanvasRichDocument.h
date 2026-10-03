@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,11 +56,65 @@ struct RichTextRun {
     float imageHeightPt = 0.0f;
     std::string imageAltText;
 
+    // ===== FLOATING PICTURE =====
+    // A picture anchored to its paragraph instead of sitting in the line -
+    // Word's <wp:anchor>, ODF's paragraph- or character-anchored frame. Its
+    // placeholder stays in the text where it was anchored (so it moves with
+    // its paragraph and a selection still covers it), but it takes no room in
+    // the line: it is placed at the paragraph's top, at the column's left or
+    // right edge (or imageOffsetXPt from the left), and the text wraps round
+    // it as imageWrap says.
+    enum class ImageWrap {
+        Inline,         // in the line (not floating)
+        Square,         // text flows beside it
+        TopAndBottom,   // text stops above it and resumes below it
+        BehindText,     // drawn under the text, which ignores it
+        InFrontOfText   // drawn over the text, which ignores it
+    };
+    ImageWrap imageWrap = ImageWrap::Inline;
+    // Left / Right / Center of the text column; Default = imageOffsetXPt from
+    // its left edge.
+    RichTextAlign imageFloatAlign = RichTextAlign::Left;
+    float imageOffsetXPt = 0.0f;
+    float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+
+    bool IsFloatingImage() const { return IsInlineImage() && imageWrap != ImageWrap::Inline; }
+
+    // A footnote or endnote reference: the note is UCRichDocument::notes
+    // [noteIndex]. `text` is the mark as last shown ("3", "iv"), superscript;
+    // views and writers number the references in document order.
+    int noteIndex = -1;
+    bool IsNoteReference() const { return noteIndex >= 0; }
+
+    // The comments (UCRichDocument::comments) this text is under, by index.
+    std::vector<int> commentIds;
+
+    // A tracked change: text inserted, or deleted but kept (shown struck
+    // through) until the change is accepted or rejected. `revision` is its
+    // UCRichDocument::revisions entry (who, when). Exports that give the
+    // text alone (Markdown, HTML, plain text) leave deleted text out.
+    enum class Change { Unchanged, Inserted, Deleted };
+    Change change = Change::Unchanged;
+    int revision = -1;
+    bool IsDeleted() const { return change == Change::Deleted; }
+
+    // The named character style (UCRichDocument::styles) this run was given,
+    // "" for none. Its properties are already in the run's own fields; the
+    // name is what lets a change to the style reach the run.
+    std::string characterStyleId;
+
     // A field whose text depends on where it is drawn: a header's "Page 3
     // of 7". `text` holds the value it was last shown with, which is what
     // plain-text output and a view without pages use.
-    enum class Field { Plain, PageNumber, PageCount };
+    //   Sequence       a caption's number: the Nth `fieldArgument` ("Figure")
+    //                  of the document (UCRichDocument::UpdateFields)
+    //   Reference      the text of the bookmark `fieldArgument` - "Figure 3"
+    //                  when the bookmark is on a caption, else its paragraph
+    //   PageReference  the page the bookmark `fieldArgument` is on (a paged
+    //                  view fills it in; a table of contents' page numbers)
+    enum class Field { Plain, PageNumber, PageCount, Sequence, Reference, PageReference };
     Field field = Field::Plain;
+    std::string fieldArgument;
 
     static constexpr const char* kObjectReplacement = "\xEF\xBF\xBC";   // U+FFFC
 
@@ -75,8 +130,10 @@ struct RichTextRun {
             && subscript == other.subscript && superscript == other.superscript
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
-            && highlightColor == other.highlightColor
-            && field == Field::Plain && other.field == Field::Plain;   // a field stays its own run
+            && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
+            && commentIds == other.commentIds && change == other.change && revision == other.revision
+            && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
+            && noteIndex < 0 && other.noteIndex < 0;                  // and so does a note mark
     }
 };
 
@@ -132,17 +189,40 @@ struct RichTabStop {
     RichTabKind kind = RichTabKind::Left;
 };
 
+// A section of a document: its text in `columns` columns, `columnGapPt`
+// apart, starting on a new page or (continuous) below the section before.
+struct RichSectionSetup {
+    int columns = 1;
+    float columnGapPt = 36.0f;
+    bool newPage = false;
+    bool operator==(const RichSectionSetup& other) const {
+        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage;
+    }
+};
+
 enum class RichVerticalAlign { Top, Middle, Bottom };
+
+// How a border line is drawn. Formats name many more (Word has ~25 line
+// types); these are the ones a reader keeps apart, and every other type maps
+// to the nearest of them (thick-thin pairs to Double, dash-dot to Dashed).
+enum class RichBorderStyle { Solid, Dotted, Dashed, Double };
 
 // One side of a table cell's frame. widthPt 0 = no line.
 struct RichBorder {
     float widthPt = 0.0f;
     std::string color;              // "#RRGGBB"; empty = automatic (black)
+    RichBorderStyle style = RichBorderStyle::Solid;
     bool IsVisible() const { return widthPt > 0.0f; }
     bool operator==(const RichBorder& other) const {
-        return widthPt == other.widthPt && color == other.color;
+        return widthPt == other.widthPt && color == other.color && style == other.style;
     }
 };
+
+// Word's w:val / ODF's line keyword for a style, and back. Unknown names read
+// as the nearest drawable style, so "thinThickSmallGap" is still a double line.
+const char* RichBorderStyleWordName(RichBorderStyle style);     // "single", "dotted", ...
+const char* RichBorderStyleOdfName(RichBorderStyle style);      // "solid", "dotted", ...
+RichBorderStyle RichBorderStyleFromName(const std::string& name);
 
 struct RichTableCell {
     std::vector<RichTextRun> runs;
@@ -204,6 +284,33 @@ struct RichDocBlock {
     // Unordered ListItem: the document's bullet (UTF-8, e.g. "–", "✓"). Empty
     // = the view's bullet for the level.
     std::string bulletText;
+    // Unordered ListItem: a to-do item. The view draws a box in place of the
+    // bullet, ticked when `checked`. Markdown spells it "- [ ]" / "- [x]";
+    // ODT and DOCX have no check list of their own, so they carry it the way
+    // Word's check boxes read in any word processor: a ☐ or ☒ opening the
+    // item's text (see UCRichDocument::ReadCheckboxPrefixes).
+    bool checkbox = false;
+    bool checked = false;
+
+    // Bookmarks at the start of this block: names, unique in the document,
+    // that cross-references (RichTextRun::Field::Reference/PageReference)
+    // and links to "#name" point at.
+    std::vector<std::string> bookmarks;
+    // This block starts a new section, laid out as `section` says; the
+    // section runs to the next block that starts one. The first section's
+    // setup is UCRichDocument::firstSection.
+    bool sectionStart = false;
+    RichSectionSetup section;
+
+    // An entry of the table of contents, for a heading of this level (1..9);
+    // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
+    // the entries.
+    int tocLevel = 0;
+
+    // The named paragraph style (UCRichDocument::styles) the block has, "" =
+    // the document's default ("Normal"). Like a run's character style, its
+    // properties are already in the block's own fields and its runs'.
+    std::string styleId;
 
     // Paragraph geometry (Paragraph, Heading, BlockQuote, CodeBlock; list
     // items keep the view's own list indentation and use only the spacing).
@@ -283,8 +390,13 @@ struct RichDocBlock {
         paragraphBorderRight = from.paragraphBorderRight;
         paragraphBackground = from.paragraphBackground;
         tabStops = from.tabStops;
+        rightToLeft = from.rightToLeft;
     }
     RichTextAlign align = RichTextAlign::Default;
+    // A right-to-left paragraph (Arabic, Hebrew): it starts at the right,
+    // and "left" and "right" indents and alignment mean the other side. Text
+    // of either direction inside it is still ordered by the Unicode bidi rules.
+    bool rightToLeft = false;
     std::string codeLanguage;           // CodeBlock fence language hint
     std::vector<RichTableRow> tableRows;
     // Table: relative column widths (any unit - points as read), one per grid
@@ -383,6 +495,80 @@ private:
     std::vector<Counter>& LevelsOf(const std::string& listKey);
 };
 
+// ===== FOOTNOTES AND ENDNOTES =====
+// A note's text, referenced from the body by a run with noteIndex. Footnotes
+// go at the foot of the page the reference is on, endnotes after the body.
+struct RichNote {
+    enum class Kind { Footnote, Endnote };
+    Kind kind = Kind::Footnote;
+    std::vector<RichDocBlock> blocks;
+};
+
+// ===== COMMENTS =====
+// A reviewer's comment on some text: the runs it covers carry its index in
+// RichTextRun::commentIds. A comment no run refers to any more (its text was
+// deleted, or it was removed) is not shown and not saved.
+struct RichComment {
+    std::string author;
+    std::string initials;
+    std::string date;            // ISO 8601, as the formats store it; may be empty
+    std::string text;            // paragraphs separated by '\n'
+    bool resolved = false;
+};
+
+// ===== TRACKED CHANGES =====
+// Who made a tracked change, and when (RichTextRun::revision).
+struct RichRevision {
+    std::string author;
+    std::string date;            // ISO 8601; may be empty
+};
+
+// ===== NAMED STYLES =====
+// What a named style sets: every property is optional, and one it leaves
+// unset comes from the style it is based on (or is left alone).
+struct RichStyleCharacter {
+    std::optional<bool> bold, italic, underline, strikethrough, code;
+    std::optional<std::string> fontFamily;
+    std::optional<float> fontSizePt;
+    std::optional<std::string> color;
+    std::optional<std::string> highlightColor;
+
+    bool IsEmpty() const {
+        return !bold && !italic && !underline && !strikethrough && !code && !fontFamily
+            && !fontSizePt && !color && !highlightColor;
+    }
+    // Sets `run`'s properties to the ones stated here.
+    void ApplyTo(RichTextRun& run) const;
+    // Takes every property `over` states.
+    void Overlay(const RichStyleCharacter& over);
+};
+
+struct RichStyleParagraph {
+    std::optional<int> headingLevel;        // 1..6 = a heading (outline level); 0 = body text
+    std::optional<RichTextAlign> align;
+    std::optional<float> leftIndentPt, rightIndentPt, firstLineIndentPt;
+    std::optional<float> spaceBeforePt, spaceAfterPt;
+    std::optional<float> lineSpacing;
+
+    bool IsEmpty() const {
+        return !headingLevel && !align && !leftIndentPt && !rightIndentPt && !firstLineIndentPt
+            && !spaceBeforePt && !spaceAfterPt && !lineSpacing;
+    }
+    void ApplyTo(RichDocBlock& block) const;
+    void Overlay(const RichStyleParagraph& over);
+};
+
+struct RichStyle {
+    enum class Kind { Paragraph, Character };
+    std::string id;                 // stable key: "Heading1", "Quote", "Emphasis"
+    std::string name;               // shown to the user: "Heading 1"
+    Kind kind = Kind::Paragraph;
+    std::string basedOn;            // id of the style this one inherits from
+    std::string nextStyle;          // paragraph: the next paragraph's style after Enter ("" = the same)
+    RichStyleCharacter character;   // what the text of it looks like
+    RichStyleParagraph paragraph;   // paragraph styles only
+};
+
 struct RichDocumentMetadata {
     std::string title;
     std::string author;
@@ -445,6 +631,11 @@ public:
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
     RichPageSetup page;
+    // The first section's setup (until a block with sectionStart).
+    RichSectionSetup firstSection;
+    // The setup of the section block `index` is in.
+    const RichSectionSetup& SectionFor(int index) const;
+    bool HasColumns() const;
     // Header and footer of every page, and of the first one when it differs
     // (firstPageDiffers). Plain-text, Markdown and HTML output write the
     // first page's header before the body and its footer after it.
@@ -456,6 +647,74 @@ public:
     }
 
     bool IsEmpty() const { return blocks.empty(); }
+
+    // ===== NOTES =====
+    std::vector<RichNote> notes;
+    // Every note reference in document order (body blocks and table cells):
+    // {block, cell row, cell index, run index}. Cells use -1 for the body.
+    struct NoteReference {
+        int blockIndex = 0;
+        int cellRow = -1;
+        int cellIndex = -1;
+        int runIndex = 0;
+        int noteIndex = 0;
+    };
+    std::vector<NoteReference> NoteReferences() const;
+    // The mark each note shows - footnotes 1, 2, 3 and endnotes i, ii, iii,
+    // each counted in the order their references first appear - indexed by
+    // note; "" for a note nothing refers to.
+    std::vector<std::string> NoteMarks() const;
+    // Sets every reference run's text to its note's mark. True when any
+    // changed.
+    bool UpdateNoteMarks();
+
+    // ===== TRACKED CHANGES =====
+    std::vector<RichRevision> revisions;
+    bool HasTrackedChanges() const;
+
+    // ===== COMMENTS =====
+    std::vector<RichComment> comments;
+    // The comments some text is under, in the order they first appear.
+    std::vector<int> ActiveComments() const;
+
+    // ===== BOOKMARKS, CAPTIONS, CROSS-REFERENCES, CONTENTS =====
+    struct BookmarkInfo {
+        std::string name;
+        int blockIndex = 0;
+    };
+    std::vector<BookmarkInfo> Bookmarks() const;
+    // The block a bookmark is on, or -1.
+    int FindBookmark(const std::string& name) const;
+    // `base`, or `base` with a number added, that no bookmark has yet.
+    std::string UniqueBookmarkName(const std::string& base) const;
+    // Numbers every Sequence field (per label, in document order) and sets
+    // every Reference field's text from its bookmark. True when any changed.
+    bool UpdateFields();
+    // Sets every PageReference field from the page (1-based) each body block
+    // is on. True when any changed.
+    bool UpdatePageReferences(const std::vector<int>& blockPages);
+    // The table of contents entries for the document's headings of level
+    // 1..maxLevel, each linked to its heading (headings without a bookmark
+    // are given one) and ending in its page number (a PageReference field).
+    std::vector<RichDocBlock> BuildTableOfContents(int maxLevel = 3);
+    // Replaces the first run of table of contents entries with fresh ones.
+    // False when the document has none.
+    bool UpdateTableOfContents(int maxLevel = 3);
+
+    // ===== NAMED STYLES =====
+    // Paragraph and character styles. A document read from a file has the
+    // file's; UCRichDocument::DefaultStyles() is a word processor's basic set.
+    std::vector<RichStyle> styles;
+    const RichStyle* FindStyle(const std::string& id) const;
+    // A style with its basedOn chain folded in: every property it ends up
+    // with, from itself or an ancestor.
+    RichStyle ResolveStyle(const std::string& id) const;
+    // True when `id` is `ancestorId` or based on it, however indirectly.
+    bool StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const;
+    // Normal, Title, Subtitle, Heading 1-6, Quote, Code; Strong, Emphasis,
+    // Code (character). Readers without styles of their own leave `styles`
+    // empty; the editing core adds these on first use.
+    static std::vector<RichStyle> DefaultStyles();
 
     // Adds (or reuses an identical) media entry and returns its index.
     int AddMedia(std::string name, std::string mimeType, std::vector<uint8_t> data);
@@ -476,11 +735,29 @@ public:
     // HTMLConverter / read-only viewing path.
     std::string ToHTML() const { return ToHTML(RichDocumentHTMLOptions{}); }
     std::string ToHTML(const RichDocumentHTMLOptions& options) const;
+    // Reads HTML as other applications put it on the clipboard (browsers,
+    // Word, LibreOffice, mail clients): paragraphs, headings, lists, quotes,
+    // preformatted text, tables, rules, links, pictures inlined as data:
+    // URIs, and character formatting from tags and CSS (bold, italic,
+    // underline, strike-through, sub/superscript, colour, highlight, font,
+    // size). Anything else (scripts, styles, forms, unknown markup) is
+    // skipped, its text kept.
+    static UCRichDocument FromHTML(const std::string& html);
 
     std::string ToPlainText() const;
     // A copy whose body holds the first page's header, a rule, the body, a
     // rule and the footer - what the text serializers write.
     UCRichDocument WithFirstPageFurnitureInline() const;
+
+    // ===== CHECK LISTS IN FORMATS WITHOUT THEM =====
+    // A list item or paragraph whose text opens with a ballot box (☐ U+2610,
+    // ☑ U+2611, ☒ U+2612 - what Word's check box content control shows)
+    // becomes a check list item, the box removed from its text. Readers call
+    // it last. Returns how many blocks it converted.
+    int ReadCheckboxPrefixes();
+    // A copy in which every check list item carries its box as the first
+    // character of its text, for writers of formats without check lists.
+    UCRichDocument WithCheckboxesAsPrefixes() const;
 
     // ===== HELPERS SHARED BY FORMAT READERS/WRITERS =====
     static std::string MimeTypeForImageName(const std::string& fileName);

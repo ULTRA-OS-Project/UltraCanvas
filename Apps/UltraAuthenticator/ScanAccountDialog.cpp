@@ -31,15 +31,13 @@ const char* const kNotAccountMessage =
     "That QR code is not an authenticator account. Look for the one the "
     "service shows during two-factor setup.";
 
-// What to say when a one-off decode found nothing. The scanner reports an
-// image with no code in it through the same error string as a real failure
-// ("No QR codes detected" beside "Failed to open image: …"), and the two
-// deserve different sentences: the first is the friendly hint the caller
-// passes in, the second names the reason.
+// What to say when a one-off decode found nothing. The scanner leaves the
+// error empty for an image with no code in it and fills it only when the
+// scan could not run (an unreadable file, no decoder), and the two deserve
+// different sentences: the friendly hint the caller passes in, or the reason.
 std::string NoCodeStatus(const std::string& friendly, const std::string& reasonPrefix,
                          const std::string& error) {
-    if (error.empty() || error == "No QR codes detected") return friendly;
-    return reasonPrefix + error;
+    return error.empty() ? friendly : reasonPrefix + error;
 }
 
 } // namespace

@@ -38,7 +38,7 @@ std::string Trim(const std::string& text) {
 }
 
 bool ReadWholeFile(const fs::path& path, std::string& out) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!file.is_open()) return false;
     std::ostringstream buffer;
     buffer << file.rdbuf();
@@ -326,7 +326,7 @@ struct UltraCanvasGitRepository::Impl {
         const fs::path path = PathFromUtf8(gitDirectory) / "objects" / sha.substr(0, 2)
                                                      / sha.substr(2);
         std::error_code ec;
-        if (!fs::exists(path, ec)) return false;
+        if (!fs::exists(UltraCanvas::PathFromUtf8(path), ec)) return false;
 
         std::string raw;
         if (!ReadWholeFile(path, raw)) return false;
@@ -753,7 +753,7 @@ bool UltraCanvasGitRepository::Open(const std::string& path) {
             if (ReadWholeFile(dotGit, content) && content.rfind("gitdir:", 0) == 0) {
                 fs::path target = Trim(content.substr(7));
                 if (target.is_relative()) target = candidate / target;
-                candidate = fs::weakly_canonical(target, ec);
+                candidate = fs::weakly_canonical(UltraCanvas::PathFromUtf8(target), ec);
                 break;
             }
         }
@@ -817,7 +817,7 @@ std::string UltraCanvasGitRepository::ReadHeadSha() {
 
     const std::string ref = Trim(content.substr(5));
     std::string target;
-    if (ReadWholeFile(PathFromUtf8(impl->gitDirectory) / ref, target)) return Trim(target);
+    if (ReadWholeFile(PathFromUtf8(impl->gitDirectory) / PathFromUtf8(ref), target)) return Trim(target);
 
     // Fall back to packed-refs.
     std::unordered_map<std::string, std::string> refs, peeled;

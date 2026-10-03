@@ -1,13 +1,16 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.3.0 - folder_tree_width_mode (auto / fixed) and folder_tree_width (px)
 // Version: 0.2.0 - remote_images, trusted_image_domains, message_view,
 //                  message_text_size
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPreferences.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <string>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraMail {
 
@@ -30,7 +33,7 @@ bool ParseBool(const std::string& v) {
 } // namespace
 
 bool Preferences::Load(const std::string& path) {
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     if (!file.is_open()) return false;   // absent file: caller keeps defaults
 
     std::string line;
@@ -56,6 +59,18 @@ bool Preferences::Load(const std::string& path) {
         if (key == "message_view") showHtml = Trim(value) != "plain";
         if (key == "message_text_size") {
             try { messageTextSize = std::clamp(std::stoi(Trim(value)), 9, 24); }
+            catch (...) { /* keeps the default */ }
+        }
+        // The width is kept while the tree fits its names, so switching back
+        // to a fixed width finds the number last chosen.
+        if (key == "folder_tree_width_mode")
+            folderTreeWidthMode = Trim(value) == "fixed" ? FolderTreeWidthMode::FixedWidth
+                                                         : FolderTreeWidthMode::FitToText;
+        if (key == "folder_tree_width") {
+            try {
+                folderTreeWidth = std::clamp(std::stoi(Trim(value)), kFolderTreeMinWidth,
+                                             kFolderTreeMaxWidth);
+            }
             catch (...) { /* keeps the default */ }
         }
         if (key == "trusted_image_domains") {
@@ -85,7 +100,7 @@ bool Preferences::Load(const std::string& path) {
 }
 
 bool Preferences::Save(const std::string& path) const {
-    std::ofstream file(path, std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
     if (!file.is_open()) return false;
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";
@@ -109,6 +124,9 @@ bool Preferences::Save(const std::string& path) const {
     file << "\n";
     file << "message_view = " << (showHtml ? "html" : "plain") << "\n";
     file << "message_text_size = " << messageTextSize << "\n";
+    file << "folder_tree_width_mode = "
+         << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
+    file << "folder_tree_width = " << folderTreeWidth << "\n";
     return static_cast<bool>(file);
 }
 

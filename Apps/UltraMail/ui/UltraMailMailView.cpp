@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.8.0 - forwards the reading pane's links and hovered link
+// Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
+//                  (+10 px) or a fixed width
 // Version: 0.6.0 - SetBodyOptions; trusted picture hosts reach the preview
 // Version: 0.5.0 - a sender-badge column left of Subject, painted by the list
 //                  delegate; the folder's stored scan verdicts are read once
@@ -8,9 +11,11 @@
 //                  reading-pane toggle (side-by-side, or Gmail open-in-place).
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
+#include "UltraMailHeaderText.h"
 
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
+#include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
@@ -19,6 +24,7 @@
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -42,7 +48,10 @@ constexpr int kRowHeight    = 22;
 constexpr int kHeaderHeight = 22;
 constexpr int kSplitterGap  = 8;   // the page shows through between the cards
 
-constexpr int kFolderMinWidth  = 180;
+// The folder pane's range, whether fitted to its rows or set in pixels.
+constexpr int kFolderMinWidth  = 100;
+constexpr int kFolderMaxWidth  = 600;
+constexpr int kFolderFitSlack  = 10;   // fitted: this much room after the longest row
 constexpr int kListMinWidth    = 300;
 constexpr int kPreviewMinWidth = 466;
 
@@ -301,6 +310,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
         if (acct != curAccount_ && onSelectAccount) onSelectAccount(acct);
         ShowFolder(acct, folder);
     };
+    // A fitted tree follows the rows on show.
+    folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
+    folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
     FillWith(folderBox_, folderTree_);
     FillWith(folderPane, folderBox_);
 
@@ -424,6 +436,12 @@ void MailView::BuildMessageBox() {
     preview_.onViewSource = [this](const std::string& subject, const std::string& raw) {
         if (onViewSource) onViewSource(subject, raw);
     };
+    preview_.onLinksShown = [this](const std::vector<MessageLink>& links) {
+        if (onLinksShown) onLinksShown(links);
+    };
+    preview_.onLinkHovered = [this](const std::string& href) {
+        if (onLinkHovered) onLinkHovered(href);
+    };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.
     preview_.remoteImagesAllowed = [this](const std::string& addr) {
@@ -518,6 +536,38 @@ void MailView::SetBodyOptions(bool showHtml, float textSizePx) {
     preview_.showHtml = showHtml;
     preview_.bodyFontSizePx = textSizePx;
     preview_.ReRender();
+}
+
+void MailView::SetFolderTreeWidth(bool fitToText, int fixedPx) {
+    folderTreeFitToText_  = fitToText;
+    folderTreeFixedWidth_ = fixedPx;
+    ApplyFolderTreeWidth();
+}
+
+void MailView::ApplyFolderTreeWidth(bool allowRetry) {
+    if (!outerSplit_ || !folderBox_ || !folderTree_) return;
+    int width = folderTreeFixedWidth_;
+    if (folderTreeFitToText_) {
+        const int rows = folderTree_->GetRequiredWidth();
+        if (rows <= 0) {
+            // Not in a window yet, so nothing to measure the text with.
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (allowRetry && app && !folderTreeRetryPosted_) {
+                folderTreeRetryPosted_ = true;
+                app->PostToUIThread([this]() {
+                    folderTreeRetryPosted_ = false;
+                    ApplyFolderTreeWidth(/*allowRetry=*/false);
+                });
+            }
+            return;
+        }
+        // The card around the tree: its border and padding on both sides.
+        const int card = static_cast<int>(std::ceil(folderBox_->GetTotalBorderHorizontal() +
+                                                    folderBox_->GetTotalPaddingHorizontal()));
+        width = rows + kFolderFitSlack + card;
+    }
+    width = std::clamp(width, kFolderMinWidth, kFolderMaxWidth);
+    if (outerSplit_->GetPaneFixedSize(0) != width) outerSplit_->SetPaneFixedSize(0, width);
 }
 
 void MailView::SetAccounts(std::vector<Account> accounts) {
@@ -781,6 +831,7 @@ void MailView::RebuildFolderTree() {
 
     folderTree_->ExpandAll();
     SelectFolderNode(curAccount_, curFolder_);
+    if (folderTreeFitToText_) ApplyFolderTreeWidth();
 }
 
 void MailView::SelectFolderNode(const std::string& accountId, const std::string& folder) {
@@ -829,10 +880,10 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
     // does not stop an explicit line break - a subject such as LinkedIn's
     // "... storage.\n\nWe're partnering ..." (the break is in the encoded
     // header itself) drew over two rows.
-    std::string sender  = SingleLine(UltraNet_MimeDecodeHeader(
+    std::string sender  = SingleLine(DisplayHeader(
         m.fromName.empty() ? m.fromAddr : m.fromName));
     std::string subject = m.subject.empty()
-        ? std::string("(no subject)") : SingleLine(UltraNet_MimeDecodeHeader(m.subject));
+        ? std::string("(no subject)") : SingleLine(DisplayHeader(m.subject));
 
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")
@@ -901,7 +952,7 @@ void MailView::RefreshRowText(int row) {
     if (row < 0 || row >= static_cast<int>(messages_.size()) ||
         row >= static_cast<int>(rowStates_.size()))
         return;
-    std::string sender = SingleLine(UltraNet_MimeDecodeHeader(
+    std::string sender = SingleLine(DisplayHeader(
         messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName));
     std::string state = std::string(rowStates_[row].unread ? "\xE2\x97\x8F " : "")
                       + (rowStates_[row].waiting ? "\xE2\x86\xA9 " : "");
@@ -980,8 +1031,8 @@ void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
 
 bool MailView::SearchMatches(const MessageEnvelope& m) const {
     // Decoded like the row shows them, so what can be read can be found.
-    const std::string name = UltraNet_MimeDecodeHeader(m.fromName);
-    const std::string subject = UltraNet_MimeDecodeHeader(m.subject);
+    const std::string name = DisplayHeader(m.fromName);
+    const std::string subject = DisplayHeader(m.subject);
     std::size_t pos = 0;
     while (pos < searchText_.size()) {
         while (pos < searchText_.size() && searchText_[pos] == ' ') ++pos;

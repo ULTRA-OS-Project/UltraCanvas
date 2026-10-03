@@ -171,12 +171,66 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# macOS: record only the dylibs a binary actually takes a symbol from. On
+# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
+# so every application's link line carries the core's whole PUBLIC dependency
+# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
+# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
+# command for each one whether the program uses it or not. package-macos.sh
+# then copies every one of them, with its own dependencies, into each .app's
+# Frameworks/, six bundles over. With this flag an app that never reaches the
+# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
+# that supplied no symbol at link time are dropped, so nothing an app calls
+# can go missing; it would only matter for a library needed purely for a side
+# effect of its initializer, and none of the Homebrew dependencies is that.
+if(APPLE)
+    add_link_options(LINKER:-dead_strip_dylibs)
+endif()
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Executables go to the build root so the portable Linux package can place them
 # alongside lib/ and share/ (see package-linux.sh).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Every application runs from that directory, and GetResourcesDir()
+# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources in the
+# platform's packaged place first (exe/Resources/ on Windows, the bundle's
+# Contents/Resources/ on macOS) and then at <exe dir>/share/media and
+# <exe dir>/../share/media. Give the build tree that share/, pointing at the
+# repository's media/ and Docs/, so an application started straight from the
+# build tree finds its icons, fonts, wallpaper and bundled documents on every
+# desktop platform without an install step or a hand-made link. Links, not
+# copies: media/ is over 100 MB and a link follows edits to the sources. On
+# Windows a symbolic link needs Developer Mode or elevation, so a directory
+# junction (which needs neither) is the second try and a copy the last; a
+# copied share/ is left alone on later configures, so delete it to refresh.
+# Android gets its resources from the APK and Emscripten from the preload.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    foreach(_uc_resource media Docs)
+        set(_uc_link "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+        set(_uc_target "${CMAKE_SOURCE_DIR}/${_uc_resource}")
+        if(NOT EXISTS "${_uc_link}")
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/share")
+            file(CREATE_LINK "${_uc_target}" "${_uc_link}" RESULT _uc_linked SYMBOLIC)
+            if(WIN32 AND NOT _uc_linked EQUAL 0)
+                file(TO_NATIVE_PATH "${_uc_link}" _uc_link_native)
+                file(TO_NATIVE_PATH "${_uc_target}" _uc_target_native)
+                execute_process(COMMAND cmd /c mklink /J "${_uc_link_native}" "${_uc_target_native}"
+                                RESULT_VARIABLE _uc_linked OUTPUT_QUIET ERROR_QUIET)
+            endif()
+            if(NOT _uc_linked EQUAL 0)
+                message(STATUS "share/${_uc_resource}: no link possible here, copying the directory")
+                file(COPY "${_uc_target}" DESTINATION "${CMAKE_BINARY_DIR}/share")
+            endif()
+        endif()
+    endforeach()
+    unset(_uc_resource)
+    unset(_uc_link)
+    unset(_uc_target)
+    unset(_uc_linked)
+endif()
 
 # ===== ANDROID DEFAULTS (phase 1: core library only) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
@@ -424,6 +478,28 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== UOS-SETTINGS =====
+# The ULTRA OS settings application: settings that belong to the system rather
+# than to one application, starting with where the file dialogs of all
+# applications open (FileDialog.conf, UltraCanvasFileDialogSettings.h).
+option(BUILD_UOS_SETTINGS "Build the UOS-Settings application" ON)
+if(BUILD_UOS_SETTINGS)
+    message(STATUS "")
+    message(STATUS "── Building UOS-Settings ──")
+    add_subdirectory(Apps/UOSSettings)
+endif()
+
+# ===== ULTRACLAUDE =====
+# A chat window for Claude on a Claude Pro / Max subscription: it runs the
+# official Claude Code CLI as a child process and shows its streamed output,
+# with a sign-in page that hands login to the CLI (claude auth login).
+option(BUILD_ULTRACLAUDE "Build the UltraClaude application" ON)
+if(BUILD_ULTRACLAUDE)
+    message(STATUS "")
+    message(STATUS "── Building UltraClaude ──")
+    add_subdirectory(Apps/UltraClaude)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless
@@ -507,6 +583,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChipExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
+            Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
@@ -751,18 +828,9 @@ if(BUILD_DEMO_APP)
         ${ULTRACANVAS_LIBRARY}
     )
 
-    # The core library resolves fmt too, but its imported target is scoped to
-    # that directory — resolve again here (cheap) before falling back to a fetch.
-    if(NOT TARGET fmt::fmt)
-        find_package(fmt CONFIG QUIET)
-    endif()
-    if(NOT TARGET fmt::fmt)
-        FetchContent_Declare(
-                fmt
-                GIT_REPOSITORY https://github.com/fmtlib/fmt
-                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-        FetchContent_MakeAvailable(fmt)
-    endif()
+    # fmt::fmt is the core library's (UltraCanvas/CMakeLists.txt resolves it
+    # and makes it visible to every directory), the same target every other
+    # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
@@ -847,6 +915,16 @@ option(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS "Build the vector format tests with
 if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
+endif()
+
+# ===== FILER TESTS WITHOUT THE FULL SUITE =====
+# FilerFolderPreviewTest and FilerNameEncodingTest alone, for builds that
+# leave BUILD_TESTS off (the Windows CI rows): the file display lists and draws
+# Thai, CJK and emoji names on the platform that converts them to UTF-16.
+option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
 # ===== ULTRANET TESTS =====
@@ -2025,28 +2103,10 @@ if(TARGET UltraCanvasLaTeX)
 endif()
 
 # ===== PACKAGE CONFIGURATION =====
-include(CMakePackageConfigHelpers)
-
-# Generate version file
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-# Generate config file
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    @ONLY
-)
-
-# Install config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    DESTINATION lib/cmake/UltraCanvas
-)
+# UltraCanvasConfig.cmake, its version file and the UltraCanvasTargets export
+# are generated and installed by UltraCanvas/CMakeLists.txt ("INSTALLATION AND
+# THE CMAKE PACKAGE"), where the link interface and the dependency choices they
+# describe are in scope. Tests/PackageConsumer builds against the result.
 
 # ===== CPack CONFIGURATION =====
 #set(CPACK_PACKAGE_NAME "UltraCanvas")

@@ -44,6 +44,25 @@ path — click, Return, Escape, mnemonic — runs the button's own `onClick`
 handler, so a dialog cannot behave differently depending on how a button was
 reached.
 
+Custom buttons carry no `DialogButton` type, so neither rule can name them —
+they take a **role** instead. `AddCustomButton(text, result, role, callback)`
+with `DialogButtonRole::Default` makes the button what Return takes (before the
+configured default) and draws it in the accent colour; `Destructive` draws it
+red (`DestructiveDefault` filled red, when the red answer is also the default);
+`Cancel` makes it what Escape takes. Buttons are laid out in the order they are
+added, each as wide as its label. `AddFooterElement(element)` puts an element —
+an "Apply to all 7 remaining conflicts" checkbox — at the left of the button
+bar and moves the buttons to its right end; give it an explicit size, the bar
+is laid out before the dialog has a render context to measure text with.
+
+```cpp
+dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default);
+dialog->AddCustomButton("Replace",   DialogResult::Yes, DialogButtonRole::Destructive);
+dialog->AddCustomButton("Skip",      DialogResult::Yes);
+dialog->AddCustomButton("Stop",      DialogResult::Cancel, DialogButtonRole::Cancel);
+dialog->AddFooterElement(applyToAllCheckbox);
+```
+
 ## Mnemonics
 
 Each button is assigned a distinct letter, preferring the initial of its label,
@@ -147,7 +166,7 @@ menus, toolbars, custom panels. The button only draws the accent; matching the
 key and invoking the action stays with the owner.
 
 ```cpp
-auto button = CreateButton("Apply", 1, 0, 0, 90, 28, "Apply");
+auto button = CreateButton("Apply", 0, 0, 90, 28, "Apply");
 button->SetMnemonicChar('A');            // underlines the first 'A'
 char letter = button->GetMnemonicChar(); // 'A'
 button->SetMnemonicIndex(3);             // or pick the character by index

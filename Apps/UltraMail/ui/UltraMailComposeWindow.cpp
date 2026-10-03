@@ -1,11 +1,16 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.8.0 - Quote + / Quote − in the formatting toolbar
+// Version: 0.7.0 - one view per compose window: what answers after the window
+//                  closed holds the view weakly
+// Version: 0.6.0 - the full formatting toolbar (UltraMailFormatBar) and the
+//                  Plain text | Formatted switch
 // Version: 0.5.0 - a formatted draft is edited in a rich text editor with a B /
 //                  I / U / list row
 // Version: 0.4.0 - flex layout that follows the window: label · input rows,
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -17,6 +22,7 @@
 
 #include "UltraCloudPickerDialog.h"
 #include "UltraMailRichComposer.h"
+#include "UltraMailSignature.h"   // PlainBodyToRichDocument
 #include "UltraMailTheme.h"
 
 #include <sstream>
@@ -113,33 +119,53 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     root_->AddChild(Theme::MakeDivider("cRule"));
 
-    // The body takes whatever height the fields and the toolbar leave: the
-    // formatted document of a reply or forward, or plain text.
-    body_.reset();
-    rich_.reset();
-    if (draft_.richBody) {
-        auto formatRow = BuildFormatRow();
-        root_->AddChild(formatRow);
-        formatRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The formatting toolbar, with Plain text | Formatted at its right end.
+    // The tools act on the rich editor, and only while the body is formatted.
+    FormatBar::Options barOptions;
+    barOptions.idPrefix = "c";
+    barOptions.dialogParent = parent_;
+    barOptions.quoteTools = true;
+    // Asked on every click, and again when a Link… or Picture… dialog
+    // answers - by then the window may be closed and this view gone.
+    barOptions.editor = [weak = weak_from_this()]() -> UltraCanvasRichTextEdit* {
+        auto self = weak.lock();
+        return self && self->formatted_ ? self->rich_.get() : nullptr;
+    };
+    formatBar_ = FormatBar::Build(barOptions);
+    mode_ = CreateSegmentedControl("cMode", 0, 0, 160, Theme::kControlHeight);
+    Theme::StyleSegmented(mode_);
+    mode_->AddSegment("Plain text");
+    mode_->AddSegment("Formatted");
+    mode_->SetTooltip("Plain text, or formatted text (sent as HTML with a plain-text version)");
+    mode_->onSegmentSelected = [this](int segment) {
+        if (!switchingMode_) SetFormatted(segment == 1);
+    };
+    formatBar_.paragraphRow->AddChild(mode_);
+    root_->AddChild(formatBar_.root);
+    formatBar_.root->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
-        RichTextEditStyle style = rich_->GetStyle();
-        style.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
-        style.drawBorder = false;
-        rich_->SetStyle(style);
-        rich_->SetDocument(draft_.richBody);
-        rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
-        root_->AddChild(rich_);
-        rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    } else {
-        body_ = std::make_shared<UltraCanvasTextArea>("cBody", 0, 0, 0, 0);
-        body_->SetEditingMode(TextAreaEditingMode::PlainText);
-        body_->SetWordWrap(true);
-        Theme::StyleTextArea(body_, /*bordered=*/false);
-        body_->SetText(draft_.body);
-        root_->AddChild(body_);
-        body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    }
+    // The body takes whatever height the fields and the toolbars leave. Both
+    // editors exist; the mode decides which one shows and holds the message.
+    body_ = std::make_shared<UltraCanvasTextArea>("cBody", 0, 0, 0, 0);
+    body_->SetEditingMode(TextAreaEditingMode::PlainText);
+    body_->SetWordWrap(true);
+    Theme::StyleTextArea(body_, /*bordered=*/false);
+    body_->SetText(draft_.body);
+    root_->AddChild(body_);
+    body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
+    RichTextEditStyle richStyle = rich_->GetStyle();
+    richStyle.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
+    richStyle.drawBorder = false;
+    rich_->SetStyle(richStyle);
+    rich_->SetDocument(draft_.richBody ? draft_.richBody : PlainBodyToRichDocument(""));
+    rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
+    root_->AddChild(rich_);
+    rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    formatted_ = draft_.richBody != nullptr;
+    ShowMode();
 
     // Attachment chips between the body and the toolbar; the row is shown
     // only while there is something to show (forwards carry the original's
@@ -210,7 +236,7 @@ void ComposeView::RefreshAttachments() {
 }
 
 bool ComposeView::AttachFile(const std::string& path) {
-    std::ifstream is(path, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!is) return false;
     Attachment a;
     a.filename  = PathToUtf8(PathFromUtf8(path).filename());
@@ -221,42 +247,58 @@ bool ComposeView::AttachFile(const std::string& path) {
     return true;
 }
 
-std::shared_ptr<UltraCanvasContainer> ComposeView::BuildFormatRow() {
-    auto row = CreateContainer("cFormat", 0, 0, 0, Theme::kControlHeight);
-    row->layout.SetFlexRow()
-               .SetFlexGap(4.0f)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    ContainerStyle rowStyle;
-    rowStyle.autoShowScrollbars = false;
-    row->SetContainerStyle(rowStyle);
+void ComposeView::ShowMode() {
+    if (body_) body_->SetVisible(!formatted_);
+    if (rich_) rich_->SetVisible(formatted_);
+    formatBar_.SetToolsVisible(formatted_);
+    if (mode_) {
+        switchingMode_ = true;
+        mode_->SetSelectedIndex(formatted_ ? 1 : 0);
+        switchingMode_ = false;
+    }
+}
 
-    auto add = [&](const std::string& id, const std::string& label, const std::string& tooltip,
-                   std::function<void(UltraCanvasRichTextEdit&)> action) {
-        auto button = CreateButton(id, 0, 0, 32, Theme::kControlHeight, label);
-        Theme::FitToLabel(button, 32);
-        Theme::StyleSecondary(button);
-        button->SetTooltip(tooltip);
-        // The editor is looked up on each click, never captured: the row
-        // outlives neither the view nor its editor.
-        button->onClick = [this, action]() {
-            if (!rich_) return;
-            action(*rich_);
-            rich_->SetFocus(true);
-        };
-        row->AddChild(button);
-    };
-    add("cBold", "B", "Bold (Ctrl+B)", [](UltraCanvasRichTextEdit& e) { e.ToggleBold(); });
-    add("cItalic", "I", "Italic (Ctrl+I)", [](UltraCanvasRichTextEdit& e) { e.ToggleItalic(); });
-    add("cUnderline", "U", "Underline (Ctrl+U)", [](UltraCanvasRichTextEdit& e) { e.ToggleUnderline(); });
-    add("cBullets", "\xE2\x80\xA2 List", "Bulleted list",
-        [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); });
-    add("cNumbers", "1. List", "Numbered list",
-        [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); });
-    return row;
+void ComposeView::SwitchToPlain() {
+    if (!body_ || !rich_) return;
+    body_->SetText(rich_->GetPlainText());
+    formatted_ = false;
+    ShowMode();
+    body_->SetFocus(true);
+}
+
+void ComposeView::SetFormatted(bool formatted, bool ask) {
+    if (!body_ || !rich_) return;
+    if (formatted == formatted_) { ShowMode(); return; }
+
+    if (formatted) {
+        // The text as it is, "> " quotes as quote bars; written on at the top.
+        rich_->SetDocument(PlainBodyToRichDocument(body_->GetText()));
+        rich_->GetEditor().SetCaret(RichDocPosition(0, 0));
+        formatted_ = true;
+        ShowMode();
+        rich_->SetFocus(true);
+        return;
+    }
+
+    const auto& doc = rich_->GetDocument();
+    const std::string text = rich_->GetPlainText();
+    const bool something = (doc && !doc->media.empty())
+                        || text.find_first_not_of(" \t\r\n") != std::string::npos;
+    if (!ask || !something) { SwitchToPlain(); return; }
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Send this message as plain text? Its formatting, links and pictures are removed.",
+        "Plain text",
+        [weak = weak_from_this()](bool confirmed) {
+            auto self = weak.lock();
+            if (!self) return;   // the window closed while the question was open
+            if (confirmed) self->SwitchToPlain();
+            else self->ShowMode();   // stays formatted: the switch goes back
+        },
+        parent_);
 }
 
 void ComposeView::InsertLink(const std::string& name, const std::string& url) {
-    if (rich_) {
+    if (formatted_ && rich_) {
         // At the caret, the address as a link.
         rich_->InsertText(name + ": ");
         UCRichDocumentEditor& editor = rich_->GetEditor();
@@ -280,11 +322,12 @@ void ComposeView::ChooseFileToAttach() {
     options.title = "Attach file";
     options.parentWindow = parent_;
     UltraCanvasFileLoader::OpenFileDialog(
-        options, [this](DialogResult result, const std::string& path) {
-            if (result != DialogResult::OK || path.empty()) return;
-            if (!AttachFile(path))
+        options, [weak = weak_from_this()](DialogResult result, const std::string& path) {
+            auto self = weak.lock();
+            if (!self || result != DialogResult::OK || path.empty()) return;
+            if (!self->AttachFile(path))
                 UltraCanvasDialogManager::ShowError("Could not read " + path, "Attach file",
-                                                    nullptr, parent_);
+                                                    nullptr, self->parent_);
         });
 }
 
@@ -296,8 +339,8 @@ void ComposeView::ChooseCloudLink() {
         return;
     }
     UltraCloud::ShowCloudLinkPicker(parent_, *cloud_,
-        [this](const UltraCloud::CloudLinkPick& pick) {
-            InsertLink(pick.entry.name, pick.link.url);
+        [weak = weak_from_this()](const UltraCloud::CloudLinkPick& pick) {
+            if (auto self = weak.lock()) self->InsertLink(pick.entry.name, pick.link.url);
         });
 }
 
@@ -306,11 +349,17 @@ Draft ComposeView::CollectDraft() const {
     if (to_)      d.to = Split(to_->GetText());
     if (cc_)      d.cc = Split(cc_->GetText());
     if (subject_) d.subject = subject_->GetText();
-    if (body_)    d.body = body_->GetText();
-    if (rich_) {
+    if (formatted_ && rich_) {
         // The edited document goes out as HTML with a plain-text version.
         d.richBody = rich_->GetDocument();
         RenderRichBody(d);
+    } else {
+        // Plain text - also a formatted draft switched to plain text.
+        d.body = body_ ? body_->GetText() : std::string();
+        d.richBody.reset();
+        d.bodyIsHtml = false;
+        d.textBody.clear();
+        d.inlineParts.clear();
     }
     return d;
 }

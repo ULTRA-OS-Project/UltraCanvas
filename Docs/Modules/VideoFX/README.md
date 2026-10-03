@@ -11,13 +11,14 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stages 1 and 2 implemented, plus photos.** Probe, frames, the
-> segment timeline with 26 effects, speed, joins, 30 transitions between
-> segments, text and image overlays, still images with smooth pan and zoom
-> ("Ken Burns") and one-call slideshows, GIF and audio-only output, lossless
-> cut, the background job and the `videofx` command-line tool work today, on
-> FFmpeg 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and
-> project files are planned (see *Roadmap*).
+> **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
+> frames, the segment timeline with 26 effects, speed, joins, 30 transitions
+> between segments, text and image overlays, still images with smooth pan and
+> zoom ("Ken Burns"), one-call slideshows, background music that dips under
+> speech, GIF and audio-only output, lossless cut, the background job and the
+> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
+> Picture-in-picture, keyframes, several free audio tracks and project files
+> are planned (see *Roadmap*).
 
 ---
 
@@ -193,7 +194,93 @@ VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
 
 It fades in from and out to black (`fadeInOut`), gives each photo its own
 `Auto` move, shows portrait photos whole on a blurred background, and without a size in the settings makes 1920x1080 at 30 fps.
-Length: `n x secondsPerImage - (n - 1) x transition`.
+Length: `n x secondsPerImage - (n - 1) x transition` — or, with
+`matchMusicLength`, the length of the music (see below).
+
+---
+
+## Background music
+
+`VideoFXExportSettings::music` lays a song under the whole export — any
+timeline, not only slideshows. It is mixed in last, so it plays straight
+through joins and transitions, and where the segments have sound of their own
+it steps back:
+
+```cpp
+VideoFXExportSettings settings = VideoFXExportSettings::WebMP4(1080);
+settings.music = VideoFXMusic::FromFile("summer.mp3", 0.8);   // path, volume
+settings.music.start = 12.0;          // begin 12 s into the song
+settings.music.fadeIn = 1.0;          // seconds, at the start of the export
+settings.music.fadeOut = 3.0;         // and at its end
+settings.music.duckingLevel = 0.25;   // under the clips' own sound
+VideoFX_Export(timeline, "holiday.mp4", settings);
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `volume` | 0.8 | Linear gain, 0..4 |
+| `start` | 0 | Seconds into the song to begin at |
+| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
+| `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
+| `duckingThresholdDb` | −36.5 | The segments' sound counts as present above this RMS level, dBFS, −90..0 |
+| `duckingAttack` | 0.12 s | How fast the music goes down (time constant), 0.001..10 |
+| `duckingHold` | 0.6 s | Quiet needed before it comes back up, 0..30 |
+| `duckingRelease` | 0.8 s | How slowly it comes back (time constant), 0.001..30 |
+
+**Ducking.** VideoFX listens to the segments' own sound block by block. While
+it is present — someone speaking in a clip, a waterfall — the music goes down
+to `duckingLevel` within about a tenth of a second; it waits for a pause of
+over half a second before coming back up, slowly, so speech does not make it
+pump between words. Photos and colour cards have no sound, so under a
+slideshow the music plays at full `volume`.
+
+Those defaults are tuned for **speech**. A clip that is loud the whole way
+through — a concert, a street, the waterfall — stays above −36.5 dBFS, so the
+music sits at `duckingLevel` for its entire length. Raise the threshold above
+the clip's own background so only its louder moments duck, and shorten the
+hold so the music returns between them:
+
+```cpp
+settings.music.duckingThresholdDb = -15.0;   // ignore a steady background below -15 dBFS
+settings.music.duckingHold = 0.2;            // back up after a fifth of a second of calm
+settings.music.duckingRelease = 0.4;
+```
+
+or set `duckingLevel = 1` to never duck at all. `videofx` takes the same as
+`--duck-threshold DB --duck-attack S --duck-hold S --duck-release S`.
+
+**Presets.** An app can offer one choice — the kind of footage — instead of
+four numbers. `SetDuckingPreset` fills in the threshold and the times and
+leaves `duckingLevel` alone; single fields set afterwards refine it:
+
+```cpp
+settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+```
+
+| `VideoFXDuckingPreset` | For | Threshold | Attack | Hold | Release |
+|---|---|---|---|---|---|
+| `Speech` (the defaults) | talking in quiet rooms | −36.5 dBFS | 0.12 s | 0.6 s | 0.8 s |
+| `Outdoor` | talking over wind and traffic | −28 dBFS | 0.12 s | 0.5 s | 0.7 s |
+| `LoudEvent` | crowds, engines, concerts: only the louder moments dip | −15 dBFS | 0.12 s | 0.2 s | 0.4 s |
+
+`videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
+values refine it whichever comes first on the command line.
+
+**Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
+`VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
+photo so the show ends with it:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+Sound-only outputs work too: photos plus music into `.mp3` is a valid,
+correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
@@ -423,6 +510,10 @@ videofx testclip pattern.mp4 5 1280 720 30
 videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
 ```
 
 ---
@@ -453,7 +544,8 @@ generates its own clips, so it needs no media files.
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
+| 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 

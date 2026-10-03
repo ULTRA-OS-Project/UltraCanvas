@@ -1,3 +1,135 @@
+#### 2026-10-02 *1.64.1*
+- **Pinning folders and sharing files work for names outside the Windows
+  code page.** Both handed each selected path, a UTF-8 string, straight to
+  `fs::is_directory` / `fs::is_regular_file`, which on Windows reads it in
+  the ANSI code page, so a folder or file named in Thai, Cyrillic or with an
+  emoji was treated as missing and left out. Found by the extended path
+  check (framework changelog), which also fixed the same pattern in the Filer
+  widget's copy, extract and rename-on-collision paths.
+
+#### 2026-10-01 *1.64.0*
+- **Thumbnail tiles that show no picture keep one size.** In a folder whose
+  pictures could not be turned into thumbnails, the type icons were drawn
+  smaller in some rows than in others, and pressing *Everything on* /
+  *Everything off* under *Settings > Display > Thumbnails* changed which rows
+  - the row had been shortened for a picture that never came. Such a tile
+  now keeps the full height.
+- **Settings > Extras > Cache says which thumbnails are missing.** A new line
+  counts the thumbnails of the display in front that are waiting, being made,
+  and could not be made, so a folder that stays on type icons can be told
+  apart: still working, stuck, or files that would not decode (the log then
+  names each file). When one job has been running for 10 s or more, the line
+  also names that file and how long it has run.
+- **Thumbnails no longer stop for good behind one stuck file.** A file that
+  never finished - typically a video in a OneDrive folder that is downloaded
+  before its first frame can be read - held a background worker forever, and
+  once all of them were held, no folder got a thumbnail again until UltraFiler
+  was restarted. After 20 s another worker takes over the rest.
+- **The Cache page reads plainly.** "In memory, previews: nothing of 96 MB"
+  now reads "empty (room for 96 MB)", and a filled cache "120 thumbnails,
+  3.1 MB (room for 96 MB)".
+- **Folder sizes and image files with Thai, CJK or other non-ASCII names**
+  are read correctly on Windows. (Framework side:
+  `Docs/UltraCanvas/changelog.d/filer-failed-thumbnail-row-height.md`.)
+#### 2026-10-01 *1.63.0*
+- **The export window chooses whether sizes and dates are shown.** Two
+  checkboxes along its bottom, **File size** and **Date**, add or drop the
+  size and modification date in all three exports - the listing's and the
+  CSV's columns, and the brackets behind a name in the tree
+  (`notes.txt  (1.2 KB, 2026-09-30 18:03)`). A change shows at once: the
+  text is written again from what was already read, without walking the
+  folder a second time. The tree starts with sizes only, the listing and the
+  CSV with both.
+- **The CSV export can mark paths as text.** Its window has a third
+  checkbox, **Add text marker**: ticked, every path starts with a `'`, which
+  a spreadsheet reads as "this is text" and shows the path as written.
+#### 2026-10-01 *1.62.1*
+- **Deleting the folder UltraFiler runs from no longer crashes it, and a
+  file another program holds is no longer mistaken for a permissions
+  problem.** Deleting the unpacked download the running UltraFiler had been
+  started from asked *administrator permission needed* for `Resources` and
+  `lib`, deleted the rest, and crashed. Now a delete that would take the
+  running UltraFiler apart is refused up front (*Cannot delete: UltraFiler is
+  running from here*); a folder's delete that stops at a file names that
+  file (`"libvips-42.dll" in "lib" …`) with a *Stopped at:* line; a file a
+  program holds gets *Delete: a file in the folder is in use* naming the
+  program, with Skip / Try again and no administrator button; and a
+  read-only file inside a folder is lifted and removed instead of stopping
+  the delete. Framework-side, see the UltraCanvas changelog entry on the
+  Filer delete queue, the dialog auto-width and the Windows crash dumps.
+- **The operation dialogs use UltraFiler's font size.** Delete, copy, conflict,
+  problem and summary dialogs had the dialog's default 12 over a window at 9;
+  their message, buttons, details, note, *Apply to all* checkbox and entry
+  list now follow the display's sizes.
+- **No dialog button is pushed out of the window any more.** The *Delete:
+  administrator permission needed* dialog's row - an *Apply to all* checkbox
+  and four labelled buttons - was wider than the window and lost its *Stop*
+  button off the right edge; a dialog now widens to its footer row.
+- **A crash writes a dump.** `%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-<date>-<time>-<pid>.dmp`,
+  named in the crash message box; attach it to the bug report.
+#### 2026-09-30 *1.62.0*
+- **The last four questions join the new dialog.** Renaming onto a name that
+  is taken shows both entries side by side and asks *Replace* (red) /
+  *Cancel*; an executable script's *Run* / *Open* / *Cancel* names the file;
+  an archive that was extracted only in part, and what an administrator delete
+  could not remove, end on the summary with the reason beside each entry.
+  **Eject RAM disc** asks the same way, *Eject* red and *Cancel* beside it,
+  instead of a Yes / No box. (Framework side: `Docs/UltraCanvas/CHANGELOG.md`
+  0.9.106.)
+#### 2026-09-30 *1.61.1*
+- **A dropped copy's question shows the file's size.** The confirmation a
+  Ctrl-drop (or a drop from another program) opens - *Copy* coloured, *Move*
+  beside it - names the size of a single file under *From* and *Into*, as the
+  move question already did for several entries.
+#### 2026-09-30 *1.61.0*
+- **A folder tree can be exported as CSV.** *Extras > Export > Folder tree
+  as CSV* lists the folder and everything below it as a table - name, path,
+  type, size in bytes and modification date and time, one row per entry -
+  in the export window, and **Save…** writes it as a `.csv` file that
+  spreadsheets open directly (`;`-separated, so German Excel reads the
+  columns on a double-click; UTF-8 with a byte order mark, CRLF rows,
+  RFC 4180 quoting).
+- **The folder tree export shows file sizes.** In *Extras > Export > Folder
+  tree content* every file line now ends with the file's size
+  (`notes.txt  (1.2 KB)`), and the closing line adds the files' total size
+  to the folder and file counts.
+#### 2026-09-30 *1.60.0*
+- **The copy, move and delete questions are one dialog, and the answer is the
+  button.** The *File already exists*, *Cannot copy*, *Confirm delete* and
+  *write-protected* dialogs each had their own layout and asked with toggle
+  switches and a *Continue* button. Every question is now the same window: what
+  is asked, the facts under it (from, into, reason, how much), the entries with
+  their icons, and the answers as buttons - the safe one coloured and taken by
+  Return, a destructive one red, *Stop* by Escape - with an *Apply to all …*
+  checkbox beside them that says how many are left.
+  - **A taken name shows both files side by side**, with size, date and which
+    is newer, and says what *Keep both* will call the pasted one.
+  - **A folder pasted over a folder is merged**, the way every other file
+    manager does it: its entries go into the folder that is there, each asked
+    about in turn when its own name is taken. *Replace*, which deletes the
+    existing folder first, is still there - red, and saying what it deletes.
+    (Before, *Replace the existing folder* was the only answer besides Keep
+    both and Skip, and it wiped the existing folder.)
+  - **A dropped move offers Copy beside Move**, and a dropped copy Move beside
+    Copy, the requested one coloured; a Cut + Paste move asks the same
+    question as a dropped move.
+  - **Delete asks with two buttons**, *Move to the Recycle Bin* and *Delete
+    permanently*, instead of two radios and one *Delete*; Del makes the first
+    the default, Shift+Del the second. The list of what is about to go shows up
+    to 200 items (ten at a time) instead of 40.
+  - **A summary at the end** when something was skipped: how many were done,
+    the skipped items with the reason beside each, and a button that tries
+    just those again.
+- **Settings > Handling > File operations** holds the standing answers:
+  *Ask before* moving files (drag & drop or Cut and Paste), copying files by
+  drag & drop, moving files to the Recycle Bin (off, Del goes there unasked; a
+  permanent delete always asks); *When a name is already taken* (Ask / Keep
+  both / Replace / Skip); *When a folder is pasted over a folder* (Merge / Ask);
+  *When a file cannot be copied, moved or deleted* (Ask each time / Skip it and
+  report at the end); and the progress window's delay (0 to 10 seconds, the
+  busy pointer until then). The drop confirmation moved here from *Drag & Drop*
+  as the first two checkboxes; its setting is unchanged. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.9.103.)
 #### 2026-09-29 *1.59.0*
 - **A folder can be exported as text.** *Extras > Export* in the file
   context menu has two new entries. *Folder content* lists what the selected

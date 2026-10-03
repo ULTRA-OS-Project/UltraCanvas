@@ -1,3 +1,267 @@
+#### 2026-10-04 *0.10.23*
+- **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed
+  itself as Tinder - Tinder's name and Tinder's own pictures, sent from an
+  unrelated address, every link to a third site - passed the threat scan as
+  clean: Tinder was not in the brand table, and its links' texts ("FIND OUT
+  WHO", "Privacy Policy") name no site. Two new signs catch it (score 70, scam):
+  - **Borrowed pictures:** the mail's pictures come from a site its display
+    name or subject names (`gotinder.com` for "Tinder"), but it was sent from
+    elsewhere and none of its links go to that site. This needs no brand
+    table, so it also catches services the table does not know.
+  - **Dating services in the brand table:** Tinder, Bumble, Hinge, OkCupid and
+    Parship, so a display name claiming one from a foreign domain is
+    impersonation.
+  - **Older verdicts are judged again.** A verdict is stored the first time a
+    message is read; one stored by older rules is now re-scanned when the
+    message is opened, so mail an earlier version let through is caught.
+- **The status line shows a message's links.** While a message is open, the
+  status line says how many links it has and which sites they go to
+  ("6 links → vakantiehuiseichenbach.nl"); its tooltip lists every link with
+  the text it shows and the address it really opens. Pointing at a link or a
+  linked picture in the message shows that link's address there, before you
+  click.
+- **HTML mail renders closer to Thunderbird:** text keeps the mail's
+  `line-height` and `letter-spacing`; mail without a standards doctype lays out
+  its tables as browsers do in quirks mode (a centring cell centres the
+  tables, not every line of text); content wider than its box is drawn instead
+  of cut off; borders are drawn per side with mitred corners; images honour
+  `object-fit`, borders, rounded corners and size limits, and sit side by side;
+  a shrink-to-fit button keeps its caption on one line. See the framework
+  changelog for the HTML reader entries.
+
+#### 2026-10-03 *0.10.22*
+- **Mailchimp mail fits a narrow reading pane, and its footer icons are
+  their real size.** Newsletters and invoices built with Mailchimp (Lexware's
+  among them) stayed 600px wide in a pane narrower than 480px, because their
+  narrow-screen rules use CSS attribute selectors the HTML reader skipped; and
+  their footer icons were drawn 5px wide instead of 25px. Fixed in the
+  framework's HTML reader (see the framework changelog, "attribute selectors"
+  and "a px width or height is the content box").
+- **Two-column newsletters keep their columns.** Mailchimp and similar
+  templates place two columns side by side as floats (`<table align="left">`),
+  which the HTML reader ignored, so the columns came one under the other in
+  any pane width. And rules addressing the first or last item of a list
+  (`:last-child` and similar) now apply. Fixed in the framework's HTML reader
+  (see the framework changelog, "floats" and "structural pseudo-classes").
+- **Text runs beside a floated picture, and newsletter headers, buttons and
+  lists look as in a browser.** Text after a picture or column floated to one
+  side now runs beside it instead of starting below it. Patreon's and other
+  MJML-built newsletters showed a 30px logo 138px wide, their button centred
+  instead of on the left, and every bullet on a line of its own above its
+  text. Fixed in the framework's HTML reader (see the framework changelog,
+  "CSSLayout: floats in block layout" and the HTML reader entries beside it).
+
+#### 2026-10-02 *0.10.21*
+- **Switching accounts is immediate, even while mail is being fetched.**
+  Clicking another account's tile sometimes took 10 to 20 seconds. The
+  background sync and the window read the mail database through one shared
+  connection, which runs one statement at a time, and the sync writes a row
+  per message - each its own commit forced to disk. A click that came
+  during a sync waited behind all of them. The workers now have a
+  connection of their own, and the database runs in write-ahead-log mode,
+  where reading never waits for writing and a commit no longer forces the
+  disk.
+- **Names and subjects written as HTML read properly.** Some senders'
+  systems put HTML character references into the header - Lexware's
+  messages arrived "to Stefan Fr&ouml;hling". The list, the reading pane,
+  the sender badge and collected contacts now show "Fröhling", and so do
+  replies and forwards - the "... wrote:" line, the forwarded From/To
+  lines and the Re:/Fwd: subject, in plain and formatted mail; every named
+  and numeric reference (`&auml;`, `&amp;`, `&#8211;`, `&#x20AC;`) is
+  decoded, and a plain "&" (AT&T) stays as it is.
+
+#### 2026-10-02 *0.10.20*
+- **Settings > Reading > Layout sets the folder list's width.** *Auto* (the
+  default) makes the folder tree on the left 10 px wider than its longest
+  account address or folder name, and fits it again as folders arrive or a
+  branch is opened or closed; *Fixed width* keeps it at the number of pixels
+  set beside it (100 to 600, 200 to start with - typing a width chooses it).
+  Dragging the divider still resizes the list for the moment. Saved as
+  `folder_tree_width_mode` / `folder_tree_width` in `preferences.ini`; the
+  page's *Restore default layout* puts it back to *Auto*. Measuring the rows
+  is the framework's new `UltraCanvasTreeView::GetRequiredWidth` (see the
+  framework changelog, "TreeView: GetRequiredWidth").
+
+#### 2026-10-02 *0.10.19*
+- **The Outbox window: what waits to be sent, and what to do about it.** While
+  messages wait, the toolbar shows *Outbox (N)*; it opens a window listing
+  each one - To, Subject, the account it goes from, how often it was tried
+  and why it has not gone out (the full reason in the tooltip), and whether
+  its copy is in Drafts. *Send now* tries them all at once. *Edit…* (or a
+  double-click) opens the message in a compose window, formatting and
+  pictures included, to correct it - a wrong address the server keeps
+  refusing, say; the old version is held meanwhile (no automatic attempt
+  sends it) and is replaced, Drafts copy and all, once the corrected one is
+  sent. Closing the window without sending lets the old version go out as
+  it was. *Delete* asks first, then takes the message out of the outbox for
+  good and deletes its Drafts copy - so a message that can never be sent is
+  no longer tried every 30 minutes for ever.
+- **Edit and Delete work while a message is being sent.** They used to be
+  greyed out until the attempt was over. Now *Delete* is carried out right
+  after it (and says so if the message went out meanwhile), and *Edit*
+  opens the message as soon as the attempt has finished - the window says
+  it will. A failed attempt does not warn about a message you are deleting.
+- **Deleted Drafts copies are gone for good.** A copy taken out of Drafts -
+  the message was sent, deleted or replaced by a corrected version - is now
+  expunged on the server (`UID EXPUNGE`, that message only) instead of being
+  left flagged as deleted, which some mail apps keep showing. A server
+  without UIDPLUS leaves it flagged, as before.
+- **A Drafts copy that cannot be deleted now is deleted later.** When a
+  message is deleted or replaced while the server cannot be reached
+  (offline, or the credential vault locked), it leaves the outbox at once
+  and is never sent; its Drafts copy is deleted by the next pass that
+  reaches the server, after a restart too. Delete says when this happens.
+- **A sent message is filed in the Sent folder.** Once a message has gone
+  out, a copy is saved to the account's Sent folder (the folder the server
+  marks as Sent, else "Sent"), marked read, with the same Message-ID the
+  message was sent with. Not on Gmail and Outlook.com / Microsoft 365, which
+  file what is sent through them by themselves - a second copy would be a
+  duplicate. A copy that cannot be saved does not affect the send.
+- **The Drafts copy arrives as a draft, and read.** The IMAP plug-in now sets
+  the flags of an uploaded message (it ignored them), so the copy in Drafts
+  carries `\Draft` and `\Seen` instead of showing up as a new, unread
+  message.
+- Sending, deleting and the server copies all run through one outbox queue on
+  a worker, one job at a time, so a delete never races a send.
+
+#### 2026-10-02 *0.10.18*
+- **Mail in folders with non-English names is found on Windows.** Message
+  bodies are cached as `mail/<account>/<folder>/<uid>.eml`, and the account
+  and folder were joined onto that path as plain strings - which Windows
+  converts in its ANSI code page. A folder such as "Entwürfe" or "Корзина"
+  was cached under a mangled name. UltraMail read it back the same way, so
+  it went unnoticed, but EmailCleaner, which reads the cache as UTF-8,
+  never found that mail. The cache path, the preview's read and the
+  removal of an account's mail now pass every part through `PathFromUtf8`.
+  Bodies already cached under a mangled name are fetched again.
+  - The sender-icon cache built its file names the same way
+    (`dir / (brandId + ".png")`); they go through `PathFromUtf8` too, found
+    by the extended path check (framework changelog).
+  - New test `cached_body_path_keeps_a_non_ascii_folder_name`. UltraMail's
+    engine tests now run on Windows CI, where two tests failed because they
+    still had a file open while it was replaced or deleted; they close it
+    first.
+
+#### 2026-10-02 *0.10.17*
+- **Pictures in newsletters built from mail templates are shown.** Mail whose
+  images carry `height="auto"` (Kickstarter's, and most Beefree / Braze
+  newsletters) showed none of them - not even after *Show images* - because
+  the HTML reader drew each one zero pixels tall. The fix is in the framework's
+  HTML reader (see the framework changelog, "pictures with `height="auto"` are
+  shown").
+- **Newsletters fit the reading pane, menus included.** A picture as wide as
+  its column made the whole 600px newsletter as wide as the picture's file -
+  often 2000px - so the text ran off the right of the pane and a centred menu
+  (Kickstarter's ART / COMICS / DESIGN …) was off screen entirely. Fixed in the
+  framework's HTML reader (see the framework changelog, "HTML mail no longer
+  runs off the right of the pane").
+- **In a narrow reading pane, newsletter columns stack, as on a phone.**
+  Articles side by side in the newsletter come one under another when the
+  pane is narrower than the newsletter's own breakpoint (620px for most
+  templates), each at the full width, with its picture centred at its own
+  size instead of drawn over the text below it. Fixed in the framework's HTML
+  reader (see the framework changelog, "HTML mail columns stack in a narrow
+  pane").
+
+#### 2026-10-02 *0.10.16*
+- **Quote + and Quote − in the compose window's formatting toolbar.** They
+  are the two quote-mark buttons at the end of the first row. They move the
+  paragraph at the cursor, or every selected paragraph, one quote level in
+  or out.
+  - Use them to place an answer between quoted lines of a reply, or to take
+    a quoted line out of the quote.
+  - Each click can be undone.
+  - The signature editor's toolbar does not show them.
+
+#### 2026-10-01 *0.10.15*
+- **The message cache no longer only grows.** Every message body UltraMail
+  downloads is kept as `mail/<account>/<folder>/<uid>.eml`, and none was ever
+  deleted: a message expunged on the server, moved to Trash or Junk, deleted,
+  or renumbered by a UIDVALIDITY reset lost its row in the index but kept its
+  file, so the mail folder grew by every message ever received - and
+  EmailCleaner, which reads the same cache, kept finding mail that was gone.
+  The body now goes with the row: `SyncEngine::MoveMessage`, the expunge in
+  `ReconcileFlags`, Delete without a Trash folder (`SyncEngine::ForgetMessage`)
+  and a UIDVALIDITY reset (the whole folder's files) remove it. And the first
+  reconcile of each folder prunes what earlier versions left behind - only
+  once the server has actually listed the folder (the same guard the expunge
+  has), and only up to the highest UID the index held when it started, so a
+  body a sync is writing at that moment is never touched.
+- **Opened attachments no longer pile up.** Opening an attachment writes a
+  copy for the viewer, and those copies were never deleted - straight into the
+  `cache` folder, for good. They now go to `cache/attachments`, which is pruned
+  at every start (before any viewer has a file open): what was not opened for
+  a week goes, then the oldest until the rest fits in 256 MB. Opening an
+  attachment again marks its copy as new. The loose copies earlier versions
+  left in `cache` are cleared once; the sender icons, in their own folder
+  there, are untouched. `AttachmentCache` also builds its paths through
+  `PathFromUtf8` now, so an attachment named in Thai or with an emoji is
+  written where it should be on Windows too.
+
+#### 2026-10-01 *0.10.14*
+- **Send works in the background, and nothing is lost on the way.** *Send*
+  puts the message in UltraMail's outbox - the local store, which survives a
+  crash or a restart - and closes the compose window at once; the message
+  goes out on a worker while you carry on. The window stays open only when
+  the message could not be queued (no recipient, no outbox), so nothing typed
+  is lost.
+- **A copy waits in the Drafts folder until the message is sent.** Before the
+  first attempt, the message is saved to the account's Drafts folder on the
+  server (the folder the server marks as Drafts, else "Drafts"), so it is
+  there on every device; once it has gone out, the copy is deleted from
+  Drafts. A copy that cannot be saved does not hold the message back - it is
+  still in the outbox, and the warning says so.
+- **A message that is not sent says so, with Retry.** The warning names the
+  reason (the server refused, no connection, no outgoing server known, no
+  SMTP plug-in), where the message is kept (Drafts and the outbox, or the
+  outbox only) and offers *Retry*. Without an SMTP plug-in or a known
+  outgoing server, the Drafts copy is still saved.
+- **And it is tried again by itself.** A message left unsent goes out without
+  anyone pressing *Retry*: a minute later, then after 2, 5 and 10 minutes,
+  then every 30 - and at once when the connection is back (a mail check
+  reached the server, the computer woke from sleep, UltraMail started with
+  messages waiting). These attempts are silent; the warning is shown once,
+  and a message that then goes out says so on the status line. An attempt
+  never asks for the master password: with the vault locked it waits.
+- *Retry* sends to the account's outgoing server as it is now: a message
+  queued before the server was known, or before it was corrected in Account
+  Settings, goes out once it is.
+- Replies keep their thread: the In-Reply-To and References headers are sent
+  (and kept in the outbox and the Drafts copy); they were dropped before.
+- The outbox files a message under the account that owns its From address.
+
+#### 2026-09-30 *0.10.13*
+- **Several compose windows at once work.** UltraMail had one compose view for
+  every compose window, so opening a second message rebound the first window's
+  Send, Cancel, attachment buttons and formatting toolbar to the second: Send
+  in the first window sent the second message, Cancel closed the other window.
+  Each compose window now has its own view, and its entry is dropped once the
+  window has closed (the windows used to be kept until UltraMail quit).
+- What answers after a compose window closed - the file or cloud picker, the
+  "send as plain text?" question, a Link… or Picture… dialog - finds the
+  window gone and changes nothing.
+
+#### 2026-09-30 *0.10.12*
+- **The compose window has the full formatting toolbar.** The signature
+  editor's tools now sit above every message body: bold, italic, underline,
+  strikethrough, font, size and text colour in one row; left / centre /
+  right, bulleted and numbered lists, a horizontal line, *Link…* and
+  *Picture…* in the next. The small B / I / U / list row that only formatted
+  replies had is gone. Both windows share one toolbar (`UltraMailFormatBar`),
+  so they cannot drift apart.
+- **Plain text | Formatted.** The switch at the right end of the toolbar
+  decides how the message is written and sent. A new message starts as plain
+  text, with only the switch showing. *Formatted* turns what is written into
+  the rich editor, `> ` quotes becoming quote bars, and shows the tools; the
+  message is then sent as HTML with a plain-text version. Replies and forwards
+  of HTML mail, and mail signed with an HTML signature, open formatted.
+  Switching back to plain text asks first when there is something to lose,
+  since formatting, links and pictures are dropped.
+- The compose window is 40 px taller, for the second toolbar row.
+- Fixed while building it: a toolbar row of buttons sized to their labels
+  widened the whole compose window past its right edge, hiding the switch and
+  *Cancel*. The rows are now capped at the window's width.
+
 #### 2026-09-30 *0.10.11*
 - **A signature per account.** *Account Settings* has a new *Signature* row,
   which shows the account's signature in a few words, and an *Edit signature…*

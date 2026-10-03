@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.8.0 - reports the body's links and the hovered link (status line);
+//                re-scans verdicts older than the current threat rules
 // Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
 // Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
 // Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
@@ -8,9 +10,10 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailHeaderText.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -362,6 +365,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (&body != &lastBody_) lastBody_ = body;
     lastIsHtml_ = isHtml;
     bodyHost_->ClearChildren();
+    // The links the reader can check before clicking one.
+    if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
 
     // Settings > Reading > "as plain text": no layout and nothing fetched.
     if (isHtml && showHtml) {
@@ -384,6 +389,9 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
                 lower.rfind("mailto:", 0) == 0)
                 UltraCanvas::OpenURL(href);
+        };
+        opts.onLinkHovered = [this](const std::string& href) {
+            if (onLinkHovered) onLinkHovered(href);
         };
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
@@ -564,12 +572,15 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    if (!sec.Scanned()) {
+    // Also when the stored verdict came from older rules (kThreatRulesRevision):
+    // what an earlier version let through is judged again.
+    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
     // And its attachment count, for the list's paperclip, when the body was
@@ -585,7 +596,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 }
 
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
-                                         const MessageSecurity& security) {
+                                         const MessageSecurity& security,
+                                         const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     // Only the two verdicts worth interrupting a reader for. Advertisements and
@@ -595,19 +607,44 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         return;
     }
 
-    const bool scam = status.cls == SenderClass::Scam;
+    // A dangerous message whose button leads off the sender's own domain is
+    // what phishing looks like: say so plainly, and show both domains so the
+    // reader can see the mismatch for themselves rather than take our word.
+    // Only on the scan's own verdict: a newsletter that is merely sitting in
+    // Junk links to its tracking domain too, and is not phishing for that.
+    DomainMismatch mismatch;
+    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    const bool phishing = mismatch.found;
+
+    const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (scam ? "This message looks like a scam or phishing attempt"
+        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+         : status.cls == SenderClass::Scam
+              ? "This message looks like a scam or phishing attempt"
               : "Parts of this message do not add up"));
 
-    std::string text = status.reason;
+    std::string text;
+    if (phishing) {
+        text = "Mismatch of domains\n"
+               "Sender domain: " + mismatch.senderDomain + "\n" +
+               (mismatch.isButton ? "Button domain: " : "Link domain: ") +
+               mismatch.linkDomain;
+        if (!mismatch.linkText.empty())
+            text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
+        text += "\n";
+    } else {
+        text = status.reason;
+    }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
     text += "\nDo not sign in, pay or reply through the links in this message unless you "
             "are sure who sent it.";
+    if (phishing)
+        text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
+                "to hack your accounts on other websites.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }
@@ -656,10 +693,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Decode RFC 2047 encoded-words for display (idempotent: messages synced
     // before header decoding are still stored raw).
-    const std::string subject  = UltraNet_MimeDecodeHeader(env.subject);
-    const std::string fromName = UltraNet_MimeDecodeHeader(env.fromName);
+    const std::string subject  = DisplayHeader(env.subject);
+    const std::string fromName = DisplayHeader(env.fromName);
     std::vector<std::string> toList = env.to;
-    for (auto& addr : toList) addr = UltraNet_MimeDecodeHeader(addr);
+    for (auto& addr : toList) addr = DisplayHeader(addr);
 
     // Name on the first line; address and recipients on the second, with the
     // full sender in the tooltip.
@@ -696,8 +733,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
-    fs::path path = PathFromUtf8(mailDir_) / env.accountId / SanitizeFolder(env.folder)
-                  / (std::to_string(env.uid) + ".eml");
+    fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
+                  / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
@@ -749,7 +786,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         if (!security.reason.empty()) tip += "\n" + security.reason;
         from_->SetTooltip(tip);
     }
-    ShowSecurityWarning(status, security);
+    ShowSecurityWarning(status, security, raw);
 
     // The body, with its images: the message's own always, remote ones when
     // the reader has allowed this sender - never for a suspicious message.

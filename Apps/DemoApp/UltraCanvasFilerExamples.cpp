@@ -1,9 +1,10 @@
 // Apps/DemoApp/UltraCanvasFilerExamples.cpp
 // Demonstration of UltraCanvasFilerWidget: one folder shown with selectable
 // view types (details / list / thumbnails / bar size / treemap), sortable
-// columns, the hover icon menu and the full file context menu (right-click).
-// Version: 1.0.1
-// Last Modified: 2026-07-28
+// columns, a file type filter that hides or greys out the other types, the
+// hover icon menu and the full file context menu (right-click).
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -307,6 +308,66 @@ namespace UltraCanvas {
             compressCb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             row->AddChild(compressCb);
 
+            root->AddChild(row);
+        }
+
+        // ===== File type filter row: what a load / save dialog does with the
+        // files it was not asked for =====
+        {
+            auto row = MakeFilerRow("FilerTypeFilterRow");
+            auto lbl = std::make_shared<UltraCanvasLabel>("FilerTypeFilterLbl", 0, 0, 46, 24);
+            lbl->SetText("Types");
+            lbl->SetFontSize(12);
+            lbl->SetFontWeight(FontWeight::Bold);
+            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(lbl);
+
+            struct TypeSeed { const char* label; std::vector<std::string> extensions; };
+            // The same lists a FileDialogConfig::AddFilter() call would hold.
+            const std::vector<TypeSeed> types = {
+                {"All files", {"*"}},
+                {"Images",    {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}},
+                {"Audio",     {"mp3", "flac", "wav", "ogg", "m4a"}},
+                {"Video",     {"mp4", "mkv", "webm", "mov", "avi"}},
+            };
+            auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
+            auto filerPtr = filer.get();
+            for (const TypeSeed& t : types) {
+                auto b = std::make_shared<UltraCanvasButton>(
+                        std::string("FilerTypes_") + t.label, 0, 0, 0, 24, t.label);
+                b->SetFontSize(11);
+                b->SetCornerRadius(4.0f);
+                StyleFilerOptionButton(b.get(), t.extensions.front() == "*");
+                auto* raw = b.get();
+                std::vector<std::string> extensions = t.extensions;
+                b->SetOnClick([filerPtr, extensions, group, raw]() {
+                    for (auto* gb : *group) StyleFilerOptionButton(gb, gb == raw);
+                    // The mode in force stays: the switch beside the buttons
+                    // owns it.
+                    filerPtr->SetFileTypeFilter(extensions,
+                                                filerPtr->GetFileTypeFilterMode());
+                });
+                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                row->AddChild(b);
+                group->push_back(raw);
+            }
+
+            // Off: the other types are left out, as a file dialog lists.
+            // On: they stay in the listing greyed out, name and thumbnail,
+            // and a double-click on one does nothing.
+            auto dimCb = std::make_shared<UltraCanvasCheckbox>(
+                    "FilerDimOtherTypes", 0, 0, 220, 24,
+                    "Show other types greyed out");
+            dimCb->SetChecked(false);
+            dimCb->onChecked = [filerPtr]() {
+                filerPtr->SetFileTypeFilterMode(FilerTypeFilterMode::ShowDimmed);
+            };
+            dimCb->onUnchecked = [filerPtr]() {
+                filerPtr->SetFileTypeFilterMode(FilerTypeFilterMode::Hide);
+            };
+            dimCb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(dimCb);
             root->AddChild(row);
         }
 

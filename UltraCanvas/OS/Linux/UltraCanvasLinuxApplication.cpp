@@ -4,6 +4,7 @@
 // Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLinuxAccessibility.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
 #include "UltraCanvasApplication.h"
@@ -77,6 +78,10 @@ namespace UltraCanvas {
             // STEP 5: Initialize wakeup mechanism for cross-thread signaling
             InitializeWakeUp();
 
+            // STEP 5b: Publish the UI to screen readers (AT-SPI) when the
+            // desktop has accessibility on; services D-Bus through an fd watch.
+            LinuxAccessibility::Start();
+
             // STEP 6: Mark as initialized
             initialized = true;
             running = false;
@@ -92,6 +97,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
+        LinuxAccessibility::Stop();
+
         // Clean up wakeup mechanism
         ShutdownWakeUp();
 
@@ -707,12 +714,7 @@ namespace UltraCanvas {
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus
-                if (targetWindow) {
-                    XIC xic = targetWindow->GetXIC();
-                    if (xic) {
-                        XUnsetICFocus(xic);
-                    }
-                }
+                if (targetWindow) targetWindow->UnfocusXICs();
                 break;
             }
 
