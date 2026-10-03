@@ -3295,16 +3295,22 @@ namespace UltraCanvas {
     }
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
-        LineLayoutBase* line;
-        if (lineLayouts.empty()) {
-            UpdateLineLayouts(GetRenderContext());
-        }
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
         }
-        if (idx >= 0 && idx <= (int)lineLayouts.size()) {
+        // Layouts are built through the render context, and an element that is
+        // not in a window yet has none (a ScrollTo() or a cursor query straight
+        // after SetText() on a detached text area). Nothing is laid out then;
+        // the first Render builds the layouts.
+        IRenderContext* ctx = GetRenderContext();
+        if (lineLayouts.empty()) {
+            if (!ctx) return nullptr;
+            UpdateLineLayouts(ctx);
+        }
+        if (idx >= 0 && idx < (int)lineLayouts.size()) {
             if (!lineLayouts[idx]) {
-                UpdateLineLayouts(GetRenderContext());
+                if (!ctx) return nullptr;
+                UpdateLineLayouts(ctx);
             }
             return lineLayouts[idx].get();
         }
