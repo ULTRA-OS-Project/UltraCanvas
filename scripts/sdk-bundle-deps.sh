@@ -102,9 +102,12 @@ while [ -s "$WORK/queue" ]; do
     fi
     echo "$m" >> "$WORK/closure"
     # Requires lines read "name >= 1.2, other"; the first word of each
-    # comma-separated item is the module name.
+    # comma-separated item is the module name. Homebrew's vips.pc names its
+    # keg-only libarchive by the full path of its .pc file
+    # (/opt/homebrew/opt/libarchive/lib/pkgconfig/libarchive.pc); that is
+    # the module "libarchive", found through the opt/ directories above.
     { "$PKG_CONFIG" --print-requires "$m"; "$PKG_CONFIG" --print-requires-private "$m"; } 2>/dev/null \
-        | tr ',' '\n' | awk '{print $1}' | grep -v '^$' >> "$WORK/queue" || true
+        | tr ',' '\n' | awk '{print $1}' | sed -e 's|.*/||' -e 's|\.pc$||' | grep -v '^$' >> "$WORK/queue" || true
 done
 echo "pkg-config closure: $(wc -l < "$WORK/closure" | tr -d ' ') modules"
 
