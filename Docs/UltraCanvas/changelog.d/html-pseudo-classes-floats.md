@@ -5,10 +5,11 @@
   count like a class in the cascade. Dynamic pseudo-classes (`:hover`,
   `:focus`, `:visited`) still drop the rule - a mail is never hovered.
   Test: `HTMLReaderTest` (`TestStructuralPseudoClasses`).
-- **HTML reader: floats.** `float: left / right` and `<table align="left|right">`
-  (which browsers float) were ignored, so a mail template's two-column block -
-  two 300px `<table align="left">` in a 600px cell - stacked. Floats next to
-  each other now share one wrapping row, left floats at its start and right
-  floats at its end; a float too wide for the row goes to the next line.
-  Approximation: what follows starts below the floats instead of flowing
-  around them. Test: `HTMLTableLayoutTest` ("floats sit side by side").
+- **HTML reader: floats.** `float: left / right`, `<table align="left|right">`
+  and `<img align="left|right">` (which browsers float) were ignored, so a
+  mail template's two-column block - two 300px `<table align="left">` in a
+  600px cell - stacked, and a picture's caption sat below it. A float now
+  goes to its edge and the content after it flows beside it (CSSLayout
+  floats, below); `clear` and `<br clear>` start below the floats. Test:
+  `HTMLTableLayoutTest` ("floats sit side by side", "content flows around
+  floats").

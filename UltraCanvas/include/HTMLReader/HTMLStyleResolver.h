@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.6.0 - clear; <img align="left|right"> floats
 // Version: 1.5.0 - float (floatMode)
 // Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
@@ -86,6 +87,8 @@ struct ComputedStyle {
     // controls are border-box, as in browsers' own style sheets.
     bool borderBox = false;
     FloatMode floatMode = FloatMode::NoFloat;
+    // clear: left / right / both (and <br clear>): starts below the floats.
+    bool clear = false;
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
     float borderRadius = 0;

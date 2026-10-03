@@ -1,7 +1,8 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
+// Version: 4.10.0 - LayoutItem::floatSide (float: left / right in block layout)
 // Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -136,6 +137,10 @@ namespace UltraCanvas {
         enum class PositionType   { Static, Relative, Absolute, Fixed, AbsoluteUI };
         enum class Overflow       { Visible, Hidden, Scroll, Auto };
         enum class Visibility     { Visible, Hidden };  // Hidden reserves space (unlike NoDisplay)
+        // float, honoured by block layout: the child sits at the left / right
+        // edge and the blocks after it are narrowed beside it. Not `None`:
+        // X11 defines that as a macro.
+        enum class FloatSide      { NoFloat, Left, Right };
 
         // ---- Flex ----
 
@@ -321,10 +326,13 @@ namespace UltraCanvas {
             // For Relative: left/top/right/bottom act as a post-layout offset.
             // For Absolute/Fixed: insets define the box against the containing block.
             std::optional<Position> position;
+            // float: left / right - only a Block parent honours it.
+            FloatSide floatSide = FloatSide::NoFloat;
 
             // ---- Positioning kind / insets ----
             LayoutItem& SetPositionType(PositionType p) { positionType = p; return *this; }
             LayoutItem& SetPositionInsets(const Position& insets) { position = insets; return *this; }
+            LayoutItem& SetFloat(FloatSide f) { floatSide = f; return *this; }
 
             // ---- Flex item properties (initializes data to FlexItem on first call) ----
             LayoutItem& SetFlexGrow(float g);

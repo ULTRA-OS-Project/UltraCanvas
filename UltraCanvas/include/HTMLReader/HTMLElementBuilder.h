@@ -6,9 +6,10 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.3.0 - a list marker carried into the item's first block
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,6 +82,9 @@ private:
     int elementCount = 0;
     int nextId = 0;
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+    // A list item's marker not yet placed, handed to the item's first block
+    // child (<li><div>text</div></li>) so it starts that block's first line.
+    std::string carriedMarker;
 
     // Per-inline-run state: the rendered plain text built alongside the Pango
     // markup (same bytes the text layout reports from hit testing) and the

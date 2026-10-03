@@ -1,7 +1,8 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
 // Version: 1.4.0 - structural pseudo-classes match; float, and <table
-//                  align="left|right"> floats
+//                  align="left|right"> / <img align="left|right"> floats;
+//                  clear and <br clear>
 // Version: 1.3.0 - attribute selectors match; box-sizing
 // Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
 // Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
@@ -98,10 +99,15 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
     const bool colorsAllowed = !opts.overrideAuthorColors;
     // <table align="left|right"> floats, as in browsers - two 300px tables
     // in a 600px cell sit side by side (Mailchimp's two-column blocks).
-    if (element.tag == "table") {
+    // So does <img align="left|right">: the text beside it runs around it.
+    if (element.tag == "table" || element.tag == "img") {
         const std::string align = TrimLower(element.GetAttribute("align"));
         if (align == "left") style.floatMode = FloatMode::Left;
         else if (align == "right") style.floatMode = FloatMode::Right;
+    }
+    // <br clear="all|left|right">: what follows starts below the floats.
+    if (element.tag == "br" && element.HasAttribute("clear")) {
+        style.clear = TrimLower(element.GetAttribute("clear")) != "none";
     }
     if (element.tag == "font") {
         if (colorsAllowed) {
@@ -720,6 +726,11 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
         s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "clear") {
+        if (lower == "left" || lower == "right" || lower == "both" ||
+            lower == "inline-start" || lower == "inline-end") s.clear = true;
+        else if (lower == "none") s.clear = false;
     }
     else if (prop == "float") {
         if (lower == "left") s.floatMode = FloatMode::Left;
