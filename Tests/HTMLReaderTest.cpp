@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
 // Version: 1.13.0 - height in percent
 // Version: 1.12.0 - min / max width and height in percent
 // Version: 1.11.0 - max-width in percent
@@ -756,6 +757,63 @@ static void TestBorderSides() {
     CHECK(!st.maxWidthPercent && !st.maxWidthPx);
 }
 
+// The doctype decides quirks mode, and quirks mode stops a table inheriting
+// text-align; line-height and overflow are kept.
+static void TestQuirksAndLineHeight() {
+    CHECK(IsQuirksDoctype("", false));
+    CHECK(!IsQuirksDoctype(" html", true));
+    CHECK(!IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" "
+                           "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"", true));
+    CHECK(IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\"", true));
+    CHECK(!IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" "
+                           "\"http://www.w3.org/TR/html4/loose.dtd\"", true));
+    CHECK(IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\"", true));
+    auto alignOfInnerTd = [](const std::string& html) {
+        Parser parser;
+        Document doc = parser.Parse(html);
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* inner = nullptr;
+        int n = 0;
+        doc.root->ForEachElement([&](Node& e) { if (e.tag == "td" && ++n == 2) inner = &e; return true; });
+        return inner ? resolver.StyleOf(inner).textAlign : TextAlignMode::Justify;
+    };
+    const std::string body = "<table><tr><td align='center'><table><tr><td>x</td></tr></table>"
+                             "</td></tr></table>";
+    CHECK(alignOfInnerTd(body) == TextAlignMode::Left);                       // quirks
+    CHECK(alignOfInnerTd("<!DOCTYPE html>" + body) == TextAlignMode::Center); // standards
+    {
+        Parser parser;
+        Document doc = parser.Parse("<!doctype html><p>x</p>");
+        CHECK(!doc.quirksMode && doc.doctype == " html");
+    }
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"font-size:10px;" + css + "\"><p>x</p></div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* p = doc.root->FindFirst("p");
+        return p ? resolver.StyleOf(p) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("");
+    CHECK(!st.lineHeightSet);
+    st = styleOf("line-height:20px");
+    CHECK(st.lineHeightSet && st.lineHeightPx && *st.lineHeightPx == 20.f);   // inherited as px
+    st = styleOf("line-height:150%");
+    CHECK(st.lineHeightPx && *st.lineHeightPx == 15.f);
+    st = styleOf("line-height:1.5");
+    CHECK(st.lineHeightSet && !st.lineHeightPx && st.lineHeight == 1.5f);
+    st = styleOf("line-height:20px;line-height:normal");
+    CHECK(!st.lineHeightSet);
+    {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"overflow:hidden\">x</div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        CHECK(resolver.StyleOf(doc.root->FindFirst("div")).overflowHidden);
+    }
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -776,6 +834,7 @@ int main() {
     TestObjectFitPosition();
     TestImageBorders();
     TestBorderSides();
+    TestQuirksAndLineHeight();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

@@ -3,6 +3,9 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.15.0 - line-height kept as the author gave it (lineHeightSet / lineHeightPx);
+//                  overflow: hidden
+// Version: 1.14.0 - quirks mode: a table does not inherit text-align
 // Version: 1.13.0 - height in percent
 // Version: 1.12.0 - min-width, min-height, max-height in percent
 // Version: 1.11.0 - max-width in percent
@@ -115,6 +118,12 @@ struct ComputedStyle {
     CssColor color{0, 0, 0, 255};
     TextAlignMode textAlign = TextAlignMode::Left;
     float lineHeight = 1.4f;         // multiplier
+    // line-height as the author set it (inherited): a length or percentage is
+    // a fixed px height (lineHeightPx, inherited as px, as CSS computes it);
+    // a plain number a factor of each element's own font size (lineHeight).
+    // Not set (or normal): the font's own line height.
+    bool lineHeightSet = false;
+    std::optional<float> lineHeightPx;
     ListMarker listMarker = ListMarker::Disc;
 
     // ---- non-inherited box properties (resolved to px) ----
@@ -192,6 +201,10 @@ struct ComputedStyle {
     float borderRadiusPercent = 0;
     // border-spacing (CSS) or the cellspacing attribute, on a table.
     std::optional<float> borderSpacing;
+    // overflow: hidden / clip / scroll / auto - the box clips its content.
+    // CSS's visible (the initial value): content wider or taller than the box
+    // is drawn past it.
+    bool overflowHidden = false;
     // box-sizing: border-box - width / height include padding and border.
     // CSS's initial content-box: they are the content's.
     bool borderBoxSizing = false;
@@ -239,6 +252,7 @@ private:
     std::unordered_map<const Node*, ComputedStyle> styles;
     ComputedStyle fallback;
     ResolverOptions opts;
+    bool quirks = true;          // the document's Document::quirksMode
 
     void ResolveElement(Node& element, const ComputedStyle& parentStyle);
     void ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& style);

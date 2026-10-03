@@ -1,5 +1,11 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.20.0 - line-height on text; HTML boxes draw overflowing content
+//                   (overflow: visible) unless overflow: hidden; a cell keeps its
+//                   last child's bottom margin
+// Version: 1.19.0 - a table is placed by its container's alignment, not its own
+//                   text-align; a cell's children with a width of their own keep it
+//                   (placed by the cell's align) instead of being stretched
 // Version: 1.18.0 - width / height in percent on blocks: the content's share, padding
 //                   and border added as pixels (Dimension::PctPlus) - no switch to
 //                   content-box sizing
@@ -421,6 +427,10 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::MakeContainer(const std::s
     // nested block.
     ContainerStyle style = container->GetContainerStyle();
     style.autoShowScrollbars = false;
+    // CSS's overflow: visible - content wider than its box (a 280px paragraph
+    // in a 250px box) is drawn past it; overflow: hidden turns the clip on
+    // (ApplyBoxStyle).
+    style.clipChildren = false;
     container->SetContainerStyle(style);
     return container;
 }
@@ -788,6 +798,17 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     for (const auto& childPtr : element.children) processChild(*childPtr);
 
     flushRun();
+    // The last child's bottom margin stays inside a box it cannot collapse
+    // through: a table cell, or a box with bottom padding or a bottom border.
+    const bool keepsMargins = element.tag == "td" || element.tag == "th" ||
+                              blockStyle.display == DisplayMode::TableCell ||
+                              blockStyle.paddingBottom > 0.f || blockStyle.borderBottom.Width() > 0.f;
+    if (keepsMargins && anyFlowChild && pendingMargin > 0.5f) {
+        auto spacer = MakeContainer("gap");
+        spacer->size.height = CSSLayout::Dimension::Px(pendingMargin);
+        spacer->layoutItem.SetFlexShrink(0.f);
+        parent.AddChild(spacer);
+    }
 }
 
 // ============================================================================
@@ -1097,6 +1118,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     image->box.padding.right = CSSLayout::Dimension::Px(style.paddingRight);
     image->box.margin.left = CSSLayout::Dimension::Px(style.marginLeft);
     image->box.margin.right = CSSLayout::Dimension::Px(style.marginRight);
+    if (style.heightPercent && !style.heightPx) image->size.height = CSSLayout::Dimension::Auto();
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent. Cap at the column width so oversized
     // images (covers, photos) shrink to fit instead of overflowing; a zero
@@ -1399,6 +1421,24 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         cellBox->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, rowSpan, colSpan);
         ApplyBackgroundImage(*cellBox, cellStyle);
         BuildChildrenInto(*cellBox, cell);
+        // A cell lays its content out as a column that stretches every child
+        // across it. A child with a width of its own (<div style="width:250px">,
+        // <table width="420">) keeps that width, placed as the cell's align
+        // attribute places blocks in a browser (-moz-center / -webkit-right).
+        {
+            std::string cellAlign = cell.GetAttribute("align");
+            std::transform(cellAlign.begin(), cellAlign.end(), cellAlign.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            const CSSLayout::AlignSelf place =
+                cellAlign == "center" || cellAlign == "middle" ? CSSLayout::AlignSelf::Center
+                : cellAlign == "right" ? CSSLayout::AlignSelf::End : CSSLayout::AlignSelf::Start;
+            for (const auto& child : cellBox->GetChildren()) {
+                const CSSLayout::Dimension& w = child->size.width;
+                const bool fullLine = w.unit == CSSLayout::DimensionUnit::Percent &&
+                                      w.value >= 99.5f && w.offsetPx == 0.f;
+                if (!w.isAuto() && !fullLine) child->layoutItem.SetAlignSelf(place);
+            }
+        }
         table->AddChild(cellBox);
         c += colSpan;
     };
@@ -1434,7 +1474,11 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     // A table narrower than its line: <table align>, else the alignment its
     // container asks for (<td align="right">, <center>) - as mail clients
     // render it.
-    TextAlignMode align = style.textAlign;
+    // The container's alignment, not the table's own text-align (that aligns
+    // the table's text: <table style="text-align:left"> in a centring cell
+    // is still centred).
+    TextAlignMode align = element.parent && element.parent->IsElement()
+                              ? resolver.StyleOf(element.parent).textAlign : style.textAlign;
     std::string alignAttr = element.GetAttribute("align");
     std::transform(alignAttr.begin(), alignAttr.end(), alignAttr.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -1443,7 +1487,12 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     if (alignAttr == "center" || alignAttr == "middle") align = TextAlignMode::Center;
     else if (alignAttr == "right") align = TextAlignMode::Right;
     else if (alignAttr == "left") align = TextAlignMode::Left;
-    if (align != TextAlignMode::Center && align != TextAlignMode::Right) return table;
+    if (align != TextAlignMode::Center && align != TextAlignMode::Right) {
+        // At the start of the line, at its own width: a cell (a flex column)
+        // would otherwise stretch it across.
+        table->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+        return table;
+    }
 
     auto line = MakeContainer("tableline");
     line->size.width = CSSLayout::Dimension::Pct(100.f);
@@ -1489,9 +1538,8 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     // whole box with box-sizing: border-box. The box stays border-box; a px
     // size grows by what goes around the content, a percentage carries it as
     // pixels on top (calc(50% + 24px), Dimension::PctPlus). A percentage
-    // height resolves against the container's set height, else it is auto.
-    // Tables, cells and images take no percentage height here (browsers
-    // mostly ignore one on them).
+    // height resolves against the container's set height, else it is auto
+    // (images size their picture themselves and drop it).
     const bool contentBox = !borderBoxSizes && !style.borderBoxSizing;
     const float aroundW = contentBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
                                        style.BorderHorizontal() : 0.f;
@@ -1506,7 +1554,10 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     }
     if (style.heightPx) {
         target.size.height = Dimension::Px(*style.heightPx + aroundH);
-    } else if (style.heightPercent && !borderBoxSizes) {
+    } else if (style.heightPercent) {
+        // Of the container's set height (a cell: the table's); with none it
+        // is auto - so mail's height="100%" on tables in a body of auto
+        // height changes nothing, as in a browser.
         target.size.height = Dimension::PctPlus(*style.heightPercent, aroundH);
     }
 
@@ -1538,6 +1589,13 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         target.boxConstraints = limits;
     }
     ApplyBorders(target, style);
+    if (style.overflowHidden) {
+        if (auto* box = dynamic_cast<UltraCanvasContainer*>(&target)) {
+            ContainerStyle cs = box->GetContainerStyle();
+            cs.clipChildren = true;
+            box->SetContainerStyle(cs);
+        }
+    }
 }
 
 // The four border sides (each its own width, colour, dash) and the radius.
@@ -1643,6 +1701,13 @@ void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle
                                     bool noWrap) {
     LabelStyle labelStyle;
     labelStyle.fontStyle = FontOf(style);
+    // line-height as set: px, or a factor of this text's font size.
+    if (style.lineHeightSet) {
+        labelStyle.lineHeightPx = style.lineHeightPx ? *style.lineHeightPx
+                                                     : style.lineHeight * style.fontSizePx;
+        // line-height: 0 (spacer cells) is next to nothing, not "the font's".
+        labelStyle.lineHeightPx = std::max(labelStyle.lineHeightPx, 0.01f);
+    }
     labelStyle.textColor = ToColor(FlattenOverWhite(style.color));
     labelStyle.wrap = noWrap ? TextWrap::WrapNone
                     : style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;

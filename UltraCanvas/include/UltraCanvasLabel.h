@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.4.0 - LabelStyle::lineHeightPx (CSS line-height)
 // Version: 2.3.0 - an inline image's border per side (LabelInlineImageBorder)
 // Version: 2.2.0 - an inline image has a frame: margin, border, padding,
 //                 background, rounded corners (LabelInlineImageFrame)
@@ -37,6 +38,10 @@ namespace UltraCanvas {
         VerticalAlignment verticalAlign = VerticalAlignment::Middle;
         // Word wrapping
         TextWrap wrap = TextWrap::WrapNone;
+        // Height of each line in px (CSS line-height), the text centred in it;
+        // 0: the font's own. A line holding a taller inline image still grows
+        // to hold it.
+        float lineHeightPx = 0.f;
 
         // Text effects
         bool hasShadow = false;

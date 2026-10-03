@@ -9,6 +9,8 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.14.0 - mail tables: placement, unstretched cell children, overflow,
+//                  line-height, cell margins, cell percentage heights
 // Version: 1.13.0 - percentage heights on blocks; content-box percentage width
 // Version: 1.12.0 - percentage min / max sizes; border-box percentage max-width
 // Version: 1.11.0 - <img> min / max sizes keep the picture's shape; max-width in %
@@ -866,6 +868,99 @@ void TestImageLimits() {
     CheckNear(r.height, 50.f, "its height follows");
 }
 
+// What a mail like Yahoo's sign-in notice needs: tables placed by their
+// container's align, a cell's children keeping their own width, content
+// drawn past a narrower box, line-height, a cell keeping its last child's
+// bottom margin, and percentage heights on cells against the table's height.
+void TestMailTables() {
+    std::printf("mail tables: placement, widths, overflow, line-height\n");
+    struct Built { std::shared_ptr<Host> host; std::vector<Placed> all; };
+    auto build = [](const std::string& html) {
+        Built b;
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        HTML::ElementBuilder builder;
+        b.host = std::make_shared<Host>();
+        b.host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(html, opts).root;
+        if (!root) return b;
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        b.host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        Collect(root.get(), 0, 0, b.all);
+        return b;
+    };
+    auto nth = [](const Built& b, const char* prefix, int n) -> const Placed* {
+        for (const auto& p : b.all)
+            if (p.element->GetIdentifier().rfind(prefix, 0) == 0 && n-- == 0) return &p;
+        return nullptr;
+    };
+    // A table with text-align:left in a centring cell is still centred.
+    Built b = build("<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center'>"
+                    "<table width='200' style='text-align:left'><tr><td>x</td></tr></table>"
+                    "</td></tr></table>");
+    const Placed* t = nth(b, "html_table_", 1);
+    if (t) {
+        CheckNear(t->rect.width, 200.f, "the inner table keeps width='200'");
+        CheckNear(t->rect.x, 100.f, "and is centred by the cell's align");
+    } else Check(false, "inner table");
+    // A div with a width in a cell is not stretched across it.
+    b = build("<table width='300' cellpadding='0' cellspacing='0'><tr><td>"
+              "<div style='width:120px'>x</div></td></tr></table>");
+    const Placed* d = nth(b, "html_div_", 0);
+    if (d) CheckNear(d->rect.width, 120.f, "a div's own width in a cell");
+    else Check(false, "div in a cell");
+    // Overflow is drawn: HTML boxes do not clip, unless overflow: hidden.
+    b = build("<div style='width:100px'><p style='width:200px'>x</p></div>"
+              "<div style='width:100px;overflow:hidden'>y</div>");
+    const Placed* v = nth(b, "html_div_", 0);
+    const Placed* h = nth(b, "html_div_", 1);
+    auto* vc = v ? dynamic_cast<UltraCanvasContainer*>(v->element) : nullptr;
+    auto* hc = h ? dynamic_cast<UltraCanvasContainer*>(h->element) : nullptr;
+    Check(vc && !vc->GetContainerStyle().clipChildren, "overflow visible: no clip");
+    Check(hc && hc->GetContainerStyle().clipChildren, "overflow: hidden clips");
+    // line-height: three lines of 20px.
+    b = build("<p style='width:60px;line-height:20px'>one two three four five six</p>");
+    const Placed* lab = LabelWith(b.all, "one");
+    if (lab) {
+        Check(lab->rect.height >= 59.f && std::fmod(lab->rect.height + 0.5f, 20.f) < 1.5f,
+              "line-height: 20px per line");
+    } else Check(false, "line-height label");
+    // A cell keeps its last child's bottom margin.
+    b = build("<table cellpadding='0' cellspacing='0'><tr><td>"
+              "<div style='height:30px;margin-bottom:20px'></div></td></tr></table>");
+    const Placed* cell = nth(b, "html_td_", 0);
+    if (cell) CheckNear(cell->rect.height, 50.f, "30px box + 20px bottom margin");
+    else Check(false, "margin cell");
+    // Percentage heights on cells: of the table's set height.
+    b = build("<table style='height:300px' cellpadding='0' cellspacing='0'>"
+              "<tr><td style='height:50%'>e</td></tr><tr><td>f</td></tr></table>");
+    const Placed* c0 = nth(b, "html_td_", 0);
+    const Placed* c1 = nth(b, "html_td_", 1);
+    if (c0 && c1) {
+        CheckNear(c0->rect.height, 150.f, "a cell's height: 50% of the table");
+        CheckNear(c1->rect.height, 150.f, "the other row takes the rest");
+    } else Check(false, "two rows");
+    b = build("<table style='height:300px' cellpadding='0' cellspacing='0'>"
+              "<tr><td style='min-height:80%'>g</td></tr><tr><td>h</td></tr></table>");
+    c0 = nth(b, "html_td_", 0);
+    if (c0) CheckNear(c0->rect.height, 240.f, "a cell's min-height: 80%");
+    b = build("<table style='height:300px' cellpadding='0' cellspacing='0'>"
+              "<tr><td style='max-height:10%;height:200px'>i</td></tr><tr><td>j</td></tr></table>");
+    c0 = nth(b, "html_td_", 0);
+    if (c0) CheckNear(c0->rect.height, 30.f, "a cell's max-height: 10%");
+    b = build("<table cellpadding='0' cellspacing='0'><tr><td style='height:200px'>"
+              "<div style='height:50%'>a</div></td></tr></table>");
+    d = nth(b, "html_div_", 0);
+    if (d) CheckNear(d->rect.height, 100.f, "a flex child's height: 50% of its cell");
+}
+
 } // namespace
 
 int main() {
@@ -883,6 +978,7 @@ int main() {
     TestBorderSides();
     TestBoxSizing();
     TestImageLimits();
+    TestMailTables();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

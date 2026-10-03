@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.8.0 - LabelStyle::lineHeightPx: every line that height, but a line
+//                 holding a taller inline image still grows
 // Version: 2.7.0 - an inline image's border drawn per side (mitred corners)
 // Version: 2.6.0 - inline images drawn in their frame (margin, border,
 //                 padding, background, rounded corners)
@@ -23,6 +25,8 @@
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
+#include <vector>
+#include <limits>
 #include "UltraCanvasLabel.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
@@ -163,6 +167,26 @@ namespace UltraCanvas {
         textLayout->SetWrap(style.wrap);
         textLayout->SetAlignment(style.horizontalAlign);
         textLayout->SetVerticalAlignment(style.verticalAlign);
+        // CSS line-height: each run of text that tall. The inline images'
+        // placeholders are left out, so a taller picture still grows its line.
+        if (style.lineHeightPx > 0.f) {
+            std::vector<int> holes;
+            for (const auto& img : inlineImages) holes.push_back(img.byteOffset);
+            std::sort(holes.begin(), holes.end());
+            int from = 0;
+            auto addRange = [&](int start, int end) {
+                if (end <= start) return;
+                auto lh = TextAttributeFactory::CreateAbsoluteLineHeight(style.lineHeightPx);
+                if (!lh) return;
+                lh->SetRange(start, end);
+                textLayout->InsertAttribute(std::move(lh));
+            };
+            for (int hole : holes) {
+                addRange(from, hole);
+                from = hole + 3;                         // U+FFFC is 3 bytes
+            }
+            addRange(from, std::numeric_limits<int>::max());
+        }
         // Reserve each inline image's box on its placeholder, above and below
         // the baseline as its alignment asks; the line grows to hold it.
         inlineAscents.assign(inlineImages.size(), 0.f);

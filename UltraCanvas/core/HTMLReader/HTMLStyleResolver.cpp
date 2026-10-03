@@ -1,5 +1,9 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.14.0 - line-height kept for labels (px for lengths / %, a factor for
+//                  numbers, normal clears it); overflow
+// Version: 1.13.0 - quirks mode (no standards doctype, most mail): a table does not
+//                  inherit text-align, as in browsers
 // Version: 1.12.0 - height in percent (CSS and the height attribute); a later width /
 //                  height replaces an earlier one of either kind
 // Version: 1.11.0 - min-width, min-height, max-height in percent too
@@ -45,6 +49,7 @@ namespace HTML {
 void StyleResolver::Resolve(Document& document, const ResolverOptions& options) {
     styles.clear();
     opts = options;
+    quirks = document.quirksMode;
 
     fallback = ComputedStyle{};
     fallback.fontSizePx = opts.baseFontSizePx;
@@ -212,9 +217,16 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
     style.color = parentStyle.color;
     style.textAlign = parentStyle.textAlign;
     style.lineHeight = parentStyle.lineHeight;
+    style.lineHeightSet = parentStyle.lineHeightSet;
+    style.lineHeightPx = parentStyle.lineHeightPx;
     style.listMarker = parentStyle.listMarker;
 
     ApplyUserAgentDefaults(element.tag, style);
+    // Quirks mode (a page without a standards doctype - most HTML mail): a
+    // table starts its own text alignment instead of inheriting it, as
+    // browsers' quirks style sheets say. <td align="center"> around a mail's
+    // content tables centres the tables, not every line of text in them.
+    if (quirks && element.tag == "table") style.textAlign = TextAlignMode::Left;
     ApplyAlignAttribute(element, style);
     ApplyLegacyAttributes(element, style);
 
@@ -903,17 +915,36 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         else if (lower == "baseline") s.verticalAlign = VerticalAlignMode::Baseline;
     }
     else if (prop == "line-height") {
-        if (lower == "normal") { s.lineHeight = 1.4f; return; }
+        if (lower == "normal") {
+            s.lineHeight = 1.4f;
+            s.lineHeightSet = false;
+            s.lineHeightPx.reset();
+            return;
+        }
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit == CssUnit::Number) s.lineHeight = len->value;
-            else if (len->unit == CssUnit::Percent) s.lineHeight = len->value / 100.f;
-            else if (em > 0) s.lineHeight = len->ToPx(em, rem) / em;
+            if (len->unit == CssUnit::Number) {
+                s.lineHeight = len->value;
+                s.lineHeightSet = true;
+                s.lineHeightPx.reset();
+            } else if (len->unit == CssUnit::Percent) {
+                s.lineHeight = len->value / 100.f;
+                s.lineHeightSet = true;
+                s.lineHeightPx = em * len->value / 100.f;
+            } else if (em > 0) {
+                s.lineHeight = len->ToPx(em, rem) / em;
+                s.lineHeightSet = true;
+                s.lineHeightPx = len->ToPx(em, rem);
+            }
         }
     }
     else if (prop == "white-space") {
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
         s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "overflow" || prop == "overflow-x" || prop == "overflow-y") {
+        s.overflowHidden = lower == "hidden" || lower == "clip" || lower == "scroll" ||
+                           lower == "auto";
     }
     else if (prop == "box-sizing") {
         if (lower == "border-box") s.borderBoxSizing = true;

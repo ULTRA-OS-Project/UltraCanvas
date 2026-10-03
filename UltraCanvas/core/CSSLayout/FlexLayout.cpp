@@ -2,6 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.3.9 - a flex container's own min / max-height percentages use
+//                 percentHeightBase too
 // Version: 1.3.8 - a percentage height resolves against a block parent's set height
 //                 (percentHeightBase) when no definite height comes down
 // Version: 1.3.7 - an item's own main size (width / height) is its content box when
@@ -679,7 +681,7 @@ namespace UltraCanvas {
                         : std::optional<float>{c.horizontal.available};
                 std::optional<float> parentBlock =
                     (c.vertical.mode == ConstraintMode::Unbounded)
-                        ? std::nullopt
+                        ? e.percentHeightBase
                         : std::optional<float>{c.vertical.available};
                 // The constraint is written the way an author writes it - about
                 // the box - so it is compared against the border box and the
