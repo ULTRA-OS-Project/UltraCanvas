@@ -3270,6 +3270,30 @@ else()
     message(STATUS "  TextAreaDetachedTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== UNDECODABLE IMAGE TEST =====
+# An image whose header reads but whose pixels do not (a truncated PNG, a HEIC
+# without an HEVC decoder): asking for its pixmap must fail cleanly, not copy
+# from the null pixel pointer libvips hands back.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageUndecodableTest...")
+    add_executable(ImageUndecodableTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageUndecodableTest.cpp
+    )
+    target_include_directories(ImageUndecodableTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageUndecodableTest PRIVATE cxx_std_20)
+    target_compile_definitions(ImageUndecodableTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(ImageUndecodableTest PRIVATE UltraCanvas)
+    set_target_properties(ImageUndecodableTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageUndecodableTest COMMAND ImageUndecodableTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageUndecodableTest")
+else()
+    message(STATUS "  ImageUndecodableTest skipped (UltraCanvas target not present)")
+endif()
+
 message(STATUS "")
 
 # ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====

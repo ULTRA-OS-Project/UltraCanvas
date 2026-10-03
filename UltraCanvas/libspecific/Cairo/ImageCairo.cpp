@@ -714,14 +714,24 @@ namespace UltraCanvas {
         int w = vipsImage.width();
         int h = vipsImage.height();
 
+        // Failures throw vips::VError, which every caller catches: a file
+        // whose header reads but whose pixels do not decode (a HEIC without
+        // an HEVC decoder) gets here, and data() then returns null.
+        uint32_t *src = (uint32_t*)vipsImage.data();
+        if (!src) {
+            std::string why = vips_error_buffer();
+            vips_error_clear();
+            throw vips::VError("Failed to decode image pixels: " + why);
+        }
         cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-            throw UCImageError("Failed to create Cairo surface");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to create Cairo surface");
         }
-        uint32_t *src = (uint32_t*)vipsImage.data();
         uint32_t *dst = (uint32_t*)cairo_image_surface_get_data(surface);
         if (!dst) {
-            throw UCImageError("Failed to get surface data");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to get surface data");
         }
 
         rgba2bgra_premultiplied(src, dst, w * h);
