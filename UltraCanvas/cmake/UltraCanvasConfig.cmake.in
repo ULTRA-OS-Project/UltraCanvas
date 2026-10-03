@@ -35,6 +35,38 @@ include(CMakeFindDependencyMacro)
 
 set(ULTRACANVAS_VERSION "@ULTRACANVAS_PACKAGE_VERSION@")
 
+# Directories as the consumer's CMake can see them. Under MSYS2, pkg-config
+# reports its prefix in POSIX form ("/clang64/include/cairo"); the MSYS2
+# compiler and linker understand that, but the native CMake does not, and it
+# refuses an imported target whose include directory it cannot find. cygpath,
+# which every MSYS2 shell has, gives the native spelling. A directory that still
+# does not exist is dropped with a notice rather than passed on as an error.
+function(_ultracanvas_native_dirs out_var)
+    set(_result "")
+    foreach(_dir IN LISTS ARGN)
+        if(_dir MATCHES "\\$<")
+            list(APPEND _result "${_dir}")        # a generator expression: keep as is
+            continue()
+        endif()
+        if(NOT IS_DIRECTORY "${_dir}" AND WIN32 AND _dir MATCHES "^/")
+            find_program(_ultracanvas_cygpath cygpath)
+            if(_ultracanvas_cygpath)
+                execute_process(COMMAND "${_ultracanvas_cygpath}" -m "${_dir}"
+                    OUTPUT_VARIABLE _native OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+                if(_native AND IS_DIRECTORY "${_native}")
+                    set(_dir "${_native}")
+                endif()
+            endif()
+        endif()
+        if(IS_DIRECTORY "${_dir}")
+            list(APPEND _result "${_dir}")
+        else()
+            message(STATUS "UltraCanvas: dropping include/library directory that does not exist here: ${_dir}")
+        endif()
+    endforeach()
+    set(${out_var} "${_result}" PARENT_SCOPE)
+endfunction()
+
 # ---- Packages the link interface names as imported targets -----------------
 find_dependency(Threads)
 find_dependency(fmt CONFIG)
@@ -76,6 +108,35 @@ if(NOT TARGET UltraCanvas::UltraCanvas)
     include("${CMAKE_CURRENT_LIST_DIR}/UltraCanvasTargets.cmake")
 endif()
 
+# The exported targets may carry the build machine's pkg-config directories in
+# the same POSIX form (a PUBLIC link directory for libvips, for instance); put
+# them through the same translation before CMake validates them.
+foreach(_ultracanvas_target
+        UltraCanvas::UltraCanvas UltraCanvas::UltraCanvasTextUtils
+        UltraCanvas::UltraCanvasBase32 UltraCanvas::UltraCrypt UltraCanvas::UltraVault
+        UltraCanvas::uc-yyjson UltraCanvas::UltraWin UltraCanvas::UltraDatabase
+        UltraCanvas::UltraNet UltraCanvas::UltraCanvasAllFormats
+        UltraCanvas::UltraCanvasVectorPlugin UltraCanvas::UltraCanvasModelsPlugin
+        UltraCanvas::UltraCanvasCDRPlugin UltraCanvas::ultracanvas_libcdr
+        UltraCanvas::UltraCanvasXARPlugin UltraCanvas::UltraCanvasEPSPlugin
+        UltraCanvas::UltraCanvasOCRPlugin UltraCanvas::UltraCanvasVectorizerPlugin)
+    if(NOT TARGET ${_ultracanvas_target})
+        continue()
+    endif()
+    foreach(_ultracanvas_prop INTERFACE_INCLUDE_DIRECTORIES INTERFACE_LINK_DIRECTORIES)
+        get_target_property(_ultracanvas_dirs ${_ultracanvas_target} ${_ultracanvas_prop})
+        if(_ultracanvas_dirs)
+            _ultracanvas_native_dirs(_ultracanvas_dirs ${_ultracanvas_dirs})
+            set_property(TARGET ${_ultracanvas_target} PROPERTY ${_ultracanvas_prop} ${_ultracanvas_dirs})
+        endif()
+    endforeach()
+endforeach()
+unset(_ultracanvas_target)
+unset(_ultracanvas_prop)
+unset(_ultracanvas_dirs)
+
+_ultracanvas_native_dirs(_ultracanvas_dep_includes ${_ultracanvas_dep_includes})
+_ultracanvas_native_dirs(_ultracanvas_dep_libdirs  ${_ultracanvas_dep_libdirs})
 if(_ultracanvas_dep_includes)
     set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
         INTERFACE_INCLUDE_DIRECTORIES ${_ultracanvas_dep_includes})
