@@ -4,6 +4,7 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.1.1 - DeleteForGood
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -39,6 +40,9 @@ public:
 
     struct FlagCall { std::string folder; uint32_t uid; UltraNetMailFlags flags; bool set; };
     std::vector<FlagCall> flagCalls;
+    // UID EXPUNGE calls ("folder/uid"); `expungeRefused` = no UIDPLUS.
+    std::vector<std::string> expunged;
+    bool expungeRefused = false;
 
     // IUltraNetPlugin
     std::string GetName() const override { return "FakeMailbox"; }
@@ -119,6 +123,13 @@ public:
     }
     UltraNetResult MoveMessage(const std::string&, const std::string&, uint32_t,
                                const std::string&, const UltraNetMailOptions&) override {
+        return UltraNetResult::Ok();
+    }
+    UltraNetResult ExpungeMessage(const std::string&, const std::string& folder, uint32_t uid,
+                                  const UltraNetMailOptions&) override {
+        if (expungeRefused)
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "BAD UID EXPUNGE");
+        expunged.push_back(folder + "/" + std::to_string(uid));
         return UltraNetResult::Ok();
     }
     UltraNetResult AppendMessage(const std::string&, const std::string&, const std::string&,
@@ -613,6 +624,34 @@ TEST(move_message_deletes_the_source_body) {
     REQUIRE(!HasUid(fx.store, 2));
     REQUIRE(!BodyCached(engine, 2));
     REQUIRE(BodyCached(engine, 1));
+}
+
+TEST(delete_for_good_flags_expunges_and_forgets_that_message) {
+    Fixture fx("delete-for-good");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 2));
+
+    REQUIRE(engine.DeleteForGood("erika", "INBOX", 2, "imaps://x/", opts).ok);
+    REQUIRE_EQ(fx.fake.flagCalls.size(), (size_t)1);
+    REQUIRE_EQ(fx.fake.flagCalls[0].uid, 2u);
+    REQUIRE(fx.fake.flagCalls[0].set);
+    REQUIRE(fx.fake.flagCalls[0].flags == UltraNetMailFlags::Deleted);
+    // That message only is expunged, after it was flagged.
+    REQUIRE_EQ(fx.fake.expunged.size(), (size_t)1);
+    REQUIRE_EQ(fx.fake.expunged[0], std::string("INBOX/2"));
+    REQUIRE(!HasUid(fx.store, 2));
+    REQUIRE(!BodyCached(engine, 2));
+    REQUIRE(HasUid(fx.store, 1));
+
+    // A server without UIDPLUS refuses the expunge: the message is flagged
+    // \Deleted all the same, so the delete still succeeds.
+    fx.fake.expungeRefused = true;
+    REQUIRE(engine.DeleteForGood("erika", "INBOX", 3, "imaps://x/", opts).ok);
+    REQUIRE_EQ(fx.fake.flagCalls.size(), (size_t)2);
+    REQUIRE(!HasUid(fx.store, 3));
 }
 
 TEST(forget_message_drops_the_row_and_the_body) {

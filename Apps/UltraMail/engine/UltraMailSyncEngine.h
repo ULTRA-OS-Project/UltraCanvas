@@ -9,6 +9,7 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.1.1 - DeleteForGood: \Deleted, then UID EXPUNGE of that message
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -157,6 +158,16 @@ public:
                             int64_t uid, const std::string& dstFolder,
                             const std::string& serverUrl,
                             const UltraNetMailOptions& options);
+
+    // Delete a message permanently - Delete in a folder with no Trash to move
+    // it to, or in Trash itself: flag it \Deleted, expunge that one message
+    // (UID EXPUNGE; never the others flagged \Deleted in the folder), and drop
+    // it from the local index with its cached body. A server without UIDPLUS
+    // refuses the expunge; the message then stays flagged \Deleted (deleted,
+    // to be removed by the server or another client), which is no failure.
+    SyncOutcome DeleteForGood(const std::string& accountId, const std::string& folder,
+                              int64_t uid, const std::string& serverUrl,
+                              const UltraNetMailOptions& options);
 
 private:
     LocalStore&             store_;

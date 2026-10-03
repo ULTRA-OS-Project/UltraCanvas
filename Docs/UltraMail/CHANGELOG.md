@@ -1,3 +1,13 @@
+#### 2026-10-04 *0.10.24*
+- **Delete in Trash, or on an account without a Trash folder, now deletes
+  the message for good.** It used to be only flagged as deleted on the
+  server, so it stayed there - and in mail apps that show deleted messages
+  - until something else expunged it. Now it is flagged and then expunged
+  (`UID EXPUNGE`, that message only - never other messages flagged as
+  deleted in the folder). Since it cannot be restored, UltraMail asks first.
+  A message in any other folder still goes to Trash, without asking. A
+  server without UIDPLUS leaves it flagged, as before.
+
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed
   itself as Tinder - Tinder's name and Tinder's own pictures, sent from an

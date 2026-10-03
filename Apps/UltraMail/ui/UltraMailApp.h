@@ -254,8 +254,9 @@ private:
     void SaveSignature(const std::string& accountId, const Signature& signature);
 
     // Message actions from the reading pane, mirrored to the IMAP server on a
-    // background worker and then refreshed. Delete moves to Trash (fallback:
-    // \Deleted flag + local removal); Junk moves to the Junk mailbox; Mark-Unread
+    // background worker and then refreshed. Delete moves to Trash; in Trash, or
+    // without one, it deletes for good after asking (\Deleted + UID EXPUNGE,
+    // SyncEngine::DeleteForGood); Junk moves to the Junk mailbox; Mark-Unread
     // clears \Seen. All non-blocking; failures surface an alert.
     void HandleDeleteMessage(const MessageEnvelope& env);
     void HandleJunkMessage(const MessageEnvelope& env);

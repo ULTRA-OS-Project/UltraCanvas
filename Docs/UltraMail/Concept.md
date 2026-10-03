@@ -267,6 +267,8 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Reply / reply-all / forward with proper quoting and subject prefixes
 - Mark read/unread, star/flag, move to folder (drag & drop onto tree)
 - Junk folder support; delete-to-Trash with empty-trash command
+  *(Delete in Trash, or without a Trash folder, deletes for good after
+  asking - flagged and expunged on the server: UltraMail 0.10.24.)*
 - Fast local search (from/subject/body) over the message index
 - Collected address book: every address the user writes to or receives
   from is remembered for autocomplete (explicit contacts app and

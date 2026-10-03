@@ -1,6 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
 // Version: 0.9.17 - the status line lists a message's links (summary, every link in
 //                   its tooltip) and shows where the link under the pointer goes
+// Version: 0.9.17 - Delete in Trash, or on an account without one, deletes the
+//                   message for good (asks first; expunged on the server)
 // Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
 //                   send instead of refusing; a Drafts copy that cannot be
 //                   deleted now is deleted by a later pass
@@ -1109,19 +1111,35 @@ void UltraMailApp::HandleMarkRead(const MessageEnvelope& env) {
 
 void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
     const std::string trash = FolderWithRole(env.accountId, FolderRole::Trash);
-    RunMailboxAction(env.accountId,
-        [this, env, trash](SyncEngine& engine, const std::string& url,
-                           const UltraNetMailOptions& opts) -> SyncOutcome {
-            if (!trash.empty() && trash != env.folder)
+    if (!trash.empty() && trash != env.folder) {
+        RunMailboxAction(env.accountId,
+            [env, trash](SyncEngine& engine, const std::string& url,
+                         const UltraNetMailOptions& opts) {
                 return engine.MoveMessage(env.accountId, env.folder, env.uid, trash, url, opts);
-            // No Trash mailbox (or already in it): flag \Deleted on the server and
-            // drop the local row and its cached body so it leaves the list.
-            SyncOutcome o = engine.SetFlag(env.accountId, env.folder, env.uid,
-                                           Flag_Deleted, true, url, opts);
-            if (o) engine.ForgetMessage(env.accountId, env.folder, env.uid);
-            return o;
+            },
+            "Delete");
+        return;
+    }
+    // No Trash mailbox, or the message is in it already: there is nowhere to
+    // take it back from, so it goes for good (flagged \Deleted and expunged
+    // on the server) - after asking.
+    const std::string subject = env.subject.empty() ? "(no subject)" : env.subject;
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Delete \"" + subject + "\" permanently? "
+            + (trash.empty() ? std::string("This account has no Trash folder, so it ")
+                             : std::string("It is in the Trash already, so it "))
+            + "cannot be restored.",
+        "Delete permanently",
+        [this, env](bool confirmed) {
+            if (!confirmed) return;
+            RunMailboxAction(env.accountId,
+                [env](SyncEngine& engine, const std::string& url,
+                      const UltraNetMailOptions& opts) {
+                    return engine.DeleteForGood(env.accountId, env.folder, env.uid, url, opts);
+                },
+                "Delete");
         },
-        "Delete");
+        window_ ? window_.get() : nullptr);
 }
 
 void UltraMailApp::HandleJunkMessage(const MessageEnvelope& env) {

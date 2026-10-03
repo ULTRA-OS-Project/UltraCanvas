@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.1.2 - DeleteForGood (flag \Deleted, then expunge that message)
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
@@ -419,6 +420,21 @@ SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,
     // body) so the list stops showing it. The destination folder picks it up on
     // its next sync.
     UltraDbResult lr = ForgetMessage(accountId, srcFolder, uid);
+    if (!lr) return SyncOutcome::Fail(lr.message);
+    return SyncOutcome{};
+}
+
+SyncOutcome SyncEngine::DeleteForGood(const std::string& accountId, const std::string& folder,
+                                      int64_t uid, const std::string& serverUrl,
+                                      const UltraNetMailOptions& options) {
+    UltraNetResult r = mailbox_.StoreFlags(serverUrl, folder, static_cast<uint32_t>(uid),
+                                           UltraNetMailFlags::Deleted, true, options);
+    if (!r) return SyncOutcome::Fail(r);
+    // Best effort: flagged \Deleted it is deleted already; the expunge only
+    // keeps clients that show deleted messages from showing it.
+    mailbox_.ExpungeMessage(serverUrl, folder, static_cast<uint32_t>(uid), options);
+
+    UltraDbResult lr = ForgetMessage(accountId, folder, uid);
     if (!lr) return SyncOutcome::Fail(lr.message);
     return SyncOutcome{};
 }
