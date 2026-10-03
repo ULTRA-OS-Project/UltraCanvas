@@ -32,6 +32,10 @@
 # Homebrew. Linux is left alone: the distribution's -dev packages are the
 # right source there, and the script says so and exits 0.
 #
+# Under set -e a while loop whose last body command is a failed `test && x`
+# ends the script, so the loops here use if/then and the piped ones carry
+# `|| true`; cp and sed report their own failures.
+#
 # Run from the repository root after `cmake --install build --prefix <sdk>`;
 # CI's "Install and build against the CMake package" step does this and then
 # builds Tests/PackageConsumer against the bundled files alone
@@ -81,7 +85,7 @@ for m in $MODULES; do echo "$m" >> "$WORK/queue"; done
 while [ -s "$WORK/queue" ]; do
     m="$(head -1 "$WORK/queue")"
     sed -i.bak '1d' "$WORK/queue" && rm -f "$WORK/queue.bak"
-    grep -qx "$m" "$WORK/closure" && continue
+    if grep -qx "$m" "$WORK/closure"; then continue; fi
     if ! "$PKG_CONFIG" --exists "$m" 2>/dev/null; then
         echo "  (no .pc for $m - skipped)"
         continue
@@ -149,8 +153,8 @@ if [ "$PLATFORM" = windows ]; then
             case "$f" in "$PREFIX"/*) ;; *) continue ;; esac
             [ -f "$f" ] || [ -L "$f" ] || continue
             rel="${f#"$PREFIX"/}"
-            wanted_rel "$rel" && copy_rel "$PREFIX" "$f"
-        done
+            if wanted_rel "$rel"; then copy_rel "$PREFIX" "$f"; fi
+        done || true
     done < "$WORK/owners"
 
     # The DLLs the core needs at run time, by walking the PE import tables
@@ -166,11 +170,11 @@ if [ "$PLATFORM" = windows ]; then
             f="$(head -1 "$WORK/dllqueue")"
             sed -i.bak '1d' "$WORK/dllqueue" && rm -f "$WORK/dllqueue.bak"
             "$OBJDUMP" -p "$f" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | while read -r name; do
-                [ -f "$PREFIX/bin/$name" ] || continue
-                [ -f "$DEPS/bin/$name" ] && continue
-                cp "$PREFIX/bin/$name" "$DEPS/bin/$name"
-                echo "$DEPS/bin/$name" >> "$WORK/dllqueue"
-            done
+                if [ -f "$PREFIX/bin/$name" ] && [ ! -f "$DEPS/bin/$name" ]; then
+                    cp "$PREFIX/bin/$name" "$DEPS/bin/$name"
+                    echo "$DEPS/bin/$name" >> "$WORK/dllqueue"
+                fi
+            done || true
         done
     fi
 
@@ -200,8 +204,8 @@ if [ "$PLATFORM" = macos ]; then
     while read -r keg; do
         find "$keg/include" "$keg/lib" "$keg/share/pkgconfig" \( -type f -o -type l \) 2>/dev/null | while read -r f; do
             rel="${f#"$keg"/}"
-            wanted_rel "$rel" && copy_rel "$keg" "$f"
-        done
+            if wanted_rel "$rel"; then copy_rel "$keg" "$f"; fi
+        done || true
     done < "$WORK/kegs"
 
     # The dylibs those reference, so the set in deps/lib is closed; then
@@ -221,12 +225,12 @@ if [ "$PLATFORM" = macos ]; then
                 *) continue ;;
             esac
             name="$(basename "$dep")"
-            [ -f "$DEPS/lib/$name" ] && continue
-            [ -f "$src" ] || continue
-            cp -L "$src" "$DEPS/lib/$name"
-            chmod 644 "$DEPS/lib/$name"
-            echo "$DEPS/lib/$name" >> "$WORK/dyqueue"
-        done
+            if [ ! -f "$DEPS/lib/$name" ] && [ -f "$src" ]; then
+                cp -L "$src" "$DEPS/lib/$name"
+                chmod 644 "$DEPS/lib/$name"
+                echo "$DEPS/lib/$name" >> "$WORK/dyqueue"
+            fi
+        done || true
     done
     find "$DEPS/lib" -name '*.dylib' -type f | while read -r f; do
         chmod u+w "$f"
@@ -237,7 +241,7 @@ if [ "$PLATFORM" = macos ]; then
             if [ -f "$DEPS/lib/$name" ]; then
                 install_name_tool -change "$dep" "@rpath/$name" "$f" 2>/dev/null || true
             fi
-        done
+        done || true
         codesign --force --sign - "$f" 2>/dev/null || true
     done
 
