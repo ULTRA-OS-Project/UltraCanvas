@@ -48,25 +48,70 @@ reader decides.
 
 ## 2. The known-sender registry
 
-`Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}` holds the curated table
-of services whose mail an inbox actually carries, each with an id, a display
-name, the site's own favicon URL, a brand colour and a category:
+`Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}` holds the lookups and
+`UltraMailSenderBrandTable.cpp` the curated table: about 400 services, with 600
+of their own domains. They are the services whose mail an inbox actually
+carries **and** the brands phishing mail most often dresses up as, because the
+content scan (section 5) asks the same table "this mail says it is Coinbase -
+is it from Coinbase?". Each entry has an id, a display name, the site's own
+favicon URL, a brand colour and a category:
 
-| Category | Entries |
+| Category | Examples (see the table for all) |
 |---|---|
-| Social | Facebook, Instagram, LinkedIn, X, Reddit, TikTok, Pinterest, Tumblr, Mastodon |
-| Messaging | WhatsApp, Telegram, Slack, Discord |
-| Crowdfunding | Kickstarter, Indiegogo, GoFundMe, Startnext, Crowd Supply |
-| Creator support | Patreon, Buy Me a Coffee, Ko-fi, Liberapay, Open Collective, Gumroad, Substack |
-| Shopping | Amazon, eBay, Etsy |
-| Payment | PayPal, Stripe |
-| Technology | Google, Apple, Microsoft, GitHub, Claude, OpenAI, Dropbox, Zoom |
-| Media | YouTube, Netflix, Spotify, Twitch, Vimeo |
-| Travel | Booking, Airbnb |
-| Delivery | DHL, UPS, FedEx |
+| Bank or broker (81) | Chase, Bank of America, Wells Fargo, Citi, American Express, Barclays, HSBC, Lloyds, NatWest, Santander, Revolut, Monzo, Deutsche Bank, Commerzbank, Sparkasse, ING, DKB, N26, comdirect, Postbank, UBS, PostFinance, ABN AMRO, Rabobank, BNP Paribas, BBVA, Nordea, RBC, Commonwealth Bank, HDFC, Itaú, Nubank, Robinhood, eToro … |
+| Payment service (26) | PayPal, Stripe, Venmo, Zelle, Cash App, Wise, Western Union, MoneyGram, Klarna, Afterpay, Visa, Mastercard, Interac, TWINT, Alipay, paysafecard … |
+| Crypto exchange or wallet (26) | Coinbase, Binance, Kraken, Crypto.com, Gemini, Bitstamp, KuCoin, OKX, Bybit, Bitpanda, Bitvavo, Blockchain.com, MetaMask, Ledger, Trezor, Trust Wallet, Exodus, Phantom, OpenSea … |
+| Online shop (42) | Amazon, eBay, Etsy, Walmart, Target, Best Buy, Costco, AliExpress, Temu, SHEIN, Zalando, OTTO, Vinted, Kleinanzeigen, MediaMarkt, Lidl, Aldi, Tesco, IKEA, Shopify, DoorDash, Deliveroo, Lieferando … |
+| Parcel carrier (26) | DHL, UPS, FedEx, USPS, Royal Mail, Evri/Hermes, DPD, GLS, Deutsche Post, InPost, PostNL, Colissimo, Swiss Post, Österreichische Post, PostNord, Poste Italiane, Correos, Canada Post, Australia Post … |
+| Social network (24) | Facebook, Instagram, LinkedIn, X, Reddit, TikTok, Snapchat, Pinterest, Tumblr, Mastodon, Bluesky, XING, Tinder, Bumble, Hinge, Match, Grindr … |
+| Messaging service (7) | WhatsApp, Telegram, Signal, Slack, Discord, WeChat, Viber |
+| Cloud, hosting or file service (26) | Dropbox, WeTransfer, Box, MEGA, Cloudflare, DigitalOcean, Hetzner, IONOS, STRATO, OVHcloud, Hostinger, Bluehost, WordPress.com, Wix, Squarespace … |
+| Domain registrar (14) | GoDaddy, Namecheap, Network Solutions, Name.com, Porkbun, Gandi, INWX, united-domains, DENIC, Nominet, ICANN, Verisign … |
+| Online service (21) | Google, Apple, Microsoft, GitHub, Claude, OpenAI, Zoom, DocuSign, Adobe, Atlassian, Salesforce, Okta, Webex, Intuit, Xero, Canva … |
+| Government agency (18) | IRS, SSA, USCIS, FBI, HMRC, DVLA, TV Licensing, Canada Revenue Agency, ATO, myGov, ELSTER, BZSt, Rundfunkbeitrag, impots.gouv.fr, ANTAI, Ameli … |
+| Telecom provider (21) | Verizon, AT&T, T-Mobile, Xfinity, Telekom, Vodafone, 1&1, O2, BT, Swisscom, Telstra, KPN, Proximus … |
+| Gaming service (10) | Steam, Epic Games, PlayStation, Nintendo, Roblox, Riot Games, Blizzard, EA, Ubisoft, Minecraft |
+| Security software (13) | Norton, McAfee, Avast, Kaspersky, Bitdefender, Malwarebytes, ESET, LastPass, 1Password, Bitwarden, NordVPN, ExpressVPN … |
+| Media, travel, crowdfunding, creator support | Netflix, Spotify, Disney+, Max, DAZN; Booking.com, Airbnb, Expedia, Uber, Ryanair, Lufthansa, Deutsche Bahn; Kickstarter, GoFundMe; Patreon, Ko-fi … |
 
 The category is what the badge tooltip names ("Kickstarter (Crowdfunding
-platform)") and what a collected contact's note records.
+platform)") and what a collected contact's note records. The **Payments**
+filter takes banks and crypto exchanges as well as payment services.
+
+### What may go into the table
+
+A domain in the table is *trusted*: its mail gets the brand's name and icon
+and the blue business-contact badge. So the entries follow rules that are
+stricter than "the brand probably owns this":
+
+* **Only the brand's own domains**, and country domains listed one by one
+  (`lidl.de`, `lidl.co.uk`, …). The older `labels` form ("any `ebay.*`") is
+  kept for the handful of entries that had it, but trusts a squatted
+  `ebay.xyz` too, so new entries do not use it.
+* **A name that is an ordinary word is claimed through keywords only**
+  (`NameClaim::KeywordsOnly`). "Chase", "Target", "Visa", "Discover",
+  "Steam", "Signal", "Booking", "UPS" would otherwise turn every visa
+  application, hotel confirmation or "follow-ups" into an impersonation
+  finding; they are claimed by "chase bank", "target.com", "verified by
+  visa", "steam support", "booking.com", "ups.com" instead.
+* **No keyword is a mailbox provider's name**, and an address at a mailbox
+  provider inside a display name claims nothing: a friend whose display name
+  is just `jane@outlook.com` is not posing as Microsoft. An address at any
+  other domain still counts — `"service@paypal.com" <x@evil.example>` is
+  exactly the claim to catch.
+* **Brands whose genuine mail comes from hundreds of regional domains are
+  recognised but not claimed.** Each Sparkasse mails from its own
+  `sparkasse-<region>.de`; claiming "Sparkasse" would flag the real ones.
+* **Providers that are also mailbox domains are left out** (Orange, SFR, Sky,
+  Virgin Media, Rogers): their addresses are people.
+* **Government service suffixes are not one party.** `RegistrableDomain()`
+  knows `gov.in`, `gouv.fr`, `gc.ca` and the three-level `service.gov.uk`, so
+  `tax.service.gov.uk` is HMRC and `vehicle-tax.service.gov.uk` is not.
+
+`registry_is_consistent` in `Tests/UltraMail/test_senderidentity.cpp` checks
+the table: unique ids, every domain owned by one brand and resolving back to
+it, no public suffix as a domain, lowercase keywords, no mailbox-provider
+keyword.
 
 Two rules hold it together, and both exist because the table is also what the
 phishing scan reasons about:
@@ -184,7 +229,7 @@ clean, and each of those is a test in
 
 | Piece | File |
 |---|---|
-| Brand registry, domain helpers | `Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}` |
+| Brand registry, domain helpers | `Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}`; the table in `UltraMailSenderBrandTable.{h,cpp}` |
 | Icon cache | `Apps/UltraMail/engine/UltraMailSenderIconCache.{h,cpp}` |
 | Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
 | Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
