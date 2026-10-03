@@ -10,6 +10,10 @@ of the typing. It is written around **Claude Code**, because the repository
 carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
 and the hooks), but every step names what to do with another assistant too.
 
+If you have no compiler at all and work through an AI assistant and GitHub
+only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
+this: it says where each step happens when CI is the compiler.
+
 The short version: **the repository already teaches the assistant how to work
 here.** Your job is to build it once, keep the assistant pointed at the docs,
 ask for one bounded change at a time, and run the checks before every push.
