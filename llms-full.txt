@@ -34910,7 +34910,9 @@ The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
 so each section is a heading over a two-column *Property / Value* table.
 The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
 button again closes it. Left / Right keep browsing, and the panel follows
-to the next file.
+to the next file. The panel's text is built only while it is open (on
+opening, then for each file loaded): browsing with it closed reads no
+metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);

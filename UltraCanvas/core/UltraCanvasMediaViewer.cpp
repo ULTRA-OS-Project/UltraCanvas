@@ -1891,6 +1891,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateInfoBar();
+        if (IsDetailsVisible()) UpdateDetailedInfo();
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -2172,7 +2173,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // transparent image, gone for everything else.
     UpdateTransparencyPalette();
     UpdateInfoBar();
-    UpdateDetailedInfo();
+    // The Details text costs a metadata read of the file; it is built only
+    // while the panel is open, and SetDetailsVisible() builds it on opening.
+    if (IsDetailsVisible()) UpdateDetailedInfo();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -2491,7 +2494,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 }
 
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
-    if (!surface || playlist.empty()) return;
+    if (!surface) return;
+    if (playlist.empty()) {
+        ShowDetailsText("No media\n");
+        return;
+    }
     const std::string& path = playlist[currentIndex];
 
     if (!ucdDetails.empty()) {
@@ -2715,7 +2722,8 @@ bool UltraCanvasMediaViewer::IsDetailsVisible() const {
 
 void UltraCanvasMediaViewer::SetDetailsVisible(bool visible) {
     if (!detailsView || detailsView->IsVisible() == visible) return;
-    if (visible) static_cast<UltraCanvasTextArea*>(detailsView.get())->ScrollTo(0);
+    // Filled for the file showing now (UpdateDetailedInfo scrolls to the top).
+    if (visible) UpdateDetailedInfo();
     detailsView->SetVisible(visible);
     InvalidateLayout();
     RequestRedraw();

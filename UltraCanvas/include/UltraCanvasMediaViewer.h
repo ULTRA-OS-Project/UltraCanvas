@@ -467,7 +467,8 @@ public:
     // The panel the "Details" button opens over the display area: file facts
     // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
     // PNG text), laid out as Markdown tables in a scrollable text area.
-    // Works for every kind of file the viewer shows. Escape closes it.
+    // Works for every kind of file the viewer shows. Escape closes it. The
+    // text is built on opening and for each file loaded while it is open.
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;
