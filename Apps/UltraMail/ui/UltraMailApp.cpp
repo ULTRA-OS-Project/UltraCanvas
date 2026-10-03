@@ -1,8 +1,10 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.18 - Delete in Trash, or on an account without one, deletes the
+//                   message for good (asks first; expunged on the server);
+//                   Empty Trash (the Trash folder's right-click menu); a
+//                   plug-in refused as out of date is named as such
 // Version: 0.9.17 - the status line lists a message's links (summary, every link in
 //                   its tooltip) and shows where the link under the pointer goes
-// Version: 0.9.17 - Delete in Trash, or on an account without one, deletes the
-//                   message for good (asks first; expunged on the server)
 // Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
 //                   send instead of refusing; a Drafts copy that cannot be
 //                   deleted now is deleted by a later pass
@@ -93,6 +95,26 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
+
+// `text` as a Markdown code span, so the underscores of a file name, a path
+// or a build option stay underscores in an alert's detail (which is Markdown)
+// instead of turning the text between them italic.
+std::string Code(const std::string& text) {
+    return "`" + text + "`";
+}
+
+// When the plug-in library named `stem` ("ultranet_imap") was found but not
+// loaded - built against older UltraNet plug-in interfaces - a sentence
+// saying so (leading space included); "" when it was simply not found.
+// `markdown`: for an alert's detail (the path as a code span).
+std::string RefusedPluginNote(const std::string& stem, bool markdown) {
+    for (const auto& refused : UltraNet_GetRefusedPlugins()) {
+        if (refused.path.find(stem) == std::string::npos) continue;
+        return " It was found (" + (markdown ? Code(refused.path) : refused.path)
+               + ") but not loaded: it is " + refused.reason + ".";
+    }
+    return {};
+}
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
 constexpr int   kActionIcon    = 12;
@@ -460,6 +482,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         OpenComposer(WithSignature(std::move(draft), DraftPurpose::ReplyOrForward));
     };
     mailView_.onDelete     = [this](const MessageEnvelope& e) { HandleDeleteMessage(e); };
+    mailView_.onEmptyFolder = [this](const std::string& accountId, const std::string& folder) {
+        HandleEmptyFolder(accountId, folder);
+    };
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
     mailView_.onMarkUnread = [this](const MessageEnvelope& e) { HandleMarkUnread(e); };
     mailView_.onMarkRead   = [this](const MessageEnvelope& e) { HandleMarkRead(e); };
@@ -870,12 +895,16 @@ IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
 }
 
 void UltraMailApp::ReportMissingImapPlugin() {
+    // Found but refused (built against older plug-in interfaces): say so,
+    // rather than "not found" next to the file the user can see.
+    const std::string refused = RefusedPluginNote("ultranet_imap", /*markdown=*/true);
     AlertError(window_ ? window_.get() : nullptr,
-               "Mail cannot be fetched: the IMAP plug-in was not found.",
-               "UltraMail looked for ultranet_imap in " + pluginDir_
-               + ". Build the UltraNet IMAP plug-in (ULTRACANVAS_PLUGIN_IMAP) "
-                 "and keep it there, or point ULTRAMAIL_PLUGIN_DIR at the folder "
-                 "that holds it, then restart UltraMail.");
+               refused.empty() ? "Mail cannot be fetched: the IMAP plug-in was not found."
+                               : "Mail cannot be fetched: the IMAP plug-in is out of date.",
+               "UltraMail looked for " + Code("ultranet_imap") + " in " + Code(pluginDir_) + "."
+               + refused + " Build the UltraNet IMAP plug-in (" + Code("ULTRACANVAS_PLUGIN_IMAP")
+               + ") and keep it there, or point " + Code("ULTRAMAIL_PLUGIN_DIR")
+               + " at the folder that holds it, then restart UltraMail.");
 }
 
 Draft UltraMailApp::WithSignature(Draft draft, DraftPurpose purpose) const {
@@ -1138,6 +1167,32 @@ void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
                     return engine.DeleteForGood(env.accountId, env.folder, env.uid, url, opts);
                 },
                 "Delete");
+        },
+        window_ ? window_.get() : nullptr);
+}
+
+void UltraMailApp::HandleEmptyFolder(const std::string& accountId, const std::string& folder) {
+    // The count known here; the server may hold a few more (not synced yet),
+    // and those go too.
+    std::vector<MessageEnvelope> held;
+    store_.ListMessages(accountId, folder, 0, held);
+    const std::string name = FriendlyFolderName(folder);
+    const std::string what = held.empty()
+        ? "every message in " + name
+        : (held.size() == 1 ? std::string("the message") : "all " + std::to_string(held.size())
+                                                              + " messages")
+              + " in " + name;
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Delete " + what + " permanently? They cannot be restored.",
+        "Empty " + name,
+        [this, accountId, folder, name](bool confirmed) {
+            if (!confirmed) return;
+            RunMailboxAction(accountId,
+                [accountId, folder](SyncEngine& engine, const std::string& url,
+                                    const UltraNetMailOptions& opts) {
+                    return engine.EmptyFolder(accountId, folder, url, opts);
+                },
+                "Empty " + name);
         },
         window_ ? window_.get() : nullptr);
 }
@@ -1411,8 +1466,9 @@ void UltraMailApp::SendQueued(const std::string& fromAddr, const std::string& re
     UltraNetResult cannotSend = UltraNetResult::Ok();
     if (!smtp)
         cannotSend = UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail server. "
-            "Put it on the plug-in path (" + pluginDir_ + ") and choose Retry.");
+            "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail server."
+            + RefusedPluginNote("ultranet_smtp", /*markdown=*/true)
+            + " Put a current one on the plug-in path (" + Code(pluginDir_) + ") and choose Retry.");
     else if (!disc.found || AutoDiscovery::SmtpServerUrl(disc.smtp).empty())
         cannotSend = UltraNetResult::Error(UltraNetResultCode::InvalidState,
             "No outgoing (SMTP) server is known for " + fromAddr
@@ -2976,7 +3032,7 @@ ServerSettingsDialog::Verifier UltraMailApp::LoginVerifier(
         if (!imap) {
             onResult(UltraNetResult::Error(UltraNetResultCode::PluginNotFound,
                 "the IMAP plug-in is not loaded (" + pluginDir_ + "), so the sign-in "
-                "could not be checked"));
+                "could not be checked." + RefusedPluginNote("ultranet_imap", /*markdown=*/false)));
             return;
         }
         // The check talks to the server (and may refresh an OAuth2 token

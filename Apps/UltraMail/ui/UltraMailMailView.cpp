@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.9.0 - the Trash folder's right-click menu: Empty Trash
 // Version: 0.8.0 - forwards the reading pane's links and hovered link
 // Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
 //                  (+10 px) or a fixed width
@@ -310,6 +311,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
         if (acct != curAccount_ && onSelectAccount) onSelectAccount(acct);
         ShowFolder(acct, folder);
     };
+    folderTree_->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
+        ShowFolderMenu(node, event);
+    };
     // A fitted tree follows the rows on show.
     folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
     folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
@@ -600,6 +604,29 @@ std::vector<MenuItemData> MailView::ShowEmailsItems(const std::string& senderAdd
     option("Social media", {MessageFilterKind::SocialMedia, ""});
     option("Payments & invoices", {MessageFilterKind::Payments, ""});
     return show;
+}
+
+void MailView::ShowFolderMenu(TreeNode* node, const UCEvent& event) {
+    if (!node || !folderTree_ || !store_) return;
+    auto it = folderNodeId_.find(node->data.nodeId);
+    if (it == folderNodeId_.end()) return;
+    const std::string acct   = it->second.first;
+    const std::string folder = it->second.second;
+    // Only the Trash has a menu (so far): Empty Trash.
+    std::vector<Folder> folders;
+    store_->ListFolders(acct, folders);
+    bool isTrash = false;
+    for (const auto& f : folders) if (f.name == folder && f.role == FolderRole::Trash) isTrash = true;
+    if (!isTrash) return;
+    UltraCanvasWindowBase* window = folderTree_->GetWindow();
+    if (!window) return;
+    folderMenu_ = std::make_shared<UltraCanvasMenu>("folder.ctx", 0, 0, 180, 0);
+    folderMenu_->SetMenuType(MenuType::PopupMenu);
+    folderMenu_->AddItem(MenuItemData::Action("Empty Trash\xE2\x80\xA6", [this, acct, folder]() {
+        if (onEmptyFolder) onEmptyFolder(acct, folder);
+    }));
+    PopupElementSettings settings;
+    folderMenu_->OpenMenu(event.pointerWindow, *window, settings);
 }
 
 void MailView::ShowRowMenu(int row, const UCEvent& event) {

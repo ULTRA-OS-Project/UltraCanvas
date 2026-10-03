@@ -92,6 +92,20 @@ is the only entry point the loader accepts: the old POSIX-only v1 entry,
 `UltraNet_PluginRegister()`, which reached into the host's symbol table, is
 refused (`plugin_loader_refuses_a_v1_only_plugin`).
 
+The host table versions what a plug-in calls in the host; the **plug-in
+interface version** (`ULTRANET_PLUGIN_INTERFACE_VERSION`, now 3) versions the
+other direction - the layout of the interfaces the host calls in a plug-in. A
+method added to `IMailboxProtocolPlugin` or any other interface, even last
+and with a default, is a vtable slot an older plug-in lacks, so the version
+goes up with every such change (2: `ExpungeMessage`, 3: `EmptyFolder`). The
+shim exports `UltraNet_PluginInterfaceVersion()`, so every plug-in reports the
+version it was built against with nothing to do in its own sources, and the
+loader refuses one that reports none or an older one before calling
+`UltraNet_PluginInit` - instead of crashing the host on the first new call.
+`UltraNet_GetRefusedPlugins()` lists the libraries refused and why, so an
+app can say "out of date, rebuild it" rather than "not found"
+(`plugin_loader_refuses_a_plugin_built_against_older_interfaces`).
+
 ---
 
 ## Architecture

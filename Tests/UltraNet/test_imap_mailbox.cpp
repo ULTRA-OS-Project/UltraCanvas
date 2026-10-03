@@ -60,6 +60,10 @@ TEST(imap_uid_expunge_names_one_message) {
     REQUIRE_EQ(UidExpungeCommand(42), std::string("UID EXPUNGE 42"));
 }
 
+TEST(imap_mark_all_deleted_flags_the_whole_folder_silently) {
+    REQUIRE_EQ(MarkAllDeletedCommand(), std::string("UID STORE 1:* +FLAGS.SILENT (\\Deleted)"));
+}
+
 TEST(imap_flag_roundtrip) {
     UltraNetMailFlags f = UltraNetMailFlags::Seen | UltraNetMailFlags::Answered;
     std::string s = FlagsToImapString(f);
@@ -241,6 +245,10 @@ TEST(plugins_are_loaded_without_joining_the_global_symbol_scope) {
     UltraNet_SetPluginDirectory(p.parent_path().string());
     UltraNet_RefreshPlugins();
     REQUIRE(UltraNet_GetPlugin("imaps") != nullptr);   // it did load
+    // ... because it reports the interface version it was built against
+    // (the host shim exports it), so it is not among the refused ones.
+    for (const auto& refused : UltraNet_GetRefusedPlugins())
+        CHECK(refused.path.find("ultranet_imap") == std::string::npos);
 
     CHECK(dlsym(RTLD_DEFAULT, "UltraNet_PluginInit") == nullptr);
 }

@@ -91,6 +91,21 @@ if(NOT WIN32)
     add_dependencies(UltraNetTests UltraNetV1OnlyTestPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_V1ONLY_PLUGIN_DIR_DEFINE="${CMAKE_CURRENT_BINARY_DIR}/v1only-plugins")
+
+    # A plug-in built before interface versioning: UltraNet_PluginInit but no
+    # UltraNet_PluginInterfaceVersion (it does not compile the host shim). The
+    # loader must refuse it (test_plugins.cpp). Header-only; POSIX only like
+    # the one above, for the single-config output directory.
+    add_library(UltraNetOldInterfaceTestPlugin MODULE oldiface/OldInterfacePlugin.cpp)
+    set_target_properties(UltraNetOldInterfaceTestPlugin PROPERTIES
+        PREFIX "" OUTPUT_NAME "ultranet_oldiface"
+        POSITION_INDEPENDENT_CODE ON
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/oldiface-plugins)
+    target_compile_features(UltraNetOldInterfaceTestPlugin PRIVATE cxx_std_20)
+    target_include_directories(UltraNetOldInterfaceTestPlugin PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    add_dependencies(UltraNetTests UltraNetOldInterfaceTestPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_OLDIFACE_PLUGIN_DIR_DEFINE="${CMAKE_CURRENT_BINARY_DIR}/oldiface-plugins")
 endif()
 
 # Point the SMTP plug-in test at the built DSO when the plug-in is in this

@@ -9,6 +9,7 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.1.2 - EmptyFolder (Empty Trash)
 // Version: 0.1.1 - DeleteForGood: \Deleted, then UID EXPUNGE of that message
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -168,6 +169,14 @@ public:
     SyncOutcome DeleteForGood(const std::string& accountId, const std::string& folder,
                               int64_t uid, const std::string& serverUrl,
                               const UltraNetMailOptions& options);
+
+    // Empty a folder for good - Empty Trash: every message in it is flagged
+    // \Deleted and expunged on the server (IMailboxProtocolPlugin::
+    // EmptyFolder), then dropped from the local index with its cached body.
+    // One that arrives meanwhile stays on the server and comes back with the
+    // next sync.
+    SyncOutcome EmptyFolder(const std::string& accountId, const std::string& folder,
+                            const std::string& serverUrl, const UltraNetMailOptions& options);
 
 private:
     LocalStore&             store_;

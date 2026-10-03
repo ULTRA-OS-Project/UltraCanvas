@@ -3,6 +3,8 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.0 - IMailboxProtocolPlugin::EmptyFolder; plug-in interface version: a plug-in built against older
+//                  interfaces is refused (UltraNet_GetRefusedPlugins says why)
 // Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -361,6 +363,34 @@ public:
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      "ExpungeMessage not implemented");
     }
+
+    // Removes every message in the folder for good - emptying the Trash:
+    // flags them all \Deleted, then expunges them. A message that arrives
+    // while it runs is not flagged, so it survives. The default works one
+    // message at a time (the UIDs from FetchAllFlags, else FetchEnvelopes;
+    // StoreFlags; ExpungeMessage, best effort); a plug-in that can should do
+    // it in two commands. Interface version 3.
+    virtual UltraNetResult EmptyFolder(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const UltraNetMailOptions& options) {
+        std::vector<uint32_t> uids;
+        UltraNetResult r = FetchAllFlags(serverUrl, folder,
+            [&uids](uint32_t uid, UltraNetMailFlags, bool) { uids.push_back(uid); }, options);
+        if (!r) {
+            uids.clear();
+            std::vector<UltraNetMailEnvelope> envelopes;
+            r = FetchEnvelopes(serverUrl, folder, 0, envelopes, options);
+            if (!r) return r;
+            for (const auto& e : envelopes) uids.push_back(e.uid);
+        }
+        for (uint32_t uid : uids) {
+            r = StoreFlags(serverUrl, folder, uid, UltraNetMailFlags::Deleted, true, options);
+            if (!r) return r;
+        }
+        for (uint32_t uid : uids) ExpungeMessage(serverUrl, folder, uid, options);
+        return UltraNetResult::Ok();
+    }
 };
 
 // MQTT / AMQP.
@@ -515,6 +545,15 @@ void        UltraNet_SetPluginDirectory(const std::string& path);
 // by every currently-registered plug-in).
 std::vector<std::string> UltraNet_GetSupportedSchemes();
 
+// A plug-in library UltraNet_RefreshPlugins found but did not load, and why
+// ("built against plug-in interface 1; this host needs 2 - rebuild it"). So
+// an app can tell "not installed" from "installed but out of date".
+struct UltraNetRefusedPlugin {
+    std::string path;     // the library, UTF-8
+    std::string reason;
+};
+std::vector<UltraNetRefusedPlugin> UltraNet_GetRefusedPlugins();
+
 // ============================================================================
 // Plug-in DSO contract — entry points + the host vtable.
 //
@@ -543,6 +582,25 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 // function the plug-in called. A library that exports only v1 is not loaded;
 // rebuild it with UltraNet_PluginInit and the shim.
 // ============================================================================
+
+// ---- The plug-in interface version ----------------------------------------
+// The host table above versions what a plug-in calls in the host. This one
+// versions the other direction: the layout of the interfaces the host calls
+// in a plug-in (IUltraNetPlugin and the I...ProtocolPlugin classes). A method
+// added to one of them - even last, with a default - is a slot an older
+// plug-in's vtable does not have, and calling it there would crash the host.
+// So the version goes up with every such change, every plug-in reports the
+// version it was built against (UltraNetPluginHostShim exports
+// UltraNet_PluginInterfaceVersion; nothing to do in the plug-in itself), and
+// the loader refuses one that reports none or an older one, before calling
+// UltraNet_PluginInit. A newer plug-in is loaded: the host simply never calls
+// what it does not know.
+//   1: the interfaces up to IMailboxProtocolPlugin::FetchAllFlags.
+//   2: + IMailboxProtocolPlugin::ExpungeMessage.
+//   3: + IMailboxProtocolPlugin::EmptyFolder.
+constexpr int ULTRANET_PLUGIN_INTERFACE_VERSION = 3;
+
+using UltraNet_PluginInterfaceVersionFn = int (*)();
 
 // ABI 1: abiVersion + RegisterPlugin.
 // ABI 2: + the core functions below. Fields are only ever appended, so an

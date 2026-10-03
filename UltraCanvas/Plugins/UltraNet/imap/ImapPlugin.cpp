@@ -1,4 +1,5 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.5.0 - EmptyFolder (UID STORE 1:* +FLAGS.SILENT (\Deleted), EXPUNGE)
 // Version: 0.4.0 - ExpungeMessage (UID EXPUNGE)
 // Version: 0.3.0 - AppendMessage sets the flags it is given (found again by
 //                  Message-ID, then UID STORE)
@@ -430,6 +431,29 @@ public:
         std::string body;
         return RunCommand(base + EncodeMailboxPath(folder), UidExpungeCommand(uid), options, tls,
                           body);
+    }
+
+    UltraNetResult EmptyFolder(const std::string& serverUrl,
+                               const std::string& folder,
+                               const UltraNetMailOptions& options) override {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        // Nothing in it: done ("1:*" in an empty folder is an error on some
+        // servers).
+        UltraNetMailboxStatus status;
+        if (UltraNetResult s = GetMailboxStatus(serverUrl, folder, status, options); !s) return s;
+        if (status.messages == 0) return UltraNetResult::Ok();
+        // Two commands, whatever the number of messages. A plain EXPUNGE
+        // removes every \Deleted message in the folder - all of them now -
+        // and needs no UIDPLUS; one that arrived since step 1 is not flagged
+        // and stays.
+        const std::string mailbox = base + EncodeMailboxPath(folder);
+        std::string body;
+        if (UltraNetResult r = RunCommand(mailbox, MarkAllDeletedCommand(), options, tls, body); !r)
+            return r;
+        body.clear();
+        return RunCommand(mailbox, "EXPUNGE", options, tls, body);
     }
 
     UltraNetResult MoveMessage(const std::string& serverUrl,

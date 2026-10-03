@@ -7,6 +7,15 @@
   deleted in the folder). Since it cannot be restored, UltraMail asks first.
   A message in any other folder still goes to Trash, without asking. A
   server without UIDPLUS leaves it flagged, as before.
+- **Empty Trash.** Right-click the Trash folder in the folder tree: *Empty
+  Trash…* asks ("Delete all 3 messages in Trash permanently?"), then deletes
+  every message in it for good - two commands on the server however many
+  there are. A message moved to Trash while it runs is kept.
+- **An out-of-date IMAP or SMTP plug-in is named as such.** UltraNet now
+  refuses a plug-in built against older plug-in interfaces instead of crashing
+  on it; UltraMail's message says it found the plug-in but it is out of date
+  and has to be rebuilt, rather than that it was not found. The file names,
+  paths and build options in that message no longer turn into italics.
 
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed

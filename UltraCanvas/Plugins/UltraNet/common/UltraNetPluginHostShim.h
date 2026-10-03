@@ -11,6 +11,12 @@
 //
 // Call UltraNetPlugin_AttachHost() first thing in UltraNet_PluginInit and
 // register nothing when it refuses the host.
+//
+// The shim also exports UltraNet_PluginInterfaceVersion(), returning the
+// ULTRANET_PLUGIN_INTERFACE_VERSION the plug-in was compiled with: the host
+// refuses a plug-in built against older interfaces (UltraNetPlugins.h).
+// Version: 0.2.0 - exports UltraNet_PluginInterfaceVersion (the interface
+//                  version the plug-in was built against)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

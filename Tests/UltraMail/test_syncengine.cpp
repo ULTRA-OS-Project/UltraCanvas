@@ -4,6 +4,7 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.1.2 - EmptyFolder
 // Version: 0.1.1 - DeleteForGood
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -652,6 +653,38 @@ TEST(delete_for_good_flags_expunges_and_forgets_that_message) {
     REQUIRE(engine.DeleteForGood("erika", "INBOX", 3, "imaps://x/", opts).ok);
     REQUIRE_EQ(fx.fake.flagCalls.size(), (size_t)2);
     REQUIRE(!HasUid(fx.store, 3));
+}
+
+TEST(empty_folder_deletes_every_message_for_good) {
+    // Through the interface's default: the UIDs from FetchAllFlags (else, when
+    // that fails, from FetchEnvelopes), each flagged \Deleted and expunged.
+    for (bool viaEnvelopes : {false, true}) {
+        Fixture fx(viaEnvelopes ? "empty-folder-envelopes" : "empty-folder");
+        SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+        UltraNetMailOptions opts;
+        engine.SyncFolders("erika", "imaps://x/", opts);
+        engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+        const auto& onServer = fx.fake.envelopes["INBOX"];
+        REQUIRE(onServer.size() >= 2);
+        if (viaEnvelopes) {
+            fx.fake.fetchAllFlagsFails = true;
+        } else {
+            for (const auto& e : onServer)
+                fx.fake.serverFlags["INBOX"].push_back({e.uid, e.flags});
+        }
+
+        REQUIRE(engine.EmptyFolder("erika", "INBOX", "imaps://x/", opts).ok);
+        REQUIRE_EQ(fx.fake.flagCalls.size(), onServer.size());
+        REQUIRE_EQ(fx.fake.expunged.size(), onServer.size());
+        for (const auto& call : fx.fake.flagCalls) {
+            REQUIRE(call.set);
+            REQUIRE(call.flags == UltraNetMailFlags::Deleted);
+        }
+        for (const auto& e : onServer) {
+            REQUIRE(!HasUid(fx.store, e.uid));
+            REQUIRE(!BodyCached(engine, e.uid));
+        }
+    }
 }
 
 TEST(forget_message_drops_the_row_and_the_body) {

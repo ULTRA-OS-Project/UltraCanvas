@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.9.0 - the Trash folder's right-click menu: Empty Trash (onEmptyFolder)
 // Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
 // Version: 0.7.0 - folder tree width: fitted to its names (+10 px) or fixed.
 // Version: 0.6.0 - reading options (HTML / plain text, text size) and trusted
@@ -166,6 +167,9 @@ public:
     // A folder was opened from the tree: the app may lazily sync it if it has
     // never been fetched (only the inbox is synced up front).
     std::function<void(const std::string& accountId, const std::string& folder)> onOpenFolder;
+    // "Empty Trash" from the Trash folder's right-click menu in the tree: the
+    // app asks, then deletes every message in it for good.
+    std::function<void(const std::string& accountId, const std::string& folder)> onEmptyFolder;
 
 private:
     // Layout ----------------------------------------------------------------
@@ -238,6 +242,9 @@ private:
     ContactIndex contacts_;
     // The row's right-click menu; kept alive while it is open.
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> rowMenu_;
+    // The folder tree's right-click menu (the Trash folder: Empty Trash).
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> folderMenu_;
+    void ShowFolderMenu(UltraCanvas::TreeNode* node, const UltraCanvas::UCEvent& event);
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
     // "Show emails ▸" entries; `senderAddr` adds "Same sender".
     std::vector<UltraCanvas::MenuItemData> ShowEmailsItems(const std::string& senderAddr);

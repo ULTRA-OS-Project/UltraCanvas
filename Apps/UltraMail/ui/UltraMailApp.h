@@ -259,6 +259,9 @@ private:
     // SyncEngine::DeleteForGood); Junk moves to the Junk mailbox; Mark-Unread
     // clears \Seen. All non-blocking; failures surface an alert.
     void HandleDeleteMessage(const MessageEnvelope& env);
+    // Empty Trash (the Trash folder's right-click menu in the tree): asks,
+    // then deletes every message in the folder for good (SyncEngine::EmptyFolder).
+    void HandleEmptyFolder(const std::string& accountId, const std::string& folder);
     void HandleJunkMessage(const MessageEnvelope& env);
     void HandleMarkUnread(const MessageEnvelope& env);
     // Opening a message marks it read: updates the local store and the list row

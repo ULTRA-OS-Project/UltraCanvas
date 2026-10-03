@@ -3,7 +3,9 @@
 // ones directly, DSOs through the host table UltraNet_RefreshPlugins hands to
 // their UltraNet_PluginInit. The registry maintains two indexes: by plug-in
 // name and by URL scheme.
-// Version: 0.5.1 - plug-ins are loaded RTLD_LOCAL. 0.5.0: only
+// Version: 0.6.0 - a plug-in built against older interfaces is refused
+//                  (UltraNet_PluginInterfaceVersion; UltraNet_GetRefusedPlugins).
+//                  0.5.1: plug-ins are loaded RTLD_LOCAL. 0.5.0: only
 //                  UltraNet_PluginInit is loaded (the POSIX-only v1 entry is
 //                  gone). 0.4.0: host ABI 2 - the core functions a plug-in
 //                  calls travel in the host table.
@@ -75,6 +77,8 @@ static bool IsPluginFile(const std::filesystem::path& p) {
 // host's symbol table) is no longer loaded: it only ever worked on POSIX, and
 // only when the host happened to carry every core function the plug-in called.
 static constexpr const char* kPluginEntry = "UltraNet_PluginInit";
+// The interface version the plug-in was built against (UltraNetPlugins.h).
+static constexpr const char* kPluginInterfaceVersion = "UltraNet_PluginInterfaceVersion";
 
 // The table handed to every v2 plug-in (see UltraNetPlugins.h). Everything a
 // plug-in needs from the core goes through it, so a plug-in DSO has no
@@ -118,6 +122,8 @@ struct Registry {
     // Tracks plugin libraries we've already dlopen'd so RefreshPlugins()
     // is idempotent. Keyed by the canonical filesystem path of the DSO.
     std::unordered_map<std::string, PluginLibHandle> loaded;
+    // Libraries found but not loaded, by canonical path -> why.
+    std::unordered_map<std::string, std::string> refused;
 };
 
 Registry& Reg() {
@@ -223,12 +229,38 @@ void UltraNet_RefreshPlugins() {
         auto init = reinterpret_cast<UltraNet_PluginInitFn>(PluginSym(h, kPluginEntry));
         if (!init) continue;   // leave lib loaded; later refresh may need it
 
+        // Built against the interfaces this host calls? An older plug-in's
+        // vtables lack the newer methods: calling one would crash the host.
+        // It is not initialised (it registers nothing), and stays refused
+        // until it is replaced and the app restarted.
+        auto version = reinterpret_cast<UltraNet_PluginInterfaceVersionFn>(
+            PluginSym(h, kPluginInterfaceVersion));
+        const int built = version ? version() : 1;   // none = from before versioning
         {
             std::lock_guard<std::mutex> lk(r.mutex);
             r.loaded[canonical] = h;
+            if (built < ULTRANET_PLUGIN_INTERFACE_VERSION) {
+                r.refused[canonical] =
+                    "built against UltraNet plug-in interface " + std::to_string(built)
+                    + "; this application needs " + std::to_string(ULTRANET_PLUGIN_INTERFACE_VERSION)
+                    + " - the plug-in is out of date and has to be rebuilt";
+                continue;
+            }
         }
         init(&g_pluginHost);
     }
+}
+
+std::vector<UltraNetRefusedPlugin> UltraNet_GetRefusedPlugins() {
+    Registry& r = Reg();
+    std::lock_guard<std::mutex> lk(r.mutex);
+    std::vector<UltraNetRefusedPlugin> out;
+    for (const auto& [path, reason] : r.refused) out.push_back({path, reason});
+    std::sort(out.begin(), out.end(),
+              [](const UltraNetRefusedPlugin& a, const UltraNetRefusedPlugin& b) {
+                  return a.path < b.path;
+              });
+    return out;
 }
 
 std::string UltraNet_GetPluginDirectory() {

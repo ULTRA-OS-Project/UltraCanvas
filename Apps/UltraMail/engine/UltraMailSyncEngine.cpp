@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.1.3 - EmptyFolder (Empty Trash)
 // Version: 0.1.2 - DeleteForGood (flag \Deleted, then expunge that message)
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
@@ -436,6 +437,22 @@ SyncOutcome SyncEngine::DeleteForGood(const std::string& accountId, const std::s
 
     UltraDbResult lr = ForgetMessage(accountId, folder, uid);
     if (!lr) return SyncOutcome::Fail(lr.message);
+    return SyncOutcome{};
+}
+
+SyncOutcome SyncEngine::EmptyFolder(const std::string& accountId, const std::string& folder,
+                                    const std::string& serverUrl,
+                                    const UltraNetMailOptions& options) {
+    UltraNetResult r = mailbox_.EmptyFolder(serverUrl, folder, options);
+    if (!r) return SyncOutcome::Fail(r);
+
+    std::vector<MessageEnvelope> locals;
+    if (UltraDbResult q = store_.ListMessages(accountId, folder, 0, locals); !q)
+        return SyncOutcome::Fail(q.message);
+    for (const auto& m : locals) {
+        if (UltraDbResult lr = ForgetMessage(accountId, folder, m.uid); !lr)
+            return SyncOutcome::Fail(lr.message);
+    }
     return SyncOutcome{};
 }
 

@@ -164,3 +164,26 @@ TEST(plugin_loader_refuses_a_v1_only_plugin) {
     REQUIRE(!registered);
 }
 #endif
+
+#ifdef ULTRANET_OLDIFACE_PLUGIN_DIR_DEFINE
+TEST(plugin_loader_refuses_a_plugin_built_against_older_interfaces) {
+    // A plug-in that reports no interface version (built before it existed)
+    // could lack vtable slots the host calls - ExpungeMessage, say - and
+    // calling one would crash. It is not initialised, and the app can say why.
+    const std::string previous = UltraNet_GetPluginDirectory();
+    UltraNet_SetPluginDirectory(ULTRANET_OLDIFACE_PLUGIN_DIR_DEFINE);
+    UltraNet_RefreshPlugins();
+    const bool registered = UltraNet_GetPlugin("oldiface") != nullptr;
+    UltraNet_SetPluginDirectory(previous);
+    REQUIRE(!registered);
+
+    bool listed = false;
+    for (const auto& refused : UltraNet_GetRefusedPlugins()) {
+        if (refused.path.find("ultranet_oldiface") == std::string::npos) continue;
+        listed = true;
+        CHECK(refused.reason.find("interface 1") != std::string::npos);
+        CHECK(refused.reason.find("rebuilt") != std::string::npos);
+    }
+    REQUIRE(listed);
+}
+#endif

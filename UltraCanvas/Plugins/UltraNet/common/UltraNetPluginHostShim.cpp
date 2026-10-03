@@ -4,6 +4,7 @@
 //
 // Built with hidden visibility (the plug-in CMakeLists set it on this file):
 // the definitions are the plug-in's own and never interpose on the host's.
+// Version: 0.2.0 - UltraNet_PluginInterfaceVersion
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetPluginHostShim.h"
@@ -24,6 +25,12 @@ UltraNetResult NoHost() {
                                  "the UltraNet plug-in was not initialised by its host");
 }
 } // namespace
+
+// Exported despite the file's hidden visibility (ULTRANET_PLUGIN_EXPORT): the
+// host reads it before it calls UltraNet_PluginInit.
+extern "C" ULTRANET_PLUGIN_EXPORT int UltraNet_PluginInterfaceVersion() {
+    return ULTRANET_PLUGIN_INTERFACE_VERSION;
+}
 
 bool UltraNetPlugin_AttachHost(const UltraNetPluginHost* host) {
     if (!host || host->abiVersion < 2 || !host->RegisterPlugin) return false;

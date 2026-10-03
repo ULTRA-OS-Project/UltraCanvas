@@ -4,6 +4,7 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.4.0 - MarkAllDeletedCommand (EmptyFolder)
 // Version: 0.3.0 - UidExpungeCommand
 // Version: 0.2.0 - RawHeaderValue, SearchByMessageIdCommand (APPEND's flags)
 // Version: 0.1.0
@@ -109,6 +110,14 @@ inline std::string SearchByMessageIdCommand(const std::string& messageId) {
 // \Deleted - a plain EXPUNGE would remove every message flagged so.
 inline std::string UidExpungeCommand(uint32_t uid) {
     return "UID EXPUNGE " + std::to_string(uid);
+}
+
+// Emptying a folder, step 1: every message in it flagged \Deleted, in one
+// command (.SILENT: no FETCH response per message). Step 2 is EXPUNGE. Only
+// for a folder holding messages - "1:*" in an empty one is an error on some
+// servers.
+inline std::string MarkAllDeletedCommand() {
+    return "UID STORE 1:* +FLAGS.SILENT (\\Deleted)";
 }
 
 // ---- flags <-> IMAP tokens -------------------------------------------------
