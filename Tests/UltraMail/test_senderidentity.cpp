@@ -240,6 +240,13 @@ TEST(phishing_targets_are_in_the_registry) {
     // A new brand's country domain is trusted only when listed.
     REQUIRE(BrandForAddress("support@lidl.xyz") == nullptr);
     REQUIRE(BrandForAddress("security@coinbase-support.com") == nullptr);
+    // Nor are the big brands' names under a suffix they do not use.
+    for (const char* squatted : { "x@amazon.xyz", "x@ebay.shop", "x@google.top",
+                                  "x@dhl.app", "x@amazon-de.com" })
+        REQUIRE(BrandForAddress(squatted) == nullptr);
+    for (const char* genuine : { "x@amazon.com.be", "x@marketplace.amazon.de",
+                                 "x@ebay.at", "x@noreply.dhl.de", "x@google.co.jp" })
+        REQUIRE(BrandForAddress(genuine) != nullptr);
 }
 
 TEST(brand_names_that_are_ordinary_words_claim_nothing_alone) {

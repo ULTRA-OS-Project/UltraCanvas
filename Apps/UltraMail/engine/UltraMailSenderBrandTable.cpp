@@ -24,6 +24,8 @@
 //    (Sparkasse) is recognised but not claimed, so its genuine mail is not
 //    flagged as impersonation.
 //
+// Version: 0.1.1 - Amazon, eBay, Google and DHL list their country domains
+//                  instead of trusting their name under any suffix
 // Version: 0.1.0 - split out of UltraMailSenderBrands.cpp; ~400 brands
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBrandTable.h"
@@ -54,9 +56,18 @@ std::vector<BrandRule> BuildRules() {
         { {"openai",    "OpenAI",    "https://openai.com/favicon.ico",        0x10A37F, C::Technology},
           {"openai.com", "chatgpt.com"}, {}, {"openai", "chatgpt"} },
         { {"google",    "Google",    "https://www.google.com/favicon.ico",    0x4285F4, C::Technology},
-          {"googleapis.com", "googleusercontent.com", "google-analytics.com",
-           "withgoogle.com", "firebase.com", "android.com"},
-          {"google"}, {"google"} },
+          {"google.com", "googleapis.com", "googleusercontent.com", "google-analytics.com",
+           "withgoogle.com", "firebase.com", "android.com",
+           // Country sites, listed one by one: a label rule would also trust a
+           // squatted google.xyz.
+           "google.de", "google.at", "google.ch", "google.co.uk", "google.ie",
+           "google.fr", "google.be", "google.nl", "google.it", "google.es",
+           "google.pt", "google.pl", "google.cz", "google.se", "google.dk",
+           "google.no", "google.fi", "google.com.tr", "google.ca", "google.com.mx",
+           "google.com.br", "google.com.ar", "google.co.in", "google.co.jp",
+           "google.co.kr", "google.com.hk", "google.com.sg", "google.com.au",
+           "google.co.nz", "google.co.za"},
+          {}, {"google"} },
         { {"youtube",   "YouTube",   "https://www.youtube.com/favicon.ico",   0xFF0000, C::Media},
           {"youtube.com", "youtu.be"}, {}, {"youtube"} },
         { {"apple",     "Apple",     "https://www.apple.com/favicon.ico",     0x555555, C::Technology},
@@ -76,14 +87,24 @@ std::vector<BrandRule> BuildRules() {
         // "prime" alone was every "prime location" and "prime minister".
         { {"amazon",    "Amazon",    "https://www.amazon.com/favicon.ico",    0xFF9900, C::Shopping},
           {"amazon.com", "primevideo.com", "audible.com", "aws.amazon.com",
-           "amazonaws.com", "aws.com"},
-          {"amazon"}, {"amazon", "amazon prime", "prime video", "aws"} },
+           "amazonaws.com", "aws.com",
+           // The Amazon marketplaces.
+           "amazon.ca", "amazon.com.mx", "amazon.com.br", "amazon.co.uk",
+           "amazon.de", "amazon.fr", "amazon.it", "amazon.es", "amazon.nl",
+           "amazon.com.be", "amazon.se", "amazon.pl", "amazon.com.tr", "amazon.ae",
+           "amazon.sa", "amazon.eg", "amazon.in", "amazon.co.jp", "amazon.com.au",
+           "amazon.sg", "amazon.cn"},
+          {}, {"amazon", "amazon prime", "prime video", "aws"} },
         { {"paypal",    "PayPal",    "https://www.paypal.com/favicon.ico",    0x003087, C::Payment},
           {"paypal.com", "paypal-communication.com"}, {}, {"paypal"} },
         { {"stripe",    "Stripe",    "https://stripe.com/favicon.ico",        0x635BFF, C::Payment},
           {"stripe.com"}, {}, {"stripe"} },
         { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238, C::Shopping},
-          {}, {"ebay"}, {"ebay"} },
+          {"ebay.com", "ebay.co.uk", "ebay.ie", "ebay.de", "ebay.at", "ebay.ch",
+           "ebay.fr", "ebay.be", "ebay.nl", "ebay.it", "ebay.es", "ebay.pl",
+           "ebay.ca", "ebay.com.au", "ebay.com.hk", "ebay.com.sg", "ebay.com.my",
+           "ebay.ph"},
+          {}, {"ebay"} },
         // Dating services: favourite disguises of "you have a match" phishing.
         // ("Match" itself is claimed through "match.com" only - the word is
         // in every such subject.)
@@ -129,7 +150,9 @@ std::vector<BrandRule> BuildRules() {
         { {"airbnb",    "Airbnb",    "https://www.airbnb.com/favicon.ico",    0xFF5A5F, C::Travel},
           {"airbnb.com"}, {}, {"airbnb"} },
         { {"dhl",       "DHL",       "https://www.dhl.com/favicon.ico",       0xD40511, C::Delivery},
-          {}, {"dhl"}, {"dhl"} },
+          {"dhl.com", "dhl.de", "dhl.at", "dhl.ch", "dhl.co.uk", "dhl.fr", "dhl.be",
+           "dhl.nl", "dhl.it", "dhl.es", "dhl.pl"},
+          {}, {"dhl"} },
         // "ups" alone was every "follow-ups" and "ups and downs".
         { {"ups",       "UPS",       "https://www.ups.com/favicon.ico",       0x351C15, C::Delivery},
           {"ups.com"}, {}, {"ups.com", "ups my choice", "united parcel service"}, KW },

@@ -85,9 +85,9 @@ and the blue business-contact badge. So the entries follow rules that are
 stricter than "the brand probably owns this":
 
 * **Only the brand's own domains**, and country domains listed one by one
-  (`lidl.de`, `lidl.co.uk`, …). The older `labels` form ("any `ebay.*`") is
-  kept for the handful of entries that had it, but trusts a squatted
-  `ebay.xyz` too, so new entries do not use it.
+  (`lidl.de`, `amazon.co.uk`, `dhl.de`, …). The `labels` form ("any
+  `etsy.*`") trusts a squatted `etsy.xyz` too; only Etsy and Pinterest still
+  use it.
 * **A name that is an ordinary word is claimed through keywords only**
   (`NameClaim::KeywordsOnly`). "Chase", "Target", "Visa", "Discover",
   "Steam", "Signal", "Booking", "UPS" would otherwise turn every visa

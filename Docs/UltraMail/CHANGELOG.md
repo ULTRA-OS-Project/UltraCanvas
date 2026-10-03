@@ -24,6 +24,10 @@
   impersonation; Amazon is no longer claimed by "prime" alone, nor Microsoft
   by "office" or "outlook". A display name that is just the sender's own
   mailbox address (`jane@outlook.com`) claims no brand.
+- **A squatted country domain no longer passes for a big brand.** Amazon,
+  eBay, Google and DHL were trusted under any domain ending - `amazon.xyz`
+  got Amazon's name, icon and badge. They now list their real country sites
+  (`amazon.de`, `ebay.co.uk`, `dhl.de`, `google.co.jp`, …) one by one.
 - Brand lookups use an index instead of walking the table for every message
   in a folder. See [SenderBadges.md](SenderBadges.md#2-the-known-sender-registry)
   for the rules an entry must follow.

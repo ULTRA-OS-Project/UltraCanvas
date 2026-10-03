@@ -36,6 +36,7 @@ const std::set<std::string>& TwoLevelSuffixes() {
         "com.hk", "com.tw", "com.ar", "com.co", "com.pl", "com.ua", "com.my",
         "com.ph", "com.vn", "com.pe", "com.ec", "com.uy", "com.pk", "com.eg",
         "com.sa", "com.ng", "com.gr", "com.pt", "com.es", "com.ru",
+        "com.be",
         // Government suffixes the registry's tax offices live under.
         "gov.in", "gouv.fr", "gc.ca",
     };
