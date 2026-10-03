@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.17.0 - the hovered link is reported (onLinkHovered)
 // Version: 1.16.0 - merged with main's 1.2.0-1.3.0
 // Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - mail tables: placement, unstretched cell children, overflow,
@@ -986,6 +987,49 @@ void TestMailTables() {
     if (d) CheckNear(d->rect.height, 100.f, "a flex child's height: 50% of its cell");
 }
 
+// The link under the pointer is reported as the pointer moves (a mail
+// reader's status line), and "" once it is off the link.
+void TestLinkHover() {
+    std::printf("hovered links are reported\n");
+    HTML::BuildOptions opts;
+    opts.style.baseFontSizePx = 12.f;
+    std::vector<std::string> seen;
+    opts.onLinkActivated = [](const std::string&) {};
+    opts.onLinkHovered = [&seen](const std::string& href) { seen.push_back(href); };
+    HTML::ElementBuilder builder;
+    auto host = std::make_shared<Host>();
+    host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+    auto root = builder.Build("<p><a href='https://real.example/x'>link</a> then plain text</p>", opts).root;
+    if (!root) { Check(false, "built"); return; }
+    root->size.width = CSSLayout::Dimension::Px(400.f);
+    host->AddChild(root);
+    CSSLayout::LayoutContext ctx;
+    ctx.viewportWidth = 400;
+    ctx.viewportHeight = 300;
+    CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                      { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+    root->Measure(mc, ctx);
+    root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+    std::vector<Placed> all;
+    Collect(root.get(), 0, 0, all);
+    const Placed* lab = LabelWith(all, "link");
+    if (!lab) { Check(false, "link label"); return; }
+    auto move = [&](int x, int y) {
+        UCEvent e;
+        e.type = UCEventType::MouseMove;
+        e.pointer = Point2Di(x, y);
+        e.pointerGlobal = e.pointer;
+        lab->element->OnEvent(e);
+    };
+    const int midY = static_cast<int>(lab->rect.height / 2);
+    move(5, midY);
+    Check(seen.size() == 1 && seen[0] == "https://real.example/x", "onto the link: its target");
+    move(8, midY);
+    Check(seen.size() == 1, "moving along the same link reports nothing new");
+    move(150, midY);
+    Check(seen.size() == 2 && seen[1].empty(), "onto plain text: \"\"");
+}
+
 } // namespace
 
 // A mail template's two columns: side by side in a wide pane, and one under
@@ -1364,6 +1408,7 @@ int main() {
     TestBoxSizing();
     TestImageLimits();
     TestMailTables();
+    TestLinkHover();
     TestStackedColumns();
     TestAlignCentresNarrowBlock();
     TestContentBoxWidth();
