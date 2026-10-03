@@ -1,3 +1,33 @@
+#### 2026-10-03 *1.65.0*
+- **Favorites carry a heart in every folder.** A file, folder or app added
+  to the Favorites view (*Pin > To Favorites*) now shows the Favorites
+  button's red heart at the far left of its row or tile, vertically centred,
+  wherever it is listed - the folder tabs, the folder preview pane and the
+  History view - so a favorite can be told apart without opening the
+  Favorites view. A folder pinned only into the folder tree's *Pinned*
+  section is not marked. Unpinning, or *Clear Favorites* in the settings,
+  takes the heart away at once. Built on the Filer widget's new favorite
+  mark (framework changelog).
+- **The toolbar describes the History and Favorites views, not the folder
+  behind them.** Those lists keep an order of their own - History most
+  recently used first, Favorites in the order things were pinned, the
+  Computer page Home first - yet the Sort dropdown and the direction button
+  kept showing (and changing) the hidden folder tab's sort, and the View
+  dropdown showed the tab's layout and switched the tab instead of the page
+  on screen. While one of these views is up, Sort now reads "Last used",
+  "Order pinned" or "Home first" and is greyed out together with the
+  direction button, whose arrow shows the fixed direction; View shows and
+  changes the layout of the page on screen, following its Files / Folders /
+  Apps tabs. Leaving the view puts the folder tab's own view and sort back.
+- **Xara and other vector thumbnails in the History and Favorites views
+  are drawn again.** They showed a speck at the top of the tile while the
+  same file looked right in a folder: the thumbnail on disk had been drawn
+  by an older build whose vector previews were scaled twice, and the cache
+  kept serving it at the sizes it was made for - the History view's among
+  them. Thumbnails from older builds are now redrawn once (framework
+  changelog: the thumbnail disk cache records the renderer that drew each
+  entry).
+
 #### 2026-10-02 *1.64.1*
 - **Pinning folders and sharing files work for names outside the Windows
   code page.** Both handed each selected path, a UTF-8 string, straight to

@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.19.0
-// Last Modified: 2026-09-24
+// Version: 1.21.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -611,6 +611,12 @@ private:
     // Installs FolderIconPath as a freshly created file display's
     // folderIconProvider, so every view of it draws the icons.
     void WireFolderIconProvider(UltraCanvasFilerWidget* target);
+    // Installs the favorite heart: every entry that is in the Favorites view
+    // (not one only pinned into the tree) carries it at the left of its row
+    // or tile. Not on the Favorites view's own pages, where every entry is
+    // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
+    void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with
     // nothing selected, to the shown folder). Extras > Remove folder icon
@@ -686,6 +692,19 @@ private:
     // Repaints the sort-direction button from the filer's own direction:
     // sort-up.svg while ascending, sort-down.svg while descending.
     void UpdateSortOrderButton();
+    // Points the command bar's View dropdown, Sort dropdown and sort-direction
+    // button at the display on screen (VisibleFiler): the active tab's folder,
+    // or a History / Favorites page, or the Computer page. Those three show
+    // lists in an order of their own (most recently used first, pin order,
+    // Home first) that sorting cannot change, so while one is up the Sort
+    // dropdown names that order in an entry of its own and is greyed out
+    // together with the direction button; the View dropdown stays live and
+    // switches the page shown. Leaving the view puts the tab's own sort back
+    // into both. Called whenever what is on screen changes.
+    void SyncCommandBarToVisibleDisplay();
+    // The fixed order of the display on screen ("Last used", "Order pinned",
+    // ...) and its direction, or false for a sortable folder display.
+    bool VisibleFixedOrder(std::string& label, bool& ascending) const;
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
