@@ -65,6 +65,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -114,6 +115,27 @@ static std::shared_ptr<UltraCanvasButton> IconOnly(std::shared_ptr<UltraCanvasBu
         b->SetTooltip(tooltip);
     }
     return b;
+}
+
+// The image's error message, cut to what a person can use: libvips reports a
+// decode failure as several lines ("<file>: bad seek to 25996", then
+// "heif: Unsupported feature: Unsupported codec"), behind the framework's own
+// prefixes. The last line names the actual cause.
+static std::string DecodeFailureReason(const std::string& error) {
+    std::string reason;
+    size_t start = 0;
+    while (start < error.size()) {
+        size_t end = error.find('\n', start);
+        if (end == std::string::npos) end = error.size();
+        std::string line = error.substr(start, end - start);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (!line.empty()) reason = line;
+        start = end + 1;
+    }
+    for (const char* prefix : { "Failed to make pixmap Err:", "Failed to decode image pixels: " }) {
+        if (reason.rfind(prefix, 0) == 0) reason.erase(0, std::strlen(prefix));
+    }
+    return reason.empty() ? std::string("unknown error") : reason;
 }
 
 static std::string HumanSize(uintmax_t bytes) {
@@ -403,6 +425,7 @@ void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
     }
 
     image = std::move(img);
+    decodeFailureReported = false;
     // Each new image starts fit-to-window with no rotation/mirror.
     zoom = 1.0;
     panX = panY = 0.0;
@@ -583,13 +606,32 @@ void UltraCanvasMediaSurface::DrawBackdrop(IRenderContext* ctx, const Rect2Df& b
     ctx->PopState();
 }
 
+bool UltraCanvasMediaSurface::HasDecodeFailure() const {
+    return image && !image->errorMessage.empty();
+}
+
+void UltraCanvasMediaSurface::ReportDecodeFailure() {
+    if (decodeFailureReported || !HasDecodeFailure()) return;
+    decodeFailureReported = true;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app || !onDecodeFailed) return;
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(0, false, [self, this](TimerId) {
+        if (self.expired()) return;
+        if (onDecodeFailed) onDecodeFailed();
+    });
+}
+
 void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b) {
     if (!image || !image->IsValid()) {
+        // A picture whose pixels would not decode says so; the reason is in
+        // the info bar and the Details panel.
+        const char* text = HasDecodeFailure() ? "Cannot decode this picture" : "No media";
         ctx->SetFontSize(16);
         ctx->SetTextPaint(Color(130, 130, 140, 255));
         Point2Dd p = ctx->CalculateCenteredTextPosition(
-                "No media", Rect2Dd(b.x, b.y, b.width, b.height));
-        ctx->DrawText("No media", p);
+                text, Rect2Dd(b.x, b.y, b.width, b.height));
+        ctx->DrawText(text, p);
         return;
     }
     double iw = image->GetWidth();
@@ -677,6 +719,14 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
     }
 
     ctx->PopState();
+
+    // Only drawing decodes the pixels, so only now is a failure known. The
+    // first frame of a broken picture is empty; the next one carries the
+    // message above.
+    if (HasDecodeFailure() && !decodeFailureReported) {
+        ReportDecodeFailure();
+        RequestRedraw();
+    }
 }
 
 bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
@@ -1099,6 +1149,10 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     surface->onNavigate = [this](int d) { if (d < 0) Previous(); else Next(); };
     surface->onViewChanged = [this] { UpdateInfoBar(); };
+    surface->onDecodeFailed = [this] {
+        UpdateInfoBar();
+        if (IsDetailsVisible()) UpdateDetailedInfo();
+    };
     surface->onFilesDropped = [this](const std::vector<std::string>& files) {
         HandleDroppedFiles(files);
     };
@@ -2461,6 +2515,20 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 
+    if (surface && surface->HasDecodeFailure()) {
+        // The header read (so the size is known) but the pixels did not.
+        auto img = surface->GetImage();
+        std::ostringstream os;
+        os << BaseName(path)
+           << "   \xC2\xB7   " << img->GetWidth() << " x " << img->GetHeight();
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   cannot decode - " << DecodeFailureReason(img->errorMessage)
+           << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
     if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
         infoLabel->SetText("No media");
         return;
@@ -2595,6 +2663,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 
     if (auto img = surface->GetImage()) {
         os << "Dimensions: " << img->GetWidth() << " x " << img->GetHeight() << " px\n";
+        if (surface->HasDecodeFailure())
+            os << "Decoding: failed - " << DecodeFailureReason(img->errorMessage) << "\n";
         if (img->IsAnimated()) {
             os << "Animation: " << img->GetFrameCount() << " frames\n";
         }

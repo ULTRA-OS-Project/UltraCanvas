@@ -219,6 +219,16 @@ chunks), or a line saying the file carries none.
 The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
 so each section is a heading over a two-column *Property / Value* table.
 The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+A picture whose header reads but whose pixels do not decode (a HEIC on a
+build without an HEVC decoder, a truncated file) says so instead of leaving
+the area empty: the display shows *Cannot decode this picture*, the info bar
+reads `dice.heic · 800 x 600 · 25.4 KB · cannot decode - heif: Unsupported
+feature: Unsupported codec`, and the Details panel adds a *Decoding* row with
+the same reason. The surface learns it only when it draws (that is when the
+pixels are decoded) and tells the viewer through
+`UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
+frame.
+
 button again closes it. Left / Right keep browsing, and the panel follows
 to the next file. The panel's text is built only while it is open (on
 opening, then for each file loaded): browsing with it closed reads no
