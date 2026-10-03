@@ -10,6 +10,12 @@ of the typing. It is written around **Claude Code**, because the repository
 carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
 and the hooks), but every step names what to do with another assistant too.
 
+**Choose your platform as you read.** Every step that differs by operating
+system offers one collapsed section per OS: Linux, macOS and Windows. Open the
+one you work on; open another to see what a colleague on that platform does.
+UltraCanvasStart, the setup application, will present the same choice on its
+first page, preselected to the machine it runs on.
+
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
 this: it says where each step happens when CI is the compiler.
@@ -24,33 +30,100 @@ hand-paints controls, or leaves work in a container that is thrown away.
 
 ## Step 1 — Install the toolchain
 
-UltraCanvas is C++20 built with CMake ≥ 3.16. Clang is the default compiler on
-Linux.
+UltraCanvas is C++20 built with CMake ≥ 3.16. Pick your platform.
+
+<details>
+<summary><b>Linux</b> — Ubuntu / Debian, Clang is the default compiler</summary>
 
 ```bash
-# Ubuntu / Debian — the core set
 sudo apt install build-essential cmake pkg-config clang \
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libfreetype6-dev \
     libvips-dev libglib2.0-dev libtinyxml2-dev libfmt-dev \
     libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+```
 
-# macOS
-brew install cmake cairo pango freetype vips harfbuzz
+Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
+`libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
+decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
+for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
+Other distributions use the same library names under their package manager.
 
-# Windows — MSYS2 CLANG64 shell (see build-win.cmd for the package list)
+</details>
+
+<details>
+<summary><b>macOS</b> — Xcode Command Line Tools and Homebrew, Apple Silicon or Intel</summary>
+
+```bash
+xcode-select --install          # Apple Clang, git, make
+brew install cmake pkg-config cairo pango harfbuzz vips glib freetype tinyxml2
+
+# Optional: the libraries the CI build adds for the plug-ins
+brew install libcdr librevenge boost little-cms2 icu4c   # CDR plug-in
+brew install zbar                                         # barcode decoding
+brew install mupdf                                        # PDF plug-in
+brew install c-ares libsodium                             # UltraNet DNS, UltraCrypt
+brew install leptonica tesseract                          # OCR plug-in
+brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
+```
+
+Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
+directory itself. The complete list is the *Install dependencies (macOS)* step
+in `.github/workflows/build.yml`.
+
+</details>
+
+<details>
+<summary><b>Windows</b> — MSYS2 CLANG64 (x86_64) or CLANGARM64 (Windows on ARM)</summary>
+
+The supported toolchain is MSYS2 with the **CLANG64** environment: Clang,
+libc++, Ninja. That is what CI builds and what `package-win.sh` packages from;
+MSVC and the MINGW64 gcc environment are not supported. Install MSYS2 from
+<https://www.msys2.org>, open the **MSYS2 CLANG64** shell, and:
+
+```bash
+pacman -Syu          # close and reopen the shell if it asks you to
 pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake \
     mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-pkgconf \
+    mingw-w64-clang-x86_64-cppwinrt \
     mingw-w64-clang-x86_64-cairo mingw-w64-clang-x86_64-pango \
     mingw-w64-clang-x86_64-harfbuzz mingw-w64-clang-x86_64-glib2 \
     mingw-w64-clang-x86_64-freetype mingw-w64-clang-x86_64-tinyxml2 \
-    mingw-w64-clang-x86_64-libvips
+    mingw-w64-clang-x86_64-libiconv mingw-w64-clang-x86_64-zlib \
+    mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-glew \
+    mingw-w64-clang-x86_64-fmt mingw-w64-clang-x86_64-curl-winssl \
+    git zip
+
+# Optional: what the CI build adds for the plug-ins
+pacman -S mingw-w64-clang-x86_64-rust                                  # Vectorizer
+pacman -S mingw-w64-clang-x86_64-libcdr mingw-w64-clang-x86_64-librevenge \
+    mingw-w64-clang-x86_64-lcms2 mingw-w64-clang-x86_64-icu \
+    mingw-w64-clang-x86_64-boost                                       # CDR plug-in
+pacman -S mingw-w64-clang-x86_64-mupdf mingw-w64-clang-x86_64-libmupdf # PDF plug-in
+pacman -S mingw-w64-clang-x86_64-leptonica mingw-w64-clang-x86_64-tesseract-ocr  # OCR
 ```
 
-The complete, current three-OS lists are the ones CI installs in
-`.github/workflows/build.yml`; the optional plugins (CDR, PDF via MuPDF, OCR,
-Vectorizer, audio, video) each add a library, and every one of them can be
-switched off with a `-DULTRACANVAS_PLUGIN_<NAME>=OFF` option when you do not
-need it. `Docs/Dependencies.md` says which library each feature pulls in.
+On Windows on ARM replace `mingw-w64-clang-x86_64-` with
+`mingw-w64-clang-aarch64-` and use the CLANGARM64 shell. The complete list is
+the *Setup MSYS2 (Windows)* step in `.github/workflows/build.yml`.
+`build-win.cmd` in the repository root carries the same list.
+
+Two Windows-specific rules the checks enforce: file paths go through
+`PathFromUtf8` / `PathToUtf8` / `OpenFileUtf8`, never `p.string()` or
+`fs::path(str)`, because libc++ converts those through the ANSI code page and a
+Thai or emoji file name then names a different file; and no function may carry
+the name of a Win32 A/W macro (`CreateFile`, `LoadImage`, `SendMessage`),
+because `<windows.h>` renames it in some translation units and the link fails
+only on Windows.
+
+</details>
+
+Every optional plug-in can be switched off with `-DULTRACANVAS_PLUGIN_<NAME>=OFF`
+when you do not need it, and `Docs/Dependencies.md` says which library each
+feature pulls in. If you would rather not build the framework at all, the SDK
+([`UltraCanvasSDK.md`](UltraCanvasSDK.md)) is the framework already built for
+each of these platforms; the compiler and the libraries above are still needed.
 
 ## Step 2 — Clone and build the whole tree once
 
@@ -61,6 +134,35 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/bin/UltraCanvasDemo
 ```
+
+<details>
+<summary><b>Linux</b></summary>
+
+The core builds as a shared library by default, as CI does; the demo and the
+other applications sit in `build/bin/`.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+The core builds as a static library by default. The applications are plain
+executables under `build/bin/`; `package-macos.sh` turns them into bundles in
+step 10.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
+`./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
+command prompt with the MSYS2 `bin` directory on `PATH`. The executables are
+GUI-subsystem programs, so they print nothing to a console;
+`Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
+build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
+
+</details>
 
 Build everything the first time, even though you only want your own app. Two
 reasons:
@@ -247,6 +349,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __arg
 #endif
 ```
 
+The `#ifdef` blocks are the whole of what differs per platform in an
+application's entry point: Linux needs X11 threading and the signal handlers,
+Windows needs `WinMain` because the executables are GUI-subsystem programs,
+and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
+so no console opens beside the window, and embed the icon in the `.exe` with
+`ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
+Explorer and the taskbar read.
+
 Then, in the same change: a `Docs/MyApp/CHANGELOG.md` whose first line is
 `#### 2026-10-01 *0.1.0*`, one `_ultracanvas_declare_product()` line in
 `cmake/UltraCanvasVersion.cmake`, and the `option()`/`add_subdirectory()`
@@ -406,15 +516,45 @@ How you drive the assistant matters as much as what it knows.
 
 ## Step 10 — Package
 
-- Linux: `./package-linux.sh` (portable tree with every app and a shared
-  `lib/`) or `appimage/` for a single-app AppImage.
-- Windows: `./package-win.sh`; `./set-version.sh` refreshes the `.rc` and
-  manifest literals that windres needs.
-- macOS: `./package-macos.sh`, or `package_and_notarize-macos.sh` for a
-  signed, notarised bundle (`Docs/UltraCanvas/UltraCanvasMacBundle.md`).
-- WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
-  lists what differs in the browser (`Run()` never returns, no synchronous
-  file pickers, text-only clipboard).
+<details>
+<summary><b>Linux</b></summary>
+
+`./package-linux.sh` builds a portable tree with every application and a
+shared `lib/` holding the dependent `.so` files, paid for once; `appimage/`
+builds a single-application AppImage.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+`./package-macos.sh` builds the application bundle and a disk image for an
+unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
+notarised bundle a release ships; it needs a Developer ID certificate in the
+keychain and the notarisation credentials the script names. CI runs it only on
+pushes to `main`; pull requests get the unsigned bundle.
+`Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
+`Info.plist`, icons, and how web locations and aliases are handled.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+`./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
+collects every application with the DLLs it needs into one standalone zip.
+`--no-sign` skips Authenticode signing when no certificate is present;
+`SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
+release uses. The version in the `.exe` resource and the manifest comes from
+the app's changelog line; only the Windows resource files still carry a literal
+copy, because `windres` reads them from disk: run `./set-version.sh` after
+bumping the version, and the CMake configure warns when they are stale.
+
+</details>
+
+WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
+lists what differs in the browser (`Run()` never returns, no synchronous file
+pickers, text-only clipboard).
 
 ---
 
