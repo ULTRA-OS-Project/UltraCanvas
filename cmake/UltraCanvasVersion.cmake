@@ -129,6 +129,7 @@ _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md"
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAUTHENTICATOR  "Docs/UltraAuthenticator/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAPASSWORD       "Docs/UltraPassword/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAFILER          "Docs/UltraFiler/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAFIBU           "Docs/UltraFIBU/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAMAIL           "Docs/UltraMail/CHANGELOG.md")
