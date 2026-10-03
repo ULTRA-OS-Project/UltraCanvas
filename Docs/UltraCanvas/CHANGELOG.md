@@ -1,3 +1,56 @@
+#### 2026-10-03 *0.9.138*
+- **CSSLayout: floats in block layout.** `LayoutItem::floatSide`
+  (`SetFloat(FloatSide::Left / Right)`) puts a block child at the left or
+  right edge of its parent's content box, as high as it fits: beside the
+  floats already there when there is room, else below them. The blocks after
+  it are narrowed by the floats beside their top edge, or moved below them
+  when they would get less than their min-content width (a table, a long
+  word). The parent grows to hold its floats. Approximation: a browser
+  narrows only the line boxes beside a float, so a paragraph that starts
+  beside a short float stays narrow to its end here. Only a `Block` parent
+  honours `floatSide`. Test: `HTMLTableLayoutTest`.
+- **HTML reader: a table without a width is as wide as its content.** It
+  filled its line, so the 30px logo table of a mail header was drawn 138px
+  wide, and a mail's left-hand button was centred across the whole line.
+  Test: `HTMLTableLayoutTest` ("a table without a width is shrink-to-fit").
+- **HTML reader: a list marker starts the item's first block.** In
+  `<li><div>text</div></li>` the bullet stood on a line of its own above the
+  text. Test: `HTMLTableLayoutTest` ("a list marker starts the item's first
+  block").
+- **HTML reader: `vertical-align: top / bottom` on inline-block boxes.** Two
+  side-by-side mail columns were centred on each other instead of starting
+  level. Test: `HTMLTableLayoutTest` ("vertical-align: top on side-by-side
+  boxes").
+- **HTML reader: attribute selectors.** `[name]`, `[name=value]` and the
+  `~=` `^=` `$=` `*=` `|=` forms, with quoted values and the ` i` flag, now
+  match; before, a rule naming one was dropped. Mailchimp writes its
+  narrow-screen rules that way (`table[id=templateBody]{width:100% !important}`,
+  `td[class=mcnTextContent]{…}`), so a Mailchimp newsletter in a narrow pane
+  stayed 600px wide and ran off the right edge. An attribute selector counts
+  like a class in the cascade. Test: `HTMLReaderTest` (`TestAttributeSelectors`).
+- **HTML reader: a px width or height is the content box.** As in CSS, padding
+  and border now go on top of `width: 25px` unless `box-sizing: border-box`
+  says otherwise (now read; tables and form controls are border-box, as in
+  browsers' own style sheets). The reader counted the padding inside, so
+  Mailchimp's footer icons - `<td style="width:25px; padding:0 10px">` around
+  a `width:100%` picture - were drawn 5px wide. Test: `HTMLTableLayoutTest`
+  ("a px width is the content box unless box-sizing: border-box").
+- **HTML reader: structural pseudo-classes.** `:first-child`, `:last-child`,
+  `:only-child`, `:nth-child(an+b)` (with `odd` / `even`), `:nth-last-child()`,
+  the `-of-type` forms, `:root` and `:empty` now match; a rule naming one was
+  dropped before (Mailchimp's mobile padding rule uses `:last-child`). They
+  count like a class in the cascade. Dynamic pseudo-classes (`:hover`,
+  `:focus`, `:visited`) still drop the rule - a mail is never hovered.
+  Test: `HTMLReaderTest` (`TestStructuralPseudoClasses`).
+- **HTML reader: floats.** `float: left / right`, `<table align="left|right">`
+  and `<img align="left|right">` (which browsers float) were ignored, so a
+  mail template's two-column block - two 300px `<table align="left">` in a
+  600px cell - stacked, and a picture's caption sat below it. A float now
+  goes to its edge and the content after it flows beside it (CSSLayout
+  floats, below); `clear` and `<br clear>` start below the floats. Test:
+  `HTMLTableLayoutTest` ("floats sit side by side", "content flows around
+  floats").
+
 #### 2026-10-02 *0.9.137*
 - **A path's bounding box is where the path is drawn.** `PathData::GetBounds`
   and `VectorPath::GetBoundingBox` read only absolute `M` / `L` / `C`
