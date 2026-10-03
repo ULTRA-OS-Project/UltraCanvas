@@ -19,6 +19,14 @@
   direction button, whose arrow shows the fixed direction; View shows and
   changes the layout of the page on screen, following its Files / Folders /
   Apps tabs. Leaving the view puts the folder tab's own view and sort back.
+- **Xara and other vector thumbnails in the History and Favorites views
+  are drawn again.** They showed a speck at the top of the tile while the
+  same file looked right in a folder: the thumbnail on disk had been drawn
+  by an older build whose vector previews were scaled twice, and the cache
+  kept serving it at the sizes it was made for - the History view's among
+  them. Thumbnails from older builds are now redrawn once (framework
+  changelog: the thumbnail disk cache records the renderer that drew each
+  entry).
 
 #### 2026-10-02 *1.64.1*
 - **Pinning folders and sharing files work for names outside the Windows

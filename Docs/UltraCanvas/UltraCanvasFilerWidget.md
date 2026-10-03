@@ -777,6 +777,18 @@ entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
 
+**The renderer that drew it counts too.** Every entry also records the
+renderer generation of the build that wrote it
+(`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
+generation is a miss handled the same way. Bump that constant in any change
+that makes a producer draw something different for the same file at the same
+size — a renderer fix, a new producer for a format, another fit or
+background — or the fix never reaches the thumbnails already on disk. That
+is what happened to the vector previews drawn "at the fit squared" before
+2026-09-26: the fixed renderer drew every new tile right, while each size
+cached by an older build kept showing a speck in the corner, so the same
+Xara file looked right in a folder and broken in UltraFiler's History view.
+
 **Retention is two weeks since the entry was last served.** Serving one stamps
 it with the day (at most one write per file per day, so scrolling a folder of
 a thousand pictures costs no disk writes after the first), and entries not
