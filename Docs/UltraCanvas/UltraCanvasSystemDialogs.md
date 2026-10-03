@@ -59,6 +59,8 @@ UltraCanvasFileLoader::SelectFolderDialog(FileDialogOptions().SetTitle("Choose a
 dialog as a row of toggle buttons ("Show: Images | Audio | Video") rather than
 a dropdown; a native dialog gets them as a list headed by one that matches
 all of them. `SetShowHidden(true)` lists hidden files from the start.
+Its modes, the overwrite question in Save and building it directly are in
+[UltraCanvasFileDialog.md](UltraCanvasFileDialog.md).
 
 Paths come back as UTF-8. Convert them with `PathFromUtf8` before handing
 them to `std::filesystem` (see *Core conventions* in `AGENTS.md`).

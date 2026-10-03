@@ -33,6 +33,10 @@ namespace UltraCanvas {
         // such thing, so it gets the filters as a list headed by one that
         // matches all of them.
         bool filterToggles = false;
+        // Save: the framework dialog asks before replacing an existing file
+        // (FileDialogConfig::confirmOverwrite). The platforms' save dialogs
+        // always ask.
+        bool confirmOverwrite = true;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
         UltraCanvasWindowBase* parentWindow = nullptr;
 
@@ -51,6 +55,7 @@ namespace UltraCanvas {
         }
         FileDialogOptions& SetShowHidden(bool v)        { showHiddenFiles = v; return *this; }
         FileDialogOptions& SetFilterToggles(bool v)     { filterToggles = v; return *this; }
+        FileDialogOptions& SetConfirmOverwrite(bool v)  { confirmOverwrite = v; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
