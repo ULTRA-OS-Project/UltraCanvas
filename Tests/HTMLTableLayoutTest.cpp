@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - mail tables: placement, unstretched cell children, overflow,
 //                  line-height, cell margins, cell percentage heights
 // Version: 1.13.0 - percentage heights on blocks; content-box percentage width
@@ -932,6 +933,14 @@ void TestMailTables() {
         Check(lab->rect.height >= 59.f && std::fmod(lab->rect.height + 0.5f, 20.f) < 1.5f,
               "line-height: 20px per line");
     } else Check(false, "line-height label");
+    // letter-spacing: the block's around the run, an inline element's inside.
+    b = build("<p style='letter-spacing:2px'>ab <span style='letter-spacing:5px'>cd</span></p>");
+    lab = LabelWith(b.all, "ab");
+    if (lab) {
+        auto* l = static_cast<UltraCanvasLabel*>(lab->element);
+        Check(l->GetText().rfind("<span letter_spacing=\"2048\">", 0) == 0, "block spacing: 2px");
+        Check(l->GetText().find("letter_spacing=\"5120\">cd") != std::string::npos, "span spacing: 5px");
+    } else Check(false, "letter-spacing label");
     // A cell keeps its last child's bottom margin.
     b = build("<table cellpadding='0' cellspacing='0'><tr><td>"
               "<div style='height:30px;margin-bottom:20px'></div></td></tr></table>");

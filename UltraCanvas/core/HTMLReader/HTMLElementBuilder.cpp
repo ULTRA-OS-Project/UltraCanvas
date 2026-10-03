@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.21.0 - letter-spacing (Pango letter_spacing spans)
 // Version: 1.20.0 - line-height on text; HTML boxes draw overflowing content
 //                   (overflow: visible) unless overflow: hidden; a cell keeps its
 //                   last child's bottom margin
@@ -106,6 +107,12 @@ std::string ColorHex(const CssColor& c) {
 // Pango <span size="..."> takes 1/1024ths of a point; px → pt at 96 dpi.
 int PangoSize(float px) {
     return static_cast<int>(px * 72.f / 96.f * 1024.f + 0.5f);
+}
+
+// Pango <span letter_spacing="...">: in Pango units (1/1024 of a pixel on the
+// render contexts here, which lay text out in device pixels).
+int PangoLetterSpacing(float px) {
+    return static_cast<int>(std::lround(px * 1024.f));
 }
 
 // Block containers use the engine's Block flow, which measures children at
@@ -898,6 +905,12 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                    runLinks.end());
 
     if (!MarkupHasVisibleText(markup)) return nullptr;
+    // The block's own letter-spacing: around the whole run (its inline
+    // elements' own spacing, where it differs, is a span inside).
+    if (std::fabs(blockStyle.letterSpacingPx) > 0.01f) {
+        markup = "<span letter_spacing=\"" + std::to_string(PangoLetterSpacing(blockStyle.letterSpacingPx)) +
+                 "\">" + markup + "</span>";
+    }
 
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
     ConfigureLabel(*label, blockStyle, runNoWrap);
@@ -933,6 +946,10 @@ void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& 
     else if (tag == "sup") wrap("<sup>", "</sup>");
     else if (std::fabs(style.fontSizePx - runStyle.fontSizePx) > 0.5f) {
         wrap("<span size=\"" + std::to_string(PangoSize(style.fontSizePx)) + "\">",
+             "</span>");
+    }
+    if (std::fabs(style.letterSpacingPx - runStyle.letterSpacingPx) > 0.01f) {
+        wrap("<span letter_spacing=\"" + std::to_string(PangoLetterSpacing(style.letterSpacingPx)) + "\">",
              "</span>");
     }
     bool colorDiffers = style.color.r != runStyle.color.r ||

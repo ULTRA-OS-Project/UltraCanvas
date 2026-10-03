@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.15.0 - letter-spacing (px / em, inherited; normal = 0)
 // Version: 1.14.0 - line-height kept for labels (px for lengths / %, a factor for
 //                  numbers, normal clears it); overflow
 // Version: 1.13.0 - quirks mode (no standards doctype, most mail): a table does not
@@ -218,6 +219,7 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
     style.textAlign = parentStyle.textAlign;
     style.lineHeight = parentStyle.lineHeight;
     style.lineHeightSet = parentStyle.lineHeightSet;
+    style.letterSpacingPx = parentStyle.letterSpacingPx;
     style.lineHeightPx = parentStyle.lineHeightPx;
     style.listMarker = parentStyle.listMarker;
 
@@ -935,6 +937,13 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
                 s.lineHeightSet = true;
                 s.lineHeightPx = len->ToPx(em, rem);
             }
+        }
+    }
+    else if (prop == "letter-spacing") {
+        if (lower == "normal") s.letterSpacingPx = 0.f;
+        else if (auto len = CssLength::Parse(lower)) {
+            if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto)
+                s.letterSpacingPx = len->ToPx(em, rem);
         }
     }
     else if (prop == "white-space") {

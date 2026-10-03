@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
 // Version: 1.13.0 - height in percent
 // Version: 1.12.0 - min / max width and height in percent
@@ -805,6 +806,12 @@ static void TestQuirksAndLineHeight() {
     CHECK(st.lineHeightSet && !st.lineHeightPx && st.lineHeight == 1.5f);
     st = styleOf("line-height:20px;line-height:normal");
     CHECK(!st.lineHeightSet);
+    st = styleOf("letter-spacing:0.5px");
+    CHECK(std::fabs(st.letterSpacingPx - 0.5f) < 0.001f);             // inherited by the p
+    st = styleOf("letter-spacing:0.2em");
+    CHECK(std::fabs(st.letterSpacingPx - 2.f) < 0.001f);               // of the div's 10px
+    st = styleOf("letter-spacing:3px;letter-spacing:normal");
+    CHECK(st.letterSpacingPx == 0.f);
     {
         Parser parser;
         Document doc = parser.Parse("<div style=\"overflow:hidden\">x</div>");

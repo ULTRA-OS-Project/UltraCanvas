@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.16.0 - letter-spacing
 // Version: 1.15.0 - line-height kept as the author gave it (lineHeightSet / lineHeightPx);
 //                  overflow: hidden
 // Version: 1.14.0 - quirks mode: a table does not inherit text-align
@@ -123,6 +124,8 @@ struct ComputedStyle {
     // a plain number a factor of each element's own font size (lineHeight).
     // Not set (or normal): the font's own line height.
     bool lineHeightSet = false;
+    // letter-spacing in px (inherited, as CSS computes it); 0: normal.
+    float letterSpacingPx = 0.f;
     std::optional<float> lineHeightPx;
     ListMarker listMarker = ListMarker::Disc;
 
