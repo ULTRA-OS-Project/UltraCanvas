@@ -6,6 +6,7 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
 // Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
 //                  first block)
 // Version: 1.8.0 - ApplyBoxStyle: width / height are the content's (CSS content-box)
@@ -63,6 +64,10 @@ struct BuildOptions {
     // The link under the pointer, as it moves onto one (its href) and off it
     // (""): text links and linked pictures alike.
     std::function<void(const std::string& href)> onLinkHovered;
+    // Show a link's href as a tooltip while the pointer rests on it (text
+    // links and linked pictures). An app that shows the address elsewhere -
+    // a status line fed by onLinkHovered - turns it off.
+    bool linkTooltips = true;
 };
 
 struct BuildResult {

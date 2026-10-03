@@ -1,3 +1,42 @@
+#### 2026-10-03 *0.9.145*
+- **Escape cancels a dialog from a multi-line field too.**
+  `UltraCanvasTextArea` took the Escape key and did nothing with it, so a
+  custom dialog (`DialogType::Custom`, the kind UltraMail's and
+  UltraPassword's forms are) stayed open on Escape while the caret was in a
+  text area, and closed on it from every other field. The text area now
+  declines the key, so it reaches the dialog's own Escape-to-Cancel, and it
+  returns before the text-insertion path, so the key's `"\x1b"` is never
+  typed. Texter's editor gains the same: Escape there now reaches the
+  window, which closes the search bar. `Tests/DialogEscapeTest.cpp` routes
+  the key the way the application does and fails on the old behaviour.
+- **UltraAuthenticator and UltraPassword are packaged.** `package-linux.sh`
+  lists both. `package-macos.sh` builds an `.app` bundle for each, and its
+  `build_app_bundle` now finds an executable in `build/bin/` as well as the
+  build root - both apps set `RUNTIME_OUTPUT_DIRECTORY` to `bin/`, which the
+  Linux and Windows scripts already searched. A missing one is reported and
+  skipped instead of ending the run. `package-win.sh` needed no change: it
+  copies every `.exe` in `build/` and `build/bin/`.
+
+#### 2026-10-03 *0.9.144*
+- **UltraPassword joins the applications that keep native file dialogs off.**
+  `KnownFileDialogApplications()` lists it beside UltraAuthenticator and
+  UltraMail, so the file-dialog settings page offers it. The new app itself
+  versions from `Docs/UltraPassword/CHANGELOG.md` (declared in
+  `cmake/UltraCanvasVersion.cmake` as `ULTRAPASSWORD_VERSION`), and
+  `Tests/UltraPasswordTests.cpp` joins the headless suites under
+  `BUILD_TESTS`.
+
+#### 2026-10-03 *0.9.143*
+- **A link's address as a tooltip, by choice.**
+  - `UltraCanvasLabel::SetShowLinkTooltips(bool)`: while the pointer is on a
+    text link, the label shows that link's href in a tooltip that follows the
+    pointer along the link, and hides it as the pointer leaves the link (off
+    by default).
+  - `HTML::BuildOptions::linkTooltips` (default on): text links and linked
+    pictures show their href as a tooltip. An app that shows the address
+    elsewhere - a status line fed by `onLinkHovered` - turns it off. Before,
+    linked pictures always had the tooltip and text links never did.
+
 #### 2026-10-03 *0.9.142*
 - **`build-win.cmd` named the wrong MSYS2 environment.** Its header listed the MINGW64 packages (`mingw-w64-x86_64-gcc`, ...) while CI has built with CLANG64 (`mingw-w64-clang-x86_64-clang`) for every release and `package-win.sh` packages from a CLANG64 or CLANGARM64 shell, so a newcomer following the file installed a toolchain whose libraries the packaging script does not collect. The header now lists the CLANG64 packages CI installs, names the CLANGARM64 substitution for Windows on ARM, points at the workflow's "Setup MSYS2" step as the complete list, and enables the CDR plug-in as CI does.
 - **Docs: a getting-started guide for working through an AI assistant and GitHub with no local compiler.** `Docs/GettingStarted-Cloud.md` is the companion to `GettingStarted.md` for Claude Code on the web: connecting the GitHub App, what the Build workflow and the seven check workflows do on a pull request and why a branch without one gets nothing, the packaged artifacts every leg uploads as the way to run the app, the first session (skeleton, changelog entry, draft PR, watching it), the per-change loop with CI as the compiler, review and merge rules, and what is lost when a session ends with work unpushed. Linked from `README.md` and the main guide.
