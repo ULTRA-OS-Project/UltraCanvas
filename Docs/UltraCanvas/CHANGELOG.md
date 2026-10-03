@@ -1,3 +1,16 @@
+#### 2026-10-03 *0.9.147*
+- **DemoApp: new *ULTRA OS modules → System dialogs* page.** Every dialog an
+  application asks the system for, behind a button: File Open, Open multiple,
+  File Save and Select folder (`UltraCanvasFileLoader`), Print settings and
+  Print test page (`UltraCanvasNativeDialogs::RequestPrintSettings`,
+  `PrintTextWithDialog`), and the information / question / warning / error /
+  text / password dialogs (`UltraCanvasDialogManager`). A *Dialog style*
+  switch shows each one as the ULTRA OS dialog or as the host platform's,
+  without changing the demo's own setting, and every answer - paths, print
+  settings, button pressed - is written to a log on the page. The *Details*
+  tab is the new `Docs/UltraCanvas/UltraCanvasSystemDialogs.md`, which the
+  element catalogue now links from its file-dialog rows.
+
 #### 2026-10-03 *0.9.146*
 - **`Docs/GettingStarted.md` lets the reader choose the platform.** Every step that differs by operating system - the toolchain, the first build, the entry point's platform blocks, packaging - now offers one collapsed section per OS (Linux, macOS, Windows), so a reader opens their own and can look at another's. The macOS and Windows sections carry the full Homebrew and MSYS2 CLANG64 package lists, the Windows-only path and Win32-name rules, and the packaging and signing steps that were previously only in the per-platform PDF editions. UltraCanvasStart will present the same choice on its first page, preselected to the detected machine.
 - **CI now publishes an UltraCanvas SDK per platform: the framework built and installed, zipped.** The install-and-consume step that proved the CMake package on Linux runs on every leg now, and its install prefix - headers, libraries, plug-ins, the `UltraCanvasConfig.cmake` package, plus `Docs/UltraCanvasSDK.md` as README, the licenses and the `PackageConsumer` example - is uploaded as `UltraCanvas-SDK-<OS>-<version>-<arch>` (tar on Linux and macOS so permissions survive, zip on Windows). An application outside the repository unpacks it and points `CMAKE_PREFIX_PATH` at it instead of building the framework; it is the folder UltraCanvasStart will install. The SDK does not carry a compiler or the dependencies' development packages - the public headers include cairo, glib and vips - and `Docs/UltraCanvasSDK.md` says so; bundling those on Windows and macOS is the next step.
