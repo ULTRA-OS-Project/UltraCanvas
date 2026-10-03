@@ -1,8 +1,15 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.6.0 - floats: float:left/right and <table align="left|right">
+//                  go to their edge and the content after them flows beside
+//                  them (CSSLayout floats); clear; a table without a width
+//                  is shrink-to-fit; a list marker starts the item's first
+//                  block; vertical-align: top / bottom on an inline box
 // Version: 1.5.0 - display:block cells of a row stack in one anonymous cell
 //                  (mail-template columns on a narrow screen); align="center"
-//                  / "right" on a container places its narrowed blocks too
+//                  / "right" on a container places its narrowed blocks too;
+//                  a px width / height is the content box unless
+//                  box-sizing: border-box (padding and border on top)
 // Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
 //                  images (first url() layer that loads, fitted by
 //                  background-size); rounded borderless boxes; max-width;
@@ -14,7 +21,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -292,7 +299,14 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     };
     std::vector<Node*> inlineRun;
     std::vector<LinePart> lineParts;
-    bool markerPending = (element.tag == "li");
+    // The list marker still to place: this item's own, or one its list item
+    // handed down (see carriedMarker).
+    std::string pendingMarker;
+    if (element.tag == "li") pendingMarker = MarkerText(blockStyle.listMarker, listItemIndex);
+    if (!carriedMarker.empty()) {
+        pendingMarker = std::move(carriedMarker);
+        carriedMarker.clear();
+    }
     int listCounter = 0;
 
     // Vertical rhythm: the engine's Block flow stacks children edge-to-edge,
@@ -303,6 +317,9 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     // Images in a block that also has text flow in that text; in a block of
     // images alone each gets a line of its own (BuildImage).
     const bool flowImages = opts.enableImages && HasInlineText(element);
+    // Where the flow goes: `parent`, or - from the first float on, until a
+    // clear - one block holding the floats and what flows around them.
+    UltraCanvasContainer* flow = &parent;
     auto addFlowChild = [&](std::shared_ptr<UltraCanvasUIElement> child,
                             float topMargin, float bottomMargin) {
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
@@ -311,9 +328,9 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             auto spacer = MakeContainer("gap");
             spacer->size.height = CSSLayout::Dimension::Px(spacing);
             spacer->layoutItem.SetFlexShrink(0.f);
-            parent.AddChild(spacer);
+            flow->AddChild(spacer);
         }
-        parent.AddChild(std::move(child));
+        flow->AddChild(std::move(child));
         ++elementCount;
         pendingMargin = bottomMargin;
         anyFlowChild = true;
@@ -336,12 +353,9 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
     auto flushRun = [&]() {
         if (lineParts.empty()) {
-            if (inlineRun.empty() && !markerPending) return;
-            std::string marker;
-            if (markerPending) {
-                marker = MarkerText(blockStyle.listMarker, listItemIndex);
-                markerPending = false;
-            }
+            if (inlineRun.empty() && pendingMarker.empty()) return;
+            std::string marker = std::move(pendingMarker);
+            pendingMarker.clear();
             auto label = BuildInlineRun(inlineRun, blockStyle, marker, &element);
             registerRun(inlineRun, label);
             if (label) addFlowChild(label, 0.f, 0.f);
@@ -364,11 +378,8 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                     .SetFlexJustifyContent(justify)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        std::string marker;
-        if (markerPending) {
-            marker = MarkerText(blockStyle.listMarker, listItemIndex);
-            markerPending = false;
-        }
+        std::string marker = std::move(pendingMarker);
+        pendingMarker.clear();
         auto addLabel = [&](const std::vector<Node*>& run) {
             auto label = BuildInlineRun(run, blockStyle, marker, &element);
             marker.clear();
@@ -387,6 +398,15 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 continue;
             }
             if (auto box = BuildInlineBox(*part.box)) {
+                // vertical-align: top / bottom on the box (side-by-side mail
+                // columns are top); otherwise centred on its neighbours.
+                switch (resolver.StyleOf(part.box).verticalAlign) {
+                    case VerticalAlignMode::Top:
+                        box->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start); break;
+                    case VerticalAlignMode::Bottom:
+                        box->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::End); break;
+                    default: break;
+                }
                 line->AddChild(box);
                 ++elementCount;
             }
@@ -403,8 +423,70 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         lineParts.push_back({ {}, &child });
     };
 
+    // float: left / right, and <table align="left|right">: the float goes
+    // to its edge of a block that holds it and everything after it up to a
+    // clear, and that block's layout narrows the content beside the floats
+    // (CSSLayout floats) - two 300px <table align="left"> columns of a mail
+    // template sit side by side, a picture's caption runs beside it.
+    auto isFloat = [&](Node& n) {
+        if (!n.IsElement()) return false;
+        const ComputedStyle& st = resolver.StyleOf(&n);
+        if (st.floatMode == FloatMode::NoFloat || st.display == DisplayMode::Hidden) return false;
+        return n.tag == "table" || n.tag == "img" || IsBlockDisplay(st.display) ||
+               st.display == DisplayMode::InlineBlock;
+    };
+    bool afterFloat = false;   // whitespace right after a float renders nothing
+    auto addFloat = [&](Node& n) {
+        const ComputedStyle& st = resolver.StyleOf(&n);
+        std::shared_ptr<UltraCanvasUIElement> item;
+        if (n.tag == "table") {
+            item = BuildTable(n);
+        } else if (n.tag == "img") {
+            if (!opts.enableImages) return;
+            item = BuildImage(n, AncestorLink(n));
+            if (item) item->size.width = CSSLayout::Dimension::Auto();
+        } else {
+            item = BuildBlock(n);
+        }
+        if (!item) return;
+        if (flow == &parent) {
+            auto area = MakeContainer("floats");
+            ConfigureBlockLayout(*area);
+            area->size.width = CSSLayout::Dimension::Pct(100.f);
+            addFlowChild(area, 0.f, 0.f);
+            flow = area.get();
+        }
+        RegisterAnchors(n, item);
+        item->layoutItem.SetFloat(st.floatMode == FloatMode::Right ? CSSLayout::FloatSide::Right
+                                                                   : CSSLayout::FloatSide::Left);
+        // A float's margins do not collapse: they are its own.
+        item->box.margin.top = CSSLayout::Dimension::Px(st.marginTop);
+        item->box.margin.bottom = CSSLayout::Dimension::Px(st.marginBottom);
+        flow->AddChild(item);
+        ++elementCount;
+    };
+
     std::function<void(Node&)> processChild = [&](Node& child) {
         if (child.type == NodeType::Comment) return;
+
+        if (isFloat(child)) {
+            flushRun();
+            addFloat(child);
+            afterFloat = true;
+            return;
+        }
+        if (afterFloat && child.type == NodeType::Text &&
+            std::all_of(child.text.begin(), child.text.end(),
+                        [](unsigned char ch) { return std::isspace(ch) != 0; }))
+            return;
+        afterFloat = false;
+        // clear (and <br clear="all">): what follows starts below the floats -
+        // after the block that holds them.
+        if (flow != &parent && child.IsElement() && resolver.StyleOf(&child).clear) {
+            flushRun();
+            flow = &parent;
+            if (child.tag == "br") return;
+        }
 
         if (child.type == NodeType::Text) {
             inlineRun.push_back(&child);
@@ -495,7 +577,16 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         }
 
         if (IsBlockDisplay(childStyle.display)) {
-            flushRun();
+            // Whitespace before a block renders nothing; dropping it keeps a
+            // pending list marker for the block instead of a line of its own.
+            if (!pendingMarker.empty() && lineParts.empty() &&
+                std::all_of(inlineRun.begin(), inlineRun.end(), [](const Node* n) {
+                    return n->type == NodeType::Text &&
+                           std::all_of(n->text.begin(), n->text.end(),
+                                       [](unsigned char ch) { return std::isspace(ch) != 0; });
+                }))
+                inlineRun.clear();
+            if (!inlineRun.empty() || !lineParts.empty()) flushRun();
             // align="center" / "right" on the container (<td align>, <div
             // align>, <center>) places a narrowed block too, as browsers do -
             // the mail template's <td align="center"><div style="max-width:
@@ -511,7 +602,16 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                     placement.marginLeftAuto = true;
                 }
             }
-            addFlowChild(PlaceByAutoMargins(BuildBlock(child), placement),
+            // A list item whose text is in a block (<li><div>text</div>):
+            // the marker starts that block's first line, not one of its own.
+            carriedMarker = std::move(pendingMarker);
+            pendingMarker.clear();
+            auto block = BuildBlock(child);
+            if (!carriedMarker.empty()) {   // nothing in the block took it
+                pendingMarker = std::move(carriedMarker);
+                carriedMarker.clear();
+            }
+            addFlowChild(PlaceByAutoMargins(block, placement),
                          childStyle.marginTop, childStyle.marginBottom);
             return;
         }
@@ -1119,6 +1219,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         flushStacked();
     }
 
+    // A floated table is placed by the float layout (BuildChildrenInto).
+    if (style.floatMode != FloatMode::NoFloat) return table;
     const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;
     if (inlineBox || fullWidth) {
         if (inlineBox) table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
@@ -1137,14 +1239,20 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     if (alignAttr == "center" || alignAttr == "middle") align = TextAlignMode::Center;
     else if (alignAttr == "right") align = TextAlignMode::Right;
     else if (alignAttr == "left") align = TextAlignMode::Left;
-    if (align != TextAlignMode::Center && align != TextAlignMode::Right) return table;
+    // A table without a width is shrink-to-fit (CSS 2.1 §17.5.2): as wide as
+    // its content, not its line - the mail's 30px logo table, its button.
+    const bool autoWidth = !style.widthPx && !style.widthPercent;
+    if (align != TextAlignMode::Center && align != TextAlignMode::Right && !autoWidth)
+        return table;
 
     auto line = MakeContainer("tableline");
     line->size.width = CSSLayout::Dimension::Pct(100.f);
     line->layout.SetFlexRow()
                 .SetFlexJustifyContent(align == TextAlignMode::Center
                                            ? CSSLayout::JustifyContent::Center
-                                           : CSSLayout::JustifyContent::FlexEnd)
+                                           : align == TextAlignMode::Right
+                                               ? CSSLayout::JustifyContent::FlexEnd
+                                               : CSSLayout::JustifyContent::FlexStart)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Start);
     table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
     line->AddChild(table);
@@ -1178,15 +1286,23 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         target.box.margin.left = Dimension::Px(style.marginLeft);
     }
 
+    // The layout boxes are border-box; a CSS px size is the content box
+    // unless box-sizing says border-box, so padding and border go on top
+    // (a 25px-wide cell with 10px padding is 45px, its picture 25px).
+    const float frame = style.borderBox ? 0.f : 2.f * style.borderWidth;
+    const float extraW = style.borderBox ? 0.f
+        : style.paddingLeft + foldLeft + style.paddingRight + foldRight + frame;
+    const float extraH = style.borderBox ? 0.f
+        : style.paddingTop + style.paddingBottom + frame;
     if (style.widthPx) {
-        target.size.width = Dimension::Px(*style.widthPx);
+        target.size.width = Dimension::Px(*style.widthPx + extraW);
     } else if (style.widthPercent) {
         target.size.width = Dimension::Pct(*style.widthPercent);
     } else if (fillWidth) {
         target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
-        target.size.height = Dimension::Px(*style.heightPx);
+        target.size.height = Dimension::Px(*style.heightPx + extraH);
     }
 
     if (style.backgroundColor) {
@@ -1194,7 +1310,7 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     }
     if (style.maxWidthPx) {
         CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
-        limits.maxWidth = Dimension::Px(*style.maxWidthPx);
+        limits.maxWidth = Dimension::Px(*style.maxWidthPx + extraW);
         target.boxConstraints = limits;
     }
     if (style.borderWidth > 0) {

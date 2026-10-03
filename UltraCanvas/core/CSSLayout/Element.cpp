@@ -1,5 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.8.0 - floats: a float: left / right child sits at that edge and
+//                 the blocks beside it are narrowed (flow-around, per block).
 // Version: 1.7.0 - dispatch display: table to MeasureTable / ArrangeTable.
 // Version: 1.6.0 - block layout honours in-flow children's margins: offset,
 //                 added to the stack and the auto height, horizontal margins
@@ -12,7 +14,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -291,6 +293,140 @@ namespace UltraCanvas {
         // stacked siblings are separated by the sum of their facing margins, as
         // in flex. Percentages resolve against the content width (CSS 2.1 §8.3).
 
+        // -------------------- Floats --------------------
+        //
+        // A child with layoutItem.floatSide is taken out of the stack and put
+        // at the left / right edge of the content box, as high as it fits:
+        // not above the current stack position or an earlier float, beside
+        // the floats already there when there is room, else below them.
+        // The in-flow blocks after it are narrowed by the floats beside
+        // their top edge - by whole blocks, where a browser narrows only the
+        // line boxes beside a float, so a paragraph that starts beside a
+        // short float stays narrow to its end. A block narrower than its
+        // min-content width there (a table, a long word) moves down below
+        // the floats instead. The block grows to hold its floats, as a block
+        // formatting context root does (a table cell, a mail column).
+
+        namespace {
+            bool isFloat(const Element& e) {
+                return e.layoutItem.floatSide != FloatSide::NoFloat;
+            }
+
+            bool hasFloatChild(Element& e) {
+                for (auto& kid : e.Children()) {
+                    if (kid && isInFlow(*kid) && isFloat(*kid)) return true;
+                }
+                return false;
+            }
+
+            // The floats placed so far in one block, in its content-box frame.
+            struct FloatArea {
+                struct Box { bool left; float x, y, w, h; };
+                float width = 0.f;
+                std::vector<Box> boxes;
+                float lowest = 0.f;
+
+                // The free span [left, right) at height y.
+                void EdgesAt(float y, float& left, float& right) const {
+                    left = 0.f;
+                    right = width;
+                    for (const Box& b : boxes) {
+                        if (b.h <= 0.f || y < b.y || y >= b.y + b.h) continue;
+                        if (b.left) left = std::max(left, b.x + b.w);
+                        else        right = std::min(right, b.x);
+                    }
+                }
+                // The narrowest free span over the band [y, y + h).
+                void EdgesOver(float y, float h, float& left, float& right) const {
+                    left = 0.f;
+                    right = width;
+                    for (const Box& b : boxes) {
+                        if (b.h <= 0.f || b.y + b.h <= y || b.y >= y + std::max(h, 1e-3f)) continue;
+                        if (b.left) left = std::max(left, b.x + b.w);
+                        else        right = std::min(right, b.x);
+                    }
+                }
+                // Where the free span next changes below y (a float ends); y if never.
+                float NextBottom(float y) const {
+                    float next = INFINITY;
+                    for (const Box& b : boxes) {
+                        if (b.h > 0.f && b.y + b.h > y) next = std::min(next, b.y + b.h);
+                    }
+                    return std::isfinite(next) ? next : y;
+                }
+                Box Place(bool left, float w, float h, float y) {
+                    if (!boxes.empty()) y = std::max(y, boxes.back().y);
+                    for (;;) {
+                        float l, r;
+                        EdgesOver(y, h, l, r);
+                        const bool clear = l <= 0.f && r >= width;
+                        float next = NextBottom(y);
+                        if (r - l >= w - 0.01f || clear || next <= y) {
+                            Box b{ left, left ? l : std::max(l, r - w), y, w, h };
+                            boxes.push_back(b);
+                            lowest = std::max(lowest, y + h);
+                            return b;
+                        }
+                        y = next;
+                    }
+                }
+            };
+
+            // Stack e's in-flow children at content width W with its floats
+            // placed and the blocks beside them narrowed. With `arrange`, the
+            // children are arranged at origin (baseX, baseY). Returns the
+            // content height, floats included.
+            float flowWithFloats(Element& e, float W, const LayoutContext& ctx, bool arrange,
+                                 float baseX, float baseY, float contentH) {
+                FloatArea area;
+                area.width = W;
+                float cursorY = 0.f;
+                for (auto& kid : e.Children()) {
+                    if (!kid || !isInFlow(*kid)) continue;
+                    auto m = resolveEdgeSizes(kid->box.margin, W, ctx);
+                    float kx, ky;
+                    if (isFloat(*kid)) {
+                        // Shrink-to-fit: its content's width, at most the line.
+                        kid->Measure({ { ConstraintMode::AtMost, std::max(0.f, W - m.horizontal()) },
+                                       { ConstraintMode::Unbounded, INFINITY } }, ctx);
+                        auto b = area.Place(kid->layoutItem.floatSide == FloatSide::Left,
+                                            kid->measured.measuredWidth + m.horizontal(),
+                                            kid->measured.measuredHeight + m.vertical(), cursorY);
+                        kx = b.x + m.left;
+                        ky = b.y + m.top;
+                    } else {
+                        float y = cursorY + m.top;
+                        const float need = MinContentWidth(*kid, ctx);
+                        float l = 0.f, r = W;
+                        for (;;) {
+                            area.EdgesAt(y, l, r);
+                            const bool clear = l <= 0.f && r >= W;
+                            const float room = r - l - m.horizontal();
+                            float next = area.NextBottom(y);
+                            if (clear || (room > 0.f && room >= need - 0.01f) || next <= y) break;
+                            y = next;
+                        }
+                        kid->Measure({ { ConstraintMode::Exact, std::max(0.f, r - l - m.horizontal()) },
+                                       { ConstraintMode::Unbounded, INFINITY } }, ctx);
+                        kx = l + m.left;
+                        ky = y;
+                        cursorY = y + kid->measured.measuredHeight + m.bottom;
+                    }
+                    if (arrange) {
+                        Rect2Df kr{ baseX + kx, baseY + ky,
+                                    kid->measured.measuredWidth, kid->measured.measuredHeight };
+                        if (kid->layoutItem.positionType == PositionType::Relative) {
+                            auto [dx, dy] = computeRelativeOffset(*kid, W, contentH, ctx);
+                            kr.x += dx;
+                            kr.y += dy;
+                        }
+                        kid->Arrange(kr, ctx);
+                    }
+                }
+                return std::max(cursorY, area.lowest);
+            }
+        } // namespace
+
         // Narrow an inline constraint by a child's horizontal margins.
         static AxisConstraint narrowByMargins(const AxisConstraint& ac, float marginH) {
             if (ac.mode == ConstraintMode::Unbounded || marginH == 0.f) return ac;
@@ -335,17 +471,29 @@ namespace UltraCanvas {
             // resolve to 0 here, as an indefinite percentage does elsewhere.
             float marginBasis = (childH.mode == ConstraintMode::Unbounded) ? 0.f : childH.available;
 
+            const bool floats = hasFloatChild(e);
             float stackedHeight = 0.f;
             float maxChildWidth = 0.f;
+            float floatRun = 0.f;   // floats side by side, for the auto width
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
                 auto m = resolveEdgeSizes(kid->box.margin, marginBasis, ctx);
-                MeasureConstraints kc{ narrowByMargins(childH, m.horizontal()), childC.vertical };
+                AxisConstraint kh = narrowByMargins(childH, m.horizontal());
+                // A float is shrink-to-fit, never stretched to the line.
+                if (isFloat(*kid) && kh.mode == ConstraintMode::Exact) kh.mode = ConstraintMode::AtMost;
+                MeasureConstraints kc{ kh, childC.vertical };
                 kid->Measure(kc, ctx);
                 stackedHeight += m.top + kid->measured.measuredHeight + m.bottom;
-                maxChildWidth  = std::max(maxChildWidth,
-                                          m.left + kid->measured.measuredWidth + m.right);
+                const float outer = m.left + kid->measured.measuredWidth + m.right;
+                if (isFloat(*kid)) {
+                    floatRun += outer;
+                    maxChildWidth = std::max(maxChildWidth, floatRun);
+                } else {
+                    // A block beside the floats before it, as far as it goes.
+                    maxChildWidth = std::max(maxChildWidth, floatRun + outer);
+                    floatRun = 0.f;
+                }
             }
 
             bool widthAuto  = !own.contentWidth.has_value();
@@ -364,6 +512,9 @@ namespace UltraCanvas {
                 contentW = std::min(contentW, maxContent);
             }
             contentW = clampToConstraints(contentW, e.boxConstraints, true, parentInline, ctx);
+
+            // With floats the height is the flow at the resolved width.
+            if (floats) stackedHeight = flowWithFloats(e, contentW, ctx, false, 0.f, 0.f, 0.f);
 
             float ownContentH = heightAuto
                 ? e.MeasureOwnContent(std::optional<float>{contentW}, ctx).height : 0.f;
@@ -425,32 +576,36 @@ namespace UltraCanvas {
             // is correct the moment Arrange returns) but does NOT advance cursorY —
             // siblings ignore the offset.
             float cursorY = localBaseY;
-            for (auto& kid : e.Children()) {
-                if (!kid) continue;
-                if (!isInFlow(*kid)) continue;
+            if (hasFloatChild(e)) {
+                flowWithFloats(e, contentW, ctx, true, localBaseX, localBaseY, contentH);
+            } else {
+                for (auto& kid : e.Children()) {
+                    if (!kid) continue;
+                    if (!isInFlow(*kid)) continue;
 
-                auto m = resolveEdgeSizes(kid->box.margin, contentW, ctx);
+                    auto m = resolveEdgeSizes(kid->box.margin, contentW, ctx);
 
-                // Re-measure to make the child's width Exact = the content width
-                // less its horizontal margins. The cache hit-rate stays high
-                // because the second-pass constraints typically match what the
-                // measure pass already used.
-                MeasureConstraints kc{
-                    { ConstraintMode::Exact, std::max(0.f, contentW - m.horizontal()) },
-                    { ConstraintMode::Unbounded, INFINITY }
-                };
-                kid->Measure(kc, ctx);
+                    // Re-measure to make the child's width Exact = the content width
+                    // less its horizontal margins. The cache hit-rate stays high
+                    // because the second-pass constraints typically match what the
+                    // measure pass already used.
+                    MeasureConstraints kc{
+                        { ConstraintMode::Exact, std::max(0.f, contentW - m.horizontal()) },
+                        { ConstraintMode::Unbounded, INFINITY }
+                    };
+                    kid->Measure(kc, ctx);
 
-                Rect2Df kr{ localBaseX + m.left, cursorY + m.top,
-                               kid->measured.measuredWidth,
-                               kid->measured.measuredHeight };
-                if (kid->layoutItem.positionType == PositionType::Relative) {
-                    auto [dx, dy] = computeRelativeOffset(*kid, contentW, contentH, ctx);
-                    kr.x += dx;
-                    kr.y += dy;
+                    Rect2Df kr{ localBaseX + m.left, cursorY + m.top,
+                                   kid->measured.measuredWidth,
+                                   kid->measured.measuredHeight };
+                    if (kid->layoutItem.positionType == PositionType::Relative) {
+                        auto [dx, dy] = computeRelativeOffset(*kid, contentW, contentH, ctx);
+                        kr.x += dx;
+                        kr.y += dy;
+                    }
+                    kid->Arrange(kr, ctx);
+                    cursorY += m.top + kid->measured.measuredHeight + m.bottom;
                 }
-                kid->Arrange(kr, ctx);
-                cursorY += m.top + kid->measured.measuredHeight + m.bottom;
             }
 
             // Out-of-flow (absolute / fixed) children: lay each one out against

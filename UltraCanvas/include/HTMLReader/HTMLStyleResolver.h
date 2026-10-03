@@ -3,9 +3,12 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.6.0 - clear; <img align="left|right"> floats
+// Version: 1.5.0 - float (floatMode)
+// Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,6 +35,9 @@ enum class DisplayMode {
 };
 
 enum class TextAlignMode { Left, Right, Center, Justify };
+
+// float: left / right, and <table align="left|right"> (mail columns).
+enum class FloatMode { NoFloat, Left, Right };   // not None: an X11 macro
 
 // vertical-align, as far as an inline image uses it: where the image sits
 // against the text of its line.
@@ -76,6 +82,13 @@ struct ComputedStyle {
     // margin-left / margin-right: auto (centring a box with a width).
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;
+    // box-sizing: a px width / height is the content box (CSS default) unless
+    // border-box - then it includes padding and border. Tables and form
+    // controls are border-box, as in browsers' own style sheets.
+    bool borderBox = false;
+    FloatMode floatMode = FloatMode::NoFloat;
+    // clear: left / right / both (and <br clear>): starts below the floats.
+    bool clear = false;
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
     float borderRadius = 0;

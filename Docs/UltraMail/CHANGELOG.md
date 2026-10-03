@@ -1,3 +1,25 @@
+#### 2026-10-03 *0.10.22*
+- **Mailchimp mail fits a narrow reading pane, and its footer icons are
+  their real size.** Newsletters and invoices built with Mailchimp (Lexware's
+  among them) stayed 600px wide in a pane narrower than 480px, because their
+  narrow-screen rules use CSS attribute selectors the HTML reader skipped; and
+  their footer icons were drawn 5px wide instead of 25px. Fixed in the
+  framework's HTML reader (see the framework changelog, "attribute selectors"
+  and "a px width or height is the content box").
+- **Two-column newsletters keep their columns.** Mailchimp and similar
+  templates place two columns side by side as floats (`<table align="left">`),
+  which the HTML reader ignored, so the columns came one under the other in
+  any pane width. And rules addressing the first or last item of a list
+  (`:last-child` and similar) now apply. Fixed in the framework's HTML reader
+  (see the framework changelog, "floats" and "structural pseudo-classes").
+- **Text runs beside a floated picture, and newsletter headers, buttons and
+  lists look as in a browser.** Text after a picture or column floated to one
+  side now runs beside it instead of starting below it. Patreon's and other
+  MJML-built newsletters showed a 30px logo 138px wide, their button centred
+  instead of on the left, and every bullet on a line of its own above its
+  text. Fixed in the framework's HTML reader (see the framework changelog,
+  "CSSLayout: floats in block layout" and the HTML reader entries beside it).
+
 #### 2026-10-02 *0.10.21*
 - **Switching accounts is immediate, even while mail is being fetched.**
   Clicking another account's tile sometimes took 10 to 20 seconds. The

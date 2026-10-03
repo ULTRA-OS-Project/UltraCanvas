@@ -10,9 +10,13 @@
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
 // Version: 1.2.0 - display:block cells stack (mail columns on a narrow screen);
-//                  align=center places a max-width block
+//                  align=center places a max-width block; a px width is the
+//                  content box unless box-sizing: border-box; floats
+// Version: 1.3.0 - content flows around floats; clear; a table without a
+//                  width is shrink-to-fit; a list marker starts the item's
+//                  first block; vertical-align: top on side-by-side boxes
 // Version: 1.1.0 - background pictures, margin: auto, @media width
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -316,9 +320,9 @@ void TestStackedColumns() {
 
 // <td align="center"> centres a narrowed block in it, as browsers do: the
 // mail template's 280px picture in a stacked, 580px-wide column.
-void TestAlignCentresNarrowBlock() {
-    std::printf("align=center places a max-width block\n");
-    static const std::vector<uint8_t> png = {   // 400x400, one colour
+// A 400x400 one-colour PNG.
+const std::vector<uint8_t>& Png400() {
+    static const std::vector<uint8_t> png = {
         0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
         0x00,0x00,0x01,0x90,0x00,0x00,0x01,0x90,0x08,0x02,0x00,0x00,0x00,0x0F,0xDD,0xA1,
         0x9B,0x00,0x00,0x03,0xEB,0x49,0x44,0x41,0x54,0x78,0xDA,0xED,0xD4,0x31,0x0D,0x00,
@@ -386,9 +390,15 @@ void TestAlignCentresNarrowBlock() {
         0x0B,0xC0,0xB0,0x00,0xC3,0x02,0x30,0x2C,0x00,0xC3,0x02,0x0C,0x0B,0xE0,0xD2,0x02,
         0xEC,0xC4,0x1B,0x82,0xD2,0xD3,0x19,0xBE,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,
         0xAE,0x42,0x60,0x82 };
+    return png;
+}
+
+void TestAlignCentresNarrowBlock() {
+    std::printf("align=center places a max-width block\n");
+    const std::vector<uint8_t>& png = Png400();
     HTML::BuildOptions opts;
     opts.style.baseFontSizePx = 12.f;
-    opts.resourceLoader = [](const std::string&) { return png; };
+    opts.resourceLoader = [&png](const std::string&) { return png; };
     // Without align the block stays at the start of the cell - and still
     // 280px: the cell's stretch must not widen it past its max-width.
     for (const bool centred : { true, false }) {
@@ -429,6 +439,197 @@ void TestAlignCentresNarrowBlock() {
     }
 }
 
+// A px width is the content box (CSS default): Mailchimp's footer icon cell
+// <td style="width:25px; padding:0 10px"> is 45px wide and its width:100%
+// picture 25px - not 5px, as when the padding was counted inside the 25.
+// box-sizing: border-box keeps the padding inside, as CSS says.
+void TestContentBoxWidth() {
+    std::printf("a px width is the content box unless box-sizing: border-box\n");
+    for (const bool borderBox : { false, true }) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return Png400(); };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(
+            std::string("<table cellpadding='0' cellspacing='0' align='center'><tr>"
+                        "<td style='padding:0 10px;width:25px;height:25px;text-align:center") +
+            (borderBox ? ";box-sizing:border-box" : "") +
+            "'><a href='mailto:x@y'><img src='i.png' style='width:100%;height:auto;display:block'>"
+            "</a></td></tr></table>", opts).root;
+        Check(root != nullptr, "built");
+        if (!root) return;
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        const Placed* image = nullptr;
+        for (const auto& p : all)
+            if (dynamic_cast<UltraCanvasImageElement*>(p.element)) image = &p;
+        Check(image != nullptr, "picture built");
+        if (!image) return;
+        CheckNear(image->rect.width, borderBox ? 5.f : 25.f,
+                  borderBox ? "border-box: 25px minus the padding" : "content-box: the picture is 25px");
+    }
+}
+
+// Floats: Mailchimp's two-column block is two <table align="left"
+// width="300"> in a 600px cell - side by side, as in a browser, not one under
+// the other. float:right goes to the end of the row; what follows the
+// floats runs between them.
+void TestFloats() {
+    std::printf("floats sit side by side\n");
+    HTML::BuildOptions opts;
+    opts.style.baseFontSizePx = 12.f;
+    HTML::ElementBuilder builder;
+    auto host = std::make_shared<Host>();
+    host->Adopt(CreateRenderContext(Size2Di(640, 400), nullptr));
+    auto root = builder.Build(
+        "<table width='600' cellpadding='0' cellspacing='0'><tr><td>"
+        "<table align='left' width='300' cellpadding='0' cellspacing='0'><tr><td>COLONE</td></tr></table>\n"
+        "<table align='left' width='300' cellpadding='0' cellspacing='0'><tr><td>COLTWO</td></tr></table>"
+        "</td></tr></table>"
+        "<div style='float:left;width:100px'>FLEFT</div> <div style='float:right;width:100px'>FRIGHT</div>"
+        "<p style='margin:0'>AFTERFLOATS</p>", opts).root;
+    Check(root != nullptr, "built");
+    if (!root) return;
+    root->size.width = CSSLayout::Dimension::Px(640.f);
+    host->AddChild(root);
+    CSSLayout::LayoutContext ctx;
+    ctx.viewportWidth = 640;
+    ctx.viewportHeight = 400;
+    CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 640.f },
+                                      { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+    root->Measure(mc, ctx);
+    root->Arrange(Rect2Df{ 0, 0, 640.f, root->measured.measuredHeight }, ctx);
+    std::vector<Placed> all;
+    Collect(root.get(), 0, 0, all);
+    const Placed* one = LabelWith(all, "COLONE");
+    const Placed* two = LabelWith(all, "COLTWO");
+    const Placed* left = LabelWith(all, "FLEFT");
+    const Placed* right = LabelWith(all, "FRIGHT");
+    const Placed* after = LabelWith(all, "AFTERFLOATS");
+    Check(one && two && left && right && after, "all built");
+    if (!one || !two || !left || !right || !after) return;
+    CheckNear(two->rect.y, one->rect.y, "the two columns on one row");
+    CheckNear(two->rect.x - one->rect.x, 300.f, "the second column 300px right of the first");
+    CheckNear(left->rect.x, 0.f, "float:left at the start");
+    CheckNear(right->rect.x + right->rect.width, 640.f, "float:right at the end");
+    CheckNear(right->rect.y, left->rect.y, "both floats on one row");
+    CheckNear(after->rect.y, left->rect.y, "what follows sits beside the floats");
+    Check(after->rect.x >= left->rect.x + left->rect.width - 0.5f, "... right of float:left");
+    Check(after->rect.x + after->rect.width <= right->rect.x + 0.5f, "... left of float:right");
+}
+
+// Text after a float runs beside it; clear starts below it; a block that does
+// not fit in the room beside a float (a 300px table beside a 500px float)
+// goes below it.
+void TestFlowAroundFloats() {
+    std::printf("content flows around floats\n");
+    Laid laid = LayOut(
+        "<div style='float:left;width:100px;height:60px'>BOX</div>"
+        "<p style='margin:0'>BESIDE</p>"
+        "<p style='clear:both;margin:0'>CLEARED</p>"
+        "<div style='float:right;width:500px;height:40px'>WIDE</div>"
+        "<table width='300' cellpadding='0' cellspacing='0'><tr><td>NOROOM</td></tr></table>", 640.f);
+    Check(laid.root != nullptr, "built");
+    if (!laid.root) return;
+    std::vector<Placed> all;
+    Collect(laid.root.get(), 0, 0, all);
+    const Placed* box = LabelWith(all, "BOX");
+    const Placed* beside = LabelWith(all, "BESIDE");
+    const Placed* cleared = LabelWith(all, "CLEARED");
+    const Placed* wide = LabelWith(all, "WIDE");
+    const Placed* noroom = LabelWith(all, "NOROOM");
+    Check(box && beside && cleared && wide && noroom, "all built");
+    if (!box || !beside || !cleared || !wide || !noroom) return;
+    CheckNear(beside->rect.x, 100.f, "the paragraph starts right of the float");
+    CheckNear(beside->rect.y, box->rect.y, "... on the float's first line");
+    CheckNear(beside->rect.width, 540.f, "... in the room left beside it");
+    Check(cleared->rect.y >= box->rect.y + 60.f - 0.5f, "clear:both starts below the float");
+    CheckNear(cleared->rect.x, 0.f, "... at the left edge");
+    CheckNear(wide->rect.x, 140.f, "float:right at the right edge");
+    Check(noroom->rect.y >= wide->rect.y + 40.f - 0.5f, "a table with no room beside goes below");
+}
+
+// A table without a width is as wide as its content: the mail's 30px logo
+// cell, and its button - left in its cell, not centred across the line.
+void TestShrinkToFitTable() {
+    std::printf("a table without a width is shrink-to-fit\n");
+    // In a table cell, as mail nests them: the cell stretched them to its width.
+    Laid laid = LayOut(
+        "<table width='600' cellpadding='0' cellspacing='0'><tr><td>"
+        "<table cellpadding='0' cellspacing='0'><tr><td style='width:30px'>L</td></tr></table>"
+        "<table cellpadding='0' cellspacing='0'><tr>"
+        "<td align='center' style='padding:10px 25px'><a href='#'>BUTTON</a></td></tr></table>"
+        "</td></tr></table>", 640.f);
+    Check(laid.root != nullptr, "built");
+    if (!laid.root) return;
+    std::vector<Placed> all;
+    Collect(laid.root.get(), 0, 0, all);
+    std::vector<const Placed*> tables;
+    for (const auto& p : all)
+        if (p.element->GetIdentifier().rfind("html_table_", 0) == 0) tables.push_back(&p);
+    const Placed* logo = tables.size() > 1 ? tables[1] : nullptr;   // the first one inside
+    const Placed* button = LabelWith(all, "BUTTON");
+    Check(logo && button, "both built");
+    if (!logo || !button) return;
+    CheckNear(logo->rect.width, 30.f, "the logo table is its cell's 30px");
+    CheckNear(logo->rect.x, 0.f, "... at the left");
+    Check(button->rect.x < 40.f, "the button sits at the left, not centred");
+}
+
+// <li><div>text</div></li>: the marker starts the div's line, as in a
+// browser - not a line of its own above it.
+void TestMarkerInBlock() {
+    std::printf("a list marker starts the item's first block\n");
+    Laid laid = LayOut("<ul><li> <div>ITEMTEXT</div> </li></ul>", 640.f);
+    Check(laid.root != nullptr, "built");
+    if (!laid.root) return;
+    std::vector<Placed> all;
+    Collect(laid.root.get(), 0, 0, all);
+    const Placed* item = LabelWith(all, "ITEMTEXT");
+    Check(item != nullptr, "built");
+    if (!item) return;
+    auto* label = dynamic_cast<UltraCanvasLabel*>(item->element);
+    Check(label && label->GetText().find("\u2022") != std::string::npos, "the marker is on the text's line");
+    int markersAlone = 0;
+    for (const auto& p : all)
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(p.element))
+            if (l->GetText().find("\u2022") != std::string::npos &&
+                l->GetText().find("ITEMTEXT") == std::string::npos) ++markersAlone;
+    Check(markersAlone == 0, "no marker on a line of its own");
+}
+
+// Side-by-side inline-block columns with vertical-align: top start level, as
+// the mail footer's two columns do.
+void TestInlineBoxTop() {
+    std::printf("vertical-align: top on side-by-side boxes\n");
+    Laid laid = LayOut(
+        "<div>"
+        "<div style='display:inline-block;vertical-align:top;width:200px'><p>SHORTCOL</p></div>"
+        "<div style='display:inline-block;vertical-align:top;width:200px'>"
+        "<p>TALLCOL</p><p>more</p><p>more</p></div>"
+        "</div>", 640.f);
+    Check(laid.root != nullptr, "built");
+    if (!laid.root) return;
+    std::vector<Placed> all;
+    Collect(laid.root.get(), 0, 0, all);
+    const Placed* shortCol = LabelWith(all, "SHORTCOL");
+    const Placed* tallCol = LabelWith(all, "TALLCOL");
+    Check(shortCol && tallCol, "both built");
+    if (!shortCol || !tallCol) return;
+    CheckNear(shortCol->rect.y, tallCol->rect.y, "both columns start at the top");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("HTMLTableLayoutTest");
     TestSharedColumns();
@@ -438,6 +639,12 @@ int main() {
     TestBackgroundAndAutoMargins();
     TestStackedColumns();
     TestAlignCentresNarrowBlock();
+    TestContentBoxWidth();
+    TestFloats();
+    TestFlowAroundFloats();
+    TestShrinkToFitTable();
+    TestMarkerInBlock();
+    TestInlineBoxTop();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
