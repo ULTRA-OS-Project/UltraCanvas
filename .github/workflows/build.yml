@@ -684,7 +684,25 @@ jobs:
           cmake --build build-package-consumer --parallel 2
           exe=build-package-consumer/PackageConsumer
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          # A program that will not start says nothing on its own: under MSYS2
+          # bash a DLL the loader cannot find or resolve is a bare exit code
+          # 127. Print what the executable depends on and how it ended, so the
+          # log names the cause rather than a number.
+          if command -v ldd > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            ldd "$exe" || true
+          elif command -v otool > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            otool -L "$exe" || true
+          fi
+          set +e
           LD_LIBRARY_PATH="$PWD/$SDK/lib" "$exe"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PackageConsumer exited with status $status"
+            exit "$status"
+          fi
 
       # The SDK: that install prefix, with the page that explains it, the
       # licenses and the consumer example, packed so an application outside
