@@ -1,24 +1,27 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Reading, Privacy) closed when
-// the window opens, so it opens on the start page that says what they hold.
+// settings-page tree on the left, its sections (Reading, Privacy, Display)
+// closed when the window opens, so it opens on the start page that says what
+// they hold.
 // Pages: Reading > Layout (the message beside the list or in its place, and
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
 // the message text), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
-// Privacy > Sender icons (whether the known senders' icons are downloaded).
+// Privacy > Sender icons (whether the known senders' icons are downloaded)
+// and Display > Links (a link's address in the status bar or in a tooltip).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.3.0 - Display > Links: a link's address in the status bar or a tooltip
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -76,6 +79,8 @@ namespace {
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
+    constexpr const char* kPageDisplay     = "display";
+    constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
@@ -128,6 +133,11 @@ namespace {
 
         // Privacy > Sender icons
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
+
+        // Display > Links
+        std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
+        std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
+        UltraCanvasRadioGroup             linksGroup;
 
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
@@ -322,6 +332,9 @@ namespace {
         if (d->domainsInput) d->domainsInput->SetTags(DomainTags(p));
         if (d->sendersInput) d->sendersInput->SetTags(SenderTags(p));
         if (d->senderIconsBox) d->senderIconsBox->SetChecked(p.fetchSenderIcons);
+        if (d->linksStatusRadio)
+            d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
+                                       ? d->linksTooltipRadio : d->linksStatusRadio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
@@ -601,6 +614,49 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > LINKS =====
+    std::shared_ptr<UltraCanvasContainer> BuildLinksPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-links", "Links",
+                "Where the address behind a link in a message is shown:");
+
+        const bool tooltip = d->prefs->linkDisplay == LinkDisplay::Tooltip;
+        d->linksStatusRadio = MakeChoice("um-set-links-status",
+                "Show in status bar", !tooltip);
+        d->linksTooltipRadio = MakeChoice("um-set-links-tooltip",
+                "Show as tooltip", tooltip);
+        d->linksGroup.AddRadioButton(d->linksStatusRadio);
+        d->linksGroup.AddRadioButton(d->linksTooltipRadio);
+        d->linksGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->linkDisplay = selected == d->linksTooltipRadio ? LinkDisplay::Tooltip
+                                                                     : LinkDisplay::StatusBar;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->linksStatusRadio);
+        parts.body->AddChild(d->linksTooltipRadio);
+
+        d->resets[kPageLinks] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->linkDisplay = LinkDisplay::StatusBar;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-links-note1",
+                "In the status bar, the bottom of the window counts a message's "
+                "links and names the websites they lead to - its tooltip lists "
+                "every link - and shows the full address of the link under the "
+                "pointer.");
+        AddNote(parts, "um-set-links-note2",
+                "As a tooltip, the address appears beside the pointer while it "
+                "rests on a link, and the status bar stays free for the mail "
+                "itself.");
+        AddNote(parts, "um-set-links-note3",
+                "Either way, check where a link really goes before you click it: "
+                "the words of a link can name one website and lead to another.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
@@ -614,6 +670,9 @@ namespace {
                 "from websites and senders you trust and your contacts, or never "
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
+                "Display - whether a link's address is shown in the status bar or "
+                "as a tooltip.");
+        AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
                 "there is nothing to confirm.");
@@ -702,6 +761,8 @@ namespace {
         AddTreeNode(d, "settings", kPagePrivacy, "Privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
+        AddTreeNode(d, "settings", kPageDisplay, "Display");
+        AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -717,6 +778,7 @@ namespace {
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
+        AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 

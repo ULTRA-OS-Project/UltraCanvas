@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.4.0 - link_display (status-bar / tooltip)
 // Version: 0.3.0 - folder_tree_width_mode (auto / fixed) and folder_tree_width (px)
 // Version: 0.2.0 - remote_images, trusted_image_domains, message_view,
 //                  message_text_size
@@ -73,6 +74,9 @@ bool Preferences::Load(const std::string& path) {
             }
             catch (...) { /* keeps the default */ }
         }
+        if (key == "link_display")
+            linkDisplay = Trim(value) == "tooltip" ? LinkDisplay::Tooltip
+                                                   : LinkDisplay::StatusBar;
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -127,6 +131,8 @@ bool Preferences::Save(const std::string& path) const {
     file << "folder_tree_width_mode = "
          << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
     file << "folder_tree_width = " << folderTreeWidth << "\n";
+    file << "link_display = "
+         << (linkDisplay == LinkDisplay::Tooltip ? "tooltip" : "status-bar") << "\n";
     return static_cast<bool>(file);
 }
 
