@@ -5,7 +5,8 @@
 // Pages: Reading > Layout (the message beside the list or in its place, and
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
-// the message text), Privacy > Images (when pictures on the web are loaded:
+// the message text), Reading > Waiting for reply (which unanswered mail
+// counts: how old it may be, and whether only people written to), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
 // Privacy > Sender icons (whether the known senders' icons are downloaded).
@@ -15,6 +16,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.3.0 - Reading > Waiting for reply: which unanswered mail counts
+//                  (its age, only people written to)
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
@@ -73,6 +76,7 @@ namespace {
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
+    constexpr const char* kPageWaiting     = "reading/waiting";
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
@@ -82,6 +86,12 @@ namespace {
     struct TextSizeChoice { int px; const char* label; };
     constexpr TextSizeChoice kTextSizes[] = {
         { 11, "Small" }, { 12, "Normal" }, { 14, "Large" }, { 16, "Extra large" } };
+
+    // The ages offered on Reading > Waiting for reply, in days (0 = any age).
+    struct AgeChoice { int days; const char* label; };
+    constexpr AgeChoice kWaitingAges[] = {
+        { 7, "From the last 7 days" }, { 14, "From the last 14 days" },
+        { 30, "From the last 30 days" }, { 0, "Of any age" } };
 
     struct PageReset {
         std::string           label;
@@ -117,6 +127,11 @@ namespace {
         UltraCanvasRadioGroup             viewGroup;
         std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> sizeRadios;
         UltraCanvasRadioGroup             sizeGroup;
+
+        // Reading > Waiting for reply
+        std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> ageRadios;
+        UltraCanvasRadioGroup                ageGroup;
+        std::shared_ptr<UltraCanvasCheckbox> writtenToBox;
 
         // Privacy > Images
         std::shared_ptr<UltraCanvasRadio>    imagesAlwaysRadio;
@@ -313,6 +328,9 @@ namespace {
             d->viewGroup.SelectButton(p.showHtml ? d->htmlRadio : d->plainRadio);
         for (const auto& [px, radio] : d->sizeRadios)
             if (px == p.messageTextSize) d->sizeGroup.SelectButton(radio);
+        for (const auto& [days, radio] : d->ageRadios)
+            if (days == p.needsAnswerMaxAgeDays) d->ageGroup.SelectButton(radio);
+        if (d->writtenToBox) d->writtenToBox->SetChecked(p.needsAnswerOnlyWrittenTo);
         if (d->imagesAlwaysRadio) {
             d->imagesGroup.SelectButton(
                 p.remoteImages == RemoteImagePolicy::LoadAlways ? d->imagesAlwaysRadio
@@ -467,6 +485,58 @@ namespace {
         return parts.page;
     }
 
+    // ===== READING > WAITING FOR REPLY =====
+    std::shared_ptr<UltraCanvasContainer> BuildWaitingPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-waiting", "Waiting for reply",
+                "Which unanswered mail sent to you counts as waiting for your reply:");
+
+        for (const auto& choice : kWaitingAges) {
+            auto radio = MakeChoice("um-set-age-" + std::to_string(choice.days), choice.label,
+                                    d->prefs->needsAnswerMaxAgeDays == choice.days);
+            d->ageRadios.emplace_back(choice.days, radio);
+            d->ageGroup.AddRadioButton(radio);
+            parts.body->AddChild(radio);
+        }
+        d->ageGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            for (const auto& [days, radio] : d->ageRadios)
+                if (radio == selected) d->prefs->needsAnswerMaxAgeDays = days;
+            ApplyAndSave(d);
+        };
+
+        AddBodyCaption(parts, "um-set-waiting-who-caption", "From whom:");
+        d->writtenToBox = MakeCheckbox("um-set-waiting-written-to",
+                "Only from people I have written to", d->prefs->needsAnswerOnlyWrittenTo,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->needsAnswerOnlyWrittenTo = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->writtenToBox);
+
+        d->resets[kPageWaiting] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->needsAnswerMaxAgeDays = 14;
+            d->prefs->needsAnswerOnlyWrittenTo = true;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-waiting-note1",
+                "Only mail in the inbox that was sent to you by name, is not a "
+                "newsletter or an automatic message, and has not been answered "
+                "can wait for a reply. These choices narrow that down: the count "
+                "on the account and the \xE2\x86\xA9 in the list follow them.");
+        AddNote(parts, "um-set-waiting-note2",
+                "\"People I have written to\" are the addresses in your Sent "
+                "mail. Until the Sent folder has been fetched, this choice "
+                "leaves every sender in.");
+        AddNote(parts, "um-set-waiting-note3",
+                "A message you mark \"Needs an answer\" yourself always counts, "
+                "whatever its age or sender.");
+        return parts.page;
+    }
+
     // ===== PRIVACY > IMAGES =====
     std::shared_ptr<UltraCanvasContainer> BuildImagesPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-images", "Images",
@@ -607,8 +677,8 @@ namespace {
                 "Open a section on the left and choose the page to set:");
         AddNote(parts, "um-set-start-note1",
                 "Reading - where a message opens, how wide the folder list is, "
-                "whether HTML mail is shown formatted or as plain text, and the "
-                "size of its text.");
+                "whether HTML mail is shown formatted or as plain text, the size "
+                "of its text, and which mail counts as waiting for your reply.");
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
@@ -699,6 +769,7 @@ namespace {
         AddTreeNode(d, "settings", kPageReading, "Reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
+        AddTreeNode(d, kPageReading, kPageWaiting, "Waiting for reply");
         AddTreeNode(d, "settings", kPagePrivacy, "Privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
@@ -715,6 +786,7 @@ namespace {
 
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
+        AddPage(d, kPageWaiting, BuildWaitingPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageStart, BuildStartPage());

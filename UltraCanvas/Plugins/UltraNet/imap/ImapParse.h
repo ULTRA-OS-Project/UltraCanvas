@@ -113,6 +113,23 @@ inline std::string UidExpungeCommand(uint32_t uid) {
 
 // ---- flags <-> IMAP tokens -------------------------------------------------
 
+// "UID FETCH <uid> (FLAGS)" - one message's flags.
+inline std::string UidFetchFlagsCommand(uint32_t uid) {
+    return "UID FETCH " + std::to_string(uid) + " (FLAGS)";
+}
+
+// "UID STORE <uid> -FLAGS.SILENT (\Seen)" - the message is unread again, and
+// the server sends no FETCH back for it.
+inline std::string UidMarkUnreadCommand(uint32_t uid) {
+    return "UID STORE " + std::to_string(uid) + " -FLAGS.SILENT (\\Seen)";
+}
+
+// Whether a "UID FETCH n (FLAGS)" response reported the flags at all: an
+// unanswered fetch must not read as "no flags", i.e. unread.
+inline bool HasFetchFlags(const std::string& fetchResponse) {
+    return Lower(fetchResponse).find("flags") != std::string::npos;
+}
+
 // UltraNetMailFlags -> "\Seen \Answered" (space-separated IMAP flag tokens).
 inline std::string FlagsToImapString(UltraNetMailFlags flags) {
     std::string out;

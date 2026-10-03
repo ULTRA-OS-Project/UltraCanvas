@@ -60,6 +60,16 @@ TEST(imap_uid_expunge_names_one_message) {
     REQUIRE_EQ(UidExpungeCommand(42), std::string("UID EXPUNGE 42"));
 }
 
+// Reading a message must not mark it read: the plug-in reads the flags first
+// and takes \Seen off again for an unread message (FetchKeepingUnread).
+TEST(imap_keep_unread_commands) {
+    REQUIRE_EQ(UidFetchFlagsCommand(42), std::string("UID FETCH 42 (FLAGS)"));
+    REQUIRE_EQ(UidMarkUnreadCommand(42), std::string("UID STORE 42 -FLAGS.SILENT (\\Seen)"));
+    REQUIRE(HasFetchFlags("* 3 FETCH (UID 42 FLAGS ())\r\n"));
+    REQUIRE(HasFetchFlags("* 3 FETCH (UID 42 FLAGS (\\Seen))\r\n"));
+    REQUIRE(!HasFetchFlags(""));   // no answer: the state is unknown, not "unread"
+}
+
 TEST(imap_flag_roundtrip) {
     UltraNetMailFlags f = UltraNetMailFlags::Seen | UltraNetMailFlags::Answered;
     std::string s = FlagsToImapString(f);

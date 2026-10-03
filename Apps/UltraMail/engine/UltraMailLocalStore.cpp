@@ -413,12 +413,36 @@ UltraDbResult LocalStore::GetMaxUid(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+std::string LocalStore::NeedsAnswerRulesSql(int64_t now) const {
+    std::string rules;
+    if (needsAnswerRules_.maxAgeDays > 0) {
+        const int64_t cutoff = now - static_cast<int64_t>(needsAnswerRules_.maxAgeDays) * 86400;
+        rules += "m.date >= " + std::to_string(cutoff);
+    }
+    if (needsAnswerRules_.onlyWrittenTo) {
+        // The sender is one of the recipients (newline-separated to_addrs) of
+        // the account's Sent mail - or the account has no Sent mail stored.
+        const std::string sent =
+            "SELECT 1 FROM messages s JOIN folders sf "
+            "ON sf.account_id = s.account_id AND sf.name = s.folder "
+            "WHERE s.account_id = m.account_id AND sf.role = 'sent'";
+        if (!rules.empty()) rules += " AND ";
+        rules += "(NOT EXISTS (" + sent + ") OR EXISTS (" + sent +
+                 " AND instr(lower(char(10) || s.to_addrs || char(10)), "
+                 "char(10) || lower(m.from_addr) || char(10)) > 0))";
+    }
+    // The user's own "needs an answer" mark counts whatever the rules say.
+    return rules.empty() ? std::string("1") : "(m.answer_mark > 0 OR (" + rules + "))";
+}
+
 UltraDbResult LocalStore::ListNeedsAnswer(const std::string& accountId,
                                           std::vector<MessageEnvelope>& out) const {
     out.clear();
     std::string sql = std::string("SELECT ") + kMsgColumns +
-        " FROM messages WHERE account_id=? AND needs_answer=1 AND (flags & " +
-        std::to_string(Flag_Deleted) + ")=0 ORDER BY date DESC";
+        " FROM messages m WHERE m.account_id=? AND m.needs_answer=1 AND (m.flags & " +
+        std::to_string(Flag_Deleted) + ")=0 AND " +
+        NeedsAnswerRulesSql(static_cast<int64_t>(std::time(nullptr))) +
+        " ORDER BY m.date DESC";
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_, sql, { accountId }, rs);
     if (!q) return q;
@@ -648,7 +672,8 @@ UltraDbResult LocalStore::GetAccountStatus(std::vector<AccountStatus>& out,
         "  THEN 1 ELSE 0 END), 0) AS unread_today, "
         "COALESCE(SUM(CASE WHEN " + unreadInbox + " AND m.date < " + today +
         "  THEN 1 ELSE 0 END), 0) AS unread_older, "
-        "COALESCE(SUM(CASE WHEN m.needs_answer=1 AND (m.flags & " + del + ")=0 "
+        "COALESCE(SUM(CASE WHEN m.needs_answer=1 AND (m.flags & " + del + ")=0 AND " +
+        NeedsAnswerRulesSql(static_cast<int64_t>(std::time(nullptr))) +
         "  THEN 1 ELSE 0 END), 0) AS needs "
         "FROM accounts a "
         "LEFT JOIN messages m ON m.account_id = a.account_id "

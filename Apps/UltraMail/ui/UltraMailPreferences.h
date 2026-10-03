@@ -4,6 +4,7 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.5.0 - waiting-for-reply rules (its age, only people written to)
 // Version: 0.4.0 - folder tree width: fixed pixels or fitted to the names
 // Version: 0.3.0 - remote-image policy, trusted websites, message view and text size
 //                  (the Settings window, UltraMailSettingsDialog)
@@ -70,6 +71,13 @@ struct Preferences {
     static constexpr int kFolderTreeDefaultWidth = 200;
     FolderTreeWidthMode folderTreeWidthMode = FolderTreeWidthMode::FitToText;
     int                 folderTreeWidth     = kFolderTreeDefaultWidth;
+
+    // Settings > Reading > Waiting for reply: which unanswered mail sent to
+    // the reader counts as waiting (the account bar's third number, the ↩ in
+    // the list, "Needs an answer"). Only mail from the last this-many days
+    // (0 = any age), and only from people the reader has written to.
+    int  needsAnswerMaxAgeDays   = 14;
+    bool needsAnswerOnlyWrittenTo = true;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

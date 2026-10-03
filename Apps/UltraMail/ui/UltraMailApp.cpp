@@ -166,6 +166,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // the defaults; it is written the first time the user changes a setting.
     prefsPath_ = dataDir + "/preferences.ini";
     prefs_.Load(prefsPath_);
+    ApplyNeedsAnswerRules();
     // The sender-icon cache (the badge left of every subject line) lives under
     // the cache directory; it is safe to point at it before the folder exists.
     ConfigureSenderIcons();
@@ -784,6 +785,23 @@ void UltraMailApp::UpdateBusyIndicator() {
                                mailboxActionsInFlight_ > 0);
 }
 
+void UltraMailApp::RefreshAccountCounts() {
+    store_.GetAccountStatus(status_);
+    accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    PublishUnreadNotice();
+}
+
+bool UltraMailApp::ApplyNeedsAnswerRules() {
+    NeedsAnswerRules rules;
+    rules.maxAgeDays    = prefs_.needsAnswerMaxAgeDays;
+    rules.onlyWrittenTo = prefs_.needsAnswerOnlyWrittenTo;
+    const NeedsAnswerRules& current = store_.GetNeedsAnswerRules();
+    if (current.maxAgeDays == rules.maxAgeDays && current.onlyWrittenTo == rules.onlyWrittenTo)
+        return false;
+    store_.SetNeedsAnswerRules(rules);
+    return true;
+}
+
 void UltraMailApp::ShowAccountStatus() {
     // While something is still running its own progress text stays.
     if (syncsInFlight_ > 0 || outboxFlushInFlight_) return;
@@ -1098,6 +1116,7 @@ void UltraMailApp::HandleMarkRead(const MessageEnvelope& env) {
     // rebuild keeps it read even if the server push below is slow or offline.
     store_.SetFlags(env.accountId, env.folder, env.uid, Flag_Seen, true);
     mailView_.MarkRead(env.accountId, env.folder, env.uid);
+    RefreshAccountCounts();   // the account's unread number goes down with it
     // Only reach for the server when the vault is already open — a passive click
     // must never pop the master-password dialog.
     if (!ImapPlugin() || !vault_.IsUnlocked()) return;
@@ -2846,6 +2865,9 @@ void UltraMailApp::OpenSettings() {
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
         senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+        // New waiting-for-reply rules: the account bar's count and the list's
+        // reply marks are worked out again.
+        if (ApplyNeedsAnswerRules()) Refresh();
     });
 }
 
