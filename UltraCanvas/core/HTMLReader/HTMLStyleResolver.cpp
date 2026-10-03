@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.12.0 - height in percent (CSS and the height attribute); a later width /
+//                  height replaces an earlier one of either kind
 // Version: 1.11.0 - min-width, min-height, max-height in percent too
 // Version: 1.10.0 - max-width in percent (maxWidthPercent)
 // Version: 1.9.0 - min-width, min-height, max-height (px; none / auto reset them)
@@ -22,7 +24,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -275,11 +277,10 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
                 else style.widthPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
             }
         }
-        if (!h.empty() && !style.heightPx) {
+        if (!h.empty() && !style.heightPx && !style.heightPercent) {
             if (auto len = CssLength::Parse(h)) {
-                if (len->unit != CssUnit::Percent) {
-                    style.heightPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
-                }
+                if (len->unit == CssUnit::Percent) style.heightPercent = len->value;
+                else style.heightPx = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
             }
         }
     }
@@ -1003,17 +1004,15 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
             if (px > 0) s.paddingLeft += px;
         }
     }
-    else if (prop == "width") {
+    else if (prop == "width" || prop == "height") {
+        // A width / height replaces an earlier one, px or %; auto clears it.
+        std::optional<float>& px  = prop == "width" ? s.widthPx : s.heightPx;
+        std::optional<float>& pct = prop == "width" ? s.widthPercent : s.heightPercent;
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit == CssUnit::Percent) s.widthPercent = len->value;
-            else if (len->unit != CssUnit::Auto) s.widthPx = len->ToPx(em, rem);
-        }
-    }
-    else if (prop == "height") {
-        if (auto len = CssLength::Parse(lower)) {
-            if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto) {
-                s.heightPx = len->ToPx(em, rem);
-            }
+            px.reset();
+            pct.reset();
+            if (len->unit == CssUnit::Percent) pct = len->value;
+            else if (len->unit != CssUnit::Auto) px = len->ToPx(em, rem);
         }
     }
     else if (prop == "border" || prop == "border-top" || prop == "border-right" ||

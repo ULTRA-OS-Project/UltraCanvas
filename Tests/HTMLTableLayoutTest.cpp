@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.13.0 - percentage heights on blocks; content-box percentage width
 // Version: 1.12.0 - percentage min / max sizes; border-box percentage max-width
 // Version: 1.11.0 - <img> min / max sizes keep the picture's shape; max-width in %
 // Version: 1.10.0 - min-width, min-height, max-height
@@ -850,6 +851,16 @@ void TestImageLimits() {
     CheckNear(r.height, 20.f, "max-height: 20% of a set height");
     r = inner("<div><div style='min-height:50%'>x</div></div>");
     Check(r.height > 0.f && r.height < 30.f, "an auto-height parent: no limit");
+    r = inner("<div style='height:200px'><div style='height:50%'>x</div></div>");
+    CheckNear(r.height, 100.f, "height: 50% of a set height");
+    r = inner("<div style='height:200px'><div style='height:25%;padding:10px;border:2px solid #000'>x</div></div>");
+    CheckNear(r.height, 74.f, "height: 25% is the content's, padding and border around it");
+    r = inner("<div><div style='height:50%'>x</div></div>");
+    Check(r.height > 0.f && r.height < 30.f, "height: 50% of an auto height is auto");
+    r = first("<div style='width:50%;padding:0 10px;border:2px solid #000'>x</div>", "html_div_");
+    CheckNear(r.width, 224.f, "width: 50% content-box: 200 + padding + border");
+    r = first("<div style='width:30%;width:120px'>x</div>", "html_div_");
+    CheckNear(r.width, 120.f, "a later width replaces a percentage");
     r = first("<div><img src='p.png' style='min-width:25%'></div>", "html_img_");
     CheckNear(r.width, 100.f, "an image's min-width: 25%");
     CheckNear(r.height, 50.f, "its height follows");

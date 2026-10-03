@@ -24,8 +24,9 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
+// Version: 1.2.0 - a percentage height resolves against a block parent's set height
 // Version: 1.1.0 - max-width caps the table's width
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -429,7 +430,8 @@ namespace UltraCanvas {
                 std::optional<float> wantH;
                 if (authoritative) {
                     wantH = std::max(0.f, c.vertical.available - s.padV - s.bordV);
-                } else if (auto specH = resolveDimension(e.size.height, parentBlock, ctx)) {
+                } else if (auto specH = resolveDimension(e.size.height,
+                               parentBlock ? parentBlock : e.percentHeightBase, ctx)) {
                     wantH = e.box.boxSizing == BoxSizing::BorderBox
                         ? std::max(0.f, *specH - s.padV - s.bordV) : *specH;
                 }

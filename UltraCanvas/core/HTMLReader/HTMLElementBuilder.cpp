@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.18.0 - width / height in percent on blocks: the content's share, padding
+//                   and border added as pixels (Dimension::PctPlus) - no switch to
+//                   content-box sizing
 // Version: 1.17.0 - min / max width and height in percent; under box-sizing:
 //                   border-box a percentage limit loses the padding and border
 //                   (Dimension::PctPlus)
@@ -40,7 +43,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -1483,25 +1486,28 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
 
     // width / height: the content's (CSS content-box), so the box is that
     // plus its padding (and the margins folded into it) and border - or the
-    // whole box with box-sizing: border-box. A px size is turned into the
-    // border-box size here; a percentage cannot be (the engine has no
-    // "50% + 20px"), so that box is laid out as content-box itself.
+    // whole box with box-sizing: border-box. The box stays border-box; a px
+    // size grows by what goes around the content, a percentage carries it as
+    // pixels on top (calc(50% + 24px), Dimension::PctPlus). A percentage
+    // height resolves against the container's set height, else it is auto.
+    // Tables, cells and images take no percentage height here (browsers
+    // mostly ignore one on them).
     const bool contentBox = !borderBoxSizes && !style.borderBoxSizing;
     const float aroundW = contentBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
                                        style.BorderHorizontal() : 0.f;
     const float aroundH = contentBox ? style.paddingTop + style.paddingBottom + style.BorderVertical()
                                      : 0.f;
-    const bool percentContent = contentBox && !style.widthPx && style.widthPercent;
-    if (percentContent) target.box.boxSizing = CSSLayout::BoxSizing::ContentBox;
     if (style.widthPx) {
         target.size.width = Dimension::Px(*style.widthPx + aroundW);
     } else if (style.widthPercent) {
-        target.size.width = Dimension::Pct(*style.widthPercent);
+        target.size.width = Dimension::PctPlus(*style.widthPercent, aroundW);
     } else if (fillWidth) {
         target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
-        target.size.height = Dimension::Px(*style.heightPx + (percentContent ? 0.f : aroundH));
+        target.size.height = Dimension::Px(*style.heightPx + aroundH);
+    } else if (style.heightPercent && !borderBoxSizes) {
+        target.size.height = Dimension::PctPlus(*style.heightPercent, aroundH);
     }
 
     if (style.backgroundColor) {

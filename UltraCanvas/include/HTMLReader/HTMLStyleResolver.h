@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.13.0 - height in percent
 // Version: 1.12.0 - min-width, min-height, max-height in percent
 // Version: 1.11.0 - max-width in percent
 // Version: 1.10.0 - min-width, min-height, max-height
@@ -14,7 +15,7 @@
 // Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -197,6 +198,8 @@ struct ComputedStyle {
     std::optional<float> widthPx;
     std::optional<float> heightPx;
     std::optional<float> widthPercent;   // width given in % (builder maps to Dimension::Pct)
+    // height given in %: of the container's set height (none: auto, as in CSS).
+    std::optional<float> heightPercent;
     // Not inherited. On a table cell (or row: valign) Baseline means "not
     // set", and the cell centres its content, as a browser's UA sheet does.
     VerticalAlignMode verticalAlign = VerticalAlignMode::Baseline;

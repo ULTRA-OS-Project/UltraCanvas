@@ -2,6 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.3.8 - a percentage height resolves against a block parent's set height
+//                 (percentHeightBase) when no definite height comes down
 // Version: 1.3.7 - an item's own main size (width / height) is its content box when
 //                 it is box-sizing: content-box: the flex base size adds its
 //                 padding and border, as the block path already did.
@@ -22,7 +24,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -414,8 +416,11 @@ namespace UltraCanvas {
                 // Honor an explicit size on the container if set (overrides AtMost).
                 const Dimension& mainDim  = s.axis.isRow ? e.size.width  : e.size.height;
                 const Dimension& crossDim = s.axis.isRow ? e.size.height : e.size.width;
-                auto ownMain  = resolveDimension(mainDim,  mainOuter,  ctx);
-                auto ownCross = resolveDimension(crossDim, crossOuter, ctx);
+                // A percentage height also resolves against a block parent's
+                // set height (percentHeightBase) when none comes down.
+                const std::optional<float> heightBase = blockAvail ? blockAvail : e.percentHeightBase;
+                auto ownMain  = resolveDimension(mainDim,  s.axis.isRow ? mainOuter : heightBase, ctx);
+                auto ownCross = resolveDimension(crossDim, s.axis.isRow ? heightBase : crossOuter, ctx);
 
                 // When the parent fixes BOTH axes the constraint IS the element's
                 // used size and overrides any explicit `size`: this happens at

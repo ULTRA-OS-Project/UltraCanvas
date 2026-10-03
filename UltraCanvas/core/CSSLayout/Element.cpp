@@ -1,5 +1,6 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.9.0 - a percentage height resolves against percentHeightBase too
 // Version: 1.8.0 - percentage min-height / max-height resolve against a block
 //                 parent's set height (percentHeightBase)
 // Version: 1.7.0 - dispatch display: table to MeasureTable / ArrangeTable.
@@ -14,7 +15,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -109,11 +110,12 @@ namespace UltraCanvas {
                     }
                 }
 
-                // Height. min / max-height percentages also resolve against
-                // a block parent's set height (percentHeightBase).
+                // Height. A percentage height, min-height or max-height also
+                // resolves against a block parent's set height
+                // (percentHeightBase) when no definite height comes down.
                 const std::optional<float> limitBlock = parentBlock ? parentBlock : e.percentHeightBase;
                 {
-                    auto specH = resolveDimension(e.size.height, parentBlock, ctx);
+                    auto specH = resolveDimension(e.size.height, limitBlock, ctx);
                     if (authoritative) {
                         // Used size wins over an explicit height (stretched/grown box).
                         float ch = borderBoxToContent(c.vertical.available, padV, bordV);
