@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.19.0
-// Last Modified: 2026-09-24
+// Version: 1.20.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -611,6 +611,12 @@ private:
     // Installs FolderIconPath as a freshly created file display's
     // folderIconProvider, so every view of it draws the icons.
     void WireFolderIconProvider(UltraCanvasFilerWidget* target);
+    // Installs the favorite heart: every entry that is in the Favorites view
+    // (not one only pinned into the tree) carries it at the left of its row
+    // or tile. Not on the Favorites view's own pages, where every entry is
+    // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
+    void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with
     // nothing selected, to the shown folder). Extras > Remove folder icon

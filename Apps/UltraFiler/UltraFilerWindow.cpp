@@ -58,8 +58,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.22.0
-// Last Modified: 2026-09-24
+// Version: 1.23.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -995,6 +995,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     };
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
+    WireFavoriteMarkProvider(folderPreview.get());
 
     // The pane is narrow, so it carries the one way out of it: a round button
     // floating over the middle of its left edge that moves the folder it
@@ -1550,6 +1551,7 @@ void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
             [this]() {   // Clear Favorites
         favorites.ClearAll();
         RefreshPinnedTreeNodes();
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -1760,6 +1762,19 @@ void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
     };
 }
 
+void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
+        return favorites.IsFavorite(entry.path);
+    });
+}
+
+void UltraFilerWindow::RepaintFavoriteMarks() {
+    // The displays ask the provider while they paint, so a repaint is all a
+    // changed pin needs.
+    for (UltraCanvasFilerWidget* f : AllFilers()) f->RequestRedraw();
+}
+
 std::vector<std::string> UltraFilerWindow::FolderIconTargets() const {
     std::vector<std::string> folders;
     for (const FilerEntry& e : PinTargets())
@@ -1865,6 +1880,7 @@ void UltraFilerWindow::PinTargetsToFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Pin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -1886,6 +1902,7 @@ void UltraFilerWindow::UnpinTargetsFromFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Unpin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -4216,6 +4233,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
             [this, target](bool checked) {
         if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
         else favorites.Unpin(FilerFavoriteKind::Folder, target);
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -4615,6 +4633,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
+    WireFavoriteMarkProvider(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -4858,6 +4877,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
+        WireFavoriteMarkProvider(histFiler.get());
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;

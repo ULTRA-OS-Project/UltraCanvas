@@ -95,8 +95,8 @@
 // GetThumbnailCacheStats also counts the thumbnails still waiting, being
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
-// Version: 1.36.0
-// Last Modified: 2026-10-01
+// Version: 1.37.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1092,6 +1092,19 @@ namespace UltraCanvas {
         bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
         void SetExtensionBadge(FilerExtensionBadge badge);
         FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // ===== FAVORITE MARK =====
+        // A small red heart at the outermost left of an entry, vertically
+        // centred - on the row of the Details / List / Size bars views, beside
+        // the icon of a thumbnail tile, inside a treemap cell. The provider is
+        // asked for every drawn entry and answers whether it is one of the
+        // host's favorites, so it must be a lookup, not a disk walk; the
+        // widget keeps no list of its own. While a provider is set the row
+        // views reserve a narrow gutter left of the icon for the heart, so a
+        // row with and without one keeps its icon and name in line. After the
+        // host's favorites change, RequestRedraw() is enough - nothing is
+        // cached. Pass an empty function to drop the marks and the gutter.
+        void SetFavoriteMarkProvider(std::function<bool(const FilerEntry&)> provider);
+        bool HasFavoriteMarkProvider() const { return bool(favoriteMarkProvider); }
         // The menu label of a badge mode ("Bar"), shared by the Display
         // submenu and by an application's settings page.
         static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
@@ -1741,6 +1754,8 @@ namespace UltraCanvas {
         // and the tag the thumbnail tiles carry instead of / beside it.
         bool fileExtensionsInNames = true;
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+        // SetFavoriteMarkProvider: which entries carry the heart.
+        std::function<bool(const FilerEntry&)> favoriteMarkProvider;
         // Display > File icons: whose icons an entry with no picture of its
         // own is drawn with.
         FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
@@ -2755,6 +2770,11 @@ namespace UltraCanvas {
         // corner, so the padlock stacks above it instead of on top of it.
         void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect,
                              bool shortcut);
+        // The favorite heart (SetFavoriteMarkProvider) at the outermost left
+        // of the item, vertically centred, and the width the row views keep
+        // free for it left of the icon (0 without a provider).
+        void DrawFavoriteMark(IRenderContext* ctx, const ItemLayout& item);
+        int  FavoriteMarkGutter() const;
         // The box an entry's icon is drawn in, per view - the geometry the
         // badges are placed against, so their hit tests land where they are
         // drawn. `outFit` reports the fit mode the same call decided.

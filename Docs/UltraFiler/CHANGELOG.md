@@ -1,3 +1,14 @@
+#### 2026-10-03 *1.65.0*
+- **Favorites carry a heart in every folder.** A file, folder or app added
+  to the Favorites view (*Pin > To Favorites*) now shows the Favorites
+  button's red heart at the far left of its row or tile, vertically centred,
+  wherever it is listed - the folder tabs, the folder preview pane and the
+  History view - so a favorite can be told apart without opening the
+  Favorites view. A folder pinned only into the folder tree's *Pinned*
+  section is not marked. Unpinning, or *Clear Favorites* in the settings,
+  takes the heart away at once. Built on the Filer widget's new favorite
+  mark (framework changelog).
+
 #### 2026-10-02 *1.64.1*
 - **Pinning folders and sharing files work for names outside the Windows
   code page.** Both handed each selected path, a UTF-8 string, straight to

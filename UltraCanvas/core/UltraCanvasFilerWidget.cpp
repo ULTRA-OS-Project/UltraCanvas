@@ -50,8 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.34.1
-// Last Modified: 2026-09-24
+// Version: 1.35.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -4053,6 +4053,16 @@ namespace UltraCanvas {
         // The tag is painted over the icon box, so nothing is relaid out.
         RequestRedraw();
         NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteMarkProvider(
+            std::function<bool(const FilerEntry&)> provider) {
+        const bool hadGutter = FavoriteMarkGutter() > 0;
+        favoriteMarkProvider = std::move(provider);
+        // The row views move their icon right to make room for the heart, so
+        // gaining or losing the provider is a relayout, not just a repaint.
+        if (hadGutter != (FavoriteMarkGutter() > 0)) InvalidateFilerLayout();
+        RequestRedraw();
     }
 
     const char* UltraCanvasFilerWidget::ExtensionBadgeLabel(
@@ -9371,7 +9381,8 @@ namespace UltraCanvas {
             ItemLayout it;
             it.entryIndex = i;
             it.rect = Rect2Di(area.x, y, x - area.x, rowH);
-            it.imageRect = Rect2Di(area.x + 4, y + 3, rowH - 6, rowH - 6);
+            it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
+                                   rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
@@ -9391,8 +9402,8 @@ namespace UltraCanvas {
             it.entryIndex = i;
             it.rect = Rect2Di(area.x + col * (colW + gap), area.y + row * rowH,
                               colW, rowH);
-            it.imageRect = Rect2Di(it.rect.x + 2, it.rect.y + 2,
-                                   rowH - 4, rowH - 4);
+            it.imageRect = Rect2Di(it.rect.x + 2 + FavoriteMarkGutter(),
+                                   it.rect.y + 2, rowH - 4, rowH - 4);
             items.push_back(it);
         }
         int cols = (static_cast<int>(entries.size()) + rowsPerColumn - 1)
@@ -9493,7 +9504,8 @@ namespace UltraCanvas {
             ItemLayout it;
             it.entryIndex = i;
             it.rect = Rect2Di(area.x, y, area.width - kScrollbarGutter, rowH);
-            it.imageRect = Rect2Di(area.x + 4, y + 3, rowH - 6, rowH - 6);
+            it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
+                                   rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
@@ -9989,6 +10001,8 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            if (favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]))
+                DrawFavoriteMark(ctx, item);
             if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
@@ -12267,6 +12281,69 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(ink);
         ctx->SetStrokeWidth(std::max(1.0f, static_cast<float>(box * 0.09)));
         ctx->DrawArc(body.x + bodyW / 2.0, body.y, shackleR, M_PI, 2.0 * M_PI);
+    }
+
+    int UltraCanvasFilerWidget::FavoriteMarkGutter() const {
+        // Room for a heart of up to 12 px plus a pixel either side. Only the
+        // row views use it; tiles and treemap cells have space of their own.
+        return favoriteMarkProvider ? 14 : 0;
+    }
+
+    void UltraCanvasFilerWidget::DrawFavoriteMark(IRenderContext* ctx,
+                                                  const ItemLayout& item) {
+        // Where it goes: the outermost left of the item, vertically centred
+        // on the row - or, on a tile, on the icon box, so the heart sits
+        // beside the picture rather than beside the caption.
+        int edge = 0;
+        double left = item.rect.x + 1.0;
+        double midY = item.rect.y + item.rect.height / 2.0;
+        switch (viewType) {
+            case FilerViewType::Details:
+            case FilerViewType::List:
+            case FilerViewType::BarSize:
+                edge = std::min(12, std::max(0, item.rect.height - 6));
+                break;
+            case FilerViewType::TreeMap:
+                // A cell too small to also carry the heart keeps its colour:
+                // the treemap is about sizes, and a heart would hide them.
+                if (item.rect.width < 46 || item.rect.height < 42) return;
+                edge = 12;
+                left = item.rect.x + 4.0;
+                break;
+            default:
+                edge = std::max(12, std::min(20, static_cast<int>(
+                        std::lround(item.imageRect.height * 0.2))));
+                left = item.rect.x + 3.0;
+                midY = item.imageRect.y + item.imageRect.height / 2.0;
+                break;
+        }
+        if (edge < 8) return;
+
+        // The heart of the toolbar's Favorites button (rating-heart-on.svg):
+        // its 24-unit outline, which spans x 2..22 and y 3..21.35, scaled to
+        // `edge` across.
+        const double k = edge / 20.0;
+        const double ox = left - 2.0 * k;
+        const double oy = midY - 12.175 * k;
+        auto X = [&](double v) { return ox + v * k; };
+        auto Y = [&](double v) { return oy + v * k; };
+        ctx->ClearPath();
+        ctx->MoveTo(X(12), Y(21.35));
+        ctx->BezierCurveTo(X(12), Y(21.35), X(2), Y(14.6), X(2), Y(8.5));
+        ctx->BezierCurveTo(X(2), Y(5.42), X(4.42), Y(3), X(7.5), Y(3));
+        ctx->BezierCurveTo(X(9.24), Y(3), X(10.91), Y(3.81), X(12), Y(5.09));
+        ctx->BezierCurveTo(X(13.09), Y(3.81), X(14.76), Y(3), X(16.5), Y(3));
+        ctx->BezierCurveTo(X(19.58), Y(3), X(22), Y(5.42), X(22), Y(8.5));
+        ctx->BezierCurveTo(X(22), Y(14.6), X(12), Y(21.35), X(12), Y(21.35));
+        ctx->ClosePath();
+        ctx->SetFillPaint(Color(226, 67, 74, 255));
+        ctx->FillPathPreserve();
+        // A light rim keeps it a heart where it overlaps an icon or sits on
+        // the selection colour.
+        ctx->SetStrokePaint(Color(255, 255, 255, 200));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
     }
 
     void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,

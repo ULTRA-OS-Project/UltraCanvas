@@ -1498,6 +1498,39 @@ application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
 that copy, so the icon survives the original being moved or deleted. *Extras >
 Remove folder icon* takes it away again.
 
+## Favorite mark
+
+`SetFavoriteMarkProvider(fn)` puts a small red heart — the one of
+`media/icons/rating-heart-on.svg`, drawn as a vector so it needs no asset — on
+every entry the host counts as a favorite. The heart sits at the **outermost
+left** of the entry, **vertically centred**:
+
+| View | Where the heart goes |
+|---|---|
+| Details, List, Size bars | In a 14 px gutter left of the icon, centred on the row |
+| Thumbnail tiles | At the tile's left edge, centred on the icon box (not on the caption) |
+| Treemap | At the cell's left edge, centred on the cell — only in a cell of at least 46 × 42 px, so the sizes stay readable |
+
+```cpp
+filer->SetFavoriteMarkProvider([&favorites](const FilerEntry& e) {
+    return favorites.count(e.path) > 0;      // a lookup, never a disk walk
+});
+// ... after the host's favorites change:
+filer->RequestRedraw();
+```
+
+The provider is asked for every entry while it is painted, and the widget
+keeps no list of its own, so a repaint is all a changed favorite needs. While a
+provider is set the row views reserve the gutter for every row, favorite or
+not, so icons and names stay in one column; `SetFavoriteMarkProvider({})`
+drops the marks and gives the gutter back. A dimmed entry (type filter) dims
+its heart with it.
+
+UltraFiler answers it with everything in its Favorites view (the heart
+button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
+with folders pinned only into the folder tree's *Pinned* section — and leaves
+the Favorites view's own pages without it, where every entry would carry one.
+
 ## Folder previews
 
 A folder drawn as the built-in shape shows the **first pictures inside it
@@ -2523,6 +2556,7 @@ reports what the system hides, not what the host asked for.
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
+| `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
