@@ -989,6 +989,38 @@ void TestMailTables() {
 
 // The link under the pointer is reported as the pointer moves (a mail
 // reader's status line), and "" once it is off the link.
+// BuildOptions::linkTooltips: text links and linked pictures show their href
+// as a tooltip - or leave it to onLinkHovered (a status line) when off.
+void TestLinkTooltips() {
+    std::printf("link tooltips follow BuildOptions::linkTooltips\n");
+    for (const bool tooltips : { true, false }) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.enableImages = true;
+        opts.onLinkActivated = [](const std::string&) {};
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        opts.linkTooltips = tooltips;
+        HTML::ElementBuilder builder;
+        auto root = builder.Build("<p><a href='https://real.example/x'>link</a> text</p>"
+                                  "<div><a href='https://pic.example/y'><img src='p.png'></a></div>",
+                                  opts).root;
+        if (!root) { Check(false, "built"); return; }
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        const UltraCanvasLabel* label = nullptr;
+        const UltraCanvasImageElement* image = nullptr;
+        for (const auto& p : all) {
+            if (auto* l = dynamic_cast<UltraCanvasLabel*>(p.element); l && !l->GetTextLinks().empty())
+                label = l;
+            if (auto* i = dynamic_cast<UltraCanvasImageElement*>(p.element)) image = i;
+        }
+        Check(label && label->GetShowLinkTooltips() == tooltips,
+              tooltips ? "text link: tooltip on" : "text link: tooltip off");
+        Check(image && image->GetTooltip() == (tooltips ? "https://pic.example/y" : ""),
+              tooltips ? "linked picture: its href as tooltip" : "linked picture: no tooltip");
+    }
+}
+
 void TestLinkHover() {
     std::printf("hovered links are reported\n");
     HTML::BuildOptions opts;
@@ -1409,6 +1441,7 @@ int main() {
     TestImageLimits();
     TestMailTables();
     TestLinkHover();
+    TestLinkTooltips();
     TestStackedColumns();
     TestAlignCentresNarrowBlock();
     TestContentBoxWidth();

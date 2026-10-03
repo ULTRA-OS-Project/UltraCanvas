@@ -1921,7 +1921,12 @@ namespace UltraCanvas {
                 else handled = false;
                 break;
             case UCKeys::Escape:
-                break;
+                // Nothing in a text area to cancel, so leave the key to the
+                // window: a dialog maps it to Cancel. Swallowing it here kept
+                // every dialog with a notes field open on Escape while the
+                // caret was in that field. Returned straight away rather than
+                // falling through, so the key's "\x1b" text is never typed.
+                return false;
             default:
                 handled = false;
                 break;

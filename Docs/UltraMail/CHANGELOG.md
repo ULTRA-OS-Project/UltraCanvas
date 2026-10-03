@@ -1,4 +1,4 @@
-#### 2026-10-04 *0.10.24*
+#### 2026-10-04 *0.10.25*
 - **The phishing scan knows the brands phishing pretends to be.** The
   known-sender registry grows from about 50 services to about 400, with 600 of
   their own domains: banks and brokers (Chase, Bank of America, Barclays, HSBC,
@@ -32,6 +32,24 @@
 - Brand lookups use an index instead of walking the table for every message
   in a folder. See [SenderBadges.md](SenderBadges.md#2-the-known-sender-registry)
   for the rules an entry must follow.
+
+#### 2026-10-04 *0.10.24*
+- **Settings > Display > Links: where a link's address is shown.** Two
+  choices:
+  - **Show in status bar** (the default): the status line counts the open
+    message's links and names the sites they go to, its tooltip lists every
+    link, and pointing at a link shows its address there.
+  - **Show as tooltip**: the address of the link under the pointer - a text
+    link or a linked picture - appears in a tooltip beside it that follows the
+    pointer along the link, and the status line's links segment is hidden.
+  The choice applies at once to the message on screen and is remembered
+  (`link_display` in `preferences.ini`).
+- **Web addresses in plain-text mail work like links.** An address written in
+  a plain-text message (or an HTML message shown as plain text) shows the
+  pointing hand, reports itself as the pointer rests on it - in the status
+  line or as a tooltip, as Settings > Display > Links says - and opens in the
+  browser when clicked ("www." addresses as https). Dragging across one still
+  selects the text.
 
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed

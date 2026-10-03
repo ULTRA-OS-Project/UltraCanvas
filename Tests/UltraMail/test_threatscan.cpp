@@ -6,8 +6,9 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
-// Version: 0.3.0 - banks and exchanges claimed from elsewhere; ordinary words
+// Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
+// Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -387,4 +388,16 @@ TEST(image_hosts_are_read_from_src_and_background) {
         "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
         "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
     REQUIRE(hosts.size() == 3);
+}
+
+TEST(plain_link_at_finds_the_url_under_a_position) {
+    const std::string text = "See https://example.com/a?b=1. Or www.test.org, not this.";
+    const std::size_t url = text.find("https://");
+    REQUIRE_EQ(PlainLinkAt(text, url), std::string("https://example.com/a?b=1"));
+    REQUIRE_EQ(PlainLinkAt(text, url + 10), std::string("https://example.com/a?b=1"));
+    REQUIRE(PlainLinkAt(text, text.find("1.") + 1).empty());   // the full stop after it
+    REQUIRE(PlainLinkAt(text, 0).empty());                     // "See"
+    REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
+    REQUIRE(PlainLinkAt(text, text.find("not")).empty());
+    REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
 }

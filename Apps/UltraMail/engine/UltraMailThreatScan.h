@@ -14,6 +14,7 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.3.0 - PlainLinkAt (the bare URL under the pointer in plain text)
 // Version: 0.2.0 - borrowed-pictures rule; kThreatRulesRevision (re-scan older verdicts);
 //                ExtractImageHosts
 // Author: UltraCanvas Framework / ULTRA OS
@@ -66,6 +67,11 @@ struct MessageLink {
 // Pull every link out of a body. HTML bodies give href/action targets with
 // their anchor text; plain-text bodies give the bare URLs.
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
+
+// The bare URL (as ExtractLinks finds it in plain text) that covers byte
+// `offset` of `text`, or "" when that byte is not part of one - what the
+// plain-text view reports for the pointer.
+std::string PlainLinkAt(const std::string& text, std::size_t offset);
 
 // What the scan needs about a message. Everything is optional: a caller that
 // has only a body still gets the link rules.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor
-# and DeviceExplorer as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
+# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor,
+# DeviceExplorer, UltraAuthenticator and UltraPassword as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
 # command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
@@ -554,9 +554,13 @@ build_app_bundle() {
     local extra_plist="$6"
     local samples="${7:-}"   # "samples": the demo's sample media and sources
 
+    # Most targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY
+    # to bin/ (UltraAuthenticator, UltraPassword), so look in both, as
+    # package-linux.sh and package-win.sh do.
     local exe_path="$BUILD_DIR/$exe_name"
+    [ -f "$exe_path" ] || exe_path="$BUILD_DIR/bin/$exe_name"
     if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found: $exe_path (skipping $display_name)"
+        echo "Warning: Executable not found in $BUILD_DIR or $BUILD_DIR/bin (skipping $display_name)"
         return 1
     fi
 
@@ -825,6 +829,25 @@ build_app_bundle \
     "media/appicon/DeviceExplorer.png" \
     "public.app-category.utilities" \
     ""
+
+# Package UltraAuthenticator and UltraPassword. Both need libsodium (UltraCrypt)
+# and are not built without it, so a missing one is a skip, not a failure of
+# the whole run (the calls above abort it under set -e).
+build_app_bundle \
+    "UltraAuthenticator" \
+    "UltraAuthenticator" \
+    "com.cloverleaf.UltraAuthenticator" \
+    "media/appicon/UltraAuthenticator.png" \
+    "public.app-category.utilities" \
+    "" || echo "  UltraAuthenticator not packaged"
+
+build_app_bundle \
+    "UltraPassword" \
+    "UltraPassword" \
+    "com.cloverleaf.UltraPassword" \
+    "media/appicon/UltraPassword.png" \
+    "public.app-category.utilities" \
+    "" || echo "  UltraPassword not packaged"
 
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 build_cli_tool "ultramsg"
