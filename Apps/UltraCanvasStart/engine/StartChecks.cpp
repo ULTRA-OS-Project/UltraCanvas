@@ -8,6 +8,8 @@
 
 #include "UltraCanvasUtils.h"
 
+#include <cstdlib>
+
 namespace UltraCanvasStart {
 
 namespace {
@@ -80,10 +82,21 @@ CheckResult CheckPkgConfigModule(const std::string& module, const std::string& p
 
 std::vector<std::string> CheckSearchDirectories(const SystemProfile& profile) {
     std::vector<std::string> directories;
-    if (profile.platform == Platform::Windows && !profile.msysPrefix.empty()) {
-        directories.push_back(profile.msysPrefix +
-                              (profile.architecture == "arm64" ? "/clangarm64/bin" : "/clang64/bin"));
-        directories.push_back(profile.msysPrefix + "/usr/bin");
+    if (profile.platform == Platform::Windows) {
+        if (!profile.msysPrefix.empty()) {
+            directories.push_back(profile.msysPrefix +
+                                  (profile.architecture == "arm64" ? "/clangarm64/bin" : "/clang64/bin"));
+            directories.push_back(profile.msysPrefix + "/usr/bin");
+        }
+        // Git for Windows is the usual git on a Windows machine, and it is
+        // not on PATH inside an MSYS2 shell (the CI runner's has none of its
+        // own); the toolchain check accepts it where it is installed.
+        for (const char* variable : { "ProgramFiles", "ProgramW6432", "LOCALAPPDATA" }) {
+            if (const char* base = std::getenv(variable)) {
+                directories.push_back(std::string(base) + (std::string(variable) == "LOCALAPPDATA"
+                                                           ? "/Programs/Git/cmd" : "/Git/cmd"));
+            }
+        }
     } else if (profile.platform == Platform::MacOS) {
         directories.push_back("/opt/homebrew/bin");
         directories.push_back("/usr/local/bin");
