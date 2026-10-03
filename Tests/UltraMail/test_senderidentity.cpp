@@ -173,6 +173,7 @@ TEST(registry_is_consistent) {
     std::map<std::string, std::string> owner;
     for (const BrandRule& rule : SenderBrandRules()) {
         REQUIRE(ids.insert(rule.brand.id).second);
+        REQUIRE(rule.labels.empty());   // a name under any suffix would trust squatters
         REQUIRE(!rule.brand.name.empty());
         REQUIRE(rule.brand.iconUrl.find("https://") == 0);
         for (const std::string& d : rule.domains) {
@@ -242,10 +243,12 @@ TEST(phishing_targets_are_in_the_registry) {
     REQUIRE(BrandForAddress("security@coinbase-support.com") == nullptr);
     // Nor are the big brands' names under a suffix they do not use.
     for (const char* squatted : { "x@amazon.xyz", "x@ebay.shop", "x@google.top",
-                                  "x@dhl.app", "x@amazon-de.com" })
+                                  "x@dhl.app", "x@amazon-de.com", "x@etsy.shop",
+                                  "x@pinterest.xyz" })
         REQUIRE(BrandForAddress(squatted) == nullptr);
     for (const char* genuine : { "x@amazon.com.be", "x@marketplace.amazon.de",
-                                 "x@ebay.at", "x@noreply.dhl.de", "x@google.co.jp" })
+                                 "x@ebay.at", "x@noreply.dhl.de", "x@google.co.jp",
+                                 "x@mail.etsy.com", "x@pinterest.co.uk" })
         REQUIRE(BrandForAddress(genuine) != nullptr);
 }
 

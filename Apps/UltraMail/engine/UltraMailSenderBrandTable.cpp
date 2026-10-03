@@ -24,6 +24,7 @@
 //    (Sparkasse) is recognised but not claimed, so its genuine mail is not
 //    flagged as impersonation.
 //
+// Version: 0.1.2 - Etsy and Pinterest too: no entry trusts a name under any suffix
 // Version: 0.1.1 - Amazon, eBay, Google and DHL list their country domains
 //                  instead of trusting their name under any suffix
 // Version: 0.1.0 - split out of UltraMailSenderBrands.cpp; ~400 brands
@@ -190,7 +191,11 @@ std::vector<BrandRule> BuildRules() {
 
         // ── More social networks and messengers ─────────────────────────────
         { {"pinterest", "Pinterest", "https://www.pinterest.com/favicon.ico", 0xE60023, C::Social},
-          {"pinterest.com", "pinterestmail.com"}, {"pinterest"}, {"pinterest"} },
+          {"pinterest.com", "pinterestmail.com",
+           "pinterest.de", "pinterest.at", "pinterest.ch", "pinterest.co.uk",
+           "pinterest.ie", "pinterest.fr", "pinterest.it", "pinterest.es",
+           "pinterest.ca", "pinterest.com.mx", "pinterest.com.au", "pinterest.jp"},
+          {}, {"pinterest"} },
         { {"tumblr", "Tumblr", "https://www.tumblr.com/favicon.ico", 0x36465D, C::Social},
           {"tumblr.com", "tumblr.net"}, {}, {"tumblr"} },
         { {"mastodon", "Mastodon", "https://joinmastodon.org/favicon.ico", 0x6364FF, C::Social},
@@ -200,7 +205,7 @@ std::vector<BrandRule> BuildRules() {
         { {"vimeo", "Vimeo", "https://vimeo.com/favicon.ico", 0x1AB7EA, C::Media},
           {"vimeo.com"}, {}, {"vimeo"} },
         { {"etsy", "Etsy", "https://www.etsy.com/favicon.ico", 0xF1641E, C::Shopping},
-          {}, {"etsy"}, {"etsy"} },
+          {"etsy.com"}, {}, {"etsy"} },
         { {"snapchat",  "Snapchat",  "", 0xFFFC00, C::Social},
           {"snapchat.com", "snap.com"}, {}, {"snapchat"} },
         { {"bluesky",   "Bluesky",   "", 0x1185FE, C::Social},

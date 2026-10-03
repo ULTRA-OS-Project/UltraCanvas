@@ -85,9 +85,9 @@ and the blue business-contact badge. So the entries follow rules that are
 stricter than "the brand probably owns this":
 
 * **Only the brand's own domains**, and country domains listed one by one
-  (`lidl.de`, `amazon.co.uk`, `dhl.de`, …). The `labels` form ("any
-  `etsy.*`") trusts a squatted `etsy.xyz` too; only Etsy and Pinterest still
-  use it.
+  (`lidl.de`, `amazon.co.uk`, `dhl.de`, …). No entry is trusted
+  under "any `amazon.*`": that would hand a squatted `amazon.xyz` the badge
+  too, and the consistency test refuses it.
 * **A name that is an ordinary word is claimed through keywords only**
   (`NameClaim::KeywordsOnly`). "Chase", "Target", "Visa", "Discover",
   "Steam", "Signal", "Booking", "UPS" would otherwise turn every visa

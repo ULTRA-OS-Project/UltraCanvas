@@ -26,10 +26,11 @@ enum class NameClaim {
 };
 
 // `domains` are exact registrable domains (a subdomain such as
-// "aws.amazon.com" reduces to its registrable domain). `labels` match a
-// registrable domain whose base label is that word under *any* public suffix
-// (amazon.de, amazon.co.uk) - convenient, but it trusts a squatted amazon.xyz
-// as well, so new entries list their country domains explicitly instead.
+// "aws.amazon.com" reduces to its registrable domain). `labels` would match
+// a registrable domain whose base label is that word under *any* public
+// suffix - which trusts a squatted amazon.xyz as much as amazon.de - so no
+// entry uses it any more (registry_is_consistent checks that); list the
+// country domains in `domains` instead.
 // `keywords` are lowercase words or phrases that claim the brand.
 // An empty `brand.iconUrl` is filled in from the first domain.
 struct BrandRule {
