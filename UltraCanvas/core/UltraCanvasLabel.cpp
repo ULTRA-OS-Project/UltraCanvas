@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips)
 // Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
 // Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
 //                 spacing: Pango breaks on spacing its extents leave out)
@@ -25,12 +26,13 @@
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include <vector>
 #include <limits>
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTooltipManager.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
 
@@ -455,10 +457,18 @@ namespace UltraCanvas {
                     if (!textLinks.empty()) {
                         const int was = hoveredLink;
                         hoveredLink = LinkIndexAtPoint(event.pointer);
-                        if (hoveredLink != was && onLinkHovered) {
-                            onLinkHovered(hoveredLink >= 0
-                                              ? textLinks[static_cast<size_t>(hoveredLink)].href
-                                              : std::string());
+                        if (hoveredLink != was) {
+                            const std::string href = hoveredLink >= 0
+                                ? textLinks[static_cast<size_t>(hoveredLink)].href
+                                : std::string();
+                            if (onLinkHovered) onLinkHovered(href);
+                            if (showLinkTooltips) {
+                                if (!href.empty() && GetWindow())
+                                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                        GetWindow(), href, event.pointerWindow);
+                                else
+                                    UltraCanvasTooltipManager::HideTooltip();
+                            }
                         }
                     }
                     if (!IsHovered()) {
@@ -468,7 +478,10 @@ namespace UltraCanvas {
                         }
                     }
                 } else {
-                    if (hoveredLink >= 0 && onLinkHovered) onLinkHovered(std::string());
+                    if (hoveredLink >= 0) {
+                        if (onLinkHovered) onLinkHovered(std::string());
+                        if (showLinkTooltips) UltraCanvasTooltipManager::HideTooltip();
+                    }
                     hoveredLink = -1;
                     if (IsHovered()) {
                         SetHovered(false);
@@ -480,7 +493,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseLeave:
-                if (hoveredLink >= 0 && onLinkHovered) onLinkHovered(std::string());
+                if (hoveredLink >= 0) {
+                    if (onLinkHovered) onLinkHovered(std::string());
+                    if (showLinkTooltips) UltraCanvasTooltipManager::HideTooltip();
+                }
                 hoveredLink = -1;
                 break;
 

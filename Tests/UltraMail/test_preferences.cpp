@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.2.0 - link_display (status bar / tooltip)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -50,6 +51,7 @@ TEST(preferences_round_trip) {
     out.remoteImageSenders = { "news@example.com" };
     out.showHtml = false;
     out.messageTextSize = 16;
+    out.linkDisplay = LinkDisplay::Tooltip;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -61,6 +63,7 @@ TEST(preferences_round_trip) {
     REQUIRE(in.remoteImageSenders == out.remoteImageSenders);
     REQUIRE(!in.showHtml);
     REQUIRE_EQ(in.messageTextSize, 16);
+    REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
     std::remove(path.c_str());
 }
 
@@ -76,6 +79,7 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.Load(path));
     REQUIRE(in.remoteImages == RemoteImagePolicy::LoadTrusted);   // the default
     REQUIRE(in.showHtml);
+    REQUIRE(in.linkDisplay == LinkDisplay::StatusBar);           // the default
     REQUIRE_EQ(in.messageTextSize, 24);                           // clamped
     REQUIRE(in.remoteImageSenders.count("a@b.c") == 1);
     std::remove(path.c_str());

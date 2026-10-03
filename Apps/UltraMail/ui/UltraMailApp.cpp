@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.18 - Settings > Display > Links: a link's address in the status line or
+//                   as a tooltip (ApplyLinkDisplay)
 // Version: 0.9.17 - the status line lists a message's links (summary, every link in
 //                   its tooltip) and shows where the link under the pointer goes
 // Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
@@ -592,6 +594,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                   Theme::kSizeSecondary, Theme::kTextSecondary);
     linksLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     statusRow->AddChild(linksLabel_);
+    ApplyLinkDisplay();
 
     // The connection pill, right-aligned: the selected account's last contact
     // with its mail server. Hovering it tells the server, when it was last
@@ -773,8 +776,17 @@ void UltraMailApp::ShowMessageLinks(const std::vector<MessageLink>& links) {
     linksLabel_->SetTooltip(list);
 }
 
-void UltraMailApp::ShowHoveredLink(const std::string& href) {
+void UltraMailApp::ApplyLinkDisplay() {
+    const bool tooltip = prefs_.linkDisplay == LinkDisplay::Tooltip;
+    mailView_.SetLinkTooltips(tooltip);
     if (!linksLabel_) return;
+    linksLabel_->SetText(linksSummary_);
+    linksLabel_->SetVisible(!tooltip);
+    linksLabel_->RequestRedraw();
+}
+
+void UltraMailApp::ShowHoveredLink(const std::string& href) {
+    if (!linksLabel_ || prefs_.linkDisplay == LinkDisplay::Tooltip) return;
     linksLabel_->SetText(href.empty() ? linksSummary_ : "\xE2\x86\x92 " + href);
 }
 
@@ -2846,6 +2858,7 @@ void UltraMailApp::OpenSettings() {
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
         senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+        ApplyLinkDisplay();
     });
 }
 

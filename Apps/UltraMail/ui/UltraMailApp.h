@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.10.3 - ApplyLinkDisplay: a link's address in the status line or as a
+//                   tooltip (Settings > Display > Links)
 // Version: 0.10.2 - the links segment of the status line (ShowMessageLinks /
 //                   ShowHoveredLink)
 // Version: 0.10.1 - Edit / Delete wait for a running send (WhenOutboxIdle)
@@ -194,6 +196,9 @@ private:
     // the pointer is on a link, that link's real target.
     void ShowMessageLinks(const std::vector<MessageLink>& links);
     void ShowHoveredLink(const std::string& href);
+    // Settings > Display > Links: the status line's links segment (status
+    // bar), or a tooltip over the link under the pointer and no segment.
+    void ApplyLinkDisplay();
     // Runs the status-line ring while a sync, send or mailbox action is in flight.
     void UpdateBusyIndicator();
     // The connection pill at the right end of the status line: the selected

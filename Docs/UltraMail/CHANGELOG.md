@@ -1,3 +1,15 @@
+#### 2026-10-04 *0.10.24*
+- **Settings > Display > Links: where a link's address is shown.** Two
+  choices:
+  - **Show in status bar** (the default): the status line counts the open
+    message's links and names the sites they go to, its tooltip lists every
+    link, and pointing at a link shows its address there.
+  - **Show as tooltip**: the address of the link under the pointer - a text
+    link or a linked picture - appears in a tooltip beside it, and the status
+    line's links segment is hidden.
+  The choice applies at once to the message on screen and is remembered
+  (`link_display` in `preferences.ini`).
+
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed
   itself as Tinder - Tinder's name and Tinder's own pictures, sent from an

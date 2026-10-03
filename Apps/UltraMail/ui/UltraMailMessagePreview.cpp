@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.9.0 - a link's address as a tooltip when Settings > Display > Links says so
 // Version: 0.8.0 - reports the body's links and the hovered link (status line);
 //                re-scans verdicts older than the current threat rules
 // Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
@@ -393,6 +394,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         opts.onLinkHovered = [this](const std::string& href) {
             if (onLinkHovered) onLinkHovered(href);
         };
+        opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
