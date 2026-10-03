@@ -1,4 +1,4 @@
-#### 2026-10-04 *0.10.25*
+#### 2026-10-04 *0.10.26*
 - **Unread mail stays unread.** Syncing marked every new message read on the
   server, so the list had no unread mail to show in bold, the account's unread
   counts stayed at 0, and other mail programs saw the mail as read too. The
@@ -20,6 +20,24 @@
   counted (`LocalStore::SetNeedsAnswerRules`), so changing them needs no
   re-sync. Saved as `needs_answer_max_age_days` / `needs_answer_only_written_to`
   in `preferences.ini`. Tests: `test_localstore.cpp`, `test_preferences.cpp`.
+
+#### 2026-10-04 *0.10.24*
+- **Settings > Display > Links: where a link's address is shown.** Two
+  choices:
+  - **Show in status bar** (the default): the status line counts the open
+    message's links and names the sites they go to, its tooltip lists every
+    link, and pointing at a link shows its address there.
+  - **Show as tooltip**: the address of the link under the pointer - a text
+    link or a linked picture - appears in a tooltip beside it that follows the
+    pointer along the link, and the status line's links segment is hidden.
+  The choice applies at once to the message on screen and is remembered
+  (`link_display` in `preferences.ini`).
+- **Web addresses in plain-text mail work like links.** An address written in
+  a plain-text message (or an HTML message shown as plain text) shows the
+  pointing hand, reports itself as the pointer rests on it - in the status
+  line or as a tooltip, as Settings > Display > Links says - and opens in the
+  browser when clicked ("www." addresses as https). Dragging across one still
+  selects the text.
 
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed

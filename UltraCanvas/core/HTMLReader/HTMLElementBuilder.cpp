@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.23.0 - BuildOptions::linkTooltips: text links and linked pictures
 // Version: 1.22.0 - merged with main's 1.5.0-1.6.0 (floats, clear, shrink-to-fit
 //                   tables, list markers, stacking cells, content-box px sizes):
 //                   size limits are passed as the whole box's, cells size their
@@ -1048,6 +1049,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         label->SetTextLinks(runLinks);
         label->onLinkActivated = opts.onLinkActivated;
         label->onLinkHovered = opts.onLinkHovered;
+        label->SetShowLinkTooltips(opts.linkTooltips);
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
     return label;
@@ -1295,7 +1297,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
             image->onHoverEnter = [hover = opts.onLinkHovered, linkHref]() { hover(linkHref); };
             image->onHoverLeave = [hover = opts.onLinkHovered]() { hover(std::string()); };
         }
-        image->SetTooltip(linkHref);
+        if (opts.linkTooltips) image->SetTooltip(linkHref);
     }
 
     // Block flow gives every child the full column width, and the image

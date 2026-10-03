@@ -552,6 +552,16 @@ if(BUILD_ULTRAAUTHENTICATOR AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraAuthenticator)
 endif()
 
+# ===== ULTRAPASSWORD =====
+# Password vault: groups in a tree, a card per password with the site's
+# sign-in method, one Argon2id + XChaCha20-Poly1305 file that is also the
+# export format. The core needs only UltraCrypt and builds headless; the GUI
+# is added on top when the framework is available.
+option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
+if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
+    add_subdirectory(Apps/UltraPassword)
+endif()
+
 # ===== DEMO APPLICATION =====
 if(BUILD_DEMO_APP)
     message(STATUS "")
@@ -1742,6 +1752,20 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Password vault core: model, encrypted vault file / export round trips,
+    # wrong-password refusal, tamper detection, CSV exchange and the
+    # generator. Links only UltraCrypt, so it runs headless.
+    if(TARGET UltraPasswordCore)
+        add_executable(UltraPasswordTests Tests/UltraPasswordTests.cpp)
+        target_link_libraries(UltraPasswordTests PRIVATE UltraPasswordCore)
+        target_compile_features(UltraPasswordTests PRIVATE cxx_std_20)
+        set_target_properties(UltraPasswordTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraPasswordTests COMMAND UltraPasswordTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # Encrypted backup file: round trip, refusal to reuse the master password,
     # tamper detection, and that a restore never overwrites a live account.

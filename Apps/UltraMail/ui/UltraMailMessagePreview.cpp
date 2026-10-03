@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.11.0 - a web address in plain-text mail opens when clicked
+// Version: 0.10.0 - the plain-text view reports the web address under the pointer
+//                 too (status line or tooltip, as Settings > Display > Links says)
+// Version: 0.9.0 - a link's address as a tooltip when Settings > Display > Links says so
 // Version: 0.8.0 - reports the body's links and the hovered link (status line);
 //                re-scans verdicts older than the current threat rules
 // Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
@@ -21,6 +25,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTooltipManager.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"      // OpenURL
@@ -73,6 +78,104 @@ std::string HtmlToText(const std::string& html) {
     }
     return out;
 }
+
+// Opens a link of the message in the browser - web and mail addresses only,
+// never a file: or javascript: target a message could carry. A bare
+// "www.example.com" from plain text opens as https.
+void OpenMessageLink(const std::string& href) {
+    std::string lower = href;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
+        lower.rfind("mailto:", 0) == 0)
+        UltraCanvas::OpenURL(href);
+    else if (lower.rfind("www.", 0) == 0)
+        UltraCanvas::OpenURL("https://" + href);
+}
+
+// The plain-text body: a read-only text area whose web addresses (bare URLs
+// in the text) work like the HTML view's links - the one under the pointer is
+// reported (to the status line, or as a tooltip that follows the pointer
+// along it) and a click on it opens it. A drag still selects text.
+class PlainBodyArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+
+    std::function<void(const std::string& href)> onLinkHovered;
+    std::function<void(const std::string& href)> onLinkActivated;
+    bool linkTooltips = false;
+
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseMove:
+                Hover(Contains(event.pointer) ? LinkUnder(event.pointer) : std::string(),
+                      event.pointerWindow);
+                break;
+            case UCEventType::MouseLeave:
+                Hover(std::string(), event.pointerWindow);
+                break;
+            case UCEventType::MouseDown:
+                pressedLink_ = event.button == UCMouseButton::Left && Contains(event.pointer)
+                                   ? LinkUnder(event.pointer) : std::string();
+                break;
+            case UCEventType::MouseUp: {
+                const std::string pressed = std::move(pressedLink_);
+                pressedLink_.clear();
+                const bool handled = UltraCanvasTextArea::OnEvent(event);
+                // A click - pressed and released on the same link, nothing
+                // selected by a drag - opens it.
+                if (!pressed.empty() && event.button == UCMouseButton::Left &&
+                    !HasSelection() && LinkUnder(event.pointer) == pressed && onLinkActivated) {
+                    onLinkActivated(pressed);
+                    return true;
+                }
+                return handled;
+            }
+            default:
+                break;
+        }
+        return UltraCanvasTextArea::OnEvent(event);
+    }
+
+    // The pointing hand over a link, as over a link in formatted mail.
+    UCMouseCursor GetMouseCursor() const override {
+        return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
+    }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
+
+    std::string LinkUnder(const Point2Di& pointer) {
+        const LineColumnIndex hit = PosToLineColumn(pointer);
+        if (!hit.IsValid()) return std::string();
+        const std::string line = GetLine(hit.lineIndex);
+        // Codepoint column → byte offset; past the end of the line is no link.
+        std::size_t byte = 0;
+        for (int cp = 0; cp < hit.columnIndex && byte < line.size(); ++cp) {
+            ++byte;
+            while (byte < line.size() && (static_cast<unsigned char>(line[byte]) & 0xC0) == 0x80)
+                ++byte;
+        }
+        if (byte >= line.size()) return std::string();
+        return PlainLinkAt(line, byte);
+    }
+
+    void Hover(const std::string& href, const Point2Di& pointerWindow) {
+        if (href == hovered_) {
+            if (linkTooltips && !href.empty() &&
+                (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending()))
+                UltraCanvasTooltipManager::UpdateTooltipPosition(pointerWindow);
+            return;
+        }
+        hovered_ = href;
+        if (onLinkHovered) onLinkHovered(href);
+        if (!linkTooltips) return;
+        if (!href.empty() && GetWindow())
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), href, pointerWindow);
+        else
+            UltraCanvasTooltipManager::HideTooltip();
+    }
+};
 
 std::string SanitizeFolder(const std::string& folder) {
     std::string out;
@@ -383,16 +486,11 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
         // file: or javascript: target a message could carry).
-        opts.onLinkActivated = [](const std::string& href) {
-            std::string lower = href;
-            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
-                lower.rfind("mailto:", 0) == 0)
-                UltraCanvas::OpenURL(href);
-        };
+        opts.onLinkActivated = OpenMessageLink;
         opts.onLinkHovered = [this](const std::string& href) {
             if (onLinkHovered) onLinkHovered(href);
         };
+        opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
@@ -427,7 +525,12 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     }
 
     // The text area is sized by the host's flex column, so it follows the pane.
-    auto text = std::make_shared<UltraCanvasTextArea>("prevBodyText", 0, 0, 0, 0);
+    auto text = std::make_shared<PlainBodyArea>("prevBodyText", 0, 0, 0, 0);
+    text->onLinkHovered = [this](const std::string& href) {
+        if (onLinkHovered) onLinkHovered(href);
+    };
+    text->onLinkActivated = OpenMessageLink;
+    text->linkTooltips = linkTooltips;
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
