@@ -9,6 +9,10 @@
     pointer along the link, and the status line's links segment is hidden.
   The choice applies at once to the message on screen and is remembered
   (`link_display` in `preferences.ini`).
+- **Plain-text mail shows its links' addresses too.** A web address written
+  in a plain-text message (or an HTML message shown as plain text) reports
+  itself as the pointer rests on it - in the status line or as a tooltip, as
+  Settings > Display > Links says - the same as a link in formatted mail.
 
 #### 2026-10-04 *0.10.23*
 - **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed

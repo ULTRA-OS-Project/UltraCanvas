@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.3.0 - PlainLinkAt: the bare URL at a position of plain text
 // Version: 0.2.0 - borrowed-brand-pictures rule (a brand's own pictures over links
 //                elsewhere); ExtractImageHosts
 // Version: 0.1.0
@@ -343,30 +344,48 @@ std::vector<std::string> ExtractImageHosts(const std::string& body) {
     return hosts;
 }
 
+// The next bare URL in plain text from byte `from`: [start, end). False when
+// there is none.
+static bool NextPlainUrl(const std::string& s, std::size_t from, std::size_t& start, std::size_t& end) {
+    start = std::string::npos;
+    for (const char* proto : { "http://", "https://", "www." }) {
+        const std::size_t p = s.find(proto, from);
+        if (p != std::string::npos && (start == std::string::npos || p < start))
+            start = p;
+    }
+    if (start == std::string::npos) return false;
+    end = start;
+    while (end < s.size() && !std::isspace(static_cast<unsigned char>(s[end])) &&
+           s[end] != '<' && s[end] != '>' && s[end] != '"' && s[end] != '\'')
+        ++end;
+    // Trailing sentence punctuation is not part of the URL.
+    while (end > start && std::string(".,;:!?)]").find(s[end - 1]) != std::string::npos)
+        --end;
+    return true;
+}
+
+std::string PlainLinkAt(const std::string& text, std::size_t offset) {
+    std::size_t i = 0, start = 0, end = 0;
+    while (i < text.size() && NextPlainUrl(text, i, start, end)) {
+        if (start > offset) break;
+        if (offset < end) {
+            std::string href = text.substr(start, end - start);
+            return HostOf(href).empty() ? std::string() : href;
+        }
+        i = end > start ? end : start + 1;
+    }
+    return std::string();
+}
+
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
     std::vector<MessageLink> links;
     if (body.empty()) return links;
 
     if (!isHtml) {
-        const std::string& s = body;
-        std::size_t i = 0;
-        while (i < s.size()) {
-            std::size_t start = std::string::npos;
-            for (const char* proto : { "http://", "https://", "www." }) {
-                const std::size_t p = s.find(proto, i);
-                if (p != std::string::npos && (start == std::string::npos || p < start))
-                    start = p;
-            }
-            if (start == std::string::npos) break;
-            std::size_t end = start;
-            while (end < s.size() && !std::isspace(static_cast<unsigned char>(s[end])) &&
-                   s[end] != '<' && s[end] != '>' && s[end] != '"' && s[end] != '\'')
-                ++end;
-            // Trailing sentence punctuation is not part of the URL.
-            while (end > start && std::string(".,;:!?)]").find(s[end - 1]) != std::string::npos)
-                --end;
+        std::size_t i = 0, start = 0, end = 0;
+        while (i < body.size() && NextPlainUrl(body, i, start, end)) {
             MessageLink link;
-            link.href = s.substr(start, end - start);
+            link.href = body.substr(start, end - start);
             link.host = HostOf(link.href);
             if (!link.host.empty()) links.push_back(link);
             i = end > start ? end : start + 1;
