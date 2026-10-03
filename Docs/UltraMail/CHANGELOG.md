@@ -5,6 +5,9 @@
   account the message was read in, with the subject and text the link
   carries. Before, a `mailto:` link went to the system's mail program, and
   addresses in plain text did nothing.
+  - **Copies too:** the link's `cc` and `bcc` fill the message's Cc and Bcc,
+    and a `to` field adds recipients. A message with blind copies shows a
+    **Bcc** row in the compose window, so no recipient is added unseen.
 - **Plain-text mail: addresses are links.** They show the pointing hand, show
   their address in the status line or as a tooltip, and are counted with the
   message's links. They are never judged as web links by the threat scan.

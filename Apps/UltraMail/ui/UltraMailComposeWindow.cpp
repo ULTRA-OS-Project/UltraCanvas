@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.9.0 - a Bcc row when the draft has blind copies (a mailto: link's bcc),
+//                  so none is sent without being seen
 // Version: 0.8.0 - Quote + / Quote − in the formatting toolbar
 // Version: 0.7.0 - one view per compose window: what answers after the window
 //                  closed holds the view weakly
@@ -10,7 +12,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -111,6 +113,14 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     cc_->SetText(Join(draft_.cc));
     cc_->SetPlaceholder("Optional");
     addField("cCc", "Cc", cc_);
+
+    // Blind copies only come with a draft (a mailto: link's bcc, a reopened
+    // draft): they get their own row so the writer sees every recipient.
+    if (!draft_.bcc.empty()) {
+        bcc_ = CreateTextInput("cBcc", 0, 0, 0, Theme::kControlHeight);
+        bcc_->SetText(Join(draft_.bcc));
+        addField("cBcc", "Bcc", bcc_);
+    }
 
     subject_ = CreateTextInput("cSubj", 0, 0, 0, Theme::kControlHeight);
     subject_->SetText(draft_.subject);
@@ -348,6 +358,7 @@ Draft ComposeView::CollectDraft() const {
     Draft d = draft_;   // keep from/identity, in-reply-to, references, attachments
     if (to_)      d.to = Split(to_->GetText());
     if (cc_)      d.cc = Split(cc_->GetText());
+    if (bcc_)     d.bcc = Split(bcc_->GetText());
     if (subject_) d.subject = subject_->GetText();
     if (formatted_ && rich_) {
         // The edited document goes out as HTML with a plain-text version.

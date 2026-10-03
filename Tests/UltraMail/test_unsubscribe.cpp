@@ -1,5 +1,6 @@
 // Tests/UltraMail/test_unsubscribe.cpp
 // List-Unsubscribe / List-Unsubscribe-Post parsing (RFC 2369, RFC 8058).
+// Version: 0.3.0 - ParseMailto: to / cc / bcc
 // Version: 0.2.0 - ParseMailto
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -67,4 +68,21 @@ TEST(parse_mailto_splits_address_subject_and_body) {
     REQUIRE_EQ(t.body, std::string("Hi+there"));   // '+' stays a '+' (RFC 6068)
     REQUIRE_EQ(ParseMailto("MAILTO:a@b.example").address, std::string("a@b.example"));
     REQUIRE(ParseMailto("https://example.com").address.empty());
+}
+
+TEST(parse_mailto_collects_to_cc_and_bcc) {
+    const MailtoTarget t = ParseMailto(
+        "mailto:a@example.com,%20b@example.com?to=c@example.com&CC=d@example.com,e@example.com"
+        "&bcc=f@example.com&cc=g@example.com");
+    REQUIRE(t.to.size() == 3);
+    REQUIRE_EQ(t.to[1], std::string("b@example.com"));
+    REQUIRE_EQ(t.to[2], std::string("c@example.com"));
+    REQUIRE(t.cc.size() == 3);   // both cc= fields, in order
+    REQUIRE_EQ(t.cc[2], std::string("g@example.com"));
+    REQUIRE(t.bcc.size() == 1);
+    REQUIRE_EQ(t.bcc[0], std::string("f@example.com"));
+    // Only copies: no address before the '?'.
+    const MailtoTarget c = ParseMailto("mailto:?cc=x@example.com");
+    REQUIRE(c.to.empty());
+    REQUIRE(c.cc.size() == 1);
 }

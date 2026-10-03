@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.20 - a mailto: link's cc and bcc go into the new message
 // Version: 0.9.19 - a clicked mail address in a message opens a new message to it
 // Version: 0.9.18 - Settings > Display > Links: a link's address in the status line or
 //                   as a tooltip (ApplyLinkDisplay)
@@ -523,22 +524,16 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onLinksShown = [this](const std::vector<MessageLink>& links) { ShowMessageLinks(links); };
     mailView_.onLinkHovered = [this](const std::string& href) { ShowHoveredLink(href); };
     // A mail address clicked in a message (mailto: or written in plain text):
-    // a new message to it, with the subject and text the link carries.
+    // a new message to it, with the copies, subject and text the link carries.
+    // A blind copy is shown in the composer's Bcc row, never sent unseen.
     mailView_.onComposeTo = [this](const std::string& selfName, const std::string& selfAddr,
                                    const std::string& href) {
         const MailtoTarget target = ParseMailto(href);
-        if (target.address.empty()) return;
+        if (target.to.empty() && target.cc.empty() && target.bcc.empty()) return;
         Draft draft = Composer::NewMessage(selfName, selfAddr);
-        std::size_t start = 0;
-        while (start <= target.address.size()) {
-            std::size_t comma = target.address.find(',', start);
-            if (comma == std::string::npos) comma = target.address.size();
-            std::string one = target.address.substr(start, comma - start);
-            while (!one.empty() && std::isspace(static_cast<unsigned char>(one.front()))) one.erase(0, 1);
-            while (!one.empty() && std::isspace(static_cast<unsigned char>(one.back()))) one.pop_back();
-            if (!one.empty()) draft.to.push_back(one);
-            start = comma + 1;
-        }
+        draft.to  = target.to;
+        draft.cc  = target.cc;
+        draft.bcc = target.bcc;
         draft.subject = target.subject;
         draft.body    = target.body;
         OpenComposer(WithSignature(std::move(draft), DraftPurpose::NewMessage));
