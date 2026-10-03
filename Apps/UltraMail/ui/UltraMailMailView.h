@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
 // Version: 0.7.0 - folder tree width: fitted to its names (+10 px) or fixed.
 // Version: 0.6.0 - reading options (HTML / plain text, text size) and trusted
 //                  picture hosts forwarded to the preview.
@@ -149,6 +150,9 @@ public:
     std::function<void(const MessageEnvelope&)> onAddContact;
     std::function<void(const MessageEnvelope&)> onEditContact;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // The reading pane's links (MessagePreview::onLinksShown / onLinkHovered).
+    std::function<void(const std::vector<MessageLink>&)> onLinksShown;
+    std::function<void(const std::string& href)> onLinkHovered;
     // Forwarded to the preview: which senders' remote images load without asking.
     std::function<bool(const std::string& address)> remoteImagesAllowed;
     std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;

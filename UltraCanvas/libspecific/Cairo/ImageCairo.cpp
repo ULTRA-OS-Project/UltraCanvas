@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.3.0
-// Last Modified: 2026-09-04
+// Version: 2.3.1 - NoScale pixmaps of memory-loaded images read the image's bytes
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -642,7 +642,16 @@ namespace UltraCanvas {
                 case ImageFitMode::NoScale:
                     // For NoScale, the source's intrinsic pixel grid is the
                     // truth — don't oversample (would just upscale a finite
-                    // raster with no extra detail).
+                    // raster with no extra detail). An image loaded from
+                    // memory (a picture in a mail) has no file to read: take
+                    // its bytes, as the other modes below do - reading
+                    // fileName failed and the picture was never drawn.
+                    if (imgDataPtr) {
+                        VipsBlob *blob = vips_blob_new(nullptr, imgDataPtr, imgDataSize);
+                        auto vimg = vips::VImage::thumbnail_buffer(blob, width, options);
+                        vips_area_unref(VIPS_AREA(blob));
+                        return CreatePixmapFromVImage(vimg);
+                    }
                     return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), width, options));
             }
             std::shared_ptr<UCPixmapCairo> pm;

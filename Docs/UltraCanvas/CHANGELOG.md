@@ -1,3 +1,233 @@
+#### 2026-10-03 *0.9.142*
+- **`build-win.cmd` named the wrong MSYS2 environment.** Its header listed the MINGW64 packages (`mingw-w64-x86_64-gcc`, ...) while CI has built with CLANG64 (`mingw-w64-clang-x86_64-clang`) for every release and `package-win.sh` packages from a CLANG64 or CLANGARM64 shell, so a newcomer following the file installed a toolchain whose libraries the packaging script does not collect. The header now lists the CLANG64 packages CI installs, names the CLANGARM64 substitution for Windows on ARM, points at the workflow's "Setup MSYS2" step as the complete list, and enables the CDR plug-in as CI does.
+- **Docs: a getting-started guide for working through an AI assistant and GitHub with no local compiler.** `Docs/GettingStarted-Cloud.md` is the companion to `GettingStarted.md` for Claude Code on the web: connecting the GitHub App, what the Build workflow and the seven check workflows do on a pull request and why a branch without one gets nothing, the packaged artifacts every leg uploads as the way to run the app, the first session (skeleton, changelog entry, draft PR, watching it), the per-change loop with CI as the compiler, review and merge rules, and what is lost when a session ends with work unpushed. Linked from `README.md` and the main guide.
+
+#### 2026-10-03 *0.9.141*
+- **HTML backgrounds honour `background-position` and `background-repeat`.** A
+  background picture was always drawn once, centred; it now sits and tiles where CSS
+  puts it.
+  - `background-position` and the position inside the `background` shorthand:
+    keywords (`left` / `center` / `right`, `top` / `center` / `bottom`, in either order),
+    percentages, lengths and the edge-offset form (`right 10px bottom 20%`). The default
+    is CSS's `0% 0%`, the top-left corner - mail that wants a picture centred says
+    `center`, as it must for a browser.
+  - `background-repeat` (and the repeat inside the shorthand): `repeat`, `repeat-x`,
+    `repeat-y`, `no-repeat`, one value or one per axis; `space` and `round` are taken as
+    `repeat`. The default is CSS's `repeat`, so a background without `no-repeat` now
+    tiles, as in a browser - the 1-pixel gradient strip behind a mail's header fills it.
+  - Size, position and repeat are kept per background layer, and a shorter
+    `background-size` / `background-position` / `background-repeat` list repeats
+    across the layers, as in CSS; the layer that loads uses its own values.
+  - `UltraCanvasImageElement::SetImagePosition` (`ImagePosition` /
+    `ImageAxisPosition`): where a fitted image sits in its element - a fraction of the
+    free space or a pixel offset from either edge - and `ImageDrawRect()`, the
+    rectangle it is drawn into. Centred (the default) draws exactly as before.
+  - `UltraCanvasImageElement::SetImageRepeat(x, y)`: the image tiles across and / or down
+    the element, lined up on its positioned tile, drawn as one pattern fill
+    (`CreatePixmapPattern`, `PatternExtend::Repeat`) - tile by tile only where a backend
+    has no patterns.
+  - Fixed: an image loaded from memory (every picture in a mail) and drawn unscaled
+    (`ImageFitMode::NoScale`) was never shown - the Cairo backend read its pixels from
+    a file name it does not have. It now reads the bytes it was loaded from, as the
+    other fit modes already did.
+- **HTML borders per side.** Every border property set all four sides alike, so a
+  mail's rule under its header (`border-bottom: 1px solid #eee`) or a quote's left
+  accent bar became a full box. Each side now has its own width, style and colour.
+  - `border`, `border-top` / `-right` / `-bottom` / `-left`, `border-width` /
+    `border-style` / `border-color` with 1-4 values, and the per-side longhands
+    (`border-left-color`, ...). `ComputedStyle` has `borderTop` ... `borderLeft`
+    (`BorderSide`) in place of `borderWidth` / `borderColor`.
+  - As in CSS, a border without a style draws nothing (`border: 1px #ccc`), a style
+    alone is `medium` (3px), and a border without a colour takes the element's final
+    text colour (`currentColor`), even when `color` comes after it.
+  - `dashed` and `dotted` are drawn dashed and dotted; the other styles solid.
+  - `<hr>` is its border box, as in a browser: by default a 1px inset rule (darker
+    above, lighter below); `border: none; border-top: 1px solid #ddd` gives the
+    author's line, `height` with a `background` a bar.
+  - Fixed (Cairo): with borders that differ per side, a dashed side was stroked in the
+    previous side's colour and passed its dash on to the sides drawn after it.
+- **Borders: inline images per side, mitred corners, collapsed tables.**
+  - An image in running text draws each border side on its own (width, colour,
+    dashed / dotted), like a block image: `LabelInlineImageFrame` has `borderTop` ...
+    `borderLeft` (`LabelInlineImageBorder`) and `SetBorders(width, colour)` in place of
+    `borderWidth` / `borderColor`.
+  - `DrawRoundedRectangleWidthBorders` (Cairo) fills each solid side as its wedge of
+    the border ring - from the outer corners to the inner ones - so two sides meet on
+    the corner's diagonal, each in its own colour, as in CSS; rounded corners are
+    shared the same way and a border one colour all round is filled in one piece.
+    Before, straight strokes overlapped at the corners and corner arcs took a blend of
+    the two colours. Dashed and dotted sides are still strokes.
+  - `border-collapse: collapse`: two cells sharing an edge draw it once - the wider of
+    the two borders, kept by the cell to the left or above - and cells leave an outer
+    edge the table draws itself to the table. `<table border>` rules take part.
+    `ElementBuilder::ApplyBorders` applies a style's sides (ApplyBoxStyle calls it).
+- **HTML `width` / `height` size a block's content, as in CSS.** Every HTML box counted
+  its padding and border inside the `width` / `height` it was given, so a 30px-high box
+  with 10px borders and 4px padding kept 2px for its text. Now (CSS's initial
+  `box-sizing: content-box`) they size the content and padding and border go around
+  them: `width: 120px; padding: 4px; border: 10px solid` is 148px wide.
+  - `box-sizing: border-box` is read (`ComputedStyle::borderBoxSizing`) and keeps the
+    given size for the whole box, `max-width` included.
+  - A percentage width is the content's share of the line, padding and border added
+    (`width: 50%; padding: 0 10px` on a 400px line is 220px plus its border).
+  - `max-width` limits the content (the box with `border-box`).
+  - Tables and their cells keep sizing the box as a whole, as browsers size them;
+    images already sized their picture. `ApplyBoxStyle` takes `borderBoxSizes` for
+    such callers.
+- **HTML images on a shared line: a real space, and `vertical-align`.**
+  - The gap between two images a space apart is the width of a space in their font,
+    measured once per font (`ElementBuilder` keeps a small offscreen context for it),
+    no longer an estimate of 0.28 em.
+  - `vertical-align: top` and `middle` place an image at the top or in the middle of
+    the line's other images; `baseline` (the default) and `bottom` keep it on the
+    line's bottom.
+- **HTML images without text sit side by side.** In a block with no text of its own,
+  every `<img>` got a line of its own, so a row of social icons in a mail's footer
+  became a column. Now inline images (the `<img>` default) share one wrapping line,
+  as in a browser:
+  - whitespace between two images is a space's gap; none, no gap. The gap goes after
+    the image before it, so a wrapped line does not start indented;
+  - they stand on the line's bottom, and the line follows `text-align`;
+  - the line wraps when it is full; text, a block, `<br>` or a `display:block` image
+    ends it;
+  - an inline image's vertical margins grow its line instead of collapsing with the
+    blocks around it.
+- **HTML `<img>` draws its border, background, padding and rounded corners.** An
+  image's CSS box was lost: a block image squeezed its border and padding into the
+  picture's `width` / `height`, and an image in running text drew none of it.
+  - `width` / `height` size the picture itself (CSS's `content-box`); border and
+    padding go around it, and horizontal margins stay margins, so the background
+    does not fill them - the 8px gap after an icon in a mail's button is back.
+  - An image in running text gets its frame: `LabelInlineImageFrame` (margins,
+    padding, border, `borderRadius`, `background`) on `LabelInlineImage::frame`.
+    The line reserves the whole margin box; `InlineImageBoxRect(i)` is the border
+    box, `InlineImageRect(i)` still the picture.
+  - `border-radius` clips the picture too, block and inline, and a percentage is
+    kept (`ComputedStyle::borderRadiusPercent`) and resolved against the image's
+    box: `border-radius: 50%` makes a round avatar.
+  - `<img border="N">`: an N-pixel border in the image's colour - the link colour
+    for a linked image, as in a browser.
+  - A `border` shorthand without a colour uses the text colour (CSS's
+    `currentColor`) instead of black.
+  - CSSLayout: a flex item with `box-sizing: content-box` and an explicit main
+    size now gets a flex base size that includes its padding and border, as the
+    block path already did. (Widgets default to `border-box` and are unaffected.)
+- **HTML `<img>` honours min / max sizes; `max-width` in percent is kept.**
+  - `min-width`, `max-width`, `min-height` and `max-height` on an image are applied as
+    CSS applies them to a replaced element (CSS 2.1 §10.4): a size not given follows
+    the picture's shape - `max-height: 100px` on a 300x200 picture shows it at
+    150x100, `min-width: 96px` on a 24x16 icon at 96x64 - and when both limits bind,
+    both win. A given width or height keeps its value. Images used to ignore them.
+  - `max-width` in percent (`ComputedStyle::maxWidthPercent`) is kept instead of
+    dropped: on an image it replaces the built-in "no wider than the line" limit
+    (never above it), and blocks and tables are capped at that share of their line;
+    a block with `max-width: 50%; margin: 0 auto` is centred.
+  - `UltraCanvasImageElement::SetHeightFollowsWidth(true)`: a width larger than the
+    picture's grows its height in proportion too (an `<img width="800">` of a 400x200
+    picture is 800x400, not 800x200). Off by default; HTML images turn it on.
+- **HTML `letter-spacing`.** Read in px or em and inherited as px, as CSS computes it
+  (`ComputedStyle::letterSpacingPx`; `normal` is 0), and drawn through Pango's
+  `letter_spacing`: a block's spacing wraps its whole text run, an inline element's
+  own spacing is a span inside it. Measuring and wrapping take it into account - a
+  Yahoo notice's `p { letter-spacing: 0.5px }` now wraps where a browser wraps it.
+- Fixed: a label's natural width is one its text fits on its lines at. With letter
+  spacing, Pango breaks a line on the spacing after its last letter, which its
+  measured width leaves out, so a shrink-to-fit button ("FIND OUT WHO", 2px spacing)
+  wrapped its last word.
+- **HTML mail like Yahoo's renders as in Thunderbird: quirks mode, table placement,
+  overflow, line-height; cell percentage heights.**
+  - The parser keeps the `<!DOCTYPE>` (`Document::doctype`) and decides quirks mode
+    from it as browsers do (`Document::quirksMode`, `IsQuirksDoctype`). In quirks mode
+    - no standards doctype, most HTML mail - a table does not inherit `text-align`:
+    `<td align="center">` around a mail's 420px content tables centres the tables,
+    not every line of text in them.
+  - A table is placed by its container's alignment, not by its own `text-align`
+    (`<table style="text-align:left">` in a centring cell is still centred).
+  - A cell's children with a width of their own (`<div style="width:250px">`,
+    `<table width="420">`) keep it instead of being stretched across the cell,
+    placed by the cell's `align`.
+  - HTML boxes draw content that is wider than they are (CSS `overflow: visible`):
+    `ContainerStyle::clipChildren = false`; `overflow: hidden` / `auto` / `scroll`
+    clip. Before, a 280px paragraph in a 250px box lost its last words.
+  - `line-height` reaches the text: `LabelStyle::lineHeightPx` gives each line that
+    height (Pango's absolute line height), a line holding a taller inline image still
+    grows. A length or percentage inherits as px, a number as a factor of each
+    element's font, `normal` restores the font's own.
+  - A table cell (and a box with bottom padding or border) keeps its last child's
+    bottom margin.
+  - Table cells take percentage `height`, `min-height` and `max-height`, resolved
+    against the table's set height; a table's extra height goes to the rows nothing
+    set the height of.
+- **HTML `min-width`, `min-height` and `max-height`.** Only `max-width` was read; now
+  all four limits are (`ComputedStyle::minWidthPx` / `minHeightPx` / `maxHeightPx`),
+  in px or em - a percentage, `none` or `auto` sets no limit.
+  - Like `width` / `height`, a limit is the content's (CSS content-box) - a box with
+    `min-height: 60px` and a 1px border is 62px tall - or, with
+    `box-sizing: border-box`, the whole box's.
+  - As in CSS, `max-height` beats `height`, and `min-width` / `min-height` beat both:
+    an inline-block mail button with `min-width: 160px` and 16px side padding is
+    192px wide however short its caption.
+- **HTML `<img>` honours `object-fit` and `object-position`.** A picture was always
+  shrunk to fit its box, keeping its shape, and centred; it now fills and sits in the
+  box as CSS says - for a block image and for one inside running text.
+  - `object-fit`: `fill`, `contain`, `cover`, `none`, `scale-down`. The default is
+    CSS's `fill`: an `<img>` whose `width` / `height` give it another shape than the
+    picture's stretches the picture to the box, as in a browser, instead of leaving
+    empty bands beside it.
+  - `object-position`: the `background-position` value forms (keywords, percentages,
+    lengths, edge offsets); the default is CSS's `50% 50%`, centred.
+  - `ImagePosition`, `ImageAxisPosition` and the new `FitImageRect(natural, box, fit,
+    position)` moved to `UltraCanvasCommonTypes.h`, so any element can place a fitted
+    picture the same way; `UltraCanvasImageElement.h` still brings them in.
+  - `LabelInlineImage` gained `fit` (default `ImageFitMode::Fill`, what it drew before)
+    and `position` (default centred).
+- **Percentage heights on blocks; content-box percentage widths without a sizing switch.**
+  - HTML `height` in percent is kept (`ComputedStyle::heightPercent`; the `height`
+    attribute too) and applied to blocks: `height: 50%` in a box of `height: 200px` is
+    100px, nested percentages compound, and in a box of auto height it is auto, as in
+    CSS. Tables, cells and images take no percentage height (browsers mostly ignore
+    one there).
+  - CSSLayout: a percentage `size.height` resolves against a block parent's set height
+    (`Element::percentHeightBase`, which percentage limits already used) when no
+    definite height comes down as a constraint - in block, flex, grid and table
+    containers alike. Before, it was auto there.
+  - A content-box percentage width or height stays a border-box size with the padding
+    and border added as pixels (`Dimension::PctPlus`), instead of switching that box
+    to content-box sizing: `width: 50%; padding: 0 10px; border: 2px` on a 400px line
+    is 224px wide.
+  - A later `width` / `height` replaces an earlier one of either kind
+    (`width: 30%; width: 120px` is 120px); `auto` clears it.
+- **Percentage size limits everywhere, and percentage minus pixels.**
+  - HTML `min-width`, `min-height` and `max-height` in percent are kept
+    (`ComputedStyle::minWidthPercent` / `minHeightPercent` / `maxHeightPercent`), on
+    blocks and images: `min-width: 75%` of a 400px line is 300px. A height percentage
+    resolves against the container's set height, and limits nothing when it has none,
+    as in CSS.
+  - A percentage limit under `box-sizing: border-box` covers the whole box: with 10px
+    padding and a 2px border, `max-width: 50%` of a 400px line is now 200px wide, not
+    224px.
+  - CSSLayout: `Dimension::offsetPx` (`Dimension::PctPlus(pct, px)`) adds pixels to a
+    value as it resolves - `calc(50% - 20px)`.
+  - CSSLayout: `Element::percentHeightBase` - a block parent records its set height on
+    each child, so a child's percentage `minHeight` / `maxHeight` has a base; block
+    children are measured with unbounded height and had none.
+- **Hovered links are reported; size limits apply to the box their box-sizing
+  names.**
+  - `UltraCanvasLabel::onLinkHovered(href)`: fired as the pointer moves onto a
+    text link (its href) and off it (`""`). `UltraCanvasImageElement` gains
+    `onHoverEnter` / `onHoverLeave`. The HTML reader passes both on through
+    `BuildOptions::onLinkHovered`, for text links and linked pictures alike - a
+    mail reader shows the real target in its status line before the click.
+  - CSSLayout: the block path applies `boxConstraints` (min / max width and
+    height) to the box the element's box-sizing names - the whole box for a
+    border-box element (every widget), the content for a content-box one - as
+    the flex path and the documentation already did. Before, the block path
+    limited a border-box element's content, so the same limit gave a box a
+    padding's width wider in a block than in a flex column.
+  - The HTML reader passes limits as the whole box's (a content-box limit gains
+    the padding and border around the content), and table cells size their
+    content from `width` / `height`, as browsers do.
+
 #### 2026-10-03 *0.9.140*
 - **The Filer widget can mark favorites.**
   `UltraCanvasFilerWidget::SetFavoriteMarkProvider` takes a function that

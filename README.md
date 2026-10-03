@@ -104,6 +104,9 @@ UltraCanvas/
 New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
 step list for building an application on UltraCanvas and its modules, with an
 AI coding assistant (Claude Code in particular) doing most of the typing.
+[`Docs/GettingStarted-Cloud.md`](Docs/GettingStarted-Cloud.md) is the same
+route for someone with no local compiler at all: Claude Code on the web plus
+GitHub, with CI as the compiler and the build artifacts as the app.
 
 **Prerequisites**
 

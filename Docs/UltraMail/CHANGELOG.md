@@ -1,4 +1,4 @@
-#### 2026-10-03 *0.10.23*
+#### 2026-10-04 *0.10.24*
 - **A server name that cannot be one is caught before the sign-in is tried.**
   Typing `mail@interkontakt.net` for the outgoing server - the address's @
   where the name has a dot - waited out a ten-second timeout and then blamed
@@ -12,6 +12,37 @@
   in `test_discovery.cpp`.
 - The preferences reader includes `UltraCanvasPathUtf8.h` once instead of
   twice.
+
+#### 2026-10-04 *0.10.23*
+- **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed
+  itself as Tinder - Tinder's name and Tinder's own pictures, sent from an
+  unrelated address, every link to a third site - passed the threat scan as
+  clean: Tinder was not in the brand table, and its links' texts ("FIND OUT
+  WHO", "Privacy Policy") name no site. Two new signs catch it (score 70, scam):
+  - **Borrowed pictures:** the mail's pictures come from a site its display
+    name or subject names (`gotinder.com` for "Tinder"), but it was sent from
+    elsewhere and none of its links go to that site. This needs no brand
+    table, so it also catches services the table does not know.
+  - **Dating services in the brand table:** Tinder, Bumble, Hinge, OkCupid and
+    Parship, so a display name claiming one from a foreign domain is
+    impersonation.
+  - **Older verdicts are judged again.** A verdict is stored the first time a
+    message is read; one stored by older rules is now re-scanned when the
+    message is opened, so mail an earlier version let through is caught.
+- **The status line shows a message's links.** While a message is open, the
+  status line says how many links it has and which sites they go to
+  ("6 links → vakantiehuiseichenbach.nl"); its tooltip lists every link with
+  the text it shows and the address it really opens. Pointing at a link or a
+  linked picture in the message shows that link's address there, before you
+  click.
+- **HTML mail renders closer to Thunderbird:** text keeps the mail's
+  `line-height` and `letter-spacing`; mail without a standards doctype lays out
+  its tables as browsers do in quirks mode (a centring cell centres the
+  tables, not every line of text); content wider than its box is drawn instead
+  of cut off; borders are drawn per side with mitred corners; images honour
+  `object-fit`, borders, rounded corners and size limits, and sit side by side;
+  a shrink-to-fit button keeps its caption on one line. See the framework
+  changelog for the HTML reader entries.
 
 #### 2026-10-03 *0.10.22*
 - **Mailchimp mail fits a narrow reading pane, and its footer icons are
