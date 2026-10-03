@@ -162,6 +162,35 @@ TEST(oauth_yahoo_begin_oob_builds_a_pasteable_consent_url) {
     OAuthApps::Clear();
 }
 
+TEST(oauth_pasted_code_is_taken_bare_or_from_the_redirect_address) {
+    REQUIRE_EQ(ExtractOAuthCode("  abc123\n"), std::string("abc123"));
+    // Thunderbird-style https://127.0.0.1 redirect copied from the address bar.
+    REQUIRE_EQ(ExtractOAuthCode("https://127.0.0.1/?code=k7%2Fq-9&state=xyz"),
+               std::string("k7/q-9"));
+    REQUIRE_EQ(ExtractOAuthCode("https://127.0.0.1?state=s&code=zz9"), std::string("zz9"));
+    REQUIRE_EQ(ExtractOAuthCode("https://127.0.0.1/#code=frag1&x=1"), std::string("frag1"));
+    // "code_challenge=" or "error_code=" is not the code parameter.
+    REQUIRE_EQ(ExtractOAuthCode("https://127.0.0.1/?error_code=1&code=real"), std::string("real"));
+    REQUIRE_EQ(ExtractOAuthCode("https://127.0.0.1/?error=access_denied"), std::string());
+    REQUIRE_EQ(ExtractOAuthCode("   "), std::string());
+}
+
+TEST(oauth_oob_and_https_redirects_use_the_pasted_code_flow) {
+    REQUIRE(OAuthUsesPastedCode("oob"));
+    REQUIRE(OAuthUsesPastedCode("https://127.0.0.1"));
+    REQUIRE(!OAuthUsesPastedCode("http://127.0.0.1:0/callback"));
+    REQUIRE(!OAuthUsesPastedCode("http://127.0.0.1:0/"));
+}
+
+TEST(oauth_complete_oob_rejects_an_address_without_a_code) {
+    OAuthApp app; app.clientId = "dj0yJmk9consumerkey";
+    OAuthApps::Set("yahoo", app);
+    MailOAuth oauth;
+    OAuthTokens tokens;
+    REQUIRE(!oauth.CompleteOob("yahoo", "https://127.0.0.1/?error=access_denied", "v", tokens));
+    OAuthApps::Clear();
+}
+
 // ---- app registration sources ---------------------------------------------
 
 TEST(oauth_apps_come_from_set_env_or_ini_in_that_order) {

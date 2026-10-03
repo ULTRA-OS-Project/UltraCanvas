@@ -1,10 +1,12 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
+// Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
 #include "UltraMailOAuthDefaults.h"   // generated at configure time (build tree)
 
+#include <cctype>
 #include <cstdlib>
 #include <ctime>
 
@@ -192,6 +194,43 @@ UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthAp
     return cfg;
 }
 
+bool OAuthUsesPastedCode(const std::string& redirectUri) {
+    return redirectUri == "oob" || redirectUri.rfind("https://", 0) == 0;
+}
+
+std::string ExtractOAuthCode(const std::string& pasted) {
+    std::size_t a = 0, b = pasted.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(pasted[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(pasted[b - 1]))) --b;
+    const std::string s = pasted.substr(a, b - a);
+
+    // A redirect address: take its code parameter (query or fragment).
+    std::size_t at = std::string::npos;
+    for (std::size_t p = s.find("code="); p != std::string::npos; p = s.find("code=", p + 1)) {
+        if (p > 0 && (s[p - 1] == '?' || s[p - 1] == '&' || s[p - 1] == '#')) { at = p + 5; break; }
+    }
+    if (at == std::string::npos)
+        return s.find("://") == std::string::npos ? s : std::string();   // a URL without a code
+    const std::size_t end = s.find_first_of("&#", at);
+    const std::string raw = s.substr(at, end == std::string::npos ? std::string::npos : end - at);
+
+    std::string out;
+    out.reserve(raw.size());
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '%' && i + 2 < raw.size()
+            && std::isxdigit(static_cast<unsigned char>(raw[i + 1]))
+            && std::isxdigit(static_cast<unsigned char>(raw[i + 2]))) {
+            out += static_cast<char>(std::stoi(raw.substr(i + 1, 2), nullptr, 16));
+            i += 2;
+        } else if (raw[i] == '+') {
+            out += ' ';
+        } else {
+            out += raw[i];
+        }
+    }
+    return out;
+}
+
 // ===== MailOAuth ==============================================================
 
 MailOAuth::MailOAuth(OAuthHooks hooks) : hooks_(std::move(hooks)) {
@@ -259,7 +298,8 @@ UltraNetResult MailOAuth::CompleteOob(const std::string& providerId, const std::
                                       const std::string& codeVerifier, OAuthTokens& out,
                                       int64_t now) {
     if (now <= 0) now = static_cast<int64_t>(std::time(nullptr));
-    if (code.empty())
+    const std::string authCode = ExtractOAuthCode(code);
+    if (authCode.empty())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                      "no authorization code was entered");
     const OAuthApp app = OAuthApps::Get(providerId);
@@ -267,7 +307,7 @@ UltraNetResult MailOAuth::CompleteOob(const std::string& providerId, const std::
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
             "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
     UltraNetOAuth2Token token;
-    UltraNetResult r = UltraNet_OAuth2ExchangeCode(OAuthConfigFor(providerId, app), code,
+    UltraNetResult r = UltraNet_OAuth2ExchangeCode(OAuthConfigFor(providerId, app), authCode,
                                                    codeVerifier, token);
     if (!r) return r;
     if (!token.IsValid())

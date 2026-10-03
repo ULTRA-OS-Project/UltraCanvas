@@ -84,7 +84,7 @@ admin center → the mailbox → *Email apps*); otherwise the sign-in succeeds
 but the mail session is refused. Addresses on a company's own domain are not
 in UltraMail's provider table yet (see [section 5](#5-other-providers)).
 
-### Yahoo Mail (`yahoo.com`, `yahoo.de`, `ymail.com`)
+### Yahoo Mail (`yahoo.com`, `yahoo.de`, `ymail.com`, `rocketmail.com`, Yahoo's country domains)
 
 | | |
 |---|---|
@@ -96,7 +96,10 @@ Yahoo has deprecated app passwords and now requires a browser OAuth sign-in.
 Leave the password field empty; UltraMail opens Yahoo's consent page in your
 browser. Because Yahoo does not redirect back to a desktop app, its page shows a
 short **authorization code** after you approve — copy it and paste it into the
-dialog UltraMail shows, and the sign-in completes. Released builds ship with a
+dialog UltraMail shows, and the sign-in completes. If the browser instead lands
+on a page that cannot be reached (an address starting `https://127.0.0.1`),
+copy that whole address from the address bar and paste it; UltraMail takes the
+code from it. Released builds ship with a
 Yahoo OAuth client already configured, so there is nothing to set up (if your
 build was packaged without one, see
 [section 3](#3-oauth-clients-for-the-browser-sign-in)).
@@ -188,6 +191,13 @@ cannot serve, so UltraMail uses Yahoo's **out-of-band** flow — after consent
 Yahoo shows a code the user pastes into the app. There is no redirect URI to
 register; the Yahoo app just needs API permission for Mail, and you supply its
 **Client ID (Consumer Key)** only (public client, no secret).
+
+Thunderbird registers its Yahoo client with the redirect `https://127.0.0.1`
+and the scopes `mail-w ycal-w sdct-w` instead. A Yahoo app registered that way
+works too: set `redirect_uri = https://127.0.0.1` for it, and UltraMail takes
+the same paste-back route, with the user pasting the address the browser lands
+on. Whichever redirect is used, the app must hold the **Mail** permission:
+without it Yahoo issues a token that IMAP and SMTP reject.
 
 ### Baking the client into the build
 

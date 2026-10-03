@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOAuthCodeDialog.cpp
+// Version: 0.2.0 - accepts the redirect address as well as the bare code
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuthCodeDialog.h"
@@ -57,10 +58,12 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = CreateLabel("oauthCodeIntro", 0, 0, 400, 90,
+    auto intro = CreateLabel("oauthCodeIntro", 0, 0, 400, 120,
         "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
         + email + " and allow UltraMail to read and send your mail. " + providerName
-        + " will then show an authorization code — copy it and paste it here.");
+        + " will then show an authorization code — copy it and paste it here. If the "
+        "browser lands on a page that cannot be reached instead, copy the whole address "
+        "from its address bar and paste that.");
     intro->SetWrap(TextWrap::WrapWord);
     intro->SetFontSize(Theme::kSizeBody);
     intro->SetTextColor(Theme::kTextSecondary);
@@ -76,7 +79,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
     label->SetElementSize(Size2Df(60.0f, Theme::kControlHeight));
     row->AddChild(label);
     auto code = CreateTextInput("oauthCodeField", 0, 0, 0, Theme::kControlHeight);
-    code->SetPlaceholder("Paste the code from " + providerName);
+    code->SetPlaceholder("Paste the code or address from " + providerName);
     Theme::StyleInput(code);
     row->AddChild(code);
     code->layoutItem.SetFlexGrow(1);

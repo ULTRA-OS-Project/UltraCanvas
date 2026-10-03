@@ -102,6 +102,17 @@ TEST(presets_outlook_and_gmx) {
     REQUIRE_EQ(g.imap.host, std::string("imap.gmx.net"));
 }
 
+TEST(presets_cover_yahoo_country_and_legacy_domains) {
+    for (const char* e : {"erika@yahoo.co.uk", "erika@yahoo.fr", "erika@rocketmail.com",
+                          "erika@myyahoo.com", "erika@yahoo.com.au"}) {
+        DiscoveryResult r = AutoDiscovery::FromPresets(e);
+        REQUIRE(r.found);
+        REQUIRE_EQ(r.imap.host, std::string("imap.mail.yahoo.com"));
+        REQUIRE(r.imap.oauth);
+    }
+    REQUIRE(!AutoDiscovery::FromPresets("erika@yahoo.co.jp").found);   // Yahoo! Japan is separate
+}
+
 TEST(presets_yahoo_uses_oauth) {
     DiscoveryResult r = AutoDiscovery::FromPresets("someone@yahoo.com");
     REQUIRE(r.found);

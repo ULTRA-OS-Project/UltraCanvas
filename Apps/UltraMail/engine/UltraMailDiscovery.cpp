@@ -233,7 +233,11 @@ DiscoveryResult AutoDiscovery::FromPresets(const std::string& email) {
     if (is({"outlook.com", "hotmail.com", "live.com", "msn.com", "office365.com"}))
         return MakePreset("Outlook", email, "outlook.office365.com", 993,
                           "smtp.office365.com", 587, MailSecurity::StartTls, /*oauth=*/true);
-    if (is({"yahoo.com", "yahoo.de", "ymail.com"}))
+    // Yahoo's mail domains as Thunderbird's ISPDB lists them (not yahoo.co.jp:
+    // Yahoo! Japan is a separate service).
+    if (is({"yahoo.com", "yahoo.de", "ymail.com", "rocketmail.com", "myyahoo.com",
+            "yahoo.co.uk", "yahoo.fr", "yahoo.it", "yahoo.es", "yahoo.ca",
+            "yahoo.com.au", "yahoo.co.in", "yahoo.com.br", "yahoo.com.mx"}))
         return MakePreset("Yahoo", email, "imap.mail.yahoo.com", 993,
                           "smtp.mail.yahoo.com", 465, MailSecurity::SslTls, /*oauth=*/true);
     if (is({"icloud.com", "me.com", "mac.com"}))

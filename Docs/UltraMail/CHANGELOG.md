@@ -1,3 +1,20 @@
+#### 2026-10-04 *0.10.27*
+- **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
+  Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as
+  UltraMail, but redirects to `https://127.0.0.1` instead of using the
+  out-of-band code page. UltraMail now handles that kind of redirect too: a
+  Yahoo client registered with an https redirect (`redirect_uri` in
+  `oauth_clients.ini`) takes the paste-back sign-in rather than the loopback
+  listener, which only speaks plain HTTP. The code dialog accepts either the
+  code or the whole address the browser landed on, and takes the `code`
+  parameter from it (`ExtractOAuthCode`, `OAuthUsesPastedCode`).
+- **More Yahoo addresses are recognised.** `rocketmail.com`, `myyahoo.com`
+  and Yahoo's country domains (`yahoo.co.uk`, `yahoo.fr`, `yahoo.it`,
+  `yahoo.es`, `yahoo.ca`, `yahoo.com.au`, `yahoo.co.in`, `yahoo.com.br`,
+  `yahoo.com.mx`) now get the Yahoo servers and the browser sign-in. Before,
+  only `yahoo.com`, `yahoo.de` and `ymail.com` did. Tests: `test_oauth.cpp`,
+  `test_discovery.cpp`.
+
 #### 2026-10-04 *0.10.26*
 - **Unread mail stays unread.** Syncing marked every new message read on the
   server, so the list had no unread mail to show in bold, the account's unread

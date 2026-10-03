@@ -3213,8 +3213,9 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
                                     std::function<void()> onReauthed) {
     // Out-of-band providers (Yahoo) can't redirect to a loopback listener, so
     // they take a separate flow: open the browser, then prompt for the code the
-    // provider shows rather than waiting on a socket.
-    if (OAuthApps::Get(providerId).redirectUri == "oob") {
+    // provider shows (or the https redirect address it lands on) rather than
+    // waiting on a socket.
+    if (OAuthUsesPastedCode(OAuthApps::Get(providerId).redirectUri)) {
         StartOAuthOobSignIn(accountId, email, providerId, std::move(onReauthed));
         return;
     }
