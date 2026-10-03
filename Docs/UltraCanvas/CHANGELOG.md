@@ -1,3 +1,28 @@
+#### 2026-10-03 *0.9.140*
+- **The Filer widget can mark favorites.**
+  `UltraCanvasFilerWidget::SetFavoriteMarkProvider` takes a function that
+  says whether an entry is one of the host's favorites; each one it answers
+  `true` for is drawn with a small red heart at its outermost left,
+  vertically centred - in a 14 px gutter left of the icon in the Details,
+  List and Size bars views (reserved for every row while a provider is set,
+  so icons stay aligned), at the tile's left edge centred on the icon box in
+  the thumbnail views, and inside treemap cells large enough for it. The
+  widget keeps no list of its own: the provider is asked while painting, so
+  `RequestRedraw()` is all a changed favorite needs. UltraFiler uses it for
+  its Favorites view (UltraFiler 1.65.0).
+- **A renderer fix now reaches thumbnails already on disk.** The thumbnail
+  disk cache judged an entry stale only by its source file's size and
+  modification time, so a thumbnail drawn by a build with a renderer bug was
+  served for as long as it kept being shown. The vector previews drawn at
+  the fit squared before 2026-09-26 stayed specks in a corner at every size
+  cached back then - in UltraFiler, Xara files looked right in a folder and
+  broken in the History view. Each entry now records the build's renderer
+  generation (`ThumbnailDiskCache::kRendererGeneration`, now 2; the entry
+  header is format 2), and an entry of another generation is a miss that is
+  deleted and redrawn. Bump the constant in any change that makes a
+  thumbnail producer draw something different. Pinned by
+  `ThumbnailDiskCacheTest`.
+
 #### 2026-10-03 *0.9.139*
 - **The media viewer says when a picture cannot be decoded.** A file whose
   header reads but whose pixels do not (a HEIC on a build without an HEVC
