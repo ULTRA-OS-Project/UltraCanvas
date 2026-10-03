@@ -1,3 +1,7 @@
+#### 2026-10-03 *0.9.142*
+- **`build-win.cmd` named the wrong MSYS2 environment.** Its header listed the MINGW64 packages (`mingw-w64-x86_64-gcc`, ...) while CI has built with CLANG64 (`mingw-w64-clang-x86_64-clang`) for every release and `package-win.sh` packages from a CLANG64 or CLANGARM64 shell, so a newcomer following the file installed a toolchain whose libraries the packaging script does not collect. The header now lists the CLANG64 packages CI installs, names the CLANGARM64 substitution for Windows on ARM, points at the workflow's "Setup MSYS2" step as the complete list, and enables the CDR plug-in as CI does.
+- **Docs: a getting-started guide for working through an AI assistant and GitHub with no local compiler.** `Docs/GettingStarted-Cloud.md` is the companion to `GettingStarted.md` for Claude Code on the web: connecting the GitHub App, what the Build workflow and the seven check workflows do on a pull request and why a branch without one gets nothing, the packaged artifacts every leg uploads as the way to run the app, the first session (skeleton, changelog entry, draft PR, watching it), the per-change loop with CI as the compiler, review and merge rules, and what is lost when a session ends with work unpushed. Linked from `README.md` and the main guide.
+
 #### 2026-10-03 *0.9.141*
 - **HTML backgrounds honour `background-position` and `background-repeat`.** A
   background picture was always drawn once, centred; it now sits and tiles where CSS
