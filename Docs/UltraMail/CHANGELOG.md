@@ -1,4 +1,4 @@
-#### 2026-10-04 *0.10.25*
+#### 2026-10-04 *0.10.27*
 - **Mail addresses in a message open a new message.** A `mailto:` link in
   formatted mail, and a `mailto:` or plain address ("support@shop.example")
   written in plain-text mail, opens a new message in UltraMail, from the
@@ -14,6 +14,44 @@
 - **Plain-text mail: addresses are links.** They show the pointing hand, show
   their address in the status line or as a tooltip, and are counted with the
   message's links. They are never judged as web links by the threat scan.
+
+#### 2026-10-04 *0.10.26*
+- **Unread mail stays unread.** Syncing marked every new message read on the
+  server, so the list had no unread mail to show in bold, the account's unread
+  counts stayed at 0, and other mail programs saw the mail as read too. The
+  IMAP plug-in now puts a message's unread state back after reading it (see
+  the framework changelog, "IMAP plug-in: reading a message no longer marks it
+  read on the server"). Mail marked read before this fix stays read on the
+  server; *Mark as unread* brings a message back.
+- **The account bar's counts follow what you read.** Opening an unread message
+  lowered the list's unread count, but the account tile kept the old numbers
+  until the next sync. It is now re-counted at once.
+- **Settings > Reading > Waiting for reply: which unanswered mail counts.**
+  Every personal message in the inbox that had never been answered counted as
+  waiting for a reply, however old it was: 1083 on one account. The count, the
+  list's reply mark and the *Needs an answer* filter now take only mail from
+  the last 14 days (or 7, 30, or any age) and, by default, only from people you
+  have written to, that is the recipients of your Sent mail. That rule is left
+  out while the Sent folder has not been fetched. A message you mark *Needs an
+  answer* yourself always counts. The rules are applied when the mail is
+  counted (`LocalStore::SetNeedsAnswerRules`), so changing them needs no
+  re-sync. Saved as `needs_answer_max_age_days` / `needs_answer_only_written_to`
+  in `preferences.ini`. Tests: `test_localstore.cpp`, `test_preferences.cpp`.
+
+#### 2026-10-04 *0.10.25*
+- **A server name that cannot be one is caught before the sign-in is tried.**
+  Typing `mail@interkontakt.net` for the outgoing server - the address's @
+  where the name has a dot - waited out a ten-second timeout and then blamed
+  the server for not answering. Save on the server settings page now checks
+  both names first and says what is wrong, with the likely fix: *Outgoing
+  (SMTP) server "mail@interkontakt.net": A server name has no @ - did you mean
+  mail.interkontakt.net?* It also catches a URL scheme (`imaps://`), a port
+  after a colon, a path, spaces, characters no host name holds and empty or
+  over-long parts; one-word LAN names, IP addresses and international names
+  still pass. The check is `ServerNameProblem` (`UltraMailDiscovery.h`); tests
+  in `test_discovery.cpp`.
+- The preferences reader includes `UltraCanvasPathUtf8.h` once instead of
+  twice.
 
 #### 2026-10-04 *0.10.24*
 - **Settings > Display > Links: where a link's address is shown.** Two

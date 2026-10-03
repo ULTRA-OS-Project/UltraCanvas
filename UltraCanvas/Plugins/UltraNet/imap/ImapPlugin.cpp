@@ -1,4 +1,7 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.5.0 - reading a message no longer marks it read: libcurl fetches
+//                  with BODY[...], which sets \Seen, so an unread message's
+//                  \Seen is taken off again (FetchKeepingUnread)
 // Version: 0.4.0 - ExpungeMessage (UID EXPUNGE)
 // Version: 0.3.0 - AppendMessage sets the flags it is given (found again by
 //                  Message-ID, then UID STORE)
@@ -247,10 +250,15 @@ public:
         std::size_t take = uids.size();
         if (options.maxMessages > 0 && static_cast<std::size_t>(options.maxMessages) < take)
             take = static_cast<std::size_t>(options.maxMessages);
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
         for (std::size_t i = uids.size() - take; i < uids.size(); ++i) {
             std::string raw;
             std::ostringstream u; u << base << mailbox << "/;UID=" << uids[i];
-            if (!RunFetch(u.str(), options, tls, raw) || raw.empty()) continue;
+            if (!FetchKeepingUnread(h.get(), base + mailbox, u.str(), uids[i], raw, nullptr)
+                || raw.empty()) continue;
             UltraNetMailMessage msg;
             ParseFullMessage(raw, msg);
             outMessages.push_back(std::move(msg));
@@ -339,18 +347,13 @@ public:
             UltraNetMailEnvelope env;
             env.uid = uid;
 
-            // Header fields.
+            // Flags, then the header fields - read before the header, whose
+            // fetch would otherwise have made every message \Seen already.
             std::string headerRaw;
             std::ostringstream hurl;
             hurl << base << EncodeMailboxPath(folder) << "/;UID=" << uid << ";SECTION=HEADER";
-            if (PerformOn(h.get(), hurl.str(), std::string(), headerRaw))
+            if (FetchKeepingUnread(h.get(), mbUrl, hurl.str(), uid, headerRaw, &env.flags))
                 ParseEnvelopeHeaders(headerRaw, env);
-
-            // Flags.
-            std::string flagsBody;
-            std::ostringstream fcmd; fcmd << "UID FETCH " << uid << " (FLAGS)";
-            if (PerformOn(h.get(), mbUrl, fcmd.str(), flagsBody))
-                env.flags = ParseFetchFlags(flagsBody);
 
             if (onEnvelope) onEnvelope(env);
         }
@@ -366,8 +369,13 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
-        std::ostringstream u; u << base << EncodeMailboxPath(folder) << "/;UID=" << uid;
-        if (!RunFetch(u.str(), options, tls, outRaw))
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
+        std::ostringstream u; u << mbUrl << "/;UID=" << uid;
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
+        if (!FetchKeepingUnread(h.get(), mbUrl, u.str(), uid, outRaw, nullptr))
             return UltraNetResult::Error(UltraNetResultCode::Unknown, "fetch failed");
         return UltraNetResult::Ok();
     }
@@ -392,11 +400,12 @@ public:
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
         if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;   // authenticate once; reuse below
 
-        const std::string mbPath = EncodeMailboxPath(folder);  // constant across UIDs
+        const std::string mbUrl = base + EncodeMailboxPath(folder);  // constant across UIDs
         for (uint32_t uid : uids) {
-            std::ostringstream u; u << base << mbPath << "/;UID=" << uid;
+            std::ostringstream u; u << mbUrl << "/;UID=" << uid;
             std::string raw;
-            if (PerformOn(h.get(), u.str(), std::string(), raw) && !raw.empty())
+            // Bodies fetched ahead for the cache stay unread on the server.
+            if (FetchKeepingUnread(h.get(), mbUrl, u.str(), uid, raw, nullptr) && !raw.empty())
                 onMessage(uid, raw);
         }
         return UltraNetResult::Ok();
@@ -565,15 +574,32 @@ private:
         return true;
     }
 
-    // GET-style fetch (no custom request) capturing the message body, on its own
-    // one-off connection. FetchEnvelopes / FetchMessageBodies use PerformOn on a
-    // shared handle instead, to avoid a reconnect per message.
-    bool RunFetch(const std::string& url, const UltraNetMailOptions& opt,
-                  bool tls, std::string& out) {
-        CurlHandle h = NewHandle();
-        if (!h) return false;
-        if (UltraNetResult a = ApplyCommonOptions(h.get(), opt, tls); !a) return a;
-        return static_cast<bool>(PerformOn(h.get(), url, std::string(), out));
+    // Fetch `sectionUrl` (a message, or one section of it) on `h` without
+    // marking the message read. libcurl turns a "/;UID=n[;SECTION=s]" URL into
+    // "UID FETCH n BODY[s]", never BODY.PEEK[s], and RFC 3501 has the server set
+    // \Seen for that - so listing or caching mail made all of it read, here and
+    // in every other mail program. A custom "BODY.PEEK" command is no way round
+    // it: libcurl hands on only the response lines that begin with '*', and the
+    // message text is lost. So the flags are read first and, when the message
+    // was unread, its \Seen is taken off again straight after. `flagsOut`, when
+    // given, receives the flags as they were before the fetch.
+    UltraNetResult FetchKeepingUnread(CURL* h, const std::string& mbUrl,
+                                      const std::string& sectionUrl, uint32_t uid,
+                                      std::string& out, UltraNetMailFlags* flagsOut) {
+        std::string flagsBody;
+        const bool known = PerformOn(h, mbUrl, UidFetchFlagsCommand(uid), flagsBody)
+                           && HasFetchFlags(flagsBody);
+        const UltraNetMailFlags before = known ? ParseFetchFlags(flagsBody)
+                                               : UltraNetMailFlags::None;
+        if (flagsOut) *flagsOut = before;
+        UltraNetResult r = PerformOn(h, sectionUrl, std::string(), out);
+        // Only when the flags were read: a message whose state is unknown is
+        // left as the server has it rather than guessed unread.
+        if (known && !UltraNetHasFlag(before, UltraNetMailFlags::Seen)) {
+            std::string ignored;
+            PerformOn(h, mbUrl, UidMarkUnreadCommand(uid), ignored);
+        }
+        return r;
     }
 };
 

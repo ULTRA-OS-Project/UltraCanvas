@@ -83,6 +83,12 @@ public:
     void Refresh();
     // The unread total, published for the desktop's mail badge on every Refresh.
     void PublishUnreadNotice();
+    // Re-count the account bar (unread, waiting for reply) from the store and
+    // redraw it, without rebuilding the mail list - after a message is read.
+    void RefreshAccountCounts();
+    // Hand the Settings' waiting-for-reply rules to the store; true when they
+    // changed (the counts and the list's reply marks then need a refresh).
+    bool ApplyNeedsAnswerRules();
 
 private:
     // Build the account view (everything shown once an account exists).
