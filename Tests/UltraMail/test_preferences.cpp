@@ -52,6 +52,8 @@ TEST(preferences_round_trip) {
     out.showHtml = false;
     out.messageTextSize = 16;
     out.linkDisplay = LinkDisplay::Tooltip;
+    out.needsAnswerMaxAgeDays = 30;
+    out.needsAnswerOnlyWrittenTo = false;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -64,6 +66,8 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.showHtml);
     REQUIRE_EQ(in.messageTextSize, 16);
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
+    REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
+    REQUIRE(!in.needsAnswerOnlyWrittenTo);
     std::remove(path.c_str());
 }
 
@@ -82,5 +86,7 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.linkDisplay == LinkDisplay::StatusBar);           // the default
     REQUIRE_EQ(in.messageTextSize, 24);                           // clamped
     REQUIRE(in.remoteImageSenders.count("a@b.c") == 1);
+    REQUIRE_EQ(in.needsAnswerMaxAgeDays, 14);                     // the defaults
+    REQUIRE(in.needsAnswerOnlyWrittenTo);
     std::remove(path.c_str());
 }

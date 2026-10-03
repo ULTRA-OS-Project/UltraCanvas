@@ -3,6 +3,7 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.2.0 - the needs-answer rules (age, people written to)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -12,6 +13,7 @@
 
 #include <UltraDatabase/UltraDatabase.h>
 
+#include <ctime>
 #include <filesystem>
 #include <string>
 
@@ -248,6 +250,56 @@ TEST(needs_answer_manual_mark_overrides_rule) {
     REQUIRE_EQ(NeedsFor(s, "erika"), 0);
 
     REQUIRE(!s.SetNeedsAnswer("erika", "INBOX", 99, true).success);   // unknown message
+}
+
+TEST(needs_answer_rules_age_limit) {
+    LocalStore s = FreshStore("narules-age");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    MessageEnvelope recent = Incoming("erika", 1, "boss@x.com", {"erika@example.com"});
+    recent.date = now - 3 * 86400;
+    MessageEnvelope old = Incoming("erika", 2, "boss@x.com", {"erika@example.com"});
+    old.date = now - 60 * 86400;
+    REQUIRE(s.UpsertMessage(recent).success);
+    REQUIRE(s.UpsertMessage(old).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);                  // no rules: both
+
+    NeedsAnswerRules rules; rules.maxAgeDays = 14;
+    s.SetNeedsAnswerRules(rules);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+
+    // The user's own mark counts whatever its age.
+    REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 2, true).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);
+}
+
+TEST(needs_answer_rules_only_people_written_to) {
+    LocalStore s = FreshStore("narules-sent");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "Boss@X.com", {"erika@example.com"})).success);
+    REQUIRE(s.UpsertMessage(Incoming("erika", 2, "stranger@y.com", {"erika@example.com"})).success);
+
+    NeedsAnswerRules rules; rules.onlyWrittenTo = true;
+    s.SetNeedsAnswerRules(rules);
+    // No Sent mail stored yet: the rule cannot tell, so it narrows nothing.
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);
+
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    REQUIRE(s.UpsertFolder(sent).success);
+    MessageEnvelope mine; mine.accountId = "erika"; mine.folder = "Sent"; mine.uid = 1;
+    mine.fromAddr = "erika@example.com"; mine.to = {"colleague@z.com", "boss@x.com"};
+    mine.date = 900;
+    REQUIRE(s.UpsertMessage(mine).success);
+    // Only the sender written to (address compared without case) is waiting.
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
 }
 
 TEST(unread_counts_inbox_unseen) {
