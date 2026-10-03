@@ -8,6 +8,17 @@
   section is not marked. Unpinning, or *Clear Favorites* in the settings,
   takes the heart away at once. Built on the Filer widget's new favorite
   mark (framework changelog).
+- **The toolbar describes the History and Favorites views, not the folder
+  behind them.** Those lists keep an order of their own - History most
+  recently used first, Favorites in the order things were pinned, the
+  Computer page Home first - yet the Sort dropdown and the direction button
+  kept showing (and changing) the hidden folder tab's sort, and the View
+  dropdown showed the tab's layout and switched the tab instead of the page
+  on screen. While one of these views is up, Sort now reads "Last used",
+  "Order pinned" or "Home first" and is greyed out together with the
+  direction button, whose arrow shows the fixed direction; View shows and
+  changes the layout of the page on screen, following its Files / Folders /
+  Apps tabs. Leaving the view puts the folder tab's own view and sort back.
 
 #### 2026-10-02 *1.64.1*
 - **Pinning folders and sharing files work for names outside the Windows
