@@ -18,7 +18,7 @@ platform leg, as a workflow artifact:
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
 | `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries |
-| `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | static core, MSYS2 CLANG64 / CLANGARM64 |
+| `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64 |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
 plus a copy of this page, the licenses and the `PackageConsumer` example. The
@@ -36,6 +36,7 @@ UltraCanvas-SDK-<platform>-<version>-<arch>/
     libspecific/  OS/           reached only through "../" from the public headers
   include/ultracanvas/plugins/  the format plug-ins' public headers
   lib/                          libUltraCanvas, the module archives, the plug-ins
+  bin/                          on Windows: libUltraCanvas.dll (the import library is in lib/)
   lib/cmake/UltraCanvas/        UltraCanvasConfig.cmake and the exported targets
   lib/cmake/VirtualFS/          VirtualFS, found through its own package
   lib/ultracanvas/              the UltraCanvasAllFormats registrar's objects
@@ -70,7 +71,9 @@ the top of `UltraCanvasConfig.cmake`.
 
 On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does.
+the executable the way `package-linux.sh` does. On Windows the core is
+`bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
+the executable, which is what `package-win.sh` does for a release.
 
 ## What the SDK does not replace
 
@@ -93,8 +96,10 @@ the distribution's packages stay the right source.
 
 An SDK is built on one platform leg and is for that platform and architecture
 only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
-runs it, an older one may not. The macOS and Windows SDKs are static and carry
-no runtime dependency beyond the libraries named above.
+runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
+DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
+`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
+runtime dependency beyond the libraries named above.
 
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`

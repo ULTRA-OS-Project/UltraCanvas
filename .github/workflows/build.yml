@@ -695,8 +695,10 @@ jobs:
             echo "--- dependencies of $exe"
             otool -L "$exe" || true
           fi
+          # The shared core lives in lib/ on Linux and, as a DLL, in bin/ on
+          # Windows; the consumer finds it the way an application would.
           set +e
-          LD_LIBRARY_PATH="$PWD/$SDK/lib" "$exe"
+          PATH="$PWD/$SDK/bin:$PATH" LD_LIBRARY_PATH="$PWD/$SDK/lib" "$exe"
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
