@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.6.0 - floats: float:left/right and <table align="left|right">
+//                  next to each other share one wrapping row (mail columns)
 // Version: 1.5.0 - display:block cells of a row stack in one anonymous cell
 //                  (mail-template columns on a narrow screen); align="center"
 //                  / "right" on a container places its narrowed blocks too;
@@ -16,7 +18,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -405,8 +407,76 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         lineParts.push_back({ {}, &child });
     };
 
+    // Floats next to each other (only whitespace between them) share one
+    // wrapping row: left floats at its start, right floats at its end - the
+    // two 300px <table align="left"> columns of a mail template sit side by
+    // side. What follows starts below the row (it does not flow around it).
+    std::vector<Node*> floats;
+    auto isFloat = [&](Node& n) {
+        if (!n.IsElement()) return false;
+        const ComputedStyle& st = resolver.StyleOf(&n);
+        if (st.floatMode == FloatMode::NoFloat || st.display == DisplayMode::Hidden) return false;
+        return n.tag == "table" || n.tag == "img" || IsBlockDisplay(st.display) ||
+               st.display == DisplayMode::InlineBlock;
+    };
+    auto flushFloats = [&]() {
+        if (floats.empty()) return;
+        auto row = MakeContainer("floats");
+        row->size.width = CSSLayout::Dimension::Pct(100.f);
+        row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::Wrap)
+                   .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexStart)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        auto build = [&](Node& n) -> std::shared_ptr<UltraCanvasUIElement> {
+            if (n.tag == "table") return BuildTable(n);
+            if (n.tag == "img") {
+                if (!opts.enableImages) return nullptr;
+                auto line = BuildImage(n, AncestorLink(n));
+                if (line) line->size.width = CSSLayout::Dimension::Auto();
+                return line;
+            }
+            return BuildBlock(n);
+        };
+        std::vector<Node*> rights;
+        for (Node* n : floats) {
+            if (resolver.StyleOf(n).floatMode == FloatMode::Right) { rights.push_back(n); continue; }
+            if (auto item = build(*n)) {
+                RegisterAnchors(*n, item);
+                item->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+                row->AddChild(item);
+            }
+        }
+        if (!rights.empty()) {
+            // The first right float is the rightmost, as in CSS.
+            auto push = MakeContainer("floatgap");
+            push->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f);
+            row->AddChild(push);
+            for (auto it = rights.rbegin(); it != rights.rend(); ++it) {
+                if (auto item = build(**it)) {
+                    RegisterAnchors(**it, item);
+                    item->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+                    row->AddChild(item);
+                }
+            }
+        }
+        floats.clear();
+        if (!row->GetChildren().empty()) addFlowChild(row, 0.f, 0.f);
+    };
+
     std::function<void(Node&)> processChild = [&](Node& child) {
         if (child.type == NodeType::Comment) return;
+
+        if (isFloat(child)) {
+            flushRun();
+            floats.push_back(&child);
+            return;
+        }
+        if (!floats.empty()) {
+            if (child.type == NodeType::Text &&
+                std::all_of(child.text.begin(), child.text.end(),
+                            [](unsigned char ch) { return std::isspace(ch) != 0; }))
+                return;
+            flushFloats();
+        }
 
         if (child.type == NodeType::Text) {
             inlineRun.push_back(&child);
@@ -578,6 +648,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
     for (const auto& childPtr : element.children) processChild(*childPtr);
 
+    flushFloats();
     flushRun();
 }
 
@@ -1121,6 +1192,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         flushStacked();
     }
 
+    // A floated table is placed by its float row (BuildChildrenInto).
+    if (style.floatMode != FloatMode::NoFloat) return table;
     const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;
     if (inlineBox || fullWidth) {
         if (inlineBox) table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);

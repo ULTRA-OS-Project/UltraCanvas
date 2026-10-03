@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.4.0 - structural pseudo-classes match; float, and <table
+//                  align="left|right"> floats
 // Version: 1.3.0 - attribute selectors match; box-sizing
 // Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
 // Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
@@ -9,7 +11,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -94,6 +96,13 @@ void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& styl
 // so any CSS for the same property wins, as in a browser.
 void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& style) {
     const bool colorsAllowed = !opts.overrideAuthorColors;
+    // <table align="left|right"> floats, as in browsers - two 300px tables
+    // in a 600px cell sit side by side (Mailchimp's two-column blocks).
+    if (element.tag == "table") {
+        const std::string align = TrimLower(element.GetAttribute("align"));
+        if (align == "left") style.floatMode = FloatMode::Left;
+        else if (align == "right") style.floatMode = FloatMode::Right;
+    }
     if (element.tag == "font") {
         if (colorsAllowed) {
             if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("color")))) style.color = *color;
@@ -387,6 +396,39 @@ bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& elem
         if (!element.HasClass(cls)) return false;
     }
     if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
+    for (const auto& pc : part.pseudos) {
+        if (pc.kind == PseudoClass::Kind::Root) {
+            if (element.tag != "html") return false;
+            continue;
+        }
+        if (pc.kind == PseudoClass::Kind::Empty) {
+            for (const auto& child : element.children)
+                if (child->IsElement() ||
+                    (child->type == NodeType::Text && !child->text.empty()))
+                    return false;
+            continue;
+        }
+        // The element's 1-based position among its element siblings (of its
+        // tag, for -of-type), from the first or from the last.
+        const Node* parent = element.parent;
+        if (!parent) return false;
+        int index = 0, count = 0;
+        for (const auto& sib : parent->children) {
+            if (!sib->IsElement()) continue;
+            if (pc.ofType && sib->tag != element.tag) continue;
+            ++count;
+            if (sib.get() == &element) index = count;
+        }
+        if (index == 0) return false;
+        const int pos = pc.fromEnd ? count - index + 1 : index;
+        // pos == a*n + b for some n >= 0.
+        if (pc.a == 0) {
+            if (pos != pc.b) return false;
+        } else {
+            const int diff = pos - pc.b;
+            if (diff % pc.a != 0 || diff / pc.a < 0) return false;
+        }
+    }
     for (const auto& attr : part.attributes) {
         if (!element.HasAttribute(attr.name)) return false;
         if (attr.op == 0) continue;
@@ -678,6 +720,11 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
         s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "float") {
+        if (lower == "left") s.floatMode = FloatMode::Left;
+        else if (lower == "right") s.floatMode = FloatMode::Right;
+        else if (lower == "none") s.floatMode = FloatMode::NoFloat;
     }
     else if (prop == "box-sizing") {
         if (lower == "border-box") s.borderBox = true;

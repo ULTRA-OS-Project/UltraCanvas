@@ -1,5 +1,8 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
+// Version: 1.5.0 - structural pseudo-classes: :first-child, :last-child,
+//                  :only-child, :nth-child(an+b) / -last- / -of-type, :root,
+//                  :empty (dynamic ones such as :hover still drop the rule)
 // Version: 1.4.0 - attribute selectors: [a], [a=v], ~= ^= $= *= |=, quoted
 //                  values, the i flag (Mailchimp: td[class=mcnTextContent])
 // Version: 1.3.0 - @media blocks apply when their query matches the media width;
@@ -8,7 +11,7 @@
 //                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -262,7 +265,8 @@ int Selector::Specificity() const {
     int ids = 0, classes = 0, tags = 0;
     for (const auto& part : path) {
         if (!part.id.empty()) ++ids;
-        classes += static_cast<int>(part.classes.size() + part.attributes.size()) +
+        classes += static_cast<int>(part.classes.size() + part.attributes.size() +
+                                    part.pseudos.size()) +
                    (part.link ? 1 : 0);
         if (!part.tag.empty() && part.tag != "*") ++tags;
     }
@@ -270,6 +274,39 @@ int Selector::Specificity() const {
 }
 
 namespace {
+
+// "odd", "even", "3", "n", "-n+3", "2n + 1" -> a, b. False when malformed.
+bool ParseNth(std::string text, int& a, int& b) {
+    std::string t;
+    for (char ch : text)
+        if (!std::isspace(static_cast<unsigned char>(ch)))
+            t += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (t == "odd")  { a = 2; b = 1; return true; }
+    if (t == "even") { a = 2; b = 0; return true; }
+    auto parseInt = [](const std::string& s, int& out) {
+        if (s.empty()) return false;
+        size_t i = (s[0] == '+' || s[0] == '-') ? 1 : 0;
+        if (i >= s.size()) return false;
+        long v = 0;
+        for (; i < s.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+            v = v * 10 + (s[i] - '0');
+            if (v > 100000) return false;
+        }
+        out = static_cast<int>(s[0] == '-' ? -v : v);
+        return true;
+    };
+    const size_t n = t.find('n');
+    if (n == std::string::npos) { a = 0; return parseInt(t, b); }
+    const std::string coef = t.substr(0, n);
+    if (coef.empty() || coef == "+") a = 1;
+    else if (coef == "-") a = -1;
+    else if (!parseInt(coef, a)) return false;
+    const std::string rest = t.substr(n + 1);
+    if (rest.empty()) { b = 0; return true; }
+    if (rest[0] != '+' && rest[0] != '-') return false;
+    return parseInt(rest, b);
+}
 
 // Returns nullopt when the selector uses unsupported syntax.
 std::optional<SimpleSelector> ParseCompound(const std::string& text) {
@@ -287,11 +324,43 @@ std::optional<SimpleSelector> ParseCompound(const std::string& text) {
                 name += static_cast<char>(std::tolower(static_cast<unsigned char>(text[i])));
                 ++i;
             }
-            if (name == "link" || name == "any-link") {
+            std::string arg;
+            bool hasArg = false;
+            if (i < text.size() && text[i] == '(') {
+                const size_t close = text.find(')', i);
+                if (close == std::string::npos) return std::nullopt;
+                arg = text.substr(i + 1, close - i - 1);
+                hasArg = true;
+                i = close + 1;
+            }
+            if (!hasArg && (name == "link" || name == "any-link")) {
                 result.link = true;
                 continue;
             }
-            return std::nullopt;
+            PseudoClass pc;
+            if (!hasArg && name == "first-child")        { pc.a = 0; pc.b = 1; }
+            else if (!hasArg && name == "last-child")    { pc.a = 0; pc.b = 1; pc.fromEnd = true; }
+            else if (!hasArg && name == "first-of-type") { pc.a = 0; pc.b = 1; pc.ofType = true; }
+            else if (!hasArg && name == "last-of-type")  { pc.a = 0; pc.b = 1; pc.ofType = true; pc.fromEnd = true; }
+            else if (!hasArg && (name == "only-child" || name == "only-of-type")) {
+                // First and last at once: two conditions.
+                pc.ofType = name == "only-of-type";
+                result.pseudos.push_back(pc);
+                pc.fromEnd = true;
+            }
+            else if (!hasArg && name == "root")  pc.kind = PseudoClass::Kind::Root;
+            else if (!hasArg && name == "empty") pc.kind = PseudoClass::Kind::Empty;
+            else if (hasArg && (name == "nth-child" || name == "nth-last-child" ||
+                                name == "nth-of-type" || name == "nth-last-of-type")) {
+                if (!ParseNth(arg, pc.a, pc.b)) return std::nullopt;
+                pc.fromEnd = name.find("last") != std::string::npos;
+                pc.ofType = name.find("of-type") != std::string::npos;
+            }
+            // :hover, :visited, :not(...) and the rest: a static render is
+            // never hovered, so the rule is dropped.
+            else return std::nullopt;
+            result.pseudos.push_back(pc);
+            continue;
         }
         if (c == '[') {
             // [name], [name=value], [name~=value] ... with an optional
@@ -392,6 +461,14 @@ std::optional<Selector> ParseSelector(const std::string& text) {
 
     while (i <= text.size()) {
         char c = (i < text.size()) ? text[i] : ' ';
+        // A pseudo-class argument is one piece: ":nth-child(2n + 1)".
+        if (c == '(') {
+            const size_t close = text.find(')', i);
+            if (close == std::string::npos) return std::nullopt;
+            token += text.substr(i, close - i + 1);
+            i = close + 1;
+            continue;
+        }
         // An attribute selector is one piece: its spaces, '~' (~=) and
         // quoted text are not combinators.
         if (c == '[') {

@@ -4,6 +4,8 @@
 // descendant chains, the box-model / typography / color properties, and a
 // specificity-ordered cascade. Framework-independent: value types here are
 // plain structs; HTMLElementBuilder maps them onto CSSLayout/widget types.
+// Version: 1.2.0 - structural pseudo-classes (:first-child, :last-child,
+//                  :nth-child() and the -of-type forms, :only-child, :root, :empty)
 // Version: 1.1.0 - attribute selectors ([a], [a=v], ~= ^= $= *= |=)
 // Version: 1.0.0
 // Last Modified: 2026-10-02
@@ -66,11 +68,23 @@ struct AttributeSelector {
     bool ignoreCase = false;          // [name=value i]
 };
 
+// Structural pseudo-classes, all as an+b positions: :first-child is
+// nth-child(1), :last-child nth-last-child(1), :only-child both. ofType
+// counts only siblings with the same tag; fromEnd counts from the last.
+struct PseudoClass {
+    enum class Kind { Nth, Root, Empty };
+    Kind kind = Kind::Nth;
+    int a = 0, b = 1;                 // matches positions a*n + b, n >= 0 (1-based)
+    bool fromEnd = false;
+    bool ofType = false;
+};
+
 struct SimpleSelector {
     std::string tag;                  // empty or "*" = any element
     std::vector<std::string> classes;
     std::string id;
     std::vector<AttributeSelector> attributes;
+    std::vector<PseudoClass> pseudos;
     // :link / :any-link - an <a href>. Links are all unvisited here, so a
     // :visited rule never matches and :hover / :active / :focus rules are
     // dropped (a static render is never hovered).

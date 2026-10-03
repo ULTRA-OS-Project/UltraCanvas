@@ -11,9 +11,9 @@
 // with the CSSLayout engine; text is measured on an offscreen render context.
 // Version: 1.2.0 - display:block cells stack (mail columns on a narrow screen);
 //                  align=center places a max-width block; a px width is the
-//                  content box unless box-sizing: border-box
+//                  content box unless box-sizing: border-box; floats
 // Version: 1.1.0 - background pictures, margin: auto, @media width
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -478,6 +478,52 @@ void TestContentBoxWidth() {
     }
 }
 
+// Floats: Mailchimp's two-column block is two <table align="left"
+// width="300"> in a 600px cell - side by side, as in a browser, not one under
+// the other. float:right goes to the end of the row; what follows the
+// floats starts below them.
+void TestFloats() {
+    std::printf("floats sit side by side\n");
+    HTML::BuildOptions opts;
+    opts.style.baseFontSizePx = 12.f;
+    HTML::ElementBuilder builder;
+    auto host = std::make_shared<Host>();
+    host->Adopt(CreateRenderContext(Size2Di(640, 400), nullptr));
+    auto root = builder.Build(
+        "<table width='600' cellpadding='0' cellspacing='0'><tr><td>"
+        "<table align='left' width='300' cellpadding='0' cellspacing='0'><tr><td>COLONE</td></tr></table>\n"
+        "<table align='left' width='300' cellpadding='0' cellspacing='0'><tr><td>COLTWO</td></tr></table>"
+        "</td></tr></table>"
+        "<div style='float:left;width:100px'>FLEFT</div> <div style='float:right;width:100px'>FRIGHT</div>"
+        "<p>AFTERFLOATS</p>", opts).root;
+    Check(root != nullptr, "built");
+    if (!root) return;
+    root->size.width = CSSLayout::Dimension::Px(640.f);
+    host->AddChild(root);
+    CSSLayout::LayoutContext ctx;
+    ctx.viewportWidth = 640;
+    ctx.viewportHeight = 400;
+    CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 640.f },
+                                      { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+    root->Measure(mc, ctx);
+    root->Arrange(Rect2Df{ 0, 0, 640.f, root->measured.measuredHeight }, ctx);
+    std::vector<Placed> all;
+    Collect(root.get(), 0, 0, all);
+    const Placed* one = LabelWith(all, "COLONE");
+    const Placed* two = LabelWith(all, "COLTWO");
+    const Placed* left = LabelWith(all, "FLEFT");
+    const Placed* right = LabelWith(all, "FRIGHT");
+    const Placed* after = LabelWith(all, "AFTERFLOATS");
+    Check(one && two && left && right && after, "all built");
+    if (!one || !two || !left || !right || !after) return;
+    CheckNear(two->rect.y, one->rect.y, "the two columns on one row");
+    CheckNear(two->rect.x - one->rect.x, 300.f, "the second column 300px right of the first");
+    CheckNear(left->rect.x, 0.f, "float:left at the start");
+    CheckNear(right->rect.x + right->rect.width, 640.f, "float:right at the end");
+    CheckNear(right->rect.y, left->rect.y, "both floats on one row");
+    Check(after->rect.y >= left->rect.y + left->rect.height - 0.5f, "what follows starts below");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("HTMLTableLayoutTest");
     TestSharedColumns();
@@ -488,6 +534,7 @@ int main() {
     TestStackedColumns();
     TestAlignCentresNarrowBlock();
     TestContentBoxWidth();
+    TestFloats();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

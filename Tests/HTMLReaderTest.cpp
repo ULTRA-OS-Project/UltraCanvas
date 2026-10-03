@@ -1,13 +1,14 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.7.0 - structural pseudo-classes
 // Version: 1.6.0 - attribute selectors
 // Version: 1.5.0 - a later width declaration replaces an earlier one
 // Version: 1.4.0 - width/height="auto" on <img> is no size
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -581,6 +582,73 @@ static void TestAttributeSelectors() {
     CHECK(style("deep").color.r == 0x12 && style("deep").color.b == 0x56);
 }
 
+// Structural pseudo-classes, as mail templates use them
+// (Mailchimp: .mcnCaptionBottomContent:last-child ...).
+static void TestStructuralPseudoClasses() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "li:first-child{font-weight:bold}"
+        "li:last-child{font-style:italic}"
+        "li:nth-child(2n){text-align:right}"
+        "li:nth-child( odd ){color:#0000ff}"
+        "li:nth-last-child(2){text-decoration:underline}"
+        "p:only-child{text-align:center}"
+        "span:first-of-type{color:#ff0000}"
+        "span:last-of-type{font-weight:bold}"
+        "td[class=a] table.cap:last-child td.t{color:#00ff00}"
+        "div:empty{text-align:right}"
+        "a:hover{color:#123456}"
+        "</style></head><body>"
+        "<ul><li id='l1'>1</li><li id='l2'>2</li><li id='l3'>3</li><li id='l4'>4</li></ul>"
+        "<div><p id='only'>x</p></div><div><p id='notonly'>x</p><p>y</p></div>"
+        "<div><b>x</b><span id='s1'>a</span><i>y</i><span id='s2'>b</span></div>"
+        "<table><tr><td class='a'><table class='cap'><tr><td class='t' id='first'>1</td></tr></table>"
+        "<table class='cap'><tr><td class='t' id='last'>2</td></tr></table></td></tr></table>"
+        "<div id='empty'></div><div id='full'>t</div>"
+        "<a id='hov' href='x'>h</a>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    CHECK(style("l1").bold);
+    CHECK(!style("l2").bold);
+    CHECK(style("l4").italic);
+    CHECK(!style("l3").italic);
+    CHECK(style("l2").textAlign == TextAlignMode::Right);
+    CHECK(style("l4").textAlign == TextAlignMode::Right);
+    CHECK(style("l1").textAlign != TextAlignMode::Right);
+    CHECK(style("l1").color.b == 255 && style("l3").color.b == 255);
+    CHECK(style("l2").color.b != 255);
+    CHECK(style("l3").underline);
+    CHECK(!style("l4").underline);
+    CHECK(style("only").textAlign == TextAlignMode::Center);
+    CHECK(style("notonly").textAlign != TextAlignMode::Center);
+    CHECK(style("s1").color.r == 255);
+    CHECK(style("s2").color.r != 255);
+    CHECK(style("s2").bold);
+    CHECK(!style("s1").bold);
+    CHECK(style("last").color.g == 255);
+    CHECK(style("first").color.g != 255);
+    CHECK(style("empty").textAlign == TextAlignMode::Right);
+    CHECK(style("full").textAlign != TextAlignMode::Right);
+    CHECK(style("hov").color.r != 0x12);   // :hover never matches a static render
+}
+
 static void TestMailTableStyles() {
     Parser parser;
     Document doc = parser.Parse(
@@ -702,6 +770,7 @@ int main() {
     TestImageAutoAttributes();
     TestImportantWidthReplacesInlineWidth();
     TestAttributeSelectors();
+    TestStructuralPseudoClasses();
     TestMediaAndBackgrounds();
 
     std::printf("%s: %d checks, %d failures\n",

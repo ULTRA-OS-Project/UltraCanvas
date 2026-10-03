@@ -6,6 +6,12 @@
   their footer icons were drawn 5px wide instead of 25px. Fixed in the
   framework's HTML reader (see the framework changelog, "attribute selectors"
   and "a px width or height is the content box").
+- **Two-column newsletters keep their columns.** Mailchimp and similar
+  templates place two columns side by side as floats (`<table align="left">`),
+  which the HTML reader ignored, so the columns came one under the other in
+  any pane width. And rules addressing the first or last item of a list
+  (`:last-child` and similar) now apply. Fixed in the framework's HTML reader
+  (see the framework changelog, "floats" and "structural pseudo-classes").
 
 #### 2026-10-02 *0.10.21*
 - **Switching accounts is immediate, even while mail is being fetched.**
