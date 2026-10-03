@@ -1,3 +1,14 @@
+#### 2026-10-03 *0.9.143*
+- **A link's address as a tooltip, by choice.**
+  - `UltraCanvasLabel::SetShowLinkTooltips(bool)`: while the pointer is on a
+    text link, the label shows that link's href in a tooltip that follows the
+    pointer along the link, and hides it as the pointer leaves the link (off
+    by default).
+  - `HTML::BuildOptions::linkTooltips` (default on): text links and linked
+    pictures show their href as a tooltip. An app that shows the address
+    elsewhere - a status line fed by `onLinkHovered` - turns it off. Before,
+    linked pictures always had the tooltip and text links never did.
+
 #### 2026-10-03 *0.9.142*
 - **`build-win.cmd` named the wrong MSYS2 environment.** Its header listed the MINGW64 packages (`mingw-w64-x86_64-gcc`, ...) while CI has built with CLANG64 (`mingw-w64-clang-x86_64-clang`) for every release and `package-win.sh` packages from a CLANG64 or CLANGARM64 shell, so a newcomer following the file installed a toolchain whose libraries the packaging script does not collect. The header now lists the CLANG64 packages CI installs, names the CLANGARM64 substitution for Windows on ARM, points at the workflow's "Setup MSYS2" step as the complete list, and enables the CDR plug-in as CI does.
 - **Docs: a getting-started guide for working through an AI assistant and GitHub with no local compiler.** `Docs/GettingStarted-Cloud.md` is the companion to `GettingStarted.md` for Claude Code on the web: connecting the GitHub App, what the Build workflow and the seven check workflows do on a pull request and why a branch without one gets nothing, the packaged artifacts every leg uploads as the way to run the app, the first session (skeleton, changelog entry, draft PR, watching it), the per-change loop with CI as the compiler, review and merge rules, and what is lost when a session ends with work unpushed. Linked from `README.md` and the main guide.
