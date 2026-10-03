@@ -1,3 +1,38 @@
+#### 2026-10-04 *0.10.27*
+- **The phishing scan knows the brands phishing pretends to be.** The
+  known-sender registry grows from about 50 services to about 400, with 600 of
+  their own domains: banks and brokers (Chase, Bank of America, Barclays, HSBC,
+  Revolut, Deutsche Bank, Commerzbank, ING, N26, UBS, BNP Paribas, Nordea, RBC,
+  Commonwealth Bank …), payment services (Venmo, Zelle, Cash App, Wise, Western
+  Union, Klarna, Visa, Mastercard …), crypto exchanges and wallets (Coinbase,
+  Binance, Kraken, Crypto.com, MetaMask, Ledger, Trezor …), online shops and
+  marketplaces (Walmart, AliExpress, Temu, Zalando, Vinted, Kleinanzeigen,
+  Lidl, Aldi …), parcel carriers and postal services (USPS, Royal Mail, Evri,
+  DPD, GLS, InPost, PostNL …), cloud, hosting and file-sharing services
+  (WeTransfer, DocuSign, Cloudflare, Hetzner, IONOS, OVHcloud …), domain
+  registrars (GoDaddy, Namecheap, INWX, DENIC …), tax offices and agencies (IRS,
+  HMRC, ELSTER, impots.gouv.fr, CRA, ATO …), telecoms, game stores and
+  security software (Norton, McAfee, LastPass …). A display name or subject
+  claiming one of them from another domain is flagged as impersonation; their
+  genuine mail gets their name, icon and the business-contact badge. Eight new
+  categories describe them, and the **Payments** filter now also shows mail
+  from banks and crypto exchanges.
+- **Fewer false impersonation warnings.** Brands whose name is an ordinary
+  word ("Chase", "Target", "Visa", "Steam", "Booking", "UPS") are now claimed
+  only by specific phrases ("chase bank", "booking.com"), so a hotel's "your
+  booking is confirmed" or a subject with "follow-ups" no longer reads as
+  impersonation; Amazon is no longer claimed by "prime" alone, nor Microsoft
+  by "office" or "outlook". A display name that is just the sender's own
+  mailbox address (`jane@outlook.com`) claims no brand.
+- **A squatted country domain no longer passes for a big brand.** Amazon,
+  eBay, Google, DHL, Etsy and Pinterest were trusted under any domain ending
+  - `amazon.xyz` got Amazon's name, icon and badge. They now list their real
+  country sites (`amazon.de`, `ebay.co.uk`, `dhl.de`, `google.co.jp`,
+  `pinterest.de`, …) one by one, and no entry is trusted that way any more.
+- Brand lookups use an index instead of walking the table for every message
+  in a folder. See [SenderBadges.md](SenderBadges.md#2-the-known-sender-registry)
+  for the rules an entry must follow.
+
 #### 2026-10-04 *0.10.26*
 - **Unread mail stays unread.** Syncing marked every new message read on the
   server, so the list had no unread mail to show in bold, the account's unread

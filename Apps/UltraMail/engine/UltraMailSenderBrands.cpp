@@ -1,12 +1,17 @@
 // Apps/UltraMail/engine/UltraMailSenderBrands.cpp
+// Version: 0.3.0 - the table moves to UltraMailSenderBrandTable.cpp and grows to
+//                  ~400 brands; indexed lookup; keyword-only claims; a
+//                  mailbox-provider address in a display name claims nothing
 // Version: 0.2.0 - dating services (Tinder, Bumble, Hinge, OkCupid, Parship)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBrands.h"
+#include "UltraMailSenderBrandTable.h"
 
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include <unordered_map>
 
 namespace UltraMail {
 
@@ -31,7 +36,17 @@ const std::set<std::string>& TwoLevelSuffixes() {
         "com.hk", "com.tw", "com.ar", "com.co", "com.pl", "com.ua", "com.my",
         "com.ph", "com.vn", "com.pe", "com.ec", "com.uy", "com.pk", "com.eg",
         "com.sa", "com.ng", "com.gr", "com.pt", "com.es", "com.ru",
+        "com.be",
+        // Government suffixes the registry's tax offices live under.
+        "gov.in", "gouv.fr", "gc.ca",
     };
+    return s;
+}
+
+// Three-level suffixes under which every name is a separate party: each
+// "<service>.service.gov.uk" is a different UK government service.
+const std::set<std::string>& ThreeLevelSuffixes() {
+    static const std::set<std::string> s = { "service.gov.uk" };
     return s;
 }
 
@@ -56,164 +71,6 @@ const std::set<std::string>& PersonalMailboxDomains() {
     return s;
 }
 
-// The registry. `domains` are exact registrable domains; `labels` match a
-// registrable domain whose base label is that word under any public suffix
-// (amazon.de, amazon.co.uk); `keywords` are the words that claim the brand in
-// a display name, a subject or a host label.
-struct BrandRule {
-    SenderBrand              brand;
-    std::vector<std::string> domains;
-    std::vector<std::string> labels;
-    std::vector<std::string> keywords;
-};
-
-const std::vector<BrandRule>& Rules() {
-    static const std::vector<BrandRule> rules = {
-        { {"facebook",  "Facebook",  "https://www.facebook.com/favicon.ico",  0x1877F2, BrandCategory::Social},
-          {"facebook.com", "facebookmail.com", "fb.com", "meta.com"}, {},
-          {"facebook", "meta"} },
-        { {"instagram", "Instagram", "https://www.instagram.com/favicon.ico", 0xE1306C, BrandCategory::Social},
-          {"instagram.com", "mail.instagram.com"}, {}, {"instagram"} },
-        { {"whatsapp",  "WhatsApp",  "https://www.whatsapp.com/favicon.ico",  0x25D366, BrandCategory::Messaging},
-          {"whatsapp.com"}, {}, {"whatsapp"} },
-        { {"linkedin",  "LinkedIn",  "https://www.linkedin.com/favicon.ico",  0x0A66C2, BrandCategory::Social},
-          {"linkedin.com"}, {}, {"linkedin"} },
-        { {"x",         "X",         "https://abs.twimg.com/favicons/twitter.3.ico", 0x111111, BrandCategory::Social},
-          {"twitter.com", "x.com"}, {}, {"twitter"} },
-        { {"claude",    "Claude",    "https://claude.ai/favicon.ico",         0xD97757, BrandCategory::Technology},
-          {"anthropic.com", "claude.ai", "claude.com"}, {}, {"anthropic", "claude"} },
-        { {"openai",    "OpenAI",    "https://openai.com/favicon.ico",        0x10A37F, BrandCategory::Technology},
-          {"openai.com", "chatgpt.com"}, {}, {"openai", "chatgpt"} },
-        { {"google",    "Google",    "https://www.google.com/favicon.ico",    0x4285F4, BrandCategory::Technology},
-          {"googleapis.com", "googleusercontent.com", "google-analytics.com",
-           "withgoogle.com", "firebase.com", "android.com"},
-          {"google"}, {"google"} },
-        { {"youtube",   "YouTube",   "https://www.youtube.com/favicon.ico",   0xFF0000, BrandCategory::Media},
-          {"youtube.com", "youtu.be"}, {}, {"youtube"} },
-        { {"apple",     "Apple",     "https://www.apple.com/favicon.ico",     0x555555, BrandCategory::Technology},
-          {"apple.com", "itunes.com", "apple.news"}, {},
-          {"apple", "itunes", "appleid"} },
-        { {"microsoft", "Microsoft", "https://www.microsoft.com/favicon.ico", 0x0078D4, BrandCategory::Technology},
-          {"microsoft.com", "microsoftonline.com", "office.com", "office365.com",
-           "sharepointonline.com", "azure.com", "windows.com", "skype.com",
-           "xbox.com", "bing.com"}, {},
-          {"microsoft", "onedrive", "sharepoint", "outlook", "office"} },
-        { {"github",    "GitHub",    "https://github.com/favicon.ico",        0x24292F, BrandCategory::Technology},
-          {"github.com"}, {}, {"github"} },
-        { {"amazon",    "Amazon",    "https://www.amazon.com/favicon.ico",    0xFF9900, BrandCategory::Shopping},
-          {"amazon.com", "primevideo.com", "audible.com", "aws.amazon.com"},
-          {"amazon"}, {"amazon", "prime"} },
-        { {"paypal",    "PayPal",    "https://www.paypal.com/favicon.ico",    0x003087, BrandCategory::Payment},
-          {"paypal.com", "paypal-communication.com"}, {}, {"paypal"} },
-        { {"stripe",    "Stripe",    "https://stripe.com/favicon.ico",        0x635BFF, BrandCategory::Payment},
-          {"stripe.com"}, {}, {"stripe"} },
-        { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238, BrandCategory::Shopping},
-          {}, {"ebay"}, {"ebay"} },
-        // Dating services: favourite disguises of "you have a match" phishing.
-        // ("Match" itself is left out - the word is in every such subject.)
-        { {"tinder",    "Tinder",    "https://tinder.com/favicon.ico",        0xFD5068, BrandCategory::Social},
-          {"tinder.com", "gotinder.com"}, {}, {"tinder"} },
-        { {"bumble",    "Bumble",    "https://bumble.com/favicon.ico",        0xFFC629, BrandCategory::Social},
-          {"bumble.com", "team.bumble.com"}, {}, {"bumble"} },
-        { {"hinge",     "Hinge",     "https://hinge.co/favicon.ico",          0x111111, BrandCategory::Social},
-          {"hinge.co"}, {}, {"hinge app"} },
-        { {"okcupid",   "OkCupid",   "https://www.okcupid.com/favicon.ico",   0x0500BE, BrandCategory::Social},
-          {"okcupid.com"}, {}, {"okcupid"} },
-        { {"parship",   "Parship",   "https://www.parship.com/favicon.ico",   0xC6004B, BrandCategory::Social},
-          {"parship.com", "parship.de"}, {}, {"parship"} },
-        { {"netflix",   "Netflix",   "https://www.netflix.com/favicon.ico",   0xE50914, BrandCategory::Media},
-          {"netflix.com"}, {}, {"netflix"} },
-        { {"spotify",   "Spotify",   "https://www.spotify.com/favicon.ico",   0x1DB954, BrandCategory::Media},
-          {"spotify.com", "spotifymail.com"}, {}, {"spotify"} },
-        { {"dropbox",   "Dropbox",   "https://www.dropbox.com/favicon.ico",   0x0061FF, BrandCategory::Technology},
-          {"dropbox.com", "dropboxmail.com"}, {}, {"dropbox"} },
-        { {"slack",     "Slack",     "https://slack.com/favicon.ico",         0x4A154B, BrandCategory::Messaging},
-          {"slack.com", "slack-mail.com"}, {}, {"slack"} },
-        { {"discord",   "Discord",   "https://discord.com/assets/favicon.ico",0x5865F2, BrandCategory::Messaging},
-          {"discord.com", "discordapp.com"}, {}, {"discord"} },
-        { {"telegram",  "Telegram",  "https://telegram.org/favicon.ico",      0x26A5E4, BrandCategory::Messaging},
-          {"telegram.org"}, {}, {"telegram"} },
-        { {"reddit",    "Reddit",    "https://www.reddit.com/favicon.ico",    0xFF4500, BrandCategory::Social},
-          {"reddit.com", "redditmail.com"}, {}, {"reddit"} },
-        { {"tiktok",    "TikTok",    "https://www.tiktok.com/favicon.ico",    0x111111, BrandCategory::Social},
-          {"tiktok.com"}, {}, {"tiktok"} },
-        { {"zoom",      "Zoom",      "https://zoom.us/favicon.ico",           0x2D8CFF, BrandCategory::Technology},
-          {"zoom.us"}, {}, {"zoom"} },
-        { {"booking",   "Booking",   "https://www.booking.com/favicon.ico",   0x003580, BrandCategory::Travel},
-          {"booking.com"}, {}, {"booking"} },
-        { {"airbnb",    "Airbnb",    "https://www.airbnb.com/favicon.ico",    0xFF5A5F, BrandCategory::Travel},
-          {"airbnb.com"}, {}, {"airbnb"} },
-        { {"dhl",       "DHL",       "https://www.dhl.com/favicon.ico",       0xD40511, BrandCategory::Delivery},
-          {}, {"dhl"}, {"dhl"} },
-        { {"ups",       "UPS",       "https://www.ups.com/favicon.ico",       0x351C15, BrandCategory::Delivery},
-          {"ups.com"}, {}, {"ups"} },
-        { {"fedex",     "FedEx",     "https://www.fedex.com/favicon.ico",     0x4D148C, BrandCategory::Delivery},
-          {"fedex.com"}, {}, {"fedex"} },
-
-        // ── Crowdfunding and creator support ────────────────────────────────
-        // A backed project or a supported creator is a business relationship
-        // the user keeps: these are among the entries most worth collecting
-        // into the address book (see ContactCollector::CollectSender).
-        { {"kickstarter", "Kickstarter", "https://www.kickstarter.com/favicon.ico", 0x05CE78,
-           BrandCategory::Crowdfunding},
-          {"kickstarter.com"}, {}, {"kickstarter"} },
-        { {"indiegogo", "Indiegogo", "https://www.indiegogo.com/favicon.ico", 0xEB1478,
-           BrandCategory::Crowdfunding},
-          {"indiegogo.com"}, {}, {"indiegogo"} },
-        { {"gofundme", "GoFundMe", "https://www.gofundme.com/favicon.ico", 0x02A95C,
-           BrandCategory::Crowdfunding},
-          {"gofundme.com"}, {}, {"gofundme"} },
-        { {"startnext", "Startnext", "https://www.startnext.com/favicon.ico", 0x27ADE3,
-           BrandCategory::Crowdfunding},
-          {"startnext.com", "startnext.de"}, {}, {"startnext"} },
-        { {"crowdsupply", "Crowd Supply", "https://www.crowdsupply.com/favicon.ico", 0x1B4E6B,
-           BrandCategory::Crowdfunding},
-          {"crowdsupply.com"}, {}, {"crowd supply", "crowdsupply"} },
-        { {"patreon", "Patreon", "https://www.patreon.com/favicon.ico", 0xFF424D,
-           BrandCategory::CreatorSupport},
-          {"patreon.com"}, {}, {"patreon"} },
-        { {"buymeacoffee", "Buy Me a Coffee", "https://buymeacoffee.com/favicon.ico", 0xFFDD00,
-           BrandCategory::CreatorSupport},
-          {"buymeacoffee.com"}, {}, {"buy me a coffee", "buymeacoffee"} },
-        { {"kofi", "Ko-fi", "https://ko-fi.com/favicon.ico", 0xFF5E5B,
-           BrandCategory::CreatorSupport},
-          {"ko-fi.com"}, {}, {"ko-fi", "kofi"} },
-        { {"liberapay", "Liberapay", "https://liberapay.com/favicon.ico", 0xF6C915,
-           BrandCategory::CreatorSupport},
-          {"liberapay.com"}, {}, {"liberapay"} },
-        { {"opencollective", "Open Collective", "https://opencollective.com/favicon.ico", 0x3385FF,
-           BrandCategory::CreatorSupport},
-          {"opencollective.com"}, {}, {"open collective", "opencollective"} },
-        { {"gumroad", "Gumroad", "https://gumroad.com/favicon.ico", 0xFF90E8,
-           BrandCategory::CreatorSupport},
-          {"gumroad.com"}, {}, {"gumroad"} },
-        { {"substack", "Substack", "https://substack.com/favicon.ico", 0xFF6719,
-           BrandCategory::CreatorSupport},
-          {"substack.com"}, {}, {"substack"} },
-
-        // ── More social networks ────────────────────────────────────────────
-        { {"pinterest", "Pinterest", "https://www.pinterest.com/favicon.ico", 0xE60023,
-           BrandCategory::Social},
-          {"pinterest.com", "pinterestmail.com"}, {"pinterest"}, {"pinterest"} },
-        { {"tumblr", "Tumblr", "https://www.tumblr.com/favicon.ico", 0x36465D,
-           BrandCategory::Social},
-          {"tumblr.com", "tumblr.net"}, {}, {"tumblr"} },
-        { {"mastodon", "Mastodon", "https://joinmastodon.org/favicon.ico", 0x6364FF,
-           BrandCategory::Social},
-          {"joinmastodon.org", "mastodon.social"}, {}, {"mastodon"} },
-        { {"twitch", "Twitch", "https://www.twitch.tv/favicon.ico", 0x9146FF,
-           BrandCategory::Media},
-          {"twitch.tv"}, {}, {"twitch"} },
-        { {"vimeo", "Vimeo", "https://vimeo.com/favicon.ico", 0x1AB7EA,
-           BrandCategory::Media},
-          {"vimeo.com"}, {}, {"vimeo"} },
-        { {"etsy", "Etsy", "https://www.etsy.com/favicon.ico", 0xF1641E,
-           BrandCategory::Shopping},
-          {}, {"etsy"}, {"etsy"} },
-    };
-    return rules;
-}
-
 bool ContainsWord(const std::string& haystackLower, const std::string& wordLower) {
     if (wordLower.empty()) return false;
     std::size_t pos = 0;
@@ -227,6 +84,54 @@ bool ContainsWord(const std::string& haystackLower, const std::string& wordLower
         pos = end;
     }
     return false;
+}
+
+// A display name is often just the sender's own address ("jane@outlook.com"),
+// and a subject can quote one. An address at a mailbox provider names that
+// provider, not a brand the sender claims to be, so such a word is blanked
+// out. An address at any other domain stays: "service@paypal.com" as the
+// display name of mail from elsewhere is exactly the claim to catch.
+std::string WithoutMailboxAddresses(std::string text) {
+    std::size_t i = 0;
+    while (i < text.size()) {
+        while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+        std::size_t end = i;
+        while (end < text.size() && !std::isspace(static_cast<unsigned char>(text[end]))) ++end;
+        const std::size_t at = text.find('@', i);
+        if (at < end) {
+            std::string domain = text.substr(at + 1, end - at - 1);
+            while (!domain.empty() && !std::isalnum(static_cast<unsigned char>(domain.back())))
+                domain.pop_back();
+            if (IsPersonalMailboxDomain(domain))
+                std::fill(text.begin() + static_cast<std::ptrdiff_t>(i),
+                          text.begin() + static_cast<std::ptrdiff_t>(end), ' ');
+        }
+        i = end;
+    }
+    return text;
+}
+
+// The registry indexed for lookup: BrandForAddress runs for every message a
+// folder lists, so it must not walk ~600 domains each time.
+struct BrandIndex {
+    std::unordered_map<std::string, const SenderBrand*> byDomain;   // registrable domain
+    std::unordered_map<std::string, const SenderBrand*> byLabel;    // base label, any suffix
+    std::unordered_map<std::string, const SenderBrand*> byId;
+};
+
+const BrandIndex& Index() {
+    static const BrandIndex index = [] {
+        BrandIndex ix;
+        for (const BrandRule& rule : SenderBrandRules()) {
+            ix.byId.emplace(rule.brand.id, &rule.brand);
+            for (const auto& d : rule.domains)
+                ix.byDomain.emplace(RegistrableDomain(d), &rule.brand);   // first rule wins
+            for (const auto& l : rule.labels)
+                ix.byLabel.emplace(l, &rule.brand);
+        }
+        return ix;
+    }();
+    return index;
 }
 
 } // namespace
@@ -243,6 +148,14 @@ std::string ToString(BrandCategory category) {
         case BrandCategory::Media:          return "media";
         case BrandCategory::Travel:         return "travel";
         case BrandCategory::Delivery:       return "delivery";
+        case BrandCategory::Banking:        return "banking";
+        case BrandCategory::Crypto:         return "crypto";
+        case BrandCategory::CloudHosting:   return "cloud-hosting";
+        case BrandCategory::DomainRegistrar:return "domain-registrar";
+        case BrandCategory::Government:     return "government";
+        case BrandCategory::Telecom:        return "telecom";
+        case BrandCategory::Gaming:         return "gaming";
+        case BrandCategory::Security:       return "security";
     }
     return "technology";
 }
@@ -259,6 +172,14 @@ std::string DisplayName(BrandCategory category) {
         case BrandCategory::Media:          return "Media service";
         case BrandCategory::Travel:         return "Travel service";
         case BrandCategory::Delivery:       return "Parcel carrier";
+        case BrandCategory::Banking:        return "Bank or broker";
+        case BrandCategory::Crypto:         return "Crypto exchange or wallet";
+        case BrandCategory::CloudHosting:   return "Cloud, hosting or file service";
+        case BrandCategory::DomainRegistrar:return "Domain registrar";
+        case BrandCategory::Government:     return "Government agency";
+        case BrandCategory::Telecom:        return "Telecom provider";
+        case BrandCategory::Gaming:         return "Gaming service";
+        case BrandCategory::Security:       return "Security software";
     }
     return "Online service";
 }
@@ -294,7 +215,10 @@ std::string RegistrableDomain(const std::string& domain) {
     }
     if (labels.size() <= 2) return d;
     const std::string lastTwo = labels[labels.size() - 2] + "." + labels.back();
-    const std::size_t take = TwoLevelSuffixes().count(lastTwo) ? 3u : 2u;
+    std::size_t take = TwoLevelSuffixes().count(lastTwo) ? 3u : 2u;
+    if (take == 3 && labels.size() >= 3 &&
+        ThreeLevelSuffixes().count(labels[labels.size() - 3] + "." + lastTwo))
+        take = 4;
     if (labels.size() <= take) return d;
     std::string out;
     for (std::size_t i = labels.size() - take; i < labels.size(); ++i) {
@@ -324,13 +248,9 @@ const SenderBrand* BrandForDomain(const std::string& domain) {
     if (domain.empty()) return nullptr;
     const std::string reg = RegistrableDomain(domain);
     if (IsPersonalMailboxDomain(reg)) return nullptr;   // a mailbox, not a brand
-    const std::string label = BaseLabel(reg);
-    for (const auto& rule : Rules()) {
-        for (const auto& d : rule.domains)
-            if (reg == d || RegistrableDomain(d) == reg) return &rule.brand;
-        for (const auto& l : rule.labels)
-            if (label == l) return &rule.brand;
-    }
+    const BrandIndex& ix = Index();
+    if (const auto it = ix.byDomain.find(reg); it != ix.byDomain.end()) return it->second;
+    if (const auto it = ix.byLabel.find(BaseLabel(reg)); it != ix.byLabel.end()) return it->second;
     return nullptr;
 }
 
@@ -339,9 +259,9 @@ const SenderBrand* BrandForAddress(const std::string& address) {
 }
 
 const SenderBrand* BrandById(const std::string& id) {
-    for (const auto& rule : Rules())
-        if (rule.brand.id == id) return &rule.brand;
-    return nullptr;
+    const BrandIndex& ix = Index();
+    const auto it = ix.byId.find(id);
+    return it == ix.byId.end() ? nullptr : it->second;
 }
 
 bool DomainBelongsToBrand(const std::string& domain, const SenderBrand& brand) {
@@ -351,11 +271,13 @@ bool DomainBelongsToBrand(const std::string& domain, const SenderBrand& brand) {
 
 const SenderBrand* BrandNamedIn(const std::string& text) {
     if (text.empty()) return nullptr;
-    const std::string lower = Lower(text);
-    for (const auto& rule : Rules()) {
+    const std::string lower = WithoutMailboxAddresses(Lower(text));
+    for (const auto& rule : SenderBrandRules()) {
         // Names shorter than three letters ("X") would match half the prose in
-        // an inbox, so such a brand is claimed through its keywords only.
-        if (rule.brand.name.size() >= 3 && ContainsWord(lower, Lower(rule.brand.name)))
+        // an inbox, and a name that is an ordinary word ("Chase", "Visa") all
+        // of it, so such a brand is claimed through its keywords only.
+        if (rule.nameClaim == NameClaim::ByName && rule.brand.name.size() >= 3 &&
+            ContainsWord(lower, Lower(rule.brand.name)))
             return &rule.brand;
         for (const auto& k : rule.keywords)
             if (ContainsWord(lower, k)) return &rule.brand;
@@ -366,7 +288,7 @@ const SenderBrand* BrandNamedIn(const std::string& text) {
 const std::vector<SenderBrand>& KnownBrands() {
     static const std::vector<SenderBrand> all = [] {
         std::vector<SenderBrand> v;
-        for (const auto& rule : Rules()) v.push_back(rule.brand);
+        for (const auto& rule : SenderBrandRules()) v.push_back(rule.brand);
         return v;
     }();
     return all;
