@@ -3777,6 +3777,7 @@ message(STATUS "  Building IODeviceScannerESCLTest...")
 add_executable(IODeviceScannerESCLTest
     ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerESCLTest.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceDnsSd.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
 )
 target_include_directories(IODeviceScannerESCLTest PRIVATE
@@ -3804,6 +3805,7 @@ message(STATUS "  Building IODevicePrinterIPPTest...")
 add_executable(IODevicePrinterIPPTest
     ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterIPPTest.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceDnsSd.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
 )

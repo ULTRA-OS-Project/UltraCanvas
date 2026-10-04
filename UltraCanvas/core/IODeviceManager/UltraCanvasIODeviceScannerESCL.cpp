@@ -506,7 +506,10 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             IODeviceInfo info;
             info.deviceId = "escl:" + url;
             info.name = EsclTxtValue(txt, "ty");
-            if (info.name.empty()) info.name = entry.dn;
+            // The mDNS plugin's `dn` is the full service name, escaped on
+            // Bonjour; a person should see the instance part alone.
+            if (info.name.empty()) info.name = EsclInstanceFromServiceName(entry.dn);
+            if (info.name.empty()) info.name = url;
             info.model = EsclTxtValue(txt, "ty");
             info.serialNumber = EsclTxtValue(txt, "uuid");
             info.category = IODeviceCategory::Scanner;
@@ -515,6 +518,7 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             info.connectionPath = url;
             info.location = host->second[0];
             info.attributes["discovery"] = "mdns";
+            info.attributes["mdns-name"] = entry.dn;
             if (service.tls) info.attributes["escl-tls-url"] = url;
             found.push_back(std::move(info));
         }
