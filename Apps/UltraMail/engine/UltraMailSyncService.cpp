@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSyncService.cpp
+// Version: 0.3.0 - the inbox and an opened folder go through RefreshFolder: the
+//                  reconcile and the repair of missed mail on every sync
 // Version: 0.2.0 - background sync with a worker-thread prepare step
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncService.h"
@@ -13,8 +15,11 @@ SyncOutcome SyncService::SyncNow(const std::string& accountId, const std::string
     SyncOutcome folders = engine_.SyncFolders(accountId, serverUrl, options);
     if (!folders.ok) return folders;
 
-    SyncOutcome inbox = engine_.SyncMessages(accountId, "INBOX", serverUrl, options,
-                                             /*fetchBodies=*/true, onProgress);
+    // The whole refresh, not just "UIDs above the highest held": mail deleted
+    // or read on another computer follows here too, and a message an earlier
+    // sync missed is fetched now instead of never.
+    SyncOutcome inbox = engine_.RefreshFolder(accountId, "INBOX", serverUrl, options,
+                                              /*fetchBodies=*/true, onProgress);
     // Combine the stats regardless of the inbox outcome's ok flag. A failed
     // inbox fetch keeps its reason, code and connection details: the app
     // decides from the code whether the failure is worth an alert.
@@ -23,9 +28,8 @@ SyncOutcome SyncService::SyncNow(const std::string& accountId, const std::string
     out.message = inbox.ok ? "" : inbox.message;
     out.code = inbox.code;
     out.diagnostics = inbox.diagnostics;
-    out.stats.folders  = folders.stats.folders;
-    out.stats.messages = inbox.stats.messages;
-    out.stats.bodies   = inbox.stats.bodies;
+    out.stats = inbox.stats;
+    out.stats.folders = folders.stats.folders;
     return out;
 }
 
@@ -61,18 +65,20 @@ void SyncService::SyncFolderInBackground(const std::string& accountId, const std
     std::thread([this, accountId, folder, serverUrl, opts = options, prepare = std::move(prepare),
                  onDone = std::move(onDone), onProgress = std::move(onProgress)]() mutable {
         UltraNetResult prepared = prepare ? prepare(opts) : UltraNetResult::Ok();
-        SyncOutcome result = prepared
-            ? engine_.SyncMessages(accountId, folder, serverUrl, opts,
-                                   /*fetchBodies=*/true, onProgress)
-            : SyncOutcome::Fail(prepared);
-        // Once the new mail is in, reconcile read/deleted state for the messages
+        // New mail, then the reconcile of read/deleted state for the messages
         // we already had — this is what surfaces changes made on another client
-        // (e.g. Gmail's web UI). It is non-fatal, so it never turns a successful
-        // fetch into a failure.
-        if (result.ok) {
-            SyncOutcome rec = engine_.ReconcileFlags(accountId, folder, serverUrl, opts);
-            result.stats.reconciled = rec.stats.reconciled;
-            result.stats.expunged   = rec.stats.expunged;
+        // (e.g. Gmail's web UI) — and the mail an earlier sync missed. Only the
+        // new-mail step can fail the call.
+        SyncOutcome result = prepared
+            ? engine_.RefreshFolder(accountId, folder, serverUrl, opts,
+                                    /*fetchBodies=*/true, onProgress)
+            : SyncOutcome::Fail(prepared);
+        // The server would not open it: deleted or renamed there since the
+        // folder list was read? Then it leaves the tree, and that is no error.
+        if (prepared && !result.ok && !result.NetworkUnreachable() &&
+            !engine_.FolderStillListed(accountId, folder, serverUrl, opts)) {
+            result = SyncOutcome{};
+            result.stats.folderGone = true;
         }
         if (onDone) onDone(result);
     }).detach();

@@ -1024,6 +1024,29 @@ add_test(
 )
 message(STATUS "    Test registered: ListViewTooltipTest")
 
+# ===== LISTVIEW SCROLL TEST =====
+# EnsureRowVisible before the view's first layout (the row is revealed once it
+# has a size, instead of scrolling it below the top), the multi-column model's
+# SetItems (one notification for every row) and the selection following rows
+# inserted or removed above it. No window, no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ListViewScrollTest...")
+    add_executable(ListViewScrollTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ListViewScrollTest.cpp
+    )
+    target_include_directories(ListViewScrollTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ListViewScrollTest PRIVATE cxx_std_20)
+    target_link_libraries(ListViewScrollTest PRIVATE UltraCanvas)
+    set_target_properties(ListViewScrollTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ListViewScrollTest COMMAND ListViewScrollTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ListViewScrollTest")
+else()
+    message(STATUS "  ListViewScrollTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== LIST SORT/FILTER PROXY TEST =====
 # Sorting, filtering and - above all - the row mapping of
 # UltraCanvasListSortFilterProxy, because a proxy row mistaken for a source row

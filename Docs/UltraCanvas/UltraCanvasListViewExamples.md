@@ -150,6 +150,9 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+Called before the view has been laid out (no height yet), `EnsureRowVisible`
+remembers the row and reveals it once the view has its size, so a list filled
+and selected while its window is still being built opens with that row in view.
 
 ```cpp
 ScrollMetrics GetScrollMetrics() const;
@@ -283,6 +286,8 @@ public:
     void InsertItem(int row, const MultiColumnListItem& item);
     void RemoveItem(int row);
     void Clear();
+    // Every row at once, one change notification (AddItem notifies per row).
+    void SetItems(std::vector<MultiColumnListItem> newItems);
 
     int GetItemCount() const;
     const MultiColumnListItem& GetItem(int row) const;
@@ -371,6 +376,9 @@ public:
     virtual std::vector<int> GetSelectedRows() const = 0;
     virtual int GetCurrentRow() const = 0;
     virtual bool HasSelection() const = 0;
+    // Rows inserted (count > 0) or removed (count < 0) at `row`: the same items
+    // stay selected at their new rows (the view calls it from the model).
+    virtual void ShiftRows(int row, int count);
 };
 
 class UltraCanvasSingleSelection : public IListSelection { /* ... */ };
@@ -378,6 +386,14 @@ class UltraCanvasMultiSelection  : public IListSelection { /* ... */ };
 ```
 
 If `SetSelection()` is never called, the view installs a single-selection by default.
+
+The selection follows the items, not the row numbers: when the model inserts
+or removes rows (`InsertItem`, `RemoveItem`), the view moves the selection,
+the keyboard focus and the hover with them, so a row inserted above the
+selected one leaves the same item selected. That moves no item in or out of
+the selection, so it raises no `onSelectionChanged`; a selected row that is
+removed leaves the selection, and that is reported. `SetItems` / `Clear`
+replace every row, and the caller selects again.
 
 ## Events / Callbacks
 
@@ -603,6 +619,12 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
+
+The keys go on from the selection's current row, whoever selected it: a click,
+a key, or the application through `GetSelection()->Select(row)` - after it
+rebuilt or re-sorted the rows and selected the one the user was on, Down moves
+to the row below that one. `ResetSelection()` clears the focus as well, so the
+first Down after it selects the first row.
 
 ## Best Practices
 
