@@ -109,7 +109,7 @@ namespace UltraCanvas {
             coloured->SetStyle(style);
             add(coloured);
 
-            auto note = CreateLabel("BusyNote" + n, 740, mid - 10, 220, 20);
+            auto note = CreateLabel("BusyNote" + n, 740, mid - 10, 250, 20);
             note->SetText(row.note);
             note->SetFontSize(11);
             container->AddChild(note);
@@ -126,13 +126,13 @@ namespace UltraCanvas {
 
         struct FadeDemo {
             BusyDotRingFade fade;
-            float x;
+            float x, captionWidth;   // the caption stops short of the next column
             const char* caption;
         };
         const FadeDemo fades[] = {
-            {BusyDotRingFade::Fade,            180, "Fade: the dots fade out behind the head"},
-            {BusyDotRingFade::NoFade,          340, "NoFade: no fading, the head shows by size"},
-            {BusyDotRingFade::FadeRandomColor, 540, "FadeRandomColor: every fade-in in a new random colour"},
+            {BusyDotRingFade::Fade,            180, 150, "Fade: dots fade out behind the head"},
+            {BusyDotRingFade::NoFade,          340, 190, "NoFade: solid dots, the head shows by size"},
+            {BusyDotRingFade::FadeRandomColor, 540, 250, "FadeRandomColor: a new random colour at every fade-in"},
         };
         for (int i = 0; i < static_cast<int>(std::size(fades)); ++i) {
             const FadeDemo& demo = fades[i];
@@ -144,7 +144,7 @@ namespace UltraCanvas {
             ring->SetStyle(style);
             add(ring);
 
-            auto caption = CreateLabel("BusyFadeCaption" + n, demo.x, y + 110, 180, 32);
+            auto caption = CreateLabel("BusyFadeCaption" + n, demo.x, y + 110, demo.captionWidth, 32);
             caption->SetText(demo.caption);
             caption->SetFontSize(11);
             caption->SetWrap(TextWrap::WrapWord);
