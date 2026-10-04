@@ -67,11 +67,21 @@ if [ -z "$PKG_CONFIG" ]; then
     exit 1
 fi
 
-# Homebrew keeps a keg-only formula's .pc file out of the shared
-# lib/pkgconfig (libarchive, for one, which vips.pc requires), so the closure
-# below would miss it. Every installed formula has an opt/<name> link; put
-# each one's lib/pkgconfig on the search path for the queries that follow.
-if [ "$PLATFORM" = macos ]; then
+# macOS: the libraries come from the vcpkg prefix CI builds for the oldest
+# supported macOS (scripts/macos-deps.sh, exported as UC_MACOS_DEPS_PREFIX),
+# or from Homebrew when that is not set.
+MAC_DEPS=""
+if [ "$PLATFORM" = macos ] && [ -n "${UC_MACOS_DEPS_PREFIX:-}" ]; then
+    MAC_DEPS="$(cd "$UC_MACOS_DEPS_PREFIX" && pwd -P)"
+    # Only the prefix's own .pc files, as the build saw them.
+    export PKG_CONFIG_LIBDIR="$MAC_DEPS/lib/pkgconfig:$MAC_DEPS/share/pkgconfig"
+    export PKG_CONFIG_PATH=""
+elif [ "$PLATFORM" = macos ]; then
+    # Homebrew keeps a keg-only formula's .pc file out of the shared
+    # lib/pkgconfig (libarchive, for one, which vips.pc requires), so the
+    # closure below would miss it. Every installed formula has an opt/<name>
+    # link; put each one's lib/pkgconfig on the search path for the queries
+    # that follow.
     _brew_prefix="$(brew --prefix)"
     _extra="$(ls -d "$_brew_prefix"/opt/*/lib/pkgconfig 2>/dev/null | tr '\n' ':')"
     export PKG_CONFIG_PATH="${_extra}${PKG_CONFIG_PATH:-}"
@@ -82,6 +92,9 @@ fi
 # targets link by name and what find_dependency() looks for.
 MODULES="cairo pango pangocairo freetype2 harfbuzz glib-2.0 gobject-2.0 gio-2.0 tinyxml2"
 for optional in vips-cpp fmt libcurl zlib libpng x11 xcursor gl; do
+    # The vcpkg prefix's libcurl is tesseract's; the framework links Apple's
+    # (cmake/UltraCanvasMacOSDeps.cmake), so a consumer must find that one.
+    [ -n "$MAC_DEPS" ] && [ "$optional" = libcurl ] && continue
     if "$PKG_CONFIG" --exists "$optional" 2>/dev/null; then
         MODULES="$MODULES $optional"
     fi
@@ -145,6 +158,7 @@ wanted_rel() {
         lib/*/include/*) return 0 ;;    # glibconfig.h and its kind live in lib/<pkg>/include
         lib/*.a|lib/*.dll.a|lib/*.dylib|lib/*.la) return 0 ;;
         lib/*/*.a|lib/*/*.dylib) return 0 ;;
+        share/*/*.cmake) [ -n "$MAC_DEPS" ] ;;   # vcpkg keeps CMake configs in share/<port>/
         bin/*.dll|lib/*/*.dll) [ "$PLATFORM" = windows ] ;;
         *) return 1 ;;
     esac
@@ -199,10 +213,39 @@ if [ "$PLATFORM" = windows ]; then
     done
 fi
 
+# ---- macOS (vcpkg) -----------------------------------------------------------
+# vcpkg lists each package's files in <install root>/vcpkg/info/
+# <port>_<version>_<triplet>.list, as "<triplet>/<path>": the package that owns
+# a .pc file is the list naming it, and its files are the ones to carry. Its
+# .pc files are already relocatable and its dylibs already have @rpath
+# install names; the steps shared with Homebrew below leave both as they are.
+if [ "$PLATFORM" = macos ] && [ -n "$MAC_DEPS" ]; then
+    INFO="$(dirname "$MAC_DEPS")/vcpkg/info"
+    TRIPLET="$(basename "$MAC_DEPS")"
+    : > "$WORK/lists"
+    while read -r pc; do
+        rel="${pc#"$MAC_DEPS"/}"
+        list="$(grep -lx "$TRIPLET/$rel" "$INFO"/*.list 2>/dev/null | head -1 || true)"
+        if [ -n "$list" ]; then echo "$list" >> "$WORK/lists"; else echo "  (no vcpkg package owns $pc)"; fi
+    done < "$WORK/pcfiles"
+    sort -u "$WORK/lists" -o "$WORK/lists"
+    echo "packages: $(sed -e 's|.*/||' -e 's|_.*||' "$WORK/lists" | tr '\n' ' ')"
+    while read -r list; do
+        while read -r entry; do
+            rel="${entry#"$TRIPLET"/}"
+            f="$MAC_DEPS/$rel"
+            [ -f "$f" ] || [ -L "$f" ] || continue
+            if wanted_rel "$rel"; then copy_rel "$MAC_DEPS" "$f"; fi
+        done < "$list"
+    done < "$WORK/lists"
+    MAC_LIBROOT="$MAC_DEPS"
+fi
+
 # ---- macOS (Homebrew) --------------------------------------------------------
-if [ "$PLATFORM" = macos ]; then
+if [ "$PLATFORM" = macos ] && [ -z "$MAC_DEPS" ]; then
     HOMEBREW_PREFIX="$(brew --prefix)"
     CELLAR="$(brew --cellar)"
+    MAC_LIBROOT="$HOMEBREW_PREFIX"
     : > "$WORK/kegs"
     while read -r pc; do
         case "$pc" in
@@ -221,11 +264,15 @@ if [ "$PLATFORM" = macos ]; then
             if wanted_rel "$rel"; then copy_rel "$keg" "$f"; fi
         done || true
     done < "$WORK/kegs"
+fi
 
+# ---- macOS (both) ------------------------------------------------------------
+if [ "$PLATFORM" = macos ]; then
     # The dylibs those reference, so the set in deps/lib is closed; then
     # @rpath install names, so a consumer linked with -rpath deps/lib runs
-    # without Homebrew. install_name_tool invalidates the signature, so each
-    # file is re-signed ad hoc, as package-macos.sh does for a bundle.
+    # without Homebrew or the vcpkg prefix. install_name_tool invalidates the
+    # signature, so each file is re-signed ad hoc, as package-macos.sh does
+    # for a bundle.
     : > "$WORK/dyqueue"
     find "$DEPS/lib" -name '*.dylib' -type f >> "$WORK/dyqueue"
     while [ -s "$WORK/dyqueue" ]; do
@@ -234,8 +281,8 @@ if [ "$PLATFORM" = macos ]; then
         otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r dep; do
             case "$dep" in
                 /System/*|/usr/lib/*|@executable_path/*|@loader_path/*) continue ;;
-                @rpath/*) src="$HOMEBREW_PREFIX/lib/${dep#@rpath/}" ;;
-                "$HOMEBREW_PREFIX"/*|/usr/local/*|/opt/homebrew/*) src="$dep" ;;
+                @rpath/*) src="$MAC_LIBROOT/lib/${dep#@rpath/}" ;;
+                "$MAC_LIBROOT"/*|/usr/local/*|/opt/homebrew/*) src="$dep" ;;
                 *) continue ;;
             esac
             name="$(basename "$dep")"
@@ -259,6 +306,17 @@ if [ "$PLATFORM" = macos ]; then
         codesign --force --sign - "$f" 2>/dev/null || true
     done
 
+fi
+
+# vcpkg's .pc files say prefix=${pcfiledir}/../.. already; any absolute path
+# into the prefix that slipped through becomes ${prefix} too.
+if [ "$PLATFORM" = macos ] && [ -n "$MAC_DEPS" ]; then
+    find "$DEPS/lib/pkgconfig" "$DEPS/share/pkgconfig" -name '*.pc' -type f | while read -r pc; do
+        sed -i '' -e 's|^prefix=.*|prefix=${pcfiledir}/../..|' -e "s|$MAC_DEPS|\${prefix}|g" "$pc"
+    done
+fi
+
+if [ "$PLATFORM" = macos ] && [ -z "$MAC_DEPS" ]; then
     # Relocate the .pc files: the keg prefixes, the opt/ links and the
     # Homebrew prefix itself all become ${prefix}.
     find "$DEPS/lib/pkgconfig" "$DEPS/share/pkgconfig" -name '*.pc' -type f | while read -r pc; do
