@@ -5,8 +5,9 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -542,6 +543,9 @@ namespace UltraCanvas {
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
 
         void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
+        // Arrange() for an element that places its children itself: takes the
+        // box and redraws what it covered, but runs no layout of the children.
+        void ArrangeOwnBox(const Rect2Df& newFinalRect);
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
@@ -567,6 +571,9 @@ namespace UltraCanvas {
         }
 
     protected:
+        // Redraws the union of oldBounds and the new finalBounds (Arrange's tail).
+        void InvalidateArrangeDamage(const Rect2Df& oldBounds);
+
         virtual bool OnPopupAboutToClose(ClosePopupReason reason) {
             if (onPopupAboutToClose) return onPopupAboutToClose(reason);
             return true;
