@@ -6,7 +6,9 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
-// Version: 0.4.0 - mail addresses in plain text
+// Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
+// Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
+//                  and mailbox addresses are not claims
 // Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
@@ -95,6 +97,34 @@ TEST(a_brand_claimed_from_a_free_mailbox_is_a_scam) {
     const ThreatReport r = ScanMessage(in);
     REQUIRE(HasFinding(r, "brand-impersonation"));
     REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(a_bank_or_exchange_claimed_from_elsewhere_is_flagged) {
+    ScanInput in = Html("security@coinbase-verify.example",
+        "<a href=\"https://coinbase-verify.example/restore\">Restore access</a>");
+    in.fromName = "Coinbase Security";
+    REQUIRE(HasFinding(ScanMessage(in), "brand-impersonation"));
+
+    ScanInput bank = Html("alerts@secure-mail.example",
+        "<a href=\"https://secure-mail.example/x\">Review activity</a>");
+    bank.fromName = "Chase Bank Alerts";
+    REQUIRE(HasFinding(ScanMessage(bank), "brand-impersonation"));
+}
+
+TEST(an_ordinary_word_or_mailbox_address_is_not_impersonation) {
+    // A hotel's "booking" and a friend whose display name is their own
+    // Outlook address are not claims to be Booking.com or Microsoft.
+    ScanInput hotel = Html("reservations@hotel-am-see.example",
+        "<a href=\"https://hotel-am-see.example/\">Your stay</a>");
+    hotel.subject = "Your booking is confirmed";
+    REQUIRE(!HasFinding(ScanMessage(hotel), "brand-impersonation"));
+
+    ScanInput friendMail;
+    friendMail.fromAddr = "jane@outlook.com";
+    friendMail.fromName = "jane@outlook.com";
+    friendMail.subject  = "Weekend";
+    friendMail.body     = "See you on Saturday!";
+    REQUIRE(!HasFinding(ScanMessage(friendMail), "brand-impersonation"));
 }
 
 TEST(userinfo_hiding_the_real_host_is_caught) {

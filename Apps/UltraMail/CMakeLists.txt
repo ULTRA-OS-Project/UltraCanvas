@@ -21,6 +21,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
     engine/UltraMailSenderBrands.cpp
+    engine/UltraMailSenderBrandTable.cpp
     engine/UltraMailSenderIconCache.cpp
     engine/UltraMailSenderTrust.cpp
     engine/UltraMailThreatScan.cpp
