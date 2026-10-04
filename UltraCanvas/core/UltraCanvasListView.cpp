@@ -1146,15 +1146,20 @@ namespace UltraCanvas {
             UpdateScrollbar();
             RequestRedraw();
         };
-        model->onRowInserted = [this](int /*row*/) {
+        model->onRowInserted = [this](int row) {
+            // The rows from `row` on moved down one: the selection, the
+            // keyboard focus and the hover stay on the items they were on.
+            if (selection) selection->ShiftRows(row, 1);
+            if (focusedRow >= row) focusedRow++;
+            if (hoveredRow >= row) hoveredRow++;
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
         };
         model->onRowRemoved = [this](int row) {
-            if (selection && selection->IsSelected(row)) {
-                selection->Deselect(row);
-            }
+            // The removed row leaves the selection (notified); the rows below
+            // it moved up one, and the selection moves with them.
+            if (selection) selection->ShiftRows(row, -1);
             if (focusedRow == row) focusedRow = -1;
             else if (focusedRow > row) focusedRow--;
             if (hoveredRow == row) hoveredRow = -1;

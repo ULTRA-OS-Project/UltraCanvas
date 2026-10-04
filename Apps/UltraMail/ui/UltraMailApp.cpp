@@ -41,6 +41,7 @@
 
 #include "UltraMailAttachmentCache.h"
 #include "UltraMailDiscovery.h"
+#include "UltraMailFolderNames.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailRichComposer.h"
@@ -113,15 +114,6 @@ std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
 }
 
-// A readable folder name for the status line: "Inbox" for INBOX, otherwise the
-// leaf of the IMAP path decoded from modified UTF-7 (the same "&...-" encoding
-// the folder tree decodes for display) into UTF-8.
-std::string FriendlyFolderName(const std::string& folder) {
-    if (folder == "INBOX") return "Inbox";
-    std::size_t slash = folder.find_last_of('/');
-    const std::string leaf = slash == std::string::npos ? folder : folder.substr(slash + 1);
-    return UltraNet_ImapUtf7Decode(leaf);
-}
 } // namespace
 
 std::string UltraMailApp::LocalPart(const std::string& email) {
@@ -1017,6 +1009,14 @@ void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
     else drop();
 }
 
+std::string UltraMailApp::FolderLabel(const std::string& accountId, const std::string& folder) const {
+    std::vector<Folder> folders;
+    store_.ListFolders(accountId, folders);
+    for (const auto& f : folders)
+        if (f.name == folder) return FolderDisplayName(folder, FolderDelimiter(f, folders));
+    return FolderDisplayName(folder, AccountFolderDelimiter(folders));
+}
+
 std::string UltraMailApp::FolderWithRole(const std::string& accountId, FolderRole role) const {
     std::vector<Folder> folders;
     store_.ListFolders(accountId, folders);
@@ -1267,7 +1267,7 @@ void UltraMailApp::HandleMoveMessage(const MessageEnvelope& env, const std::stri
         [env, folder](SyncEngine& engine, const std::string& url, const UltraNetMailOptions& opts) {
             return engine.MoveMessage(env.accountId, env.folder, env.uid, folder, url, opts);
         },
-        "Move to " + FriendlyFolderName(folder));
+        "Move to " + FolderLabel(env.accountId, folder));
 }
 
 void UltraMailApp::HandleNotJunk(const MessageEnvelope& env) {
@@ -2005,17 +2005,20 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
 
     auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
-    SetStatus("Opening " + FriendlyFolderName(folder) + "…");
+    // Read while the folder is still stored: a folder gone from the server
+    // is dropped by the time the fetch reports back.
+    const std::string label = FolderLabel(accountId, folder);
+    SetStatus("Opening " + label + "…");
     NoteConnection(accountId, ConnectionState::Checking);
     auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
     svc->SyncFolderInBackground(accountId, folder, serverUrl, opts,
         [this, accountId, username, provider](UltraNetMailOptions& o) {
             return ResolveCredentials(accountId, username, provider, o.credentials);
         },
-        [this, svc, accountId, folder, who, userInitiated](SyncOutcome outcome) {
+        [this, svc, accountId, folder, label, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
-            app->PostToUIThread([this, accountId, folder, who, userInitiated, outcome]() {
+            app->PostToUIThread([this, accountId, folder, label, who, userInitiated, outcome]() {
                 // Clear the in-flight guard first — even on failure — so the next
                 // open can retry once the throttle window passes. (Harmless no-op
                 // for callers that never set it, e.g. HandleReload.)
@@ -2064,6 +2067,10 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                 NoteConnection(accountId, ConnectionState::Connected);
                 if (last) ShowAccountStatus();
                 Refresh();   // re-query the store; the open folder now shows its mail
+                // Deleted or renamed on the server: it has left the tree (the
+                // view went back to the inbox), and the status line says why.
+                if (outcome.stats.folderGone)
+                    SetStatus("The folder " + label + " is no longer on the server");
             });
         },
         [this, accountId, progressBuf](const MessageEnvelope& m) {

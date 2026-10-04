@@ -201,6 +201,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           "ALTER TABLE accounts ADD COLUMN signature_text TEXT DEFAULT '';"
           "ALTER TABLE accounts ADD COLUMN signature_html TEXT DEFAULT '';"
           "ALTER TABLE accounts ADD COLUMN signature_replies INTEGER DEFAULT 1;" },
+        { 9, "folder hierarchy separator",
+          // '' until the next folder list fills it in; the names are read
+          // with a separator worked out from them meanwhile.
+          "ALTER TABLE folders ADD COLUMN delimiter TEXT DEFAULT '';" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -301,13 +305,29 @@ UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
 
 UltraDbResult LocalStore::UpsertFolder(const Folder& f) {
     return UltraDb_Exec(connection_,
-        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext, selectable) "
-        "VALUES(?, ?, ?, ?, ?, ?) "
+        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext, selectable, delimiter) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?) "
+        // The numbering is SetFolderUidState's alone: a folder list knows
+        // none, and writing its zeros here wiped the stored UIDVALIDITY before
+        // every inbox sync - which then never saw a renumbering.
         "ON CONFLICT(account_id, name) DO UPDATE SET "
-        "role=excluded.role, uidvalidity=excluded.uidvalidity, "
-        "uidnext=excluded.uidnext, selectable=excluded.selectable",
+        "role=excluded.role, selectable=excluded.selectable, "
+        "delimiter=excluded.delimiter",
         { f.accountId, f.name, ToString(f.role), f.uidValidity, f.uidNext,
-          static_cast<int64_t>(f.selectable ? 1 : 0) });
+          static_cast<int64_t>(f.selectable ? 1 : 0), f.delimiter });
+}
+
+UltraDbResult LocalStore::RemoveFolder(const std::string& accountId, const std::string& folder) {
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    UltraDb_ExecInTx(tx, "DELETE FROM messages WHERE account_id=? AND folder=?",
+                     { accountId, folder });
+    UltraDb_ExecInTx(tx, "DELETE FROM message_security WHERE account_id=? AND folder=?",
+                     { accountId, folder });
+    UltraDb_ExecInTx(tx, "DELETE FROM folders WHERE account_id=? AND name=?",
+                     { accountId, folder });
+    return UltraDb_Commit(tx);
 }
 
 UltraDbResult LocalStore::ListFolders(const std::string& accountId,
@@ -315,8 +335,8 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT account_id, name, role, uidvalidity, uidnext, selectable FROM folders "
-        "WHERE account_id=? ORDER BY name", { accountId }, rs);
+        "SELECT account_id, name, role, uidvalidity, uidnext, selectable, delimiter "
+        "FROM folders WHERE account_id=? ORDER BY name", { accountId }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
         Folder f;
@@ -326,6 +346,7 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
         f.uidValidity = row["uidvalidity"].AsInt64();
         f.uidNext     = row["uidnext"].AsInt64();
         f.selectable  = row["selectable"].AsInt64() != 0;
+        f.delimiter   = row["delimiter"].AsString();
         out.push_back(std::move(f));
     }
     return UltraDbResult::Ok();

@@ -164,6 +164,32 @@ TEST(imap_detect_role_name_fallback) {
     REQUIRE_EQ(DetectFolderRole(attr, "Entwürfe"), std::string("drafts")); // attr wins
 }
 
+// Courier-style servers put every folder under "INBOX." - and a folder carried
+// over from a server with another separator keeps it as "^": the Sent folder
+// of an account showed as "INBOX.INBOX^Sent", with no Sent role.
+TEST(imap_detect_role_by_the_servers_separator) {
+    std::vector<std::string> none;
+    REQUIRE_EQ(DetectFolderRole(none, "INBOX.Drafts", "."), std::string("drafts"));
+    REQUIRE_EQ(DetectFolderRole(none, "INBOX.Trash", "."), std::string("trash"));
+    REQUIRE_EQ(DetectFolderRole(none, "INBOX.INBOX^Sent", "."), std::string("sent"));
+    REQUIRE_EQ(DetectFolderRole(none, "INBOX.Investor", "."), std::string(""));
+    // German names, and the modified UTF-7 of the ones outside ASCII.
+    REQUIRE_EQ(DetectFolderRole(none, "Gesendete Objekte", "/"), std::string("sent"));
+    REQUIRE_EQ(DetectFolderRole(none, "INBOX.Papierkorb", "."), std::string("trash"));
+    REQUIRE_EQ(DetectFolderRole(none, "Entw&APw-rfe", "/"), std::string("drafts"));
+    REQUIRE_EQ(DetectFolderRole(none, "Gel&APY-schte Objekte", "/"), std::string("trash"));
+    // Only INBOX itself is the inbox.
+    REQUIRE_EQ(DetectFolderRole(none, "inbox", "/"), std::string("inbox"));
+    REQUIRE_EQ(DetectFolderRole(none, "Archive/Inbox", "/"), std::string(""));
+    // A dot in a name is not a level where the separator is '/'.
+    REQUIRE_EQ(DetectFolderRole(none, "Mr. Sent", "/"), std::string(""));
+    // The separator comes from the LIST line.
+    UltraNetMailFolder f;
+    REQUIRE(ParseListLine("* LIST (\\HasNoChildren) \".\" \"INBOX.INBOX^Sent\"", f));
+    REQUIRE_EQ(f.delimiter, std::string("."));
+    REQUIRE_EQ(f.role, std::string("sent"));
+}
+
 TEST(imap_parse_status_response) {
     auto st = ParseStatusResponse(
         "* STATUS \"INBOX\" (MESSAGES 231 RECENT 0 UIDNEXT 44292 UIDVALIDITY 1 UNSEEN 3)\r\n");

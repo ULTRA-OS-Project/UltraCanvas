@@ -3,6 +3,8 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.10.0 - schema 9: the folder's hierarchy separator; RemoveFolder;
+//                   UpsertFolder keeps the stored UIDVALIDITY / UIDNEXT
 // Version: 0.9.0 - the written-to rule counts "Name <address>" recipients and is
 //                  worked out once per change of the Sent mail (it was an
 //                  EXISTS over every Sent message for each message counted:
@@ -88,9 +90,15 @@ public:
     UltraDbResult RemoveAccount(const std::string& accountId);
 
     // ---- Folders -----------------------------------------------------------
+    // Insert a folder, or update its role, selectable flag and separator. An
+    // existing folder keeps its UIDVALIDITY / UIDNEXT (SetFolderUidState's).
     UltraDbResult UpsertFolder(const Folder& folder);
     UltraDbResult ListFolders(const std::string& accountId,
                               std::vector<Folder>& out) const;
+    // Forget a folder the server no longer has (deleted or renamed there):
+    // its row, its messages and their scan verdicts. The cached bodies are
+    // the sync engine's to delete.
+    UltraDbResult RemoveFolder(const std::string& accountId, const std::string& folder);
 
     // The stored IMAP UIDVALIDITY for a folder (0 when unknown / never synced) —
     // the basis for detecting a server-side mailbox renumber.

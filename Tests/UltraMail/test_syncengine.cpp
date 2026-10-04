@@ -58,8 +58,11 @@ public:
     }
 
     // IMailboxProtocolPlugin
+    bool listFoldersFails = false;
     UltraNetResult ListFolders(const std::string&, std::vector<UltraNetMailFolder>& out,
                                const UltraNetMailOptions&) override {
+        if (listFoldersFails)
+            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed, "list failed");
         out = folders;
         return UltraNetResult::Ok();
     }
@@ -848,4 +851,117 @@ TEST(refresh_folder_downloads_a_body_an_earlier_download_missed) {
     REQUIRE(fs::exists(engine.BodyPath("erika", "INBOX", 2)));
     REQUIRE_EQ(fx.fake.lastBodyUids.size(), (size_t)1);
     REQUIRE_EQ(fx.fake.lastBodyUids[0], 2u);
+}
+
+// ---- The folder list follows the server -------------------------------------
+
+namespace {
+bool HasFolder(LocalStore& s, const std::string& name) {
+    std::vector<Folder> folders;
+    s.ListFolders("erika", folders);
+    for (const auto& f : folders) if (f.name == name) return true;
+    return false;
+}
+size_t CountIn(LocalStore& s, const std::string& folder) {
+    std::vector<MessageEnvelope> msgs;
+    s.ListMessages("erika", folder, 0, msgs);
+    return msgs.size();
+}
+} // namespace
+
+TEST(sync_folders_drops_folders_the_server_no_longer_lists) {
+    Fixture fx("folders-gone");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    fx.fake.folders.push_back(MakeFolder("Projects", ""));
+    fx.fake.envelopes["Projects"] = {
+        Env(1, "Ann <ann@x.com>", {"erika@example.com"}, "Plan", UltraNetMailFlags::Seen) };
+    fx.fake.bodies["Projects/1"] = BuildRaw("Ann <ann@x.com>", "Plan", "the plan");
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    engine.SyncMessages("erika", "Projects", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)1);
+    REQUIRE(fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    // A list that fails, or one that names nothing, removes nothing.
+    fx.fake.listFoldersFails = true;
+    REQUIRE(!engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "Projects"));
+    fx.fake.listFoldersFails = false;
+    fx.fake.folders.clear();
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "Projects"));
+
+    // Renamed on the server: the old name goes with its mail and bodies.
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent"),
+                        MakeFolder("Projects 2026", "") };
+    SyncOutcome r = engine.SyncFolders("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.foldersRemoved, 1);
+    REQUIRE(!HasFolder(fx.store, "Projects"));
+    REQUIRE(HasFolder(fx.store, "Projects 2026"));
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)0);
+    REQUIRE(!fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    // The inbox stays, and its mail with it, whatever a list says.
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE_EQ(CountIn(fx.store, "INBOX"), (size_t)3);
+    fx.fake.folders = { MakeFolder("Sent", "sent") };
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "INBOX"));
+    REQUIRE_EQ(CountIn(fx.store, "INBOX"), (size_t)3);
+}
+
+TEST(sync_folders_keeps_the_separator_and_the_numbering) {
+    Fixture fx("folders-delim");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    UltraNetMailFolder drafts = MakeFolder("INBOX.Drafts", "drafts");
+    drafts.delimiter = ".";
+    fx.fake.folders.push_back(drafts);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    std::vector<Folder> folders;
+    fx.store.ListFolders("erika", folders);
+    for (const auto& f : folders)
+        if (f.name == "INBOX.Drafts") REQUIRE_EQ(f.delimiter, std::string("."));
+
+    // The folder list used to write UIDVALIDITY 0 over the stored one before
+    // every inbox sync, so a renumbered inbox was never noticed in the
+    // account sync (folders, then the inbox).
+    fx.fake.uidValidity = 100;
+    SyncService svc(fx.store, fx.fake, fx.emlDir);
+    REQUIRE(svc.SyncNow("erika", "imaps://x/", opts).ok);
+    int64_t stored = 0;
+    fx.store.GetFolderUidValidity("erika", "INBOX", stored);
+    REQUIRE_EQ(stored, (int64_t)100);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    fx.store.GetFolderUidValidity("erika", "INBOX", stored);
+    REQUIRE_EQ(stored, (int64_t)100);
+
+    fx.fake.uidValidity = 200;   // renumbered: the same mail under new UIDs
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None) };
+    SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE(r.stats.cacheReset);
+    REQUIRE(!HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 10));
+}
+
+// A folder opened after it was deleted on the server: the failure to open it
+// is answered by the folder list, which drops it - not by an error alert.
+TEST(folder_still_listed_drops_a_folder_deleted_on_the_server) {
+    Fixture fx("folder-gone");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    fx.fake.folders.push_back(MakeFolder("Investor", ""));
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+
+    fx.fake.folders.pop_back();                     // deleted on the server
+    REQUIRE(!engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+    REQUIRE(!HasFolder(fx.store, "Investor"));
+    // A list that cannot be read says nothing is gone; the inbox never is.
+    fx.fake.listFoldersFails = true;
+    REQUIRE(engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+    REQUIRE(engine.FolderStillListed("erika", "INBOX", "imaps://x/", opts));
 }

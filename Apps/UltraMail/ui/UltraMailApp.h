@@ -329,6 +329,9 @@ private:
                           std::function<void()> onReauthed);
     // The name of the account's folder with the given special-use role, or "".
     std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
+    // How a folder of the account reads ("Drafts" for "INBOX.Drafts"), by the
+    // separator its server lists (UltraMailFolderNames).
+    std::string FolderLabel(const std::string& accountId, const std::string& folder) const;
     // Open the raw .eml source of a message in a read-only window.
     void OpenSourceViewer(const std::string& subject, const std::string& raw);
     // Queue a draft in the outbox (UltraMail's local store, which survives a

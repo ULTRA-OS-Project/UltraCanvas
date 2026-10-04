@@ -4,6 +4,9 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.5.0 - DetectFolderRole: by the last level after the server's own
+//                  separator, German names, a migrated "INBOX^" prefix; only
+//                  INBOX itself is the inbox
 // Version: 0.4.0 - numbers are read as unsigned 32-bit values on every platform
 //                  (ParseImapNumber): strtol's `long` is 32 bits on Windows, so
 //                  a UIDVALIDITY, UIDNEXT or UID above 2147483647 read there as
@@ -19,6 +22,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -229,9 +233,17 @@ inline std::vector<std::string> SplitAttributes(const std::string& parenGroup) {
     return attrs;
 }
 
-// SPECIAL-USE (RFC 6154) role from attributes, with an English name fallback.
+// SPECIAL-USE (RFC 6154) role from attributes, else from the folder's name.
+// The name is matched by its last level (after `delimiter`, the separator the
+// server listed; '/' or '.' when not given), in the English and German names
+// mail servers use ("Sent Items", "Gesendete Objekte", "Papierkorb", …) - names
+// outside ASCII as their modified UTF-7 wire form. A leading "INBOX^" in that
+// level is left out: it is how a folder came across from a server with another
+// separator (Courier's "INBOX.Sent" became "INBOX.INBOX^Sent"). Only the folder
+// named INBOX itself is the inbox - not a sub-folder that happens to be called so.
 inline std::string DetectFolderRole(const std::vector<std::string>& attributes,
-                                    const std::string& name) {
+                                    const std::string& name,
+                                    const std::string& delimiter = "") {
     for (const auto& a : attributes) {
         std::string la = Lower(a);
         if (la == "\\sent")    return "sent";
@@ -241,16 +253,31 @@ inline std::string DetectFolderRole(const std::vector<std::string>& attributes,
         if (la == "\\archive") return "archive";
         if (la == "\\all")     return "all";
     }
-    std::string ln = Lower(name);
-    // Strip a leading path so "INBOX/Sent" matches "sent".
-    std::size_t slash = ln.find_last_of("/.");
-    std::string leaf = slash == std::string::npos ? ln : ln.substr(slash + 1);
-    if (leaf == "inbox")   return "inbox";
-    if (leaf == "sent" || leaf == "sent items" || leaf == "sent messages") return "sent";
-    if (leaf == "drafts")  return "drafts";
-    if (leaf == "junk" || leaf == "spam") return "junk";
-    if (leaf == "trash" || leaf == "deleted" || leaf == "deleted items") return "trash";
-    if (leaf == "archive") return "archive";
+    const std::string ln = Lower(name);
+    if (ln == "inbox") return "inbox";
+    const std::size_t cut = delimiter.empty() ? ln.find_last_of("/.")
+                                              : ln.rfind(Lower(delimiter));
+    std::string leaf = cut == std::string::npos
+        ? ln : ln.substr(cut + (delimiter.empty() ? 1 : delimiter.size()));
+    if (leaf.rfind("inbox^", 0) == 0) leaf = leaf.substr(6);
+    auto any = [&leaf](std::initializer_list<const char*> names) {
+        for (const char* n : names) if (leaf == n) return true;
+        return false;
+    };
+    if (any({"sent", "sent items", "sent messages", "sent mail", "sent-mail",
+             "gesendet", "gesendete objekte", "gesendete elemente",
+             "gesendete nachrichten"}))
+        return "sent";
+    if (any({"drafts", "draft", "entw&apw-rfe", "entwurf"}))
+        return "drafts";
+    if (any({"junk", "spam", "junk e-mail", "junk email", "junk-e-mail", "bulk mail",
+             "spamverdacht"}))
+        return "junk";
+    if (any({"trash", "deleted", "deleted items", "deleted messages", "bin",
+             "papierkorb", "gel&apy-schte objekte", "gel&apy-schte elemente"}))
+        return "trash";
+    if (any({"archive", "archives", "archiv"}))
+        return "archive";
     return "";
 }
 
@@ -300,7 +327,7 @@ inline bool ParseListLine(const std::string& line, UltraNetMailFolder& out) {
     out.selectable = true;
     for (const auto& a : out.attributes)
         if (Lower(a) == "\\noselect") out.selectable = false;
-    out.role = DetectFolderRole(out.attributes, out.name);
+    out.role = DetectFolderRole(out.attributes, out.name, out.delimiter);
     return true;
 }
 

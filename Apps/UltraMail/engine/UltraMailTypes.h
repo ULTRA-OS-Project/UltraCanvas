@@ -137,6 +137,11 @@ struct Folder {
     // False for \Noselect container folders (e.g. Gmail's "[Gmail]"): they hold
     // no mail and are elided from the folder tree (their children are promoted).
     bool        selectable = true;
+    // The hierarchy separator the server listed for it ("/", or "." on
+    // Courier-style servers whose folders are "INBOX.Drafts"); "" until the
+    // folder list has been fetched since it was stored (UltraMailFolderNames
+    // then works it out from the names).
+    std::string delimiter;
 };
 
 // The header-level view of a message kept in the index (bodies stay in .eml

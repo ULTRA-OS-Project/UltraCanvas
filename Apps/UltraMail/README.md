@@ -78,6 +78,9 @@ Apps/UltraMail/
                                   sync missed (by UID, blank rows, bodies)
     UltraMailMessageSort.{h,cpp}  the message list's order (sender, kind of
                                   sender, subject without Re:/Fwd:, date)
+    UltraMailFolderNames.{h,cpp}  how a folder name reads: its levels by the
+                                  server's separator ("INBOX.Drafts" -> Drafts),
+                                  decoded from modified UTF-7
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)

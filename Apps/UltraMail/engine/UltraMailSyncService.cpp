@@ -73,6 +73,13 @@ void SyncService::SyncFolderInBackground(const std::string& accountId, const std
             ? engine_.RefreshFolder(accountId, folder, serverUrl, opts,
                                     /*fetchBodies=*/true, onProgress)
             : SyncOutcome::Fail(prepared);
+        // The server would not open it: deleted or renamed there since the
+        // folder list was read? Then it leaves the tree, and that is no error.
+        if (prepared && !result.ok && !result.NetworkUnreachable() &&
+            !engine_.FolderStillListed(accountId, folder, serverUrl, opts)) {
+            result = SyncOutcome{};
+            result.stats.folderGone = true;
+        }
         if (onDone) onDone(result);
     }).detach();
 }

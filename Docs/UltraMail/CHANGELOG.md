@@ -64,6 +64,34 @@
 - The list opens with its newest message in view; it used to open scrolled two
   rows down, the selected message hidden above the top (framework changelog,
   "ListView: EnsureRowVisible before the first layout").
+- **Folders as the server names them.** On servers that put every folder
+  under the inbox with a dot - Courier-style, "INBOX.Drafts" - the folder tree
+  showed "INBOX.Drafts", "INBOX.Trash" and "INBOX.INBOX^Sent" as names. The
+  separator the server lists is now kept with each folder (schema 9) and the
+  names are read by it: Inbox › Sent, Drafts, Trash, Investor, Invoice, as on
+  any other server. The same names appear in the list's title, the status line
+  and *Move to folder* ("Projects / 2026" for a folder two levels down).
+  - **The Sent folder is found** on such servers: "INBOX^Sent" - how a folder
+    came across from a server with another separator - is the Sent folder,
+    and so are the German names servers use ("Gesendete Objekte",
+    "Papierkorb", "Entwürfe" …). That also makes "Waiting for reply" work
+    there: its "people you have written to" rule reads the Sent folder
+    (framework changelog, "IMAP: folder roles by the server's own separator").
+- **Folders deleted or renamed on the server leave the tree.** The folder list
+  only ever added folders; one deleted on the server, or renamed there, stayed
+  in the tree with its old mail for good. Every sync now drops a folder the
+  server no longer lists, with its messages and downloaded bodies (never on an
+  empty list, never the inbox). A folder that is open when it goes takes the
+  view back to the inbox, and pressing *Update* on it says "The folder … is no
+  longer on the server" instead of a "Select failed" alert.
+- **A renumbered mailbox was never noticed in the regular sync.** Reading the
+  folder list wrote 0 over each folder's stored UIDVALIDITY, so the inbox sync
+  that followed found nothing to compare and kept a stale cache. The folder
+  list now leaves the numbering alone.
+- **The highlight stays on the message being read while new mail streams
+  in.** Rows inserted above it moved the message down but not the highlight,
+  which sat on whatever message took its place until the sync finished
+  (framework changelog, "ListView: the selection follows the rows").
 
 #### 2026-10-04 *0.10.29*
 - **The message text fits its pane.** An HTML message tall enough to scroll

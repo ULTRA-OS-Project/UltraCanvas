@@ -9,6 +9,8 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
+//                  longer lists dropped
 // Version: 0.2.0 - RefreshFolder: new mail, the reconcile with the server's
 //                  list, and the mail an incremental fetch can no longer reach
 //                  (skipped by an interrupted sync, stored blank, or below a
@@ -33,6 +35,10 @@ namespace UltraMail {
 
 struct SyncStats {
     int folders  = 0;   // folders upserted
+    int foldersRemoved = 0;   // folders the server no longer lists, dropped with their mail
+    // The folder asked for could not be opened because the server no longer
+    // has it (deleted or renamed there); it was dropped. Not a failure.
+    bool folderGone = false;
     int messages = 0;   // envelopes upserted
     int bodies   = 0;   // full bodies fetched + cached
     int reconciled = 0; // existing messages whose flags were corrected from server
@@ -94,10 +100,20 @@ public:
         : store_(store), mailbox_(mailbox), emlDir_(std::move(emlDir)) {}
 
     // LIST folders on the server and upsert them for the account (with role
-    // detection carried through from the plug-in).
+    // detection and the hierarchy separator carried through from the
+    // plug-in). A folder stored before that the list no longer names - deleted
+    // or renamed on the server - is dropped with its messages and cached
+    // bodies; never on an empty list, and never INBOX.
     SyncOutcome SyncFolders(const std::string& accountId,
                             const std::string& serverUrl,
                             const UltraNetMailOptions& options);
+
+    // After `folder` could not be opened: read the folder list again (which
+    // drops a folder the server no longer names) and say whether the folder is
+    // still there. True when the list cannot be read - only a list that no
+    // longer names it says it is gone.
+    bool FolderStillListed(const std::string& accountId, const std::string& folder,
+                           const std::string& serverUrl, const UltraNetMailOptions& options);
 
     // Fetch envelopes with UID greater than the highest already stored, upsert
     // them, and — when fetchBodies is true — cache each new message's raw body.

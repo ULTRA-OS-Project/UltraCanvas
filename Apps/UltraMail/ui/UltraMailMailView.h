@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.12.0 - folder names by the server's separator (UltraMailFolderNames)
 // Version: 0.11.0 - the list sorts by the column header clicked (SetSort,
 //                   onSortChanged); a list fills in one go and paints before
 //                   the reading pane renders; onBodyMissing / BodyArrived
@@ -326,6 +327,10 @@ private:
 
     // Folder-tree node id -> (accountId, folderName).
     std::map<std::string, std::pair<std::string, std::string>> folderNodeId_;
+    // (accountId + "\n" + folder) -> the separator its name is read by, for
+    // every folder in the tree (RebuildFolderTree).
+    std::map<std::string, std::string> folderDelims_;
+    std::string DelimiterOf(const std::string& accountId, const std::string& folder) const;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane>  outerSplit_;

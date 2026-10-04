@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.3.0 - SyncFolders keeps the server's separator and drops the folders
+//                  the server no longer lists
 // Version: 0.2.0 - RefreshFolder / FetchMissing; the UIDNEXT check on the cache
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,6 +17,7 @@
 #include <iterator>
 #include <string>
 #include <unordered_map>
+#include <set>
 #include <unordered_set>
 #include <vector>
 #include <UltraCanvasUtils.h>
@@ -148,15 +151,46 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
     if (!r) return SyncOutcome::Fail(r);
 
     SyncOutcome out;
+    std::vector<Folder> stored;
+    store_.ListFolders(accountId, stored);
+    std::set<std::string> listed;
     for (const auto& f : folders) {
         Folder lf;
         lf.accountId = accountId;
         lf.name = f.name;
         lf.role = FolderRoleFromString(f.role);
         lf.selectable = f.selectable;   // \Noselect containers (e.g. "[Gmail]")
+        lf.delimiter = f.delimiter;
         if (store_.UpsertFolder(lf)) out.stats.folders++;
+        listed.insert(f.name);
+    }
+
+    // A folder the server no longer lists was deleted or renamed there: it
+    // leaves the tree, with its messages and their cached bodies. Only on a
+    // list that names something - an empty one is never taken for "every
+    // folder is gone" - and never the inbox, which every mailbox has.
+    if (!listed.empty()) {
+        for (const auto& s : stored) {
+            if (listed.count(s.name) || s.name == "INBOX") continue;
+            if (!store_.RemoveFolder(accountId, s.name)) continue;
+            std::error_code ec;
+            fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
+            out.stats.foldersRemoved++;
+        }
     }
     return out;
+}
+
+bool SyncEngine::FolderStillListed(const std::string& accountId, const std::string& folder,
+                                   const std::string& serverUrl,
+                                   const UltraNetMailOptions& options) {
+    if (folder == "INBOX") return true;
+    SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
+    if (!listed.ok) return true;
+    std::vector<Folder> folders;
+    if (!store_.ListFolders(accountId, folders)) return true;
+    for (const auto& f : folders) if (f.name == folder) return true;
+    return false;
 }
 
 MessageEnvelope SyncEngine::ToStored(const std::string& accountId, const std::string& folder,

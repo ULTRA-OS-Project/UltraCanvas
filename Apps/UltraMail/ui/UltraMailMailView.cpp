@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.12.0 - folders by the server's own separator ("INBOX.Drafts" is
+//                   Drafts under Inbox); a folder gone from the server falls
+//                   back to the inbox
 // Version: 0.11.0 - a click on a column header sorts the list by it (again: the
 //                   other way round); rows go into the model in one go; the
 //                   reading pane renders once per selection, after the list is
@@ -21,6 +24,7 @@
 
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
+#include "UltraMailFolderNames.h"
 #include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
@@ -87,15 +91,6 @@ std::string FormatListDate(int64_t epoch) {
     else
         std::strftime(buf, sizeof buf, "%b %d, %Y", &tm);
     return buf;
-}
-
-// The name a mailbox shows under an account: "INBOX" reads as "Inbox", any
-// other folder as the leaf of its IMAP path (the parents are separate rows).
-std::string FriendlyLeaf(const std::string& segment, const std::string& fullPath) {
-    if (fullPath == "INBOX") return "Inbox";
-    // Mailbox names arrive in IMAP modified UTF-7; decode for display only (the
-    // raw name stays the wire/DB key — see folderNodeId_ / curFolder_).
-    return UltraNet_ImapUtf7Decode(segment);
 }
 
 // A stable ordering for a folder list: the inbox first, then the special-use
@@ -704,8 +699,8 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
         store_->ListFolders(m.accountId, folders);
         for (const auto& f : folders) {
             if (!f.selectable || f.name == m.folder) continue;
-            const std::string label = f.name == "INBOX" ? std::string("Inbox")
-                                                        : UltraNet_ImapUtf7Decode(f.name);
+            // "Projects / 2026", not the wire name "INBOX.Projects.2026".
+            const std::string label = FolderDisplayPath(f.name, FolderDelimiter(f, folders));
             const std::string target = f.name;
             moveItems.push_back(MenuItemData::Action(label, [this, m, target]() {
                 if (onMoveTo) onMoveTo(m, target);
@@ -792,6 +787,7 @@ SenderBadge MailView::BadgeFor(const MessageEnvelope& m) const {
 void MailView::RebuildFolderTree() {
     if (!folderTree_) return;
     folderNodeId_.clear();
+    folderDelims_.clear();
 
     TreeNodeData rootData(kTreeRootId, "Mailboxes");
     folderTree_->SetRootNode(rootData);
@@ -808,6 +804,8 @@ void MailView::RebuildFolderTree() {
 
         std::vector<Folder> folders;
         if (store_) store_->ListFolders(accId, folders);
+        for (const auto& f : folders)
+            folderDelims_[accId + "\n" + f.name] = FolderDelimiter(f, folders);
         std::stable_sort(folders.begin(), folders.end(),
                          [](const Folder& a, const Folder& b) {
                              int ra = RoleRank(a.role), rb = RoleRank(b.role);
@@ -834,15 +832,16 @@ void MailView::RebuildFolderTree() {
         std::set<std::string> created{ inboxNode };
         for (const auto& folder : folders) {
             if (folder.name == "INBOX") continue;   // the base node above
+            // Its levels by the separator the server uses: "INBOX.Drafts" on a
+            // Courier-style server is Drafts under the inbox, not a folder
+            // called "INBOX.Drafts" (the leading INBOX level is the base node,
+            // whose id the path "INBOX" already has).
+            const std::string delim = FolderDelimiter(folder, folders);
             std::string parent = inboxNode;         // Inbox is the parent
             std::string path;
-            std::size_t start = 0;
-            while (start <= folder.name.size()) {
-                std::size_t slash = folder.name.find('/', start);
-                std::string segment = folder.name.substr(
-                    start, slash == std::string::npos ? std::string::npos : slash - start);
-                if (!path.empty()) path += "/";
-                path += segment;
+            for (const std::string& level : FolderLevels(folder.name, delim)) {
+                if (!path.empty()) path += delim;
+                path += level;
                 // Elide a stored, non-selectable container: create no node and
                 // leave `parent` unchanged so its children attach to it.
                 auto sel = selectable.find(path);
@@ -850,15 +849,13 @@ void MailView::RebuildFolderTree() {
                 if (!isContainer) {
                     const std::string nodeId = kFolderNodePrefix + accId + "::" + path;
                     if (created.insert(nodeId).second) {
-                        TreeNodeData data(nodeId, FriendlyLeaf(segment, path));
+                        TreeNodeData data(nodeId, FolderDisplayName(path, delim));
                         data.textColor = Theme::kTextPrimary;
                         folderTree_->AddNode(parent, data);
                         folderNodeId_[nodeId] = {accId, path};
                     }
                     parent = nodeId;
                 }
-                if (slash == std::string::npos) break;
-                start = slash + 1;
             }
         }
     }
@@ -890,7 +887,19 @@ void MailView::ShowAccount(const std::string& accountId) {
         selectedFolder_.clear();
     }
     RebuildFolderTree();
+    // The folder on screen was deleted or renamed on the server (the folder
+    // sync dropped it): its account's inbox instead of an empty list.
+    if (curFolder_ != "INBOX" && !folderDelims_.count(curAccount_ + "\n" + curFolder_)) {
+        curFolder_ = "INBOX";
+        filter_ = MessageFilter{};
+        SelectFolderNode(curAccount_, curFolder_);
+    }
     RebuildList();
+}
+
+std::string MailView::DelimiterOf(const std::string& accountId, const std::string& folder) const {
+    const auto it = folderDelims_.find(accountId + "\n" + folder);
+    return it != folderDelims_.end() ? it->second : std::string("/");
 }
 
 void MailView::ShowFolder(const std::string& accountId, const std::string& folder) {
@@ -1118,7 +1127,7 @@ void MailView::MarkRowRead(int row) {
 
 void MailView::UpdateListTitle() {
     if (!listBox_) return;
-    std::string title = FriendlyLeaf(curFolder_, curFolder_);
+    std::string title = FolderDisplayName(curFolder_, DelimiterOf(curAccount_, curFolder_));
     if (filter_.Active()) title += " \xC2\xB7 " + Describe(filter_);   // "Inbox · Unread"
     if (!searchText_.empty()) title += " \xC2\xB7 \xE2\x80\x9C" + searchText_ + "\xE2\x80\x9D";
     if (!messages_.empty()) {

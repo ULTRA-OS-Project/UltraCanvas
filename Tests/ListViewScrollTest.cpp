@@ -8,6 +8,9 @@
 //    row is now revealed once the view has its size.
 //  - UltraCanvasMultiColumnListModel::SetItems: every row with ONE change
 //    notification (AddItem notifies per row).
+//  - The selection follows rows inserted or removed above it. It stayed at
+//    the same index, so while new mail streamed in above the message being
+//    read, the highlight sat on whatever message slid into that row.
 // No window and no display: the view is sized with SetBounds.
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
@@ -104,11 +107,56 @@ static void TestSetItemsNotifiesOnce() {
     CHECK_EQ(changed, 2);
 }
 
+// The view moves the selection with the rows; the selected item stays
+// selected without a selection-changed notification - only where it is
+// changed - and a removed selected row is dropped (and notified).
+static void TestSelectionFollowsInsertedAndRemovedRows() {
+    auto view = MakeView(10);
+    auto* model = static_cast<UltraCanvasMultiColumnListModel*>(view->GetModel());
+    view->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
+    int notified = 0;
+    view->onSelectionChanged = [&notified](const std::vector<int>&) { ++notified; };
+    view->GetSelection()->Select(5);                       // "Sender 5"
+    notified = 0;
+
+    model->InsertItem(0, MultiColumnListItem({ "New", "mail" }));   // above it
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 6);
+    model->InsertItem(9, MultiColumnListItem({ "Old", "mail" }));   // below it
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 6);
+    CHECK_EQ(GetStringValue(model->GetData(ListIndex{6, 0}, ListDataRole::DisplayRole)),
+             std::string("Sender 5"));
+    model->RemoveItem(0);                                  // above it again
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 5);
+    CHECK_EQ(notified, 0);                                 // the same item all along
+
+    model->RemoveItem(5);                                  // the selected row itself
+    CHECK_EQ(view->GetSelection()->HasSelection(), false);
+    CHECK_EQ(notified, 1);
+}
+
+static void TestMultiSelectionShift() {
+    UltraCanvasMultiSelection sel;
+    sel.Select(2);
+    sel.Select(4, /*addToSelection=*/true);
+    sel.Select(7, /*addToSelection=*/true);
+    sel.ShiftRows(3, 2);                  // two rows in at 3: 4 and 7 move down
+    CHECK_EQ(sel.IsSelected(2), true);
+    CHECK_EQ(sel.IsSelected(6), true);
+    CHECK_EQ(sel.IsSelected(9), true);
+    CHECK_EQ(sel.GetCurrentRow(), 9);
+    sel.ShiftRows(5, -2);                 // rows 5 and 6 out: 6 goes, 9 moves up
+    CHECK_EQ(sel.GetSelectedRows().size(), (size_t)2);
+    CHECK_EQ(sel.IsSelected(2), true);
+    CHECK_EQ(sel.IsSelected(7), true);
+}
+
 int main() {
     TestFirstRowBeforeLayout();
     TestLaterRowBeforeLayout();
     TestAfterLayout();
     TestSetItemsNotifiesOnce();
+    TestSelectionFollowsInsertedAndRemovedRows();
+    TestMultiSelectionShift();
     if (failures) {
         std::cerr << "ListViewScrollTest: " << failures << " failure(s)\n";
         return 1;

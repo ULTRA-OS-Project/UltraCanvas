@@ -34238,6 +34238,9 @@ public:
     virtual std::vector<int> GetSelectedRows() const = 0;
     virtual int GetCurrentRow() const = 0;
     virtual bool HasSelection() const = 0;
+    // Rows inserted (count > 0) or removed (count < 0) at `row`: the same items
+    // stay selected at their new rows (the view calls it from the model).
+    virtual void ShiftRows(int row, int count);
 };
 
 class UltraCanvasSingleSelection : public IListSelection { /* ... */ };
@@ -34245,6 +34248,14 @@ class UltraCanvasMultiSelection  : public IListSelection { /* ... */ };
 ```
 
 If `SetSelection()` is never called, the view installs a single-selection by default.
+
+The selection follows the items, not the row numbers: when the model inserts
+or removes rows (`InsertItem`, `RemoveItem`), the view moves the selection,
+the keyboard focus and the hover with them, so a row inserted above the
+selected one leaves the same item selected. That moves no item in or out of
+the selection, so it raises no `onSelectionChanged`; a selected row that is
+removed leaves the selection, and that is reported. `SetItems` / `Clear`
+replace every row, and the caller selects again.
 
 ## Events / Callbacks
 

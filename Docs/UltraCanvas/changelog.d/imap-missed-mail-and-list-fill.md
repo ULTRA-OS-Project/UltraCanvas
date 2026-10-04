@@ -34,3 +34,23 @@
   row hidden above it (UltraMail's message list did, at every start). The row
   is now remembered and revealed once the view has its size. Tests (with
   `SetItems`): `ListViewScrollTest.cpp`.
+- **ListView: the selection follows the rows.** A row inserted into the model
+  above the selected one left the selection at the same row number, so the
+  highlight sat on whatever item slid into its place; a row removed above it
+  did the same the other way. The view now moves the selection - and the
+  keyboard focus and the hover - with the rows: `IListSelection::ShiftRows`,
+  called from the model's row notifications, keeps the same items selected
+  without an `onSelectionChanged` (nothing went in or out of the selection);
+  a selected row that is removed still leaves it, reported as before. The
+  default implementation (through `Clear` / `Select`) serves other selection
+  classes. Tests: `ListViewScrollTest.cpp`. Documented in
+  `UltraCanvasListViewExamples.md`.
+- **IMAP: folder roles by the server's own separator.** `DetectFolderRole`
+  reads the last level of a folder's name after the separator the LIST line
+  gives (it took the last `/` or `.` of any name, so "Mr. Sent" on a `/`
+  server was a Sent folder), knows the German names servers use ("Gesendete
+  Objekte", "Papierkorb", "Entwürfe", "Gelöschte Objekte", …) and leaves out a
+  leading `INBOX^` - how a folder came across from a server with another
+  separator, so Courier's "INBOX.INBOX^Sent" is the Sent folder. Only the
+  folder named INBOX is the inbox, not a sub-folder that happens to be called
+  so. Tests: `test_imap_mailbox.cpp`.
