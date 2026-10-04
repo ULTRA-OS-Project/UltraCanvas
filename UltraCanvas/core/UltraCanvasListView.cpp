@@ -20,8 +20,7 @@ namespace UltraCanvas {
         delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
         selection = std::make_shared<UltraCanvasSingleSelection>();
         selection->onSelectionChanged = [this](const std::vector<int>& rows) {
-            if (onSelectionChanged) onSelectionChanged(rows);
-            RequestRedraw();
+            HandleSelectionChanged(rows);
         };
 
         // Scrolling defaults
@@ -109,10 +108,24 @@ namespace UltraCanvas {
         selection = newSelection;
         if (selection) {
             selection->onSelectionChanged = [this](const std::vector<int>& rows) {
-                if (onSelectionChanged) onSelectionChanged(rows);
-                RequestRedraw();
+                HandleSelectionChanged(rows);
             };
         }
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::HandleSelectionChanged(const std::vector<int>& rows) {
+        // The keyboard goes on from the selected row, whoever selected it: a
+        // click, the arrow keys - or the application, after it rebuilt or
+        // re-sorted the rows and selected the one being read. Before, a row
+        // selected in code left the focus where it was (or at "none"), and
+        // the next arrow key jumped from there instead of from the selection.
+        // Set before the handlers run, so one that selects again wins.
+        if (selection) {
+            const int current = selection->GetCurrentRow();
+            if (current >= 0) focusedRow = current;
+        }
+        if (onSelectionChanged) onSelectionChanged(rows);
         RequestRedraw();
     }
 
@@ -212,6 +225,15 @@ namespace UltraCanvas {
         if (!model || row < 0 || row >= model->GetRowCount()) return;
 
         auto viewport = GetViewportRect();
+        // Not laid out yet: no room for the row is known. Measuring against a
+        // zero (or, less the header, negative) viewport scrolled the row below
+        // the top - row 0 by two rows, and the list then opened with its
+        // first rows hidden. Done once the view has its size (Arrange).
+        if (viewport.height <= 0) {
+            pendingVisibleRow = row;
+            return;
+        }
+        pendingVisibleRow = -1;
         int rowTop = RowTopOffset(row);
         int rowBottom = rowTop + RowHeightForRow(row);
 
@@ -1137,15 +1159,20 @@ namespace UltraCanvas {
             UpdateScrollbar();
             RequestRedraw();
         };
-        model->onRowInserted = [this](int /*row*/) {
+        model->onRowInserted = [this](int row) {
+            // The rows from `row` on moved down one: the selection, the
+            // keyboard focus and the hover stay on the items they were on.
+            if (selection) selection->ShiftRows(row, 1);
+            if (focusedRow >= row) focusedRow++;
+            if (hoveredRow >= row) hoveredRow++;
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
         };
         model->onRowRemoved = [this](int row) {
-            if (selection && selection->IsSelected(row)) {
-                selection->Deselect(row);
-            }
+            // The removed row leaves the selection (notified); the rows below
+            // it moved up one, and the selection moves with them.
+            if (selection) selection->ShiftRows(row, -1);
             if (focusedRow == row) focusedRow = -1;
             else if (focusedRow > row) focusedRow--;
             if (hoveredRow == row) hoveredRow = -1;
@@ -1173,14 +1200,24 @@ namespace UltraCanvas {
         // (Previously UpdateScrollbar only ran from mutators / SetBounds, never from the
         // engine's resize, so an in-tree ListView could reserve scrollbar space wrongly.)
         UpdateScrollbar();
+        RevealPendingRow();
     }
 
     void UltraCanvasListView::SetBounds(const Rect2Df& bounds) {
         if (bounds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bounds);
             UpdateScrollbar();
+            RevealPendingRow();
             RequestRedraw();
         }
+    }
+
+    void UltraCanvasListView::RevealPendingRow() {
+        if (pendingVisibleRow < 0 || GetViewportRect().height <= 0) return;
+        const int row = pendingVisibleRow;
+        pendingVisibleRow = -1;
+        EnsureRowVisible(row);
+        UpdateScrollbar();
     }
 
     void UltraCanvasListView::SetWindow(UltraCanvasWindowBase* win) {

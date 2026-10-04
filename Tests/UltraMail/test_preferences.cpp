@@ -54,6 +54,8 @@ TEST(preferences_round_trip) {
     out.linkDisplay = LinkDisplay::Tooltip;
     out.needsAnswerMaxAgeDays = 30;
     out.needsAnswerOnlyWrittenTo = false;
+    out.listSort.key = MessageSortKey::Subject;
+    out.listSort.ascending = true;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -68,6 +70,7 @@ TEST(preferences_round_trip) {
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
+    REQUIRE(in.listSort == out.listSort);
     std::remove(path.c_str());
 }
 
@@ -88,5 +91,6 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.remoteImageSenders.count("a@b.c") == 1);
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 14);                     // the defaults
     REQUIRE(in.needsAnswerOnlyWrittenTo);
+    REQUIRE(in.listSort == MessageSort{});                        // newest first
     std::remove(path.c_str());
 }

@@ -1,3 +1,102 @@
+#### 2026-10-04 *0.10.30*
+- **Switching accounts is immediate.** A click on an account's tile shows its
+  mail as stored at once - the list first, the message beside it a moment
+  later, once the list is on screen - and then fetches its inbox from the
+  server in the background; new mail joins the list in place when it comes.
+  On a mailbox of 5000 messages the window used to stand still for 0.4 to 1
+  second per switch (measured: 420-960 ms); it now takes 10-55 ms. What made
+  it slow:
+  - **The waiting-for-reply count.** Its "only people you have written to"
+    rule compared every waiting message with every message in the Sent
+    folder, in the database, on every count - half a second each time the
+    account bar or the list was redrawn. The addresses written to are now
+    read once and only again when the Sent mail changes: 470 ms became 15 ms.
+    The rule also missed most of them: it matched only recipients written as
+    a bare address, never "Maya Bennett <maya@example.com>", the way the
+    composer and most mail programs address mail. Those count now.
+  - A switch no longer re-counts every account and re-reads the address
+    book: nothing either depends on changed by looking at another account.
+  - The list fills in one step instead of row by row, and the message in the
+    reading pane is laid out once instead of twice (also on every click on a
+    message, and on every sync that brought mail above it - which also sent
+    the reading pane back to the top of the message).
+  - After a sync only the senders of the new mail are added to the address
+    book, not every sender of the inbox again.
+- **The message list sorts by its column headers.** A click on *From*, on the
+  sender-badge column, on *Subject* or on *Date* orders the list by it; a
+  second click turns the order round, and a small triangle in the header
+  shows which column and which way. Dates start newest first, the rest from A
+  (contacts first for the badge column). Subjects sort without their "Re:",
+  "Fwd:", "AW:" or "WG:", so a reply stays with what it answers, and accented
+  letters sort with their base letter ("Ärztekammer" among the A's). The
+  message being read stays selected, new mail arriving during a sync goes in
+  at its place in the order, and the choice is remembered (`list_sort` in
+  `preferences.ini`).
+- **New mail that never showed up.** Several ways a message could be left out
+  of the list for good, all repaired by the next sync:
+  - Every sync now compares the inbox with the server's own list of messages,
+    not only "anything above the highest message number held". A message an
+    interrupted sync skipped, or one stored blank because its header could
+    not be read (earlier versions did that), is fetched; mail deleted, moved
+    or read on another computer is followed in the background sync too (it
+    used to be only when a folder was opened by hand).
+  - A cache whose message numbers the server has not handed out yet is
+    dropped and fetched again - the server renumbered the mailbox, or the
+    account's server changed. Before, every new message numbered below the
+    old highest number was skipped, without an error.
+  - **Windows only:** a server's mailbox number (UIDVALIDITY) above 2147483647
+    was read as 2147483647 on Windows, so a renumbered mailbox looked
+    unchanged there - and only there (framework changelog, "IMAP: numbers above
+    2147483647 are read right on Windows").
+  - Changing an account's incoming server or user name in *Account Settings*
+    drops the mail downloaded from the old one and fetches the new mailbox.
+  - **"(message body not downloaded yet)" no longer stays.** A message whose
+    body download failed was never downloaded again. Opening it now downloads
+    it at once (the reading pane says so meanwhile), and each sync fetches the
+    bodies still missing among the newest 100 messages.
+  - The newest message was downloaded again on every sync (the server always
+    answers "messages from number N on" with its newest one).
+- **The connection pill says how many messages the server's inbox holds**
+  ("Inbox on the server: 59 messages" in its tooltip). When another computer
+  shows mail this one does not, this tells whether the mail is on the server
+  this account reads at all: if the numbers differ, compare the *Incoming
+  server* in *Account Settings* on both computers.
+- The list opens with its newest message in view; it used to open scrolled two
+  rows down, the selected message hidden above the top (framework changelog,
+  "ListView: EnsureRowVisible before the first layout").
+- **Folders as the server names them.** On servers that put every folder
+  under the inbox with a dot - Courier-style, "INBOX.Drafts" - the folder tree
+  showed "INBOX.Drafts", "INBOX.Trash" and "INBOX.INBOX^Sent" as names. The
+  separator the server lists is now kept with each folder (schema 9) and the
+  names are read by it: Inbox › Sent, Drafts, Trash, Investor, Invoice, as on
+  any other server. The same names appear in the list's title, the status line
+  and *Move to folder* ("Projects / 2026" for a folder two levels down).
+  - **The Sent folder is found** on such servers: "INBOX^Sent" - how a folder
+    came across from a server with another separator - is the Sent folder,
+    and so are the German names servers use ("Gesendete Objekte",
+    "Papierkorb", "Entwürfe" …). That also makes "Waiting for reply" work
+    there: its "people you have written to" rule reads the Sent folder
+    (framework changelog, "IMAP: folder roles by the server's own separator").
+- **Folders deleted or renamed on the server leave the tree.** The folder list
+  only ever added folders; one deleted on the server, or renamed there, stayed
+  in the tree with its old mail for good. Every sync now drops a folder the
+  server no longer lists, with its messages and downloaded bodies (never on an
+  empty list, never the inbox). A folder that is open when it goes takes the
+  view back to the inbox, and pressing *Update* on it says "The folder … is no
+  longer on the server" instead of a "Select failed" alert.
+- **A renumbered mailbox was never noticed in the regular sync.** Reading the
+  folder list wrote 0 over each folder's stored UIDVALIDITY, so the inbox sync
+  that followed found nothing to compare and kept a stale cache. The folder
+  list now leaves the numbering alone.
+- **The highlight stays on the message being read while new mail streams
+  in.** Rows inserted above it moved the message down but not the highlight,
+  which sat on whatever message took its place until the sync finished
+  (framework changelog, "ListView: the selection follows the rows").
+- **The arrow keys go on from the selected message** after the list was
+  rebuilt or re-sorted - a folder or account switch, a sync, a click on a
+  column header. They started again from the top (framework changelog,
+  "ListView: the arrow keys go on from a row selected in code").
+
 #### 2026-10-04 *0.10.29*
 - **The message text fits its pane.** An HTML message tall enough to scroll
   was laid out for the pane's full width, and the vertical scrollbar then took

@@ -2,6 +2,8 @@
 // Concrete model implementations for ListView
 #include "UltraCanvasListModel.h"
 
+#include <utility>
+
 namespace UltraCanvas {
 
     // ===== SIMPLE SINGLE-COLUMN MODEL =====
@@ -197,6 +199,11 @@ namespace UltraCanvas {
 
     void UltraCanvasMultiColumnListModel::Clear() {
         items.clear();
+        NotifyDataChanged();
+    }
+
+    void UltraCanvasMultiColumnListModel::SetItems(std::vector<MultiColumnListItem> newItems) {
+        items = std::move(newItems);
         NotifyDataChanged();
     }
 

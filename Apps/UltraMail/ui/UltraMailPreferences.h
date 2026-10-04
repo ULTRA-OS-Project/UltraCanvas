@@ -4,6 +4,7 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.7.0 - the message list's order (list_sort), chosen in its column headers
 // Version: 0.6.0 - waiting-for-reply rules (its age, only people written to)
 // Version: 0.5.0 - link display: the status bar or a tooltip (Settings > Display > Links)
 // Version: 0.4.0 - folder tree width: fixed pixels or fitted to the names
@@ -12,6 +13,8 @@
 // Version: 0.2.0 - fetchSenderIcons (download the known senders' icons)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "UltraMailMessageSort.h"
 
 #include <set>
 #include <string>
@@ -87,6 +90,10 @@ struct Preferences {
     // (0 = any age), and only from people the reader has written to.
     int  needsAnswerMaxAgeDays   = 14;
     bool needsAnswerOnlyWrittenTo = true;
+
+    // The message list's order: the column header last clicked, and which
+    // way round. Newest first until one is clicked.
+    MessageSort listSort;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.
