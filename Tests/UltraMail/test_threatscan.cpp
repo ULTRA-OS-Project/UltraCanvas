@@ -6,6 +6,9 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
+// Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
+//                  and mailbox addresses are not claims
 // Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
@@ -94,6 +97,34 @@ TEST(a_brand_claimed_from_a_free_mailbox_is_a_scam) {
     const ThreatReport r = ScanMessage(in);
     REQUIRE(HasFinding(r, "brand-impersonation"));
     REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(a_bank_or_exchange_claimed_from_elsewhere_is_flagged) {
+    ScanInput in = Html("security@coinbase-verify.example",
+        "<a href=\"https://coinbase-verify.example/restore\">Restore access</a>");
+    in.fromName = "Coinbase Security";
+    REQUIRE(HasFinding(ScanMessage(in), "brand-impersonation"));
+
+    ScanInput bank = Html("alerts@secure-mail.example",
+        "<a href=\"https://secure-mail.example/x\">Review activity</a>");
+    bank.fromName = "Chase Bank Alerts";
+    REQUIRE(HasFinding(ScanMessage(bank), "brand-impersonation"));
+}
+
+TEST(an_ordinary_word_or_mailbox_address_is_not_impersonation) {
+    // A hotel's "booking" and a friend whose display name is their own
+    // Outlook address are not claims to be Booking.com or Microsoft.
+    ScanInput hotel = Html("reservations@hotel-am-see.example",
+        "<a href=\"https://hotel-am-see.example/\">Your stay</a>");
+    hotel.subject = "Your booking is confirmed";
+    REQUIRE(!HasFinding(ScanMessage(hotel), "brand-impersonation"));
+
+    ScanInput friendMail;
+    friendMail.fromAddr = "jane@outlook.com";
+    friendMail.fromName = "jane@outlook.com";
+    friendMail.subject  = "Weekend";
+    friendMail.body     = "See you on Saturday!";
+    REQUIRE(!HasFinding(ScanMessage(friendMail), "brand-impersonation"));
 }
 
 TEST(userinfo_hiding_the_real_host_is_caught) {
@@ -370,4 +401,33 @@ TEST(plain_link_at_finds_the_url_under_a_position) {
     REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
     REQUIRE(PlainLinkAt(text, text.find("not")).empty());
     REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
+}
+
+TEST(plain_text_mail_addresses_are_mailto_links) {
+    const std::string text = "Write to support@shop.example, or mailto:sales@shop.example?subject=Hi."
+                             " Not an address: a@b, x@y.1, @handle. See https://user@site.example/p";
+    REQUIRE_EQ(PlainLinkAt(text, text.find("support")), std::string("mailto:support@shop.example"));
+    REQUIRE_EQ(PlainLinkAt(text, text.find("shop.example,")), std::string("mailto:support@shop.example"));
+    REQUIRE(PlainLinkAt(text, text.find(", or")).empty());   // the comma after it
+    REQUIRE_EQ(PlainLinkAt(text, text.find("mailto:") + 3),
+               std::string("mailto:sales@shop.example?subject=Hi"));
+    REQUIRE(PlainLinkAt(text, text.find("a@b")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("x@y.1")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("@handle") + 1).empty());
+    // An address inside a web address is part of that web address.
+    REQUIRE_EQ(PlainLinkAt(text, text.find("site.example")), std::string("https://user@site.example/p"));
+
+    const auto links = ExtractLinks(text, false);
+    REQUIRE(links.size() == 3);
+    REQUIRE_EQ(links[0].href, std::string("mailto:support@shop.example"));
+    REQUIRE(links[0].host.empty());
+    REQUIRE_EQ(links[2].host, std::string("site.example"));
+}
+
+TEST(a_mail_address_in_plain_text_raises_no_link_finding) {
+    ScanInput in;
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "Questions? Write to helpdesk@other-service.example any time.";
+    in.bodyIsHtml = false;
+    REQUIRE(ScanMessage(in).level == ThreatLevel::Clean);
 }

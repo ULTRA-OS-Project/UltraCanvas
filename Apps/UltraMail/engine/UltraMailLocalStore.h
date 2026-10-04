@@ -3,6 +3,8 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.7.0 - WeighSentRecipients: how often - and how lately - each address
+//                  was written to
 // Version: 0.6.0 - NeedsAnswerRules: which unanswered mail counts as waiting for
 //                  a reply (its age, a sender written to), applied when counted
 // Version: 0.5.0 - schema 8: the account's signature (SetAccountSignature)
@@ -107,6 +109,16 @@ public:
     // incremental sync.
     UltraDbResult GetMaxUid(const std::string& accountId, const std::string& folder,
                             int64_t& out) const;
+
+    // How much the user writes to each address: every stored message in a
+    // Sent folder (every account; deleted ones left out) adds a weight to
+    // each of its To: recipients - 1 for a message sent at `now`, halving
+    // every `halfLifeDays` it is older, so recent mail counts more than old
+    // mail (a message from a year ago, at 90 days, adds 1/16). Keys are bare
+    // addresses, lower case.
+    static constexpr double kSentHalfLifeDays = 90.0;
+    UltraDbResult WeighSentRecipients(std::map<std::string, double>& out, int64_t now,
+                                      double halfLifeDays = kSentHalfLifeDays) const;
 
     // The rules ListNeedsAnswer and GetAccountStatus count by.
     void SetNeedsAnswerRules(const NeedsAnswerRules& rules) { needsAnswerRules_ = rules; }

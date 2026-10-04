@@ -4,16 +4,21 @@
 // a brand and that a brand name worn by a foreign domain is not a match), the
 // address-book index, the classification that turns all of it into a badge,
 // and the icon cache with a fake fetcher.
+// Version: 0.2.0 - the phishing-target registry: consistency, categories,
+//                  keyword-only names, mailbox addresses in display names
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "UltraMailSenderBrands.h"
+#include "UltraMailSenderBrandTable.h"
 #include "UltraMailSenderIconCache.h"
 #include "UltraMailSenderTrust.h"
 
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <set>
 #include <string>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
@@ -148,6 +153,143 @@ TEST(brand_named_in_text_matches_whole_words_only) {
     // A short name ("X") is claimed through its keywords, never as a bare word.
     REQUIRE(BrandNamedIn("Re: x") == nullptr);
     REQUIRE(BrandNamedIn("nothing familiar here") == nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// The phishing-target registry
+// ---------------------------------------------------------------------------
+TEST(registry_is_consistent) {
+    // Every domain is owned by exactly one brand, resolves back to it (so none
+    // is a mailbox provider or shadowed by another entry), and is a real
+    // registrable domain rather than a public suffix like "gouv.fr".
+    static const std::set<std::string> suffixWords = {
+        "gov", "gouv", "gc", "co", "com", "org", "net", "ac", "edu", "service",
+    };
+    static const std::set<std::string> mailboxWords = {
+        "gmail", "googlemail", "outlook", "hotmail", "live", "msn", "yahoo", "aol",
+        "icloud", "gmx", "proton", "protonmail", "comcast", "verizon.net", "att.net",
+    };
+    std::set<std::string> ids;
+    std::map<std::string, std::string> owner;
+    for (const BrandRule& rule : SenderBrandRules()) {
+        REQUIRE(ids.insert(rule.brand.id).second);
+        REQUIRE(rule.labels.empty());   // a name under any suffix would trust squatters
+        REQUIRE(!rule.brand.name.empty());
+        REQUIRE(rule.brand.iconUrl.find("https://") == 0);
+        for (const std::string& d : rule.domains) {
+            const std::string reg = RegistrableDomain(d);
+            REQUIRE_EQ(DomainOfAddress("a@" + d), d);              // lowercase, no stray dots
+            REQUIRE(!suffixWords.count(BaseLabel(d)));
+            const auto [it, fresh] = owner.emplace(reg, rule.brand.id);
+            REQUIRE(fresh || it->second == rule.brand.id);
+            const SenderBrand* found = BrandForDomain(d);
+            REQUIRE(found != nullptr);
+            REQUIRE_EQ(found->id, rule.brand.id);
+        }
+        for (const std::string& k : rule.keywords) {
+            for (char c : k) REQUIRE(!(c >= 'A' && c <= 'Z'));
+            REQUIRE(!mailboxWords.count(k));
+        }
+        // A brand claimed by keywords only must still be claimable somehow,
+        // unless it is deliberately recognition-only (Sparkasse, EE).
+        if (rule.nameClaim == NameClaim::KeywordsOnly && !rule.keywords.empty())
+            for (const std::string& k : rule.keywords)
+                REQUIRE(BrandNamedIn(k) != nullptr);
+    }
+    REQUIRE(KnownBrands().size() >= 250);
+}
+
+TEST(phishing_targets_are_in_the_registry) {
+    struct Case { const char* address; const char* id; BrandCategory category; };
+    const Case cases[] = {
+        { "no-reply@alerts.chase.com",        "chase",        BrandCategory::Banking },
+        { "service@info.barclays.co.uk",      "barclays",     BrandCategory::Banking },
+        { "info@sparkasse.de",                "sparkasse",    BrandCategory::Banking },
+        { "noreply@mabanque.bnpparibas",      "bnpparibas",   BrandCategory::Banking },
+        { "alerts@commbank.com.au",           "commbank",     BrandCategory::Banking },
+        { "venmo@venmo.com",                  "venmo",        BrandCategory::Payment },
+        { "noreply@transferwise.com",         "wise",         BrandCategory::Payment },
+        { "no-reply@coinbase.com",            "coinbase",     BrandCategory::Crypto },
+        { "do-not-reply@ses.binance.com",     "binance",      BrandCategory::Crypto },
+        { "hello@ledger.com",                 "ledger",       BrandCategory::Crypto },
+        { "news@lidl.de",                     "lidl",         BrandCategory::Shopping },
+        { "orders@temu.com",                  "temu",         BrandCategory::Shopping },
+        { "track@royalmail.com",              "royalmail",    BrandCategory::Delivery },
+        { "noreply@dpd.de",                   "dpd",          BrandCategory::Delivery },
+        { "no-reply@cloudflare.com",          "cloudflare",   BrandCategory::CloudHosting },
+        { "dse@docusign.net",                 "docusign",     BrandCategory::Technology },
+        { "noreply@wetransfer.com",           "wetransfer",   BrandCategory::CloudHosting },
+        { "renewals@godaddy.com",             "godaddy",      BrandCategory::DomainRegistrar },
+        { "support@namecheap.com",            "namecheap",    BrandCategory::DomainRegistrar },
+        { "noreply@tax.service.gov.uk",       "hmrc",         BrandCategory::Government },
+        { "noreply@dgfip.impots.gouv.fr",     "dgfip",        BrandCategory::Government },
+        { "info@telekom.de",                  "telekom",      BrandCategory::Telecom },
+        { "noreply@steampowered.com",         "steam",        BrandCategory::Gaming },
+        { "noreply@mcafee.com",               "mcafee",       BrandCategory::Security },
+        { "reply@amazonaws.com",              "amazon",       BrandCategory::Shopping },
+    };
+    for (const auto& c : cases) {
+        const SenderBrand* brand = BrandForAddress(c.address);
+        REQUIRE(brand != nullptr);
+        REQUIRE_EQ(brand->id, std::string(c.id));
+        REQUIRE(brand->category == c.category);
+    }
+    // A government service suffix is not one party: another UK service is not HMRC.
+    REQUIRE_EQ(RegistrableDomain("noreply.tax.service.gov.uk"), std::string("tax.service.gov.uk"));
+    REQUIRE(BrandForAddress("x@vehicle-tax.service.gov.uk") == nullptr);
+    REQUIRE(BrandForAddress("x@other.gouv.fr") == nullptr);
+    // A new brand's country domain is trusted only when listed.
+    REQUIRE(BrandForAddress("support@lidl.xyz") == nullptr);
+    REQUIRE(BrandForAddress("security@coinbase-support.com") == nullptr);
+    // Nor are the big brands' names under a suffix they do not use.
+    for (const char* squatted : { "x@amazon.xyz", "x@ebay.shop", "x@google.top",
+                                  "x@dhl.app", "x@amazon-de.com", "x@etsy.shop",
+                                  "x@pinterest.xyz" })
+        REQUIRE(BrandForAddress(squatted) == nullptr);
+    for (const char* genuine : { "x@amazon.com.be", "x@marketplace.amazon.de",
+                                 "x@ebay.at", "x@noreply.dhl.de", "x@google.co.jp",
+                                 "x@mail.etsy.com", "x@pinterest.co.uk" })
+        REQUIRE(BrandForAddress(genuine) != nullptr);
+}
+
+TEST(brand_names_that_are_ordinary_words_claim_nothing_alone) {
+    for (const char* text : { "Your booking is confirmed", "Paper chase on Sunday",
+                              "Your visa application", "Target practice",
+                              "Steam cleaning offer", "Discover our new range",
+                              "Prime location flat", "Weekly market outlook",
+                              "Notes on the office move", "Three follow-ups",
+                              "Signal strength report", "A notion of fidelity",
+                              "Ally of the week", "Wish list", "Mega sale" }) {
+        REQUIRE(BrandNamedIn(text) == nullptr);
+    }
+    struct Case { const char* text; const char* id; };
+    const Case claims[] = {
+        { "Chase Bank Alerts",            "chase" },
+        { "Booking.com Customer Service", "booking" },
+        { "Steam Support",                "steam" },
+        { "Coinbase Security",            "coinbase" },
+        { "HMRC Tax Refund",              "hmrc" },
+        { "Ledger Live update required",  "ledger" },
+        { "Your Netflix account",         "netflix" },
+        { "DHL Express",                  "dhl" },
+        { "Norton 360 renewal",           "norton" },
+    };
+    for (const auto& c : claims) {
+        const SenderBrand* brand = BrandNamedIn(c.text);
+        REQUIRE(brand != nullptr);
+        REQUIRE_EQ(brand->id, std::string(c.id));
+    }
+}
+
+TEST(a_mailbox_address_in_a_display_name_claims_nothing) {
+    // A display name that is just the sender's own address names its mailbox
+    // provider, not a brand.
+    REQUIRE(BrandNamedIn("jane@outlook.com") == nullptr);
+    REQUIRE(BrandNamedIn("\"bob@verizon.net\"") == nullptr);
+    // An address at a brand's own domain still claims it: that is the spoof.
+    const SenderBrand* paypal = BrandNamedIn("service@paypal.com");
+    REQUIRE(paypal != nullptr);
+    REQUIRE_EQ(paypal->id, std::string("paypal"));
 }
 
 // ---------------------------------------------------------------------------

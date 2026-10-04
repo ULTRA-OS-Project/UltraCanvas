@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailUnsubscribe.cpp
+// Version: 0.3.0 - ParseMailto: to / cc / bcc lists (each comma-separated, repeatable)
+// Version: 0.2.0 - ParseMailto, shared with mailto: links in a message
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -72,7 +74,50 @@ std::string Header(const std::map<std::string, std::string>& headers,
     return "";
 }
 
+// A comma-separated address list, appended to `out` trimmed; empty entries
+// dropped.
+void AppendAddresses(const std::string& list, std::vector<std::string>& out) {
+    std::size_t start = 0;
+    while (start <= list.size()) {
+        std::size_t comma = list.find(',', start);
+        if (comma == std::string::npos) comma = list.size();
+        std::size_t b = start, e = comma;
+        while (b < e && std::isspace(static_cast<unsigned char>(list[b]))) ++b;
+        while (e > b && std::isspace(static_cast<unsigned char>(list[e - 1]))) --e;
+        if (e > b) out.push_back(list.substr(b, e - b));
+        start = comma + 1;
+    }
+}
+
 } // namespace
+
+MailtoTarget ParseMailto(const std::string& href) {
+    MailtoTarget target;
+    if (!StartsWithNoCase(href, "mailto:")) return target;
+    const std::string rest = href.substr(7);
+    const std::size_t q = rest.find('?');
+    target.address = PercentDecode(rest.substr(0, q));
+    AppendAddresses(target.address, target.to);
+    if (q == std::string::npos) return target;
+    std::size_t p = q + 1;
+    while (p <= rest.size()) {
+        std::size_t amp = rest.find('&', p);
+        if (amp == std::string::npos) amp = rest.size();
+        const std::string pair = rest.substr(p, amp - p);
+        const std::size_t eq = pair.find('=');
+        if (eq != std::string::npos) {
+            const std::string key = Lower(pair.substr(0, eq));
+            const std::string val = PercentDecode(pair.substr(eq + 1));
+            if (key == "subject") target.subject = val;
+            else if (key == "body") target.body = val;
+            else if (key == "to") AppendAddresses(val, target.to);
+            else if (key == "cc") AppendAddresses(val, target.cc);
+            else if (key == "bcc") AppendAddresses(val, target.bcc);
+        }
+        p = amp + 1;
+    }
+    return target;
+}
 
 UnsubscribeInfo ParseListUnsubscribe(const std::string& listUnsubscribe,
                                      const std::string& listUnsubscribePost) {
@@ -87,24 +132,10 @@ UnsubscribeInfo ParseListUnsubscribe(const std::string& listUnsubscribe,
             if (oneClick && info.oneClickUrl.empty() && StartsWithNoCase(entry, "https://"))
                 info.oneClickUrl = entry;
         } else if (StartsWithNoCase(entry, "mailto:") && info.mailtoAddress.empty()) {
-            const std::string rest = entry.substr(7);
-            const std::size_t q = rest.find('?');
-            info.mailtoAddress = PercentDecode(rest.substr(0, q));
-            if (q == std::string::npos) continue;
-            std::size_t p = q + 1;
-            while (p <= rest.size()) {
-                std::size_t amp = rest.find('&', p);
-                if (amp == std::string::npos) amp = rest.size();
-                const std::string pair = rest.substr(p, amp - p);
-                const std::size_t eq = pair.find('=');
-                if (eq != std::string::npos) {
-                    const std::string key = Lower(pair.substr(0, eq));
-                    const std::string val = PercentDecode(pair.substr(eq + 1));
-                    if (key == "subject") info.mailtoSubject = val;
-                    else if (key == "body") info.mailtoBody = val;
-                }
-                p = amp + 1;
-            }
+            const MailtoTarget target = ParseMailto(entry);
+            info.mailtoAddress = target.address;
+            info.mailtoSubject = target.subject;
+            info.mailtoBody    = target.body;
         }
     }
     return info;

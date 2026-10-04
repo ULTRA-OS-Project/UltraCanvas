@@ -1,3 +1,43 @@
+#### 2026-10-04 *0.9.150*
+- **The Windows and macOS SDKs carry the development files of the libraries
+  the framework uses.** `scripts/sdk-bundle-deps.sh` adds a `deps/` tree
+  (headers, import libraries or dylibs, static archives, relocatable `.pc`
+  and CMake config files, and on Windows the run-time DLLs) for the
+  pkg-config closure of cairo, pango, harfbuzz, freetype, glib, tinyxml2 and
+  libvips, plus fmt, libcurl and zlib where the build used the system ones.
+  `UltraCanvasConfig.cmake` puts `deps/` first on `CMAKE_PREFIX_PATH`, remaps
+  exported libraries found by full path on the build machine to their bundled
+  copies, and on macOS links consumers with an rpath to `deps/lib`, where the
+  bundled dylibs have `@rpath` install names. `ULTRACANVAS_DEPS_DIR` names the
+  directory. CI builds `Tests/PackageConsumer` against the bundled files alone
+  on both platforms (`Docs/UltraCanvasSDK.md`).
+- **UltraCanvasStart, the setup application, joins the build.** `Apps/UltraCanvasStart`
+  (`BUILD_ULTRACANVASSTART`, on by default) with its engine test suite
+  (`ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS`, run by CI), the product entry in
+  `cmake/UltraCanvasVersion.cmake`, the icon under `media/appicon/` and a
+  `--check` smoke run on every CI leg. See `Docs/UltraCanvasStart/CHANGELOG.md`.
+
+#### 2026-10-04 *0.9.149*
+- **The file dialog asks before Save replaces a file.** `UltraCanvasFileDialog`
+  in Save mode accepted a name that was already a file without a word, so
+  every application saving through it overwrote silently. The platforms' own
+  save dialogs (GTK, Windows, macOS) all ask, so a choice between native and
+  framework dialogs also decided whether the user was asked. It now asks too:
+  a **Replace File** question ("… already exists. Do you want to replace
+  it?") on OK, on a typed name and on a double-click in the listing. No
+  leaves the dialog open on that name. `FileDialogConfig::confirmOverwrite`
+  (`FileDialogOptions::SetConfirmOverwrite` through `UltraCanvasFileLoader`)
+  turns it off for a caller that asks itself. The new
+  `Docs/UltraCanvas/UltraCanvasFileDialog.md` describes the dialog: its
+  modes, the filter toggles, the overwrite question and what it remembers.
+- **A new `FileDialogConfig` has no filters.** It came with four samples
+  (All Files, Text, Image and Document files), so code that built the file
+  dialog itself and did not replace them offered `.doc` and `.rtf` in a
+  picture picker. It now starts empty, and a file dialog without filters
+  lists every file under one "All Files" entry (a folder picker filters
+  nothing). `UltraCanvasFileLoader` passes the caller's filters straight
+  through and leaves that fallback to the dialog.
+
 #### 2026-10-03 *0.9.148*
 - **IMAP plug-in: reading a message no longer marks it read on the server.**
   The plug-in fetched each message's header (`/;UID=n;SECTION=HEADER`) and

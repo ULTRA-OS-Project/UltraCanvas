@@ -146,7 +146,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar or a pulsing circle (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
-| Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
+| Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
