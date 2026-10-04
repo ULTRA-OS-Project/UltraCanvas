@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailRecipientComplete.cpp
-// Version: 0.2.0 - ranked by how often each address is written to
+// Version: 0.2.0 - ranked by how often - and how lately - each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailRecipientComplete.h"
@@ -73,10 +73,10 @@ std::string CompleteRecipient(const std::string& fieldText, const std::string& r
 std::vector<RecipientSuggestion> SuggestRecipients(
     const std::vector<Contact>& contacts, const std::string& query,
     const std::string& fieldText, std::size_t limit,
-    const std::map<std::string, int>* writtenTo) {
+    const std::map<std::string, double>* writtenTo) {
     struct Ranked {
         RecipientSuggestion s;
-        int  written = 0;
+        double written = 0.0;
         bool starts  = false;
     };
     std::vector<Ranked> found;

@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.9.22 - recipient suggestions ranked by how often each address is written to
+// Version: 0.9.22 - recipient suggestions ranked by how often - and how lately - each
+//                   address is written to
 // Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
 // Version: 0.9.20 - a mailto: link's cc and bcc go into the new message
 // Version: 0.9.19 - a clicked mail address in a message opens a new message to it
@@ -961,12 +962,12 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetCloud(cloud_.get());
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
-    // addresses written to most often - by the mail in the Sent folders -
-    // first.
+    // addresses written to most - by the mail in the Sent folders, recent
+    // mail weighing more than old - first.
     auto book = std::make_shared<std::vector<Contact>>();
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
-    auto written = std::make_shared<std::map<std::string, int>>();
-    store_.CountSentRecipients(*written);
+    auto written = std::make_shared<std::map<std::string, double>>();
+    store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
     view->suggestRecipients = [book, written](const std::string& query,
                                               const std::string& fieldText) {
         return SuggestRecipients(*book, query, fieldText, 8, written.get());
