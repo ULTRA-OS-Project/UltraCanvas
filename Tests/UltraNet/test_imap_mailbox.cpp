@@ -173,6 +173,39 @@ TEST(imap_parse_status_response) {
     REQUIRE_EQ(st.unseen, (uint32_t)3);
 }
 
+// Values above 2147483647 are valid IMAP numbers (unsigned 32-bit). strtol's
+// `long` is 32 bits on Windows, where every such UIDVALIDITY used to read as
+// 2147483647 - so a renumbered mailbox looked unchanged there and only there.
+TEST(imap_parse_numbers_above_int32) {
+    auto st = ParseStatusResponse(
+        "* STATUS \"INBOX\" (MESSAGES 59 RECENT 0 UIDNEXT 3000000123 "
+        "UIDVALIDITY 4294967295 UNSEEN 11)\r\n");
+    REQUIRE_EQ(st.uidNext, (uint32_t)3000000123u);
+    REQUIRE_EQ(st.uidValidity, (uint32_t)4294967295u);
+    REQUIRE_EQ(st.messages, (uint32_t)59);
+
+    auto uids = ParseSearchUids("* SEARCH 2147483648 4294967295\r\n");
+    REQUIRE_EQ(uids.size(), (size_t)2);
+    REQUIRE_EQ(uids[0], (uint32_t)2147483648u);
+    REQUIRE_EQ(uids[1], (uint32_t)4294967295u);
+    // Larger than an IMAP number can be: not read as some other UID.
+    REQUIRE_EQ(ParseSearchUids("* SEARCH 4294967296\r\n").size(), (size_t)0);
+
+    auto pairs = ParseAllFlags("* 1 FETCH (UID 3000000000 FLAGS (\\Seen))\r\n");
+    REQUIRE_EQ(pairs.size(), (size_t)1);
+    REQUIRE_EQ(pairs[0].first, (uint32_t)3000000000u);
+}
+
+// A mailbox named after a STATUS item does not hide the item's value.
+TEST(imap_parse_status_mailbox_named_like_an_item) {
+    auto st = ParseStatusResponse(
+        "* STATUS \"Recent messages\" (MESSAGES 7 RECENT 2 UIDNEXT 90 "
+        "UIDVALIDITY 5 UNSEEN 1)\r\n");
+    REQUIRE_EQ(st.messages, (uint32_t)7);
+    REQUIRE_EQ(st.recent, (uint32_t)2);
+    REQUIRE_EQ(st.uidNext, (uint32_t)90);
+}
+
 TEST(imap_parse_envelope_headers) {
     const std::string headers =
         "From: Anna Schmidt <anna@example.com>\r\n"

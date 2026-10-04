@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -190,6 +190,7 @@ namespace UltraCanvas {
 
         // === Scrolling ===
         void ScrollToRow(int row);
+        // Before the view has a size, the row is revealed once it has one.
         void EnsureRowVisible(int row);
 
         // === Hit testing ===
@@ -271,6 +272,10 @@ namespace UltraCanvas {
         // Header column under the last press, so a release in the same cell
         // counts as a click (onHeaderClicked); -1 when no header press is live.
         int  pressedHeaderColumn = -1;
+        // A row EnsureRowVisible was asked for before the view had a size:
+        // revealed once it has one (RevealPendingRow); -1 when none.
+        int  pendingVisibleRow = -1;
+        void RevealPendingRow();
 
         // Internal methods
         void CreateScrollbar();

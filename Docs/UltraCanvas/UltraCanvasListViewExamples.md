@@ -150,6 +150,9 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+Called before the view has been laid out (no height yet), `EnsureRowVisible`
+remembers the row and reveals it once the view has its size, so a list filled
+and selected while its window is still being built opens with that row in view.
 
 ```cpp
 ScrollMetrics GetScrollMetrics() const;
@@ -283,6 +286,8 @@ public:
     void InsertItem(int row, const MultiColumnListItem& item);
     void RemoveItem(int row);
     void Clear();
+    // Every row at once, one change notification (AddItem notifies per row).
+    void SetItems(std::vector<MultiColumnListItem> newItems);
 
     int GetItemCount() const;
     const MultiColumnListItem& GetItem(int row) const;

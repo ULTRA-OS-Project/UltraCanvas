@@ -72,7 +72,12 @@ Apps/UltraMail/
                                   contacts, emails/phones, counts, search
     UltraMailSyncEngine.{h,cpp}   drives an IMailboxProtocolPlugin (IMAP) into
                                   LocalStore: folders, incremental envelopes,
-                                  .eml body cache, two-sided flag changes
+                                  .eml body cache, two-sided flag changes;
+                                  RefreshFolder also reconciles with the
+                                  server's list and fetches what an earlier
+                                  sync missed (by UID, blank rows, bodies)
+    UltraMailMessageSort.{h,cpp}  the message list's order (sender, kind of
+                                  sender, subject without Re:/Fwd:, date)
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)
@@ -118,8 +123,9 @@ Apps/UltraMail/
                                   name · New today / Unread / Waiting for reply
                                   badges); several: a clickable tile per account
     UltraMailMailView.{h,cpp}     split pane: "Inbox" group box with the message
-                                  list (ColumnsTreeView: From · Subject · Date) |
-                                  "Message" group box with the preview
+                                  list (From · sender badge · Subject · Date,
+                                  sorted by the header clicked) | "Message"
+                                  group box with the preview
     UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
                                   HTMLReader/CSSLayout, text in a read-only area),
                                   attachment strip

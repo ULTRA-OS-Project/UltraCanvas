@@ -3,6 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.11.0 - SwitchToAccount (the account's stored mail at once, its
+//                   inbox refreshed in the background); FetchMissingBody;
+//                   ForgetDownloadedMail on a change of incoming server
 // Version: 0.10.3 - ApplyLinkDisplay: a link's address in the status line or as a
 //                   tooltip (Settings > Display > Links)
 // Version: 0.10.2 - the links segment of the status line (ShowMessageLinks /
@@ -81,6 +84,14 @@ public:
     // Reload accounts + status, rebuild the account bar and the mail view, and
     // switch between the start page and the account view.
     void Refresh();
+    // A click on an account's tile: its mail as stored, at once - the list,
+    // then the reading pane after the list has been painted - and its inbox
+    // refreshed from the server in the background (throttled like opening a
+    // folder). None of the work Refresh() does for every account (counting
+    // every account's mail, re-reading the address book) runs here: nothing
+    // it reads changed by looking at another account.
+    // By value: the id a tile's click hands over lives in that tile.
+    void SwitchToAccount(std::string accountId);
     // The unread total, published for the desktop's mail badge on every Refresh.
     void PublishUnreadNotice();
     // Re-count the account bar (unread, waiting for reply) from the store and
@@ -97,6 +108,12 @@ private:
     void ResizeViews(float width, float height);
 
     void HandleAddAccount();
+    // The account's incoming server now reaches another mailbox (another host
+    // or user name, IncomingMailboxChanged): drop the mail downloaded from the
+    // old one - store rows, folders, cached bodies - so the next sync fetches
+    // the new mailbox whole. Its UIDs mean nothing on the new server, and an
+    // incremental fetch would skip every new message below the old highest UID.
+    void ForgetDownloadedMail(const std::string& accountId);
     // Confirm, then remove an account entirely: its background-sync entry, its
     // vault credentials, its store rows (messages + folders + account) and its
     // downloaded mail under mailDir_/<accountId>. Mail on the server is not
@@ -296,9 +313,12 @@ private:
     // Like RunMailboxAction, but for a passive, best-effort op: it does not
     // Refresh() on success (so the list selection is not bounced to the top) and
     // it stays silent on failure. Used by mark-read-on-open.
+    // `onDone`, when given, runs on the UI thread with the outcome (a failed
+    // sign-in included); it does not run when the op could not be started.
     void RunMailboxActionQuiet(const std::string& accountId,
                                std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
-                                                         const UltraNetMailOptions&)> op);
+                                                         const UltraNetMailOptions&)> op,
+                               std::function<void(const SyncOutcome&)> onDone = nullptr);
     // When a mailbox/sync op failed because an OAuth account's stored sign-in is
     // dead (the refresh token was expired or revoked — Google's invalid_grant),
     // show a "sign in again" prompt whose Retry re-runs the browser consent and
@@ -406,6 +426,15 @@ private:
     // as a background sync instead of an alert.
     void SyncFolder(const std::string& accountId, const std::string& folder,
                     bool userInitiated);
+    // The throttle in front of SyncFolder for a passive refresh (a folder
+    // opened, an account switched to): skipped while that folder is being
+    // fetched or was fetched less than kFolderResyncSec ago.
+    void RefreshFolderSoon(const std::string& accountId, const std::string& folder);
+    // The reading pane shows a message whose body is not downloaded (its
+    // download failed, or the sync has not got to it): fetch it now, on a
+    // worker, and show it when it arrives. Quiet - no prompt, no alert.
+    void FetchMissingBody(const MessageEnvelope& env);
+    std::set<std::string> bodyFetchInFlight_;   // account \n folder \n uid
     // Run the given accounts through the SyncService on worker threads and
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
@@ -544,6 +573,10 @@ private:
         std::time_t     lastOk = 0;     // last successful contact, 0 = none this run
         std::time_t     lastTry = 0;    // last attempt, 0 = none this run
         int             failures = 0;   // in a row, since the last success
+        // How many messages the server's inbox held at the last contact (its
+        // STATUS), -1 when not known: set beside what the list shows, it
+        // tells mail that never reached this server from mail not fetched.
+        int             serverInbox = -1;
     };
     std::map<std::string, ConnectionInfo> connection_;
     int                                                mailboxActionsInFlight_ = 0;

@@ -29,6 +29,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailRecipientComplete.cpp
     engine/UltraMailInlineImages.cpp
     engine/UltraMailMessageFilter.cpp
+    engine/UltraMailMessageSort.cpp
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
     engine/UltraMailOAuth.cpp

@@ -212,6 +212,15 @@ namespace UltraCanvas {
         if (!model || row < 0 || row >= model->GetRowCount()) return;
 
         auto viewport = GetViewportRect();
+        // Not laid out yet: no room for the row is known. Measuring against a
+        // zero (or, less the header, negative) viewport scrolled the row below
+        // the top - row 0 by two rows, and the list then opened with its
+        // first rows hidden. Done once the view has its size (Arrange).
+        if (viewport.height <= 0) {
+            pendingVisibleRow = row;
+            return;
+        }
+        pendingVisibleRow = -1;
         int rowTop = RowTopOffset(row);
         int rowBottom = rowTop + RowHeightForRow(row);
 
@@ -1173,14 +1182,24 @@ namespace UltraCanvas {
         // (Previously UpdateScrollbar only ran from mutators / SetBounds, never from the
         // engine's resize, so an in-tree ListView could reserve scrollbar space wrongly.)
         UpdateScrollbar();
+        RevealPendingRow();
     }
 
     void UltraCanvasListView::SetBounds(const Rect2Df& bounds) {
         if (bounds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bounds);
             UpdateScrollbar();
+            RevealPendingRow();
             RequestRedraw();
         }
+    }
+
+    void UltraCanvasListView::RevealPendingRow() {
+        if (pendingVisibleRow < 0 || GetViewportRect().height <= 0) return;
+        const int row = pendingVisibleRow;
+        pendingVisibleRow = -1;
+        EnsureRowVisible(row);
+        UpdateScrollbar();
     }
 
     void UltraCanvasListView::SetWindow(UltraCanvasWindowBase* win) {
