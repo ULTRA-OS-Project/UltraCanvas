@@ -1,4 +1,5 @@
 // Apps/EmailCleaner/ui/EmailCleanerAccountsDialog.cpp
+// Version: 0.2.0 - the server name is trimmed of spaces before it is checked
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAccountsDialog.h"
@@ -262,7 +263,11 @@ bool AccountsDialog::ReadForm(NewAccountRequest& out, std::string& error) const 
     out.settings = discovered_;
     if (out.settings.imap.host.empty() && !out.settings.found)
         out.settings = UltraMail::AutoDiscovery::GuessForDomain(out.email);
-    out.settings.imap.host = host_ ? host_->GetText() : std::string();
+    std::string host = host_ ? host_->GetText() : std::string();
+    const auto first = host.find_first_not_of(" \t");
+    host = first == std::string::npos ? std::string()
+                                      : host.substr(first, host.find_last_not_of(" \t") - first + 1);
+    out.settings.imap.host = host;
 
     const std::string portText = port_ ? port_->GetText() : std::string();
     int port = 0;
