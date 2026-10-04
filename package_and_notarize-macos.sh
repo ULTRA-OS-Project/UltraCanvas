@@ -31,6 +31,9 @@ fi
 PACKAGE_ZIP="UCDemo-MacOS-$VERSION-$(uname -m).zip"
 cd "$SCRIPT_DIR/dist-macos"
 rm -f "$SCRIPT_DIR/$PACKAGE_ZIP"
-zip -r "$SCRIPT_DIR/$PACKAGE_ZIP" *.app
+# The whole suite folder: its apps load their libraries from the shared
+# UltraCanvas/Frameworks/ beside them, so an app zipped on its own would not
+# start (see "Suite layout" in package-macos.sh).
+zip -r -y "$SCRIPT_DIR/$PACKAGE_ZIP" UltraCanvas
 cd "$SCRIPT_DIR"
 echo "Created $SCRIPT_DIR/$PACKAGE_ZIP"

@@ -72,6 +72,9 @@ Three facts about CI decide how a cloud-only developer works:
   for seven days: `UCDemo-Windows-<version>-<arch>`,
   `UCDemo-MacOS-<version>-<arch>` and `UltraCanvas-Linux-<version>-<arch>`.
   That download is how you run and look at the app without compiling it.
+  The macOS one is a disk image holding an `UltraCanvas` folder: copy the
+  whole folder to Applications, because its apps share the `Frameworks/`
+  inside it and do not start when moved out on their own.
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
