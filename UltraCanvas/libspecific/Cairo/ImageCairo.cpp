@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.3.0
-// Last Modified: 2026-09-04
+// Version: 2.3.1 - NoScale pixmaps of memory-loaded images read the image's bytes
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -642,7 +642,16 @@ namespace UltraCanvas {
                 case ImageFitMode::NoScale:
                     // For NoScale, the source's intrinsic pixel grid is the
                     // truth — don't oversample (would just upscale a finite
-                    // raster with no extra detail).
+                    // raster with no extra detail). An image loaded from
+                    // memory (a picture in a mail) has no file to read: take
+                    // its bytes, as the other modes below do - reading
+                    // fileName failed and the picture was never drawn.
+                    if (imgDataPtr) {
+                        VipsBlob *blob = vips_blob_new(nullptr, imgDataPtr, imgDataSize);
+                        auto vimg = vips::VImage::thumbnail_buffer(blob, width, options);
+                        vips_area_unref(VIPS_AREA(blob));
+                        return CreatePixmapFromVImage(vimg);
+                    }
                     return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), width, options));
             }
             std::shared_ptr<UCPixmapCairo> pm;
@@ -714,14 +723,24 @@ namespace UltraCanvas {
         int w = vipsImage.width();
         int h = vipsImage.height();
 
+        // Failures throw vips::VError, which every caller catches: a file
+        // whose header reads but whose pixels do not decode (a HEIC without
+        // an HEVC decoder) gets here, and data() then returns null.
+        uint32_t *src = (uint32_t*)vipsImage.data();
+        if (!src) {
+            std::string why = vips_error_buffer();
+            vips_error_clear();
+            throw vips::VError("Failed to decode image pixels: " + why);
+        }
         cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-            throw UCImageError("Failed to create Cairo surface");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to create Cairo surface");
         }
-        uint32_t *src = (uint32_t*)vipsImage.data();
         uint32_t *dst = (uint32_t*)cairo_image_surface_get_data(surface);
         if (!dst) {
-            throw UCImageError("Failed to get surface data");
+            cairo_surface_destroy(surface);
+            throw vips::VError("Failed to get surface data");
         }
 
         rgba2bgra_premultiplied(src, dst, w * h);

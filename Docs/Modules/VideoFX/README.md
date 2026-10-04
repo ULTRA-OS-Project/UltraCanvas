@@ -251,6 +251,23 @@ settings.music.duckingRelease = 0.4;
 or set `duckingLevel = 1` to never duck at all. `videofx` takes the same as
 `--duck-threshold DB --duck-attack S --duck-hold S --duck-release S`.
 
+**Presets.** An app can offer one choice — the kind of footage — instead of
+four numbers. `SetDuckingPreset` fills in the threshold and the times and
+leaves `duckingLevel` alone; single fields set afterwards refine it:
+
+```cpp
+settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+```
+
+| `VideoFXDuckingPreset` | For | Threshold | Attack | Hold | Release |
+|---|---|---|---|---|---|
+| `Speech` (the defaults) | talking in quiet rooms | −36.5 dBFS | 0.12 s | 0.6 s | 0.8 s |
+| `Outdoor` | talking over wind and traffic | −28 dBFS | 0.12 s | 0.5 s | 0.7 s |
+| `LoudEvent` | crowds, engines, concerts: only the louder moments dip | −15 dBFS | 0.12 s | 0.2 s | 0.4 s |
+
+`videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
+values refine it whichever comes first on the command line.
+
 **Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
 `VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
 photo so the show ends with it:
@@ -496,6 +513,7 @@ videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
 ```
 
 ---

@@ -6,9 +6,19 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
+// Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
+//                  first block)
+// Version: 1.8.0 - ApplyBoxStyle: width / height are the content's (CSS content-box)
+//                  unless box-sizing: border-box or `borderBoxSizes`
+// Version: 1.7.0 - ApplyBorders; collapsed table borders
+// Version: 1.6.0 - the gap between images is a space measured in their font
+// Version: 1.5.0 - images in a block without text share a wrapping line
+// Version: 1.4.0 - background-repeat
+// Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,6 +61,13 @@ struct BuildOptions {
     // its text. Labels carry per-byte-range link data, so a run with several
     // links activates exactly the one under the pointer.
     std::function<void(const std::string& href)> onLinkActivated;
+    // The link under the pointer, as it moves onto one (its href) and off it
+    // (""): text links and linked pictures alike.
+    std::function<void(const std::string& href)> onLinkHovered;
+    // Show a link's href as a tooltip while the pointer rests on it (text
+    // links and linked pictures). An app that shows the address elsewhere -
+    // a status line fed by onLinkHovered - turns it off.
+    bool linkTooltips = true;
 };
 
 struct BuildResult {
@@ -81,6 +98,9 @@ private:
     int elementCount = 0;
     int nextId = 0;
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+    // A list item's marker not yet placed, handed to the item's first block
+    // child (<li><div>text</div></li>) so it starts that block's first line.
+    std::string carriedMarker;
 
     // Per-inline-run state: the rendered plain text built alongside the Pango
     // markup (same bytes the text layout reports from hit testing) and the
@@ -89,6 +109,13 @@ private:
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
     std::vector<LabelInlineImage> runImages;
+
+    // The width of a space in a style's font, in px - the gap between two
+    // images a space apart. Measured on a small offscreen context made on
+    // first use, cached per font.
+    float SpaceWidth(const ComputedStyle& style);
+    std::shared_ptr<IRenderContext> measureContext;
+    std::unordered_map<std::string, float> spaceWidths;
 
     std::string MakeId(const std::string& hint);
 
@@ -107,10 +134,12 @@ private:
         const std::string& markerPrefix, const Node* blockNode = nullptr);
     // Whether a block's inline content has text of its own (not only images
     // and whitespace): then its images flow in that text, as in a browser;
-    // otherwise each image gets a line of its own.
+    // otherwise its images go on lines of their own - side by side on a
+    // shared, wrapping line while only whitespace separates them.
     bool HasInlineText(const Node& element) const;
 
-    // An image on a line of its own, placed by the text-align it inherits.
+    // An image on a line of its own (a wrapping row the next images can
+    // join), placed by the text-align it inherits.
     // `linkHref` makes it clickable (an image inside <a href>).
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,
                                                      const std::string& linkHref = "");
@@ -146,14 +175,23 @@ private:
                          bool deep = false);
 
     // Horizontal margins fold into padding unless `realMargins` (an inline
-    // box, whose background must not reach into its margin).
+    // box, whose background must not reach into its margin). width / height
+    // size the content, as CSS's content-box does, unless the style says
+    // box-sizing: border-box or the caller sizes the box as a whole
+    // (`borderBoxSizes`: tables and their cells, as browsers size them, and
+    // images, which set up their own content box).
     void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
-                       bool fillWidth = true, bool realMargins = false);
+                       bool fillWidth = true, bool realMargins = false,
+                       bool borderBoxSizes = false);
+    // The border sides and radius of a style (ApplyBoxStyle calls it; a
+    // collapsed table's cells call it once their shared edges are settled).
+    void ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style);
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
                         bool noWrap = false);
     // background-image: the first url() layer that loads, drawn under the
-    // box's content (an out-of-flow image element filling it), fitted by
-    // background-size.
+    // box's content (an out-of-flow image element filling it), fitted by that
+    // layer's background-size, placed by its background-position and tiled
+    // by its background-repeat.
     void ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style);
     // A box narrower than its line (width / max-width) with margin-left and /
     // or margin-right auto: centred (or pushed right) in a full-width row.

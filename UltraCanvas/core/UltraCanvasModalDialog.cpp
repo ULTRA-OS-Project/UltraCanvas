@@ -1273,6 +1273,12 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
+        // A file dialog without filters lists every file; a folder picker
+        // filters nothing.
+        if (fileConfig.filters.empty() && fileConfig.dialogType != FileDialogType::SelectFolder) {
+            fileConfig.filters = { FileFilter("All Files", "*") };
+            fileConfig.selectedFilterIndex = 0;
+        }
         // Opens the way the user left it last time: same view, same size
         // (UltraCanvasFileDialogSettings.h, FileDialog.conf).
         const FileDialogSettings remembered = FileDialogSettings::Load();
@@ -2062,7 +2068,33 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
-        if (files.empty()) return;
+        if (files.empty() || overwritePromptOpen) return;
+        // Save over a file that is there: ask first, as the platforms' own
+        // save dialogs do. No answers leaves the dialog open on the name.
+        if (fileConfig.dialogType == FileDialogType::Save && fileConfig.confirmOverwrite) {
+            const std::filesystem::path target =
+                    PathFromUtf8(CombinePath(currentDirectory, files.front()));
+            std::error_code ec;
+            if (std::filesystem::exists(target, ec) && !ec) {
+                overwritePromptOpen = true;
+                std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+                const std::string name = PathToUtf8(target.filename());
+                UltraCanvasDialogManager::ShowConfirmation(
+                        "\"" + name + "\" already exists.\nDo you want to replace it?",
+                        "Replace File",
+                        [weak, this, files](bool replace) {
+                            if (weak.expired()) return;
+                            overwritePromptOpen = false;
+                            if (replace) FinishAccept(files);
+                        },
+                        this);
+                return;
+            }
+        }
+        FinishAccept(files);
+    }
+
+    void UltraCanvasFileDialog::FinishAccept(const std::vector<std::string>& files) {
         selectedFiles = files;
         if (fileConfig.allowMultipleSelection) {
             if (onFilesSelected) onFilesSelected(GetSelectedFilePaths());
@@ -2473,12 +2505,8 @@ namespace UltraCanvas {
         width = 900;
         height = 560;
         resizable = true;
-        // Default filters
-        filters = {
-                FileFilter("All Files", "*"),
-                FileFilter("Text Files", {"txt", "log", "md"}),
-                FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp"}),
-                FileFilter("Document Files", {"pdf", "doc", "docx", "rtf"})
-        };
+        // No filters: the caller names the files it wants, and a file dialog
+        // left without any lists everything (CreateFileDialog adds "All
+        // Files"). A sample list here showed types the caller never asked for.
     }
 } // namespace UltraCanvas

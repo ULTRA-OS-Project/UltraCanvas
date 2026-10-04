@@ -171,6 +171,22 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# macOS: record only the dylibs a binary actually takes a symbol from. On
+# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
+# so every application's link line carries the core's whole PUBLIC dependency
+# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
+# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
+# command for each one whether the program uses it or not. package-macos.sh
+# then copies every one of them, with its own dependencies, into each .app's
+# Frameworks/, six bundles over. With this flag an app that never reaches the
+# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
+# that supplied no symbol at link time are dropped, so nothing an app calls
+# can go missing; it would only matter for a library needed purely for a side
+# effect of its initializer, and none of the Homebrew dependencies is that.
+if(APPLE)
+    add_link_options(LINKER:-dead_strip_dylibs)
+endif()
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -462,6 +478,18 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRACANVASSTART =====
+# Sets a computer up for UltraCanvas development: detects the platform and
+# package manager, checks and installs the development libraries, names the
+# matching SDK artifact, writes a project skeleton and explains the AI
+# workflow. Headless --check / --plan modes for the terminal and CI.
+option(BUILD_ULTRACANVASSTART "Build the UltraCanvasStart application" ON)
+if(BUILD_ULTRACANVASSTART)
+    message(STATUS "")
+    message(STATUS "── Building UltraCanvasStart ──")
+    add_subdirectory(Apps/UltraCanvasStart)
+endif()
+
 # ===== UOS-SETTINGS =====
 # The ULTRA OS settings application: settings that belong to the system rather
 # than to one application, starting with where the file dialogs of all
@@ -534,6 +562,16 @@ endif()
 option(BUILD_ULTRAAUTHENTICATOR "Build the UltraAuthenticator application" ON)
 if(BUILD_ULTRAAUTHENTICATOR AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraAuthenticator)
+endif()
+
+# ===== ULTRAPASSWORD =====
+# Password vault: groups in a tree, a card per password with the site's
+# sign-in method, one Argon2id + XChaCha20-Poly1305 file that is also the
+# export format. The core needs only UltraCrypt and builds headless; the GUI
+# is added on top when the framework is available.
+option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
+if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
+    add_subdirectory(Apps/UltraPassword)
 endif()
 
 # ===== DEMO APPLICATION =====
@@ -667,6 +705,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
+            Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
@@ -1065,6 +1104,18 @@ if(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS AND TARGET UltraCleanerEngine)
     add_subdirectory(Tests/UltraCleaner)
     message(STATUS "")
     message(STATUS "── UltraCleaner engine test suite enabled (target: UltraCleanerEngineTests) ──")
+endif()
+
+# ===== ULTRACANVASSTART ENGINE TESTS =====
+# Headless tests of the setup app's engine: os-release parsing, version
+# comparison, the dependency table, the install command, SDK names, the plan
+# and the project scaffold. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS "Build the UltraCanvasStart engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraCanvasStart)
+    message(STATUS "")
+    message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
@@ -1726,6 +1777,20 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Password vault core: model, encrypted vault file / export round trips,
+    # wrong-password refusal, tamper detection, CSV exchange and the
+    # generator. Links only UltraCrypt, so it runs headless.
+    if(TARGET UltraPasswordCore)
+        add_executable(UltraPasswordTests Tests/UltraPasswordTests.cpp)
+        target_link_libraries(UltraPasswordTests PRIVATE UltraPasswordCore)
+        target_compile_features(UltraPasswordTests PRIVATE cxx_std_20)
+        set_target_properties(UltraPasswordTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraPasswordTests COMMAND UltraPasswordTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # Encrypted backup file: round trip, refusal to reuse the master password,
     # tamper detection, and that a restore never overwrites a live account.

@@ -3,12 +3,20 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.3.0 - WeighSentRecipients
+// Version: 0.2.0 - the needs-answer rules (age, people written to)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <UltraDatabase/UltraDatabase.h>
+
+#include <ctime>
+#include <filesystem>
+#include <map>
 #include <string>
 
 using namespace UltraMail;
@@ -246,6 +254,56 @@ TEST(needs_answer_manual_mark_overrides_rule) {
     REQUIRE(!s.SetNeedsAnswer("erika", "INBOX", 99, true).success);   // unknown message
 }
 
+TEST(needs_answer_rules_age_limit) {
+    LocalStore s = FreshStore("narules-age");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    MessageEnvelope recent = Incoming("erika", 1, "boss@x.com", {"erika@example.com"});
+    recent.date = now - 3 * 86400;
+    MessageEnvelope old = Incoming("erika", 2, "boss@x.com", {"erika@example.com"});
+    old.date = now - 60 * 86400;
+    REQUIRE(s.UpsertMessage(recent).success);
+    REQUIRE(s.UpsertMessage(old).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);                  // no rules: both
+
+    NeedsAnswerRules rules; rules.maxAgeDays = 14;
+    s.SetNeedsAnswerRules(rules);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+
+    // The user's own mark counts whatever its age.
+    REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 2, true).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);
+}
+
+TEST(needs_answer_rules_only_people_written_to) {
+    LocalStore s = FreshStore("narules-sent");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "Boss@X.com", {"erika@example.com"})).success);
+    REQUIRE(s.UpsertMessage(Incoming("erika", 2, "stranger@y.com", {"erika@example.com"})).success);
+
+    NeedsAnswerRules rules; rules.onlyWrittenTo = true;
+    s.SetNeedsAnswerRules(rules);
+    // No Sent mail stored yet: the rule cannot tell, so it narrows nothing.
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);
+
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    REQUIRE(s.UpsertFolder(sent).success);
+    MessageEnvelope mine; mine.accountId = "erika"; mine.folder = "Sent"; mine.uid = 1;
+    mine.fromAddr = "erika@example.com"; mine.to = {"colleague@z.com", "boss@x.com"};
+    mine.date = 900;
+    REQUIRE(s.UpsertMessage(mine).success);
+    // Only the sender written to (address compared without case) is waiting.
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+}
+
 TEST(unread_counts_inbox_unseen) {
     LocalStore s = FreshStore("unread");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
@@ -407,4 +465,78 @@ TEST(attachment_count_kept_beside_the_scan_verdict) {
     REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
     REQUIRE_EQ(all[1].attachments, 0);
     REQUIRE_EQ(all[2].attachments, 4);
+}
+
+// UltraMail opens mail.db twice: the UI thread's connection and the sync
+// workers'. In WAL mode the UI's reads never queue behind a sync's writes (a
+// shared connection made switching accounts mid-sync take 10-20 seconds), and
+// each connection sees what the other committed.
+TEST(file_store_uses_wal_and_shares_rows_across_connections) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "ultramail_wal_test";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const std::string db = UltraCanvas::PathToUtf8(dir / "mail.db");
+
+    LocalStore ui, worker;
+    REQUIRE(ui.Open("umtest-wal-ui", db).success);
+    REQUIRE(worker.Open("umtest-wal-worker", db).success);
+
+    UltraDbResultSet rs;
+    REQUIRE(UltraDb_Query("umtest-wal-ui", "PRAGMA journal_mode", rs).success);
+    REQUIRE_EQ(rs.Size(), (size_t)1);
+    REQUIRE_EQ(rs.Row(0)[0].AsString(), std::string("wal"));
+
+    AddAccountWithInbox(worker, "erika", "erika@example.org", "erika");
+    MessageEnvelope m;
+    m.accountId = "erika"; m.folder = "INBOX"; m.uid = 7; m.subject = "Hello";
+    REQUIRE(worker.UpsertMessage(m).success);
+
+    std::vector<Account> accs;
+    REQUIRE(ui.ListAccounts(accs).success);
+    REQUIRE_EQ(accs.size(), (size_t)1);
+    std::vector<MessageEnvelope> msgs;
+    REQUIRE(ui.ListMessages("erika", "INBOX", 0, msgs).success);
+    REQUIRE_EQ(msgs.size(), (size_t)1);
+    REQUIRE_EQ(msgs[0].uid, (int64_t)7);
+
+    UltraDb_CloseConnection("umtest-wal-ui");
+    UltraDb_CloseConnection("umtest-wal-worker");
+    fs::remove_all(dir, ec);
+}
+
+TEST(weigh_sent_recipients_reads_the_sent_folders_recent_mail_first) {
+    LocalStore s = FreshStore("sentweight");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "Erika");
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    REQUIRE(s.UpsertFolder(sent).success);
+    const int64_t now = 1800000000;
+    const int64_t day = 86400;
+    auto sentTo = [&](int64_t uid, int64_t date, const std::vector<std::string>& to,
+                      uint32_t flags = 0) {
+        MessageEnvelope m = Incoming("erika", uid, "erika@example.com", to);
+        m.folder = "Sent";
+        m.date = date;
+        m.flags = flags;
+        REQUIRE(s.UpsertMessage(m).success);
+    };
+    sentTo(1, now, {"Anna Schmidt <Anna@Example.com>", "max@example.com"});
+    sentTo(2, now - 90 * day, {"anna@example.com", "anna@example.com"});   // listed twice: once
+    sentTo(3, now, {"max@example.com"}, Flag_Deleted);                     // deleted: left out
+    // Four messages a year ago weigh less than one from today.
+    for (int64_t uid = 4; uid < 8; ++uid) sentTo(uid, now - 360 * day, {"old@example.com"});
+    sentTo(8, now + 5 * day, {"future@example.com"});   // a wrong clock: weighs as now
+    // Mail received is not mail written.
+    REQUIRE(s.UpsertMessage(Incoming("erika", 9, "carol@acme.com", {"erika@example.com"})).success);
+
+    std::map<std::string, double> w;
+    REQUIRE(s.WeighSentRecipients(w, now).success);
+    REQUIRE(w.size() == 4);
+    auto near = [](double a, double b) { return a > b - 1e-9 && a < b + 1e-9; };
+    REQUIRE(near(w["anna@example.com"], 1.5));     // today 1 + 90 days 1/2
+    REQUIRE(near(w["max@example.com"], 1.0));
+    REQUIRE(near(w["old@example.com"], 0.25));     // 4 x 1/16
+    REQUIRE(near(w["future@example.com"], 1.0));
+    REQUIRE(w["old@example.com"] < w["max@example.com"]);
 }

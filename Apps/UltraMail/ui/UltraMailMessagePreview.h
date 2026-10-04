@@ -3,6 +3,12 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.8.0 - onComposeTo: a clicked mail address (mailto:) is written to in
+//                UltraMail, from the shown message's account
+// Version: 0.7.0 - linkTooltips: a link's address as a tooltip (Settings > Display >
+//                Links), or only through onLinkHovered
+// Version: 0.6.0 - onLinksShown / onLinkHovered (the links of the shown body, and
+//                the one under the pointer, for the status line)
 // Version: 0.5.0 - Settings: HTML or plain-text view, body text size, and
 //                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
@@ -24,6 +30,7 @@
 #include "UltraMailComposer.h"   // SourceMessage
 #include "UltraMailSenderBadge.h"
 #include "UltraMailTypes.h"
+#include "UltraMailThreatScan.h"   // MessageLink
 
 #include <cstdint>
 #include <functional>
@@ -82,6 +89,16 @@ public:
     std::function<void(const MessageEnvelope&)> onMarkUnread;
     // Delegated to the app: open the raw .eml source in a read-only window.
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // Every link of the body just shown (where each really goes), so the window
+    // can list them for the reader to check; empty for a body without links.
+    std::function<void(const std::vector<MessageLink>&)> onLinksShown;
+    // The link under the pointer in the body (its target), "" when it leaves.
+    std::function<void(const std::string& href)> onLinkHovered;
+    // A clicked mail address (a mailto: link, or an address written in plain
+    // text): the app opens a new message to it, from this account's identity.
+    // Unset, the system's mail handler gets the mailto: address.
+    std::function<void(const std::string& selfName, const std::string& selfAddr,
+                       const std::string& mailtoHref)> onComposeTo;
 
     // Remote images (http/https) are not loaded until the reader asks: a bar
     // above the body offers "Show images" for this message and "Always from
@@ -100,6 +117,9 @@ public:
     // the message on screen again with them.
     bool  showHtml = true;
     float bodyFontSizePx = 12.f;
+    // Settings > Display > Links: show a link's address as a tooltip over the
+    // link (false: the status line shows it, through onLinkHovered).
+    bool  linkTooltips = false;
     void  ReRender();
 
     // Raised when a body was scanned for the first time (the verdict has been
@@ -107,6 +127,9 @@ public:
     std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
 
 private:
+    // A link of the body was clicked: web addresses open in the browser, mail
+    // addresses through onComposeTo.
+    void ActivateLink(const std::string& href);
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);

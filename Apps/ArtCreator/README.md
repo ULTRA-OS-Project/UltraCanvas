@@ -23,7 +23,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
-├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror ┤
+├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Colour (fill/line) │
 │ pal- │ ┌──────────────────────────────────────┐    │ swatches           │
@@ -93,6 +93,10 @@ the selection and to every line drawn afterwards.
   layers panel toggles visible / locked and picks the active layer.
 - **View**: zoom, rulers, grid, guides, snap to grid / guides / objects /
   page, clear guides.
+- **Display quality** (the *Quality* slider at the end of the toolbar):
+  *Outlines* - every shape as a thin line, nothing filled, clips and effects
+  off, for finding and picking shapes in a dense drawing; *Fills + lines* -
+  the colours without antialiasing; *Antialiased* - full quality (default).
 
 ## Files
 

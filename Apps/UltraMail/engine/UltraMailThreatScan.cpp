@@ -1,4 +1,8 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.4.0 - plain text: mailto: and bare mail addresses are links too
+// Version: 0.3.0 - PlainLinkAt: the bare URL at a position of plain text
+// Version: 0.2.0 - borrowed-brand-pictures rule (a brand's own pictures over links
+//                elsewhere); ExtractImageHosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailThreatScan.h"
@@ -11,6 +15,7 @@
 #include <cctype>
 #include <map>
 #include <regex>
+#include <cstring>
 #include <set>
 
 namespace UltraMail {
@@ -315,32 +320,119 @@ std::string ThreatReport::Summary() const {
 // ---------------------------------------------------------------------------
 // Link extraction
 // ---------------------------------------------------------------------------
+std::vector<std::string> ExtractImageHosts(const std::string& body) {
+    std::vector<std::string> hosts;
+    const std::string lower = Lower(body);
+    // src="…" / background="…" / url(…) with an http(s) source.
+    for (const char* key : { "src=", "background=", "url(" }) {
+        std::size_t pos = 0;
+        while ((pos = lower.find(key, pos)) != std::string::npos) {
+            std::size_t v = pos + std::strlen(key);
+            while (v < lower.size() && (std::isspace(static_cast<unsigned char>(lower[v])) ||
+                                        lower[v] == '"' || lower[v] == '\'')) ++v;
+            if (lower.compare(v, 7, "http://") == 0 || lower.compare(v, 8, "https://") == 0) {
+                std::size_t end = v;
+                while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
+                       lower[end] != '"' && lower[end] != '\'' && lower[end] != ')' && lower[end] != '>')
+                    ++end;
+                const std::string host = HostOf(body.substr(v, end - v));
+                if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
+                    hosts.push_back(host);
+            }
+            pos = v;
+        }
+    }
+    return hosts;
+}
+
+// A bare mail address around the '@' at `at`: [start, end), or false when
+// the text there is not one ("name@example.com" - a local part, and a domain
+// with a dot and a top-level part of two letters or more).
+static bool MailAddressAt(const std::string& s, std::size_t at, std::size_t& start,
+                          std::size_t& end) {
+    auto localChar = [](unsigned char c) {
+        return std::isalnum(c) || c == '.' || c == '_' || c == '%' || c == '+' || c == '-';
+    };
+    auto domainChar = [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '-'; };
+    start = at;
+    while (start > 0 && localChar(static_cast<unsigned char>(s[start - 1]))) --start;
+    while (start < at && s[start] == '.') ++start;   // "...name" in running text
+    end = at + 1;
+    while (end < s.size() && domainChar(static_cast<unsigned char>(s[end]))) ++end;
+    while (end > at + 1 && (s[end - 1] == '.' || s[end - 1] == '-')) --end;
+    if (start == at || end == at + 1 || s[at + 1] == '.') return false;
+    const std::string domain = s.substr(at + 1, end - at - 1);
+    const std::size_t dot = domain.rfind('.');
+    if (dot == std::string::npos || domain.size() - dot - 1 < 2) return false;
+    for (std::size_t i = dot + 1; i < domain.size(); ++i)
+        if (!std::isalpha(static_cast<unsigned char>(domain[i]))) return false;
+    return true;
+}
+
+// The next link in plain text from byte `from`: a web address (http://,
+// https://, www.), a mailto: address or a bare mail address, at [start, end).
+// `href` is what it opens - "mailto:name@example.com" for a bare address -
+// or empty when the text there turned out not to be a link. False when there
+// is nothing more.
+static bool NextPlainLink(const std::string& s, std::size_t from, std::size_t& start,
+                          std::size_t& end, std::string& href) {
+    start = std::string::npos;
+    for (const char* proto : { "http://", "https://", "www.", "mailto:" }) {
+        const std::size_t p = s.find(proto, from);
+        if (p != std::string::npos && (start == std::string::npos || p < start))
+            start = p;
+    }
+    // A bare address that starts before the first such link wins.
+    for (std::size_t at = s.find('@', from); at != std::string::npos &&
+             (start == std::string::npos || at < start);
+         at = s.find('@', at + 1)) {
+        std::size_t a = 0, b = 0;
+        if (MailAddressAt(s, at, a, b) && a >= from && (start == std::string::npos || a < start)) {
+            start = a;
+            end = b;
+            href = "mailto:" + s.substr(a, b - a);
+            return true;
+        }
+    }
+    if (start == std::string::npos) return false;
+    end = start;
+    while (end < s.size() && !std::isspace(static_cast<unsigned char>(s[end])) &&
+           s[end] != '<' && s[end] != '>' && s[end] != '"' && s[end] != '\'')
+        ++end;
+    // Trailing sentence punctuation is not part of the link.
+    while (end > start && std::string(".,;:!?)]").find(s[end - 1]) != std::string::npos)
+        --end;
+    href = s.substr(start, end - start);
+    const bool mailto = href.compare(0, 7, "mailto:") == 0;
+    if (mailto ? href.find('@') == std::string::npos : HostOf(href).empty()) href.clear();
+    return true;
+}
+
+std::string PlainLinkAt(const std::string& text, std::size_t offset) {
+    std::size_t i = 0, start = 0, end = 0;
+    std::string href;
+    while (i < text.size() && NextPlainLink(text, i, start, end, href)) {
+        if (start > offset) break;
+        if (offset < end) return href;
+        i = end > start ? end : start + 1;
+    }
+    return std::string();
+}
+
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
     std::vector<MessageLink> links;
     if (body.empty()) return links;
 
     if (!isHtml) {
-        const std::string& s = body;
-        std::size_t i = 0;
-        while (i < s.size()) {
-            std::size_t start = std::string::npos;
-            for (const char* proto : { "http://", "https://", "www." }) {
-                const std::size_t p = s.find(proto, i);
-                if (p != std::string::npos && (start == std::string::npos || p < start))
-                    start = p;
+        std::size_t i = 0, start = 0, end = 0;
+        std::string href;
+        while (i < body.size() && NextPlainLink(body, i, start, end, href)) {
+            if (!href.empty()) {
+                MessageLink link;
+                link.href = href;
+                link.host = HostOf(href);   // "" for a mail address, as for HTML's mailto:
+                links.push_back(link);
             }
-            if (start == std::string::npos) break;
-            std::size_t end = start;
-            while (end < s.size() && !std::isspace(static_cast<unsigned char>(s[end])) &&
-                   s[end] != '<' && s[end] != '>' && s[end] != '"' && s[end] != '\'')
-                ++end;
-            // Trailing sentence punctuation is not part of the URL.
-            while (end > start && std::string(".,;:!?)]").find(s[end - 1]) != std::string::npos)
-                --end;
-            MessageLink link;
-            link.href = s.substr(start, end - start);
-            link.host = HostOf(link.href);
-            if (!link.host.empty()) links.push_back(link);
             i = end > start ? end : start + 1;
         }
         return links;
@@ -455,6 +547,51 @@ ThreatReport ScanMessage(const ScanInput& input) {
             "The message presents itself as " + claimed->name + ", but it was sent from " +
             (senderDomain.empty() ? std::string("an address with no domain")
                                   : senderDomain) + ", which is not " + claimed->name + ".");
+    }
+
+    // ---- Pictures borrowed from a brand the mail is not from --------------
+    // The message's pictures come from a site its display name (or subject)
+    // names - gotinder.com for "Tinder" - but it was sent from elsewhere and
+    // none of its links go to that site: the look of a well-known service
+    // dressed over links to somewhere else. Needs no brand table.
+    if (input.bodyIsHtml) {
+        std::vector<std::string> nameWords;
+        {
+            const std::string names = Lower(input.fromName + " " + input.subject);
+            std::string word;
+            for (std::size_t i = 0; i <= names.size(); ++i) {
+                const char c = i < names.size() ? names[i] : ' ';
+                if (std::isalnum(static_cast<unsigned char>(c))) word += c;
+                else {
+                    if (word.size() >= 4) nameWords.push_back(word);
+                    word.clear();
+                }
+            }
+        }
+        std::set<std::string> linkRegs;
+        for (const auto& link : links)
+            if (!link.host.empty()) linkRegs.insert(RegistrableDomain(link.host));
+        const std::string senderLower = Lower(senderReg);
+        for (const std::string& imageHost : ExtractImageHosts(input.body)) {
+            const std::string imageReg = RegistrableDomain(imageHost);
+            if (imageReg.empty() || imageReg == senderReg || linkRegs.count(imageReg)) continue;
+            const std::string label = imageReg.substr(0, imageReg.find('.'));
+            std::string named;
+            for (const std::string& w : nameWords)
+                if (label.find(w) != std::string::npos && senderLower.find(w) == std::string::npos) {
+                    named = w;
+                    break;
+                }
+            if (named.empty()) continue;
+            const std::string where = linkRegs.empty() ? std::string("nowhere on that site")
+                                                       : *linkRegs.begin();
+            Add(report, 30, "borrowed-brand-pictures",
+                "The message shows pictures from " + imageReg + " (the \"" + named +
+                "\" it names) but was sent from " +
+                (senderDomain.empty() ? std::string("an unknown address") : senderDomain) +
+                ", and its links go to " + where + ", not to " + imageReg + ".");
+            break;
+        }
     }
 
     // ---- Link rules --------------------------------------------------------

@@ -1,7 +1,7 @@
 // core/CSSLayout/LayoutUtils.cpp
 // Shared helpers: dimension resolution, edge resolution, constraint clamping.
-// Version: 1.1.0
-// Last Modified: 2026-06-01
+// Version: 1.2.0 - resolveDimension adds a Dimension's offsetPx
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/LayoutUtils.h"
@@ -15,18 +15,19 @@ namespace UltraCanvas {
                                               const LayoutContext& ctx) {
             switch (dim.unit) {
                 case DimensionUnit::Pixels:
-                    return dim.value;
+                    return dim.value + dim.offsetPx;
                 case DimensionUnit::Percent:
-                    if (parentExtent.has_value()) return (*parentExtent) * dim.value / 100.f;
+                    if (parentExtent.has_value())
+                        return (*parentExtent) * dim.value / 100.f + dim.offsetPx;
                     return std::nullopt;
                 case DimensionUnit::ViewportWidth:
-                    return ctx.viewportWidth  * dim.value / 100.f;
+                    return ctx.viewportWidth  * dim.value / 100.f + dim.offsetPx;
                 case DimensionUnit::ViewportHeight:
-                    return ctx.viewportHeight * dim.value / 100.f;
+                    return ctx.viewportHeight * dim.value / 100.f + dim.offsetPx;
                 case DimensionUnit::Em:
-                    return ctx.fontSizePx     * dim.value;
+                    return ctx.fontSizePx     * dim.value + dim.offsetPx;
                 case DimensionUnit::Rem:
-                    return ctx.rootFontSizePx * dim.value;
+                    return ctx.rootFontSizePx * dim.value + dim.offsetPx;
                 case DimensionUnit::Auto:
                 case DimensionUnit::Fr:
                 case DimensionUnit::MinContent:

@@ -11,6 +11,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_senderidentity.cpp
     test_threatscan.cpp
     test_unsubscribe.cpp
+    test_recipientcomplete.cpp
     test_inlineimages.cpp
     test_messagefilter.cpp
     test_syncengine.cpp
@@ -25,6 +26,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_logincheck.cpp
     test_feedpublisher.cpp
     test_preferences.cpp
+    test_headertext.cpp
     # The Settings window's preferences file: plain C++, no UI.
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailPreferences.cpp
 )

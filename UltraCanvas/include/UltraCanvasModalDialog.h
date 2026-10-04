@@ -322,6 +322,10 @@ namespace UltraCanvas {
         // ("*") filter, unless that is the only kind there is. For an Open
         // dialog whose filters are kinds of file rather than one format each.
         bool filterToggles = false;
+        // Save: ask "Replace it?" before accepting a name that is already a
+        // file, as the platforms' own save dialogs do. Off for a caller that
+        // asks itself (or appends to the file).
+        bool confirmOverwrite = true;
         bool validateNames = true;
         bool addToRecent = true;
 
@@ -761,6 +765,8 @@ namespace UltraCanvas {
         // fileConfig.filterToggles is set; activeFilters holds the ones on.
         std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
         std::set<int> activeFilters;
+        // A "Replace it?" question is showing: OK and activation wait for it.
+        bool overwritePromptOpen = false;
 
         // Folder-tree nodes whose sub-folders have been read.
         std::set<std::string> loadedTreeNodes;
@@ -834,6 +840,9 @@ namespace UltraCanvas {
         // Rebuilds the toggle buttons from fileConfig.filters and switches on
         // the default set (see FileDialogConfig::filterToggles).
         void RebuildFilterToggles();
+        // Closes the dialog with `files` as the result, once Accept has
+        // settled any overwrite question.
+        void FinishAccept(const std::vector<std::string>& files);
         // True when the file name passes the type filter: the selected
         // dropdown entry, or any toggle that is on.
         bool MatchesTypeFilter(const std::string& fileName) const;

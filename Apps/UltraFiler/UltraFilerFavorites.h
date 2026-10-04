@@ -7,8 +7,8 @@
 // they were pinned in. Persisted next to the settings
 // (UltraFilerSettings::GetConfigDirectory()) as a tab separated text file,
 // so paths keep their '=' and spaces.
-// Version: 1.0.0
-// Last Modified: 2026-08-10
+// Version: 1.1.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,6 +82,16 @@ public:
 
     bool IsPinned(FilerFavoriteKind kind, const std::string& path) const {
         return Contains(lists[IndexOf(kind)], path);
+    }
+
+    // Is `path` in the Favorites view - any of its Files / Folders / Apps
+    // tabs? A folder pinned only into the tree's "Pinned" section is not.
+    // Asked for every entry the file displays draw (the heart mark), so it
+    // reads the lists only and never touches the disk.
+    bool IsFavorite(const std::string& path) const {
+        return IsPinned(FilerFavoriteKind::File, path) ||
+               IsPinned(FilerFavoriteKind::Folder, path) ||
+               IsPinned(FilerFavoriteKind::App, path);
     }
 
     // ===== READING =====

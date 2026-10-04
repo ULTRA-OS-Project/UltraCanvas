@@ -1,12 +1,28 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.16.0 - merged with main's 1.4.0-1.7.0
+// Version: 1.15.0 - letter-spacing
+// Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
+// Version: 1.13.0 - height in percent
+// Version: 1.12.0 - min / max width and height in percent
+// Version: 1.11.0 - max-width in percent
+// Version: 1.10.0 - min-width, min-height, max-height
+// Version: 1.9.0 - box-sizing
+// Version: 1.8.0 - borders per side
+// Version: 1.7.0 - border-radius %, <img border>, border currentColor
+// Version: 1.6.0 - object-fit, object-position
+// Version: 1.5.0 - background-repeat
+// Version: 1.4.0 - background-position
+// From main:
+// Version: 1.7.0 - structural pseudo-classes
+// Version: 1.6.0 - attribute selectors
 // Version: 1.5.0 - a later width declaration replaces an earlier one
 // Version: 1.4.0 - width/height="auto" on <img> is no size
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -526,6 +542,127 @@ static void TestImportantWidthReplacesInlineWidth() {
     CHECK(!sa.widthPercent.has_value());
 }
 
+// Attribute selectors, as Mailchimp writes its narrow-screen rules:
+// table[id=templateBody]{width:100% !important}, td[class=mcnTextContent].
+static void TestAttributeSelectors() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "table[id=templateBody]{width:100% !important}"
+        "td[class=mcnTextContent]{color:#ff0000}"
+        "td[class=other]{color:#00ff00}"
+        "[data-x]{font-weight:bold}"
+        "a[href^=\"mailto:\"]{color:#0000ff}"
+        "a[href$='.pdf' i]{font-style:italic}"
+        "p[class~=b]{text-align:center}"
+        "p[lang|=de]{text-align:right}"
+        "span[title*=\"a b\"]{text-decoration:underline}"
+        "div[class=x] > span[id=deep]{color:#123456}"
+        "</style></head><body>"
+        "<table id='templateBody' width='600'><tr><td id='c' class='mcnTextContent'>t</td></tr></table>"
+        "<div id='dx' data-x=''>x</div>"
+        "<a id='m' href='mailto:a@b'>m</a><a id='f' href='/X.PDF'>f</a>"
+        "<p id='pb' class='a b c'>p</p><p id='pl' lang='de-AT'>q</p>"
+        "<span id='sp' title='say a b c'>s</span>"
+        "<div class='x'><b><span id='deep'>d</span></b></div>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    const ComputedStyle& t = style("templateBody");
+    CHECK(t.widthPercent.has_value() && Near(*t.widthPercent, 100.f));
+    CHECK(!t.widthPx.has_value());
+    CHECK(style("c").color.r == 255 && style("c").color.g == 0);
+    CHECK(style("dx").bold);
+    CHECK(style("m").color.b == 255 && style("m").color.r == 0);
+    CHECK(style("f").italic);
+    CHECK(style("pb").textAlign == TextAlignMode::Center);
+    CHECK(style("pl").textAlign == TextAlignMode::Right);
+    CHECK(style("sp").underline);
+    CHECK(style("deep").color.r == 0x12 && style("deep").color.b == 0x56);
+}
+
+// Structural pseudo-classes, as mail templates use them
+// (Mailchimp: .mcnCaptionBottomContent:last-child ...).
+static void TestStructuralPseudoClasses() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "li:first-child{font-weight:bold}"
+        "li:last-child{font-style:italic}"
+        "li:nth-child(2n){text-align:right}"
+        "li:nth-child( odd ){color:#0000ff}"
+        "li:nth-last-child(2){text-decoration:underline}"
+        "p:only-child{text-align:center}"
+        "span:first-of-type{color:#ff0000}"
+        "span:last-of-type{font-weight:bold}"
+        "td[class=a] table.cap:last-child td.t{color:#00ff00}"
+        "div:empty{text-align:right}"
+        "a:hover{color:#123456}"
+        "</style></head><body>"
+        "<ul><li id='l1'>1</li><li id='l2'>2</li><li id='l3'>3</li><li id='l4'>4</li></ul>"
+        "<div><p id='only'>x</p></div><div><p id='notonly'>x</p><p>y</p></div>"
+        "<div><b>x</b><span id='s1'>a</span><i>y</i><span id='s2'>b</span></div>"
+        "<table><tr><td class='a'><table class='cap'><tr><td class='t' id='first'>1</td></tr></table>"
+        "<table class='cap'><tr><td class='t' id='last'>2</td></tr></table></td></tr></table>"
+        "<div id='empty'></div><div id='full'>t</div>"
+        "<a id='hov' href='x'>h</a>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto style = [&](const char* id) -> const ComputedStyle& {
+        Node* n = find(doc.root.get(), id);
+        CHECK(n != nullptr);
+        return resolver.StyleOf(n);
+    };
+    CHECK(style("l1").bold);
+    CHECK(!style("l2").bold);
+    CHECK(style("l4").italic);
+    CHECK(!style("l3").italic);
+    CHECK(style("l2").textAlign == TextAlignMode::Right);
+    CHECK(style("l4").textAlign == TextAlignMode::Right);
+    CHECK(style("l1").textAlign != TextAlignMode::Right);
+    CHECK(style("l1").color.b == 255 && style("l3").color.b == 255);
+    CHECK(style("l2").color.b != 255);
+    CHECK(style("l3").underline);
+    CHECK(!style("l4").underline);
+    CHECK(style("only").textAlign == TextAlignMode::Center);
+    CHECK(style("notonly").textAlign != TextAlignMode::Center);
+    CHECK(style("s1").color.r == 255);
+    CHECK(style("s2").color.r != 255);
+    CHECK(style("s2").bold);
+    CHECK(!style("s1").bold);
+    CHECK(style("last").color.g == 255);
+    CHECK(style("first").color.g != 255);
+    CHECK(style("empty").textAlign == TextAlignMode::Right);
+    CHECK(style("full").textAlign != TextAlignMode::Right);
+    CHECK(style("hov").color.r != 0x12);   // :hover never matches a static render
+}
+
 static void TestMailTableStyles() {
     Parser parser;
     Document doc = parser.Parse(
@@ -620,7 +757,10 @@ static void TestMediaAndBackgrounds() {
             CHECK_EQ(st.backgroundImages[0], std::string("wave.gif"));
             CHECK_EQ(st.backgroundImages[1], std::string("poster.png"));
         }
-        CHECK(st.backgroundSize == BackgroundSizeMode::Contain);
+        CHECK(st.BackgroundSizeAt(0) == BackgroundSizeMode::Contain);
+        CHECK(st.BackgroundSizeAt(1) == BackgroundSizeMode::Auto);      // poster: no size
+        CHECK(st.BackgroundPositionAt(0).x.value == 0.5f && st.BackgroundPositionAt(0).y.value == 0.5f);
+        CHECK(st.BackgroundPositionAt(1).x.value == 0.f && st.BackgroundPositionAt(1).y.value == 0.f);
         CHECK(st.backgroundColor && st.backgroundColor->r == 0xfa);
         CHECK_EQ(st.borderRadius, 20.f);
     });
@@ -628,6 +768,264 @@ static void TestMediaAndBackgrounds() {
         CHECK(st.widthPercent && *st.widthPercent == 100.f);
         CHECK(st.color.r == 0xff);
     });
+}
+
+// background-position in its value forms, longhand and shorthand.
+static void TestBackgroundPosition() {
+    auto positionOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"" + css + "\">x</div>");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* div = doc.root->FindFirst("div");
+        return div ? resolver.StyleOf(div).BackgroundPositionAt(0) : BackgroundPosition{};
+    };
+    auto isFraction = [](const BackgroundAxisPosition& a, float f) {
+        return !a.pixels && std::fabs(a.value - f) < 0.001f;
+    };
+    auto isPixels = [](const BackgroundAxisPosition& a, float px, bool fromEnd) {
+        return a.pixels && a.fromEnd == fromEnd && std::fabs(a.value - px) < 0.001f;
+    };
+    BackgroundPosition p = positionOf("background-position: right bottom");
+    CHECK(isFraction(p.x, 1.f) && isFraction(p.y, 1.f));
+    p = positionOf("background-position: top");             // x centred
+    CHECK(isFraction(p.x, 0.5f) && isFraction(p.y, 0.f));
+    p = positionOf("background-position: top left");        // vertical word first
+    CHECK(isFraction(p.x, 0.f) && isFraction(p.y, 0.f));
+    p = positionOf("background-position: 25% 75%");
+    CHECK(isFraction(p.x, 0.25f) && isFraction(p.y, 0.75f));
+    p = positionOf("background-position: 10px 2em");
+    CHECK(isPixels(p.x, 10.f, false) && isPixels(p.y, 32.f, false));
+    p = positionOf("background-position: 30px");            // y centred
+    CHECK(isPixels(p.x, 30.f, false) && isFraction(p.y, 0.5f));
+    p = positionOf("background-position: right 10px bottom 20%");
+    CHECK(isPixels(p.x, 10.f, true) && isFraction(p.y, 0.8f));
+    p = positionOf("background: #fff url(a.png) no-repeat right 5px top / cover");
+    CHECK(isPixels(p.x, 5.f, true) && isFraction(p.y, 0.f));
+    p = positionOf("background: url(a.png)");                // CSS initial value
+    CHECK(isFraction(p.x, 0.f) && isFraction(p.y, 0.f));
+}
+
+// background-repeat: longhand, shorthand, lists per layer, the initial value.
+static void TestBackgroundRepeat() {
+    auto repeatOf = [](const std::string& css, size_t layer = 0) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"" + css + "\">x</div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* div = doc.root->FindFirst("div");
+        return div ? resolver.StyleOf(div).BackgroundRepeatAt(layer) : BackgroundRepeat{};
+    };
+    BackgroundRepeat r = repeatOf("background: url(a.png)");
+    CHECK(r.x && r.y);                                   // CSS initial: repeat
+    r = repeatOf("background: url(a.png) no-repeat center");
+    CHECK(!r.x && !r.y);
+    r = repeatOf("background: #fff url(a.png) repeat-x top");
+    CHECK(r.x && !r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: repeat-y");
+    CHECK(!r.x && r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: repeat no-repeat");
+    CHECK(r.x && !r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: space");
+    CHECK(r.x && r.y);                                   // space: taken as repeat
+    r = repeatOf("background: url(a.png) no-repeat, url(b.png) repeat-x", 1);
+    CHECK(r.x && !r.y);                                  // the second layer's own
+}
+
+// object-fit and object-position on an <img>, with their initial values.
+static void TestObjectFitPosition() {
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<img src=\"a.png\" style=\"" + css + "\">");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* img = doc.root->FindFirst("img");
+        return img ? resolver.StyleOf(img) : ComputedStyle{};
+    };
+    auto isFraction = [](const BackgroundAxisPosition& a, float f) {
+        return !a.pixels && std::fabs(a.value - f) < 0.001f;
+    };
+    ComputedStyle st = styleOf("");
+    CHECK(st.objectFit == ObjectFitMode::Fill);          // CSS initial: fill
+    CHECK(isFraction(st.objectPosition.x, 0.5f) && isFraction(st.objectPosition.y, 0.5f));
+    CHECK(styleOf("object-fit: contain").objectFit == ObjectFitMode::Contain);
+    CHECK(styleOf("object-fit: COVER").objectFit == ObjectFitMode::Cover);
+    CHECK(styleOf("object-fit: none").objectFit == ObjectFitMode::NoScaling);
+    CHECK(styleOf("object-fit: scale-down").objectFit == ObjectFitMode::ScaleDown);
+    CHECK(styleOf("object-fit: bogus").objectFit == ObjectFitMode::Fill);
+    st = styleOf("object-position: right top");
+    CHECK(isFraction(st.objectPosition.x, 1.f) && isFraction(st.objectPosition.y, 0.f));
+    st = styleOf("object-position: 25% 1em");
+    CHECK(isFraction(st.objectPosition.x, 0.25f));
+    CHECK(st.objectPosition.y.pixels && std::fabs(st.objectPosition.y.value - 16.f) < 0.001f);
+    st = styleOf("object-position: right 10px bottom 5px");
+    CHECK(st.objectPosition.x.pixels && st.objectPosition.x.fromEnd);
+    CHECK(st.objectPosition.y.pixels && st.objectPosition.y.fromEnd);
+}
+
+// border-radius in percent, <img border="N"> and a border shorthand without
+// a colour (the text colour).
+static void TestImageBorders() {
+    auto styleOf = [](const std::string& html, const char* tag) {
+        Parser parser;
+        Document doc = parser.Parse(html);
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* n = doc.root->FindFirst(tag);
+        return n ? resolver.StyleOf(n) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("<img src=a.png style=\"border-radius:50%\">", "img");
+    CHECK(st.borderRadiusPercent == 50.f && st.borderRadius == 0.f);
+    st = styleOf("<img src=a.png style=\"border-radius:50%;border-radius:4px\">", "img");
+    CHECK(st.borderRadiusPercent == 0.f && st.borderRadius == 4.f);
+    st = styleOf("<img src=a.png border=\"2\" style=\"color:#ff0000\">", "img");
+    CHECK(st.borderTop.Width() == 2.f && st.borderLeft.Width() == 2.f);
+    st = styleOf("<font color=\"#00ff00\"><img src=a.png border=\"3\"></font>", "img");
+    CHECK(st.borderTop.Width() == 3.f && st.borderTop.color.g == 0xff && st.borderTop.color.r == 0);
+    st = styleOf("<img src=a.png border=\"0\">", "img");
+    CHECK(!st.HasBorder());
+    st = styleOf("<div style=\"color:#0000ff;border:1px solid\">x</div>", "div");
+    CHECK(st.borderTop.Width() == 1.f && st.borderTop.color.b == 0xff && st.borderTop.color.r == 0);
+    st = styleOf("<div style=\"color:#0000ff;border:1px solid #ff0000\">x</div>", "div");
+    CHECK(st.borderRight.color.r == 0xff && st.borderRight.color.b == 0);
+}
+
+// Borders per side: the shorthands, the 1-4 value lists, the longhands, and
+// no border without a style.
+static void TestBorderSides() {
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"color:#0000ff;" + css + "\">x</div>");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* n = doc.root->FindFirst("div");
+        return n ? resolver.StyleOf(n) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("border-bottom:1px solid #eeeeee");
+    CHECK(st.borderBottom.Width() == 1.f && st.borderBottom.color.r == 0xee);
+    CHECK(st.borderTop.Width() == 0.f && st.borderLeft.Width() == 0.f && st.borderRight.Width() == 0.f);
+    CHECK(!st.UniformBorder());
+    st = styleOf("border:2px solid red;border-left:4px dashed #00ff00");
+    CHECK(st.borderTop.Width() == 2.f && st.borderTop.color.r == 0xff);
+    CHECK(st.borderLeft.Width() == 4.f && st.borderLeft.style == BorderLineStyle::Dashed);
+    CHECK(st.borderLeft.color.g == 0xff);
+    st = styleOf("border-width:1px 2px 3px 4px;border-style:solid");
+    CHECK(st.borderTop.Width() == 1.f && st.borderRight.Width() == 2.f);
+    CHECK(st.borderBottom.Width() == 3.f && st.borderLeft.Width() == 4.f);
+    CHECK(st.borderTop.color.b == 0xff);                  // currentColor
+    st = styleOf("border-width:1px 2px;border-style:solid dotted;border-color:red green");
+    CHECK(st.borderBottom.Width() == 1.f && st.borderLeft.Width() == 2.f);
+    CHECK(st.borderRight.style == BorderLineStyle::Dotted && st.borderBottom.style == BorderLineStyle::Solid);
+    CHECK(st.borderLeft.color.r == 0 && st.borderLeft.color.g > 0 && st.borderTop.color.r == 0xff);
+    st = styleOf("border-top-width:5px;border-top-style:solid;border-top-color:#ff0000");
+    CHECK(st.borderTop.Width() == 5.f && st.borderTop.color.r == 0xff && st.borderBottom.Width() == 0.f);
+    st = styleOf("border:1px #cccccc");                     // no style: no border
+    CHECK(!st.HasBorder());
+    st = styleOf("border-style:solid");                     // medium
+    CHECK(st.borderTop.Width() == 3.f && st.UniformBorder());
+    st = styleOf("border:1px solid #ccc;border-top:none");
+    CHECK(st.borderTop.Width() == 0.f && st.borderBottom.Width() == 1.f);
+    st = styleOf("border:0");
+    CHECK(!st.HasBorder());
+    st = styleOf("border:thin solid");
+    CHECK(st.borderLeft.Width() == 1.f);
+    CHECK(!st.borderBox);                             // content-box by default
+    CHECK(styleOf("box-sizing:border-box").borderBox);
+    CHECK(!styleOf("box-sizing:border-box;box-sizing:content-box").borderBox);
+    st = styleOf("min-width:120px;min-height:2em;max-height:50px");
+    CHECK(st.minWidthPx && *st.minWidthPx == 120.f);
+    CHECK(st.minHeightPx && *st.minHeightPx == 32.f);
+    CHECK(st.maxHeightPx && *st.maxHeightPx == 50.f);
+    st = styleOf("max-height:50px;max-height:none;min-width:10px;min-width:auto;min-height:50%");
+    CHECK(!st.maxHeightPx && !st.minWidthPx && !st.minHeightPx);
+    CHECK(st.minHeightPercent && *st.minHeightPercent == 50.f && !st.maxHeightPercent);
+    st = styleOf("min-width:25%;max-height:10%;min-height:5px");
+    CHECK(st.minWidthPercent && *st.minWidthPercent == 25.f && !st.minWidthPx);
+    CHECK(st.maxHeightPercent && *st.maxHeightPercent == 10.f);
+    CHECK(st.minHeightPx && !st.minHeightPercent);
+    st = styleOf("height:50%");
+    CHECK(st.heightPercent && *st.heightPercent == 50.f && !st.heightPx);
+    st = styleOf("height:50%;height:20px");
+    CHECK(!st.heightPercent && st.heightPx && *st.heightPx == 20.f);
+    st = styleOf("width:20px;width:30%");
+    CHECK(!st.widthPx && st.widthPercent && *st.widthPercent == 30.f);
+    st = styleOf("height:20px;height:auto");
+    CHECK(!st.heightPx && !st.heightPercent);
+    st = styleOf("max-width:100%");
+    CHECK(st.maxWidthPercent && *st.maxWidthPercent == 100.f && !st.maxWidthPx);
+    st = styleOf("max-width:100%;max-width:300px");
+    CHECK(!st.maxWidthPercent && st.maxWidthPx && *st.maxWidthPx == 300.f);
+    st = styleOf("max-width:300px;max-width:none");
+    CHECK(!st.maxWidthPercent && !st.maxWidthPx);
+}
+
+// The doctype decides quirks mode, and quirks mode stops a table inheriting
+// text-align; line-height and overflow are kept.
+static void TestQuirksAndLineHeight() {
+    CHECK(IsQuirksDoctype("", false));
+    CHECK(!IsQuirksDoctype(" html", true));
+    CHECK(!IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" "
+                           "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"", true));
+    CHECK(IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\"", true));
+    CHECK(!IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" "
+                           "\"http://www.w3.org/TR/html4/loose.dtd\"", true));
+    CHECK(IsQuirksDoctype(" HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\"", true));
+    auto alignOfInnerTd = [](const std::string& html) {
+        Parser parser;
+        Document doc = parser.Parse(html);
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* inner = nullptr;
+        int n = 0;
+        doc.root->ForEachElement([&](Node& e) { if (e.tag == "td" && ++n == 2) inner = &e; return true; });
+        return inner ? resolver.StyleOf(inner).textAlign : TextAlignMode::Justify;
+    };
+    const std::string body = "<table><tr><td align='center'><table><tr><td>x</td></tr></table>"
+                             "</td></tr></table>";
+    CHECK(alignOfInnerTd(body) == TextAlignMode::Left);                       // quirks
+    CHECK(alignOfInnerTd("<!DOCTYPE html>" + body) == TextAlignMode::Center); // standards
+    {
+        Parser parser;
+        Document doc = parser.Parse("<!doctype html><p>x</p>");
+        CHECK(!doc.quirksMode && doc.doctype == " html");
+    }
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"font-size:10px;" + css + "\"><p>x</p></div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* p = doc.root->FindFirst("p");
+        return p ? resolver.StyleOf(p) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("");
+    CHECK(!st.lineHeightSet);
+    st = styleOf("line-height:20px");
+    CHECK(st.lineHeightSet && st.lineHeightPx && *st.lineHeightPx == 20.f);   // inherited as px
+    st = styleOf("line-height:150%");
+    CHECK(st.lineHeightPx && *st.lineHeightPx == 15.f);
+    st = styleOf("line-height:1.5");
+    CHECK(st.lineHeightSet && !st.lineHeightPx && st.lineHeight == 1.5f);
+    st = styleOf("line-height:20px;line-height:normal");
+    CHECK(!st.lineHeightSet);
+    st = styleOf("letter-spacing:0.5px");
+    CHECK(std::fabs(st.letterSpacingPx - 0.5f) < 0.001f);             // inherited by the p
+    st = styleOf("letter-spacing:0.2em");
+    CHECK(std::fabs(st.letterSpacingPx - 2.f) < 0.001f);               // of the div's 10px
+    st = styleOf("letter-spacing:3px;letter-spacing:normal");
+    CHECK(st.letterSpacingPx == 0.f);
+    {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"overflow:hidden\">x</div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        CHECK(resolver.StyleOf(doc.root->FindFirst("div")).overflowHidden);
+    }
 }
 
 int main() {
@@ -646,7 +1044,15 @@ int main() {
     TestMailTableStyles();
     TestImageAutoAttributes();
     TestImportantWidthReplacesInlineWidth();
+    TestAttributeSelectors();
+    TestStructuralPseudoClasses();
     TestMediaAndBackgrounds();
+    TestBackgroundPosition();
+    TestBackgroundRepeat();
+    TestObjectFitPosition();
+    TestImageBorders();
+    TestBorderSides();
+    TestQuirksAndLineHeight();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

@@ -58,8 +58,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.22.0
-// Last Modified: 2026-09-24
+// Version: 1.24.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -995,6 +995,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     };
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
+    WireFavoriteMarkProvider(folderPreview.get());
 
     // The pane is narrow, so it carries the one way out of it: a round button
     // floating over the middle of its left edge that moves the folder it
@@ -1550,6 +1551,7 @@ void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
             [this]() {   // Clear Favorites
         favorites.ClearAll();
         RefreshPinnedTreeNodes();
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -1760,6 +1762,19 @@ void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
     };
 }
 
+void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
+        return favorites.IsFavorite(entry.path);
+    });
+}
+
+void UltraFilerWindow::RepaintFavoriteMarks() {
+    // The displays ask the provider while they paint, so a repaint is all a
+    // changed pin needs.
+    for (UltraCanvasFilerWidget* f : AllFilers()) f->RequestRedraw();
+}
+
 std::vector<std::string> UltraFilerWindow::FolderIconTargets() const {
     std::vector<std::string> folders;
     for (const FilerEntry& e : PinTargets())
@@ -1865,6 +1880,7 @@ void UltraFilerWindow::PinTargetsToFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Pin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -1886,6 +1902,7 @@ void UltraFilerWindow::UnpinTargetsFromFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Unpin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -3130,13 +3147,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     viewDropdown->AddItem("Treemap", "Treemap", IconPath("view-treemap.svg"));
     viewDropdown->SetSelectedIndex(3, false);
     viewDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (syncingControls || !filer) return;
+        // The display on screen - a History / Favorites page while one is up,
+        // not the folder tab hidden behind it.
+        UltraCanvasFilerWidget* shown = VisibleFiler();
+        if (syncingControls || !shown) return;
         static const FilerViewType types[] = {
             FilerViewType::Details, FilerViewType::List,
             FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
             FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized,
             FilerViewType::BarSize, FilerViewType::TreeMap};
-        if (index >= 0 && index < 8) filer->SetViewType(types[index]);
+        if (index >= 0 && index < 8) shown->SetViewType(types[index]);
     };
     viewDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(viewDropdown);
@@ -3157,7 +3177,10 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sortDropdown->AddItem("Date created");
     sortDropdown->SetSelectedIndex(0, false);
     sortDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (syncingControls || !filer) return;
+        std::string fixedLabel;
+        bool fixedAscending = true;
+        if (syncingControls || !filer ||
+            VisibleFixedOrder(fixedLabel, fixedAscending)) return;
         static const FilerSortField fields[] = {
             FilerSortField::Name, FilerSortField::Size, FilerSortField::Type,
             FilerSortField::ModifiedDate, FilerSortField::CreatedDate};
@@ -3172,6 +3195,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // stored view, and the arrow has to follow all of them.
     sortOrderButton = MakeToolButton("ufl-sort-order", "", "sort-up.svg", 30,
             [this]() {
+        std::string fixedLabel;
+        bool fixedAscending = true;
+        if (VisibleFixedOrder(fixedLabel, fixedAscending)) return;
         if (filer) filer->SetSortAscending(!filer->IsSortAscending());
     });
     row->AddChild(sortOrderButton);
@@ -4216,6 +4242,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
             [this, target](bool checked) {
         if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
         else favorites.Unpin(FilerFavoriteKind::Folder, target);
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -4556,37 +4583,16 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         if (!previewEnabled) SetPreviewEnabled(true);
         else UpdatePreviewPane();
     };
-    tab->filer->onSortChanged = [this, tab](FilerSortField field, bool /*ascending*/) {
+    // Only the tab on screen drives the command bar; one that is behind a
+    // History / Favorites view leaves it describing that view
+    // (SyncCommandBarToVisibleDisplay decides).
+    tab->filer->onSortChanged = [this, tab](FilerSortField, bool) {
         RememberFolderView(tab);
-        if (!IsActiveTab(tab)) return;
-        UpdateSortOrderButton();
-        if (!sortDropdown) return;
-        syncingControls = true;
-        switch (field) {
-            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
-            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
-            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
-            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
-            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
-        }
-        syncingControls = false;
+        if (IsActiveTab(tab)) SyncCommandBarToVisibleDisplay();
     };
-    tab->filer->onViewTypeChanged = [this, tab](FilerViewType type) {
+    tab->filer->onViewTypeChanged = [this, tab](FilerViewType) {
         RememberFolderView(tab);
-        if (!IsActiveTab(tab) || !viewDropdown) return;
-        syncingControls = true;
-        switch (type) {
-            case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
-            case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
-            case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
-            case FilerViewType::ThumbnailsMedium:    viewDropdown->SetSelectedIndex(3, false); break;
-            case FilerViewType::ThumbnailsBig:       viewDropdown->SetSelectedIndex(4, false); break;
-            case FilerViewType::ThumbnailsMaximized: viewDropdown->SetSelectedIndex(5, false); break;
-            case FilerViewType::BarSize:             viewDropdown->SetSelectedIndex(6, false); break;
-            case FilerViewType::TreeMap:             viewDropdown->SetSelectedIndex(7, false); break;
-            default: break;
-        }
-        syncingControls = false;
+        if (IsActiveTab(tab)) SyncCommandBarToVisibleDisplay();
     };
     // Work done in a folder - a file created, pasted, dropped in or out,
     // renamed, duplicated, deleted, packed or extracted - is what puts it in
@@ -4615,6 +4621,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
+    WireFavoriteMarkProvider(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -4661,17 +4668,63 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
     UpdateStatusBar();
     UpdateWindowTitle();
 
-    // Mirror the tab's sort / view settings into the command bar.
-    UpdateSortOrderButton();
-    syncingControls = true;
-    switch (filer->GetSortField()) {
-        case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
-        case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
-        case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
-        case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
-        case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+    // Mirror the sort / view settings of what is on screen into the command
+    // bar.
+    SyncCommandBarToVisibleDisplay();
+
+    UpdatePreviewPane();
+}
+
+bool UltraFilerWindow::VisibleFixedOrder(std::string& label, bool& ascending) const {
+    // The orders below are the information these lists carry, so the
+    // displays keep them as handed over (SetFileListOrderPreserved) and
+    // sorting does nothing there.
+    if (historyShown) {
+        label = "Last used";
+        ascending = false;              // most recently used first
+        return true;
     }
-    switch (filer->GetViewType()) {
+    if (favoritesShown) {
+        label = "Order pinned";
+        ascending = true;               // first pinned first
+        return true;
+    }
+    if (computerShown) {
+        label = "Home first";
+        ascending = true;
+        return true;
+    }
+    return false;
+}
+
+void UltraFilerWindow::SyncCommandBarToVisibleDisplay() {
+    UltraCanvasFilerWidget* shown = VisibleFiler();
+    if (!shown || !sortDropdown || !viewDropdown) return;
+    std::string fixedLabel;
+    bool fixedAscending = true;
+    const bool fixed = VisibleFixedOrder(fixedLabel, fixedAscending);
+
+    syncingControls = true;
+    // The fixed order is not a sort field, so it gets an entry of its own
+    // behind the five fields, present only while such a view is up.
+    constexpr int kSortFieldCount = 5;
+    while (sortDropdown->GetItemCount() > kSortFieldCount)
+        sortDropdown->RemoveItem(sortDropdown->GetItemCount() - 1);
+    if (fixed) {
+        sortDropdown->AddItem(fixedLabel);
+        sortDropdown->SetSelectedIndex(kSortFieldCount, false);
+    } else {
+        switch (shown->GetSortField()) {
+            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
+            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
+            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
+            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
+            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+        }
+    }
+    sortDropdown->SetDisabled(fixed);
+
+    switch (shown->GetViewType()) {
         case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
         case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
         case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
@@ -4683,8 +4736,19 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
         default: break;
     }
     syncingControls = false;
+    sortDropdown->RequestRedraw();
+    viewDropdown->RequestRedraw();
 
-    UpdatePreviewPane();
+    if (!sortOrderButton) return;
+    if (!fixed) {
+        sortOrderButton->SetDisabled(false);
+        UpdateSortOrderButton();
+        return;
+    }
+    sortOrderButton->SetIcon(IconPath(fixedAscending ? "sort-up.svg" : "sort-down.svg"));
+    sortOrderButton->SetTooltip(fixedLabel + " - this list keeps its own order");
+    sortOrderButton->SetDisabled(true);
+    sortOrderButton->RequestRedraw();
 }
 
 UltraFilerWindow::FilerTabState* UltraFilerWindow::ActiveTabState() const {
@@ -4793,6 +4857,7 @@ void UltraFilerWindow::BuildHistoryView() {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     historyTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
+        SyncCommandBarToVisibleDisplay();   // each page has its own view
     };
 
     for (int i = 0; i < HistoryTabCount; ++i) {
@@ -4858,6 +4923,11 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
+        WireFavoriteMarkProvider(histFiler.get());
+        // Display > Type from the page's own context menu.
+        histFiler->onViewTypeChanged = [this](FilerViewType) {
+            SyncCommandBarToVisibleDisplay();
+        };
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -4885,6 +4955,7 @@ void UltraFilerWindow::SetHistoryVisible(bool visible) {
         historyPane->SetVisible(false);
         split->SetVisible(true);
     }
+    SyncCommandBarToVisibleDisplay();
     UpdateStatusBar();
     UpdateWindowTitle();
 }
@@ -5046,6 +5117,7 @@ void UltraFilerWindow::BuildFavoritesView() {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     favoritesTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
+        SyncCommandBarToVisibleDisplay();   // each page has its own view
     };
 
     for (int i = 0; i < HistoryTabCount; ++i) {
@@ -5111,6 +5183,9 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
+        favFiler->onViewTypeChanged = [this](FilerViewType) {
+            SyncCommandBarToVisibleDisplay();
+        };
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;
@@ -5138,6 +5213,7 @@ void UltraFilerWindow::SetFavoritesVisible(bool visible) {
         favoritesPane->SetVisible(false);
         split->SetVisible(true);
     }
+    SyncCommandBarToVisibleDisplay();
     UpdateStatusBar();
     UpdateWindowTitle();
 }
@@ -5209,6 +5285,9 @@ void UltraFilerWindow::BuildComputerPage() {
         UpdateStatusBar();
     };
     computerFolders->onFolderRefreshed = [this]() { UpdateStatusBar(); };
+    computerFolders->onViewTypeChanged = [this](FilerViewType) {
+        SyncCommandBarToVisibleDisplay();
+    };
     computerFolders->onFileActivated = [this](const FilerEntry& entry) {
         RecordEntryInHistory(entry);
         RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
@@ -5304,6 +5383,7 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
         }
     }
     RefreshPaneBreadcrumbs();
+    SyncCommandBarToVisibleDisplay();
     UpdateNavButtons();
     UpdateStatusBar();
     UpdateWindowTitle();

@@ -1860,7 +1860,7 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
-  `VideoFXMusic` (`VideoFXExportSettings::music`)
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,

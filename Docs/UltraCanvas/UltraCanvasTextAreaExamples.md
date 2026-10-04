@@ -81,6 +81,9 @@ struct TextAreaStyle {
     // Scrollbars
     Color scrollbarTrackColor;
     Color scrollbarColor;
+    int   scrollbarWidth = 15;          // track thickness in px
+    float scrollbarCornerRadius = 0.0f; // 0 = square; 6 with width 12 matches ScrollbarStyle::Modern()
+    int   scrollbarThumbInset = 2;      // gap between track edge and thumb (0 = thumb fills the track)
     
     // Token styles for syntax highlighting
     struct TokenStyles {

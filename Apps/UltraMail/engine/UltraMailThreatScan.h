@@ -14,7 +14,10 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
-// Version: 0.1.0
+// Version: 0.4.0 - plain text: mail addresses (mailto:) are links too
+// Version: 0.3.0 - PlainLinkAt (the bare URL under the pointer in plain text)
+// Version: 0.2.0 - borrowed-pictures rule; kThreatRulesRevision (re-scan older verdicts);
+//                ExtractImageHosts
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -63,8 +66,15 @@ struct MessageLink {
 };
 
 // Pull every link out of a body. HTML bodies give href/action targets with
-// their anchor text; plain-text bodies give the bare URLs.
+// their anchor text; plain-text bodies give the bare URLs and mail addresses
+// (as mailto:, with no host).
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
+
+// The link (as ExtractLinks finds it in plain text: a web address, a mailto:
+// or a bare mail address, which comes back as "mailto:name@example.com") that
+// covers byte `offset` of `text`, or "" when that byte is not part of one -
+// what the plain-text view reports for the pointer.
+std::string PlainLinkAt(const std::string& text, std::size_t offset);
 
 // What the scan needs about a message. Everything is optional: a caller that
 // has only a body still gets the link rules.
@@ -83,6 +93,15 @@ struct ScanInput {
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
 };
+
+// When the rules last changed (epoch seconds). A stored verdict made before it
+// came from older rules: the reader scans the message again when it is opened,
+// so a phishing mail an earlier version let through is caught on its next read.
+constexpr long long kThreatRulesRevision = 1791072000;   // 2026-10-04 00:00 UTC
+
+// The hosts the body's pictures (<img src>, background images) are loaded from,
+// lowercased; http(s) sources only.
+std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.
 ThreatReport ScanMessage(const ScanInput& input);

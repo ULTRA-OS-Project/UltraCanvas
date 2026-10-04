@@ -114,6 +114,9 @@ UltraCanvas/
 New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
 step list for building an application on UltraCanvas and its modules, with an
 AI coding assistant (Claude Code in particular) doing most of the typing.
+[`Docs/GettingStarted-Cloud.md`](Docs/GettingStarted-Cloud.md) is the same
+route for someone with no local compiler at all: Claude Code on the web plus
+GitHub, with CI as the compiler and the build artifacts as the app.
 
 **Prerequisites**
 
@@ -2036,7 +2039,7 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
-  `VideoFXMusic` (`VideoFXExportSettings::music`)
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2564,6 +2567,24 @@ measurement.
 > leave `size` auto on that axis and set the minimum.
 > `UltraCanvasToolbar` does exactly this with the thickness its host constructs
 > it with — see `Tests/ToolbarThicknessTest.cpp`.
+
+Sizes and limits may be percentages of the container. A width percentage
+resolves against the width the parent offers. A height percentage - `size.height`,
+`minHeight`, `maxHeight` - needs a definite height: one passed down as a
+constraint (flex, grid, table), or - for a child of a block layout, which stacks
+its children with unbounded height - the block parent's own set height, which it
+records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
+`Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
+percentage height is auto and a percentage limit limits nothing.
+
+A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
+`Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
+offset is added when the value resolves (px, %, vw / vh, em / rem); a percentage
+that cannot resolve stays unresolved. The HTML reader uses it for a percentage
+`max-width` under `box-sizing: border-box`, where the limit loses the box's
+padding and border, and for a content-box percentage width or height, where the
+border-box size gains them (`width: 50%; padding: 0 10px` is
+`PctPlus(50, 20)`).
 
 `Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that
@@ -3220,6 +3241,201 @@ configure time naming what is missing.
 "Dependencies & Third Party" screen.*
 
 ==============================================================================
+FILE: Docs/GettingStarted-Cloud.md
+==============================================================================
+
+# Getting started with an AI assistant and GitHub only: no local compiler
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-03
+**Author:** UltraCanvas Framework
+
+This is the companion to [`GettingStarted.md`](GettingStarted.md) for a
+programmer who writes UltraCanvas applications **through an AI assistant and
+GitHub alone**: Claude Code on the web, in the Claude app or in a cloud
+session, with the repository on GitHub, and no C++ toolchain on the machine in
+front of them. Every rule of the main guide still applies. What changes is
+*where things happen*: the assistant's container edits and commits, GitHub
+Actions compiles and tests on six platforms, and the built application comes
+back as a download.
+
+The short version: **the pull request is your compiler.** Nothing is built,
+checked or versioned until a PR exists, so the PR is opened right after the
+skeleton, not at the end, and the assistant watches it and fixes what CI
+reports.
+
+---
+
+## Step 1 — Connect Claude Code to the repository
+
+1. Install the Claude GitHub App on the repository (or ask an organisation
+   owner to): <https://github.com/apps/claude/installations/select_target>.
+   Without it the assistant can clone but not push, and cannot read or write
+   pull requests.
+2. Connect your GitHub account in the Claude app's settings, under Connectors.
+3. Start a Claude Code session on the repository. The web app clones it into
+   a fresh container; nothing is on your machine. The session reads
+   `CLAUDE.md`, which sends it to `AGENTS.md`, the module registry and the
+   docs map, so no further setup is needed for the assistant to know the
+   conventions.
+4. The committed `.claude/settings.json` applies in that container too: the
+   `SessionStart` hook restates the delivery rule, the `Stop` hook refuses to
+   end a turn silently on work that is not committed and pushed, and the
+   read-only `git` and check-script commands are pre-approved. This matters
+   more here than on a laptop, because **the container is discarded when the
+   session ends.** An edit that was never pushed is gone, not pending.
+
+**Other assistants and hosts.** Any agent that reads `AGENTS.md` and can push
+to a branch fits the same workflow. GitLab, Bitbucket and the other hosts do
+not: the checks, the six-platform build and the version folding are GitHub
+Actions workflows under `.github/workflows/`, so on another host there is no
+compiler until someone ports them.
+
+## Step 2 — Understand what CI does for you
+
+The Build workflow runs on every pull request and on every push to `main`. It
+is the only place the whole framework is compiled for everyone:
+
+| Leg | Platform | What it also does |
+|---|---|---|
+| ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
+| macos-latest, macos-15-intel | Apple Silicon and Intel | packages the app bundle; signs and notarises on `main` |
+| windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
+| Android backend check | syntax check against the NDK | — |
+
+Seven check workflows run beside it on every PR: the changelog guard, the
+llms-txt sync, UI reuse, callback cycles, UTF-8 path strings, locale-decimal
+numbers and Win32 names. Each is the CI form of a `scripts/check_*.py` script
+the assistant can run in its container before pushing.
+
+Three facts about CI decide how a cloud-only developer works:
+
+- **A branch with no PR gets nothing.** The workflows trigger on
+  `pull_request` and on pushes to `main`, not on pushes to a feature branch.
+  A draft PR counts. The Build workflow can also be started by hand against a
+  branch from the Actions tab (`workflow_dispatch`).
+- **Every leg uploads the packaged application as a workflow artifact**, kept
+  for seven days: `UCDemo-Windows-<version>-<arch>`,
+  `UCDemo-MacOS-<version>-<arch>` and `UltraCanvas-Linux-<version>-<arch>`.
+  That download is how you run and look at the app without compiling it.
+  The macOS one is a disk image holding an `UltraCanvas` folder: copy the
+  whole folder to Applications, because its apps share the `Frameworks/`
+  inside it and do not start when moved out on their own.
+- **A missing changelog entry fails CI before anything builds.** A framework
+  change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
+  change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
+  assigned on `main` after the merge, never on the branch.
+
+## Step 3 — The first session: skeleton, changelog, pull request
+
+Ask for the skeleton and the PR in the same session, because nothing can be
+verified until the PR exists:
+
+> Create `Apps/MyApp` modelled on `Apps/UltraAuthenticator`: a headless core
+> library plus a GUI target, `--version` from `Docs/MyApp/CHANGELOG.md`
+> through `cmake/UltraCanvasVersion.cmake`, the version in the window title,
+> an icon under `media/appicon/`, and the `option()` block in the root
+> `CMakeLists.txt`. One window with an `UltraCanvasToolbar` and an
+> `UltraCanvasSplitPane`. Read `AGENTS.md` and
+> `Docs/UltraCanvas/UltraCanvasUIElements.md` first. Add the changelog, run
+> the check scripts, commit, push, and open a draft pull request titled
+> `MyApp: application skeleton with toolbar and split pane`.
+
+The assistant can compile in its container when the environment's network
+policy lets it install the Ubuntu packages from `GettingStarted.md` step 1; it
+cannot show a window, since the container has no display. So the first real
+proof is CI, and the first look at the app is the artifact.
+
+When the assistant opens the PR it renames the chat to start with the PR
+number, and it can **watch the PR**: CI failures and review comments wake the
+session, and it fixes and pushes or explains what is blocking. Ask for that
+explicitly ("watch the PR and fix CI") if it does not offer.
+
+## Step 4 — The working loop
+
+Every change after the skeleton follows the same loop. One bounded change per
+session; the assistant does the typing, GitHub does the building, you do the
+looking.
+
+1. **Ask for one change**, naming the elements and the docs to read, as the
+   prompt recipes in `GettingStarted.md` do.
+2. **The assistant edits, runs the check scripts, commits and pushes** to the
+   PR branch. The `Stop` hook stops it from ending a turn with unpushed work.
+3. **CI builds and tests.** Six platforms, the checks, the package consumer.
+   Ten to twenty-five minutes.
+4. **The assistant reads the result.** A red leg is its job: it reads the
+   job log, reproduces what it can in the container, fixes and pushes. A
+   review comment from you or a bot is handled the same way.
+5. **You download the artifact and run the app.** Describe what you see in
+   the next prompt, or attach a screenshot. This is the only step the
+   assistant cannot do for you.
+6. **Read the `## Delivery` block** at the end of every reply. It says what
+   is committed, what is pushed and which PR carries it. *Uncommitted* or *no
+   pull request* means nothing has reached anyone yet.
+
+Two things to say to the assistant that save a round trip each:
+
+- "Before pushing, run the build and every `scripts/check_*.py` in your
+  container, then push once." One validated push beats three speculative
+  ones, and each push costs a full CI matrix.
+- "If CI is red, read the log and fix it before reporting back." A reply that
+  describes a failure without a pushed fix is a wasted turn.
+
+## Step 5 — Review and merge
+
+- Review the PR on GitHub as you would any other. Small asks ("rename this",
+  "add a test for that") the assistant implements and pushes; larger ones it
+  proposes first.
+- **Do not merge while the session may still push.** A merged PR cannot
+  receive commits. Merge after the session says it is done, or tell it so it
+  restarts from `main` and opens a fresh PR for the rest.
+- Merge with the PR title as the commit message, not the branch name.
+  Session branches have random names (`claude/busy-ptolemy-iy5fog`) that mean
+  nothing in `git log`.
+- After the merge, `main` builds once more and the changelog fold assigns the
+  framework version. The next session starts from that `main`.
+
+## Step 6 — When the session ends
+
+A session can end at any time: you close it, it times out, the container is
+reclaimed. Before that happens, the work must be in the PR. The hooks and the
+`## Delivery` block exist for this; read the block. If a session did end with
+work unpushed, it is lost, and the next session starts the change again from
+the PR's last commit.
+
+A new session on the same branch picks up where the PR is. Tell it the PR
+number and what is left, or point it at the `## Next Task` block of the last
+reply.
+
+## What you do not need
+
+- A C++ compiler, CMake or any library on your machine.
+- A clone of the repository. GitHub's web editor is enough for the odd typo
+  fix, and the assistant handles everything else.
+- The platform-specific steps of `GettingStarted.md` (toolchains, packaging
+  scripts). CI runs them.
+
+## What you still need
+
+- The main guide's rules, because the assistant is held to them: elements
+  from the catalogue, UTF-8 paths, dot-decimal numbers, no Win32 macro names,
+  a changelog entry per change, docs for new APIs.
+- A machine that can run the artifact for the platform you ship to, to look
+  at the application. A screenshot from the assistant does not exist in this
+  workflow.
+- Patience with the CI cycle. The matrix is the compiler, and it takes
+  minutes, not seconds, so bundle a prompt's worth of change per push.
+
+## Checklist
+
+- [ ] Claude GitHub App installed on the repository; GitHub connected in the Claude app
+- [ ] First session: skeleton, changelog entry, checks run, pushed, draft PR open
+- [ ] The assistant is watching the PR
+- [ ] Every change: one prompt, one validated push, CI green, artifact downloaded and looked at
+- [ ] `## Delivery` read at the end of every reply; nothing left uncommitted
+- [ ] Merged with the PR title, only after the session said it was done
+
+==============================================================================
 FILE: Docs/GettingStarted.md
 ==============================================================================
 
@@ -3235,6 +3451,19 @@ of the typing. It is written around **Claude Code**, because the repository
 carries its configuration (`CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`
 and the hooks), but every step names what to do with another assistant too.
 
+**Choose your platform as you read.** Every step that differs by operating
+system offers one collapsed section per OS: Linux, macOS and Windows. Open the
+one you work on; open another to see what a colleague on that platform does.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
+the same choice on its first page, preselected to the machine it runs on, and
+then checks and installs the packages below, names the matching SDK, writes
+the project skeleton of step 3 and prepares the first prompt for the
+assistant. `UltraCanvasStart --check` does the checking in a terminal.
+
+If you have no compiler at all and work through an AI assistant and GitHub
+only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
+this: it says where each step happens when CI is the compiler.
+
 The short version: **the repository already teaches the assistant how to work
 here.** Your job is to build it once, keep the assistant pointed at the docs,
 ask for one bounded change at a time, and run the checks before every push.
@@ -3245,33 +3474,100 @@ hand-paints controls, or leaves work in a container that is thrown away.
 
 ## Step 1 — Install the toolchain
 
-UltraCanvas is C++20 built with CMake ≥ 3.16. Clang is the default compiler on
-Linux.
+UltraCanvas is C++20 built with CMake ≥ 3.16. Pick your platform.
+
+<details>
+<summary><b>Linux</b> — Ubuntu / Debian, Clang is the default compiler</summary>
 
 ```bash
-# Ubuntu / Debian — the core set
 sudo apt install build-essential cmake pkg-config clang \
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libfreetype6-dev \
     libvips-dev libglib2.0-dev libtinyxml2-dev libfmt-dev \
     libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+```
 
-# macOS
-brew install cmake cairo pango freetype vips harfbuzz
+Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
+`libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
+decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
+for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
+Other distributions use the same library names under their package manager.
 
-# Windows — MSYS2 CLANG64 shell (see build-win.cmd for the package list)
+</details>
+
+<details>
+<summary><b>macOS</b> — Xcode Command Line Tools and Homebrew, Apple Silicon or Intel</summary>
+
+```bash
+xcode-select --install          # Apple Clang, git, make
+brew install cmake pkg-config cairo pango harfbuzz vips glib freetype tinyxml2
+
+# Optional: the libraries the CI build adds for the plug-ins
+brew install libcdr librevenge boost little-cms2 icu4c   # CDR plug-in
+brew install zbar                                         # barcode decoding
+brew install mupdf                                        # PDF plug-in
+brew install c-ares libsodium                             # UltraNet DNS, UltraCrypt
+brew install leptonica tesseract                          # OCR plug-in
+brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
+```
+
+Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
+directory itself. The complete list is the *Install dependencies (macOS)* step
+in `.github/workflows/build.yml`.
+
+</details>
+
+<details>
+<summary><b>Windows</b> — MSYS2 CLANG64 (x86_64) or CLANGARM64 (Windows on ARM)</summary>
+
+The supported toolchain is MSYS2 with the **CLANG64** environment: Clang,
+libc++, Ninja. That is what CI builds and what `package-win.sh` packages from;
+MSVC and the MINGW64 gcc environment are not supported. Install MSYS2 from
+<https://www.msys2.org>, open the **MSYS2 CLANG64** shell, and:
+
+```bash
+pacman -Syu          # close and reopen the shell if it asks you to
 pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake \
     mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-pkgconf \
+    mingw-w64-clang-x86_64-cppwinrt \
     mingw-w64-clang-x86_64-cairo mingw-w64-clang-x86_64-pango \
     mingw-w64-clang-x86_64-harfbuzz mingw-w64-clang-x86_64-glib2 \
     mingw-w64-clang-x86_64-freetype mingw-w64-clang-x86_64-tinyxml2 \
-    mingw-w64-clang-x86_64-libvips
+    mingw-w64-clang-x86_64-libiconv mingw-w64-clang-x86_64-zlib \
+    mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-glew \
+    mingw-w64-clang-x86_64-fmt mingw-w64-clang-x86_64-curl-winssl \
+    git zip
+
+# Optional: what the CI build adds for the plug-ins
+pacman -S mingw-w64-clang-x86_64-rust                                  # Vectorizer
+pacman -S mingw-w64-clang-x86_64-libcdr mingw-w64-clang-x86_64-librevenge \
+    mingw-w64-clang-x86_64-lcms2 mingw-w64-clang-x86_64-icu \
+    mingw-w64-clang-x86_64-boost                                       # CDR plug-in
+pacman -S mingw-w64-clang-x86_64-mupdf mingw-w64-clang-x86_64-libmupdf # PDF plug-in
+pacman -S mingw-w64-clang-x86_64-leptonica mingw-w64-clang-x86_64-tesseract-ocr  # OCR
 ```
 
-The complete, current three-OS lists are the ones CI installs in
-`.github/workflows/build.yml`; the optional plugins (CDR, PDF via MuPDF, OCR,
-Vectorizer, audio, video) each add a library, and every one of them can be
-switched off with a `-DULTRACANVAS_PLUGIN_<NAME>=OFF` option when you do not
-need it. `Docs/Dependencies.md` says which library each feature pulls in.
+On Windows on ARM replace `mingw-w64-clang-x86_64-` with
+`mingw-w64-clang-aarch64-` and use the CLANGARM64 shell. The complete list is
+the *Setup MSYS2 (Windows)* step in `.github/workflows/build.yml`.
+`build-win.cmd` in the repository root carries the same list.
+
+Two Windows-specific rules the checks enforce: file paths go through
+`PathFromUtf8` / `PathToUtf8` / `OpenFileUtf8`, never `p.string()` or
+`fs::path(str)`, because libc++ converts those through the ANSI code page and a
+Thai or emoji file name then names a different file; and no function may carry
+the name of a Win32 A/W macro (`CreateFile`, `LoadImage`, `SendMessage`),
+because `<windows.h>` renames it in some translation units and the link fails
+only on Windows.
+
+</details>
+
+Every optional plug-in can be switched off with `-DULTRACANVAS_PLUGIN_<NAME>=OFF`
+when you do not need it, and `Docs/Dependencies.md` says which library each
+feature pulls in. If you would rather not build the framework at all, the SDK
+([`UltraCanvasSDK.md`](UltraCanvasSDK.md)) is the framework already built for
+each of these platforms; the compiler and the libraries above are still needed.
 
 ## Step 2 — Clone and build the whole tree once
 
@@ -3282,6 +3578,35 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/bin/UltraCanvasDemo
 ```
+
+<details>
+<summary><b>Linux</b></summary>
+
+The core builds as a shared library by default, as CI does; the demo and the
+other applications sit in `build/bin/`.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+The core builds as a static library by default. The applications are plain
+executables under `build/bin/`; `package-macos.sh` turns them into bundles in
+step 10.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
+`./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
+command prompt with the MSYS2 `bin` directory on `PATH`. The executables are
+GUI-subsystem programs, so they print nothing to a console;
+`Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
+build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
+
+</details>
 
 Build everything the first time, even though you only want your own app. Two
 reasons:
@@ -3344,7 +3669,7 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Install the framework once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK artifact CI builds for your platform ([`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
 Both routes are validated on every pull request: CI builds the in-tree
 applications, and it installs the framework into a scratch prefix and builds
@@ -3467,6 +3792,14 @@ int main(int argc, char* argv[]) {
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __argv); }
 #endif
 ```
+
+The `#ifdef` blocks are the whole of what differs per platform in an
+application's entry point: Linux needs X11 threading and the signal handlers,
+Windows needs `WinMain` because the executables are GUI-subsystem programs,
+and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
+so no console opens beside the window, and embed the icon in the `.exe` with
+`ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
+Explorer and the taskbar read.
 
 Then, in the same change: a `Docs/MyApp/CHANGELOG.md` whose first line is
 `#### 2026-10-01 *0.1.0*`, one `_ultracanvas_declare_product()` line in
@@ -3627,15 +3960,45 @@ How you drive the assistant matters as much as what it knows.
 
 ## Step 10 — Package
 
-- Linux: `./package-linux.sh` (portable tree with every app and a shared
-  `lib/`) or `appimage/` for a single-app AppImage.
-- Windows: `./package-win.sh`; `./set-version.sh` refreshes the `.rc` and
-  manifest literals that windres needs.
-- macOS: `./package-macos.sh`, or `package_and_notarize-macos.sh` for a
-  signed, notarised bundle (`Docs/UltraCanvas/UltraCanvasMacBundle.md`).
-- WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
-  lists what differs in the browser (`Run()` never returns, no synchronous
-  file pickers, text-only clipboard).
+<details>
+<summary><b>Linux</b></summary>
+
+`./package-linux.sh` builds a portable tree with every application and a
+shared `lib/` holding the dependent `.so` files, paid for once; `appimage/`
+builds a single-application AppImage.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+`./package-macos.sh` builds the application bundle and a disk image for an
+unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
+notarised bundle a release ships; it needs a Developer ID certificate in the
+keychain and the notarisation credentials the script names. CI runs it only on
+pushes to `main`; pull requests get the unsigned bundle.
+`Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
+`Info.plist`, icons, and how web locations and aliases are handled.
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+`./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
+collects every application with the DLLs it needs into one standalone zip.
+`--no-sign` skips Authenticode signing when no certificate is present;
+`SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
+release uses. The version in the `.exe` resource and the manifest comes from
+the app's changelog line; only the Windows resource files still carry a literal
+copy, because `windres` reads them from disk: run `./set-version.sh` after
+bumping the version, and the CMake configure warns when they are stale.
+
+</details>
+
+WebAssembly is experimental: `Docs/UltraCanvas/UltraCanvasWebAssembly.md`
+lists what differs in the browser (`Run()` never returns, no synchronous file
+pickers, text-only clipboard).
 
 ---
 
@@ -3692,6 +4055,138 @@ assistant must read, which is what stops it guessing.
 - [ ] Docs updated and `llms.txt` regenerated in the same change
 - [ ] Committed, pushed, pull request open, `## Delivery` block read
 - [ ] App run and looked at on each platform you ship to
+
+==============================================================================
+FILE: Docs/UltraCanvasSDK.md
+==============================================================================
+
+# The UltraCanvas SDK
+
+**Version:** 1.0.0
+**Last Modified:** 2026-10-03
+**Author:** UltraCanvas Framework
+
+The SDK is the framework **already built and installed**, zipped up: the
+headers, the libraries, the file-format plug-ins and the CMake package that
+`find_package(UltraCanvas)` reads. It exists so that an application outside
+this repository can be built without first compiling the framework, and so
+that UltraCanvasStart can set a machine up by unpacking one folder instead of
+running a forty-minute build.
+
+CI produces it on every pull request and every push to `main`, one per
+platform leg, as a workflow artifact:
+
+| Artifact | Contents |
+|---|---|
+| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
+
+Each is the result of `cmake --install build --prefix <sdk>` for that leg,
+plus a copy of this page, the licenses and the `PackageConsumer` example. The
+version in the name is the framework's, from the first line of
+`Docs/UltraCanvas/CHANGELOG.md`. Artifacts are kept for seven days; a release
+copy is a matter of attaching the same file to a GitHub release.
+
+## Layout
+
+```
+UltraCanvas-SDK-<platform>-<version>-<arch>/
+  include/ultracanvas/          the headers, as a mirror of the source layout
+    include/                    the public headers - this is the include path
+    Plugins/                    the chart, diagram and document headers
+    libspecific/  OS/           reached only through "../" from the public headers
+  include/ultracanvas/plugins/  the format plug-ins' public headers
+  lib/                          libUltraCanvas, the module archives, the plug-ins
+  bin/                          on Windows: libUltraCanvas.dll (the import library is in lib/)
+  deps/                         Windows and macOS: the libraries the framework uses
+    include/                    cairo, pango, harfbuzz, freetype, glib, libvips, tinyxml2, ... headers
+    lib/                        import libraries (.dll.a) or dylibs, static archives, lib/pkgconfig/*.pc, lib/cmake/*
+    bin/                        Windows: the DLLs the core and those libraries need at run time
+  lib/cmake/UltraCanvas/        UltraCanvasConfig.cmake and the exported targets
+  lib/cmake/VirtualFS/          VirtualFS, found through its own package
+  lib/ultracanvas/              the UltraCanvasAllFormats registrar's objects
+  examples/PackageConsumer/     the two-file application that uses all of it
+  README.md  LICENSE  THIRD_PARTY_LICENSES.md
+```
+
+## Using it
+
+```bash
+tar xzf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.gz   # unzip on Windows
+cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-0.9.142-x86_64
+cmake --build build
+```
+
+and in `MyApp/CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas
+                                    ${ULTRACANVAS_PLUGIN_TARGETS}
+                                    UltraCanvas::UltraCanvasAllFormats)
+```
+
+`examples/PackageConsumer` inside the SDK is exactly this, with a `main.cpp`
+that opens a window and registers the formats. Copy it, rename it, start
+there. The imported targets and variables the package provides are listed at
+the top of `UltraCanvasConfig.cmake`.
+
+On Linux the shared core sits in `lib/`; run an application with that
+directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
+the executable the way `package-linux.sh` does. On Windows the core is
+`bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
+the executable, which is what `package-win.sh` does for a release.
+
+## What the SDK does not replace
+
+The SDK saves building the framework. It does not carry a compiler, CMake or
+pkg-config: the host still needs, from [`GettingStarted.md`](GettingStarted.md)
+step 1, a C++20 compiler, CMake ≥ 3.16 and pkg-config - on Windows that is
+MSYS2's CLANG64 (or CLANGARM64) toolchain, which the SDK's headers and import
+libraries are built for.
+
+The **development files of the libraries the framework uses** are a platform
+matter. The public headers include `<cairo/cairo.h>`, `<glib.h>` and
+`<vips/vips8>`, and the installed package re-finds cairo, pango, freetype,
+glib, tinyxml2 and libvips through pkg-config:
+
+- **Windows and macOS SDKs carry them**, in `deps/`: `scripts/sdk-bundle-deps.sh`
+  copies the headers, import libraries or dylibs, static archives, `.pc` and
+  CMake config files of every package in the pkg-config closure of those
+  modules (plus fmt, libcurl and zlib where the build used the system ones),
+  and on Windows the DLLs the core needs at run time. The `.pc` files are
+  relocatable (`prefix=${pcfiledir}/../..`), and `UltraCanvasConfig.cmake`
+  puts `deps/` first on `CMAKE_PREFIX_PATH`, which is all FindPkgConfig and
+  `find_dependency()` need. A consumer therefore builds with no MSYS2 or
+  Homebrew packages installed; CI proves it by building `PackageConsumer`
+  with `PKG_CONFIG_LIBDIR` pointed at an empty directory. The libraries
+  macOS itself provides (zlib, expat, libxml2, libarchive, libcurl) come
+  as Homebrew's stub `.pc` files pointing at the system SDK. On macOS the
+  bundled dylibs carry `@rpath` install names and the package links consumers
+  with an rpath to `deps/lib`, so the application runs on a Mac without
+  Homebrew; `package-macos.sh` still re-bundles them into the app for a
+  release. On Windows put `deps/bin` on `PATH` to run, or copy the DLLs beside
+  the executable as `package-win.sh` does. `ULTRACANVAS_DEPS_DIR` names the
+  directory, or is empty.
+- **The Linux SDK does not**: the distribution's `-dev` packages are the
+  right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
+
+## Compatibility
+
+An SDK is built on one platform leg and is for that platform and architecture
+only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
+runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
+DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
+`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
+runtime dependency beyond the libraries named above.
+
+The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
+with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
+accepts any 0.x SDK.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/AndroidOnLinuxInvestigation.md
@@ -20954,6 +21449,178 @@ code.
   Windows/macOS default-open placeholders.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFileDialog.md
+==============================================================================
+
+# The file dialog
+
+`UltraCanvasFileDialog` (`UltraCanvasModalDialog.h`) is the framework's own
+open / save / select-folder dialog. It is built from elements, the same on
+every platform:
+
+- a path field with an **Up** button and six view buttons (Details, List and
+  four icon sizes);
+- a folder tree (Home, the user's places and every mounted drive, loaded as
+  each node is expanded) beside the listing of the current folder, which is an
+  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard;
+- the file-name field, and below it the file-type filter: a dropdown, or a row
+  of toggle buttons (see [Filter toggles](#filter-toggles)).
+
+## Opening one
+
+Most code goes through `UltraCanvasFileLoader` (`UltraCanvasFileLoader.h`). Its
+four calls show this dialog while
+`UltraCanvasDialogManager::SetUseNativeDialogs(false)` is in force (the
+default), and the platform's picker while it is `true`:
+
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Open picture")
+    .AddFilter("Images", std::vector<std::string>{ "png", "jpg", "jpeg", "webp" })
+    .AddFilter("All files", std::vector<std::string>{ "*" })
+    .SetParentWindow(window.get());
+
+UltraCanvasFileLoader::OpenFileDialog(opts,
+        [](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK) return;   // Cancel, or nothing chosen
+            // ... open path (UTF-8: convert with PathFromUtf8)
+        });
+```
+
+| Call | Mode | Callback receives |
+|---|---|---|
+| `OpenFileDialog` | `FileDialogType::Open` | one path |
+| `OpenMultipleFilesDialog` | `FileDialogType::OpenMultiple` | `std::vector<std::string>` of paths |
+| `SaveFileDialog` | `FileDialogType::Save` | one path (the file need not exist) |
+| `SelectFolderDialog` | `FileDialogType::SelectFolder` | one folder |
+
+The callback runs when the dialog closes. `DialogResult::OK` always comes with
+at least one path; anything else means the user cancelled. Paths are UTF-8.
+An Open or Save that succeeds is added to the recent-files list unless the
+options say `SetRegisterAsRecent(false)`.
+
+`FileDialogOptions` carries the title, `SetInitialDirectory`,
+`SetDefaultFileName`, the filters (`AddFilter(description, extension or
+extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
+`SetFilterToggles`, `SetConfirmOverwrite` and the parent window.
+
+### Building it yourself
+
+When a caller wants this dialog whatever the native-dialogs setting says, it
+creates the dialog from a `FileDialogConfig` itself:
+
+```cpp
+FileDialogConfig config;
+config.title = "Choose a folder of photos";
+config.dialogType = FileDialogType::SelectFolder;
+config.initialDirectory = startFolder;   // empty: the last used folder
+
+auto dialog = UltraCanvasDialogManager::CreateFileDialog(config);
+dialog->onFileSelected = [](const std::string& folder) { /* ... */ };
+UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow);
+```
+
+A config starts without filters: the dialog then lists every file under an
+"All Files" entry. A folder picker ignores filters.
+
+| `FileDialogConfig` field | |
+|---|---|
+| `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
+| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
+| `defaultFileName` | Put into the name field (Save) |
+| `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
+| `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
+| `showHiddenFiles` | List dot-files / hidden files |
+| `filterToggles` | Toggle buttons instead of the dropdown |
+| `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
+| `width`, `height` | 900 × 560 by default; the size the user left it at wins |
+
+The result arrives through `onFileSelected(path)` (single modes),
+`onFilesSelected(paths)` (`OpenMultiple`), or `GetSelectedFilePath()` /
+`GetSelectedFilePaths()` once `ShowDialog`'s result callback reports
+`DialogResult::OK`. `onDirectoryChanged(folder)` fires as the user moves
+between folders.
+
+## What the user can do
+
+- **Open** accepts a selected file, a name typed into the name field, a path
+  typed relative to the folder shown, or a double-click / Enter in the
+  listing. A typed folder name opens that folder instead of accepting it.
+- **Save** accepts any name in a folder that exists. A name that is already a
+  file gets a **Replace File** question first ("… already exists. Do you want
+  to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
+  dialog open on that name. A caller that asks itself, or appends to the
+  file, turns this off with `confirmOverwrite = false`
+  (`FileDialogOptions::SetConfirmOverwrite(false)`).
+- **Select folder** lists folders only. OK answers the folder highlighted in
+  the listing, else the folder being shown.
+- Return in the path field goes to the folder typed there. A file path opens
+  its folder and puts the name into the name field.
+
+Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
+modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
+
+## Filter toggles
+
+For an Open dialog whose filters are *kinds* of file rather than one format
+each, a dropdown of long extension lists is hard to read. With
+`filterToggles` set (`FileDialogOptions::SetFilterToggles(true)` through the
+loader), the "Files of type" dropdown becomes a **Show:** row of toggle
+buttons, one per filter, labelled with the filter's description:
+
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Open media").SetFilterToggles(true)
+    .AddFilter("Images", imageExtensions)
+    .AddFilter("Audio",  audioExtensions)
+    .AddFilter("Video",  videoExtensions)
+    .AddFilter("All files", std::vector<std::string>{ "*" })
+    .SetParentWindow(GetWindow());
+UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, onPicked);
+```
+
+- Any number of buttons can be on. The listing shows the files that any
+  button that is on matches. Folders and archives are always listed.
+- All buttons start on except an "All files" (`*`) filter, which would match
+  everything and make the others pointless. If every filter is `*`, they all
+  start on.
+- The last button that is on cannot be switched off, so the listing never
+  goes empty.
+- The extensions stay one hover away: the row's tooltip lists them per
+  button, cut to 24 with a count for a long list.
+- A native dialog has no toggles. `UltraCanvasFileLoader` hands it the same
+  filters as a list, headed by an extra "All supported files" filter that
+  matches every one of them.
+
+`UltraCanvasMediaViewer`'s Open button is the reference use. It sorts every
+extension the viewer opens into Images (bitmaps, vector drawings, 3D models),
+Audio, Video, Documents and Text with the viewer's own `ClassifyFile`, and
+leaves out a kind the build cannot show.
+
+## What it remembers
+
+The view, the window size, the Details column widths and the last used folder
+are kept between showings in `FileDialog.conf` in the UltraCanvas settings
+folder (`UltraCanvasFileDialogSettings.h`). That folder is
+`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas`
+on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
+elsewhere. Every application shares the file. The last used folder is either
+one for all applications (Global) or kept per application (Individual); ULTRA
+OS settings switches between them. A caller that names an
+`initialDirectory` always opens there.
+
+## Native or framework
+
+The system dialogs together (message boxes, input, print) are described in
+[UltraCanvasSystemDialogs.md](UltraCanvasSystemDialogs.md).
+
+`UltraCanvasDialogManager::SetUseNativeDialogs(bool)` decides for the whole
+application: message boxes and `UltraCanvasFileLoader`'s file dialogs follow
+it together. An application that wants this dialog for files but the
+platform's message boxes builds the dialog itself as above. UltraViewer,
+UltraCleaner, UltraAIApp and UltraAuthenticator leave native dialogs off.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileLock.md
 ==============================================================================
 
@@ -21840,6 +22507,18 @@ entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
 
+**The renderer that drew it counts too.** Every entry also records the
+renderer generation of the build that wrote it
+(`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
+generation is a miss handled the same way. Bump that constant in any change
+that makes a producer draw something different for the same file at the same
+size — a renderer fix, a new producer for a format, another fit or
+background — or the fix never reaches the thumbnails already on disk. That
+is what happened to the vector previews drawn "at the fit squared" before
+2026-09-26: the fixed renderer drew every new tile right, while each size
+cached by an older build kept showing a speck in the corner, so the same
+Xara file looked right in a folder and broken in UltraFiler's History view.
+
 **Retention is two weeks since the entry was last served.** Serving one stamps
 it with the day (at most one write per file per day, so scrolling a folder of
 a thousand pictures costs no disk writes after the first), and entries not
@@ -22560,6 +23239,39 @@ Set folder icon*: that entry converts any picture to a QOI file in the
 application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
 that copy, so the icon survives the original being moved or deleted. *Extras >
 Remove folder icon* takes it away again.
+
+## Favorite mark
+
+`SetFavoriteMarkProvider(fn)` puts a small red heart — the one of
+`media/icons/rating-heart-on.svg`, drawn as a vector so it needs no asset — on
+every entry the host counts as a favorite. The heart sits at the **outermost
+left** of the entry, **vertically centred**:
+
+| View | Where the heart goes |
+|---|---|
+| Details, List, Size bars | In a 14 px gutter left of the icon, centred on the row |
+| Thumbnail tiles | At the tile's left edge, centred on the icon box (not on the caption) |
+| Treemap | At the cell's left edge, centred on the cell — only in a cell of at least 46 × 42 px, so the sizes stay readable |
+
+```cpp
+filer->SetFavoriteMarkProvider([&favorites](const FilerEntry& e) {
+    return favorites.count(e.path) > 0;      // a lookup, never a disk walk
+});
+// ... after the host's favorites change:
+filer->RequestRedraw();
+```
+
+The provider is asked for every entry while it is painted, and the widget
+keeps no list of its own, so a repaint is all a changed favorite needs. While a
+provider is set the row views reserve the gutter for every row, favorite or
+not, so icons and names stay in one column; `SetFavoriteMarkProvider({})`
+drops the marks and gives the gutter back. A dimmed entry (type filter) dims
+its heart with it.
+
+UltraFiler answers it with everything in its Favorites view (the heart
+button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
+with folders pinned only into the folder tree's *Pinned* section — and leaves
+the Favorites view's own pages without it, where every entry would carry one.
 
 ## Folder previews
 
@@ -23446,7 +24158,9 @@ paths itself carries the meaning — a most-recently-used history, a ranked
 result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
 over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
 for the file list: `SetSort()` and the Details column headers leave the order
-alone until the widget returns to a folder listing, which is always sorted.
+alone until the widget returns to a folder listing, which is always sorted —
+and the context menu's *Display > Sort* is greyed out, so the choice is not
+offered only to be ignored.
 
 ```cpp
 filer->SetFileListOrderPreserved(true);
@@ -23586,6 +24300,7 @@ reports what the system hides, not what the host asked for.
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
+| `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
@@ -31409,14 +32124,29 @@ label->SetInlineImages({ star });
   The text's ascent and descent are measured from the label's own font.
 - An image wider than the label's line is scaled down to fit, keeping its
   aspect ratio.
-- `InlineImageRect(i)` returns where image `i` is drawn, in label-local
+- `fit` (`ImageFitMode`, default `Fill`) and `position` (`ImagePosition`,
+  default centred) say how the picture fills its `width` x `height` box, like
+  CSS `object-fit` / `object-position`: `Fill` stretches it to the box;
+  `Contain`, `Cover`, `NoScale` and `ScaleDown` keep its shape and place it by
+  `position`, clipped to the box.
+- `frame` (`LabelInlineImageFrame`) is the CSS box around the picture:
+  margins, padding, four border sides (`borderTop` ... `borderLeft`, each a
+  `LabelInlineImageBorder`: width, colour, dash; `SetBorders(w, colour)` for
+  one all round), `borderRadius` and `background`. The line reserves the whole margin box; the background fills
+  the border box, the border is drawn inside it, and the picture is clipped to
+  the rounded corners. The default frame is empty: the picture alone.
+- `InlineImageRect(i)` returns where image `i`'s picture is drawn (its content
+  box), and `InlineImageBoxRect(i)` its border box, in label-local
   coordinates.
 - A placeholder inside a `SetTextLinks` range is part of that link, so
   clicking the image activates it.
 
 The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
-text. An image in a block that has no text of its own still gets a line of
-its own, placed by `text-align`.
+text. Images in a block that has no text of its own go on lines of their own,
+placed by `text-align`: side by side on one wrapping line while only
+whitespace separates them, a space of their font apart where the HTML has
+whitespace, standing on the line's bottom unless `vertical-align` puts them at
+its top or middle; `display:block` or `<br>` starts a new line.
 
 ## Event Callbacks
 
@@ -31428,7 +32158,18 @@ std::function<void()> onHoverEnter;
 std::function<void()> onHoverLeave;
 std::function<void(const std::string&)> onTextChanged;
 std::function<void(long, long)> onSizeChanged;
+// Text links (SetTextLinks): the clicked link's href, and the hovered one's
+// as the pointer moves onto it ("" as it leaves the link).
+std::function<void(const std::string&)> onLinkActivated;
+std::function<void(const std::string&)> onLinkHovered;
 ```
+
+`SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
+beside the pointer, following it along the link and hidden again as the
+pointer leaves the link. It is off by
+default, for an app that shows the address in its status line instead
+(`HTML::BuildOptions::linkTooltips` sets it on the labels the HTML reader
+builds).
 
 ### Example Event Handling
 
@@ -34909,8 +35650,20 @@ chunks), or a line saying the file carries none.
 The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
 so each section is a heading over a two-column *Property / Value* table.
 The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+A picture whose header reads but whose pixels do not decode (a HEIC on a
+build without an HEVC decoder, a truncated file) says so instead of leaving
+the area empty: the display shows *Cannot decode this picture*, the info bar
+reads `dice.heic · 800 x 600 · 25.4 KB · cannot decode - heif: Unsupported
+feature: Unsupported codec`, and the Details panel adds a *Decoding* row with
+the same reason. The surface learns it only when it draws (that is when the
+pixels are decoded) and tells the viewer through
+`UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
+frame.
+
 button again closes it. Left / Right keep browsing, and the panel follows
-to the next file.
+to the next file. The panel's text is built only while it is open (on
+opening, then for each file loaded): browsing with it closed reads no
+metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -35747,6 +36500,9 @@ CloseActiveSubmenu()
 CloseAllSubmenus()
 CloseMenutree()
 ```
+
+A submenu entry with `enabled = false` is drawn greyed out and does not open
+its submenu — not on hover, not on click, not from the keyboard.
 
 ### Event Callbacks
 
@@ -53292,6 +54048,128 @@ volume->SetTrackSize(40.0f, 18.0f);   // long axis 40, short axis 18 — ON is a
   Toggles")
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSystemDialogs.md
+==============================================================================
+
+# ULTRA OS system dialogs
+
+The dialogs every application asks the system for — open a file, save a file,
+pick a folder, print, tell the user something, ask for a value — reached
+through one API whatever platform the application runs on. The DemoApp shows
+them all live under *ULTRA OS modules → System dialogs*
+(`Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp`).
+
+## Two implementations, one call
+
+Every dialog below comes in two forms, and the application picks with one
+switch:
+
+| `UltraCanvasDialogManager::SetUseNativeDialogs(...)` | What the user sees |
+|---|---|
+| `false` | the **ULTRA OS dialogs** — the framework's own, built from UltraCanvas elements (`UltraCanvasFileDialog`, `UltraCanvasModalDialog`, `UltraCanvasInputDialog`). They look and behave the same on every platform, and on ULTRA OS they *are* the system dialogs. |
+| `true` | the host platform's dialogs — GTK on Linux, the common dialogs on Windows, `NSOpenPanel` / `NSAlert` on macOS. |
+
+The ULTRA OS file dialog remembers its view, window size, column widths and
+last folder between showings and between applications
+(`UltraCanvasFileDialogSettings.h`); UOS-Settings edits where the last folder
+is kept.
+
+Printing has no framework-drawn dialog yet: `RequestPrintSettings()` always
+shows the platform's print dialog, and the job goes through IODeviceManager.
+
+## File dialogs — `UltraCanvasFileLoader`
+
+All four follow the native-dialogs switch and report through a callback
+(immediately for a native dialog, which blocks; when the user closes it for
+the framework's, which does not).
+
+```cpp
+#include "UltraCanvasFileLoader.h"
+
+FileDialogOptions opts;
+opts.SetTitle("Open a picture")
+    .SetParentWindow(window)                 // modal to the application window
+    .AddFilter("Images", {"png", "jpg", "jpeg", "webp"})
+    .AddFilter("All files", "*");
+
+UltraCanvasFileLoader::OpenFileDialog(opts,
+    [](DialogResult result, const std::string& path) {
+        if (result == DialogResult::OK) { /* path is UTF-8 */ }
+    });
+
+UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
+    [](DialogResult result, const std::vector<std::string>& paths) { /* ... */ });
+
+opts.SetDefaultFileName("untitled.png");
+UltraCanvasFileLoader::SaveFileDialog(opts,
+    [](DialogResult result, const std::string& path) { /* write to path */ });
+
+UltraCanvasFileLoader::SelectFolderDialog(FileDialogOptions().SetTitle("Choose a folder"),
+    [](DialogResult result, const std::string& folder) { /* ... */ });
+```
+
+`FileDialogOptions::SetFilterToggles(true)` shows the filters of the ULTRA OS
+dialog as a row of toggle buttons ("Show: Images | Audio | Video") rather than
+a dropdown; a native dialog gets them as a list headed by one that matches
+all of them. `SetShowHidden(true)` lists hidden files from the start.
+Its modes, the overwrite question in Save and building it directly are in
+[UltraCanvasFileDialog.md](UltraCanvasFileDialog.md).
+
+Paths come back as UTF-8. Convert them with `PathFromUtf8` before handing
+them to `std::filesystem` (see *Core conventions* in `AGENTS.md`).
+
+## Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager
+
+```cpp
+#include "UltraCanvasNativeDialogs.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+// Ask only: what printer, how many copies, which paper, duplex, page range.
+NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings("Report.txt", window);
+if (choice) {
+    IODeviceResult sent = PrintTextWithSettings(choice, "Report.txt", text);
+}
+
+// Ask and print in one call. A cancelled dialog comes back as
+// IODeviceResultCode::Cancelled, not as a failure.
+IODeviceResult result = PrintTextWithDialog("Report.txt", text, window);
+
+// A formatted document: PDF bytes, plus pages for renderers that cannot lay out a PDF.
+PrintDocumentWithDialog("Report.pdf", pdfBytes, "application/pdf", window, pages);
+```
+
+`NativePrintResult` (`IOPrintDialogChoice`) carries the printer's queue name,
+the `IOPrintOptions` the user chose (copies, collation, paper, orientation,
+duplex, colour, quality), the page range, and whether the user picked *Print
+to File* instead of a printer.
+
+## Message and input dialogs — `UltraCanvasDialogManager`
+
+```cpp
+UltraCanvasDialogManager::ShowInformation("Saved.", "Report", nullptr, window);
+UltraCanvasDialogManager::ShowWarning("The disk is nearly full.", "Disk", nullptr, window);
+UltraCanvasDialogManager::ShowError("The file could not be written.", "Save", nullptr, window);
+
+UltraCanvasDialogManager::ShowQuestion("Discard the changes?", "Close",
+    [](DialogResult r) { if (r == DialogResult::Yes) { /* ... */ } }, window);
+
+UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder",
+    "Untitled", InputType::Text,
+    [](DialogResult r, const std::string& value) { /* ... */ }, window);
+```
+
+`InputType::Password` masks the field. Native message dialogs block and call
+the callback before returning; the framework's do not block.
+
+## See also
+
+- `UltraCanvasModalDialog.h` — `UltraCanvasDialogManager`, `UltraCanvasFileDialog`, `UltraCanvasInputDialog`
+- `UltraCanvasNativeDialogs.h` — the platform dialogs, called directly
+- `UltraCanvasFileLoader.h` — file dialogs and typed loaders (`OpenImage`, `OpenAudio`, ...)
+- `IODeviceManager/UltraCanvasIODevicePrintDialog.h` — printing what a print dialog chose
+- [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md) — keyboard handling inside dialogs
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
 ==============================================================================
 
@@ -53907,6 +54785,9 @@ struct TextAreaStyle {
     // Scrollbars
     Color scrollbarTrackColor;
     Color scrollbarColor;
+    int   scrollbarWidth = 15;          // track thickness in px
+    float scrollbarCornerRadius = 0.0f; // 0 = square; 6 with width 12 matches ScrollbarStyle::Modern()
+    int   scrollbarThumbInset = 2;      // gap between track edge and thumb (0 = thumb fills the track)
     
     // Token styles for syntax highlighting
     struct TokenStyles {
@@ -58143,6 +59024,26 @@ tree->SetScrollToTopButtonStyle(style);
 // tree->SetShowScrollToTopButton(false);
 ```
 
+### Measuring the Tree
+
+```cpp
+int GetRequiredWidth(IRenderContext* ctx = nullptr)
+```
+
+The width the tree needs to show its widest row in full: indent, expander and
+check-flag slots, left icon and label text, plus the tree's right padding and
+border, the row's right icon and the vertical scrollbar while one is shown. Only
+the rows on show count - the children of a collapsed node do not. Text is
+measured with `ctx`, or the window's render context when `ctx` is null; the
+call returns 0 while there is neither (the tree is not in a window yet), so try
+again once the window is up.
+
+```cpp
+// Fit a sidebar to its folder names, with 10 px to spare.
+if (int need = tree->GetRequiredWidth(); need > 0)
+    splitPane->SetPaneFixedSize(0, need + 10);
+```
+
 ### Color Properties
 
 ```cpp
@@ -58432,6 +59333,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 |---------|------|---------|
 | 1.0.0 | 2024-12-19 | Initial release with full tree functionality |
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
+| 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 
 ## See Also
 
@@ -58592,8 +59494,8 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar or a pulsing circle (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
-| Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
-| Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
+| Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
+| Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
@@ -59358,6 +60260,13 @@ What the element does by itself:
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
   coordinates after the handles and before the rulers, `onViewChanged`,
   `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+- **Display quality** — `SetDisplayQuality(VectorDisplayQuality)`:
+  `Outline` draws every shape's outline as a one-pixel line and fills
+  nothing (no clips, effects or transparency either, so a shape hidden under
+  another or clipped away can still be found), `Simple` draws fills and lines
+  without antialiasing, `Normal` (the default) draws everything antialiased.
+  The same setting is `VectorRenderOptions::DisplayQuality` (with
+  `OutlineColor`) on a `VectorRenderer` drawn outside the canvas.
 - **Invalidation** — `InvalidateDoc(rect)` after an edit, or `Refresh()`.
 
 The element never edits the document and owns no tool: a selector, a pen,
@@ -72220,6 +73129,23 @@ settings.music.duckingRelease = 0.4;
 or set `duckingLevel = 1` to never duck at all. `videofx` takes the same as
 `--duck-threshold DB --duck-attack S --duck-hold S --duck-release S`.
 
+**Presets.** An app can offer one choice — the kind of footage — instead of
+four numbers. `SetDuckingPreset` fills in the threshold and the times and
+leaves `duckingLevel` alone; single fields set afterwards refine it:
+
+```cpp
+settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+```
+
+| `VideoFXDuckingPreset` | For | Threshold | Attack | Hold | Release |
+|---|---|---|---|---|---|
+| `Speech` (the defaults) | talking in quiet rooms | −36.5 dBFS | 0.12 s | 0.6 s | 0.8 s |
+| `Outdoor` | talking over wind and traffic | −28 dBFS | 0.12 s | 0.5 s | 0.7 s |
+| `LoudEvent` | crowds, engines, concerts: only the louder moments dip | −15 dBFS | 0.12 s | 0.2 s | 0.4 s |
+
+`videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
+values refine it whichever comes first on the command line.
+
 **Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
 `VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
 photo so the show ends with it:
@@ -72465,6 +73391,7 @@ videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
+videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
 ```
 
 ---
@@ -73694,6 +74621,146 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
+
+==============================================================================
+FILE: Docs/UltraPassword/README.md
+==============================================================================
+
+# UltraPassword
+
+The password vault for ULTRA OS: every password in one encrypted file,
+organised in a tree of groups, with a card per password that says how the
+website signs you in and how safe that is.
+
+Source: [`Apps/UltraPassword/`](../../Apps/UltraPassword/). Changelog:
+[`CHANGELOG.md`](CHANGELOG.md).
+
+## Using it
+
+**First run.** The window opens on a start page built like UltraMail's: the
+logo, the name and one button, *Create password vault*. It opens a short
+wizard — a name for the vault, the master password twice, a strength meter,
+and the key-protection profile — and the vault is created with two empty
+groups, *Personal* and *Work*. *Open existing vault…* opens a vault file from
+elsewhere instead (an export carried over from another computer).
+
+**Unlocking.** Once a vault exists the start page shows a master-password
+field. Three wrong passwords in a row start a wait — 1 s, then 2, 4, … up to a
+minute — on top of the cost of the key derivation itself.
+
+**Groups.** The tree on the left shows the vault at the root, its groups —
+which nest to any depth — and, under each group, its passwords. A group holds
+sub-groups and passwords at the same time. *New group* adds a group inside the
+selected one, *Rename* renames it (or the vault, at the root), *Delete group*
+removes it with everything inside after saying how much that is.
+
+**Password cards.** Selecting a group lists its passwords on the right as
+cards; selecting a password shows its card alone; typing in the search field
+searches title, website, user name, notes and single-sign-on provider across
+the whole vault (never the passwords themselves). A card shows the website
+(with *Open*), the user name (*Copy*), the password masked (*Show*, *Copy*),
+notes, the group and the date it last changed. A copied password is cleared
+from the clipboard after 30 seconds if it is still there.
+
+**How the site signs you in.** Every password records the website's sign-in
+method, shown as two pills at the top of its card — the method and a security
+rating — with one sentence on why:
+
+| Method | Rating | Why |
+|---|---|---|
+| Password only | Weak | Phishable, guessable, reusable after a breach |
+| Password + SMS code | Fair | SIM swapping and phishing can take the code |
+| Password + e-mail code | Fair | Whoever controls the mailbox gets in |
+| E-mail link or code | Fair | No password; the mailbox is the key |
+| Password + authenticator app | Good | TOTP stops a leaked password, not a fake login page |
+| Single sign-on (Google, Apple, …) | Good | As safe as the account it delegates to |
+| Passkey + password fallback | Strong | The password still works, so it is the weak point |
+| Password + security key | Very strong | FIDO2 checks the site's address: not phishable |
+| Passkey | Very strong | No shared secret, bound to the real site |
+
+The summary line over the cards counts how many passwords in the group rely
+on a password alone.
+
+**Adding and editing.** *New password* (or *Edit* on a card) opens a dialog for
+title, website, user name, the sign-in method (with the rating and the reason
+updating live), the provider for single sign-on, the password with a
+*Generate* button and a strength meter, the group, and notes. Every change is
+saved to the vault file at once.
+
+**Locking.** *Lock*, five minutes without input to the window, or minimising
+it wipes the decrypted vault and the key from memory and returns to the
+start page. An open dialog postpones the idle lock.
+
+## Export and import
+
+The vault file **is** the export format. *Export…* offers three choices:
+
+- **Vault file…** — an encrypted copy (`.upwvault`) that opens with the
+  current master password. The normal backup, and how a vault moves to
+  another computer.
+- **Vault file, own password…** — the same format under a separate password,
+  for a backup kept apart or a vault handed to someone else.
+- **Plain CSV…** — *not encrypted*, for importing into a browser or another
+  password manager. Asked for again before anything is written. Columns:
+  `name,url,username,password,note,group,signin_method,sso_provider` — the
+  first five are what Chrome, Edge, Firefox and Bitwarden read. A cell that
+  starts like a spreadsheet formula is prefixed with `'`.
+
+*Import…* reads a `.upwvault` (asking for its password) or a CSV from Chrome,
+Edge, Firefox, Bitwarden or UltraPassword itself, into a new group named
+*Imported - …*, so nothing already in the vault is overwritten.
+
+## Security
+
+| | |
+|---|---|
+| Key derivation | Argon2id (RFC 9106). Default *Maximum*: 1 GiB, 4 passes — libsodium's "sensitive" cost, far above OWASP's minimum. *Strong*: 256 MiB, 4 passes, for machines short of memory. Fresh 16-byte salt per vault and per password change. |
+| Encryption | XChaCha20-Poly1305, 256-bit key, fresh random 192-bit nonce on every save. |
+| Integrity | The 60-byte header (magic, version, algorithms, Argon2id cost, salt, nonce) is the AEAD's associated data: lowering the cost or editing anything is detected. The whole vault is one sealed blob, so entries cannot be dropped or swapped one at a time. |
+| Failure modes | No plaintext fallback; an empty password is refused; a wrong password and a modified file give the same message. |
+| On disk | Atomic writes (temporary file, flush, rename), mode 0600. |
+| In memory | The derived key sits in a locked, wiped `UltraCryptSecureBuffer`; strings holding passwords are overwritten before release on lock, delete and close. |
+
+What it does **not** defend against: malware running as the same user while
+the vault is unlocked, which can read the process's memory or the clipboard.
+
+### File format
+
+```
+offset size field
+0      8    magic "UPWVAULT"
+8      1    container version (1)
+9      1    KDF id   (1 = Argon2id)
+10     1    AEAD id  (1 = XChaCha20-Poly1305)
+11     1    reserved (0)
+12     4    Argon2id passes          (little-endian)
+16     4    Argon2id memory, KiB     (little-endian)
+20     16   Argon2id salt
+36     24   AEAD nonce
+60     ...  ciphertext || 16-byte Poly1305 tag
+```
+
+The plaintext is a tagged binary payload (`UPWD`, version 1, then records of
+vault info, groups and entries, each a list of `tag, length, bytes` fields).
+Readers skip tags and record kinds they do not know, so later versions can
+add fields without breaking older readers. See
+`Apps/UltraPassword/core/PasswordVault.cpp` and `VaultFile.cpp`.
+
+## Where the vault lives
+
+`$XDG_DATA_HOME/UltraPassword/vault.upwvault`, else
+`%APPDATA%\UltraPassword\vault.upwvault` on Windows, else
+`~/.local/share/UltraPassword/vault.upwvault`. `--vault PATH` uses another
+file.
+
+## Building and testing
+
+The core (`UltraPasswordCore`: model, vault file, CSV, generator) needs only
+UltraCrypt (libsodium) and builds headless; the GUI is added when the
+framework is built. `-DBUILD_TESTS=ON` adds `UltraPasswordTests`, which checks
+the model, the payload round trip, the vault file and its exports, wrong
+passwords and tampering, the unlock back-off, CSV in and out (Chrome and
+Bitwarden layouts included) and the generator.
 
 ==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md

@@ -1,3 +1,15 @@
+#### 2026-10-02 *0.6.4*
+- **The selection box fits the selected shape.** Selecting a part of an SVG
+  drawn with relative curves (`astronaut.svg`) drew a box much larger than
+  the shape and in the wrong place, near the top left of the page; it now
+  fits the shape. The fix is in the framework's path bounds (see the
+  UltraCanvas changelog), so moving, aligning and snapping use the right
+  box too.
+- **Display quality slider** in the main toolbar: *Outlines* (every shape as
+  a thin line, nothing filled - for finding and picking shapes), *Fills +
+  lines* (colours, no antialiasing) and *Antialiased* (full quality, the
+  default).
+
 #### 2026-09-29 *0.6.3*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

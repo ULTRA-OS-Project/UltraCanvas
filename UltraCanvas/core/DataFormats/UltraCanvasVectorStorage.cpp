@@ -395,39 +395,75 @@ std::shared_ptr<VectorElement> VectorPolygon::Clone() const {
     return clone;
 }
 
+// ===== PATH DATA BOUNDS =====
+
+namespace {
+    // Grows [lo, hi] to the extrema of one coordinate of the cubic
+    // p0 c1 c2 p3: the endpoints plus the roots of its derivative in (0, 1).
+    void CubicExtent(double p0, double c1, double c2, double p3, double& lo, double& hi) {
+        lo = std::min(lo, std::min(p0, p3));
+        hi = std::max(hi, std::max(p0, p3));
+        if (std::min(c1, c2) >= lo && std::max(c1, c2) <= hi) return;   // hull already inside
+        const double a = -p0 + 3 * c1 - 3 * c2 + p3;
+        const double b = 2 * (p0 - 2 * c1 + c2);
+        const double c = c1 - p0;
+        double roots[2];
+        int n = 0;
+        if (std::fabs(a) < 1e-12) {
+            if (std::fabs(b) > 1e-12) roots[n++] = -c / b;
+        } else {
+            const double disc = b * b - 4 * a * c;
+            if (disc >= 0) {
+                const double sq = std::sqrt(disc);
+                roots[n++] = (-b + sq) / (2 * a);
+                roots[n++] = (-b - sq) / (2 * a);
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            const double t = roots[i];
+            if (t <= 0 || t >= 1) continue;
+            const double u = 1 - t;
+            const double v = u * u * u * p0 + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * p3;
+            lo = std::min(lo, v);
+            hi = std::max(hi, v);
+        }
+    }
+}
+
+Rect2Dd PathData::GetBounds() const {
+    if (cachedBounds) return *cachedBounds;
+    if (commands.empty()) return {0, 0, 0, 0};
+    // NormalizePath resolves relative coordinates, H / V, the smooth and
+    // quadratic forms and arcs into absolute lines and cubics, so the box is
+    // the one the renderer draws.
+    double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+    Point2Dd cur{0, 0};
+    for (const auto& s : VectorConverter::PathOps::NormalizePath(*this)) {
+        using VectorConverter::PathOps::FlatSeg;
+        switch (s.kind) {
+            case FlatSeg::Move:
+            case FlatSeg::Line:
+                minX = std::min(minX, s.p[0].x); maxX = std::max(maxX, s.p[0].x);
+                minY = std::min(minY, s.p[0].y); maxY = std::max(maxY, s.p[0].y);
+                cur = s.p[0];
+                break;
+            case FlatSeg::Cubic:
+                CubicExtent(cur.x, s.p[0].x, s.p[1].x, s.p[2].x, minX, maxX);
+                CubicExtent(cur.y, s.p[0].y, s.p[1].y, s.p[2].y, minY, maxY);
+                cur = s.p[2];
+                break;
+        }
+    }
+    if (minX > maxX) return {0, 0, 0, 0};
+    cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
+    return *cachedBounds;
+}
+
 // ===== VECTOR PATH IMPLEMENTATION =====
 
 Rect2Dd VectorPath::GetBoundingBox() const {
-    if (!Path.cachedBounds) {
-        if (Path.commands.empty()) return {0, 0, 0, 0};
-        float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-        Point2Dd cur{0, 0};
-        for (const auto &c: Path.commands) {
-            if ((c.Type == PathCommandType::MoveTo || c.Type == PathCommandType::LineTo) &&
-                c.Parameters.size() >= 2) {
-                float x = c.Relative ? cur.x + c.Parameters[0] : c.Parameters[0];
-                float y = c.Relative ? cur.y + c.Parameters[1] : c.Parameters[1];
-                minX = std::min(minX, x);
-                minY = std::min(minY, y);
-                maxX = std::max(maxX, x);
-                maxY = std::max(maxY, y);
-                cur = {x, y};
-            } else if (c.Type == PathCommandType::CurveTo && c.Parameters.size() >= 6) {
-                for (int i = 0; i < 6; i += 2) {
-                    float x = c.Parameters[i], y = c.Parameters[i + 1];
-                    minX = std::min(minX, x);
-                    minY = std::min(minY, y);
-                    maxX = std::max(maxX, x);
-                    maxY = std::max(maxY, y);
-                }
-                cur = {c.Parameters[4], c.Parameters[5]};
-            }
-        }
-        if (minX > maxX) return {0, 0, 0, 0};
-        Path.cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
-    }
-
-    Rect2Dd bbox = *Path.cachedBounds;
+    if (Path.commands.empty()) return {0, 0, 0, 0};
+    Rect2Dd bbox = Path.GetBounds();
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }

@@ -3248,6 +3248,73 @@ else()
     message(STATUS "  TextAreaSyntaxStateTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA DETACHED TEST =====
+# A text area outside any window has no render context: SetText + ScrollTo on
+# it (the media viewer's Details panel) must not build layouts. Skips without
+# DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaDetachedTest...")
+    add_executable(TextAreaDetachedTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaDetachedTest.cpp
+    )
+    target_include_directories(TextAreaDetachedTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaDetachedTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaDetachedTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaDetachedTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaDetachedTest COMMAND TextAreaDetachedTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaDetachedTest")
+else()
+    message(STATUS "  TextAreaDetachedTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIALOG ESCAPE TEST =====
+# Escape cancels a custom dialog from any field, the multi-line text area
+# included (it used to swallow the key). Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DialogEscapeTest...")
+    add_executable(DialogEscapeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogEscapeTest.cpp
+    )
+    target_include_directories(DialogEscapeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogEscapeTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogEscapeTest PRIVATE UltraCanvas)
+    set_target_properties(DialogEscapeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogEscapeTest COMMAND DialogEscapeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogEscapeTest")
+else()
+    message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== UNDECODABLE IMAGE TEST =====
+# An image whose header reads but whose pixels do not (a truncated PNG, a HEIC
+# without an HEVC decoder): asking for its pixmap must fail cleanly, not copy
+# from the null pixel pointer libvips hands back.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageUndecodableTest...")
+    add_executable(ImageUndecodableTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageUndecodableTest.cpp
+    )
+    target_include_directories(ImageUndecodableTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageUndecodableTest PRIVATE cxx_std_20)
+    target_compile_definitions(ImageUndecodableTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(ImageUndecodableTest PRIVATE UltraCanvas)
+    set_target_properties(ImageUndecodableTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageUndecodableTest COMMAND ImageUndecodableTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageUndecodableTest")
+else()
+    message(STATUS "  ImageUndecodableTest skipped (UltraCanvas target not present)")
+endif()
+
 message(STATUS "")
 
 # ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====

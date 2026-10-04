@@ -531,6 +531,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
@@ -553,6 +554,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -663,26 +665,107 @@ jobs:
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
       # The installed CMake package is what an application outside this tree
-      # builds against (Docs/GettingStarted.md, the out-of-tree route). Install
-      # into a scratch prefix and build Tests/PackageConsumer with nothing but
+      # builds against (Docs/GettingStarted.md, the out-of-tree route), and the
+      # install prefix is what the SDK artifact below ships. Install into a
+      # scratch prefix and build Tests/PackageConsumer with nothing but
       # find_package(UltraCanvas): an export CMake refuses to generate, a
       # header that reaches outside the install, or a dependency the config
       # forgets fails here, on this pull request, rather than on a user's
-      # machine. Linux only: that is the leg that installs every module and
-      # builds the core shared, which is the shape a package is used in.
-      - name: Install and build against the CMake package (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
+      # machine. Every leg, because every leg produces an SDK.
+      - name: Install and build against the CMake package
         run: |
           set -eu
-          cmake --install build --prefix "$PWD/install-prefix" > install.log
-          test -f install-prefix/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake \
+          SDK="UltraCanvas-SDK-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}"
+          echo "SDK_NAME=$SDK" >> "$GITHUB_ENV"
+          cmake --install build --prefix "$PWD/$SDK" > install.log
+          test -f "$SDK/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake" \
             || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
+          # Windows and macOS: add the headers, import libraries / dylibs
+          # and .pc files of the libraries the framework uses, so the SDK
+          # builds an application on a machine without MSYS2's or
+          # Homebrew's packages (scripts/sdk-bundle-deps.sh; a no-op on Linux).
+          bash scripts/sdk-bundle-deps.sh "$PWD/$SDK"
           cmake -S Tests/PackageConsumer -B build-package-consumer \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_PREFIX_PATH="$PWD/install-prefix"
+            -DCMAKE_PREFIX_PATH="$PWD/$SDK"
           cmake --build build-package-consumer --parallel 2
-          LD_LIBRARY_PATH="$PWD/install-prefix/lib" ./build-package-consumer/PackageConsumer
+          exe=build-package-consumer/PackageConsumer
+          [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          # A program that will not start says nothing on its own: under MSYS2
+          # bash a DLL the loader cannot find or resolve is a bare exit code
+          # 127. Print what the executable depends on and how it ended, so the
+          # log names the cause rather than a number.
+          if command -v ldd > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            ldd "$exe" || true
+          elif command -v otool > /dev/null 2>&1; then
+            echo "--- dependencies of $exe"
+            otool -L "$exe" || true
+          fi
+          # The shared core lives in lib/ on Linux and, as a DLL, in bin/ on
+          # Windows; the consumer finds it the way an application would.
+          set +e
+          PATH="$PWD/$SDK/bin:$PATH" LD_LIBRARY_PATH="$PWD/$SDK/lib" "$exe"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PackageConsumer exited with status $status"
+            exit "$status"
+          fi
+          # The same consumer once more against the bundled development
+          # files alone: PKG_CONFIG_LIBDIR pointed at an empty directory
+          # hides every .pc file of the runner, so cairo, pango, glib and
+          # the rest can only come from the SDK's deps/. The run puts the
+          # bundled DLLs on PATH on Windows; on macOS the rpath the package
+          # adds finds the bundled dylibs.
+          if [ "${{ runner.os }}" != "Linux" ]; then
+            echo "--- consumer against the bundled development files only"
+            mkdir -p "$PWD/no-pkgconfig"
+            PKG_CONFIG_LIBDIR="$PWD/no-pkgconfig" PKG_CONFIG_PATH="" \
+              cmake -S Tests/PackageConsumer -B build-package-consumer-bundled \
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+                -DCMAKE_PREFIX_PATH="$PWD/$SDK"
+            cmake --build build-package-consumer-bundled --parallel 2
+            exe2=build-package-consumer-bundled/PackageConsumer
+            [ "${{ runner.os }}" = "Windows" ] && exe2="$exe2.exe"
+            set +e
+            PATH="$PWD/$SDK/bin:$PWD/$SDK/deps/bin:$PATH" "$exe2"
+            status=$?
+            set -e
+            if [ "$status" -ne 0 ]; then
+              echo "::error::PackageConsumer built against the bundled files exited with status $status"
+              exit "$status"
+            fi
+          fi
+
+      # The SDK: that install prefix, with the page that explains it, the
+      # licenses and the consumer example, packed so an application outside
+      # this repository - or UltraCanvasStart setting a machine up - gets the
+      # framework built without building it (Docs/UltraCanvasSDK.md). tar on
+      # Unix so file permissions survive; upload-artifact's own zip loses them.
+      - name: Pack the SDK
+        run: |
+          set -eu
+          cp Docs/UltraCanvasSDK.md "$SDK_NAME/README.md"
+          cp LICENSE THIRD_PARTY_LICENSES.md "$SDK_NAME/"
+          mkdir -p "$SDK_NAME/examples"
+          cp -R Tests/PackageConsumer "$SDK_NAME/examples/PackageConsumer"
+          mkdir -p sdk-dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            zip -qr "sdk-dist/$SDK_NAME.zip" "$SDK_NAME"
+          else
+            tar czf "sdk-dist/$SDK_NAME.tar.gz" "$SDK_NAME"
+          fi
+          ls -la sdk-dist
+
+      - name: Upload the SDK
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.SDK_NAME }}
+          path: sdk-dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
       # What the cache actually did, in the log where anyone can see it. A
       # leg still at a 0% hit rate on a second run of the same commit is
@@ -692,6 +775,24 @@ jobs:
       - name: ccache statistics
         if: always()
         run: ccache -s
+
+      # UltraCanvasStart's engine tests, then the app's headless --check on
+      # this leg's platform: it detects the runner, finds its package manager
+      # and checks the toolchain and core libraries, which the leg has by
+      # construction, so a non-zero status names a detection or check bug.
+      # The engine test binary is a ctest entry (UltraCanvasStartEngine);
+      # Linux runs it again with the rest of the suite below, which is fine.
+      # The job's default shell: the MSYS2 shell on Windows, where the DLLs
+      # the executable needs are on PATH.
+      - name: UltraCanvasStart engine tests and --check smoke run
+        run: |
+          set -eu
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          exe=build/UltraCanvasStart
+          [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          "$exe" --version
+          "$exe" --check
+          "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
 
       - name: Run UltraNet tests
         if: runner.os != 'Windows'
@@ -953,7 +1054,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign
+        run: ./package-macos.sh --no-sign --dmg
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -962,7 +1063,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize
+        run: ./package-macos.sh --notarize --dmg
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -981,13 +1082,20 @@ jobs:
             dist/
           retention-days: 7
 
+      # The disk image only, not the dist-macos/ folders: upload-artifact
+      # does not keep file permissions, so an app unpacked from a zip of the
+      # .app folders has lost its executable bit and does not start. The DMG
+      # keeps it, is already LZMA-compressed (hence compression-level 0 -
+      # zipping it again only costs time) and is signed, and on main
+      # notarized and stapled, as one file.
       - name: Upload build artifacts (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
-          path: |
-            dist-macos/
+          path: dist-macos/*.dmg
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       - name: Upload build artifacts (Linux)

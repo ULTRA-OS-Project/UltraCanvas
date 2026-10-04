@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBadge.h"
+#include "UltraMailHeaderText.h"
 
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
@@ -75,8 +76,8 @@ SenderStatus SenderBadgeResolver::Classify(const MessageEnvelope& message,
     // Headers synced before decoding was added are still stored raw, and the
     // brand-impersonation check reads this text — decode defensively (decoding
     // already-decoded text is a no-op).
-    who.displayName = UltraNet_MimeDecodeHeader(message.fromName);
-    who.subject     = UltraNet_MimeDecodeHeader(message.subject);
+    who.displayName = DisplayHeader(message.fromName);
+    who.subject     = DisplayHeader(message.subject);
     who.junkFolder  = junkFolder;
     who.level       = security.level;
     who.bulk        = security.bulk;
@@ -90,7 +91,7 @@ SenderBadge SenderBadgeResolver::Resolve(const MessageEnvelope& message,
 
     SenderBadge badge;
     badge.cls     = status.cls;
-    badge.initial = InitialOf(UltraNet_MimeDecodeHeader(message.fromName), message.fromAddr);
+    badge.initial = InitialOf(DisplayHeader(message.fromName), message.fromAddr);
     if (!status.brandId.empty()) {
         badge.brandColor = FromRgb(status.brandAccentRgb);
         if (icons_) badge.iconPath = icons_->IconForBrand(status.brandId);

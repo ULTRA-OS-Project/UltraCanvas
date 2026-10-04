@@ -1,3 +1,613 @@
+#### 2026-10-04 *0.9.154*
+- **A scrolled view no longer leaves glyph fringes beside and below it.**
+  Text drawn at the edge of a scrolling container marks the pixel just
+  outside it with its anti-aliased fringe, and a scroll repainted exactly the
+  container's box, so that pixel was never painted over: scrolling built up a
+  faint dotted column beside the text (yellow, from sub-pixel anti-aliasing)
+  and slivers of the line scrolled past the bottom edge. A scroll now repaints
+  2px past the container's box.
+- **Resizing a window keeps the scroll position of everything in a split
+  pane.** `UltraCanvasSplitPane::Arrange` first ran the ordinary block layout,
+  which stacked the panes one under the other at their full content height,
+  and only then placed them side by side. That throwaway pass clamped every
+  scroll view inside a pane to the top, so a resize sent a scrolled message,
+  list or document back to its start. The split pane now takes its box with
+  the new `UltraCanvasUIElement::ArrangeOwnBox` and places its panes once,
+  then runs the container's post-layout steps through the new protected
+  `UltraCanvasContainer::FinishArrange`.
+- **TextArea: the scrollbar's thickness and rounding are styleable.** The
+  text area drew its own scrollbars as fixed 15px square bars, so an app could
+  not match them to the thin, rounded `ScrollbarStyle::Modern()` bars of the
+  list views beside it. `TextAreaStyle` now has `scrollbarWidth` (default 15),
+  `scrollbarCornerRadius` (default 0, square) and `scrollbarThumbInset`
+  (default 2); drawing, hit-testing, thumb dragging, the text's reserved
+  width and the hex view's row width all use them. The defaults draw exactly
+  what was drawn before. UltraMail's plain-text reading pane is the first user.
+
+#### 2026-10-04 *0.9.153*
+- **The Filer's Display > Sort is greyed out for a list that keeps its own
+  order.** With `SetFileListOrderPreserved(true)` on a file list, sorting
+  does nothing, yet the context menu still offered every sort field and
+  direction. The submenu entry is now disabled there.
+- **A disabled submenu entry no longer opens its submenu.**
+  `UltraCanvasMenu` drew a submenu entry with `enabled = false` greyed out
+  but still opened it on hover, so its items stayed reachable. It now opens
+  on neither hover, click nor keyboard.
+
+#### 2026-10-04 *0.9.152*
+- **`package-macos.sh` skips an app that was not built, without hiding real
+  failures.** Every `build_app_bundle` call, and `build_cli_tool "ultramsg"`,
+  now goes through `package_if_built`, which checks for the executable (in the
+  build root or `bin/`) before calling. Before, a missing Texter, UltraFiler or
+  any other app stopped the whole run under `set -e`, although the function
+  said it was "skipping". The UltraAuthenticator and UltraPassword calls used
+  `build_app_bundle … || echo …` instead, and that was worse: bash turns
+  `set -e` off for a function's entire body when it is called on the left of
+  `||`, so a failed signing, `iconutil` or dylib-copy step would have been
+  carried past and an unsigned or half-built bundle shipped. Those calls now
+  go through the same helper. The run ends by listing what was not built, and
+  fails when it produced no bundle at all.
+
+#### 2026-10-04 *0.9.151*
+- **macOS: the apps share one copy of their libraries.** `package-macos.sh`
+  gave every `.app` its own `Contents/Frameworks/` with the ~90 Homebrew
+  dylibs (95-131 MB each). With eight apps that was ~830 MB of the same
+  libraries, and adding UltraAuthenticator and UltraPassword took the macOS
+  DMG from 431 MB to 556 MB (arm64). The apps are now packaged as one suite
+  folder, `UltraCanvas/`, with a single shared `Frameworks/` that every app
+  loads from (`@executable_path/../../../Frameworks/`); `ultramsg` sits in
+  the same folder. The suite is notarized in one submission and each app's
+  ticket stapled, instead of one round trip to Apple per app.
+  - Install by copying the whole `UltraCanvas` folder to Applications: an app
+    moved out of it on its own does not start.
+  - `verify_suite` fails the packaging run when an app carries its own
+    `Contents/Frameworks/`, when a binary needs a dylib missing from the
+    shared folder, or when one still loads from Homebrew - so a new app can
+    no longer bring its own copy of the libraries. The rule is written down
+    in `AGENTS.md` ("Packaging a new app for macOS").
+  - `package_and_notarize-macos.sh` zips the suite folder instead of the
+    separate `.app` folders.
+
+#### 2026-10-04 *0.9.150*
+- **The Windows and macOS SDKs carry the development files of the libraries
+  the framework uses.** `scripts/sdk-bundle-deps.sh` adds a `deps/` tree
+  (headers, import libraries or dylibs, static archives, relocatable `.pc`
+  and CMake config files, and on Windows the run-time DLLs) for the
+  pkg-config closure of cairo, pango, harfbuzz, freetype, glib, tinyxml2 and
+  libvips, plus fmt, libcurl and zlib where the build used the system ones.
+  `UltraCanvasConfig.cmake` puts `deps/` first on `CMAKE_PREFIX_PATH`, remaps
+  exported libraries found by full path on the build machine to their bundled
+  copies, and on macOS links consumers with an rpath to `deps/lib`, where the
+  bundled dylibs have `@rpath` install names. `ULTRACANVAS_DEPS_DIR` names the
+  directory. CI builds `Tests/PackageConsumer` against the bundled files alone
+  on both platforms (`Docs/UltraCanvasSDK.md`).
+- **UltraCanvasStart, the setup application, joins the build.** `Apps/UltraCanvasStart`
+  (`BUILD_ULTRACANVASSTART`, on by default) with its engine test suite
+  (`ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS`, run by CI), the product entry in
+  `cmake/UltraCanvasVersion.cmake`, the icon under `media/appicon/` and a
+  `--check` smoke run on every CI leg. See `Docs/UltraCanvasStart/CHANGELOG.md`.
+
+#### 2026-10-04 *0.9.149*
+- **The file dialog asks before Save replaces a file.** `UltraCanvasFileDialog`
+  in Save mode accepted a name that was already a file without a word, so
+  every application saving through it overwrote silently. The platforms' own
+  save dialogs (GTK, Windows, macOS) all ask, so a choice between native and
+  framework dialogs also decided whether the user was asked. It now asks too:
+  a **Replace File** question ("… already exists. Do you want to replace
+  it?") on OK, on a typed name and on a double-click in the listing. No
+  leaves the dialog open on that name. `FileDialogConfig::confirmOverwrite`
+  (`FileDialogOptions::SetConfirmOverwrite` through `UltraCanvasFileLoader`)
+  turns it off for a caller that asks itself. The new
+  `Docs/UltraCanvas/UltraCanvasFileDialog.md` describes the dialog: its
+  modes, the filter toggles, the overwrite question and what it remembers.
+- **A new `FileDialogConfig` has no filters.** It came with four samples
+  (All Files, Text, Image and Document files), so code that built the file
+  dialog itself and did not replace them offered `.doc` and `.rtf` in a
+  picture picker. It now starts empty, and a file dialog without filters
+  lists every file under one "All Files" entry (a folder picker filters
+  nothing). `UltraCanvasFileLoader` passes the caller's filters straight
+  through and leaves that fallback to the dialog.
+
+#### 2026-10-03 *0.9.148*
+- **IMAP plug-in: reading a message no longer marks it read on the server.**
+  The plug-in fetched each message's header (`/;UID=n;SECTION=HEADER`) and
+  body (`/;UID=n`) through libcurl URLs, and libcurl sends those as
+  `UID FETCH n BODY[HEADER]` / `BODY[]`, never `BODY.PEEK[...]`. RFC 3501 has
+  the server set `\Seen` for that, so every sync marked all new mail read, and
+  so did caching bodies ahead of time. That was in UltraMail and in every other
+  mail program on the same account. The flags were also read after the header,
+  so even the copy the app kept said "read". A custom `BODY.PEEK` command is no
+  way round it: libcurl passes on only the reply lines that begin with `*`, and
+  the message text is lost. So `FetchEnvelopes`, `FetchMessage`,
+  `FetchMessageBodies` and `FetchMessages` now read a message's flags first
+  and, when it was unread, send `UID STORE n -FLAGS.SILENT (\Seen)` straight
+  after the fetch (`FetchKeepingUnread`). Checked against a fake IMAP server
+  that keeps `\Seen` the way a real one does: before, both messages ended up
+  read; after, the unread one stays unread and is reported unread. Tests:
+  `test_imap_mailbox.cpp` (`imap_keep_unread_commands`).
+
+#### 2026-10-03 *0.9.147*
+- **DemoApp: new *ULTRA OS modules → System dialogs* page.** Every dialog an
+  application asks the system for, behind a button: File Open, Open multiple,
+  File Save and Select folder (`UltraCanvasFileLoader`), Print settings and
+  Print test page (`UltraCanvasNativeDialogs::RequestPrintSettings`,
+  `PrintTextWithDialog`), and the information / question / warning / error /
+  text / password dialogs (`UltraCanvasDialogManager`). A *Dialog style*
+  switch shows each one as the ULTRA OS dialog or as the host platform's,
+  without changing the demo's own setting, and every answer - paths, print
+  settings, button pressed - is written to a log on the page. The *Details*
+  tab is the new `Docs/UltraCanvas/UltraCanvasSystemDialogs.md`, which the
+  element catalogue now links from its file-dialog rows.
+
+#### 2026-10-03 *0.9.146*
+- **`Docs/GettingStarted.md` lets the reader choose the platform.** Every step that differs by operating system - the toolchain, the first build, the entry point's platform blocks, packaging - now offers one collapsed section per OS (Linux, macOS, Windows), so a reader opens their own and can look at another's. The macOS and Windows sections carry the full Homebrew and MSYS2 CLANG64 package lists, the Windows-only path and Win32-name rules, and the packaging and signing steps that were previously only in the per-platform PDF editions. UltraCanvasStart will present the same choice on its first page, preselected to the detected machine.
+- **CI now publishes an UltraCanvas SDK per platform: the framework built and installed, zipped.** The install-and-consume step that proved the CMake package on Linux runs on every leg now, and its install prefix - headers, libraries, plug-ins, the `UltraCanvasConfig.cmake` package, plus `Docs/UltraCanvasSDK.md` as README, the licenses and the `PackageConsumer` example - is uploaded as `UltraCanvas-SDK-<OS>-<version>-<arch>` (tar on Linux and macOS so permissions survive, zip on Windows). An application outside the repository unpacks it and points `CMAKE_PREFIX_PATH` at it instead of building the framework; it is the folder UltraCanvasStart will install. The SDK does not carry a compiler or the dependencies' development packages - the public headers include cairo, glib and vips - and `Docs/UltraCanvasSDK.md` says so; bundling those on Windows and macOS is the next step.
+- **`UltraCanvasConfig.cmake` translates MSYS2 directories for the consumer's CMake.** The first Windows run of the package consumer failed at configure: pkg-config under MSYS2 reports its prefix in POSIX form (`/clang64/include`), which the MSYS2 compiler understands and the native CMake does not, so it refused the imported target. The config now puts every include and library directory it adds, and every one the exported targets carry, through `cygpath -m` when it does not exist as spelled, and drops one that still does not exist with a notice instead of an error.
+
+#### 2026-10-03 *0.9.145*
+- **Escape cancels a dialog from a multi-line field too.**
+  `UltraCanvasTextArea` took the Escape key and did nothing with it, so a
+  custom dialog (`DialogType::Custom`, the kind UltraMail's and
+  UltraPassword's forms are) stayed open on Escape while the caret was in a
+  text area, and closed on it from every other field. The text area now
+  declines the key, so it reaches the dialog's own Escape-to-Cancel, and it
+  returns before the text-insertion path, so the key's `"\x1b"` is never
+  typed. Texter's editor gains the same: Escape there now reaches the
+  window, which closes the search bar. `Tests/DialogEscapeTest.cpp` routes
+  the key the way the application does and fails on the old behaviour.
+- **UltraAuthenticator and UltraPassword are packaged.** `package-linux.sh`
+  lists both. `package-macos.sh` builds an `.app` bundle for each, and its
+  `build_app_bundle` now finds an executable in `build/bin/` as well as the
+  build root - both apps set `RUNTIME_OUTPUT_DIRECTORY` to `bin/`, which the
+  Linux and Windows scripts already searched. A missing one is reported and
+  skipped instead of ending the run. `package-win.sh` needed no change: it
+  copies every `.exe` in `build/` and `build/bin/`.
+
+#### 2026-10-03 *0.9.144*
+- **UltraPassword joins the applications that keep native file dialogs off.**
+  `KnownFileDialogApplications()` lists it beside UltraAuthenticator and
+  UltraMail, so the file-dialog settings page offers it. The new app itself
+  versions from `Docs/UltraPassword/CHANGELOG.md` (declared in
+  `cmake/UltraCanvasVersion.cmake` as `ULTRAPASSWORD_VERSION`), and
+  `Tests/UltraPasswordTests.cpp` joins the headless suites under
+  `BUILD_TESTS`.
+
+#### 2026-10-03 *0.9.143*
+- **A link's address as a tooltip, by choice.**
+  - `UltraCanvasLabel::SetShowLinkTooltips(bool)`: while the pointer is on a
+    text link, the label shows that link's href in a tooltip that follows the
+    pointer along the link, and hides it as the pointer leaves the link (off
+    by default).
+  - `HTML::BuildOptions::linkTooltips` (default on): text links and linked
+    pictures show their href as a tooltip. An app that shows the address
+    elsewhere - a status line fed by `onLinkHovered` - turns it off. Before,
+    linked pictures always had the tooltip and text links never did.
+
+#### 2026-10-03 *0.9.142*
+- **`build-win.cmd` named the wrong MSYS2 environment.** Its header listed the MINGW64 packages (`mingw-w64-x86_64-gcc`, ...) while CI has built with CLANG64 (`mingw-w64-clang-x86_64-clang`) for every release and `package-win.sh` packages from a CLANG64 or CLANGARM64 shell, so a newcomer following the file installed a toolchain whose libraries the packaging script does not collect. The header now lists the CLANG64 packages CI installs, names the CLANGARM64 substitution for Windows on ARM, points at the workflow's "Setup MSYS2" step as the complete list, and enables the CDR plug-in as CI does.
+- **Docs: a getting-started guide for working through an AI assistant and GitHub with no local compiler.** `Docs/GettingStarted-Cloud.md` is the companion to `GettingStarted.md` for Claude Code on the web: connecting the GitHub App, what the Build workflow and the seven check workflows do on a pull request and why a branch without one gets nothing, the packaged artifacts every leg uploads as the way to run the app, the first session (skeleton, changelog entry, draft PR, watching it), the per-change loop with CI as the compiler, review and merge rules, and what is lost when a session ends with work unpushed. Linked from `README.md` and the main guide.
+
+#### 2026-10-03 *0.9.141*
+- **HTML backgrounds honour `background-position` and `background-repeat`.** A
+  background picture was always drawn once, centred; it now sits and tiles where CSS
+  puts it.
+  - `background-position` and the position inside the `background` shorthand:
+    keywords (`left` / `center` / `right`, `top` / `center` / `bottom`, in either order),
+    percentages, lengths and the edge-offset form (`right 10px bottom 20%`). The default
+    is CSS's `0% 0%`, the top-left corner - mail that wants a picture centred says
+    `center`, as it must for a browser.
+  - `background-repeat` (and the repeat inside the shorthand): `repeat`, `repeat-x`,
+    `repeat-y`, `no-repeat`, one value or one per axis; `space` and `round` are taken as
+    `repeat`. The default is CSS's `repeat`, so a background without `no-repeat` now
+    tiles, as in a browser - the 1-pixel gradient strip behind a mail's header fills it.
+  - Size, position and repeat are kept per background layer, and a shorter
+    `background-size` / `background-position` / `background-repeat` list repeats
+    across the layers, as in CSS; the layer that loads uses its own values.
+  - `UltraCanvasImageElement::SetImagePosition` (`ImagePosition` /
+    `ImageAxisPosition`): where a fitted image sits in its element - a fraction of the
+    free space or a pixel offset from either edge - and `ImageDrawRect()`, the
+    rectangle it is drawn into. Centred (the default) draws exactly as before.
+  - `UltraCanvasImageElement::SetImageRepeat(x, y)`: the image tiles across and / or down
+    the element, lined up on its positioned tile, drawn as one pattern fill
+    (`CreatePixmapPattern`, `PatternExtend::Repeat`) - tile by tile only where a backend
+    has no patterns.
+  - Fixed: an image loaded from memory (every picture in a mail) and drawn unscaled
+    (`ImageFitMode::NoScale`) was never shown - the Cairo backend read its pixels from
+    a file name it does not have. It now reads the bytes it was loaded from, as the
+    other fit modes already did.
+- **HTML borders per side.** Every border property set all four sides alike, so a
+  mail's rule under its header (`border-bottom: 1px solid #eee`) or a quote's left
+  accent bar became a full box. Each side now has its own width, style and colour.
+  - `border`, `border-top` / `-right` / `-bottom` / `-left`, `border-width` /
+    `border-style` / `border-color` with 1-4 values, and the per-side longhands
+    (`border-left-color`, ...). `ComputedStyle` has `borderTop` ... `borderLeft`
+    (`BorderSide`) in place of `borderWidth` / `borderColor`.
+  - As in CSS, a border without a style draws nothing (`border: 1px #ccc`), a style
+    alone is `medium` (3px), and a border without a colour takes the element's final
+    text colour (`currentColor`), even when `color` comes after it.
+  - `dashed` and `dotted` are drawn dashed and dotted; the other styles solid.
+  - `<hr>` is its border box, as in a browser: by default a 1px inset rule (darker
+    above, lighter below); `border: none; border-top: 1px solid #ddd` gives the
+    author's line, `height` with a `background` a bar.
+  - Fixed (Cairo): with borders that differ per side, a dashed side was stroked in the
+    previous side's colour and passed its dash on to the sides drawn after it.
+- **Borders: inline images per side, mitred corners, collapsed tables.**
+  - An image in running text draws each border side on its own (width, colour,
+    dashed / dotted), like a block image: `LabelInlineImageFrame` has `borderTop` ...
+    `borderLeft` (`LabelInlineImageBorder`) and `SetBorders(width, colour)` in place of
+    `borderWidth` / `borderColor`.
+  - `DrawRoundedRectangleWidthBorders` (Cairo) fills each solid side as its wedge of
+    the border ring - from the outer corners to the inner ones - so two sides meet on
+    the corner's diagonal, each in its own colour, as in CSS; rounded corners are
+    shared the same way and a border one colour all round is filled in one piece.
+    Before, straight strokes overlapped at the corners and corner arcs took a blend of
+    the two colours. Dashed and dotted sides are still strokes.
+  - `border-collapse: collapse`: two cells sharing an edge draw it once - the wider of
+    the two borders, kept by the cell to the left or above - and cells leave an outer
+    edge the table draws itself to the table. `<table border>` rules take part.
+    `ElementBuilder::ApplyBorders` applies a style's sides (ApplyBoxStyle calls it).
+- **HTML `width` / `height` size a block's content, as in CSS.** Every HTML box counted
+  its padding and border inside the `width` / `height` it was given, so a 30px-high box
+  with 10px borders and 4px padding kept 2px for its text. Now (CSS's initial
+  `box-sizing: content-box`) they size the content and padding and border go around
+  them: `width: 120px; padding: 4px; border: 10px solid` is 148px wide.
+  - `box-sizing: border-box` is read (`ComputedStyle::borderBoxSizing`) and keeps the
+    given size for the whole box, `max-width` included.
+  - A percentage width is the content's share of the line, padding and border added
+    (`width: 50%; padding: 0 10px` on a 400px line is 220px plus its border).
+  - `max-width` limits the content (the box with `border-box`).
+  - Tables and their cells keep sizing the box as a whole, as browsers size them;
+    images already sized their picture. `ApplyBoxStyle` takes `borderBoxSizes` for
+    such callers.
+- **HTML images on a shared line: a real space, and `vertical-align`.**
+  - The gap between two images a space apart is the width of a space in their font,
+    measured once per font (`ElementBuilder` keeps a small offscreen context for it),
+    no longer an estimate of 0.28 em.
+  - `vertical-align: top` and `middle` place an image at the top or in the middle of
+    the line's other images; `baseline` (the default) and `bottom` keep it on the
+    line's bottom.
+- **HTML images without text sit side by side.** In a block with no text of its own,
+  every `<img>` got a line of its own, so a row of social icons in a mail's footer
+  became a column. Now inline images (the `<img>` default) share one wrapping line,
+  as in a browser:
+  - whitespace between two images is a space's gap; none, no gap. The gap goes after
+    the image before it, so a wrapped line does not start indented;
+  - they stand on the line's bottom, and the line follows `text-align`;
+  - the line wraps when it is full; text, a block, `<br>` or a `display:block` image
+    ends it;
+  - an inline image's vertical margins grow its line instead of collapsing with the
+    blocks around it.
+- **HTML `<img>` draws its border, background, padding and rounded corners.** An
+  image's CSS box was lost: a block image squeezed its border and padding into the
+  picture's `width` / `height`, and an image in running text drew none of it.
+  - `width` / `height` size the picture itself (CSS's `content-box`); border and
+    padding go around it, and horizontal margins stay margins, so the background
+    does not fill them - the 8px gap after an icon in a mail's button is back.
+  - An image in running text gets its frame: `LabelInlineImageFrame` (margins,
+    padding, border, `borderRadius`, `background`) on `LabelInlineImage::frame`.
+    The line reserves the whole margin box; `InlineImageBoxRect(i)` is the border
+    box, `InlineImageRect(i)` still the picture.
+  - `border-radius` clips the picture too, block and inline, and a percentage is
+    kept (`ComputedStyle::borderRadiusPercent`) and resolved against the image's
+    box: `border-radius: 50%` makes a round avatar.
+  - `<img border="N">`: an N-pixel border in the image's colour - the link colour
+    for a linked image, as in a browser.
+  - A `border` shorthand without a colour uses the text colour (CSS's
+    `currentColor`) instead of black.
+  - CSSLayout: a flex item with `box-sizing: content-box` and an explicit main
+    size now gets a flex base size that includes its padding and border, as the
+    block path already did. (Widgets default to `border-box` and are unaffected.)
+- **HTML `<img>` honours min / max sizes; `max-width` in percent is kept.**
+  - `min-width`, `max-width`, `min-height` and `max-height` on an image are applied as
+    CSS applies them to a replaced element (CSS 2.1 §10.4): a size not given follows
+    the picture's shape - `max-height: 100px` on a 300x200 picture shows it at
+    150x100, `min-width: 96px` on a 24x16 icon at 96x64 - and when both limits bind,
+    both win. A given width or height keeps its value. Images used to ignore them.
+  - `max-width` in percent (`ComputedStyle::maxWidthPercent`) is kept instead of
+    dropped: on an image it replaces the built-in "no wider than the line" limit
+    (never above it), and blocks and tables are capped at that share of their line;
+    a block with `max-width: 50%; margin: 0 auto` is centred.
+  - `UltraCanvasImageElement::SetHeightFollowsWidth(true)`: a width larger than the
+    picture's grows its height in proportion too (an `<img width="800">` of a 400x200
+    picture is 800x400, not 800x200). Off by default; HTML images turn it on.
+- **HTML `letter-spacing`.** Read in px or em and inherited as px, as CSS computes it
+  (`ComputedStyle::letterSpacingPx`; `normal` is 0), and drawn through Pango's
+  `letter_spacing`: a block's spacing wraps its whole text run, an inline element's
+  own spacing is a span inside it. Measuring and wrapping take it into account - a
+  Yahoo notice's `p { letter-spacing: 0.5px }` now wraps where a browser wraps it.
+- Fixed: a label's natural width is one its text fits on its lines at. With letter
+  spacing, Pango breaks a line on the spacing after its last letter, which its
+  measured width leaves out, so a shrink-to-fit button ("FIND OUT WHO", 2px spacing)
+  wrapped its last word.
+- **HTML mail like Yahoo's renders as in Thunderbird: quirks mode, table placement,
+  overflow, line-height; cell percentage heights.**
+  - The parser keeps the `<!DOCTYPE>` (`Document::doctype`) and decides quirks mode
+    from it as browsers do (`Document::quirksMode`, `IsQuirksDoctype`). In quirks mode
+    - no standards doctype, most HTML mail - a table does not inherit `text-align`:
+    `<td align="center">` around a mail's 420px content tables centres the tables,
+    not every line of text in them.
+  - A table is placed by its container's alignment, not by its own `text-align`
+    (`<table style="text-align:left">` in a centring cell is still centred).
+  - A cell's children with a width of their own (`<div style="width:250px">`,
+    `<table width="420">`) keep it instead of being stretched across the cell,
+    placed by the cell's `align`.
+  - HTML boxes draw content that is wider than they are (CSS `overflow: visible`):
+    `ContainerStyle::clipChildren = false`; `overflow: hidden` / `auto` / `scroll`
+    clip. Before, a 280px paragraph in a 250px box lost its last words.
+  - `line-height` reaches the text: `LabelStyle::lineHeightPx` gives each line that
+    height (Pango's absolute line height), a line holding a taller inline image still
+    grows. A length or percentage inherits as px, a number as a factor of each
+    element's font, `normal` restores the font's own.
+  - A table cell (and a box with bottom padding or border) keeps its last child's
+    bottom margin.
+  - Table cells take percentage `height`, `min-height` and `max-height`, resolved
+    against the table's set height; a table's extra height goes to the rows nothing
+    set the height of.
+- **HTML `min-width`, `min-height` and `max-height`.** Only `max-width` was read; now
+  all four limits are (`ComputedStyle::minWidthPx` / `minHeightPx` / `maxHeightPx`),
+  in px or em - a percentage, `none` or `auto` sets no limit.
+  - Like `width` / `height`, a limit is the content's (CSS content-box) - a box with
+    `min-height: 60px` and a 1px border is 62px tall - or, with
+    `box-sizing: border-box`, the whole box's.
+  - As in CSS, `max-height` beats `height`, and `min-width` / `min-height` beat both:
+    an inline-block mail button with `min-width: 160px` and 16px side padding is
+    192px wide however short its caption.
+- **HTML `<img>` honours `object-fit` and `object-position`.** A picture was always
+  shrunk to fit its box, keeping its shape, and centred; it now fills and sits in the
+  box as CSS says - for a block image and for one inside running text.
+  - `object-fit`: `fill`, `contain`, `cover`, `none`, `scale-down`. The default is
+    CSS's `fill`: an `<img>` whose `width` / `height` give it another shape than the
+    picture's stretches the picture to the box, as in a browser, instead of leaving
+    empty bands beside it.
+  - `object-position`: the `background-position` value forms (keywords, percentages,
+    lengths, edge offsets); the default is CSS's `50% 50%`, centred.
+  - `ImagePosition`, `ImageAxisPosition` and the new `FitImageRect(natural, box, fit,
+    position)` moved to `UltraCanvasCommonTypes.h`, so any element can place a fitted
+    picture the same way; `UltraCanvasImageElement.h` still brings them in.
+  - `LabelInlineImage` gained `fit` (default `ImageFitMode::Fill`, what it drew before)
+    and `position` (default centred).
+- **Percentage heights on blocks; content-box percentage widths without a sizing switch.**
+  - HTML `height` in percent is kept (`ComputedStyle::heightPercent`; the `height`
+    attribute too) and applied to blocks: `height: 50%` in a box of `height: 200px` is
+    100px, nested percentages compound, and in a box of auto height it is auto, as in
+    CSS. Tables, cells and images take no percentage height (browsers mostly ignore
+    one there).
+  - CSSLayout: a percentage `size.height` resolves against a block parent's set height
+    (`Element::percentHeightBase`, which percentage limits already used) when no
+    definite height comes down as a constraint - in block, flex, grid and table
+    containers alike. Before, it was auto there.
+  - A content-box percentage width or height stays a border-box size with the padding
+    and border added as pixels (`Dimension::PctPlus`), instead of switching that box
+    to content-box sizing: `width: 50%; padding: 0 10px; border: 2px` on a 400px line
+    is 224px wide.
+  - A later `width` / `height` replaces an earlier one of either kind
+    (`width: 30%; width: 120px` is 120px); `auto` clears it.
+- **Percentage size limits everywhere, and percentage minus pixels.**
+  - HTML `min-width`, `min-height` and `max-height` in percent are kept
+    (`ComputedStyle::minWidthPercent` / `minHeightPercent` / `maxHeightPercent`), on
+    blocks and images: `min-width: 75%` of a 400px line is 300px. A height percentage
+    resolves against the container's set height, and limits nothing when it has none,
+    as in CSS.
+  - A percentage limit under `box-sizing: border-box` covers the whole box: with 10px
+    padding and a 2px border, `max-width: 50%` of a 400px line is now 200px wide, not
+    224px.
+  - CSSLayout: `Dimension::offsetPx` (`Dimension::PctPlus(pct, px)`) adds pixels to a
+    value as it resolves - `calc(50% - 20px)`.
+  - CSSLayout: `Element::percentHeightBase` - a block parent records its set height on
+    each child, so a child's percentage `minHeight` / `maxHeight` has a base; block
+    children are measured with unbounded height and had none.
+- **Hovered links are reported; size limits apply to the box their box-sizing
+  names.**
+  - `UltraCanvasLabel::onLinkHovered(href)`: fired as the pointer moves onto a
+    text link (its href) and off it (`""`). `UltraCanvasImageElement` gains
+    `onHoverEnter` / `onHoverLeave`. The HTML reader passes both on through
+    `BuildOptions::onLinkHovered`, for text links and linked pictures alike - a
+    mail reader shows the real target in its status line before the click.
+  - CSSLayout: the block path applies `boxConstraints` (min / max width and
+    height) to the box the element's box-sizing names - the whole box for a
+    border-box element (every widget), the content for a content-box one - as
+    the flex path and the documentation already did. Before, the block path
+    limited a border-box element's content, so the same limit gave a box a
+    padding's width wider in a block than in a flex column.
+  - The HTML reader passes limits as the whole box's (a content-box limit gains
+    the padding and border around the content), and table cells size their
+    content from `width` / `height`, as browsers do.
+
+#### 2026-10-03 *0.9.140*
+- **The Filer widget can mark favorites.**
+  `UltraCanvasFilerWidget::SetFavoriteMarkProvider` takes a function that
+  says whether an entry is one of the host's favorites; each one it answers
+  `true` for is drawn with a small red heart at its outermost left,
+  vertically centred - in a 14 px gutter left of the icon in the Details,
+  List and Size bars views (reserved for every row while a provider is set,
+  so icons stay aligned), at the tile's left edge centred on the icon box in
+  the thumbnail views, and inside treemap cells large enough for it. The
+  widget keeps no list of its own: the provider is asked while painting, so
+  `RequestRedraw()` is all a changed favorite needs. UltraFiler uses it for
+  its Favorites view (UltraFiler 1.65.0).
+- **A renderer fix now reaches thumbnails already on disk.** The thumbnail
+  disk cache judged an entry stale only by its source file's size and
+  modification time, so a thumbnail drawn by a build with a renderer bug was
+  served for as long as it kept being shown. The vector previews drawn at
+  the fit squared before 2026-09-26 stayed specks in a corner at every size
+  cached back then - in UltraFiler, Xara files looked right in a folder and
+  broken in the History view. Each entry now records the build's renderer
+  generation (`ThumbnailDiskCache::kRendererGeneration`, now 2; the entry
+  header is format 2), and an entry of another generation is a miss that is
+  deleted and redrawn. Bump the constant in any change that makes a
+  thumbnail producer draw something different. Pinned by
+  `ThumbnailDiskCacheTest`.
+
+#### 2026-10-03 *0.9.139*
+- **The media viewer says when a picture cannot be decoded.** A file whose
+  header reads but whose pixels do not (a HEIC on a build without an HEVC
+  decoder, a truncated PNG) left an empty display and an info bar listing
+  its size as if it were showing. The display now reads "Cannot decode this
+  picture", the info bar gives the reason libvips reports
+  (`cannot decode - heif: Unsupported feature: Unsupported codec (4.3000)`),
+  and an open Details panel adds a *Decoding* row. Only drawing decodes the
+  pixels, so the surface finds out then and tells the viewer through the new
+  `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image and after
+  the frame rather than inside `Render`.
+- **The media viewer builds its Details text only while the panel is open.**
+  It used to build it for every file it loaded, which reads the file's
+  metadata (EXIF, IPTC, XMP, ICC, PNG text) through libvips and lays out the
+  Markdown tables, even with the panel closed, which is how it usually is.
+  Now opening the panel builds the text for the file on show, and while the
+  panel stays open each file loaded refreshes it, so browsing with it closed
+  costs nothing extra. An empty viewer's panel says "No media" instead of
+  keeping the last file's details.
+- **The demo's Media Viewer page crashed (ACCESS_VIOLATION on Windows,
+  SIGSEGV on Linux).** The viewer fills its Details panel, a Markdown
+  `UltraCanvasTextArea`, and scrolls it to the top on every file it loads:
+  when the page opens and on every click or arrow key that browses the
+  folder. When the viewer is not in a window yet, as the demo does it
+  (`OpenFolder` before `AddChild`), the text area has no render context, and
+  `ScrollTo` built the line layouts anyway, through a null context.
+  `GetActualLineLayout` now builds layouts only when there is a context and
+  otherwise returns no layout, which every caller already handles; the first
+  `Render` lays the text out. The same function read one element past the end
+  of the layout cache for an index equal to the line count; it no longer
+  does. New `TextAreaDetachedTest` scrolls a detached Markdown and plain text
+  area, then checks both lay out once attached.
+- **An image whose header reads but whose pixels do not decode crashed
+  whatever drew it.** libvips opens a file lazily, so such an image has a
+  size and counts as valid; only making the pixmap finds the pixels missing,
+  and `CreatePixmapFromVImage` then copied from the null pointer
+  `VImage::data()` returns. The demo's Media Viewer hit it browsing to
+  `dice.heic` on a build whose libheif has no HEVC decoder, and a truncated
+  PNG does the same everywhere. The pixmap request now fails cleanly: no
+  pixmap, the libvips reason in the image's error message, and no decoding
+  again on the next request. The function's other two failures (no Cairo
+  surface, no surface data) threw an exception the pixmap path does not
+  catch, which ended the program too; all three now throw `vips::VError` and
+  free the surface first. New `ImageUndecodableTest`.
+
+#### 2026-10-03 *0.9.138*
+- **CSSLayout: floats in block layout.** `LayoutItem::floatSide`
+  (`SetFloat(FloatSide::Left / Right)`) puts a block child at the left or
+  right edge of its parent's content box, as high as it fits: beside the
+  floats already there when there is room, else below them. The blocks after
+  it are narrowed by the floats beside their top edge, or moved below them
+  when they would get less than their min-content width (a table, a long
+  word). The parent grows to hold its floats. Approximation: a browser
+  narrows only the line boxes beside a float, so a paragraph that starts
+  beside a short float stays narrow to its end here. Only a `Block` parent
+  honours `floatSide`. Test: `HTMLTableLayoutTest`.
+- **HTML reader: a table without a width is as wide as its content.** It
+  filled its line, so the 30px logo table of a mail header was drawn 138px
+  wide, and a mail's left-hand button was centred across the whole line.
+  Test: `HTMLTableLayoutTest` ("a table without a width is shrink-to-fit").
+- **HTML reader: a list marker starts the item's first block.** In
+  `<li><div>text</div></li>` the bullet stood on a line of its own above the
+  text. Test: `HTMLTableLayoutTest` ("a list marker starts the item's first
+  block").
+- **HTML reader: `vertical-align: top / bottom` on inline-block boxes.** Two
+  side-by-side mail columns were centred on each other instead of starting
+  level. Test: `HTMLTableLayoutTest` ("vertical-align: top on side-by-side
+  boxes").
+- **HTML reader: attribute selectors.** `[name]`, `[name=value]` and the
+  `~=` `^=` `$=` `*=` `|=` forms, with quoted values and the ` i` flag, now
+  match; before, a rule naming one was dropped. Mailchimp writes its
+  narrow-screen rules that way (`table[id=templateBody]{width:100% !important}`,
+  `td[class=mcnTextContent]{…}`), so a Mailchimp newsletter in a narrow pane
+  stayed 600px wide and ran off the right edge. An attribute selector counts
+  like a class in the cascade. Test: `HTMLReaderTest` (`TestAttributeSelectors`).
+- **HTML reader: a px width or height is the content box.** As in CSS, padding
+  and border now go on top of `width: 25px` unless `box-sizing: border-box`
+  says otherwise (now read; tables and form controls are border-box, as in
+  browsers' own style sheets). The reader counted the padding inside, so
+  Mailchimp's footer icons - `<td style="width:25px; padding:0 10px">` around
+  a `width:100%` picture - were drawn 5px wide. Test: `HTMLTableLayoutTest`
+  ("a px width is the content box unless box-sizing: border-box").
+- **HTML reader: structural pseudo-classes.** `:first-child`, `:last-child`,
+  `:only-child`, `:nth-child(an+b)` (with `odd` / `even`), `:nth-last-child()`,
+  the `-of-type` forms, `:root` and `:empty` now match; a rule naming one was
+  dropped before (Mailchimp's mobile padding rule uses `:last-child`). They
+  count like a class in the cascade. Dynamic pseudo-classes (`:hover`,
+  `:focus`, `:visited`) still drop the rule - a mail is never hovered.
+  Test: `HTMLReaderTest` (`TestStructuralPseudoClasses`).
+- **HTML reader: floats.** `float: left / right`, `<table align="left|right">`
+  and `<img align="left|right">` (which browsers float) were ignored, so a
+  mail template's two-column block - two 300px `<table align="left">` in a
+  600px cell - stacked, and a picture's caption sat below it. A float now
+  goes to its edge and the content after it flows beside it (CSSLayout
+  floats, below); `clear` and `<br clear>` start below the floats. Test:
+  `HTMLTableLayoutTest` ("floats sit side by side", "content flows around
+  floats").
+
+#### 2026-10-02 *0.9.137*
+- **A path's bounding box is where the path is drawn.** `PathData::GetBounds`
+  and `VectorPath::GetBoundingBox` read only absolute `M` / `L` / `C`
+  commands: a relative curve (`c`) was measured as if its offsets were
+  coordinates, and `H` / `V`, the smooth and quadratic forms and arcs were
+  skipped. An SVG written with relative curves (`media/vector/SVG/astronaut.svg`)
+  therefore got selection boxes near the page origin, the size of the
+  offsets, and culling, snapping and alignment used the same wrong boxes. The
+  bounds now come from the normalised path (every command kind, relative or
+  absolute) and a curve is measured at its extrema, not its control points.
+- **Vector display quality.** `VectorRenderOptions::DisplayQuality`
+  (`Outline`, `Simple`, `Normal`) and `UltraCanvasVectorCanvas::SetDisplayQuality`:
+  outlines only, fills and lines without antialiasing, or everything
+  antialiased. `VectorRenderOptions::EnableAntialiasing`, which nothing read,
+  now turns antialiasing off as well.
+
+#### 2026-10-02 *0.9.136*
+- **macOS apps load and ship only the libraries they use.** The core is
+  linked statically on macOS, so every application's link line carried its
+  whole dependency list (tesseract, leptonica, MuPDF, zbar, libcdr with boost
+  and ICU, the audio codecs), and Apple's linker recorded each one whether the
+  program used it or not. `package-macos.sh` then copied all of them, with
+  their own dependencies, into every one of the six `.app` bundles. Apps now
+  link with `-dead_strip_dylibs`, which drops only the libraries an app takes
+  no symbol from. So far that is little: DeviceExplorer loses zbar and c-ares,
+  while tesseract, MuPDF and the rest stay, because core code every app pulls
+  in still references them. The packaging
+  script prints, and adds to the CI job summary, each bundle's size and how
+  much of it is bundled libraries.
+- **UltraNetMonitor and DeviceExplorer on macOS no longer carry the LaTeX
+  module.** `package-macos.sh` copied `libUltraCanvasLaTeX.dylib`, the
+  libraries it loads and the MicroTeX fonts (`media/microtex`) into every
+  `.app`. Neither app typesets LaTeX: the only Markdown either shows is a
+  dialog message, which without the module displays `$...$` as plain text.
+  Their bundles now leave all three out (`NO_LATEX_APPS`); every other app
+  keeps them.
+- **The macOS CI download is one disk image.** The macOS artifact was the
+  `dist-macos/` folder zipped by `upload-artifact`, which does not keep file
+  permissions, so an app unpacked from it had lost its executable bit. CI now
+  packages with `--dmg` and uploads only `UCDemo-MacOS-<version>-<arch>.dmg`.
+  The image is LZMA-compressed (`ULMO`, the tightest format `hdiutil` has), holds
+  the six apps, `ultramsg` and an Applications link for drag-and-drop install,
+  is signed like the apps, and on `main` is notarized and stapled as well.
+  `hdiutil create` gets three tries against the runners' occasional "Resource
+  busy".
+- **`package_and_notarize-macos.sh` no longer carries notarization
+  credentials.** It exported the Apple ID, team ID and an app-specific
+  password written into the script, so every reader of the repository had
+  them. It now takes `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` from
+  the environment and stops with a message when one is missing. The old
+  password is still in the git history and has to be revoked at Apple.
+
+#### 2026-10-02 *0.9.135*
+- **TreeView: `GetRequiredWidth` - the width the widest row on show needs.**
+  Indent, expander and check-flag slots, left icon and label text, plus the
+  tree's right padding and border, a right icon and the vertical scrollbar
+  while it is shown; the children of a collapsed node do not count. It
+  measures with the window's render context and returns 0 while the tree is
+  not in a window yet, so a host can size a sidebar to its names - UltraMail's
+  folder list does (see the UltraMail changelog, "the folder list's width").
+  Documented in `UltraCanvasTreeViewExamples.md`.
+
+#### 2026-10-02 *0.9.134*
+- **VideoFX: ducking presets** (VideoFX 0.4.2). `VideoFXDuckingPreset` -
+  `Speech` (the defaults), `Outdoor` (-28 dBFS) and `LoudEvent` (-15 dBFS,
+  back up after 0.2 s of calm) - and `VideoFXMusic::SetDuckingPreset` fill
+  in the ducking threshold and times for the kind of footage, so an app can
+  offer one choice instead of four numbers; the depth (`duckingLevel`) is
+  left alone and single fields set afterwards refine it.
+  - `videofx`: `--duck-preset speech|outdoor|loud`, applied before the single
+    `--duck-*` values whatever the order on the command line.
+
 #### 2026-10-02 *0.9.133*
 - **The IMAP plug-in's `AppendMessage` now sets the flags it is given.** The
   upload went out without them, so a message filed with `\Seen` or `\Draft`

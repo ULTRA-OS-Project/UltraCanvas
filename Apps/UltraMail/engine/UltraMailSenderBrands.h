@@ -1,8 +1,11 @@
 // Apps/UltraMail/engine/UltraMailSenderBrands.h
 // The known-sender registry: the curated table of the services whose mail an
 // inbox actually carries (Facebook, LinkedIn, X, Claude, Instagram, the Google
-// and Apple services, PayPal, Amazon, the parcel carriers …), keyed by the
-// *registrable* domain of the envelope From address.
+// and Apple services, PayPal, Amazon, the parcel carriers …) and of the brands
+// phishing most often dresses up as (banks, payment services, crypto
+// exchanges, shops, cloud and hosting services, domain registrars, tax
+// offices, telecoms …), keyed by the *registrable* domain of the envelope
+// From address. The data is in UltraMailSenderBrandTable.cpp.
 //
 // Two rules hold this together, and both exist because the table is also what
 // the phishing scan reasons about:
@@ -15,6 +18,8 @@
 //    GMX, so those domains resolve to no brand at all — only a Google *service*
 //    domain (google.com, youtube.com) is Google.
 //
+// Version: 0.2.0 - banking, crypto, cloud/hosting, domain, government, telecom,
+//                  gaming and security categories
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,7 +43,16 @@ enum class BrandCategory {
     Technology,
     Media,
     Travel,
-    Delivery
+    Delivery,
+    // Appended, so the earlier values keep their numbers.
+    Banking,         // banks, brokers, card issuers
+    Crypto,          // exchanges and wallets
+    CloudHosting,    // cloud, web hosting, file sharing
+    DomainRegistrar, // registrars and registries
+    Government,      // tax offices and agencies
+    Telecom,
+    Gaming,
+    Security         // antivirus, password managers, VPNs
 };
 
 std::string ToString(BrandCategory category);      // stable identifier
@@ -91,7 +105,9 @@ bool DomainBelongsToBrand(const std::string& domain, const SenderBrand& brand);
 // name or one of its keywords as a whole word, case-insensitively. Used on
 // display names and subjects ("Apple ID Support"), and on host labels
 // ("apple-id-verify.example.com"), so it is deliberately narrow — a keyword
-// must be a word of its own, not a substring of another.
+// must be a word of its own, not a substring of another, a brand whose name
+// is an ordinary word is claimed through its keywords only, and an address
+// at a mailbox provider inside the text ("jane@outlook.com") claims nothing.
 const SenderBrand* BrandNamedIn(const std::string& text);
 
 // Every brand in the registry, in table order (the icon cache warms from this).

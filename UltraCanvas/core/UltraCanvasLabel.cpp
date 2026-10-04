@@ -14,12 +14,26 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips),
+//                  following the pointer along the link
+// Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
+// Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
+//                 spacing: Pango breaks on spacing its extents leave out)
+// Version: 2.8.0 - LabelStyle::lineHeightPx: every line that height, but a line
+//                 holding a taller inline image still grows
+// Version: 2.7.0 - an inline image's border drawn per side (mitred corners)
+// Version: 2.6.0 - inline images drawn in their frame (margin, border,
+//                 padding, background, rounded corners)
+// Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
+#include <vector>
+#include <limits>
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTooltipManager.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
 
@@ -159,6 +173,26 @@ namespace UltraCanvas {
         textLayout->SetWrap(style.wrap);
         textLayout->SetAlignment(style.horizontalAlign);
         textLayout->SetVerticalAlignment(style.verticalAlign);
+        // CSS line-height: each run of text that tall. The inline images'
+        // placeholders are left out, so a taller picture still grows its line.
+        if (style.lineHeightPx > 0.f) {
+            std::vector<int> holes;
+            for (const auto& img : inlineImages) holes.push_back(img.byteOffset);
+            std::sort(holes.begin(), holes.end());
+            int from = 0;
+            auto addRange = [&](int start, int end) {
+                if (end <= start) return;
+                auto lh = TextAttributeFactory::CreateAbsoluteLineHeight(style.lineHeightPx);
+                if (!lh) return;
+                lh->SetRange(start, end);
+                textLayout->InsertAttribute(std::move(lh));
+            };
+            for (int hole : holes) {
+                addRange(from, hole);
+                from = hole + 3;                         // U+FFFC is 3 bytes
+            }
+            addRange(from, std::numeric_limits<int>::max());
+        }
         // Reserve each inline image's box on its placeholder, above and below
         // the baseline as its alignment asks; the line grows to hold it.
         inlineAscents.assign(inlineImages.size(), 0.f);
@@ -176,7 +210,10 @@ namespace UltraCanvas {
             for (size_t i = 0; i < inlineImages.size(); ++i) {
                 const LabelInlineImage& img = inlineImages[i];
                 const Size2Df size = InlineImageSize(img);
-                const float h = size.height;
+                // The whole margin box stands on the line, as CSS places an
+                // inline replaced element.
+                const float w = size.width + img.frame.Horizontal();
+                const float h = size.height + img.frame.Vertical();
                 float ascent = h;                                  // baseline
                 switch (img.align) {
                     case LabelInlineImageAlign::Middle: ascent = (h + xHeight) / 2.f; break;
@@ -185,7 +222,7 @@ namespace UltraCanvas {
                     case LabelInlineImageAlign::Baseline: break;
                 }
                 inlineAscents[i] = ascent;
-                auto shape = TextAttributeFactory::CreateShape(size.width,
+                auto shape = TextAttributeFactory::CreateShape(w,
                                                                std::max(0.f, ascent),
                                                                std::max(0.f, h - ascent));
                 shape->SetRange(img.byteOffset, img.byteOffset + 3);   // U+FFFC is 3 bytes
@@ -206,9 +243,12 @@ namespace UltraCanvas {
     }
 
     Size2Df UltraCanvasLabel::InlineImageSize(const LabelInlineImage& image) const {
-        if (inlineFitWidth > 0.f && image.width > inlineFitWidth && image.width > 0.f) {
-            const float scale = inlineFitWidth / image.width;
-            return Size2Df(inlineFitWidth, image.height * scale);
+        // The picture shrinks so that it and its frame fit the line.
+        const float room = inlineFitWidth - image.frame.Horizontal();
+        if (inlineFitWidth > 0.f && image.width > room && image.width > 0.f) {
+            const float fitted = std::max(0.f, room);
+            const float scale = fitted / image.width;
+            return Size2Df(fitted, image.height * scale);
         }
         return Size2Df(image.width, image.height);
     }
@@ -219,8 +259,9 @@ namespace UltraCanvas {
         if (fit == inlineFitWidth) return;
         bool changes = false;
         for (const auto& img : inlineImages) {
-            const bool wasScaled = inlineFitWidth > 0.f && img.width > inlineFitWidth;
-            const bool isScaled  = fit > 0.f && img.width > fit;
+            const float w = img.width + img.frame.Horizontal();
+            const bool wasScaled = inlineFitWidth > 0.f && w > inlineFitWidth;
+            const bool isScaled  = fit > 0.f && w > fit;
             if (wasScaled || isScaled) { changes = true; break; }
         }
         inlineFitWidth = fit;
@@ -228,6 +269,27 @@ namespace UltraCanvas {
     }
 
     Rect2Df UltraCanvasLabel::InlineImageRect(size_t index) {
+        const Rect2Df box = InlineImageBoxRect(index);
+        if (index >= inlineImages.size() || box.width <= 0.f) return box;
+        const LabelInlineImageFrame& f = inlineImages[index].frame;
+        return Rect2Df(box.x + f.borderLeft.width + f.paddingLeft,
+                       box.y + f.borderTop.width + f.paddingTop,
+                       std::max(0.f, box.width - f.borderLeft.width - f.borderRight.width -
+                                     f.paddingLeft - f.paddingRight),
+                       std::max(0.f, box.height - f.borderTop.width - f.borderBottom.width -
+                                     f.paddingTop - f.paddingBottom));
+    }
+
+    Rect2Df UltraCanvasLabel::InlineImageBoxRect(size_t index) {
+        const Rect2Df m = InlineImageMarginRect(index);
+        if (index >= inlineImages.size() || m.width <= 0.f) return m;
+        const LabelInlineImageFrame& f = inlineImages[index].frame;
+        return Rect2Df(m.x + f.marginLeft, m.y + f.marginTop,
+                       std::max(0.f, m.width - f.marginLeft - f.marginRight),
+                       std::max(0.f, m.height - f.marginTop - f.marginBottom));
+    }
+
+    Rect2Df UltraCanvasLabel::InlineImageMarginRect(size_t index) {
         if (index >= inlineImages.size()) return {};
         if (!internalLayoutValid || !textLayout) {
             UpdateInternalLayout(GetRenderContext());
@@ -238,14 +300,36 @@ namespace UltraCanvas {
         const Rect2Di pos = textLayout->IndexToPos(img.byteOffset);
         const double baseline = textLayout->IndexToBaseline(img.byteOffset);
         const float x = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft() + pos.x);
-        const float ascent = index < inlineAscents.size() ? inlineAscents[index] : size.height;
+        const float w = size.width + img.frame.Horizontal();
+        const float h = size.height + img.frame.Vertical();
+        const float ascent = index < inlineAscents.size() ? inlineAscents[index] : h;
         const float y = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
                                            textLayout->GetLayoutVerticalOffset() +
                                            baseline - ascent);
-        return Rect2Df(x, y, size.width, size.height);
+        return Rect2Df(x, y, w, h);
     }
 
     // ===== Engine entry points =====
+
+    // The width the text needs to keep its natural line breaks. That is the
+    // laid-out width, except that with letter spacing Pango breaks a line on
+    // the spacing after its last letter, which its extents leave out: at
+    // exactly the measured width the last word would wrap. So check, and
+    // widen until it fits. Leaves the layout unwrapped (explicit width -1).
+    float UltraCanvasLabel::NaturalTextWidth() {
+        textLayout->SetExplicitWidth(-1);
+        float w = (float)textLayout->GetLayoutWidth();
+        if (style.wrap == TextWrap::WrapNone || w <= 0.f) return w;
+        const int lines = textLayout->GetLineCount();
+        for (int step = 0; step < 16; ++step) {
+            textLayout->SetExplicitWidth(w);
+            const bool fits = textLayout->GetLineCount() <= lines;
+            if (fits) break;
+            w += 1.f;
+        }
+        textLayout->SetExplicitWidth(-1);
+        return w;
+    }
 
     void UltraCanvasLabel::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
         FitInlineImages(-1.f);   // max-content: images at their own size
@@ -255,8 +339,7 @@ namespace UltraCanvas {
             return;
         }
         // max-content: unbounded width → single-line natural width.
-        textLayout->SetExplicitWidth(-1);
-        const float maxW = (float)textLayout->GetLayoutWidth();
+        const float maxW = NaturalTextWidth();
         const float maxH = (float)textLayout->GetLayoutHeight();
 
         // min-content: the widest unbreakable run - the layout at a one-pixel
@@ -312,8 +395,7 @@ namespace UltraCanvas {
         }
 
         // Max-content: natural (unwrapped) width and its height.
-        textLayout->SetExplicitWidth(-1);
-        float w = (float)textLayout->GetLayoutWidth();
+        float w = NaturalTextWidth();
         return Size2Df(w, (float)textLayout->GetLayoutHeight());
     }
 
@@ -374,7 +456,26 @@ namespace UltraCanvas {
             case UCEventType::MouseMove:
                 if (Contains(event.pointer)) {
                     if (!textLinks.empty()) {
+                        const int was = hoveredLink;
                         hoveredLink = LinkIndexAtPoint(event.pointer);
+                        if (hoveredLink != was) {
+                            const std::string href = hoveredLink >= 0
+                                ? textLinks[static_cast<size_t>(hoveredLink)].href
+                                : std::string();
+                            if (onLinkHovered) onLinkHovered(href);
+                            if (showLinkTooltips) {
+                                if (!href.empty() && GetWindow())
+                                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                        GetWindow(), href, event.pointerWindow);
+                                else
+                                    UltraCanvasTooltipManager::HideTooltip();
+                            }
+                        } else if (showLinkTooltips && hoveredLink >= 0 &&
+                                   (UltraCanvasTooltipManager::IsVisible() ||
+                                    UltraCanvasTooltipManager::IsPending())) {
+                            // Along the same link: the tooltip follows the pointer.
+                            UltraCanvasTooltipManager::UpdateTooltipPosition(event.pointerWindow);
+                        }
                     }
                     if (!IsHovered()) {
                         SetHovered(true);
@@ -383,6 +484,10 @@ namespace UltraCanvas {
                         }
                     }
                 } else {
+                    if (hoveredLink >= 0) {
+                        if (onLinkHovered) onLinkHovered(std::string());
+                        if (showLinkTooltips) UltraCanvasTooltipManager::HideTooltip();
+                    }
                     hoveredLink = -1;
                     if (IsHovered()) {
                         SetHovered(false);
@@ -394,6 +499,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseLeave:
+                if (hoveredLink >= 0) {
+                    if (onLinkHovered) onLinkHovered(std::string());
+                    if (showLinkTooltips) UltraCanvasTooltipManager::HideTooltip();
+                }
                 hoveredLink = -1;
                 break;
 
@@ -466,10 +575,55 @@ namespace UltraCanvas {
             // Inline images, into the boxes their placeholders reserved.
             for (size_t i = 0; i < inlineImages.size(); ++i) {
                 if (!inlineImages[i].image) continue;
+                const LabelInlineImage& img = inlineImages[i];
+                const LabelInlineImageFrame& f = img.frame;
+                // The frame: background over the border box, border inside it.
+                const Rect2Df box = InlineImageBoxRect(i);
+                const Rect2Dd boxD(box.x, box.y, box.width, box.height);
+                if (box.width > 0.f && box.height > 0.f && f.HasBorder()) {
+                    // Each side its own, meeting on the corners' diagonals.
+                    if (f.background.a > 0) ctx->SetFillPaint(f.background);
+                    const double rad = f.borderRadius;
+                    ctx->DrawRoundedRectangleWidthBorders(
+                        boxD, f.background.a > 0,
+                        f.borderLeft.width, f.borderRight.width, f.borderTop.width, f.borderBottom.width,
+                        f.borderLeft.color, f.borderRight.color, f.borderTop.color, f.borderBottom.color,
+                        rad, rad, rad, rad,
+                        f.borderLeft.dash, f.borderRight.dash, f.borderTop.dash, f.borderBottom.dash);
+                } else if (box.width > 0.f && box.height > 0.f && f.background.a > 0) {
+                    ctx->DrawFilledRectangle(boxD, f.background, 0.f, Colors::Transparent, f.borderRadius);
+                }
                 const Rect2Df r = InlineImageRect(i);
                 if (r.width <= 0.f || r.height <= 0.f) continue;
-                ctx->DrawImage(*inlineImages[i].image,
-                               Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
+                // The rounded corners inside the border: what each side leaves
+                // of the radius.
+                const float lw = f.borderLeft.width, rw = f.borderRight.width;
+                const float tw = f.borderTop.width, bw = f.borderBottom.width;
+                const double itl = std::max(0.f, f.borderRadius - std::max(lw, tw));
+                const double itr = std::max(0.f, f.borderRadius - std::max(rw, tw));
+                const double ibr = std::max(0.f, f.borderRadius - std::max(rw, bw));
+                const double ibl = std::max(0.f, f.borderRadius - std::max(lw, bw));
+                const bool rounded = itl > 0 || itr > 0 || ibr > 0 || ibl > 0;
+                if (img.fit == ImageFitMode::Fill && !rounded) {
+                    ctx->DrawImage(*img.image, Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
+                    continue;
+                }
+                // Fitted inside its box and placed there (object-fit /
+                // object-position), clipped to the box and to the rounded
+                // corners inside the border.
+                const Size2Df natural(static_cast<float>(img.image->GetWidth()),
+                                      static_cast<float>(img.image->GetHeight()));
+                const Rect2Df d = FitImageRect(natural, r, img.fit, img.position);
+                if (d.width <= 0.f || d.height <= 0.f) continue;
+                ctx->PushState();
+                if (rounded) {
+                    ctx->ClipRoundedRectangle(Rect2Dd(box.x + lw, box.y + tw,
+                                                      box.width - lw - rw, box.height - tw - bw),
+                                              itl, itr, ibr, ibl);
+                }
+                ctx->ClipRect(Rect2Dd(r.x, r.y, r.width, r.height));
+                ctx->DrawImage(*img.image, Rect2Dd(d.x, d.y, d.width, d.height), ImageFitMode::Fill);
+                ctx->PopState();
             }
         }
     }

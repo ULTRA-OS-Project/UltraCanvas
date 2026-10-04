@@ -6,6 +6,11 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
+// Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
+//                  and mailbox addresses are not claims
+// Version: 0.3.0 - PlainLinkAt
+// Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -92,6 +97,34 @@ TEST(a_brand_claimed_from_a_free_mailbox_is_a_scam) {
     const ThreatReport r = ScanMessage(in);
     REQUIRE(HasFinding(r, "brand-impersonation"));
     REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(a_bank_or_exchange_claimed_from_elsewhere_is_flagged) {
+    ScanInput in = Html("security@coinbase-verify.example",
+        "<a href=\"https://coinbase-verify.example/restore\">Restore access</a>");
+    in.fromName = "Coinbase Security";
+    REQUIRE(HasFinding(ScanMessage(in), "brand-impersonation"));
+
+    ScanInput bank = Html("alerts@secure-mail.example",
+        "<a href=\"https://secure-mail.example/x\">Review activity</a>");
+    bank.fromName = "Chase Bank Alerts";
+    REQUIRE(HasFinding(ScanMessage(bank), "brand-impersonation"));
+}
+
+TEST(an_ordinary_word_or_mailbox_address_is_not_impersonation) {
+    // A hotel's "booking" and a friend whose display name is their own
+    // Outlook address are not claims to be Booking.com or Microsoft.
+    ScanInput hotel = Html("reservations@hotel-am-see.example",
+        "<a href=\"https://hotel-am-see.example/\">Your stay</a>");
+    hotel.subject = "Your booking is confirmed";
+    REQUIRE(!HasFinding(ScanMessage(hotel), "brand-impersonation"));
+
+    ScanInput friendMail;
+    friendMail.fromAddr = "jane@outlook.com";
+    friendMail.fromName = "jane@outlook.com";
+    friendMail.subject  = "Weekend";
+    friendMail.body     = "See you on Saturday!";
+    REQUIRE(!HasFinding(ScanMessage(friendMail), "brand-impersonation"));
 }
 
 TEST(userinfo_hiding_the_real_host_is_caught) {
@@ -285,4 +318,116 @@ TEST(a_large_number_without_the_story_is_not_advance_fee) {
     story.fromAddr = "aunt@example.test";
     story.body     = "Grandpa passed away last week; the funeral is on Friday.";
     REQUIRE(!HasFinding(ScanMessage(story), "advance-fee-fraud"));
+}
+
+// ---------------------------------------------------------------------------
+// A brand's own pictures over links somewhere else (a fake "It's a Match!")
+// ---------------------------------------------------------------------------
+namespace {
+// The shape of the real phishing mail: Tinder's name and its pictures from
+// gotinder.com, sent from an unrelated domain, every link to a third one.
+ScanInput FakeTinderMatch() {
+    ScanInput in;
+    in.fromName = "Tinder";
+    in.fromAddr = "cmcgavnn@amega.com";
+    in.subject  = "It's a Match!";
+    in.body =
+        "<table><tr><td><img src=\"https://marketing-images.gotinder.com/3d7c/0.jpg\" "
+        "width=\"39\" height=\"45\" alt=\"Tinder Logo\"></td></tr>"
+        "<tr><td><div>Someone matched with you on Tinder!</div></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<span>FIND OUT WHO</span></a></td></tr>"
+        "<tr><td><a href=\"http://vakantiehuiseichenbach.nl/splashedlb.php?utm_source=x\">"
+        "<img src=\"https://marketing-images.gotinder.com/f91f/0.png\" alt=\"Tinder Logo\"></a>"
+        " This email was sent by Tinder. <a href=\"http://vakantiehuiseichenbach.nl/x\">"
+        "Privacy Policy</a></td></tr></table>";
+    in.bodyIsHtml = true;
+    return in;
+}
+} // namespace
+
+TEST(a_fake_match_mail_with_borrowed_pictures_is_a_scam) {
+    const ThreatReport r = ScanMessage(FakeTinderMatch());
+    REQUIRE(HasFinding(r, "brand-impersonation"));
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(borrowed_pictures_need_no_brand_table) {
+    ScanInput in = FakeTinderMatch();
+    in.fromName = "Glimmerdate";                // a name no table knows
+    in.subject  = "New message on Glimmerdate";
+    for (std::string::size_type p; (p = in.body.find("gotinder")) != std::string::npos;)
+        in.body.replace(p, 8, "glimmerdate");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(a_brand_mailing_its_own_pictures_and_links_is_not_borrowing) {
+    ScanInput in = FakeTinderMatch();
+    in.fromAddr = "no-reply@gotinder.com";
+    for (std::string::size_type p; (p = in.body.find("vakantiehuiseichenbach.nl")) != std::string::npos;)
+        in.body.replace(p, 25, "tinder.com");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(!HasFinding(r, "borrowed-brand-pictures"));
+    REQUIRE(!HasFinding(r, "brand-impersonation"));
+}
+
+TEST(pictures_from_a_cdn_the_name_does_not_name_are_not_borrowing) {
+    ScanInput in;
+    in.fromName = "Garden Club";
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "<img src=\"https://cdn.mailservice.example/a.png\">"
+              "<a href=\"https://gardenclub.example/events\">Events</a>";
+    in.bodyIsHtml = true;
+    REQUIRE(!HasFinding(ScanMessage(in), "borrowed-brand-pictures"));
+}
+
+TEST(image_hosts_are_read_from_src_and_background) {
+    const auto hosts = ExtractImageHosts(
+        "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
+        "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
+    REQUIRE(hosts.size() == 3);
+}
+
+TEST(plain_link_at_finds_the_url_under_a_position) {
+    const std::string text = "See https://example.com/a?b=1. Or www.test.org, not this.";
+    const std::size_t url = text.find("https://");
+    REQUIRE_EQ(PlainLinkAt(text, url), std::string("https://example.com/a?b=1"));
+    REQUIRE_EQ(PlainLinkAt(text, url + 10), std::string("https://example.com/a?b=1"));
+    REQUIRE(PlainLinkAt(text, text.find("1.") + 1).empty());   // the full stop after it
+    REQUIRE(PlainLinkAt(text, 0).empty());                     // "See"
+    REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
+    REQUIRE(PlainLinkAt(text, text.find("not")).empty());
+    REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
+}
+
+TEST(plain_text_mail_addresses_are_mailto_links) {
+    const std::string text = "Write to support@shop.example, or mailto:sales@shop.example?subject=Hi."
+                             " Not an address: a@b, x@y.1, @handle. See https://user@site.example/p";
+    REQUIRE_EQ(PlainLinkAt(text, text.find("support")), std::string("mailto:support@shop.example"));
+    REQUIRE_EQ(PlainLinkAt(text, text.find("shop.example,")), std::string("mailto:support@shop.example"));
+    REQUIRE(PlainLinkAt(text, text.find(", or")).empty());   // the comma after it
+    REQUIRE_EQ(PlainLinkAt(text, text.find("mailto:") + 3),
+               std::string("mailto:sales@shop.example?subject=Hi"));
+    REQUIRE(PlainLinkAt(text, text.find("a@b")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("x@y.1")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("@handle") + 1).empty());
+    // An address inside a web address is part of that web address.
+    REQUIRE_EQ(PlainLinkAt(text, text.find("site.example")), std::string("https://user@site.example/p"));
+
+    const auto links = ExtractLinks(text, false);
+    REQUIRE(links.size() == 3);
+    REQUIRE_EQ(links[0].href, std::string("mailto:support@shop.example"));
+    REQUIRE(links[0].host.empty());
+    REQUIRE_EQ(links[2].host, std::string("site.example"));
+}
+
+TEST(a_mail_address_in_plain_text_raises_no_link_finding) {
+    ScanInput in;
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "Questions? Write to helpdesk@other-service.example any time.";
+    in.bodyIsHtml = false;
+    REQUIRE(ScanMessage(in).level == ThreatLevel::Clean);
 }

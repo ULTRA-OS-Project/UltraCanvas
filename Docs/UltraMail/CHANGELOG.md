@@ -1,3 +1,224 @@
+#### 2026-10-04 *0.10.29*
+- **The message text fits its pane.** An HTML message tall enough to scroll
+  was laid out for the pane's full width, and the vertical scrollbar then took
+  its strip on top: the end of every line ran under the bar and the few
+  hidden pixels raised a horizontal scrollbar across the bottom as well. The
+  body is now laid out at the width beside the bar, so lines wrap before it and
+  a horizontal bar appears only for content that really cannot wrap (a
+  fixed-width table, a large picture).
+- **No dotted line or slivers after scrolling.** Scrolling a message left a
+  faint dotted yellow line just left of the text and slivers of glyphs below
+  it: the edges of the letters, which scrolling never painted over. Fixed in
+  the framework (framework changelog, "A scrolled view no longer leaves glyph
+  fringes beside and below it").
+- **Resizing the window keeps your place in the message.** It sent the
+  message back to its top (framework changelog, "Resizing a window keeps the
+  scroll position of everything in a split pane").
+- **Thin, round scrollbars in the reading pane.** The message text (HTML and
+  plain text) scrolls with the same thin, rounded scrollbar as the message
+  list instead of the wide square one. Plain-text mail needs the framework's
+  new text-area scrollbar style (framework changelog, "TextArea: the
+  scrollbar's thickness and rounding are styleable").
+#### 2026-10-04 *0.10.28*
+- **Mail addresses in a message open a new message.** A `mailto:` link in
+  formatted mail, and a `mailto:` or plain address ("support@shop.example")
+  written in plain-text mail, opens a new message in UltraMail, from the
+  account the message was read in, with the subject and text the link
+  carries. Before, a `mailto:` link went to the system's mail program, and
+  addresses in plain text did nothing.
+  - **Copies too:** the link's `cc` and `bcc` fill the message's Cc and Bcc,
+    and a `to` field adds recipients. A message with blind copies opens with
+    its **Bcc** row shown, so no recipient is added unseen.
+- **Bcc in the compose window.** A **Bcc** toggle at the end of the Cc row
+  shows a Bcc row for blind copies the other recipients don't see. Hiding the
+  row again empties it, so nothing goes to an address that is out of sight.
+- **To, Cc and Bcc complete from the address book.** Typing in a recipient
+  field pops up the contacts whose name, organization or address matches what
+  is typed after the last comma - matches at the start of a word first. Down
+  and Enter, or a click, puts in "Name <address>, " and keeps the recipients
+  before it; addresses already in the field are not offered again. The
+  people you write to most - counted from the mail in your Sent folders -
+  come first, and recent mail counts more than old: a message's weight halves
+  every 90 days, so someone you wrote to often years ago does not stay on top.
+- **Plain-text mail: addresses are links.** They show the pointing hand, show
+  their address in the status line or as a tooltip, and are counted with the
+  message's links. They are never judged as web links by the threat scan.
+
+#### 2026-10-04 *0.10.27*
+- **The phishing scan knows the brands phishing pretends to be.** The
+  known-sender registry grows from about 50 services to about 400, with 600 of
+  their own domains: banks and brokers (Chase, Bank of America, Barclays, HSBC,
+  Revolut, Deutsche Bank, Commerzbank, ING, N26, UBS, BNP Paribas, Nordea, RBC,
+  Commonwealth Bank …), payment services (Venmo, Zelle, Cash App, Wise, Western
+  Union, Klarna, Visa, Mastercard …), crypto exchanges and wallets (Coinbase,
+  Binance, Kraken, Crypto.com, MetaMask, Ledger, Trezor …), online shops and
+  marketplaces (Walmart, AliExpress, Temu, Zalando, Vinted, Kleinanzeigen,
+  Lidl, Aldi …), parcel carriers and postal services (USPS, Royal Mail, Evri,
+  DPD, GLS, InPost, PostNL …), cloud, hosting and file-sharing services
+  (WeTransfer, DocuSign, Cloudflare, Hetzner, IONOS, OVHcloud …), domain
+  registrars (GoDaddy, Namecheap, INWX, DENIC …), tax offices and agencies (IRS,
+  HMRC, ELSTER, impots.gouv.fr, CRA, ATO …), telecoms, game stores and
+  security software (Norton, McAfee, LastPass …). A display name or subject
+  claiming one of them from another domain is flagged as impersonation; their
+  genuine mail gets their name, icon and the business-contact badge. Eight new
+  categories describe them, and the **Payments** filter now also shows mail
+  from banks and crypto exchanges.
+- **Fewer false impersonation warnings.** Brands whose name is an ordinary
+  word ("Chase", "Target", "Visa", "Steam", "Booking", "UPS") are now claimed
+  only by specific phrases ("chase bank", "booking.com"), so a hotel's "your
+  booking is confirmed" or a subject with "follow-ups" no longer reads as
+  impersonation; Amazon is no longer claimed by "prime" alone, nor Microsoft
+  by "office" or "outlook". A display name that is just the sender's own
+  mailbox address (`jane@outlook.com`) claims no brand.
+- **A squatted country domain no longer passes for a big brand.** Amazon,
+  eBay, Google, DHL, Etsy and Pinterest were trusted under any domain ending
+  - `amazon.xyz` got Amazon's name, icon and badge. They now list their real
+  country sites (`amazon.de`, `ebay.co.uk`, `dhl.de`, `google.co.jp`,
+  `pinterest.de`, …) one by one, and no entry is trusted that way any more.
+- Brand lookups use an index instead of walking the table for every message
+  in a folder. See [SenderBadges.md](SenderBadges.md#2-the-known-sender-registry)
+  for the rules an entry must follow.
+
+#### 2026-10-04 *0.10.26*
+- **Unread mail stays unread.** Syncing marked every new message read on the
+  server, so the list had no unread mail to show in bold, the account's unread
+  counts stayed at 0, and other mail programs saw the mail as read too. The
+  IMAP plug-in now puts a message's unread state back after reading it (see
+  the framework changelog, "IMAP plug-in: reading a message no longer marks it
+  read on the server"). Mail marked read before this fix stays read on the
+  server; *Mark as unread* brings a message back.
+- **The account bar's counts follow what you read.** Opening an unread message
+  lowered the list's unread count, but the account tile kept the old numbers
+  until the next sync. It is now re-counted at once.
+- **Settings > Reading > Waiting for reply: which unanswered mail counts.**
+  Every personal message in the inbox that had never been answered counted as
+  waiting for a reply, however old it was: 1083 on one account. The count, the
+  list's reply mark and the *Needs an answer* filter now take only mail from
+  the last 14 days (or 7, 30, or any age) and, by default, only from people you
+  have written to, that is the recipients of your Sent mail. That rule is left
+  out while the Sent folder has not been fetched. A message you mark *Needs an
+  answer* yourself always counts. The rules are applied when the mail is
+  counted (`LocalStore::SetNeedsAnswerRules`), so changing them needs no
+  re-sync. Saved as `needs_answer_max_age_days` / `needs_answer_only_written_to`
+  in `preferences.ini`. Tests: `test_localstore.cpp`, `test_preferences.cpp`.
+
+#### 2026-10-04 *0.10.25*
+- **A server name that cannot be one is caught before the sign-in is tried.**
+  Typing `mail@interkontakt.net` for the outgoing server - the address's @
+  where the name has a dot - waited out a ten-second timeout and then blamed
+  the server for not answering. Save on the server settings page now checks
+  both names first and says what is wrong, with the likely fix: *Outgoing
+  (SMTP) server "mail@interkontakt.net": A server name has no @ - did you mean
+  mail.interkontakt.net?* It also catches a URL scheme (`imaps://`), a port
+  after a colon, a path, spaces, characters no host name holds and empty or
+  over-long parts; one-word LAN names, IP addresses and international names
+  still pass. The check is `ServerNameProblem` (`UltraMailDiscovery.h`); tests
+  in `test_discovery.cpp`.
+- The preferences reader includes `UltraCanvasPathUtf8.h` once instead of
+  twice.
+
+#### 2026-10-04 *0.10.24*
+- **Settings > Display > Links: where a link's address is shown.** Two
+  choices:
+  - **Show in status bar** (the default): the status line counts the open
+    message's links and names the sites they go to, its tooltip lists every
+    link, and pointing at a link shows its address there.
+  - **Show as tooltip**: the address of the link under the pointer - a text
+    link or a linked picture - appears in a tooltip beside it that follows the
+    pointer along the link, and the status line's links segment is hidden.
+  The choice applies at once to the message on screen and is remembered
+  (`link_display` in `preferences.ini`).
+- **Web addresses in plain-text mail work like links.** An address written in
+  a plain-text message (or an HTML message shown as plain text) shows the
+  pointing hand, reports itself as the pointer rests on it - in the status
+  line or as a tooltip, as Settings > Display > Links says - and opens in the
+  browser when clicked ("www." addresses as https). Dragging across one still
+  selects the text.
+
+#### 2026-10-04 *0.10.23*
+- **A fake "It's a Match!" is flagged as a scam.** A phishing mail that dressed
+  itself as Tinder - Tinder's name and Tinder's own pictures, sent from an
+  unrelated address, every link to a third site - passed the threat scan as
+  clean: Tinder was not in the brand table, and its links' texts ("FIND OUT
+  WHO", "Privacy Policy") name no site. Two new signs catch it (score 70, scam):
+  - **Borrowed pictures:** the mail's pictures come from a site its display
+    name or subject names (`gotinder.com` for "Tinder"), but it was sent from
+    elsewhere and none of its links go to that site. This needs no brand
+    table, so it also catches services the table does not know.
+  - **Dating services in the brand table:** Tinder, Bumble, Hinge, OkCupid and
+    Parship, so a display name claiming one from a foreign domain is
+    impersonation.
+  - **Older verdicts are judged again.** A verdict is stored the first time a
+    message is read; one stored by older rules is now re-scanned when the
+    message is opened, so mail an earlier version let through is caught.
+- **The status line shows a message's links.** While a message is open, the
+  status line says how many links it has and which sites they go to
+  ("6 links → vakantiehuiseichenbach.nl"); its tooltip lists every link with
+  the text it shows and the address it really opens. Pointing at a link or a
+  linked picture in the message shows that link's address there, before you
+  click.
+- **HTML mail renders closer to Thunderbird:** text keeps the mail's
+  `line-height` and `letter-spacing`; mail without a standards doctype lays out
+  its tables as browsers do in quirks mode (a centring cell centres the
+  tables, not every line of text); content wider than its box is drawn instead
+  of cut off; borders are drawn per side with mitred corners; images honour
+  `object-fit`, borders, rounded corners and size limits, and sit side by side;
+  a shrink-to-fit button keeps its caption on one line. See the framework
+  changelog for the HTML reader entries.
+
+#### 2026-10-03 *0.10.22*
+- **Mailchimp mail fits a narrow reading pane, and its footer icons are
+  their real size.** Newsletters and invoices built with Mailchimp (Lexware's
+  among them) stayed 600px wide in a pane narrower than 480px, because their
+  narrow-screen rules use CSS attribute selectors the HTML reader skipped; and
+  their footer icons were drawn 5px wide instead of 25px. Fixed in the
+  framework's HTML reader (see the framework changelog, "attribute selectors"
+  and "a px width or height is the content box").
+- **Two-column newsletters keep their columns.** Mailchimp and similar
+  templates place two columns side by side as floats (`<table align="left">`),
+  which the HTML reader ignored, so the columns came one under the other in
+  any pane width. And rules addressing the first or last item of a list
+  (`:last-child` and similar) now apply. Fixed in the framework's HTML reader
+  (see the framework changelog, "floats" and "structural pseudo-classes").
+- **Text runs beside a floated picture, and newsletter headers, buttons and
+  lists look as in a browser.** Text after a picture or column floated to one
+  side now runs beside it instead of starting below it. Patreon's and other
+  MJML-built newsletters showed a 30px logo 138px wide, their button centred
+  instead of on the left, and every bullet on a line of its own above its
+  text. Fixed in the framework's HTML reader (see the framework changelog,
+  "CSSLayout: floats in block layout" and the HTML reader entries beside it).
+
+#### 2026-10-02 *0.10.21*
+- **Switching accounts is immediate, even while mail is being fetched.**
+  Clicking another account's tile sometimes took 10 to 20 seconds. The
+  background sync and the window read the mail database through one shared
+  connection, which runs one statement at a time, and the sync writes a row
+  per message - each its own commit forced to disk. A click that came
+  during a sync waited behind all of them. The workers now have a
+  connection of their own, and the database runs in write-ahead-log mode,
+  where reading never waits for writing and a commit no longer forces the
+  disk.
+- **Names and subjects written as HTML read properly.** Some senders'
+  systems put HTML character references into the header - Lexware's
+  messages arrived "to Stefan Fr&ouml;hling". The list, the reading pane,
+  the sender badge and collected contacts now show "Fröhling", and so do
+  replies and forwards - the "... wrote:" line, the forwarded From/To
+  lines and the Re:/Fwd: subject, in plain and formatted mail; every named
+  and numeric reference (`&auml;`, `&amp;`, `&#8211;`, `&#x20AC;`) is
+  decoded, and a plain "&" (AT&T) stays as it is.
+
+#### 2026-10-02 *0.10.20*
+- **Settings > Reading > Layout sets the folder list's width.** *Auto* (the
+  default) makes the folder tree on the left 10 px wider than its longest
+  account address or folder name, and fits it again as folders arrive or a
+  branch is opened or closed; *Fixed width* keeps it at the number of pixels
+  set beside it (100 to 600, 200 to start with - typing a width chooses it).
+  Dragging the divider still resizes the list for the moment. Saved as
+  `folder_tree_width_mode` / `folder_tree_width` in `preferences.ini`; the
+  page's *Restore default layout* puts it back to *Auto*. Measuring the rows
+  is the framework's new `UltraCanvasTreeView::GetRequiredWidth` (see the
+  framework changelog, "TreeView: GetRequiredWidth").
+
 #### 2026-10-02 *0.10.19*
 - **The Outbox window: what waits to be sent, and what to do about it.** While
   messages wait, the toolbar shows *Outbox (N)*; it opens a window listing

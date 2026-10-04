@@ -1,9 +1,18 @@
 #!/bin/bash
 set -e
 
-export APPLE_ID="info@riscoscloverleaf.com"
-export APPLE_TEAM_ID="29638T25M9"
-export APPLE_APP_PASSWORD="bhep-idme-ydhq-lrsz"
+# Notarization credentials come from the environment, never from this file:
+# it is committed, and anything written here is readable by everyone with
+# access to the repository (and stays in its history). Set them in the shell,
+# e.g. from the login keychain:
+#   export APPLE_ID=... APPLE_TEAM_ID=...
+#   export APPLE_APP_PASSWORD="$(security find-generic-password -s ultracanvas-notary -w)"
+for var in APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+    if [ -z "${!var:-}" ]; then
+        echo "Error: $var is not set - export APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD first" >&2
+        exit 1
+    fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UC_CHANGELOG="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"
@@ -22,6 +31,9 @@ fi
 PACKAGE_ZIP="UCDemo-MacOS-$VERSION-$(uname -m).zip"
 cd "$SCRIPT_DIR/dist-macos"
 rm -f "$SCRIPT_DIR/$PACKAGE_ZIP"
-zip -r "$SCRIPT_DIR/$PACKAGE_ZIP" *.app
+# The whole suite folder: its apps load their libraries from the shared
+# UltraCanvas/Frameworks/ beside them, so an app zipped on its own would not
+# start (see "Suite layout" in package-macos.sh).
+zip -r -y "$SCRIPT_DIR/$PACKAGE_ZIP" UltraCanvas
 cd "$SCRIPT_DIR"
 echo "Created $SCRIPT_DIR/$PACKAGE_ZIP"

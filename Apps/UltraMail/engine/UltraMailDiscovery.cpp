@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.3.0 - ServerNameProblem
 // Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailDiscovery.h"
@@ -42,6 +43,55 @@ bool LooksLikeEmailAddress(const std::string& email) {
     for (unsigned char c : email)
         if (std::isspace(c)) return false;
     return true;
+}
+
+std::string ServerNameProblem(const std::string& host) {
+    if (host.empty()) return "The server name is empty.";
+    for (unsigned char c : host)
+        if (std::isspace(c)) return "A server name has no spaces in it.";
+    if (const auto scheme = host.find("://"); scheme != std::string::npos)
+        return "Enter the server name only, without \"" + host.substr(0, scheme + 3)
+               + "\" - for example " + host.substr(scheme + 3) + ".";
+    if (const auto at = host.find('@'); at != std::string::npos) {
+        // The usual slip: the address's @ typed where the name has a dot.
+        std::string guess = host;
+        guess[at] = '.';
+        if (guess.find('@') == std::string::npos && ServerNameProblem(guess).empty())
+            return "A server name has no @ - did you mean " + guess + "?";
+        return "A server name has no @ - that looks like an address.";
+    }
+    if (host.find('/') != std::string::npos)
+        return "A server name has no / - enter just the name, for example mail.example.com.";
+    if (host.front() == '[') {   // an IPv6 literal: [2001:db8::1]
+        if (host.size() < 4 || host.back() != ']') return "An IPv6 address must be closed with ].";
+        for (std::size_t i = 1; i + 1 < host.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(host[i]);
+            if (!std::isxdigit(c) && c != ':' && c != '.') return "That is not an IPv6 address.";
+        }
+        return std::string();
+    }
+    if (host.find(':') != std::string::npos)
+        return "The port goes in the port field, not after a colon in the server name.";
+
+    std::string name = host;
+    if (name.back() == '.') name.pop_back();   // a fully qualified "example.com."
+    if (name.empty() || name.size() > 253) return "That server name is too long.";
+    std::size_t start = 0;
+    while (start <= name.size()) {
+        std::size_t dot = name.find('.', start);
+        if (dot == std::string::npos) dot = name.size();
+        const std::string label = name.substr(start, dot - start);
+        if (label.empty()) return "A server name has no empty part between two dots.";
+        if (label.size() > 63) return "A part of that server name is too long.";
+        if (label.front() == '-' || label.back() == '-')
+            return "A part of a server name cannot start or end with -.";
+        for (unsigned char c : label) {
+            if (std::isalnum(c) || c == '-' || c == '_' || c >= 0x80) continue;
+            return std::string("A server name cannot hold \"") + static_cast<char>(c) + "\".";
+        }
+        start = dot + 1;
+    }
+    return std::string();
 }
 
 namespace {

@@ -1,4 +1,15 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.13.0 - the HTML body is laid out beside the vertical scrollbar (no
+//                 text under the bar, no stray horizontal bar); thin, round
+//                 scrollbars as in the message list
+// Version: 0.12.0 - mail addresses: a clicked mailto: (HTML) or address (plain text)
+//                 opens a new message to it in UltraMail
+// Version: 0.11.0 - a web address in plain-text mail opens when clicked
+// Version: 0.10.0 - the plain-text view reports the web address under the pointer
+//                 too (status line or tooltip, as Settings > Display > Links says)
+// Version: 0.9.0 - a link's address as a tooltip when Settings > Display > Links says so
+// Version: 0.8.0 - reports the body's links and the hovered link (status line);
+//                re-scans verdicts older than the current threat rules
 // Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
 // Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
 // Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
@@ -8,9 +19,10 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailHeaderText.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -18,6 +30,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTooltipManager.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"      // OpenURL
@@ -70,6 +83,134 @@ std::string HtmlToText(const std::string& html) {
     }
     return out;
 }
+
+// Opens a link of the message in the browser - web and mail addresses only,
+// never a file: or javascript: target a message could carry. A bare
+// "www.example.com" from plain text opens as https.
+void OpenMessageLink(const std::string& href) {
+    std::string lower = href;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
+        lower.rfind("mailto:", 0) == 0)
+        UltraCanvas::OpenURL(href);
+    else if (lower.rfind("www.", 0) == 0)
+        UltraCanvas::OpenURL("https://" + href);
+}
+
+// The HTML body's scroll view. The body is laid out at the width the reader
+// can actually see: the pane's content width, less the vertical scrollbar's
+// track while that bar is shown. Laid out at the full width (width: 100%), a
+// tall message ran under the vertical bar - its right edge cut off - and the
+// few hidden pixels raised a horizontal scrollbar as well. The body is laid
+// out again only when the bar comes or goes, so that settles in one extra
+// pass. Content that cannot reflow (a fixed-width table, a large picture) is
+// still wider than that and still gets the horizontal bar.
+class BodyScrollView : public UltraCanvasContainer {
+public:
+    using UltraCanvasContainer::UltraCanvasContainer;
+
+    std::shared_ptr<UltraCanvasUIElement> body;
+
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        if (!body) return;
+        // calc(100% - track) while the vertical bar is shown, 100% otherwise.
+        const float gutter = verticalScrollbar->IsVisible()
+                                 ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
+        const CSSLayout::Dimension& cur = body->size.width;
+        if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
+            cur.offsetPx == -gutter)
+            return;
+        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        body->InvalidateSubtree();
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+    }
+};
+
+// The plain-text body: a read-only text area whose links (web and mail
+// addresses written in the text) work like the HTML view's links - the one under the pointer is
+// reported (to the status line, or as a tooltip that follows the pointer
+// along it) and a click on it opens it. A drag still selects text.
+class PlainBodyArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+
+    std::function<void(const std::string& href)> onLinkHovered;
+    std::function<void(const std::string& href)> onLinkActivated;
+    bool linkTooltips = false;
+
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseMove:
+                Hover(Contains(event.pointer) ? LinkUnder(event.pointer) : std::string(),
+                      event.pointerWindow);
+                break;
+            case UCEventType::MouseLeave:
+                Hover(std::string(), event.pointerWindow);
+                break;
+            case UCEventType::MouseDown:
+                pressedLink_ = event.button == UCMouseButton::Left && Contains(event.pointer)
+                                   ? LinkUnder(event.pointer) : std::string();
+                break;
+            case UCEventType::MouseUp: {
+                const std::string pressed = std::move(pressedLink_);
+                pressedLink_.clear();
+                const bool handled = UltraCanvasTextArea::OnEvent(event);
+                // A click - pressed and released on the same link, nothing
+                // selected by a drag - opens it.
+                if (!pressed.empty() && event.button == UCMouseButton::Left &&
+                    !HasSelection() && LinkUnder(event.pointer) == pressed && onLinkActivated) {
+                    onLinkActivated(pressed);
+                    return true;
+                }
+                return handled;
+            }
+            default:
+                break;
+        }
+        return UltraCanvasTextArea::OnEvent(event);
+    }
+
+    // The pointing hand over a link, as over a link in formatted mail.
+    UCMouseCursor GetMouseCursor() const override {
+        return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
+    }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
+
+    std::string LinkUnder(const Point2Di& pointer) {
+        const LineColumnIndex hit = PosToLineColumn(pointer);
+        if (!hit.IsValid()) return std::string();
+        const std::string line = GetLine(hit.lineIndex);
+        // Codepoint column → byte offset; past the end of the line is no link.
+        std::size_t byte = 0;
+        for (int cp = 0; cp < hit.columnIndex && byte < line.size(); ++cp) {
+            ++byte;
+            while (byte < line.size() && (static_cast<unsigned char>(line[byte]) & 0xC0) == 0x80)
+                ++byte;
+        }
+        if (byte >= line.size()) return std::string();
+        return PlainLinkAt(line, byte);
+    }
+
+    void Hover(const std::string& href, const Point2Di& pointerWindow) {
+        if (href == hovered_) {
+            if (linkTooltips && !href.empty() &&
+                (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending()))
+                UltraCanvasTooltipManager::UpdateTooltipPosition(pointerWindow);
+            return;
+        }
+        hovered_ = href;
+        if (onLinkHovered) onLinkHovered(href);
+        if (!linkTooltips) return;
+        if (!href.empty() && GetWindow())
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), href, pointerWindow);
+        else
+            UltraCanvasTooltipManager::HideTooltip();
+    }
+};
 
 std::string SanitizeFolder(const std::string& folder) {
     std::string out;
@@ -330,6 +471,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     if (auto s = bodyHost_->GetContainerStyle(); true) {
         s.autoShowScrollbars = true;
         s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
     root_->AddChild(bodyHost_);
@@ -362,6 +504,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (&body != &lastBody_) lastBody_ = body;
     lastIsHtml_ = isHtml;
     bodyHost_->ClearChildren();
+    // The links the reader can check before clicking one.
+    if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
 
     // Settings > Reading > "as plain text": no layout and nothing fetched.
     if (isHtml && showHtml) {
@@ -378,13 +522,11 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
         // file: or javascript: target a message could carry).
-        opts.onLinkActivated = [](const std::string& href) {
-            std::string lower = href;
-            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
-                lower.rfind("mailto:", 0) == 0)
-                UltraCanvas::OpenURL(href);
+        opts.onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
+        opts.onLinkHovered = [this](const std::string& href) {
+            if (onLinkHovered) onLinkHovered(href);
         };
+        opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
@@ -395,7 +537,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // natural height — so the body sits below the header (no overlap)
             // and scrolls vertically when tall. The builder disables the tree's
             // own scrollbars precisely so the host scrolls instead.
-            auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
+            auto scroll = std::make_shared<BodyScrollView>("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             // A deliberate scroll view, so it opts in (containers do not
             // scroll unless asked): the vertical bar for a tall message, and a
@@ -405,11 +547,14 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             {
                 ContainerStyle scrollStyle = scroll->GetContainerStyle();
                 scrollStyle.autoShowScrollbars = true;
+                scrollStyle.scrollbarStyle = ScrollbarStyle::Modern();
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane).
+            // than laying out over-wide (responsive emails fill the pane). The
+            // scroll view narrows it by the vertical bar once that is shown.
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
+            scroll->body = r.root;
             bodyHost_->AddChild(scroll);
             scroll->AddChild(r.root);
             scroll->ScrollToVertical(0);
@@ -419,14 +564,43 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     }
 
     // The text area is sized by the host's flex column, so it follows the pane.
-    auto text = std::make_shared<UltraCanvasTextArea>("prevBodyText", 0, 0, 0, 0);
+    auto text = std::make_shared<PlainBodyArea>("prevBodyText", 0, 0, 0, 0);
+    text->onLinkHovered = [this](const std::string& href) {
+        if (onLinkHovered) onLinkHovered(href);
+    };
+    text->onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
+    text->linkTooltips = linkTooltips;
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text, /*bordered=*/false);
+    {
+        // The message list's scrollbar (ScrollbarStyle::Modern), not the text
+        // area's classic 15px square one.
+        const ScrollbarStyle modern = ScrollbarStyle::Modern();
+        auto& ts = text->GetStyle();
+        ts.scrollbarWidth        = modern.trackSize;
+        ts.scrollbarCornerRadius = static_cast<float>(modern.thumbCornerRadius);
+        ts.scrollbarThumbInset   = 0;
+        ts.scrollbarTrackColor   = modern.trackColor;
+        ts.scrollbarColor        = modern.thumbColor;
+    }
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
+void MessagePreview::ActivateLink(const std::string& href) {
+    std::string lower = href.substr(0, 7);
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "mailto:" && onComposeTo) {
+        std::string selfName, selfAddr;
+        for (const auto& a : accounts_)
+            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
+        onComposeTo(selfName, selfAddr, href);
+        return;
+    }
+    OpenMessageLink(href);
 }
 
 std::vector<uint8_t> MessagePreview::LoadBodyImage(const std::string& src) {
@@ -564,12 +738,15 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    if (!sec.Scanned()) {
+    // Also when the stored verdict came from older rules (kThreatRulesRevision):
+    // what an earlier version let through is judged again.
+    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
     // And its attachment count, for the list's paperclip, when the body was
@@ -682,10 +859,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Decode RFC 2047 encoded-words for display (idempotent: messages synced
     // before header decoding are still stored raw).
-    const std::string subject  = UltraNet_MimeDecodeHeader(env.subject);
-    const std::string fromName = UltraNet_MimeDecodeHeader(env.fromName);
+    const std::string subject  = DisplayHeader(env.subject);
+    const std::string fromName = DisplayHeader(env.fromName);
     std::vector<std::string> toList = env.to;
-    for (auto& addr : toList) addr = UltraNet_MimeDecodeHeader(addr);
+    for (auto& addr : toList) addr = DisplayHeader(addr);
 
     // Name on the first line; address and recipients on the second, with the
     // full sender in the tooltip.

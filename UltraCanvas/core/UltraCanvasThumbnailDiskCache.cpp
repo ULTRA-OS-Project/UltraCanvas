@@ -1,8 +1,8 @@
 // core/UltraCanvasThumbnailDiskCache.cpp
 // Thumbnails kept as files between runs. See UltraCanvasThumbnailDiskCache.h
 // for what is stored and why.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasThumbnailDiskCache.h"
@@ -51,7 +51,8 @@ namespace {
     // the bytes out differently fails the check and is re-made rather than
     // decoded into nonsense.
     constexpr uint32_t kMagic = 0x48544355;      // 'UCTH' little-endian
-    constexpr uint32_t kFormatVersion = 1;
+    // 2: the header gained `generation` (kRendererGeneration).
+    constexpr uint32_t kFormatVersion = 2;
     constexpr uint32_t kEndianTag = 0x01020304;
 
     struct Header {
@@ -72,6 +73,10 @@ namespace {
         int32_t  height = 0;
         int32_t  fit = 0;
         int32_t  scaleQ = 0;
+        // The renderer generation of the build that drew it: a thumbnail is
+        // as stale after a renderer fix as after an edit of its source.
+        uint32_t generation = 0;
+        uint32_t reserved = 0;   // keeps the header a multiple of 8 bytes
     };
 
     uint64_t HashText(const std::string& text, uint64_t seed) {
@@ -116,6 +121,7 @@ namespace {
     std::mutex g_mutex;
     std::string g_directoryOverride;
     std::atomic<bool> g_enabled{true};
+    std::atomic<uint32_t> g_generationOverride{0};
     std::atomic<bool> g_swept{false};
 
     std::string ResolveDirectory() {
@@ -164,7 +170,8 @@ namespace {
             && header.width == request.width
             && header.height == request.height
             && header.fit == request.fit
-            && header.scaleQ == Quantise(request.scale);
+            && header.scaleQ == Quantise(request.scale)
+            && header.generation == RendererGeneration();
     }
 
     // A file handle that closes itself however the function leaves. The C
@@ -220,6 +227,15 @@ void SetDirectoryOverride(const std::string& directory) {
 
 bool IsAvailable() {
     return g_enabled.load() && !ResolveDirectory().empty();
+}
+
+uint32_t RendererGeneration() {
+    const uint32_t overridden = g_generationOverride.load();
+    return overridden != 0 ? overridden : kRendererGeneration;
+}
+
+void SetRendererGenerationOverride(uint32_t generation) {
+    g_generationOverride.store(generation);
 }
 
 std::vector<uint8_t> Load(const Request& request) {
@@ -281,6 +297,7 @@ bool Store(const Request& request, const std::vector<uint8_t>& blob) {
     header.height = request.height;
     header.fit = request.fit;
     header.scaleQ = Quantise(request.scale);
+    header.generation = RendererGeneration();
 
     const std::string path = FilePathFor(directory, request);
     // Write beside the target and rename: four workers (and two copies of the

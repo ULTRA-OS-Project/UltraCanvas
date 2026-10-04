@@ -35,8 +35,16 @@
 // with the day it was served, and entries not served for two weeks are swept
 // at startup. A folder the user visits keeps its thumbnails indefinitely; one
 // they visited once pays for itself and then goes away.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+//
+// The source file is not the only thing a thumbnail depends on: the code that
+// drew it matters as much. Every entry therefore also records the renderer
+// generation (kRendererGeneration) of the build that wrote it, and an entry
+// from another generation is a miss. Without it a renderer fix never reached
+// a thumbnail already on disk - the vector previews drawn "at the fit
+// squared" before 2026-09-26 stayed specks in a corner for as long as the
+// tile kept being shown, at exactly the sizes cached back then.
+// Version: 1.1.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -61,6 +69,21 @@ namespace UltraCanvas {
                                       // headers wanted here
             float scale = 1.0f;       // HiDPI device scale
         };
+
+        // Which renderers made the thumbnails: bump it in any change that makes
+        // a thumbnail producer draw something different for the same file at
+        // the same size - a renderer fix, a new producer taking over a format,
+        // a change of fit or background. Every entry written by an earlier
+        // generation then misses (and is deleted when it is next asked for),
+        // so the fix shows on the first look instead of never.
+        //   1  until 2026-10-03 (implicit: entries carried no generation)
+        //   2  vector previews drawn at the fit, not the fit squared
+        constexpr uint32_t kRendererGeneration = 2;
+
+        // The generation Load() and Store() use - kRendererGeneration unless
+        // a test overrode it. Pass 0 to go back to the built-in one.
+        uint32_t RendererGeneration();
+        void SetRendererGenerationOverride(uint32_t generation);
 
         // Is the cache usable at all? False when the platform offered nowhere
         // writable, or when the application switched it off. Every call below

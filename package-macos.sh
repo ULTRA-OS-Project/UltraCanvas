@@ -1,15 +1,14 @@
 #!/bin/bash
-# package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor
-# and DeviceExplorer as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
-# command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
+# package-macos.sh - Create the macOS UltraCanvas suite: every app in one
+# folder with one shared Frameworks/ (see "Suite layout" below), the
+# `ultramsg` command-line tool beside them, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
-#   --dmg              Also create a DMG disk image
+#   --dmg              Also create a DMG disk image (signed, and notarized with --notarize)
 #   --no-sign          Skip code signing
-#   --notarize         Submit signed bundles to Apple notary service and staple
+#   --notarize         Notarize the suite folder (one submission) and staple each app
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
 #
 # Environment variables:
@@ -31,6 +30,27 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: Cloverleaf RISCOS Computer UG (haftungsbeschrankt) (29638T25M9)}"
 
+# ── Suite layout ─────────────────────────────────────────────────────────────
+#
+#   <output>/UltraCanvas/
+#     Frameworks/                 every bundled dylib, once
+#     Texter.app, UltraFiler.app, ...   no Contents/Frameworks/ of their own
+#     ultramsg/bin/ultramsg       the command-line tool (own, empty Frameworks/)
+#
+# Each .app used to carry its own copy of the ~90 Homebrew dylibs (95-131 MB);
+# with eight apps that was ~830 MB of the same libraries, and every new app
+# added another ~95 MB to the download. Now the apps' load commands point at
+# @executable_path/../../../Frameworks/ - from <app>.app/Contents/MacOS/ up to
+# the suite folder - so they share one copy, and a new app costs only its own
+# executable and resources. verify_suite fails the run if an app ends up with
+# libraries of its own or a reference outside the shared folder.
+#
+# The price: an app works only inside the suite folder. Install by dragging
+# the whole UltraCanvas folder to /Applications, not a single app out of it.
+SUITE_NAME="UltraCanvas"
+APP_FW_REF="@executable_path/../../../Frameworks"
+TOOL_FW_REF="@executable_path/../Frameworks"
+
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
@@ -41,7 +61,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,19p' "$0" | sed 's/^# \?//'
+            sed -n '2,18p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -198,9 +218,12 @@ PLIST
 
 # ── Helper: Bundle dylibs ───────────────────────────────────────────────────
 
+# $3 is the load-command prefix the references are rewritten to
+# ($APP_FW_REF for an app or its plug-in, $TOOL_FW_REF for a tool).
 bundle_dylibs() {
     local exe_path="$1"
     local frameworks_dir="$2"
+    local fw_ref="$3"
 
     echo "  Bundling dynamic libraries..."
 
@@ -213,8 +236,9 @@ bundle_dylibs() {
     #                  preserved byte-for-byte by cp -L, so otool reads are
     #                  identical to the original.
     # Use a file-based queue since macOS ships with Bash 3.2 (no associative arrays)
-    local queue_file
+    local queue_file copied_file
     queue_file=$(mktemp)
+    copied_file=$(mktemp)
     echo "$(dirname "$exe_path")|$exe_path" > "$queue_file"
     local count=0
 
@@ -316,6 +340,7 @@ bundle_dylibs() {
                 cp -L "$resolved_dep" "$frameworks_dir/$dep_basename"
                 chmod 644 "$frameworks_dir/$dep_basename"
                 count=$((count + 1))
+                echo "$frameworks_dir/$dep_basename" >> "$copied_file"
                 # Queue the copy for BFS. source_dir is the real host
                 # directory so @loader_path deps resolve against siblings
                 # on disk, not the (empty) Frameworks dir.
@@ -332,17 +357,18 @@ bundle_dylibs() {
     echo "  Fixing install names..."
 
     # Fix the executable
-    fix_install_names "$exe_path" "$frameworks_dir"
+    fix_install_names "$exe_path" "$frameworks_dir" "$fw_ref"
 
-    # Fix each bundled dylib
-    for dylib in "$frameworks_dir"/*.dylib; do
-        if [ -f "$dylib" ]; then
-            local dylib_name
-            dylib_name=$(basename "$dylib")
-            install_name_tool -id "@executable_path/../Frameworks/$dylib_name" "$dylib" 2>/dev/null || true
-            fix_install_names "$dylib" "$frameworks_dir"
-        fi
-    done
+    # Fix the dylibs this call copied. In the shared suite Frameworks/ the
+    # ones an earlier app brought are already rewritten, and a dylib's own
+    # references are the same whichever app pulled it in.
+    local dylib dylib_name
+    while IFS= read -r dylib; do
+        dylib_name=$(basename "$dylib")
+        install_name_tool -id "$fw_ref/$dylib_name" "$dylib" 2>/dev/null || true
+        fix_install_names "$dylib" "$frameworks_dir" "$fw_ref"
+    done < "$copied_file"
+    rm -f "$copied_file"
 
     echo "  Install names fixed"
 }
@@ -350,6 +376,7 @@ bundle_dylibs() {
 fix_install_names() {
     local binary="$1"
     local frameworks_dir="$2"
+    local fw_ref="$3"
 
     local deps
     deps=$(otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -360,7 +387,7 @@ fix_install_names() {
 
         if [ -f "$frameworks_dir/$dep_basename" ]; then
             install_name_tool -change "$dep" \
-                "@executable_path/../Frameworks/$dep_basename" \
+                "$fw_ref/$dep_basename" \
                 "$binary" 2>/dev/null || true
         fi
     done
@@ -398,13 +425,9 @@ codesign_bundle() {
 
     echo "  Signing bundle..."
 
-    # Sign frameworks first (inside-out), with hardened runtime + secure timestamp
-    for dylib in "$app_bundle/Contents/Frameworks/"*.dylib; do
-        if [ -f "$dylib" ]; then
-            codesign --force --timestamp --options runtime \
-                --sign "$IDENTITY" "$dylib"
-        fi
-    done
+    # The shared suite Frameworks/ is signed once, before any app
+    # (sign_shared_frameworks); the bundle holds only its plug-ins and
+    # executable.
 
     # Plug-in modules loaded at runtime (the LaTeX engine) are signed like
     # the frameworks: inside-out, before the executable and the bundle.
@@ -434,25 +457,32 @@ codesign_bundle() {
 # $2 = false skips stapling: a ticket can only be stapled to a bundle, a disk
 # image or an installer package, never to a bare command-line executable.
 # Gatekeeper looks the notarization of such a tool up online instead.
+#
+# $1 may also be a disk image: notarytool takes a .dmg as it is, so only a
+# bundle or a tool folder is zipped first.
 notarize_bundle() {
     local app_bundle="$1"
     local staple="${2:-true}"
-    local zip_path="${app_bundle%.app}-notarize.zip"
+    local submit_path="$app_bundle" zip_path=""
     local submit_log
     submit_log=$(mktemp)
 
-    echo "  Creating zip for notarization..."
-    /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    if [ -d "$app_bundle" ]; then
+        zip_path="${app_bundle%.app}-notarize.zip"
+        submit_path="$zip_path"
+        echo "  Creating zip for notarization..."
+        /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    fi
 
     echo "  Submitting to Apple notary service (this may take a few minutes)..."
     # Tee to a temp file so we keep live progress output AND can parse the result
-    xcrun notarytool submit "$zip_path" \
+    xcrun notarytool submit "$submit_path" \
         --apple-id "$APPLE_ID" \
         --team-id "$APPLE_TEAM_ID" \
         --password "$APPLE_APP_PASSWORD" \
         --wait 2>&1 | tee "$submit_log"
 
-    rm -f "$zip_path"
+    [ -n "$zip_path" ] && rm -f "$zip_path"
 
     # Parse the submission ID and final status from the captured output
     local submission_id status
@@ -498,14 +528,35 @@ notarize_bundle() {
 # runtime folder added later is shipped by default instead of silently missing.
 DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagrams sample.pdf)
 
-# Copy media/ into $1; with $2 = "samples" the demo sample content comes too.
+# Apps that never typeset LaTeX, so their bundles get neither the LaTeX module
+# (PlugIns/libUltraCanvasLaTeX.dylib and the libraries it pulls into
+# Frameworks/) nor its fonts (media/microtex). Neither app has a text area,
+# rich-text or Markdown view of its own; the one Markdown view they reach is
+# the modal dialog's message, which shows $...$ as plain text (Greek names
+# substituted) when the module is absent - and their dialogs carry only their
+# own status and error text. An app added to the bundle list keeps LaTeX by
+# default; add it here only after checking the same.
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer)
+
+# True when the app $1 is in NO_LATEX_APPS.
+app_without_latex() {
+    local a
+    for a in "${NO_LATEX_APPS[@]}"; do
+        [ "$a" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Copy media/ into $1; with $2 = "samples" the demo sample content comes too,
+# with $3 = "nolatex" the MicroTeX fonts stay out.
 copy_media() {
-    local dest="$1" with_samples="$2"
+    local dest="$1" with_samples="$2" latex="${3:-}"
     mkdir -p "$dest"
     local entry name skip s
     for entry in "$SCRIPT_DIR"/media/*; do
         name="$(basename "$entry")"
         skip=false
+        [ "$latex" = "nolatex" ] && [ "$name" = "microtex" ] && skip=true
         if [ "$with_samples" != "samples" ]; then
             for s in "${DEMO_SAMPLE_MEDIA[@]}"; do
                 [ "$name" = "$s" ] && { skip=true; break; }
@@ -513,6 +564,43 @@ copy_media() {
         fi
         $skip || cp -R "$entry" "$dest/"
     done
+}
+
+# ── Finding built executables ────────────────────────────────────────────────
+
+# Prints the path of executable $1 and succeeds when it was built. Most
+# targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY to bin/
+# (UltraFIBU, UltraAuthenticator, UltraPassword), so look in both, as
+# package-linux.sh and package-win.sh do.
+find_built_exe() {
+    local cand
+    for cand in "$BUILD_DIR/$1" "$BUILD_DIR/bin/$1"; do
+        if [ -f "$cand" ]; then echo "$cand"; return 0; fi
+    done
+    return 1
+}
+
+# Apps that were not built, reported at the end of the run.
+SKIPPED_APPS=()
+
+# Runs "$2..." (build_app_bundle or build_cli_tool) for executable $1 when it
+# was built, and records it as skipped when it was not.
+#
+# The check sits outside the build function on purpose. Calling it as
+# `build_app_bundle ... || echo skipped` - the obvious way to make a missing
+# app non-fatal - switches `set -e` off for the function's entire body: bash
+# ignores -e in any command on the left of || or &&. A failure in signing,
+# iconutil or the dylib copy would then be carried past, and an unsigned or
+# half-built bundle shipped. Called as a plain command, as here, every step
+# inside still ends the run when it fails.
+package_if_built() {
+    local exe_name="$1"; shift
+    if ! find_built_exe "$exe_name" >/dev/null; then
+        echo "── Skipping $exe_name: not built (looked in $BUILD_DIR and $BUILD_DIR/bin) ──"
+        SKIPPED_APPS+=("$exe_name")
+        return 0
+    fi
+    "$@"
 }
 
 # ── Build one app bundle ─────────────────────────────────────────────────────
@@ -526,21 +614,21 @@ build_app_bundle() {
     local extra_plist="$6"
     local samples="${7:-}"   # "samples": the demo's sample media and sources
 
-    local exe_path="$BUILD_DIR/$exe_name"
-    if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found: $exe_path (skipping $display_name)"
+    local exe_path
+    if ! exe_path="$(find_built_exe "$exe_name")"; then
+        echo "Error: $exe_name not found in $BUILD_DIR or $BUILD_DIR/bin"
         return 1
     fi
 
-    local app_dir="$OUTPUT_DIR/${exe_name}.app"
+    local app_dir="$SUITE_DIR/${exe_name}.app"
     local contents_dir="$app_dir/Contents"
 
     echo "── Packaging $display_name ──"
 
-    # Create directory structure
+    # Create directory structure. No Contents/Frameworks/: the dylibs go to
+    # the suite's shared one (see "Suite layout").
     mkdir -p "$contents_dir/MacOS"
     mkdir -p "$contents_dir/Resources"
-    mkdir -p "$contents_dir/Frameworks"
 
     # PkgInfo
     echo -n "APPL????" > "$contents_dir/PkgInfo"
@@ -560,7 +648,9 @@ build_app_bundle() {
     # Copy media assets to Resources/media/ (the sample content only for the
     # demo - see DEMO_SAMPLE_MEDIA)
     if [ -d "$SCRIPT_DIR/media" ]; then
-        copy_media "$contents_dir/Resources/media" "$samples"
+        local latex_media=""
+        app_without_latex "$exe_name" && latex_media="nolatex"
+        copy_media "$contents_dir/Resources/media" "$samples" "$latex_media"
         if [ "$samples" = "samples" ]; then
             echo "  Copied media assets (with the demo samples)"
         else
@@ -593,41 +683,44 @@ build_app_bundle() {
     # ".dylib", but accept a tree from before that and ship it under the
     # name the loader asks for.
     local latex_module=""
-    for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
-        if [ -f "$cand" ]; then latex_module="$cand"; break; fi
-    done
-    if [ -n "$latex_module" ]; then
-        mkdir -p "$contents_dir/PlugIns"
-        cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+    if app_without_latex "$exe_name"; then
+        echo "  Skipping LaTeX module ($display_name does not typeset LaTeX)"
     else
-        echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
+            if [ -f "$cand" ]; then latex_module="$cand"; break; fi
+        done
+        if [ -n "$latex_module" ]; then
+            mkdir -p "$contents_dir/PlugIns"
+            cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+        else
+            echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        fi
     fi
 
-    # Bundle Homebrew dylibs
-    bundle_dylibs "$contents_dir/MacOS/$exe_name" "$contents_dir/Frameworks"
+    # Bundle Homebrew dylibs into the shared suite Frameworks/
+    bundle_dylibs "$contents_dir/MacOS/$exe_name" "$SHARED_FW" "$APP_FW_REF"
 
     # The module's own Homebrew dependencies (cairo, pango, ...) are largely
     # the executable's, but collect and rewrite them from the module as well
     # so a dependency only it has is bundled and its load commands point into
-    # Frameworks/ (@executable_path resolves against the app, which is right
-    # for a plugin the app loads).
+    # the shared Frameworks/ (@executable_path resolves against the app,
+    # which is right for a plugin the app loads).
     if [ -f "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" ]; then
-        bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
+        bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$SHARED_FW" "$APP_FW_REF"
     fi
 
-    strip_binaries "$contents_dir/MacOS" "$contents_dir/Frameworks" "$contents_dir/PlugIns"
+    # PlugIns/ is absent from a bundle without the LaTeX module, and a missing
+    # path makes strip_binaries' du fail - fatal under set -e -o pipefail.
+    # The shared Frameworks/ is stripped once, after the last app.
+    local strip_dirs=("$contents_dir/MacOS")
+    [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
+    strip_binaries "${strip_dirs[@]}"
 
-    # Code sign
-    if $DO_SIGN; then
-        codesign_bundle "$app_dir"
-    fi
-
-    # Notarize and staple
-    if $NOTARIZE; then
-        notarize_bundle "$app_dir"
-    fi
+    # Signed and notarized after the last app (finish_suite): the shared
+    # Frameworks/ has to be complete and signed first.
+    BUILT_APPS+=("$app_dir")
 
     local bundle_size
     bundle_size=$(du -sh "$app_dir" | cut -f1)
@@ -644,13 +737,13 @@ build_app_bundle() {
 build_cli_tool() {
     local exe_name="$1"
 
-    local exe_path="$BUILD_DIR/$exe_name"
-    if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found: $exe_path (skipping $exe_name)"
+    local exe_path
+    if ! exe_path="$(find_built_exe "$exe_name")"; then
+        echo "Error: $exe_name not found in $BUILD_DIR or $BUILD_DIR/bin"
         return 1
     fi
 
-    local tool_dir="$OUTPUT_DIR/$exe_name"
+    local tool_dir="$SUITE_DIR/$exe_name"
 
     echo "── Packaging $exe_name (command line) ──"
 
@@ -659,7 +752,7 @@ build_cli_tool() {
     chmod 755 "$tool_dir/bin/$exe_name"
     echo "  Copied executable"
 
-    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks"
+    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks" "$TOOL_FW_REF"
     strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
 
     if $DO_SIGN; then
@@ -676,11 +769,96 @@ build_cli_tool() {
         echo "  Tool signed"
     fi
 
-    if $NOTARIZE; then
-        notarize_bundle "$tool_dir" false
-    fi
+    # Notarized with the rest of the suite folder (finish_suite).
 
     echo "  Tool size: $(du -sh "$tool_dir" | cut -f1)"
+    echo ""
+}
+
+# ── Suite checks, signing and notarization ──────────────────────────────────
+
+# Fails the run when the suite breaks its layout. Every reference in an app's
+# executable, its plug-ins and the shared dylibs must be a system library or
+# a dylib that is in the shared Frameworks/, and no app may carry
+# Contents/Frameworks/. That is the rule that keeps a new app from adding
+# another ~95 MB copy of the libraries: an app packaged any other way than
+# through build_app_bundle trips it.
+verify_suite() {
+    echo "── Verifying the suite layout ──"
+    local errors=0 app bin dep name
+    for app in "${BUILT_APPS[@]}"; do
+        if [ -d "$app/Contents/Frameworks" ] && \
+           [ -n "$(ls -A "$app/Contents/Frameworks" 2>/dev/null)" ]; then
+            echo "  ERROR: $(basename "$app") has its own Contents/Frameworks/ - apps share $SUITE_NAME/Frameworks/"
+            errors=$((errors + 1))
+        fi
+    done
+    while IFS= read -r -d '' bin; do
+        case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
+        while IFS= read -r dep; do
+            case "$dep" in
+                /System/*|/usr/lib/*) ;;
+                "$APP_FW_REF"/*)
+                    name="${dep#"$APP_FW_REF"/}"
+                    if [ ! -f "$SHARED_FW/$name" ]; then
+                        echo "  ERROR: $(basename "$bin") needs $name, which is not in $SUITE_NAME/Frameworks/"
+                        errors=$((errors + 1))
+                    fi
+                    ;;
+                "${HOMEBREW_PREFIX}"/*|/opt/homebrew/*|/usr/local/*)
+                    echo "  ERROR: $(basename "$bin") still loads $dep from Homebrew"
+                    errors=$((errors + 1))
+                    ;;
+            esac
+        done < <(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    done < <(find "$SHARED_FW" "${BUILT_APPS[@]/%//Contents/MacOS}" \
+                  "${BUILT_APPS[@]/%//Contents/PlugIns}" -type f -print0 2>/dev/null)
+    if [ "$errors" -gt 0 ]; then
+        echo "  $errors layout error(s) - see \"Suite layout\" at the top of this script"
+        exit 1
+    fi
+    echo "  ${#BUILT_APPS[@]} apps share $(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ') dylibs in $SUITE_NAME/Frameworks/"
+}
+
+sign_shared_frameworks() {
+    echo "  Signing the shared Frameworks/..."
+    local dylib
+    for dylib in "$SHARED_FW/"*.dylib; do
+        if [ -f "$dylib" ]; then
+            codesign --force --timestamp --options runtime \
+                --sign "$IDENTITY" "$dylib"
+        fi
+    done
+}
+
+# After the last app: strip the shared Frameworks/ once, check the layout,
+# sign it and then each app, and notarize the whole suite folder in one
+# submission - the apps, their plug-ins, the shared dylibs and ultramsg -
+# instead of one round trip to Apple per app. Each app then gets its ticket
+# stapled; the folder itself cannot carry one.
+finish_suite() {
+    echo "── Finishing the $SUITE_NAME suite ──"
+    strip_binaries "$SHARED_FW"
+    verify_suite
+
+    if $DO_SIGN; then
+        sign_shared_frameworks
+        local app
+        for app in "${BUILT_APPS[@]}"; do
+            echo "── Signing $(basename "$app") ──"
+            codesign_bundle "$app"
+        done
+    fi
+
+    if $NOTARIZE; then
+        notarize_bundle "$SUITE_DIR" false
+        local app
+        for app in "${BUILT_APPS[@]}"; do
+            echo "  Stapling $(basename "$app")..."
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+        done
+    fi
     echo ""
 }
 
@@ -689,6 +867,10 @@ build_cli_tool() {
 # Clean and create output directory
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
+SUITE_DIR="$OUTPUT_DIR/$SUITE_NAME"
+SHARED_FW="$SUITE_DIR/Frameworks"
+mkdir -p "$SHARED_FW"
+BUILT_APPS=()
 
 # Document types for Texter (text editor)
 TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
@@ -709,7 +891,7 @@ TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
     </array>'
 
 # Package Texter
-build_app_bundle \
+package_if_built "Texter" build_app_bundle \
     "Texter" \
     "UltraCanvas Texter" \
     "com.cloverleaf.UltraCanvasTexter" \
@@ -718,7 +900,7 @@ build_app_bundle \
     "$TEXTER_DOC_TYPES"
 
 # Package UltraCanvasDemo
-build_app_bundle \
+package_if_built "UltraCanvasDemo" build_app_bundle \
     "UltraCanvasDemo" \
     "UltraCanvas Demo" \
     "com.cloverleaf.UltraCanvasDemo" \
@@ -753,7 +935,7 @@ VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
     </array>'
 
 # Package UltraFiler (file manager)
-build_app_bundle \
+package_if_built "UltraFiler" build_app_bundle \
     "UltraFiler" \
     "UltraFiler" \
     "com.cloverleaf.UltraFiler" \
@@ -762,7 +944,7 @@ build_app_bundle \
     ""
 
 # Package UltraViewer (universal media viewer)
-build_app_bundle \
+package_if_built "UltraViewer" build_app_bundle \
     "UltraViewer" \
     "UltraViewer" \
     "com.cloverleaf.UltraViewer" \
@@ -771,7 +953,7 @@ build_app_bundle \
     "$VIEWER_DOC_TYPES"
 
 # Package UltraNetMonitor
-build_app_bundle \
+package_if_built "UltraNetMonitor" build_app_bundle \
     "UltraNetMonitor" \
     "UltraNetMonitor" \
     "com.cloverleaf.UltraNetMonitor" \
@@ -780,7 +962,7 @@ build_app_bundle \
     ""
 
 # Package DeviceExplorer
-build_app_bundle \
+package_if_built "DeviceExplorer" build_app_bundle \
     "DeviceExplorer" \
     "DeviceExplorer" \
     "com.cloverleaf.DeviceExplorer" \
@@ -788,8 +970,40 @@ build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraAuthenticator and UltraPassword (both need libsodium, through
+# UltraCrypt, and are not built without it).
+package_if_built "UltraAuthenticator" build_app_bundle \
+    "UltraAuthenticator" \
+    "UltraAuthenticator" \
+    "com.cloverleaf.UltraAuthenticator" \
+    "media/appicon/UltraAuthenticator.png" \
+    "public.app-category.utilities" \
+    ""
+
+package_if_built "UltraPassword" build_app_bundle \
+    "UltraPassword" \
+    "UltraPassword" \
+    "com.cloverleaf.UltraPassword" \
+    "media/appicon/UltraPassword.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package the UltraMessage command line (Apps/UltraMessageCli)
-build_cli_tool "ultramsg"
+package_if_built "ultramsg" build_cli_tool "ultramsg"
+
+# ── What was packaged ───────────────────────────────────────────────────────
+
+if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then
+    echo "Not built, so not packaged: ${SKIPPED_APPS[*]}"
+fi
+if ! compgen -G "$OUTPUT_DIR/*.app" >/dev/null; then
+    echo "Error: no app bundle was produced - is $BUILD_DIR the right build directory?" >&2
+    exit 1
+fi
+
+# A new app goes above this line, through build_app_bundle - never with its
+# own Frameworks/ (verify_suite rejects that). See "Suite layout".
+finish_suite
 
 # ── Optional DMG creation ───────────────────────────────────────────────────
 
@@ -800,29 +1014,48 @@ if $CREATE_DMG; then
 
     mkdir -p "$DMG_STAGING"
 
-    # Copy app bundles to staging
-    for app in "$OUTPUT_DIR"/*.app; do
-        if [ -d "$app" ]; then
-            cp -R "$app" "$DMG_STAGING/"
-        fi
-    done
-
-    # And the command-line tool folder beside them
-    if [ -d "$OUTPUT_DIR/ultramsg" ]; then
-        cp -R "$OUTPUT_DIR/ultramsg" "$DMG_STAGING/"
-    fi
+    # The suite folder as one item: dragging it to Applications installs the
+    # apps together with the Frameworks/ they share.
+    cp -R "$SUITE_DIR" "$DMG_STAGING/"
 
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
 
-    # Create compressed DMG
-    hdiutil create \
-        -volname "UltraCanvas $VERSION" \
-        -srcfolder "$DMG_STAGING" \
-        -ov -format UDZO \
-        "$OUTPUT_DIR/$DMG_NAME"
+    # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
+    # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
+    # against 503 MB for the zip of the same .app folders, so only LZMA beats
+    # that. It needs macOS 10.15 to open, below the apps' own
+    # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
+    # with "Resource busy" while the system indexes the staging folder, so it
+    # gets three tries.
+    dmg_try=1
+    until hdiutil create \
+            -volname "UltraCanvas $VERSION" \
+            -srcfolder "$DMG_STAGING" \
+            -ov -format ULMO \
+            "$OUTPUT_DIR/$DMG_NAME"; do
+        if [ "$dmg_try" -ge 3 ]; then
+            echo "  ERROR: hdiutil create failed $dmg_try times"
+            exit 1
+        fi
+        dmg_try=$((dmg_try + 1))
+        echo "  hdiutil create failed - retrying ($dmg_try/3) in 10 s"
+        sleep 10
+    done
 
     rm -rf "$DMG_STAGING"
+
+    # The image is what a user downloads and opens, so it carries the same
+    # Developer ID signature as the apps inside it and, on a notarized run, its
+    # own stapled ticket - Gatekeeper then checks it once, offline, on open.
+    if $DO_SIGN; then
+        echo "  Signing DMG..."
+        codesign --force --timestamp --sign "$IDENTITY" "$OUTPUT_DIR/$DMG_NAME"
+        codesign --verify --verbose=2 "$OUTPUT_DIR/$DMG_NAME"
+    fi
+    if $NOTARIZE; then
+        notarize_bundle "$OUTPUT_DIR/$DMG_NAME"
+    fi
 
     DMG_SIZE=$(du -sh "$OUTPUT_DIR/$DMG_NAME" | cut -f1)
     echo "  DMG created: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)"
@@ -840,3 +1073,33 @@ ls -1 "$OUTPUT_DIR/" | while read -r item; do
         echo "    $item ($(du -sh "$OUTPUT_DIR/$item" | cut -f1))"
     fi
 done
+
+# Size breakdown: each app on its own (executable, plug-ins, resources) and
+# the shared Frameworks/ they all use, which is where the bulk of the download
+# is. Written to the job summary too when run in GitHub Actions, so a change
+# to what the apps link shows up as a number on the run page.
+echo ""
+echo "  Suite contents:"
+SIZE_TABLE="| Item | Size | dylibs |"$'\n'"|---|---:|---:|"
+for item in "$SUITE_DIR"/*.app "$SUITE_DIR/ultramsg"; do
+    [ -d "$item" ] || continue
+    total=$(du -sh "$item" | cut -f1)
+    echo "    $(basename "$item"): $total"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | |"
+done
+fw_size=$(du -sh "$SHARED_FW" | cut -f1)
+fw_count=$(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ')
+echo "    Frameworks/ (shared by ${#BUILT_APPS[@]} apps): $fw_size in $fw_count dylibs"
+SIZE_TABLE+=$'\n'"| Frameworks/ (shared by ${#BUILT_APPS[@]} apps) | $fw_size | $fw_count |"
+SIZE_TABLE+=$'\n'"| **$SUITE_NAME/** (unpacked) | $(du -sh "$SUITE_DIR" | cut -f1) | |"
+for dmg in "$OUTPUT_DIR"/*.dmg; do
+    [ -f "$dmg" ] || continue
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | |"
+done
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+        echo "### macOS suite sizes ($(uname -m))"
+        echo ""
+        echo "$SIZE_TABLE"
+    } >> "$GITHUB_STEP_SUMMARY"
+fi

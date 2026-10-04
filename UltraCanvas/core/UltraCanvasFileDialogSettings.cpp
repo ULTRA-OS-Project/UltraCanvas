@@ -204,7 +204,7 @@ namespace UltraCanvas {
         // UltraCanvasApplication::Initialize.
         static const std::vector<std::string> kApps = {
             "AnchorPoint", "EmailCleaner", "UltraAI", "UltraAuthenticator",
-            "UltraCleaner", "UltraFIBU", "UltraMail", "UltraSocial",
+            "UltraCleaner", "UltraFIBU", "UltraMail", "UltraPassword", "UltraSocial",
             "UltraWinManager",
         };
         return kApps;

@@ -2,8 +2,12 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
+// Version: 4.3.1 - a scroll repaints 2px past the container's box, so the fringe of
+//                 text at its edge is painted over (a dotted column beside
+//                 scrolled text, slivers below it); FinishArrange
+// Version: 4.3.0 - clipChildren = false draws children unclipped (overflow: visible)
 // Version: 4.2.0
-// Last Modified: 2026-08-09
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -14,6 +18,10 @@
 #include <cmath>
 
 namespace UltraCanvas {
+    namespace {
+        // How far past its box a scrolled container repaints (see OnScrollChanged).
+        constexpr float kScrollRepaintMargin = 2.0f;
+    }
 
     using namespace CSSLayout;
 
@@ -55,7 +63,10 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
         UltraCanvasUIElement::Arrange(finalRect, ctx);
+        FinishArrange();
+    }
 
+    void UltraCanvasContainer::FinishArrange() {
         // Post-layout housekeeping (z-order sort, scrollbar dimensions).
         SortChildrenByZOrder();
         UpdateScrollability();
@@ -86,6 +97,19 @@ namespace UltraCanvas {
             Rect2Di adjustedChildBounds = child->GetBounds();
             adjustedChildBounds.x = adjustedChildBounds.x - hsroll;
             adjustedChildBounds.y = adjustedChildBounds.y - vsroll;
+
+            // overflow: visible - no clip of this container's own; what is
+            // outside the clip already in force is still not drawn.
+            if (!style.clipChildren) {
+                ctx->PushState();
+                ctx->Translate(adjustedChildBounds.TopLeft());
+                Rect2Di childDirty(dirtyRect.x - adjustedChildBounds.x,
+                                   dirtyRect.y - adjustedChildBounds.y,
+                                   dirtyRect.width, dirtyRect.height);
+                child->Render(ctx, childDirty);
+                ctx->PopState();
+                continue;
+            }
 
             Rect2Di contentAreaIntersection;
             if (!adjustedChildBounds.Intersects(ca, contentAreaIntersection)) continue;
@@ -327,7 +351,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::OnScrollChanged() {
-        RequestRedraw();
+        // Repaint a little past the container's own box. Text drawn at the
+        // edge of the view leaves its anti-aliased fringe in the pixel beside
+        // it, and a repaint of exactly the box never painted that pixel over
+        // again: scrolling built up a dotted column of glyph edges beside the
+        // text and slivers of the line scrolled past the bottom edge.
+        InvalidateRect(Rect2Df(-kScrollRepaintMargin, -kScrollRepaintMargin,
+                               GetWidth() + 2 * kScrollRepaintMargin,
+                               GetHeight() + 2 * kScrollRepaintMargin));
 
         if (onScrollChanged) {
             onScrollChanged(horizontalScrollbar->GetScrollPosition(), verticalScrollbar->GetScrollPosition());

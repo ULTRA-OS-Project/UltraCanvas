@@ -1,14 +1,23 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
-// Version: 1.2.0 - a %-sized picture has no min-content width (it can shrink to nothing)
-// Version: 1.1.0
-// Last Modified: 2026-10-01
+// Version: 1.7.0 - onHoverEnter / onHoverLeave
+// Version: 1.6.0 - merged with main's 1.2.0 (a %-sized picture has no min-content
+//                 width: it can shrink to nothing)
+// Version: 1.5.0 - SetHeightFollowsWidth: a wider set width grows the height too
+// Version: 1.4.0 - rounded corners (border-radius) clip the picture, inside the border
+// Version: 1.3.0 - a repeating image (SetImageRepeat) is one pattern fill over the
+//                 tiled area; drawn tile by tile where a backend has no patterns
+// Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
+//                 ImageDrawRect, clipped to the content box
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasFileError.h"
 #include "CSSLayout/LayoutUtils.h"
+#include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <vector>
@@ -95,6 +104,53 @@ namespace UltraCanvas {
         return false;
     }
 
+    void UltraCanvasImageElement::DrawRepeatedImage(IRenderContext* ctx, const Rect2Df& contentRect) {
+        const Rect2Df tile = ImageDrawRect();
+        if (tile.width <= 0.f || tile.height <= 0.f) return;
+        // The tiled area: the whole content box along a repeating axis, the
+        // tile's own row / column along the other.
+        Rect2Df area = contentRect;
+        if (!repeatX) { area.x = tile.x; area.width = tile.width; }
+        if (!repeatY) { area.y = tile.y; area.height = tile.height; }
+        const float x0 = std::max(area.x, contentRect.x);
+        const float y0 = std::max(area.y, contentRect.y);
+        const float x1 = std::min(area.x + area.width, contentRect.x + contentRect.width);
+        const float y1 = std::min(area.y + area.height, contentRect.y + contentRect.height);
+        if (x1 <= x0 || y1 <= y0) return;
+        const Rect2Dd fillRect(x0, y0, x1 - x0, y1 - y0);
+        const Rect2Dd anchor(tile.x, tile.y, tile.width, tile.height);
+
+        // The tile's pixels, at its fitted size (the animation's current frame
+        // for an animated image).
+        std::shared_ptr<UCPixmap> pixmap = animator.GetCurrentFramePixmap();
+        if (!pixmap && loadedImage && loadedImage->IsValid()) {
+            pixmap = loadedImage->GetPixmap(std::max(1, static_cast<int>(std::lround(tile.width))),
+                                            std::max(1, static_cast<int>(std::lround(tile.height))),
+                                            ImageFitMode::Fill, ctx->GetDeviceScale());
+        }
+        if (!pixmap) return;
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+        if (auto pattern = ctx->CreatePixmapPattern(*pixmap, anchor, PatternExtend::Repeat)) {
+            ctx->SetFillPaint(pattern);
+            ctx->FillRectangle(fillRect);
+        } else {
+            // No pattern support: draw the tiles, within a sane count.
+            const double startX = anchor.x - std::ceil((anchor.x - fillRect.x) / anchor.width) * anchor.width;
+            const double startY = anchor.y - std::ceil((anchor.y - fillRect.y) / anchor.height) * anchor.height;
+            int drawn = 0;
+            for (double y = startY; y < fillRect.y + fillRect.height && drawn < 4096; y += anchor.height)
+                for (double x = startX; x < fillRect.x + fillRect.width && drawn < 4096; x += anchor.width, ++drawn)
+                    ctx->DrawPixmap(*pixmap, Rect2Dd(x, y, anchor.width, anchor.height), ImageFitMode::Fill);
+        }
+        ctx->PopState();
+    }
+
+    Rect2Df UltraCanvasImageElement::ImageDrawRect() const {
+        return FitImageRect(NaturalImageSize(), GetLocalContentRect(), fitMode, imagePosition);
+    }
+
     Size2Df UltraCanvasImageElement::NaturalImageSize() const {
         if (loadedImage && loadedImage->IsValid()) {
             return Size2Df((float)loadedImage->GetWidth(), (float)loadedImage->GetHeight());
@@ -112,7 +168,8 @@ namespace UltraCanvas {
         // shrinks instead of letterboxing inside a natural-height box.
         Size2Df natural = NaturalImageSize();
         if (definiteContentWidth && natural.width > 0.f &&
-            *definiteContentWidth < natural.width) {
+            (*definiteContentWidth < natural.width ||
+             (heightFollowsWidth && *definiteContentWidth > natural.width))) {
             float scale = *definiteContentWidth / natural.width;
             return Size2Df(natural.width * scale, natural.height * scale);
         }
@@ -152,6 +209,21 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         if (loadedImage && loadedImage->IsValid()) {
+            // Rounded corners (border-radius) clip the picture too, inside the
+            // border, as CSS clips a replaced element.
+            float radius = 0.f;
+            if (bordersVisual) {
+                radius = std::max({ bordersVisual->left.radius, bordersVisual->right.radius,
+                                    bordersVisual->top.radius, bordersVisual->bottom.radius });
+            }
+            const float bl = GetBorderLeftWidth(), br = GetBorderRightWidth();
+            const float bt = GetBorderTopWidth(),  bb = GetBorderBottomWidth();
+            const float inner = radius - std::max({ bl, br, bt, bb });
+            if (inner > 0.f) {
+                const Rect2Df b = GetLocalBounds();
+                ctx->ClipRoundedRectangle(Rect2Dd(b.x + bl, b.y + bt, b.width - bl - br, b.height - bt - bb),
+                                          inner, inner, inner, inner);
+            }
             DrawLoadedImage(ctx);
 //        } else if (loadedImage->IsLoading()) {
 //            DrawLoadingPlaceholder(ctx);
@@ -172,9 +244,22 @@ namespace UltraCanvas {
                 HandleMouseDown(event);
                 return true;
 
-            case UCEventType::MouseMove:
+            case UCEventType::MouseMove: {
+                const bool inside = Contains(event.pointer);
+                if (inside != hoverNotified) {
+                    hoverNotified = inside;
+                    if (inside && onHoverEnter) onHoverEnter();
+                    if (!inside && onHoverLeave) onHoverLeave();
+                }
                 HandleMouseMove(event);
                 return true;
+            }
+            case UCEventType::MouseLeave:
+                if (hoverNotified) {
+                    hoverNotified = false;
+                    if (onHoverLeave) onHoverLeave();
+                }
+                break;
 
             case UCEventType::MouseUp:
                 HandleMouseUp(event);
@@ -218,8 +303,28 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
+        // Repeating: one pattern fill over the tiled area, anchored on the
+        // positioned tile.
+        if (repeatX || repeatY) {
+            DrawRepeatedImage(ctx, contentRect);
+        }
+        // Positioned off-centre: fit and place the image here, clipped to the
+        // content box (the backends centre what they fit).
+        else if (!imagePosition.IsCentred()) {
+            const Rect2Df dest = ImageDrawRect();
+            if (dest.width > 0 && dest.height > 0) {
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+                const Rect2Dd d(dest.x, dest.y, dest.width, dest.height);
+                if (auto framePm = animator.GetCurrentFramePixmap())
+                    ctx->DrawPixmap(*framePm, d, ImageFitMode::Fill);
+                else if (loadedImage && loadedImage->IsValid())
+                    ctx->DrawImage(*loadedImage.get(), d, ImageFitMode::Fill);
+                ctx->PopState();
+            }
+        }
         // Draw the image using unified rendering (element-local bounds)
-        if (auto framePm = animator.GetCurrentFramePixmap()) {
+        else if (auto framePm = animator.GetCurrentFramePixmap()) {
             // Animated image: draw the controller's current frame directly.
             ctx->DrawPixmap(*framePm, contentRect, fitMode);
         } else if (loadedImage->IsValid()) {

@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.9.0
-// Last Modified: 2026-08-28
+// Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -253,6 +253,14 @@ namespace UltraCanvas {
 
         Color scrollbarTrackColor;
         Color scrollbarColor;
+        // Thickness of the scrollbar track in px, and the corner radius of the
+        // track and thumb (0 = square). The defaults keep the classic 15px
+        // square bar; a reading pane can match ScrollbarStyle::Modern() with
+        // 12 / 6 / inset 0 so its bar looks like the list views' beside it.
+        int   scrollbarWidth = 15;
+        float scrollbarCornerRadius = 0.0f;
+        // Gap between the track's edge and the thumb (0 = the thumb fills the track).
+        int   scrollbarThumbInset = 2;
 
         // Syntax highlighting colors
         struct TokenStyles {
@@ -899,6 +907,9 @@ namespace UltraCanvas {
         // (the widget itself no longer draws the cursor).
         void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
+        // Fills a scrollbar track or thumb, rounded per style.scrollbarCornerRadius.
+        void FillScrollbarRect(IRenderContext* context, const Rect2Dd& r);
+        int ScrollbarWidth() const { return std::max(1, style.scrollbarWidth); }
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);

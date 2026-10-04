@@ -3,8 +3,8 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - doctype and quirksMode
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -75,6 +75,13 @@ struct Document {
 
     std::string title;
 
+    // The <!DOCTYPE ...> declaration's text (after "DOCTYPE"), empty when the
+    // document has none. quirksMode: the document is laid out as browsers lay
+    // out pages without a standards doctype (most HTML mail) - see
+    // IsQuirksDoctype.
+    std::string doctype;
+    bool quirksMode = true;
+
     // Contents of <style> blocks, in document order.
     std::vector<std::string> styleSheets;
     // hrefs of <link rel="stylesheet">, in document order. The caller resolves
@@ -90,6 +97,13 @@ struct Document {
 
     int CountElements() const;
 };
+
+// Whether a doctype puts a page in quirks mode, as the HTML standard decides
+// it (reduced to what pages use): none at all, a name other than "html",
+// pre-HTML 4.01 and IETF / vendor public ids, and HTML 4.01 Transitional or
+// Frameset without a system id. <!DOCTYPE html>, HTML 4.01 Strict and XHTML
+// are standards mode.
+bool IsQuirksDoctype(const std::string& doctype, bool present);
 
 // Decode HTML entities (&amp;, &#233;, &#x2019;, ...) into UTF-8.
 std::string DecodeEntities(const std::string& text);

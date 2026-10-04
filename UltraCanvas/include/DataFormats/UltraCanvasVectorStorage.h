@@ -207,36 +207,12 @@ namespace UltraCanvas {
             mutable std::optional<float> length;
             mutable std::optional<std::vector<Point2Dd>> flattenedPoints;
 
-            Rect2Dd GetBounds() const {
-                if (cachedBounds) return *cachedBounds;
-                if (commands.empty()) return {0, 0, 0, 0};
-                float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-                Point2Dd cur{0, 0};
-                for (const auto &c: commands) {
-                    if ((c.Type == PathCommandType::MoveTo || c.Type == PathCommandType::LineTo) &&
-                        c.Parameters.size() >= 2) {
-                        float x = c.Relative ? cur.x + c.Parameters[0] : c.Parameters[0];
-                        float y = c.Relative ? cur.y + c.Parameters[1] : c.Parameters[1];
-                        minX = std::min(minX, x);
-                        minY = std::min(minY, y);
-                        maxX = std::max(maxX, x);
-                        maxY = std::max(maxY, y);
-                        cur = {x, y};
-                    } else if (c.Type == PathCommandType::CurveTo && c.Parameters.size() >= 6) {
-                        for (int i = 0; i < 6; i += 2) {
-                            float x = c.Parameters[i], y = c.Parameters[i + 1];
-                            minX = std::min(minX, x);
-                            minY = std::min(minY, y);
-                            maxX = std::max(maxX, x);
-                            maxY = std::max(maxY, y);
-                        }
-                        cur = {c.Parameters[4], c.Parameters[5]};
-                    }
-                }
-                if (minX > maxX) return {0, 0, 0, 0};
-                cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
-                return *cachedBounds;
-            }
+            // The tight bounds of the drawn geometry: every command kind,
+            // relative or absolute, with curves measured at their extrema
+            // rather than their control points. Cached until a command is
+            // added through VectorPath (code editing `commands` directly
+            // resets `cachedBounds` itself).
+            Rect2Dd GetBounds() const;
 
             void InvalidateCache() { cachedBounds.reset(); }
         };

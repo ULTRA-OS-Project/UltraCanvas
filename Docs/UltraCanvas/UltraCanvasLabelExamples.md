@@ -249,14 +249,29 @@ label->SetInlineImages({ star });
   The text's ascent and descent are measured from the label's own font.
 - An image wider than the label's line is scaled down to fit, keeping its
   aspect ratio.
-- `InlineImageRect(i)` returns where image `i` is drawn, in label-local
+- `fit` (`ImageFitMode`, default `Fill`) and `position` (`ImagePosition`,
+  default centred) say how the picture fills its `width` x `height` box, like
+  CSS `object-fit` / `object-position`: `Fill` stretches it to the box;
+  `Contain`, `Cover`, `NoScale` and `ScaleDown` keep its shape and place it by
+  `position`, clipped to the box.
+- `frame` (`LabelInlineImageFrame`) is the CSS box around the picture:
+  margins, padding, four border sides (`borderTop` ... `borderLeft`, each a
+  `LabelInlineImageBorder`: width, colour, dash; `SetBorders(w, colour)` for
+  one all round), `borderRadius` and `background`. The line reserves the whole margin box; the background fills
+  the border box, the border is drawn inside it, and the picture is clipped to
+  the rounded corners. The default frame is empty: the picture alone.
+- `InlineImageRect(i)` returns where image `i`'s picture is drawn (its content
+  box), and `InlineImageBoxRect(i)` its border box, in label-local
   coordinates.
 - A placeholder inside a `SetTextLinks` range is part of that link, so
   clicking the image activates it.
 
 The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
-text. An image in a block that has no text of its own still gets a line of
-its own, placed by `text-align`.
+text. Images in a block that has no text of its own go on lines of their own,
+placed by `text-align`: side by side on one wrapping line while only
+whitespace separates them, a space of their font apart where the HTML has
+whitespace, standing on the line's bottom unless `vertical-align` puts them at
+its top or middle; `display:block` or `<br>` starts a new line.
 
 ## Event Callbacks
 
@@ -268,7 +283,18 @@ std::function<void()> onHoverEnter;
 std::function<void()> onHoverLeave;
 std::function<void(const std::string&)> onTextChanged;
 std::function<void(long, long)> onSizeChanged;
+// Text links (SetTextLinks): the clicked link's href, and the hovered one's
+// as the pointer moves onto it ("" as it leaves the link).
+std::function<void(const std::string&)> onLinkActivated;
+std::function<void(const std::string&)> onLinkHovered;
 ```
+
+`SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
+beside the pointer, following it along the link and hidden again as the
+pointer leaves the link. It is off by
+default, for an app that shows the address in its status line instead
+(`HTML::BuildOptions::linkTooltips` sets it on the labels the HTML reader
+builds).
 
 ### Example Event Handling
 

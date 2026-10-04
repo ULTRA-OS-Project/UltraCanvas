@@ -4,6 +4,9 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.6.0 - waiting-for-reply rules (its age, only people written to)
+// Version: 0.5.0 - link display: the status bar or a tooltip (Settings > Display > Links)
+// Version: 0.4.0 - folder tree width: fixed pixels or fitted to the names
 // Version: 0.3.0 - remote-image policy, trusted websites, message view and text size
 //                  (the Settings window, UltraMailSettingsDialog)
 // Version: 0.2.0 - fetchSenderIcons (download the known senders' icons)
@@ -22,6 +25,18 @@ enum class RemoteImagePolicy {
     LoadAlways,    // every message (except junk and suspicious mail)
     LoadTrusted,   // trusted senders, trusted websites and the address book
     LoadNever      // never by themselves: the "Show images" bar asks each time
+};
+
+// How wide the folder tree on the left of the mail view is.
+enum class FolderTreeWidthMode {
+    FitToText,   // as wide as its longest row needs, plus 10 px
+    FixedWidth   // folderTreeWidth pixels
+};
+
+// Where the address behind a link in a message is shown.
+enum class LinkDisplay {
+    StatusBar,   // the status bar lists the message's links and shows the hovered one
+    Tooltip      // a tooltip over the hovered link; the status bar stays quiet
 };
 
 // The handful of app-wide view options. Add fields here (with a default) and a
@@ -54,6 +69,24 @@ struct Preferences {
     // text - no layout, no pictures), and the body text size in CSS px.
     bool  showHtml = true;
     int   messageTextSize = 12;
+
+    // Settings > Reading > Layout: the folder tree's width - fitted to the
+    // folder and account names it shows, or a fixed number of pixels
+    // (kFolderTreeMinWidth..kFolderTreeMaxWidth).
+    static constexpr int kFolderTreeMinWidth     = 100;
+    static constexpr int kFolderTreeMaxWidth     = 600;
+    static constexpr int kFolderTreeDefaultWidth = 200;
+    FolderTreeWidthMode folderTreeWidthMode = FolderTreeWidthMode::FitToText;
+    int                 folderTreeWidth     = kFolderTreeDefaultWidth;
+
+    // Settings > Display > Links: where a link's address is shown.
+    LinkDisplay linkDisplay = LinkDisplay::StatusBar;
+    // Settings > Reading > Waiting for reply: which unanswered mail sent to
+    // the reader counts as waiting (the account bar's third number, the ↩ in
+    // the list, "Needs an answer"). Only mail from the last this-many days
+    // (0 = any age), and only from people the reader has written to.
+    int  needsAnswerMaxAgeDays   = 14;
+    bool needsAnswerOnlyWrittenTo = true;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

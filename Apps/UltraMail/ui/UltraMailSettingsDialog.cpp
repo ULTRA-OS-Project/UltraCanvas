@@ -1,21 +1,30 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Reading, Privacy) closed when
-// the window opens, so it opens on the start page that says what they hold.
-// Pages: Reading > Layout (the message beside the list or in its place),
+// settings-page tree on the left, its sections (Reading, Privacy, Display)
+// closed when the window opens, so it opens on the start page that says what
+// they hold.
+// Pages: Reading > Layout (the message beside the list or in its place, and
+// the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
-// the message text), Privacy > Images (when pictures on the web are loaded:
+// the message text), Reading > Waiting for reply (which unanswered mail
+// counts: how old it may be, and whether only people written to), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
-// Privacy > Sender icons (whether the known senders' icons are downloaded).
+// Privacy > Sender icons (whether the known senders' icons are downloaded)
+// and Display > Links (a link's address in the status bar or in a tooltip).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.4.0 - Reading > Waiting for reply: which unanswered mail counts
+//                  (its age, only people written to)
+// Version: 1.3.0 - Display > Links: a link's address in the status bar or a tooltip
+// Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
+//                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -26,11 +35,13 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSpinner.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <set>
@@ -68,15 +79,24 @@ namespace {
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
+    constexpr const char* kPageWaiting     = "reading/waiting";
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
+    constexpr const char* kPageDisplay     = "display";
+    constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
     struct TextSizeChoice { int px; const char* label; };
     constexpr TextSizeChoice kTextSizes[] = {
         { 11, "Small" }, { 12, "Normal" }, { 14, "Large" }, { 16, "Extra large" } };
+
+    // The ages offered on Reading > Waiting for reply, in days (0 = any age).
+    struct AgeChoice { int days; const char* label; };
+    constexpr AgeChoice kWaitingAges[] = {
+        { 7, "From the last 7 days" }, { 14, "From the last 14 days" },
+        { 30, "From the last 30 days" }, { 0, "Of any age" } };
 
     struct PageReset {
         std::string           label;
@@ -101,6 +121,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
         std::shared_ptr<UltraCanvasRadio> paneInPlaceRadio;
         UltraCanvasRadioGroup             paneGroup;
+        std::shared_ptr<UltraCanvasRadio>   treeFitRadio;
+        std::shared_ptr<UltraCanvasRadio>   treeFixedRadio;
+        UltraCanvasRadioGroup               treeWidthGroup;
+        std::shared_ptr<UltraCanvasSpinner> treeWidthSpinner;
 
         // Reading > Messages
         std::shared_ptr<UltraCanvasRadio> htmlRadio;
@@ -108,6 +132,11 @@ namespace {
         UltraCanvasRadioGroup             viewGroup;
         std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> sizeRadios;
         UltraCanvasRadioGroup             sizeGroup;
+
+        // Reading > Waiting for reply
+        std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> ageRadios;
+        UltraCanvasRadioGroup                ageGroup;
+        std::shared_ptr<UltraCanvasCheckbox> writtenToBox;
 
         // Privacy > Images
         std::shared_ptr<UltraCanvasRadio>    imagesAlwaysRadio;
@@ -119,6 +148,11 @@ namespace {
 
         // Privacy > Sender icons
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
+
+        // Display > Links
+        std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
+        std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
+        UltraCanvasRadioGroup             linksGroup;
 
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
@@ -296,10 +330,17 @@ namespace {
         d->syncing = true;
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
+        if (d->treeFitRadio)
+            d->treeWidthGroup.SelectButton(p.folderTreeWidthMode == FolderTreeWidthMode::FitToText
+                                           ? d->treeFitRadio : d->treeFixedRadio);
+        if (d->treeWidthSpinner) d->treeWidthSpinner->SetValue(p.folderTreeWidth);
         if (d->htmlRadio)
             d->viewGroup.SelectButton(p.showHtml ? d->htmlRadio : d->plainRadio);
         for (const auto& [px, radio] : d->sizeRadios)
             if (px == p.messageTextSize) d->sizeGroup.SelectButton(radio);
+        for (const auto& [days, radio] : d->ageRadios)
+            if (days == p.needsAnswerMaxAgeDays) d->ageGroup.SelectButton(radio);
+        if (d->writtenToBox) d->writtenToBox->SetChecked(p.needsAnswerOnlyWrittenTo);
         if (d->imagesAlwaysRadio) {
             d->imagesGroup.SelectButton(
                 p.remoteImages == RemoteImagePolicy::LoadAlways ? d->imagesAlwaysRadio
@@ -309,6 +350,9 @@ namespace {
         if (d->domainsInput) d->domainsInput->SetTags(DomainTags(p));
         if (d->sendersInput) d->sendersInput->SetTags(SenderTags(p));
         if (d->senderIconsBox) d->senderIconsBox->SetChecked(p.fetchSenderIcons);
+        if (d->linksStatusRadio)
+            d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
+                                       ? d->linksTooltipRadio : d->linksStatusRadio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
@@ -333,9 +377,54 @@ namespace {
         parts.body->AddChild(d->paneBesideRadio);
         parts.body->AddChild(d->paneInPlaceRadio);
 
+        // ----- folder tree width: fitted, or [ 200 px ] -----
+        AddBodyCaption(parts, "um-set-tree-width-caption", "Width of the folder list:");
+        const bool fit = d->prefs->folderTreeWidthMode == FolderTreeWidthMode::FitToText;
+        d->treeFitRadio = MakeChoice("um-set-tree-fit",
+                "Auto - 10 px wider than the longest folder or account name", fit);
+        d->treeFixedRadio = MakeChoice("um-set-tree-fixed", "Fixed width:", !fit, 110);
+        d->treeWidthGroup.AddRadioButton(d->treeFitRadio);
+        d->treeWidthGroup.AddRadioButton(d->treeFixedRadio);
+        d->treeWidthGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->folderTreeWidthMode = selected == d->treeFitRadio
+                    ? FolderTreeWidthMode::FitToText : FolderTreeWidthMode::FixedWidth;
+            ApplyAndSave(d);
+        };
+
+        d->treeWidthSpinner = CreateIntSpinner("um-set-tree-width", 0, 0, 90,
+                static_cast<float>(kControlHeight), Preferences::kFolderTreeMinWidth,
+                Preferences::kFolderTreeMaxWidth, d->prefs->folderTreeWidth, 10);
+        d->treeWidthSpinner->SetSuffix(" px");
+        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = kTextFontSize;
+        d->treeWidthSpinner->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Setting a width is choosing a fixed one.
+        d->treeWidthSpinner->onValueChanged = [d](double value) {
+            if (d->syncing || !d->prefs) return;
+            d->prefs->folderTreeWidth = static_cast<int>(std::lround(value));
+            if (d->prefs->folderTreeWidthMode != FolderTreeWidthMode::FixedWidth) {
+                d->prefs->folderTreeWidthMode = FolderTreeWidthMode::FixedWidth;
+                d->syncing = true;
+                d->treeWidthGroup.SelectButton(d->treeFixedRadio);
+                d->syncing = false;
+            }
+            ApplyAndSave(d);
+        };
+
+        auto fixedRow = std::make_shared<UltraCanvasContainer>("um-set-tree-fixed-row");
+        fixedRow->layout.SetFlexRow().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        fixedRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        fixedRow->AddChild(d->treeFixedRadio);
+        fixedRow->AddChild(d->treeWidthSpinner);
+        parts.body->AddChild(d->treeFitRadio);
+        parts.body->AddChild(fixedRow);
+
         d->resets[kPageLayout] = PageReset{ "Restore default layout", 170, [d]() {
             if (!d->prefs) return;
             d->prefs->showReadingPane = true;
+            d->prefs->folderTreeWidthMode = FolderTreeWidthMode::FitToText;
+            d->prefs->folderTreeWidth = Preferences::kFolderTreeDefaultWidth;
             SyncControls(d);
             ApplyAndSave(d);
         } };
@@ -347,6 +436,10 @@ namespace {
                 "In place of the list, a message gets the whole width of the "
                 "window - better on a small screen - and the list comes back with "
                 "\"Back to list\".");
+        AddNote(parts, "um-set-layout-note3",
+                "Auto fits the folder list to the account and folder names it "
+                "shows, and fits it again as folders arrive. Dragging the divider "
+                "still resizes the list for the moment.");
         return parts.page;
     }
 
@@ -402,6 +495,58 @@ namespace {
                 "The text size is where a message's text starts from: text, "
                 "headings and small print that the message does not size itself "
                 "follow it. Sizes a message sets in pixels stay as they are.");
+        return parts.page;
+    }
+
+    // ===== READING > WAITING FOR REPLY =====
+    std::shared_ptr<UltraCanvasContainer> BuildWaitingPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-waiting", "Waiting for reply",
+                "Which unanswered mail sent to you counts as waiting for your reply:");
+
+        for (const auto& choice : kWaitingAges) {
+            auto radio = MakeChoice("um-set-age-" + std::to_string(choice.days), choice.label,
+                                    d->prefs->needsAnswerMaxAgeDays == choice.days);
+            d->ageRadios.emplace_back(choice.days, radio);
+            d->ageGroup.AddRadioButton(radio);
+            parts.body->AddChild(radio);
+        }
+        d->ageGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            for (const auto& [days, radio] : d->ageRadios)
+                if (radio == selected) d->prefs->needsAnswerMaxAgeDays = days;
+            ApplyAndSave(d);
+        };
+
+        AddBodyCaption(parts, "um-set-waiting-who-caption", "From whom:");
+        d->writtenToBox = MakeCheckbox("um-set-waiting-written-to",
+                "Only from people I have written to", d->prefs->needsAnswerOnlyWrittenTo,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->needsAnswerOnlyWrittenTo = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->writtenToBox);
+
+        d->resets[kPageWaiting] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->needsAnswerMaxAgeDays = 14;
+            d->prefs->needsAnswerOnlyWrittenTo = true;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-waiting-note1",
+                "Only mail in the inbox that was sent to you by name, is not a "
+                "newsletter or an automatic message, and has not been answered "
+                "can wait for a reply. These choices narrow that down: the count "
+                "on the account and the \xE2\x86\xA9 in the list follow them.");
+        AddNote(parts, "um-set-waiting-note2",
+                "\"People I have written to\" are the addresses in your Sent "
+                "mail. Until the Sent folder has been fetched, this choice "
+                "leaves every sender in.");
+        AddNote(parts, "um-set-waiting-note3",
+                "A message you mark \"Needs an answer\" yourself always counts, "
+                "whatever its age or sender.");
         return parts.page;
     }
 
@@ -539,18 +684,65 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > LINKS =====
+    std::shared_ptr<UltraCanvasContainer> BuildLinksPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-links", "Links",
+                "Where the address behind a link in a message is shown:");
+
+        const bool tooltip = d->prefs->linkDisplay == LinkDisplay::Tooltip;
+        d->linksStatusRadio = MakeChoice("um-set-links-status",
+                "Show in status bar", !tooltip);
+        d->linksTooltipRadio = MakeChoice("um-set-links-tooltip",
+                "Show as tooltip", tooltip);
+        d->linksGroup.AddRadioButton(d->linksStatusRadio);
+        d->linksGroup.AddRadioButton(d->linksTooltipRadio);
+        d->linksGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->linkDisplay = selected == d->linksTooltipRadio ? LinkDisplay::Tooltip
+                                                                     : LinkDisplay::StatusBar;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->linksStatusRadio);
+        parts.body->AddChild(d->linksTooltipRadio);
+
+        d->resets[kPageLinks] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->linkDisplay = LinkDisplay::StatusBar;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-links-note1",
+                "In the status bar, the bottom of the window counts a message's "
+                "links and names the websites they lead to - its tooltip lists "
+                "every link - and shows the full address of the link under the "
+                "pointer.");
+        AddNote(parts, "um-set-links-note2",
+                "As a tooltip, the address appears beside the pointer while it "
+                "rests on a link, and the status bar stays free for the mail "
+                "itself.");
+        AddNote(parts, "um-set-links-note3",
+                "Either way, check where a link really goes before you click it: "
+                "the words of a link can name one website and lead to another.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
         AddNote(parts, "um-set-start-note1",
-                "Reading - where a message opens, whether HTML mail is shown "
-                "formatted or as plain text, and the size of its text.");
+                "Reading - where a message opens, how wide the folder list is, "
+                "whether HTML mail is shown formatted or as plain text, the size "
+                "of its text, and which mail counts as waiting for your reply.");
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
+                "Display - whether a link's address is shown in the status bar or "
+                "as a tooltip.");
+        AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
                 "there is nothing to confirm.");
@@ -636,9 +828,12 @@ namespace {
         AddTreeNode(d, "settings", kPageReading, "Reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
+        AddTreeNode(d, kPageReading, kPageWaiting, "Waiting for reply");
         AddTreeNode(d, "settings", kPagePrivacy, "Privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
+        AddTreeNode(d, "settings", kPageDisplay, "Display");
+        AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -652,8 +847,10 @@ namespace {
 
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
+        AddPage(d, kPageWaiting, BuildWaitingPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
+        AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 
