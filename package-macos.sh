@@ -566,6 +566,43 @@ copy_media() {
     done
 }
 
+# ── Finding built executables ────────────────────────────────────────────────
+
+# Prints the path of executable $1 and succeeds when it was built. Most
+# targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY to bin/
+# (UltraFIBU, UltraAuthenticator, UltraPassword), so look in both, as
+# package-linux.sh and package-win.sh do.
+find_built_exe() {
+    local cand
+    for cand in "$BUILD_DIR/$1" "$BUILD_DIR/bin/$1"; do
+        if [ -f "$cand" ]; then echo "$cand"; return 0; fi
+    done
+    return 1
+}
+
+# Apps that were not built, reported at the end of the run.
+SKIPPED_APPS=()
+
+# Runs "$2..." (build_app_bundle or build_cli_tool) for executable $1 when it
+# was built, and records it as skipped when it was not.
+#
+# The check sits outside the build function on purpose. Calling it as
+# `build_app_bundle ... || echo skipped` - the obvious way to make a missing
+# app non-fatal - switches `set -e` off for the function's entire body: bash
+# ignores -e in any command on the left of || or &&. A failure in signing,
+# iconutil or the dylib copy would then be carried past, and an unsigned or
+# half-built bundle shipped. Called as a plain command, as here, every step
+# inside still ends the run when it fails.
+package_if_built() {
+    local exe_name="$1"; shift
+    if ! find_built_exe "$exe_name" >/dev/null; then
+        echo "── Skipping $exe_name: not built (looked in $BUILD_DIR and $BUILD_DIR/bin) ──"
+        SKIPPED_APPS+=("$exe_name")
+        return 0
+    fi
+    "$@"
+}
+
 # ── Build one app bundle ─────────────────────────────────────────────────────
 
 build_app_bundle() {
@@ -577,13 +614,9 @@ build_app_bundle() {
     local extra_plist="$6"
     local samples="${7:-}"   # "samples": the demo's sample media and sources
 
-    # Most targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY
-    # to bin/ (UltraAuthenticator, UltraPassword), so look in both, as
-    # package-linux.sh and package-win.sh do.
-    local exe_path="$BUILD_DIR/$exe_name"
-    [ -f "$exe_path" ] || exe_path="$BUILD_DIR/bin/$exe_name"
-    if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found in $BUILD_DIR or $BUILD_DIR/bin (skipping $display_name)"
+    local exe_path
+    if ! exe_path="$(find_built_exe "$exe_name")"; then
+        echo "Error: $exe_name not found in $BUILD_DIR or $BUILD_DIR/bin"
         return 1
     fi
 
@@ -704,9 +737,9 @@ build_app_bundle() {
 build_cli_tool() {
     local exe_name="$1"
 
-    local exe_path="$BUILD_DIR/$exe_name"
-    if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found: $exe_path (skipping $exe_name)"
+    local exe_path
+    if ! exe_path="$(find_built_exe "$exe_name")"; then
+        echo "Error: $exe_name not found in $BUILD_DIR or $BUILD_DIR/bin"
         return 1
     fi
 
@@ -858,7 +891,7 @@ TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
     </array>'
 
 # Package Texter
-build_app_bundle \
+package_if_built "Texter" build_app_bundle \
     "Texter" \
     "UltraCanvas Texter" \
     "com.cloverleaf.UltraCanvasTexter" \
@@ -867,7 +900,7 @@ build_app_bundle \
     "$TEXTER_DOC_TYPES"
 
 # Package UltraCanvasDemo
-build_app_bundle \
+package_if_built "UltraCanvasDemo" build_app_bundle \
     "UltraCanvasDemo" \
     "UltraCanvas Demo" \
     "com.cloverleaf.UltraCanvasDemo" \
@@ -902,7 +935,7 @@ VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
     </array>'
 
 # Package UltraFiler (file manager)
-build_app_bundle \
+package_if_built "UltraFiler" build_app_bundle \
     "UltraFiler" \
     "UltraFiler" \
     "com.cloverleaf.UltraFiler" \
@@ -911,7 +944,7 @@ build_app_bundle \
     ""
 
 # Package UltraViewer (universal media viewer)
-build_app_bundle \
+package_if_built "UltraViewer" build_app_bundle \
     "UltraViewer" \
     "UltraViewer" \
     "com.cloverleaf.UltraViewer" \
@@ -920,7 +953,7 @@ build_app_bundle \
     "$VIEWER_DOC_TYPES"
 
 # Package UltraNetMonitor
-build_app_bundle \
+package_if_built "UltraNetMonitor" build_app_bundle \
     "UltraNetMonitor" \
     "UltraNetMonitor" \
     "com.cloverleaf.UltraNetMonitor" \
@@ -929,7 +962,7 @@ build_app_bundle \
     ""
 
 # Package DeviceExplorer
-build_app_bundle \
+package_if_built "DeviceExplorer" build_app_bundle \
     "DeviceExplorer" \
     "DeviceExplorer" \
     "com.cloverleaf.DeviceExplorer" \
@@ -937,27 +970,36 @@ build_app_bundle \
     "public.app-category.utilities" \
     ""
 
-# Package UltraAuthenticator and UltraPassword. Both need libsodium (UltraCrypt)
-# and are not built without it, so a missing one is a skip, not a failure of
-# the whole run (the calls above abort it under set -e).
-build_app_bundle \
+# Package UltraAuthenticator and UltraPassword (both need libsodium, through
+# UltraCrypt, and are not built without it).
+package_if_built "UltraAuthenticator" build_app_bundle \
     "UltraAuthenticator" \
     "UltraAuthenticator" \
     "com.cloverleaf.UltraAuthenticator" \
     "media/appicon/UltraAuthenticator.png" \
     "public.app-category.utilities" \
-    "" || echo "  UltraAuthenticator not packaged"
+    ""
 
-build_app_bundle \
+package_if_built "UltraPassword" build_app_bundle \
     "UltraPassword" \
     "UltraPassword" \
     "com.cloverleaf.UltraPassword" \
     "media/appicon/UltraPassword.png" \
     "public.app-category.utilities" \
-    "" || echo "  UltraPassword not packaged"
+    ""
 
 # Package the UltraMessage command line (Apps/UltraMessageCli)
-build_cli_tool "ultramsg"
+package_if_built "ultramsg" build_cli_tool "ultramsg"
+
+# ── What was packaged ───────────────────────────────────────────────────────
+
+if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then
+    echo "Not built, so not packaged: ${SKIPPED_APPS[*]}"
+fi
+if ! compgen -G "$OUTPUT_DIR/*.app" >/dev/null; then
+    echo "Error: no app bundle was produced - is $BUILD_DIR the right build directory?" >&2
+    exit 1
+fi
 
 # A new app goes above this line, through build_app_bundle - never with its
 # own Frameworks/ (verify_suite rejects that). See "Suite layout".
