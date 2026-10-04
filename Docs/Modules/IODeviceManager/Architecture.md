@@ -879,9 +879,12 @@ TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
 it does for IPP printers: the certificate is self-signed in all but a few
 cases, and TLS verification stays on.
 
-A scanner is shown by its model (`ty`), and by its DNS-SD instance name
-when its TXT record has none (`EsclInstanceFromServiceName`). The mDNS plugin
-reports the full service name, so without that the fallback read
+A scanner is shown by its DNS-SD instance name, as an IPP printer is: it is
+unique on the network, where the model (`ty`) is shared by every scanner of
+that model, so two of them used to look identical. The model stays in
+`model`, and is the name only when the instance name is empty. The mDNS
+plugin reports the full service name, so the instance is cut out of it
+(`EsclInstanceFromServiceName`); used whole, it read
 "Office Scanner._uscan._tcp.local" - and on macOS, where Bonjour leaves the
 name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
 the `mdns-name` attribute.
