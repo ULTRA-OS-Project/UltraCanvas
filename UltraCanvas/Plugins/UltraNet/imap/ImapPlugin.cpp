@@ -1,4 +1,6 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.5.1 - FetchMessages searches with UID SEARCH: it fetched sequence
+//                  numbers as UIDs, so it got the wrong mail or none at all
 // Version: 0.5.0 - reading a message no longer marks it read: libcurl fetches
 //                  with BODY[...], which sets \Seen, so an unread message's
 //                  \Seen is taken off again (FetchKeepingUnread)
@@ -19,7 +21,7 @@
 //   extern "C" ULTRANET_PLUGIN_EXPORT void UltraNet_PluginInit(const UltraNetPluginHost*);
 //
 // Strategy:
-//   1. Issue a SEARCH ALL against the mailbox URL to enumerate UIDs.
+//   1. Issue a UID SEARCH ALL against the mailbox URL to enumerate UIDs.
 //   2. Fetch up to options.maxMessages most-recent messages by UID.
 //   3. Parse minimal RFC 822 headers (From / To / Cc / Subject / Date /
 //      Content-Type) into UltraNetMailMessage; full body lands in message.body.
@@ -241,8 +243,11 @@ public:
         // URL by SplitMailboxUrl, so it is URL-derived — do NOT EncodeMailboxPath
         // it again (that would double-encode). The IMailboxProtocolPlugin methods
         // above take a raw folder name and encode it themselves.
+        // UID SEARCH, not SEARCH: the messages are fetched by UID below
+        // (";UID=n"), and a plain SEARCH answers with sequence numbers, which
+        // stop matching the UIDs as soon as a message has ever been deleted.
         std::string searchBody;
-        UltraNetResult sr = RunCommand(base + mailbox, "SEARCH ALL", options, tls, searchBody);
+        UltraNetResult sr = RunCommand(base + mailbox, "UID SEARCH ALL", options, tls, searchBody);
         if (!sr) return sr;
         std::vector<uint32_t> uids = ParseSearchUids(searchBody);
         if (uids.empty()) return UltraNetResult::Ok();
