@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.2 - CloseMenu() is a no-op on an already-closed menu
-// Last Modified: 2026-07-31
+// Version: 1.8.3 - a disabled submenu entry does not open its submenu
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -236,6 +236,9 @@ namespace UltraCanvas {
 
         const MenuItemData &item = items[itemIndex];
         if (item.subItems.empty() && !item.subItemsProvider) return;
+        // Greyed out means unavailable: the entry shows what is there but
+        // offers none of it, by hover, click or keyboard alike.
+        if (!item.enabled) return;
 
         // Close existing submenu
         CloseActiveSubmenu();
@@ -951,7 +954,7 @@ namespace UltraCanvas {
             // Auto-open submenu on hover (with delay)
             if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
                 const MenuItemData &item = items[activeIndex];
-                if (item.HasSubmenu()) {
+                if (item.HasSubmenu() && item.enabled) {
                     // In a complete implementation, you'd add a timer for submenu delay
                     OpenSubmenu(activeIndex);
                 } else {
