@@ -25,7 +25,11 @@
     runs right after `brew install`: it reads the minimum of every library the
     apps link and their dependencies, rebuilds from source each formula with
     one newer than `MACOSX_DEPLOYMENT_TARGET`, and fails within minutes, not
-    after the build, if the rebuild does not bring it down. The minimum
+    after the build, if the rebuild does not bring it down. Homebrew's own
+    source build of tesseract cannot run - its formula also downloads a
+    third-party `snum.traineddata` whose URL answers 404 - so tesseract has a
+    recipe of its own: the keg's upstream release, built with the formula's
+    autotools steps for the target and installed over the keg. The minimum
     reading is shared with `package-macos.sh` through
     `scripts/macos-min-version.sh`.
   - Going below macOS 15 needs the dependencies built for the older macOS:

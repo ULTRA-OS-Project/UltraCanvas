@@ -16,7 +16,10 @@
 # linking the OCR plug-in would have refused to start on macOS 15.0 to 15.7.4.
 # A source build gets Homebrew's own deployment target, the major version of
 # the machine building it - which is what MACOSX_DEPLOYMENT_TARGET names in CI,
-# where each macOS leg's runner is the oldest macOS it supports.
+# where each macOS leg's runner is the oldest macOS it supports. A formula
+# whose Homebrew source build cannot run gets a recipe of its own below
+# (rebuild_<formula>), which builds the library for MACOSX_DEPLOYMENT_TARGET
+# and installs it over the keg.
 #
 # CI runs it after installing the dependencies; MACOSX_DEPLOYMENT_TARGET must
 # be set.
@@ -33,6 +36,43 @@ fi
 . "$(dirname "$0")/macos-min-version.sh"
 
 prefix=$(brew --prefix)
+
+# Recipes for formulae `brew reinstall --build-from-source` cannot rebuild.
+# Each installs over the keg, keeping its paths and install names, so
+# pkg-config, the build and package-macos.sh see the same files as before.
+
+# Homebrew's tesseract formula also fetches a third-party snum.traineddata
+# whose URL answered 404 on 2026-10-04, so its source build fails before
+# compiling anything. The apps need only the library: build the keg's upstream
+# release with the formula's own autotools steps (without the training tools
+# and language data, which the bottle already installed and the apps do not
+# load from there).
+rebuild_tesseract() {
+    local version keg src
+    version=$(brew list --versions tesseract | awk '{print $2}')
+    version="${version%%_*}"   # 5.5.3_1 -> 5.5.3: a revision is Homebrew's own
+    keg=$(brew --prefix tesseract)
+    src=$(mktemp -d)
+    brew install autoconf automake libtool
+    echo "Building tesseract $version from source into $keg"
+    curl -fsSL --retry 3 \
+        "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz" \
+        | tar -xz -C "$src" --strip-components 1
+    (
+        cd "$src"
+        ./autogen.sh
+        # libarchive is keg-only in Homebrew, so pkg-config needs its path to
+        # link the same libarchive the bottle did.
+        PKG_CONFIG_PATH="$(brew --prefix libarchive)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
+            ./configure --prefix="$keg" --datarootdir="$prefix/share" \
+                --disable-debug --disable-dependency-tracking --disable-silent-rules
+        make -j"$(sysctl -n hw.ncpu)"
+        # A poured bottle leaves some of its files read-only.
+        chmod -R u+w "$keg/"
+        make install
+    )
+    rm -rf "$src"
+}
 
 # The formulae named and every runtime dependency of any of them (--union:
 # without it, brew deps prints only what they all have in common).
@@ -91,8 +131,14 @@ if [ -z "$stale" ]; then
 fi
 
 echo "Rebuilding from source for macOS $target:$stale"
-# shellcheck disable=SC2086 # one word per formula
-brew reinstall --build-from-source $stale
+for f in $stale; do
+    recipe="rebuild_${f//[^A-Za-z0-9_]/_}"
+    if declare -F "$recipe" >/dev/null; then
+        "$recipe"
+    else
+        brew reinstall --build-from-source "$f"
+    fi
+done
 
 echo "After the rebuild:"
 scan
