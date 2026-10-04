@@ -116,14 +116,13 @@ jobs:
         # options are: drop Intel builds, use self-hosted runners, or
         # cross-compile universal binaries.
         #
-        # Both macOS legs name their macOS version, never macos-latest: the
-        # runner's version is the oldest macOS the apps run on. Homebrew pours
-        # bottles built for the macOS it runs on, and dyld refuses a dylib
-        # built for a newer macOS than the running one, so every bundled
-        # library needs at least the runner's macOS - see
-        # MACOSX_DEPLOYMENT_TARGET below. macos-latest moved to macOS 26 in
-        # July 2026 and took the arm64 apps with it: they then started only
-        # on macOS 26, while their Info.plist still said 12.0.
+        # Both macOS legs name their macOS version, never macos-latest, so a
+        # new runner image (and its Xcode and SDK) arrives by a change here and
+        # not on GitHub's schedule. While the libraries came from Homebrew the
+        # runner's version was also the oldest macOS the apps ran on: when
+        # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
+        # only on macOS 26, while their Info.plist still said 12.0. The
+        # libraries are now built for MACOSX_DEPLOYMENT_TARGET (below).
         os: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
         build_type: [Release]
         include:
@@ -155,7 +154,10 @@ jobs:
     # Normal jobs finish in ~30 minutes. Without a cap, a hang burns the
     # default 6-hour job timeout (seen once: MSYS2 ldd deadlocking while
     # loading an ImageMagick coder DLL during Windows-on-ARM packaging).
-    timeout-minutes: 120
+    # The macOS legs get longer: the first run after MacOS/deps changes
+    # builds every bundled library from source before the apps (the vcpkg
+    # binary cache makes later runs restore them in a minute or two).
+    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 300 || 120 }}
 
     defaults:
       run:
@@ -199,15 +201,16 @@ jobs:
       # CMake seeds CMAKE_OSX_DEPLOYMENT_TARGET from it and cargo and clang
       # read it directly, so all of our own code is compiled for it; without
       # it clang targets the SDK's version, which on a macOS 26 runner is 26.
-      # package-macos.sh checks every binary in every bundle against it -
-      # the Homebrew dylibs included, which carry the runner's macOS - writes
-      # it as LSMinimumSystemVersion, and fails the job if anything needs a
-      # newer macOS. So this cannot be lowered on its own: below 15.0 the
-      # dependencies have to be built for the older macOS too, because
-      # Homebrew no longer builds bottles for macOS 14 (Homebrew 7.0,
-      # September 2026) and GitHub retires the macos-14 runner in November
-      # 2026.
-      MACOSX_DEPLOYMENT_TARGET: ${{ startsWith(matrix.os, 'macos') && '15.0' || '' }}
+      # The libraries the apps bundle are built for it too, by vcpkg
+      # (scripts/macos-deps.sh), whose triplets in MacOS/deps/triplets carry
+      # the same number - the script refuses to run when they disagree.
+      # Homebrew's bottles could not be used for this: each carries the macOS
+      # of the machine that built it, Homebrew 7.0 (September 2026) builds no
+      # more for macOS 14 or for Intel, and dyld refuses a library built for a
+      # newer macOS than the running one. package-macos.sh checks every binary
+      # in the suite against this number, writes it as LSMinimumSystemVersion,
+      # and fails the job if anything needs a newer macOS.
+      MACOSX_DEPLOYMENT_TARGET: ${{ startsWith(matrix.os, 'macos') && '14.0' || '' }}
 
     steps:
       - name: Checkout repository
@@ -283,10 +286,10 @@ jobs:
             ${{ matrix.msys_prefix }}-python
             zip
 
-      # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
-      # lives at /opt/homebrew on Apple Silicon and /usr/local on Intel, but
-      # the formula list is identical) =====
-      - name: Install dependencies (macOS)
+      # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
+      # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
+      # Silicon and /usr/local on Intel, vcpkg's prefix in .vcpkg/ on both) =====
+      - name: Install build tools (macOS)
         if: runner.os == 'macOS'
         run: |
           # The GitHub macOS runner image pre-taps aws/tap (for aws-sam-cli).
@@ -299,27 +302,60 @@ jobs:
           # for taps we *do* use). Tolerate the tap being absent so a future
           # runner image that drops it cannot fail this step.
           brew untap aws/tap 2>/dev/null || true
-          brew install cmake pkg-config ccache
-          # The libraries the apps link, which package-macos.sh bundles.
-          libs=(
-            cairo pango harfbuzz vips glib freetype tinyxml2
-            libcdr librevenge
-            # The patched libcdr in UltraCanvas/third_party/libcdr builds from
-            # source against these (the system libcdr stays the fallback).
-            boost little-cms2 icu4c
-            zbar mupdf c-ares libsodium leptonica tesseract
-            # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-            flac libvorbis opus opusfile libopusenc lame
-          )
-          brew install "${libs[@]}"
-          # Rebuild from source any of them (or their dependencies) whose
-          # bottle needs a newer macOS than MACOSX_DEPLOYMENT_TARGET, so the
-          # bundles can keep that promise - see the script for the bottle
-          # that didn't.
-          scripts/homebrew-rebuild-newer-kegs.sh "${libs[@]}"
+          # Build tools only. The libraries the apps link and package-macos.sh
+          # bundles come from vcpkg, two steps down, built for
+          # MACOSX_DEPLOYMENT_TARGET; these are what its ports need on macOS.
+          brew install cmake pkg-config ccache autoconf autoconf-archive automake libtool nasm
           # libcurl: use Apple's system libcurl (SecureTransport-family
           # backend) — already present on every macOS install, so we add
           # no extra dependency for UltraNet on this platform.
+
+      # vcpkg's binary cache: each library it has built, as one archive per
+      # package and configuration. Keyed by MacOS/deps and the script (which
+      # pins the vcpkg commit) and saved under a fresh key by every run that
+      # built something, so a change rebuilds only the packages it touches;
+      # `restore-keys` falls back to the newest cache for this leg.
+      - name: Restore vcpkg binary cache (macOS)
+        if: runner.os == 'macOS'
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/.vcpkg/binary-cache
+          key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
+            vcpkg-${{ matrix.os }}-
+
+      - name: Build the bundled libraries for macOS ${{ env.MACOSX_DEPLOYMENT_TARGET }} (macOS)
+        if: runner.os == 'macOS'
+        id: macos-deps
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg/binary-cache,readwrite
+          # Report every port that fails in one run, not just the first.
+          UC_VCPKG_KEEP_GOING: "1"
+        run: |
+          mkdir -p .vcpkg/binary-cache
+          cached_before=$(find .vcpkg/binary-cache -type f | wc -l)
+          prefix=$(scripts/macos-deps.sh)
+          cached_after=$(find .vcpkg/binary-cache -type f | wc -l)
+          echo "built=$([ "$cached_after" -gt "$cached_before" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Libraries for macOS $MACOSX_DEPLOYMENT_TARGET in $prefix"
+          # pkg-config sees only this prefix, so nothing can fall back to a
+          # library Homebrew installed for one of the tools above.
+          {
+            echo "UC_MACOS_DEPS_PREFIX=$prefix"
+            echo "PKG_CONFIG_LIBDIR=$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+            echo "CMAKE_PREFIX_PATH=$prefix"
+          } >> "$GITHUB_ENV"
+
+      # Right after the build, and whether or not it succeeded: a run that
+      # built half the libraries keeps them for the next one.
+      - name: Save vcpkg binary cache (macOS)
+        if: always() && runner.os == 'macOS' && steps.vcpkg-cache.outcome == 'success' && steps.macos-deps.outputs.built != 'false'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.vcpkg/binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       # ===== Linux: system package manager =====
       - name: Install dependencies (Linux)
@@ -567,7 +603,10 @@ jobs:
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
+          # On macOS, UC_MACOS_DEPS_PREFIX is the vcpkg prefix built above
+          # (cmake/UltraCanvasMacOSDeps.cmake); on Linux it is unset.
           cmake -B build \
+            ${UC_MACOS_DEPS_PREFIX:+-DULTRACANVAS_MACOS_DEPS_PREFIX="$UC_MACOS_DEPS_PREFIX"} \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \

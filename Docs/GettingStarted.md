@@ -72,8 +72,10 @@ brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
 ```
 
 Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
-directory itself. The complete list is the *Install dependencies (macOS)* step
-in `.github/workflows/build.yml`.
+directory itself. Apps built this way run on the macOS you build on and newer.
+CI builds the same libraries with vcpkg instead, for macOS 14 and newer, from
+the list in `MacOS/deps/vcpkg.json`; `MacOS/deps/README.md` shows how to do
+that locally (`scripts/macos-deps.sh`).
 
 </details>
 
@@ -540,12 +542,13 @@ pushes to `main`; pull requests get the unsigned bundle.
 `Info.plist`, icons, and how web locations and aliases are handled.
 
 An app runs on the oldest macOS that *all* of its binaries allow, and that
-includes the Homebrew libraries in the suite's shared `Frameworks/`: Homebrew
-builds them for the macOS of the machine that built them, and macOS refuses to
-load a library built for a newer version than its own. So the suite CI
-publishes runs on macOS 15 and later, because it is built on macOS 15 runners
-with `MACOSX_DEPLOYMENT_TARGET=15.0`; a suite you package yourself runs on the
-macOS you built it on and newer. `package-macos.sh` reads the minimum from
+includes the libraries in the suite's shared `Frameworks/`: macOS refuses to
+load a library built for a newer version than its own. Homebrew builds its
+libraries for the macOS of the machine that built them, so a suite you package
+from Homebrew runs on the macOS you built it on and newer. The suite CI
+publishes runs on **macOS 14 and later**: CI builds the libraries with vcpkg
+for `MACOSX_DEPLOYMENT_TARGET=14.0` (`MacOS/deps/README.md`) and passes their
+prefix as `UC_MACOS_DEPS_PREFIX`. `package-macos.sh` reads the minimum from
 every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.

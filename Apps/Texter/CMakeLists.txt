@@ -108,6 +108,9 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             ${VIPS_LIBRARY_DIRS}
     )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    # The dependency prefix: Homebrew's, or CI's vcpkg one. A no-op include
+    # inside the full build; it keeps a standalone Texter configure working.
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasMacOSDeps.cmake")
     pkg_check_modules(CAIRO REQUIRED cairo)
     pkg_check_modules(PANGO REQUIRED pango)
     pkg_check_modules(PANGOCAIRO REQUIRED pangocairo)
@@ -117,8 +120,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     pkg_check_modules(VIPS REQUIRED vips-cpp)
     pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-    # Homebrew paths
-    set(HOMEBREW_PREFIX "/opt/homebrew" CACHE PATH "Homebrew prefix")
+    set(HOMEBREW_PREFIX "${ULTRACANVAS_MACOS_DEPS_PREFIX}")
 
     include_directories(
             ${CAIRO_INCLUDE_DIRS}

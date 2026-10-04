@@ -1,0 +1,150 @@
+{
+  "name": "libvips",
+  "version": "8.18.7",
+  "description": "libvips is a demand-driven, horizontally threaded image processing library.",
+  "homepage": "https://github.com/libvips/libvips",
+  "license": "LGPL-2.1-or-later",
+  "dependencies": [
+    "expat",
+    "glib",
+    {
+      "name": "glib",
+      "host": true
+    },
+    {
+      "name": "vcpkg-tool-meson",
+      "host": true
+    }
+  ],
+  "features": {
+    "analyze": {
+      "description": "Built-in Analyze 7.5 loader."
+    },
+    "archive": {
+      "description": "dzsave archives (libarchive).",
+      "dependencies": [
+        "libarchive"
+      ]
+    },
+    "cfitsio": {
+      "description": "FITS loader and saver (cfitsio).",
+      "dependencies": [
+        "cfitsio"
+      ]
+    },
+    "cplusplus": {
+      "description": "Build C++ API."
+    },
+    "deprecated": {
+      "description": "Build deprecated components."
+    },
+    "exif": {
+      "description": "Build with exif support.",
+      "dependencies": [
+        "libexif"
+      ]
+    },
+    "fftw": {
+      "description": "Fourier transforms (fftw3).",
+      "dependencies": [
+        "fftw3"
+      ]
+    },
+    "fontconfig": {
+      "description": "Build with fontconfig support.",
+      "dependencies": [
+        "fontconfig",
+        "pango"
+      ]
+    },
+    "highway": {
+      "description": "SIMD paths (highway).",
+      "dependencies": [
+        "highway"
+      ]
+    },
+    "jpeg": {
+      "description": "Build with jpeg support.",
+      "dependencies": [
+        "libjpeg-turbo"
+      ]
+    },
+    "lcms": {
+      "description": "Build with lcms support.",
+      "dependencies": [
+        "lcms"
+      ]
+    },
+    "matio": {
+      "description": "MATLAB .mat loader (matio).",
+      "dependencies": [
+        "matio"
+      ]
+    },
+    "nsgif": {
+      "description": "Built-in GIF loader (libnsgif)."
+    },
+    "openexr": {
+      "description": "OpenEXR loader (openexr).",
+      "dependencies": [
+        "openexr"
+      ]
+    },
+    "openjpeg": {
+      "description": "JPEG 2000 loader and saver (openjpeg).",
+      "dependencies": [
+        "openjpeg"
+      ]
+    },
+    "pangocairo": {
+      "description": "Build with pangocairo support.",
+      "dependencies": [
+        "cairo",
+        "pango"
+      ]
+    },
+    "png": {
+      "description": "Build with png support.",
+      "dependencies": [
+        "libpng"
+      ]
+    },
+    "ppm": {
+      "description": "Built-in PPM/PGM/PFM loader and saver."
+    },
+    "radiance": {
+      "description": "Built-in Radiance HDR loader and saver."
+    },
+    "raw": {
+      "description": "Camera RAW loader (libraw).",
+      "dependencies": [
+        "libraw"
+      ]
+    },
+    "rsvg": {
+      "description": "Build with rsvg support.",
+      "dependencies": [
+        "librsvg"
+      ]
+    },
+    "tiff": {
+      "description": "Build with tiff support.",
+      "dependencies": [
+        "tiff"
+      ]
+    },
+    "webp": {
+      "description": "Build with WebP support.",
+      "dependencies": [
+        "libwebp"
+      ]
+    },
+    "zlib": {
+      "description": "Build with zlib support.",
+      "dependencies": [
+        "zlib-ng"
+      ]
+    }
+  },
+  "port-version": 1
+}

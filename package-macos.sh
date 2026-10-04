@@ -85,11 +85,30 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-if ! command -v brew &>/dev/null; then
-    echo "Error: Homebrew is required"
+# Where the libraries the apps link live: the vcpkg prefix scripts/macos-deps.sh
+# builds for MACOSX_DEPLOYMENT_TARGET (CI exports it as UC_MACOS_DEPS_PREFIX),
+# or Homebrew's for a local build. Libraries from either are bundled.
+HOMEBREW_PREFIX=""
+if command -v brew &>/dev/null; then
+    HOMEBREW_PREFIX=$(brew --prefix)
+fi
+DEPS_PREFIX="${UC_MACOS_DEPS_PREFIX:-$HOMEBREW_PREFIX}"
+if [ -z "$DEPS_PREFIX" ]; then
+    echo "Error: set UC_MACOS_DEPS_PREFIX (scripts/macos-deps.sh) or install Homebrew"
     exit 1
 fi
-HOMEBREW_PREFIX=$(brew --prefix)
+
+# True when $1 is a library this script bundles: one under the dependency
+# prefix or Homebrew's. Spelled out rather than as `${HOMEBREW_PREFIX}/*` in a
+# case pattern, which an empty prefix would turn into `/*` - every file.
+is_bundled_source() {
+    local prefix
+    for prefix in "$DEPS_PREFIX" "$HOMEBREW_PREFIX" /opt/homebrew /usr/local; do
+        [ -n "$prefix" ] || continue
+        case "$1" in "$prefix"/*) return 0 ;; esac
+    done
+    return 1
+}
 
 # The oldest macOS the apps must run on - the same variable the compiler,
 # CMake and cargo read, so the code and this promise agree. See
@@ -104,7 +123,7 @@ echo "=== UltraCanvas macOS Packager ==="
 echo "  Version:         $VERSION"
 echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
-echo "  Homebrew prefix: $HOMEBREW_PREFIX"
+echo "  Dependencies:    $DEPS_PREFIX"
 echo "  Minimum macOS:   ${MIN_MACOS:-measured per app (MACOSX_DEPLOYMENT_TARGET unset)}"
 echo "  Code signing:    $DO_SIGN"
 echo "  Notarize:        $NOTARIZE"
@@ -318,12 +337,16 @@ bundle_dylibs() {
                             break
                         fi
                     done
-                    # Fall back to $HOMEBREW_PREFIX/lib (homebrew symlinks
-                    # all kegs here, so this catches libs like libIlmThread
-                    # that OpenEXR references via @rpath).
-                    if [ -z "$dep_source" ] && [ -f "$HOMEBREW_PREFIX/lib/$rel" ]; then
-                        dep_source="$HOMEBREW_PREFIX/lib/$rel"
-                    fi
+                    # Fall back to <prefix>/lib (Homebrew symlinks all
+                    # kegs there, so this catches libs like libIlmThread
+                    # that OpenEXR references via @rpath; a vcpkg prefix
+                    # keeps every library there).
+                    local fallback
+                    for fallback in "$DEPS_PREFIX" "$HOMEBREW_PREFIX"; do
+                        if [ -z "$dep_source" ] && [ -n "$fallback" ] && [ -f "$fallback/lib/$rel" ]; then
+                            dep_source="$fallback/lib/$rel"
+                        fi
+                    done
                     ;;
                 @loader_path/*)
                     local rel="${dep#@loader_path/}"
@@ -341,11 +364,8 @@ bundle_dylibs() {
                 continue
             fi
 
-            # Only bundle Homebrew libraries
-            case "$dep_source" in
-                ${HOMEBREW_PREFIX}/*|/opt/homebrew/*|/usr/local/*) ;;
-                *) continue ;;
-            esac
+            # Only bundle the dependency prefix's (or Homebrew's) libraries
+            is_bundled_source "$dep_source" || continue
 
             # Resolve symlinks and copy
             local resolved_dep
@@ -397,6 +417,14 @@ fix_install_names() {
     deps=$(otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
 
     for dep in $deps; do
+        # A system library stays the system's even when a bundled one has its
+        # file name: vcpkg's tesseract brings its own libcurl.4.dylib, and the
+        # apps' /usr/lib/libcurl.4.dylib (Apple's, with the system's TLS and
+        # certificates) must not be pointed at it.
+        case "$dep" in
+            /System/*|/usr/lib/*) continue ;;
+        esac
+
         local dep_basename
         dep_basename=$(basename "$dep")
 
@@ -417,6 +445,23 @@ fix_install_names() {
 # dlopen()ed LaTeX module binds to, so a plain `strip` (which drops globals
 # too) would break it. Runs after bundle_dylibs' install_name_tool rewrites
 # and before signing: both change the file, so the signature has to come last.
+#
+# It also deletes the run paths into the dependency prefix: the build tree
+# needs them to load vcpkg's @rpath libraries (cmake/UltraCanvasMacOSDeps.cmake),
+# but a shipped binary loads from Frameworks/ and must not look on the user's
+# disk for the build machine's.
+delete_build_rpaths() {
+    local f="$1" rp rpaths
+    rpaths=$({ otool -l "$f" 2>/dev/null || true; } | awk '
+        /cmd LC_RPATH/          { r = 1; next }
+        r && $1 == "path"       { print $2; r = 0 }')
+    for rp in $rpaths; do
+        if is_bundled_source "$rp"; then
+            install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true
+        fi
+    done
+}
+
 strip_binaries() {
     local f before after
     before=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
@@ -426,6 +471,7 @@ strip_binaries() {
             Mach-O*)
                 chmod u+w "$f"
                 strip -S -x "$f" 2>/dev/null || echo "  Warning: could not strip $(basename "$f")"
+                delete_build_rpaths "$f"
                 ;;
         esac
     done < <(find "$@" -type f -print0 2>/dev/null)
@@ -495,9 +541,9 @@ check_min_macos() {
         [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::$msg"
         echo "  ERROR: $msg. These binaries would not load on macOS $MIN_MACOS:"
         printf '%s' "$too_new"
-        echo "  A Homebrew dylib carries the macOS its bottle was built for: build on a"
-        echo "  macOS no newer than $MIN_MACOS and run scripts/homebrew-rebuild-newer-kegs.sh"
-        echo "  after brew install, or raise MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml)."
+        echo "  Every bundled library has to be built for $MIN_MACOS: scripts/macos-deps.sh builds"
+        echo "  them (a Homebrew library carries the macOS its bottle was built for). Or raise"
+        echo "  MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml, MacOS/deps/triplets)."
         exit 1
     fi
 
@@ -898,9 +944,11 @@ verify_suite() {
                         errors=$((errors + 1))
                     fi
                     ;;
-                "${HOMEBREW_PREFIX}"/*|/opt/homebrew/*|/usr/local/*)
-                    echo "  ERROR: $(basename "$bin") still loads $dep from Homebrew"
-                    errors=$((errors + 1))
+                /*)
+                    if is_bundled_source "$dep"; then
+                        echo "  ERROR: $(basename "$bin") still loads $dep from the build machine"
+                        errors=$((errors + 1))
+                    fi
                     ;;
             esac
         done < <(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}')
