@@ -82,7 +82,19 @@ args=(
 
 echo "macos-deps: building for $triplet (macOS $triplet_target and newer)" >&2
 # Build output to stderr, so the prefix is the only thing on stdout.
-VCPKG_ROOT="$VCPKG_ROOT" "$VCPKG_ROOT/vcpkg" "${args[@]}" >&2
+if ! VCPKG_ROOT="$VCPKG_ROOT" "$VCPKG_ROOT/vcpkg" "${args[@]}" >&2; then
+    # vcpkg names a failed port's logs but does not show them, and in CI they
+    # go with the machine. --clean-after-build removes only the buildtrees of
+    # ports that succeeded, so what is left is what failed: print its logs.
+    for log in "$VCPKG_ROOT"/buildtrees/*/*.log; do
+        [ -f "$log" ] || continue
+        case "$log" in */detect_compiler/*) continue ;; esac
+        echo "::group::$(basename "$(dirname "$log")")/$(basename "$log") (last 80 lines)" >&2
+        tail -n 80 "$log" >&2
+        echo "::endgroup::" >&2
+    done
+    exit 1
+fi
 
 prefix="$INSTALL_ROOT/$triplet"
 if [ ! -d "$prefix/lib/pkgconfig" ]; then

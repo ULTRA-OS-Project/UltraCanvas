@@ -8,6 +8,12 @@ vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
     URL https://github.com/mchehab/zbar
     REF bb05ec54eec57f8397cb13fb9161372a281a1219 # 0.23.93
+    PATCHES
+        # Upstream pull request 299 (commit 3fa414aa), which Homebrew applies
+        # too: the image scanner's pointer arithmetic wraps around, undefined
+        # behaviour that recent Clang turns into a crash on any image taller
+        # than one pixel - i.e. on every QR code the apps decode.
+        fix-pointer-wraparound-ub.patch
 )
 
 vcpkg_make_configure(
