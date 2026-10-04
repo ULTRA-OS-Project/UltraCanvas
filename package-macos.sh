@@ -13,6 +13,10 @@
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
 #
 # Environment variables:
+#   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the bundles must run on (CI: 15.0).
+#                        Written as LSMinimumSystemVersion; packaging fails if
+#                        a binary in a bundle needs a newer macOS. Unset, the
+#                        bundles get the newest minimum their binaries declare
 #   APPLE_SIGN_ID        Override the default code-signing identity
 #   APPLE_ID             Apple ID email (for --notarize)
 #   APPLE_TEAM_ID        Apple Developer Team ID (for --notarize)
@@ -41,7 +45,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,19p' "$0" | sed 's/^# \?//'
+            sed -n '2,23p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -67,11 +71,21 @@ if ! command -v brew &>/dev/null; then
 fi
 HOMEBREW_PREFIX=$(brew --prefix)
 
+# The oldest macOS the bundles must run on - the same variable the compiler,
+# CMake and cargo read, so the code and this promise agree. See
+# check_min_macos for what is checked against it.
+MIN_MACOS="${MACOSX_DEPLOYMENT_TARGET:-}"
+if [ -n "$MIN_MACOS" ] && ! [[ "$MIN_MACOS" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "Error: MACOSX_DEPLOYMENT_TARGET='$MIN_MACOS' is not a macOS version (e.g. 15.0)"
+    exit 1
+fi
+
 echo "=== UltraCanvas macOS Packager ==="
 echo "  Version:         $VERSION"
 echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Homebrew prefix: $HOMEBREW_PREFIX"
+echo "  Minimum macOS:   ${MIN_MACOS:-measured per bundle (MACOSX_DEPLOYMENT_TARGET unset)}"
 echo "  Code signing:    $DO_SIGN"
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
@@ -155,6 +169,9 @@ generate_plist() {
     local category="$6"
     local extra_plist_entries="$7"
 
+    # LSMinimumSystemVersion is not written here: check_min_macos adds it once
+    # the executable and its dylibs are in the bundle and their minimum macOS
+    # has been read.
     cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -181,8 +198,6 @@ generate_plist() {
     <string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
@@ -389,6 +404,102 @@ strip_binaries() {
     done < <(find "$@" -type f -print0 2>/dev/null)
     after=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     echo "  Stripped binaries: $((before / 1024)) MB -> $((after / 1024)) MB"
+}
+
+# ── Helper: Minimum macOS ────────────────────────────────────────────────────
+#
+# Every Mach-O file records the oldest macOS it runs on (LC_BUILD_VERSION's
+# minos; LC_VERSION_MIN_MACOSX in old binaries), and dyld refuses to load one
+# built for a newer macOS than the running system - the executable or any
+# dylib it pulls in:
+#   Library not loaded: ... (built for macOS 26.0 which is newer than running OS)
+# LSMinimumSystemVersion does not change that; it only has Finder refuse the
+# app with a readable message instead. So a bundle runs on the newest minimum
+# among its binaries, whatever its Info.plist says - and the plist said 12.0
+# for months while the arm64 build, on the macOS 26 runner behind
+# macos-latest, made apps that started only on macOS 26.
+#
+# Our own code follows MACOSX_DEPLOYMENT_TARGET, but the Homebrew dylibs carry
+# the macOS of the machine their bottle was built on - in CI, the runner's
+# version. So the minimum is read from the binaries, not assumed.
+
+# The minimum macOS the Mach-O file $1 declares, or nothing. awk reads to the
+# end rather than exiting at the match: an early exit can kill otool with
+# SIGPIPE mid-output, which pipefail and set -e turn into the end of the run.
+macho_min_macos() {
+    { otool -l "$1" 2>/dev/null || true; } | awk '
+        found                       { next }
+        /cmd LC_BUILD_VERSION/      { build = 1; next }
+        /cmd LC_VERSION_MIN_MACOSX/ { legacy = 1; next }
+        build  && $1 == "minos"     { print $2; found = 1 }
+        legacy && $1 == "version"   { print $2; found = 1 }
+    '
+}
+
+# True when the dotted version $1 is newer than $2 (15.1 > 15, 26.0 > 15.6).
+version_newer() {
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        na = split(a, x, "."); nb = split(b, y, ".")
+        n = (na > nb) ? na : nb
+        for (i = 1; i <= n; i++) {
+            xi = (i <= na) ? x[i] + 0 : 0
+            yi = (i <= nb) ? y[i] + 0 : 0
+            if (xi > yi) exit 0
+            if (xi < yi) exit 1
+        }
+        exit 1
+    }'
+}
+
+# Where check_min_macos records each bundle's minimum, for the summary table.
+MIN_MACOS_LOG=$(mktemp)
+
+# check_min_macos NAME PLIST DIR... - read the minimum macOS of every Mach-O
+# file under DIR..., fail when one needs a newer macOS than MIN_MACOS, and
+# write LSMinimumSystemVersion into PLIST ("" for a bundle without one):
+# MIN_MACOS when it is set, otherwise the newest minimum found. Runs before
+# signing, because editing Info.plist afterwards breaks the bundle's seal.
+check_min_macos() {
+    local name="$1" plist="$2"
+    shift 2
+    local floor="" too_new="" f v
+    while IFS= read -r -d '' f; do
+        case "$(file -b "$f")" in
+            Mach-O*) ;;
+            *) continue ;;
+        esac
+        v=$(macho_min_macos "$f")
+        [ -n "$v" ] || continue
+        if [ -z "$floor" ] || version_newer "$v" "$floor"; then
+            floor="$v"
+        fi
+        if [ -n "$MIN_MACOS" ] && version_newer "$v" "$MIN_MACOS"; then
+            too_new+="    macOS $v  ${f#"$OUTPUT_DIR"/}"$'\n'
+        fi
+    done < <(find "$@" -type f -print0 2>/dev/null)
+
+    if [ -z "$floor" ]; then
+        echo "  ERROR: no Mach-O file with a minimum macOS found for $name"
+        exit 1
+    fi
+
+    if [ -n "$too_new" ]; then
+        local msg="$name needs macOS $floor, but MACOSX_DEPLOYMENT_TARGET promises $MIN_MACOS"
+        [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::$msg"
+        echo "  ERROR: $msg. These binaries would not load on macOS $MIN_MACOS:"
+        printf '%s' "$too_new"
+        echo "  Homebrew dylibs are built for the macOS of the machine their bottle"
+        echo "  was built on: build on a macOS no newer than $MIN_MACOS, or raise"
+        echo "  MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml)."
+        exit 1
+    fi
+
+    local declared="${MIN_MACOS:-$floor}"
+    if [ -n "$plist" ]; then
+        /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $declared" "$plist"
+    fi
+    echo "$name $declared" >> "$MIN_MACOS_LOG"
+    echo "  Minimum macOS: $declared (newest minimum among its binaries: $floor)"
 }
 
 # ── Helper: Code sign ────────────────────────────────────────────────────────
@@ -661,6 +772,9 @@ build_app_bundle() {
     [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
     strip_binaries "${strip_dirs[@]}"
 
+    # Before signing: it writes LSMinimumSystemVersion into Info.plist.
+    check_min_macos "$(basename "$app_dir")" "$contents_dir/Info.plist" "${strip_dirs[@]}"
+
     # Code sign
     if $DO_SIGN; then
         codesign_bundle "$app_dir"
@@ -703,6 +817,7 @@ build_cli_tool() {
 
     bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks"
     strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
+    check_min_macos "$exe_name" "" "$tool_dir/bin" "$tool_dir/Frameworks"
 
     if $DO_SIGN; then
         echo "  Signing tool..."
@@ -879,8 +994,8 @@ if $CREATE_DMG; then
     # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
     # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
     # against 503 MB for the zip of the same .app folders, so only LZMA beats
-    # that. It needs macOS 10.15 to open, below the apps' own
-    # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
+    # that. It needs macOS 10.15 to open, below any macOS the apps inside
+    # run on (check_min_macos). hdiutil on CI runners now and then fails
     # with "Resource busy" while the system indexes the staging folder, so it
     # gets three tries.
     dmg_try=1
@@ -929,13 +1044,14 @@ ls -1 "$OUTPUT_DIR/" | while read -r item; do
     fi
 done
 
-# Per-bundle breakdown: how much of each bundle is bundled libraries. Every
-# .app carries its own Frameworks/, so this is where the macOS download's size
-# goes; written to the job summary too when run in GitHub Actions, so a change
-# to what the apps link shows up as a number on the run page.
+# Per-bundle breakdown: how much of each bundle is bundled libraries, and the
+# oldest macOS it runs on. Every .app carries its own Frameworks/, so this is
+# where the macOS download's size goes; written to the job summary too when run
+# in GitHub Actions, so a change to what the apps link - or to the macOS they
+# need - shows up on the run page.
 echo ""
 echo "  Bundled libraries per bundle:"
-SIZE_TABLE="| Bundle | Total | Frameworks | dylibs |"$'\n'"|---|---:|---:|---:|"
+SIZE_TABLE="| Bundle | Total | Frameworks | dylibs | Needs macOS |"$'\n'"|---|---:|---:|---:|---:|"
 for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
     [ -d "$item" ] || continue
     fw_dir="$item/Contents/Frameworks"
@@ -943,13 +1059,15 @@ for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
     total=$(du -sh "$item" | cut -f1)
     fw_size=$(du -sh "$fw_dir" 2>/dev/null | cut -f1)
     fw_count=$(find "$fw_dir" -name '*.dylib' 2>/dev/null | wc -l | tr -d ' ')
-    echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs"
-    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count |"
+    min_macos=$(awk -v n="$(basename "$item")" '$1 == n {print $2}' "$MIN_MACOS_LOG")
+    echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs, needs macOS ${min_macos:-?}"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count | ${min_macos:-?} |"
 done
 for dmg in "$OUTPUT_DIR"/*.dmg; do
     [ -f "$dmg" ] || continue
-    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | | |"
 done
+rm -f "$MIN_MACOS_LOG"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
         echo "### macOS bundle sizes ($(uname -m))"

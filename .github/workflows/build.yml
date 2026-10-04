@@ -115,10 +115,19 @@ jobs:
         # macOS 15 leaves Apple support (~2027). When that goes too, the
         # options are: drop Intel builds, use self-hosted runners, or
         # cross-compile universal binaries.
-        os: [macos-latest, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
+        #
+        # Both macOS legs name their macOS version, never macos-latest: the
+        # runner's version is the oldest macOS the apps run on. Homebrew pours
+        # bottles built for the macOS it runs on, and dyld refuses a dylib
+        # built for a newer macOS than the running one, so every bundled
+        # library needs at least the runner's macOS - see
+        # MACOSX_DEPLOYMENT_TARGET below. macos-latest moved to macOS 26 in
+        # July 2026 and took the arm64 apps with it: they then started only
+        # on macOS 26, while their Info.plist still said 12.0.
+        os: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
         build_type: [Release]
         include:
-          - os: macos-latest
+          - os: macos-15
             arch_label: arm64
           - os: macos-15-intel
             arch_label: x86_64
@@ -185,6 +194,20 @@ jobs:
       # The Clang the Linux legs build with. See the install step below for
       # why it does not come from the distribution.
       ULTRACANVAS_CLANG_VERSION: "19"
+
+      # The oldest macOS the macOS apps run on (empty on the other legs).
+      # CMake seeds CMAKE_OSX_DEPLOYMENT_TARGET from it and cargo and clang
+      # read it directly, so all of our own code is compiled for it; without
+      # it clang targets the SDK's version, which on a macOS 26 runner is 26.
+      # package-macos.sh checks every binary in every bundle against it -
+      # the Homebrew dylibs included, which carry the runner's macOS - writes
+      # it as LSMinimumSystemVersion, and fails the job if anything needs a
+      # newer macOS. So this cannot be lowered on its own: below 15.0 the
+      # dependencies have to be built for the older macOS too, because
+      # Homebrew no longer builds bottles for macOS 14 (Homebrew 7.0,
+      # September 2026) and GitHub retires the macos-14 runner in November
+      # 2026.
+      MACOSX_DEPLOYMENT_TARGET: ${{ startsWith(matrix.os, 'macos') && '15.0' || '' }}
 
     steps:
       - name: Checkout repository
