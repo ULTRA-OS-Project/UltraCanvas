@@ -420,36 +420,13 @@ strip_binaries() {
 # macos-latest, made apps that started only on macOS 26.
 #
 # Our own code follows MACOSX_DEPLOYMENT_TARGET, but the Homebrew dylibs carry
-# the macOS of the machine their bottle was built on - in CI, the runner's
-# version. So the minimum is read from the binaries, not assumed.
+# whatever their bottle was built for - usually the major version of the macOS
+# that built it, sometimes that machine's exact version (tesseract's arm64
+# Sequoia bottle declared 15.7.5 on 2026-10-04). So the minimum is read from
+# the binaries, not assumed.
 
-# The minimum macOS the Mach-O file $1 declares, or nothing. awk reads to the
-# end rather than exiting at the match: an early exit can kill otool with
-# SIGPIPE mid-output, which pipefail and set -e turn into the end of the run.
-macho_min_macos() {
-    { otool -l "$1" 2>/dev/null || true; } | awk '
-        found                       { next }
-        /cmd LC_BUILD_VERSION/      { build = 1; next }
-        /cmd LC_VERSION_MIN_MACOSX/ { legacy = 1; next }
-        build  && $1 == "minos"     { print $2; found = 1 }
-        legacy && $1 == "version"   { print $2; found = 1 }
-    '
-}
-
-# True when the dotted version $1 is newer than $2 (15.1 > 15, 26.0 > 15.6).
-version_newer() {
-    awk -v a="$1" -v b="$2" 'BEGIN {
-        na = split(a, x, "."); nb = split(b, y, ".")
-        n = (na > nb) ? na : nb
-        for (i = 1; i <= n; i++) {
-            xi = (i <= na) ? x[i] + 0 : 0
-            yi = (i <= nb) ? y[i] + 0 : 0
-            if (xi > yi) exit 0
-            if (xi < yi) exit 1
-        }
-        exit 1
-    }'
-}
+# macho_min_macos and version_newer
+. "$SCRIPT_DIR/scripts/macos-min-version.sh"
 
 # Where check_min_macos records each bundle's minimum, for the summary table.
 MIN_MACOS_LOG=$(mktemp)
@@ -488,9 +465,9 @@ check_min_macos() {
         [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::$msg"
         echo "  ERROR: $msg. These binaries would not load on macOS $MIN_MACOS:"
         printf '%s' "$too_new"
-        echo "  Homebrew dylibs are built for the macOS of the machine their bottle"
-        echo "  was built on: build on a macOS no newer than $MIN_MACOS, or raise"
-        echo "  MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml)."
+        echo "  A Homebrew dylib carries the macOS its bottle was built for: build on a"
+        echo "  macOS no newer than $MIN_MACOS and run scripts/homebrew-rebuild-newer-kegs.sh"
+        echo "  after brew install, or raise MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml)."
         exit 1
     fi
 

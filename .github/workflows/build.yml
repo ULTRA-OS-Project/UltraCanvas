@@ -300,18 +300,23 @@ jobs:
           # runner image that drops it cannot fail this step.
           brew untap aws/tap 2>/dev/null || true
           brew install cmake pkg-config ccache
-          brew install cairo pango harfbuzz vips glib freetype tinyxml2
-          brew install libcdr librevenge
-          # The patched libcdr in UltraCanvas/third_party/libcdr builds from
-          # source against these (the system libcdr stays the fallback).
-          brew install boost little-cms2 icu4c
-          brew install zbar
-          brew install mupdf
-          brew install c-ares
-          brew install libsodium
-          brew install leptonica tesseract
-          # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
-          brew install flac libvorbis opus opusfile libopusenc lame
+          # The libraries the apps link, which package-macos.sh bundles.
+          libs=(
+            cairo pango harfbuzz vips glib freetype tinyxml2
+            libcdr librevenge
+            # The patched libcdr in UltraCanvas/third_party/libcdr builds from
+            # source against these (the system libcdr stays the fallback).
+            boost little-cms2 icu4c
+            zbar mupdf c-ares libsodium leptonica tesseract
+            # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
+            flac libvorbis opus opusfile libopusenc lame
+          )
+          brew install "${libs[@]}"
+          # Rebuild from source any of them (or their dependencies) whose
+          # bottle needs a newer macOS than MACOSX_DEPLOYMENT_TARGET, so the
+          # bundles can keep that promise - see the script for the bottle
+          # that didn't.
+          scripts/homebrew-rebuild-newer-kegs.sh "${libs[@]}"
           # libcurl: use Apple's system libcurl (SecureTransport-family
           # backend) — already present on every macOS install, so we add
           # no extra dependency for UltraNet on this platform.
