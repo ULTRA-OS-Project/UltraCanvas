@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailMessageFilter.cpp
+// Version: 0.1.1 - Payments also takes banks and crypto exchanges
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -112,7 +113,9 @@ bool FilterMatches(const MessageFilter& filter, const MessageEnvelope& message,
                                     *facts.brand == BrandCategory::Messaging)) ||
                    LooksLikeSocialMedia(message.fromAddr, message.subject);
         case MessageFilterKind::Payments:
-            return (facts.brand && *facts.brand == BrandCategory::Payment) ||
+            return (facts.brand && (*facts.brand == BrandCategory::Payment ||
+                                    *facts.brand == BrandCategory::Banking ||
+                                    *facts.brand == BrandCategory::Crypto)) ||
                    LooksLikePaymentSubject(message.subject);
     }
     return true;

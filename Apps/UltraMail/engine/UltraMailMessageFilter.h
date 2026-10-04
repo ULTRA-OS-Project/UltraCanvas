@@ -23,7 +23,8 @@ enum class MessageFilterKind {
     NeedsAnswer,
     Spam,           // the sender badge says spam or scam
     SocialMedia,    // from a social network or messaging service
-    Payments        // a payment service, or an invoice / receipt / payment subject
+    Payments        // a payment service, bank or crypto exchange, or an invoice /
+                    // receipt / payment subject
 };
 
 struct MessageFilter {
