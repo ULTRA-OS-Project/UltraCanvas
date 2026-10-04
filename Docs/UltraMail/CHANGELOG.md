@@ -1,3 +1,28 @@
+#### 2026-10-04 *0.10.28*
+- **Mail addresses in a message open a new message.** A `mailto:` link in
+  formatted mail, and a `mailto:` or plain address ("support@shop.example")
+  written in plain-text mail, opens a new message in UltraMail, from the
+  account the message was read in, with the subject and text the link
+  carries. Before, a `mailto:` link went to the system's mail program, and
+  addresses in plain text did nothing.
+  - **Copies too:** the link's `cc` and `bcc` fill the message's Cc and Bcc,
+    and a `to` field adds recipients. A message with blind copies opens with
+    its **Bcc** row shown, so no recipient is added unseen.
+- **Bcc in the compose window.** A **Bcc** toggle at the end of the Cc row
+  shows a Bcc row for blind copies the other recipients don't see. Hiding the
+  row again empties it, so nothing goes to an address that is out of sight.
+- **To, Cc and Bcc complete from the address book.** Typing in a recipient
+  field pops up the contacts whose name, organization or address matches what
+  is typed after the last comma - matches at the start of a word first. Down
+  and Enter, or a click, puts in "Name <address>, " and keeps the recipients
+  before it; addresses already in the field are not offered again. The
+  people you write to most - counted from the mail in your Sent folders -
+  come first, and recent mail counts more than old: a message's weight halves
+  every 90 days, so someone you wrote to often years ago does not stay on top.
+- **Plain-text mail: addresses are links.** They show the pointing hand, show
+  their address in the status line or as a tooltip, and are counted with the
+  message's links. They are never judged as web links by the threat scan.
+
 #### 2026-10-04 *0.10.27*
 - **The phishing scan knows the brands phishing pretends to be.** The
   known-sender registry grows from about 50 services to about 400, with 600 of

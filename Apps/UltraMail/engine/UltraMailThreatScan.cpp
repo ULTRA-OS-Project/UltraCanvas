@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.4.0 - plain text: mailto: and bare mail addresses are links too
 // Version: 0.3.0 - PlainLinkAt: the bare URL at a position of plain text
 // Version: 0.2.0 - borrowed-brand-pictures rule (a brand's own pictures over links
 //                elsewhere); ExtractImageHosts
@@ -344,34 +345,75 @@ std::vector<std::string> ExtractImageHosts(const std::string& body) {
     return hosts;
 }
 
-// The next bare URL in plain text from byte `from`: [start, end). False when
-// there is none.
-static bool NextPlainUrl(const std::string& s, std::size_t from, std::size_t& start, std::size_t& end) {
+// A bare mail address around the '@' at `at`: [start, end), or false when
+// the text there is not one ("name@example.com" - a local part, and a domain
+// with a dot and a top-level part of two letters or more).
+static bool MailAddressAt(const std::string& s, std::size_t at, std::size_t& start,
+                          std::size_t& end) {
+    auto localChar = [](unsigned char c) {
+        return std::isalnum(c) || c == '.' || c == '_' || c == '%' || c == '+' || c == '-';
+    };
+    auto domainChar = [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '-'; };
+    start = at;
+    while (start > 0 && localChar(static_cast<unsigned char>(s[start - 1]))) --start;
+    while (start < at && s[start] == '.') ++start;   // "...name" in running text
+    end = at + 1;
+    while (end < s.size() && domainChar(static_cast<unsigned char>(s[end]))) ++end;
+    while (end > at + 1 && (s[end - 1] == '.' || s[end - 1] == '-')) --end;
+    if (start == at || end == at + 1 || s[at + 1] == '.') return false;
+    const std::string domain = s.substr(at + 1, end - at - 1);
+    const std::size_t dot = domain.rfind('.');
+    if (dot == std::string::npos || domain.size() - dot - 1 < 2) return false;
+    for (std::size_t i = dot + 1; i < domain.size(); ++i)
+        if (!std::isalpha(static_cast<unsigned char>(domain[i]))) return false;
+    return true;
+}
+
+// The next link in plain text from byte `from`: a web address (http://,
+// https://, www.), a mailto: address or a bare mail address, at [start, end).
+// `href` is what it opens - "mailto:name@example.com" for a bare address -
+// or empty when the text there turned out not to be a link. False when there
+// is nothing more.
+static bool NextPlainLink(const std::string& s, std::size_t from, std::size_t& start,
+                          std::size_t& end, std::string& href) {
     start = std::string::npos;
-    for (const char* proto : { "http://", "https://", "www." }) {
+    for (const char* proto : { "http://", "https://", "www.", "mailto:" }) {
         const std::size_t p = s.find(proto, from);
         if (p != std::string::npos && (start == std::string::npos || p < start))
             start = p;
+    }
+    // A bare address that starts before the first such link wins.
+    for (std::size_t at = s.find('@', from); at != std::string::npos &&
+             (start == std::string::npos || at < start);
+         at = s.find('@', at + 1)) {
+        std::size_t a = 0, b = 0;
+        if (MailAddressAt(s, at, a, b) && a >= from && (start == std::string::npos || a < start)) {
+            start = a;
+            end = b;
+            href = "mailto:" + s.substr(a, b - a);
+            return true;
+        }
     }
     if (start == std::string::npos) return false;
     end = start;
     while (end < s.size() && !std::isspace(static_cast<unsigned char>(s[end])) &&
            s[end] != '<' && s[end] != '>' && s[end] != '"' && s[end] != '\'')
         ++end;
-    // Trailing sentence punctuation is not part of the URL.
+    // Trailing sentence punctuation is not part of the link.
     while (end > start && std::string(".,;:!?)]").find(s[end - 1]) != std::string::npos)
         --end;
+    href = s.substr(start, end - start);
+    const bool mailto = href.compare(0, 7, "mailto:") == 0;
+    if (mailto ? href.find('@') == std::string::npos : HostOf(href).empty()) href.clear();
     return true;
 }
 
 std::string PlainLinkAt(const std::string& text, std::size_t offset) {
     std::size_t i = 0, start = 0, end = 0;
-    while (i < text.size() && NextPlainUrl(text, i, start, end)) {
+    std::string href;
+    while (i < text.size() && NextPlainLink(text, i, start, end, href)) {
         if (start > offset) break;
-        if (offset < end) {
-            std::string href = text.substr(start, end - start);
-            return HostOf(href).empty() ? std::string() : href;
-        }
+        if (offset < end) return href;
         i = end > start ? end : start + 1;
     }
     return std::string();
@@ -383,11 +425,14 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
 
     if (!isHtml) {
         std::size_t i = 0, start = 0, end = 0;
-        while (i < body.size() && NextPlainUrl(body, i, start, end)) {
-            MessageLink link;
-            link.href = body.substr(start, end - start);
-            link.host = HostOf(link.href);
-            if (!link.host.empty()) links.push_back(link);
+        std::string href;
+        while (i < body.size() && NextPlainLink(body, i, start, end, href)) {
+            if (!href.empty()) {
+                MessageLink link;
+                link.href = href;
+                link.host = HostOf(href);   // "" for a mail address, as for HTML's mailto:
+                links.push_back(link);
+            }
             i = end > start ? end : start + 1;
         }
         return links;

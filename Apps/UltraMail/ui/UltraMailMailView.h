@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.10.0 - onComposeTo from the reading pane (a clicked mail address)
 // Version: 0.9.0 - SetLinkTooltips (Settings > Display > Links)
 // Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
 // Version: 0.7.0 - folder tree width: fitted to its names (+10 px) or fixed.
@@ -158,6 +159,9 @@ public:
     // The reading pane's links (MessagePreview::onLinksShown / onLinkHovered).
     std::function<void(const std::vector<MessageLink>&)> onLinksShown;
     std::function<void(const std::string& href)> onLinkHovered;
+    // A clicked mail address in the reading pane (MessagePreview::onComposeTo).
+    std::function<void(const std::string& selfName, const std::string& selfAddr,
+                       const std::string& mailtoHref)> onComposeTo;
     // Forwarded to the preview: which senders' remote images load without asking.
     std::function<bool(const std::string& address)> remoteImagesAllowed;
     std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
