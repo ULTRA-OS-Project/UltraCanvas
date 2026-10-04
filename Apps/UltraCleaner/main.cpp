@@ -50,12 +50,11 @@ using namespace UltraCanvas;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
-
 #ifdef __linux__
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
 void SignalHandler(int) {
-    if (g_app) g_app->RequestExit();
-    std::exit(EXIT_SUCCESS);
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 #endif
 
@@ -343,7 +342,6 @@ int main(int argc, char* argv[]) {
     }
 
     UltraCanvasApplication app;
-    g_app = &app;
 
 #ifdef __linux__
     std::signal(SIGINT, SignalHandler);
@@ -365,7 +363,11 @@ int main(int argc, char* argv[]) {
         // the same media/appicon/UltraCleaner.svg (see CMakeLists.txt).
         app.SetDefaultWindowIcon(
             NormalizePath(GetResourcesDir() + "media/appicon/UltraCleaner.png"));
-        UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        // The framework's own dialogs throughout, not the platform's message
+        // boxes: they render Markdown, scroll a long list and look the same
+        // on every platform, which the results dialog relies on. The file
+        // loader's folder picker follows the same setting.
+        UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
         UltraCleaner::UltraCleanerWindow window;
         if (!window.Initialize(openAlbumInWindow ? albumFolder : std::string())) {

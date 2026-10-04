@@ -132,9 +132,22 @@ endif()
 target_link_directories(${PLUGIN_NAME}
     PUBLIC ${LIBVIPS_LIBRARY_DIRS} ${GLIB_LIBRARY_DIRS}
 )
+# The Rust staticlib is an imported target Corrosion defines in this build
+# tree, which an installed consumer cannot see: in the package the plug-in
+# names the installed archive by path instead (see INSTALLATION below), and
+# the system libraries rustc's native-static-libs would have carried.
+include(GNUInstallDirs)
+set(_uc_vtracer_archive
+    "${CMAKE_STATIC_LIBRARY_PREFIX}vtracer_c${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(_uc_vtracer_native_libs "")
+if(UNIX AND NOT APPLE)
+    set(_uc_vtracer_native_libs pthread dl m rt util)
+endif()
 target_link_libraries(${PLUGIN_NAME}
     PUBLIC
-        ${VTRACER_C_TARGET}
+        $<BUILD_INTERFACE:${VTRACER_C_TARGET}>
+        "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_LIBDIR}/${_uc_vtracer_archive}>"
+        "$<INSTALL_INTERFACE:${_uc_vtracer_native_libs}>"
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
     PRIVATE
@@ -170,14 +183,30 @@ set(ULTRACANVAS_VECTORIZER_PLUGIN_TARGET      ${PLUGIN_NAME}                PARE
 set(ULTRACANVAS_VECTORIZER_PLUGIN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
 
 # ===== INSTALLATION =====
+# Part of the framework's package (UltraCanvas/CMakeLists.txt, INSTALLATION
+# AND THE CMAKE PACKAGE): imported as UltraCanvas::${PLUGIN_NAME} by
+# find_package(UltraCanvas). GNUInstallDirs is included here too because this
+# directory also configures standalone.
+include(GNUInstallDirs)
 install(TARGETS ${PLUGIN_NAME}
-    EXPORT UltraCanvasVectorizerPluginTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
+    EXPORT UltraCanvasTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/UltraCanvasVectorizerPlugin.h
     DESTINATION include/ultracanvas/plugins/vectorizer
+)
+# The staticlib itself. Corrosion wraps the imported archive as
+# <crate>-static behind an INTERFACE target of the crate's name.
+if(TARGET ${VTRACER_C_TARGET}-static)
+    set(_uc_vtracer_file_target ${VTRACER_C_TARGET}-static)
+else()
+    set(_uc_vtracer_file_target ${VTRACER_C_TARGET})
+endif()
+install(FILES $<TARGET_FILE:${_uc_vtracer_file_target}>
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RENAME ${_uc_vtracer_archive}
 )
 
 # ===== STATUS OUTPUT =====

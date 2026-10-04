@@ -399,6 +399,17 @@ std::string EsclTxtValue(const std::vector<std::string>& txtRecords,
     return std::string();
 }
 
+std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
+                                const std::string& host) {
+    std::string uuid = Lower(EsclTxtValue(txtRecords, "uuid"));
+    if (uuid.rfind("urn:uuid:", 0) == 0) uuid.erase(0, 9);
+    if (!uuid.empty()) return "uuid:" + uuid;
+
+    std::string name = Lower(host);
+    while (!name.empty() && name.back() == '.') name.pop_back();
+    return name.empty() ? std::string() : "host:" + name;
+}
+
 std::string EsclBaseUrlFromMdns(const std::string& host, int port,
                                 const std::vector<std::string>& txtRecords,
                                 bool useTls) {

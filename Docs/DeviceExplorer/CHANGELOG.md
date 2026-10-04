@@ -1,3 +1,46 @@
+#### 2026-09-29 *0.2.0*
+- **Printers show their status and ink or toner.** Selecting a printer adds
+  two sections above its details:
+  - *Printer status*: Ready, Printing or Stopped, the printer's own reason
+    (`media-empty`, `door-open`, `paused` …), whether it accepts jobs, how
+    many are queued, and when it was asked.
+  - *Supplies*: each cartridge, drum or waste tank with its level; *low* at
+    10 % or less, *not reported* when the printer gives no level, never
+    shown as 0 %.
+
+  A printer only answers over an open session, so DeviceExplorer now opens
+  one briefly. It opens it only if nothing else has it open, reads, and
+  closes it again; it still never prints or configures anything. The
+  question runs on a worker thread, since a network printer can take
+  seconds, and shows *Asking the printer…* until the answer arrives. One
+  question runs at a time, and a selection made meanwhile waits, so clicking
+  through ten printers asks the last. Answers are kept for 30 seconds and
+  dropped on a rescan. A printer that cannot be reached says *Could not ask
+  the printer* and why. On Windows the levels come from the printer's
+  driver, or for a network printer whose driver keeps quiet, from the
+  printer over IPP (IODeviceManager's spooler backend does both). A printer
+  reached neither way shows its state only.
+- **`--list --details`** asks each printer the same way and prints the two
+  sections after its other properties.
+- **Driverless network printers** (IPP Everywhere, AirPrint, Mopria) appear
+  under *Printers* without any change here, now that IODeviceManager has an
+  IPP backend (framework 0.9.86).
+  They are listed with backend *IPP* and connection *Network*. A printer on
+  another subnet is named in `ULTRACANVAS_IPP_PRINTERS`. The user guide's
+  table of what DeviceExplorer can find, and its troubleshooting, now say so.
+- Checked against a CUPS queue whose toner and ink levels were set in
+  `printers.conf`, running and then stopped (`cupsdisable`), in the window and
+  with `--list --details`. The IPP route could not be run here:
+  `ippeveprinter` needs IPv6, which this build machine lacks.
+  `DeviceExplorerModelTest` covers the formatting: 14 new checks, 60 in all.
+
+#### 2026-09-29 *0.1.1*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
 #### 2026-09-23 *0.1.0*
 - **First release.** DeviceExplorer (`Apps/DeviceExplorer`) shows the
   devices connected to this computer as the IODeviceManager module finds

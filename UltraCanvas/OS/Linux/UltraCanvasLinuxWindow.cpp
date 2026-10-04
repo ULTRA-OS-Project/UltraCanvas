@@ -12,6 +12,8 @@
 #include <iostream>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <X11/Xresource.h>
 #include <X11/extensions/Xrandr.h>
@@ -56,6 +58,13 @@ namespace UltraCanvas {
         if (!CreateXWindow()) {
             debugOutput << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
             return false;
+        }
+        // A desktop window took the screen's size in CreateXWindow, after the
+        // base had already sized this container from the config it was given:
+        // follow, or the bars and wallpaper are laid out for the smaller box
+        // and the rest of the screen stays unpainted.
+        if (config_.type == WindowType::Desktop) {
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
         }
 
         // Apply window icon
@@ -110,8 +119,19 @@ namespace UltraCanvas {
             return false;
         }
 
+        // The desktop window is the screen: whatever size was asked for, it
+        // covers the whole of it, from the top-left corner.
+        if (config_.type == WindowType::Desktop) {
+            RefreshDeviceScale();
+            config_.x = 0;
+            config_.y = 0;
+            config_.width  = std::max(1, PhysicalToLogical(DisplayWidth(display, screen)));
+            config_.height = std::max(1, PhysicalToLogical(DisplayHeight(display, screen)));
+            config_.resizable = false;
+        }
+
         // Validate dimensions
-        if (config_.width <= 0 || config_.height <= 0 || config_.width > 4096 || config_.height > 4096) {
+        if (config_.width <= 0 || config_.height <= 0 || config_.width > 16384 || config_.height > 16384) {
             debugOutput << "UltraCanvas Linux: Invalid window dimensions: "
                       << config_.width << "x" << config_.height << std::endl;
             return false;
@@ -175,6 +195,25 @@ namespace UltraCanvas {
         SetWindowTitle(config_.title);
         SetWindowHints();
 
+        // WM_CLASS: the application's name, which is what a taskbar (ours,
+        // or any other desktop's) matches against StartupWMClass= to find the
+        // application's desktop entry and icon. The instance is the lower-case
+        // form, as the convention has it; the class the name as given.
+        {
+            std::string className = application->GetAppName();
+            if (className.empty()) className = "UltraCanvas";
+            std::string instanceName = className;
+            std::transform(instanceName.begin(), instanceName.end(), instanceName.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            XClassHint* classHint = XAllocClassHint();
+            if (classHint) {
+                classHint->res_name = const_cast<char*>(instanceName.c_str());
+                classHint->res_class = const_cast<char*>(className.c_str());
+                XSetClassHint(display, xWindow, classHint);
+                XFree(classHint);
+            }
+        }
+
         // Tell the WM this is a dialog so it stacks and places it like one.
         if (config_.type == WindowType::Dialog) {
             Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
@@ -187,8 +226,29 @@ namespace UltraCanvas {
             SetTransientParent(config_.parentWindow);
         }
 
+        // The desktop window: typed so the manager keeps it at the bottom of
+        // the stack, on every desktop and out of the taskbar, and undecorated
+        // like a borderless window below.
+        if (config_.type == WindowType::Desktop) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom desktopTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&desktopTypeAtom), 1);
+            Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
+            Atom states[4] = {
+                XInternAtom(display, "_NET_WM_STATE_SKIP_TASKBAR", False),
+                XInternAtom(display, "_NET_WM_STATE_SKIP_PAGER", False),
+                XInternAtom(display, "_NET_WM_STATE_STICKY", False),
+                XInternAtom(display, "_NET_WM_STATE_BELOW", False),
+            };
+            XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(states), 4);
+        }
+
         // Apply borderless style if requested (remove window decorations)
-        if (config_.type == WindowType::Borderless) {
+        if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop) {
             struct {
                 unsigned long flags;
                 unsigned long functions;
@@ -480,16 +540,155 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas: XCreateIC() failed" << std::endl;
             return false;
         }
+        activeXic = xic;
+
+        // A second, on-the-spot context, when the input method offers it.
+        if (XGetIMValues(xim, XNQueryInputStyle, &styles, nullptr) == nullptr && styles) {
+            XIMStyle inlineStyle = 0;
+            for (unsigned short i = 0; i < styles->count_styles && !inlineStyle; i++) {
+                const XIMStyle style = styles->supported_styles[i];
+                if (style == (XIMPreeditCallbacks | XIMStatusNothing) || style == (XIMPreeditCallbacks | XIMStatusNone)) {
+                    inlineStyle = style;
+                }
+            }
+            XFree(styles);
+            if (inlineStyle) {
+                preeditStart = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditStart)};
+                preeditDone = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditDone)};
+                preeditDraw = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditDraw)};
+                preeditCaret = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditCaret)};
+                XVaNestedList callbacks = XVaCreateNestedList(0,
+                                                              XNPreeditStartCallback, &preeditStart,
+                                                              XNPreeditDoneCallback, &preeditDone,
+                                                              XNPreeditDrawCallback, &preeditDraw,
+                                                              XNPreeditCaretCallback, &preeditCaret,
+                                                              nullptr);
+                xicInline = XCreateIC(xim,
+                                      XNInputStyle, inlineStyle,
+                                      XNClientWindow, xWindow,
+                                      XNFocusWindow, xWindow,
+                                      XNPreeditAttributes, callbacks,
+                                      nullptr);
+                XFree(callbacks);
+            }
+        }
 
         debugOutput << "UltraCanvas: XIC created for window " << xWindow << std::endl;
         return true;
     }
 
     void UltraCanvasLinuxWindow::DestroyXIC() {
+        if (xicInline) {
+            XDestroyIC(xicInline);
+            xicInline = nullptr;
+        }
         if (xic) {
             XDestroyIC(xic);
             xic = nullptr;
         }
+        activeXic = nullptr;
+    }
+
+    XIC UltraCanvasLinuxWindow::GetXIC() const {
+        XIC want = xic;
+        const UltraCanvasUIElement* focused = GetFocusedElement();
+        if (xicInline && focused && focused->DrawsTextComposition()) want = xicInline;
+        if (want != activeXic) {
+            // The focused element changed kind: the other context gets the
+            // input method's attention.
+            if (activeXic) XUnsetICFocus(activeXic);
+            if (want) XSetICFocus(want);
+            activeXic = want;
+        }
+        return want;
+    }
+
+    void UltraCanvasLinuxWindow::UnfocusXICs() {
+        if (xic) XUnsetICFocus(xic);
+        if (xicInline) XUnsetICFocus(xicInline);
+    }
+
+    // ===== ON-THE-SPOT PRE-EDIT =====
+
+    int UltraCanvasLinuxWindow::OnPreeditStart(XIC, XPointer client, XPointer) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        window->preedit.clear();
+        return -1;                            // no length limit
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditDone(XIC, XPointer client, XPointer) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        window->preedit.clear();
+        window->PushComposition(0);
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditDraw(XIC, XPointer client, XPointer callData) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        auto* draw = reinterpret_cast<XIMPreeditDrawCallbackStruct*>(callData);
+        if (!draw) return;
+        // The new text, as code points. Multibyte text is in the locale's
+        // encoding, UTF-8 for any locale an input method is used in.
+        std::u32string replacement;
+        if (draw->text) {
+            if (draw->text->encoding_is_wchar) {
+                for (unsigned short i = 0; draw->text->string.wide_char && i < draw->text->length; i++) {
+                    replacement += static_cast<char32_t>(draw->text->string.wide_char[i]);
+                }
+            } else if (const char* bytes = draw->text->string.multi_byte) {
+                const std::string utf8(bytes);
+                for (size_t i = 0; i < utf8.size();) {
+                    const unsigned char c = static_cast<unsigned char>(utf8[i]);
+                    const int length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                    char32_t cp = length == 1 ? c : length == 2 ? (c & 0x1F) : length == 3 ? (c & 0x0F) : (c & 0x07);
+                    for (int k = 1; k < length && i + static_cast<size_t>(k) < utf8.size(); k++) {
+                        cp = (cp << 6) | (static_cast<unsigned char>(utf8[i + static_cast<size_t>(k)]) & 0x3F);
+                    }
+                    replacement += cp;
+                    i += static_cast<size_t>(length);
+                }
+            }
+        }
+        const size_t first = std::min(static_cast<size_t>(std::max(0, draw->chg_first)), window->preedit.size());
+        const size_t count = std::min(static_cast<size_t>(std::max(0, draw->chg_length)), window->preedit.size() - first);
+        window->preedit.replace(first, count, replacement);
+        window->PushComposition(draw->caret);
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditCaret(XIC, XPointer client, XPointer callData) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        auto* caret = reinterpret_cast<XIMPreeditCaretCallbackStruct*>(callData);
+        if (!caret) return;
+        if (caret->direction == XIMAbsolutePosition) {
+            caret->position = std::clamp(caret->position, 0, static_cast<int>(window->preedit.size()));
+            window->PushComposition(caret->position);
+        }
+    }
+
+    void UltraCanvasLinuxWindow::PushComposition(int caretCharacters) {
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.nativeWindowHandle = xWindow;
+        caretCharacters = std::clamp(caretCharacters, 0, static_cast<int>(preedit.size()));
+        for (size_t i = 0; i < preedit.size(); i++) {
+            if (static_cast<int>(i) == caretCharacters) event.compositionCursor = static_cast<int>(event.text.size());
+            const char32_t cp = preedit[i];
+            if (cp < 0x80) event.text += static_cast<char>(cp);
+            else if (cp < 0x800) {
+                event.text += static_cast<char>(0xC0 | (cp >> 6));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                event.text += static_cast<char>(0xE0 | (cp >> 12));
+                event.text += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            } else {
+                event.text += static_cast<char>(0xF0 | (cp >> 18));
+                event.text += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                event.text += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+        }
+        if (event.compositionCursor < 0) event.compositionCursor = static_cast<int>(event.text.size());
+        if (auto* application = UltraCanvasApplication::GetInstance()) application->PushEvent(event);
     }
 
     void UltraCanvasLinuxWindow::DestroyNativeCairoSurface() {

@@ -32,7 +32,13 @@ namespace UltraCanvas {
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, 
-        Fullscreen, Borderless, Overlay
+        Fullscreen, Borderless, Overlay,
+        // The desktop itself: undecorated, the size of the screen, kept below
+        // every other window, on every virtual desktop and out of taskbars
+        // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
+        // draws its wallpaper and bars in. Where the platform has no such
+        // notion it is a borderless window the size of the screen.
+        Desktop
     };
 
     enum class WindowState {
@@ -387,6 +393,15 @@ namespace UltraCanvas {
         virtual void GetWindowPosition(int& x, int& y) const {
             x = config_.x;
             y = config_.y;
+        }
+
+        /// Screen position, in native screen pixels, of the top-left corner of
+        /// the window's CONTENT - where window coordinate (0, 0) is drawn.
+        /// Differs from GetWindowPosition() where that reports the outer frame
+        /// (Windows: the title bar and borders). Screen readers and other
+        /// assistive technology are told where elements are through this.
+        virtual void GetContentScreenOrigin(int& x, int& y) const {
+            GetWindowPosition(x, y);
         }
 
         void GetWindowSize(int& w, int& h) const {

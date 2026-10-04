@@ -6,6 +6,9 @@
 // tests need no server; the interface test loads the built plug-in DSO.
 #include "test_framework.h"
 
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <dlfcn.h>   // dlsym(RTLD_DEFAULT) in the scope test
+#endif
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>   // UltraNet_ImapUtf7Decode
@@ -30,6 +33,41 @@ TEST(imap_parse_search_uids) {
     REQUIRE_EQ(uids.back(), (uint32_t)13);
 
     REQUIRE_EQ(ParseSearchUids("* SEARCH\r\n").size(), (size_t)0);   // empty mailbox
+}
+
+TEST(imap_raw_header_value_reads_the_header_block_only) {
+    const std::string raw =
+        "From: Erika <erika@example.com>\r\n"
+        "message-id:   <abc@example.com> \r\n"
+        "Subject: a long\r\n"
+        "  folded subject\r\n"
+        "\r\n"
+        "Message-ID: <in-the-body@example.com>\r\n";
+    REQUIRE_EQ(RawHeaderValue(raw, "Message-ID"), std::string("<abc@example.com>"));
+    REQUIRE_EQ(RawHeaderValue(raw, "Subject"), std::string("a long  folded subject"));
+    REQUIRE_EQ(RawHeaderValue(raw, "Bcc"), std::string());
+    REQUIRE_EQ(RawHeaderValue("Subject: x\n\nbody", "Subject"), std::string("x"));
+}
+
+TEST(imap_search_by_message_id_quotes_the_id) {
+    REQUIRE_EQ(SearchByMessageIdCommand("<abc@example.com>"),
+               std::string("UID SEARCH HEADER Message-ID \"<abc@example.com>\""));
+    REQUIRE_EQ(SearchByMessageIdCommand("<a\"b\\c@x>"),
+               std::string("UID SEARCH HEADER Message-ID \"<a\\\"b\\\\c@x>\""));
+}
+
+TEST(imap_uid_expunge_names_one_message) {
+    REQUIRE_EQ(UidExpungeCommand(42), std::string("UID EXPUNGE 42"));
+}
+
+// Reading a message must not mark it read: the plug-in reads the flags first
+// and takes \Seen off again for an unread message (FetchKeepingUnread).
+TEST(imap_keep_unread_commands) {
+    REQUIRE_EQ(UidFetchFlagsCommand(42), std::string("UID FETCH 42 (FLAGS)"));
+    REQUIRE_EQ(UidMarkUnreadCommand(42), std::string("UID STORE 42 -FLAGS.SILENT (\\Seen)"));
+    REQUIRE(HasFetchFlags("* 3 FETCH (UID 42 FLAGS ())\r\n"));
+    REQUIRE(HasFetchFlags("* 3 FETCH (UID 42 FLAGS (\\Seen))\r\n"));
+    REQUIRE(!HasFetchFlags(""));   // no answer: the state is unknown, not "unread"
 }
 
 TEST(imap_flag_roundtrip) {
@@ -198,3 +236,22 @@ TEST(imap_plugin_exposes_mailbox_interface) {
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
 }
+
+#if !defined(_WIN32) && !defined(_WIN64)
+TEST(plugins_are_loaded_without_joining_the_global_symbol_scope) {
+    // Plug-ins are dlopen()ed RTLD_LOCAL: they need nothing from the host's
+    // symbol table, and what they export must not bind the symbols of
+    // libraries loaded after them. The entry point every plug-in exports is
+    // the probe - with RTLD_GLOBAL the process-wide lookup finds the first
+    // plug-in's, with RTLD_LOCAL it finds none. (The host does not define it.)
+    const fs::path p = ImapPluginPath();
+    if (p.empty()) SKIP("IMAP plug-in DSO not available in this env");
+
+    UltraNet_Initialize();
+    UltraNet_SetPluginDirectory(p.parent_path().string());
+    UltraNet_RefreshPlugins();
+    REQUIRE(UltraNet_GetPlugin("imaps") != nullptr);   // it did load
+
+    CHECK(dlsym(RTLD_DEFAULT, "UltraNet_PluginInit") == nullptr);
+}
+#endif

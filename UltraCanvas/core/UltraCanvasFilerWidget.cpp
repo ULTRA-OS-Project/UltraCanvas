@@ -50,8 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.33.1
-// Last Modified: 2026-09-24
+// Version: 1.35.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -91,6 +91,7 @@
 #include "UltraCanvasProgressDialog.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSwitch.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -108,6 +109,7 @@
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
 #include <algorithm>
+#include <optional>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -121,6 +123,7 @@
 #include <mutex>
 #include <set>
 #include <sys/stat.h>
+#include "UltraCanvasPathUtf8.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
 // The MSVC UCRT <sys/stat.h> exposes _S_IREAD/_S_IWRITE/_S_IEXEC but not the POSIX permission-bit
@@ -171,7 +174,6 @@ namespace UltraCanvas {
         // window. Everything shorter is over before a window would have
         // finished appearing, and a file manager that flashes a dialog for
         // every copied text file is worse than one that shows none.
-        constexpr unsigned int kFileOpProgressDelayMs = 2000;
         // How often the UI reads the copy / move / delete worker's counters -
         // and checks whether the window above has become due.
         constexpr unsigned int kFileOpPollIntervalMs = 100;
@@ -637,7 +639,12 @@ namespace UltraCanvas {
                         std::transform(ext.begin(), ext.end(), ext.begin(),
                                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                         if (ext.empty() || binary.count(ext)) continue;
-                        out.emplace(ext, language);   // first claimant names it
+                        // A shared extension (.pl: Perl or Prolog) is named
+                        // after its default, not after whichever language
+                        // the tokenizer's unordered map happened to list first.
+                        const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+                        if (!shared.empty()) out[ext] = shared.front();
+                        else out.emplace(ext, language);   // first claimant names it
                     }
                 }
                 return out;
@@ -2328,6 +2335,7 @@ namespace UltraCanvas {
             added.push_back(std::move(e));
         }
         fileListPaths.insert(fileListPaths.end(), paths.begin(), paths.end());
+        ApplyFileTypeFilter(added);
         if (added.empty()) return;
 
         // The selection is held by index, and the sort below moves the
@@ -2376,6 +2384,11 @@ namespace UltraCanvas {
         if (fileListMode) Refresh();
     }
 
+    void UltraCanvasFilerWidget::SetEntryFilter(std::function<bool(const FilerEntry&)> filter) {
+        entryFilter = std::move(filter);
+        if (!currentPath.empty() || fileListMode) Refresh();
+    }
+
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
@@ -2399,6 +2412,85 @@ namespace UltraCanvas {
         // whatever its file is called.
         return matches(e.name) ||
                (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
+    }
+
+    // ===== FILE TYPE FILTER (load / save dialogs) =====
+
+    namespace {
+        // "*.PNG", ".png" and "png" all name the same type; FilerEntry keeps
+        // its extension lowercase without the dot, so the wanted list is
+        // normalised to that form once, when it is set.
+        std::string NormalizeFilterExtension(std::string ext) {
+            while (!ext.empty() && (ext.front() == '*' || ext.front() == '.'))
+                ext.erase(ext.begin());
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return ext;
+        }
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilter(const std::vector<std::string>& extensions,
+                                                   FilerTypeFilterMode mode) {
+        std::vector<std::string> wanted;
+        for (const std::string& raw : extensions) {
+            std::string ext = NormalizeFilterExtension(raw);
+            // "*" (or "*.*", which normalises to "") is "every file": a
+            // dialog's "All files" entry, and the end of the filter.
+            if (ext.empty()) { wanted.clear(); break; }
+            if (std::find(wanted.begin(), wanted.end(), ext) == wanted.end())
+                wanted.push_back(ext);
+        }
+        if (wanted == fileTypeExtensions && mode == fileTypeFilterMode) return;
+        fileTypeExtensions = std::move(wanted);
+        fileTypeFilterMode = mode;
+        // The listing is re-derived from disk: a Hide filter dropped entries
+        // the display no longer holds, and the prefetch cache serves a
+        // navigation only, so this is one scan per filter change - a
+        // dropdown pick, not a keystroke.
+        if (!currentPath.empty() || fileListMode) Refresh();
+        else RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilterMode(FilerTypeFilterMode mode) {
+        SetFileTypeFilter(fileTypeExtensions, mode);
+    }
+
+    void UltraCanvasFilerWidget::SetDimmedEntryOpacity(double opacity) {
+        opacity = std::max(0.0, std::min(1.0, opacity));
+        if (opacity == dimmedEntryOpacity) return;
+        dimmedEntryOpacity = opacity;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::EntryPassesFileTypeFilter(const FilerEntry& e) const {
+        if (fileTypeExtensions.empty() || e.isDirectory) return true;
+        // A shortcut to a folder is a way to the files, like the folder is.
+        if (e.isShortcut && !e.linkTarget.empty()) {
+            std::error_code lec;
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) return true;
+        }
+        return std::find(fileTypeExtensions.begin(), fileTypeExtensions.end(),
+                         e.extension) != fileTypeExtensions.end();
+    }
+
+    bool UltraCanvasFilerWidget::IsDimmedEntry(const FilerEntry& e) const {
+        return fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed &&
+               !EntryPassesFileTypeFilter(e);
+    }
+
+    void UltraCanvasFilerWidget::ApplyFileTypeFilter(std::vector<FilerEntry>& list) {
+        if (fileTypeExtensions.empty()) return;
+        if (fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed) {
+            for (const FilerEntry& e : list)
+                if (!EntryPassesFileTypeFilter(e)) ++typeFilteredCount;
+            return;
+        }
+        auto dropped = std::remove_if(list.begin(), list.end(),
+                                      [this](const FilerEntry& e) {
+                                          return !EntryPassesFileTypeFilter(e);
+                                      });
+        typeFilteredCount += static_cast<int>(std::distance(dropped, list.end()));
+        list.erase(dropped, list.end());
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -2740,19 +2832,20 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::StatEntryForPath(const std::string& path,
                                                   FilerEntry& e) const {
         std::error_code ec;
-        fs::file_status st = fs::symlink_status(path, ec);
+        const fs::path native = PathFromUtf8(path);
+        fs::file_status st = fs::symlink_status(native, ec);
         if (ec || !fs::exists(st)) return false;
-        e.name = PathToUtf8(PathFromUtf8(path).filename());
+        e.name = PathToUtf8(native.filename());
         e.path = path;
         e.isSymlink = fs::is_symlink(st);
-        e.isDirectory = fs::is_directory(path, ec) && !ec;
+        e.isDirectory = fs::is_directory(native, ec) && !ec;
         // Dot names plus the platform's own notion of hidden (the attribute
         // bit on Windows, UF_HIDDEN on macOS) - so NTUSER.DAT and the
         // profile-folder compatibility junctions filter like dot files do.
         e.isHidden = IsHiddenFileSystemEntry(PathFromUtf8(path));
         if (!e.isDirectory) {
             std::error_code sec;
-            e.size = fs::file_size(path, sec);
+            e.size = fs::file_size(UltraCanvas::PathFromUtf8(path), sec);
             if (sec) e.size = 0;
         }
         e.extension = e.isDirectory ? "" : LowerExtension(e.name);
@@ -2845,7 +2938,7 @@ namespace UltraCanvas {
             cached.linkTarget = aliasTarget;
             cached.info = aliasTarget;
             std::error_code aec;
-            if (fs::is_directory(aliasTarget, aec) && !aec) {
+            if (fs::is_directory(UltraCanvas::PathFromUtf8(aliasTarget), aec) && !aec) {
                 cached.category = FilerFileCategory::Folder;
             } else {
                 FilerEntry probe;
@@ -3038,7 +3131,7 @@ namespace UltraCanvas {
         ResolveShortcutEntry(e);
         ResolveBundleEntry(e);
         if (!e.isDirectory && e.category == FilerFileCategory::Text &&
-            (e.extension == "cls" || e.extension == "m") &&
+            !SyntaxTokenizer::SharedExtensionLanguages(e.extension).empty() &&
             !(isRemotePath && isRemotePath(e.path))) {
             const std::string language = SharedExtensionLanguage(e);
             if (!language.empty())
@@ -3107,7 +3200,7 @@ namespace UltraCanvas {
                                                    std::vector<FilerEntry>& out,
                                                    int* hiddenSkipped) const {
         std::error_code ec;
-        for (fs::directory_iterator it(path, ec), end; it != end;
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec), end; it != end;
              it.increment(ec)) {
             if (ec) break;
             FilerEntry e;
@@ -3479,6 +3572,16 @@ namespace UltraCanvas {
             heldBack += ignored;
         }
 
+        // The host's own idea of what belongs in the listing (SetEntryFilter):
+        // a file picker's type filter. Not "hidden", so it counts nowhere.
+        if (entryFilter) {
+            entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                         [this](const FilerEntry& e) {
+                                             return !entryFilter(e);
+                                         }),
+                          entries.end());
+        }
+
         // Showing everything holds nothing back, whatever the scan counted
         // (a prefetched listing carries the hidden entries, and the curation
         // is suspended) - so the notice has nothing to offer either.
@@ -3486,6 +3589,13 @@ namespace UltraCanvas {
         ignoredItemCount = showHiddenFiles ? 0 : ignored;
 
         for (FilerEntry& e : entries) DecorateEntry(e);
+
+        // A file type filter (a dialog's "Images (*.png, *.jpg)") goes first:
+        // the listing the name filter keeps beside itself must never hold a
+        // file the type filter hid, or widening the name filter would bring
+        // it back.
+        typeFilteredCount = 0;
+        ApplyFileTypeFilter(entries);
 
         // A live name filter narrows the listing; the full scan is kept so
         // the filter can be widened or dropped without another disk scan.
@@ -3891,8 +4001,17 @@ namespace UltraCanvas {
         // where nothing above claimed the extension (add() keeps the first),
         // and only as Text where that is what the display will treat it as.
         for (const auto& [ext, language] : SourceTextExtensions()) {
-            if (FilerCategoryForExtension(ext) == FilerFileCategory::Text)
-                add(ext, language, FilerFileCategory::Text);
+            if (FilerCategoryForExtension(ext) != FilerFileCategory::Text) continue;
+            // One switch covers every language a shared extension can be,
+            // so its label names them all: "VBA / LaTeX".
+            std::string label = language;
+            const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+            if (!shared.empty()) {
+                label.clear();
+                for (const std::string& name : shared)
+                    label += (label.empty() ? "" : " / ") + name;
+            }
+            add(ext, label, FilerFileCategory::Text);
         }
         std::vector<FilerFormatInfo> out;
         out.reserve(byExtension.size());
@@ -3934,6 +4053,16 @@ namespace UltraCanvas {
         // The tag is painted over the icon box, so nothing is relaid out.
         RequestRedraw();
         NotifyDisplayFormatsChanged();
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteMarkProvider(
+            std::function<bool(const FilerEntry&)> provider) {
+        const bool hadGutter = FavoriteMarkGutter() > 0;
+        favoriteMarkProvider = std::move(provider);
+        // The row views move their icon right to make room for the heart, so
+        // gaining or losing the provider is a relayout, not just a repaint.
+        if (hadGutter != (FavoriteMarkGutter() > 0)) InvalidateFilerLayout();
+        RequestRedraw();
     }
 
     const char* UltraCanvasFilerWidget::ExtensionBadgeLabel(
@@ -4162,6 +4291,23 @@ namespace UltraCanvas {
             SetMouseCursor(UCMouseCursor::Default);
         }
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailsColumnVisible(FilerDetailsColumn column, bool visible) {
+        const size_t index = static_cast<size_t>(column);
+        if (index == 0 || index >= kFilerDetailsColumnCount) return;   // Name stays
+        const uint32_t bit = 1u << index;
+        const uint32_t next = visible ? (hiddenDetailsColumns & ~bit) : (hiddenDetailsColumns | bit);
+        if (next == hiddenDetailsColumns) return;
+        hiddenDetailsColumns = next;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailsColumnVisible(FilerDetailsColumn column) const {
+        const size_t index = static_cast<size_t>(column);
+        if (index >= kFilerDetailsColumnCount) return false;
+        return index == 0 || !(hiddenDetailsColumns & (1u << index));
     }
 
     void UltraCanvasFilerWidget::SetDetailsColumnWidth(FilerDetailsColumn column,
@@ -4686,7 +4832,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(destDir, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
             ReportError("Drop target is not a folder: " + destDir);
             return;
         }
@@ -4713,7 +4859,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(destDir, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
             ReportError("Drop target is not a folder: " + destDir);
             return;
         }
@@ -4737,10 +4883,13 @@ namespace UltraCanvas {
 
         // The paste machinery takes the sources by value; the confirmation
         // hands it a copy so the same set can be described in the question.
-        auto perform = [this, sources, destDir, copy]() {
-            PasteFilesInto(destDir, std::vector<std::string>(sources),
-                           /*cut=*/!copy,
-                           [this, destDir, copy](bool changed) {
+        // It goes straight to the paste - the confirmation, when there is
+        // one, has just been answered here, and the verb it was answered
+        // with is the one that runs.
+        auto perform = [this, sources, destDir](bool copy) {
+            StartPaste(destDir, std::vector<std::string>(sources),
+                       /*cut=*/!copy,
+                       [this, destDir](bool changed) {
                 if (!changed) return;
                 Refresh();
                 NotifyFolderModified(destDir);
@@ -4751,54 +4900,122 @@ namespace UltraCanvas {
         };
 
         if (DropNeedsConfirmation(copy))
-            ConfirmDrop(sources, destDir, copy, perform);
+            ConfirmTransfer(sources, destDir, copy, perform);
         else
-            perform();
+            perform(copy);
     }
 
     bool UltraCanvasFilerWidget::DropNeedsConfirmation(bool copy) const {
         switch (dropConfirmation) {
             case FilerDropConfirmation::AlwaysConfirm: return true;
             case FilerDropConfirmation::MoveOnly:      return !copy;
+            case FilerDropConfirmation::CopyOnly:      return copy;
             default:                                   return false;
         }
     }
 
-    void UltraCanvasFilerWidget::ConfirmDrop(const std::vector<std::string>& sources,
-                                             const std::string& destDir,
-                                             bool copy,
-                                             std::function<void()> proceed) {
+    bool UltraCanvasFilerWidget::PasteMoveNeedsConfirmation() const {
+        return dropConfirmation == FilerDropConfirmation::AlwaysConfirm ||
+               dropConfirmation == FilerDropConfirmation::MoveOnly;
+    }
+
+    namespace {
+        // The folder every path lives in, or empty when they come from more
+        // than one.
+        std::string CommonParentFolder(const std::vector<std::string>& paths) {
+            std::string common;
+            for (const std::string& p : paths) {
+                const std::string parent = PathToUtf8(PathFromUtf8(p).parent_path());
+                if (common.empty()) common = parent;
+                else if (common != parent) return {};
+            }
+            return common;
+        }
+
+        // "1 folder and 2 files (2.6 MB)" - what a set of entries amounts to.
+        // Only the files' own sizes are added up; what the folders hold is
+        // not walked, which for a drop of a whole tree would take longer than
+        // the question deserves.
+        std::string DescribeEntries(const std::vector<FilerEntry>& entries) {
+            size_t folders = 0, files = 0;
+            uint64_t bytes = 0;
+            for (const FilerEntry& e : entries) {
+                if (e.isDirectory) ++folders;
+                else { ++files; bytes += e.size; }
+            }
+            std::string text;
+            if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
+            if (folders && files) text += " and ";
+            if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
+            if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+            return text;
+        }
+
+        // A path as a Markdown fact value: in a code span, so a Windows
+        // backslash survives the Markdown pass.
+        std::string FactPath(const std::string& path) {
+            return "`" + path + "`";
+        }
+    }
+
+    void UltraCanvasFilerWidget::ConfirmTransfer(const std::vector<std::string>& sources,
+                                                 const std::string& destDir,
+                                                 bool copyRequested,
+                                                 std::function<void(bool copy)> proceed,
+                                                 std::function<void()> onCancel) {
         if (!proceed) return;
 
-        const std::string verb = copy ? "Copy" : "Move";
+        const std::string verb = copyRequested ? "Copy" : "Move";
+        const std::string other = copyRequested ? "Move" : "Copy";
         const std::string destName = PathToUtf8(PathFromUtf8(destDir).filename());
+        const std::vector<FilerEntry> entries = EntriesForPaths(sources);
         std::string what;
         if (sources.size() == 1) {
-            what = "\"" + PathToUtf8(PathFromUtf8(sources.front()).filename()) + "\"";
+            what = "\"" + RepairLegacyEncodedName(
+                    PathToUtf8(PathFromUtf8(sources.front()).filename())) + "\"";
         } else {
             what = std::to_string(sources.size()) + " items";
         }
 
-        DialogConfig cfg;
-        cfg.title = verb + " files";
-        cfg.dialogType = DialogType::Question;
-        cfg.message = verb + " " + what + " into \"" +
-                      (destName.empty() ? destDir : destName) + "\"?";
-        // The full path answers "which folder of that name" - a drop lands on
+        OperationDialogSpec spec;
+        spec.title = verb + " files";
+        spec.type = DialogType::Question;
+        spec.question = verb + " " + what + " into \"" +
+                        (destName.empty() ? destDir : destName) + "\"?";
+        // The full paths answer "which folder of that name" - a drop lands on
         // whatever folder happened to be under the cursor.
-        cfg.details = destDir;
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons below
-        cfg.width = 480;
-        cfg.height = 200;
-
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (!dialog) {   // dialogs disabled - the drop still happens
-            proceed();
-            return;
+        const std::string from = CommonParentFolder(sources);
+        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
+                                                   : FactPath(from))
+                   + "\n\n**Into:** " + FactPath(destDir);
+        // How much is going: the set's tally, or a single file's own size (a
+        // single folder is not walked for it).
+        if (entries.size() > 1)
+            spec.facts += "\n\n**Size:** " + DescribeEntries(entries);
+        else if (entries.size() == 1 && !entries.front().isDirectory)
+            spec.facts += "\n\n**Size:** " + FormatSize(entries.front().size);
+        if (entries.size() > 1) {
+            spec.listed.assign(entries.begin(), entries.begin() +
+                    static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
+            if (entries.size() > spec.listed.size())
+                spec.listCaption = "The first " + std::to_string(spec.listed.size())
+                                 + " of " + std::to_string(entries.size()) + " items:";
         }
-        dialog->AddCustomButton(verb, DialogResult::Yes, proceed);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        // Both verbs, the requested one as the coloured default: a drop with
+        // the wrong modifier is put right here instead of by a second drag.
+        spec.buttons = {{verb, DialogButtonRole::Default},
+                        {other, DialogButtonRole::Normal},
+                        {"Cancel", DialogButtonRole::Cancel}};
+        spec.width = entries.size() > 1 ? 600 : 520;
+
+        const bool shown = ShowOperationDialog(spec,
+                [proceed, onCancel, copyRequested](size_t button, bool) {
+                    if (button == 0) proceed(copyRequested);
+                    else if (button == 1) proceed(!copyRequested);
+                    else if (onCancel) onCancel();
+                },
+                onCancel);
+        if (!shown) proceed(copyRequested);   // dialogs disabled - the drop still happens
     }
 
     // ===== NATIVE DRAG & DROP =====
@@ -4871,25 +5088,27 @@ namespace UltraCanvas {
         if (sources.empty()) return;
 
         const std::string dest = currentPath;
-        auto perform = [this, sources, dest]() {
-            PasteFilesInto(dest, std::vector<std::string>(sources), /*cut=*/false);
+        auto perform = [this, sources, dest](bool copy) {
+            StartPaste(dest, std::vector<std::string>(sources), /*cut=*/!copy, nullptr);
         };
         // Files handed over by another program (or another pane of this
-        // window) are copied, so only AlwaysConfirm asks about them.
+        // window) are copied, so only a confirmation that covers copies asks
+        // about them - and that question offers Move beside Copy, like every
+        // other.
         if (DropNeedsConfirmation(/*copy=*/true))
-            ConfirmDrop(sources, dest, /*copy=*/true, perform);
+            ConfirmTransfer(sources, dest, /*copyRequested=*/true, perform);
         else
-            perform();
+            perform(true);
     }
 
     std::string UltraCanvasFilerWidget::UniquePathIn(
             const std::string& folder, const std::string& baseName,
             const std::function<bool(const std::string&)>& alsoTaken) {
-        fs::path base(baseName);
+        fs::path base(UltraCanvas::PathFromUtf8(baseName));
         std::string stem = PathToUtf8(base.stem());
         std::string ext = PathToUtf8(base.extension());   // includes the dot
-        fs::path dir(folder);
-        fs::path candidate = dir / baseName;
+        fs::path dir(UltraCanvas::PathFromUtf8(folder));
+        fs::path candidate = dir / PathFromUtf8(baseName);
         std::error_code ec;
         int n = 2;
         // A name is free when nothing on the disk has it and the caller has
@@ -4899,7 +5118,7 @@ namespace UltraCanvas {
             return alsoTaken && alsoTaken(PathToUtf8(p));
         };
         while (taken(candidate)) {
-            candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
+            candidate = dir / PathFromUtf8(stem + " (" + std::to_string(n++) + ")" + ext);
         }
         return PathToUtf8(candidate);
     }
@@ -4976,98 +5195,241 @@ namespace UltraCanvas {
                    ancestor.back() == '/' || ancestor.back() == '\\';
         }
 
-        // Adds `labels` to `dialog` as a group of exclusive switches:
-        // toggling one on turns the others off, the selected one cannot be
-        // toggled off — only replaced by another — and `onSelect(index)`
-        // follows the selection. `checkedIndex` starts selected.
-        void AddExclusiveSwitches(UltraCanvasModalDialog* dialog,
-                                  const std::string& idPrefix,
-                                  const std::vector<std::string>& labels,
-                                  size_t checkedIndex,
-                                  std::function<void(size_t)> onSelect) {
-            auto switches = std::make_shared<std::vector<UltraCanvasSwitch*>>();
-            auto selected = std::make_shared<size_t>(checkedIndex);
-            for (size_t i = 0; i < labels.size(); ++i) {
-                auto sw = UltraCanvasSwitch::Create(
-                        idPrefix + std::to_string(i), 0, 0, labels[i],
-                        i == checkedIndex);
-                sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                switches->push_back(sw.get());
-                UltraCanvasSwitch* me = sw.get();
-                sw->onChecked = [switches, selected, onSelect, me, i]() {
-                    *selected = i;
-                    if (onSelect) onSelect(i);
-                    for (UltraCanvasSwitch* other : *switches)
-                        if (other != me) other->SetChecked(false);
-                };
-                sw->onUnchecked = [selected, me, i]() {
-                    if (*selected == i) me->SetChecked(true);
-                };
-                dialog->AddDialogElement(sw);
-            }
+        // The same, by the platform's rule for names: Windows paths differ
+        // in case ("c:\\Users" from one API, "C:\\Users" from another) and
+        // in nothing else.
+        bool PathIsSameOrBelowCI(const std::string& path, const std::string& ancestor) {
+#if defined(_WIN32) || defined(_WIN64)
+            return PathIsSameOrBelow(ToLowerCase(path), ToLowerCase(ancestor));
+#else
+            return PathIsSameOrBelow(path, ancestor);
+#endif
         }
+
+        // The operation dialogs' list delegate: the default one, with the
+        // file display's own icon for the entry drawn in front of the name.
+        class FilerOperationListDelegate : public UltraCanvasDefaultListDelegate {
+        public:
+            std::vector<FilerEntry> entries;
+            int iconColumn = 0;   // the Name column
+            std::function<void(IRenderContext*, const FilerEntry&, const Rect2Di&)> drawIcon;
+
+            void RenderItem(IRenderContext* ctx, const IListModel* listModel,
+                            int row, int column,
+                            const ListItemStyleOption& option) override {
+                if (column != iconColumn || row < 0 ||
+                    row >= static_cast<int>(entries.size()) || !drawIcon) {
+                    UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, option);
+                    return;
+                }
+                constexpr int kIcon = 16, kGap = 6, kPad = 4;
+                const Rect2Di icon(option.columnX + kPad,
+                                   option.rect.y + (option.rect.height - kIcon) / 2,
+                                   kIcon, kIcon);
+                ctx->PushState();
+                drawIcon(ctx, entries[static_cast<size_t>(row)], icon);
+                ctx->PopState();
+                ListItemStyleOption shifted = option;
+                shifted.columnX += kPad + kIcon + kGap - 6;   // the default pads by 6
+                shifted.columnWidth -= kPad + kIcon + kGap - 6;
+                UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, shifted);
+            }
+        };
+
+        constexpr int kOperationListRowHeight = 22;
+        constexpr int kOperationListHeaderHeight = 24;
     }
 
-    bool UltraCanvasFilerWidget::ShowProblemChoiceDialog(
-            DialogConfig& cfg,
-            const std::vector<std::string>& choiceLabels, size_t defaultChoice,
-            const std::string& allLabel,
-            std::function<void(size_t choice, bool all)> onContinue,
-            std::function<void()> onCancel) {
-        if (choiceLabels.empty()) return false;
-        if (defaultChoice >= choiceLabels.size()) defaultChoice = 0;
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasFilerWidget::BuildOperationEntryList(
+            const std::string& id, const std::vector<FilerEntry>& listed,
+            const std::vector<std::string>& rowNotes,
+            const std::vector<std::string>& rowLabels, bool details,
+            int visibleRows, int& outHeight) {
+        outHeight = 0;
+        if (listed.empty()) return nullptr;
+        const bool labels = rowLabels.size() == listed.size();
+        const bool notes = rowNotes.size() == listed.size();
+        const int rows = static_cast<int>(std::min<size_t>(listed.size(),
+                static_cast<size_t>(std::max(1, visibleRows))));
+        outHeight = kOperationListHeaderHeight + rows * kOperationListRowHeight + 2;
+
+        // Name (with the display's own icon for the entry), size, date - the
+        // columns of the Details view, formatted the same way - plus a label
+        // column in front ("Existing" / "Pasted") and a note column after
+        // ("newer", or why an entry was skipped) when the rows carry them.
+        auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+        if (labels) model->AddColumn(ListColumnDef("", 76));
+        model->AddColumn(ListColumnDef("Name", details ? (notes ? 230 : 270) : 280));
+        if (details) {
+            model->AddColumn(ListColumnDef("Size", 80, TextAlignment::Right));
+            model->AddColumn(ListColumnDef("Modified", 130));
+        }
+        if (notes) model->AddColumn(ListColumnDef(details ? "" : "Reason", details ? 90 : 260));
+        for (size_t i = 0; i < listed.size(); ++i) {
+            const FilerEntry& e = listed[i];
+            std::vector<std::string> cells;
+            if (labels) cells.push_back(rowLabels[i]);
+            cells.push_back(RepairLegacyEncodedName(e.name));
+            if (details) {
+                cells.push_back(e.isDirectory ? std::string() : FormatSize(e.size));
+                cells.push_back(e.modifiedTime ? FormatTime(e.modifiedTime) : std::string());
+            }
+            if (notes) cells.push_back(rowNotes[i]);
+            MultiColumnListItem item(cells);
+            item.tooltip = RepairLegacyEncodedName(e.path);
+            model->AddItem(item);
+        }
+
+        auto list = std::make_shared<UltraCanvasListView>(id, 0, 0, 0, outHeight);
+        ListViewStyle listStyle;
+        listStyle.showHeader = true;
+        listStyle.headerHeight = kOperationListHeaderHeight;
+        listStyle.headerFontSize = 10;
+        listStyle.rowHeight = kOperationListRowHeight;
+        listStyle.alternateRowColors = true;
+        list->SetStyle(listStyle);
+        auto delegate = std::make_shared<FilerOperationListDelegate>();
+        delegate->entries = listed;
+        delegate->iconColumn = labels ? 1 : 0;
+        delegate->drawIcon = [this](IRenderContext* ctx, const FilerEntry& e,
+                                    const Rect2Di& r) { DrawEntryIcon(ctx, e, r); };
+        delegate->SetFontSize(style.smallFontSize > 0.0f ? style.smallFontSize : 11.0f);
+        delegate->SetRowHeight(kOperationListRowHeight);
+        list->SetModel(model);
+        list->SetDelegate(delegate);
+        list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return list;
+    }
+
+    bool UltraCanvasFilerWidget::ShowOperationDialog(
+            const OperationDialogSpec& spec,
+            std::function<void(size_t button, bool applyToAll)> onAnswer,
+            std::function<void()> onDismiss) {
+        if (spec.buttons.empty()) return false;
+
+        int listHeight = 0;
+        auto list = BuildOperationEntryList("FilerOpList", spec.listed, spec.rowNotes,
+                                            spec.rowLabels, spec.listDetails,
+                                            spec.listVisibleRows, listHeight);
+
+        DialogConfig cfg;
+        cfg.title = spec.title;
+        cfg.dialogType = spec.type;
+        cfg.message = spec.question;
+        cfg.details = spec.facts;
+        cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+        cfg.showIcon = spec.showIcon;
+        cfg.width = spec.width;
+        // A starting height; ShowModal fits the window to the message and to
+        // the elements below it (each of which carries its own height).
+        cfg.height = 200 + (spec.listCaption.empty() ? 0 : 24)
+                   + (list ? listHeight + 8 : 0) + (spec.note.empty() ? 0 : 44)
+                   + 22 * static_cast<int>(std::count(spec.facts.begin(), spec.facts.end(), '\n') / 2);
+
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) return false;
+        // The display's own sizes, for the message and the buttons alike:
+        // a host running its UI at 9 gets a dialog at 9, not the dialog's
+        // default 12 over a window of smaller text. Before the buttons are
+        // added, so each takes the size as it is created.
+        const ModalDialogStyle fonts = DialogStyleForFonts(dialog->GetStyle());
+        dialog->SetStyle(fonts);
+        const float smallFont = fonts.detailsFontSize;
 
-        struct Choice { size_t index = 0; bool all = false; };
-        auto choice = std::make_shared<Choice>();
-        choice->index = defaultChoice;
-        AddExclusiveSwitches(dialog.get(), "FilerProblemOpt",
-                choiceLabels, defaultChoice,
-                [choice](size_t index) { choice->index = index; });
+        if (!spec.listCaption.empty()) {
+            auto caption = std::make_shared<UltraCanvasLabel>("FilerOpListCaption", 0, 0, 0, 18);
+            caption->SetText(spec.listCaption);
+            caption->SetFontSize(smallFont);
+            caption->SetTextColor(Color(90, 90, 96, 255));
+            caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            dialog->AddDialogElement(caption);
+        }
+        if (list) dialog->AddDialogElement(list);
+        if (!spec.note.empty()) {
+            // Under the list, so it is read after what it is about; two lines
+            // of room, wrapped by word.
+            auto note = std::make_shared<UltraCanvasLabel>("FilerOpNote", 0, 0, 0, 36);
+            note->SetText(spec.note);
+            note->SetFontSize(smallFont);
+            note->SetWrap(TextWrap::WrapWord);
+            note->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
+            note->SetTextColor(Color(77, 77, 87, 255));
+            note->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            dialog->AddDialogElement(note);
+        }
 
-        // Scope: ask again on the next problem (off, the default) or apply
-        // this choice to the remaining entries of the operation.
-        auto allSwitch = UltraCanvasSwitch::Create(
-                "FilerProblemAll", 0, 0, allLabel, false);
-        allSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        allSwitch->onStateChanged = [choice](CheckedState, CheckedState state) {
-            choice->all = (state == CheckedState::Checked);
-        };
-        dialog->AddDialogElement(allSwitch);
+        // The scope, beside the answers: "Apply to all 7 remaining conflicts".
+        auto applyToAll = std::make_shared<bool>(spec.applyToAllChecked);
+        if (!spec.applyToAllLabel.empty()) {
+            // An explicit width: the bar is laid out before there is a render
+            // context to measure the label with. About 0.58 em per character
+            // of the label's font, plus the box.
+            const float width = 26.0f + 0.58f * smallFont
+                                      * static_cast<float>(spec.applyToAllLabel.size());
+            auto box = std::make_shared<UltraCanvasCheckbox>("FilerOpApplyAll", 0, 0,
+                    width, 22.0f, spec.applyToAllLabel);
+            box->SetFontSize(smallFont);
+            box->SetChecked(spec.applyToAllChecked);
+            box->size.width  = CSSLayout::Dimension::Px(width);
+            box->size.height = CSSLayout::Dimension::Px(22);
+            box->onStateChanged = [applyToAll](CheckedState, CheckedState now) {
+                *applyToAll = (now == CheckedState::Checked);
+            };
+            dialog->AddFooterElement(box);
+        }
 
-        dialog->AddCustomButton("Continue", DialogResult::Yes, nullptr);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        dialog->onResult = [choice, onContinue, onCancel](DialogResult result) {
-            if (result == DialogResult::Yes) {
-                if (onContinue) onContinue(choice->index, choice->all);
-            } else if (onCancel) {
-                onCancel();
+        // The buttons only record which one was pressed; the answer runs from
+        // onResult, once the dialog is closed, so a continuation that opens
+        // the next question never stacks a window on this one. Escape and
+        // the close box land in onResult without a recorded button.
+        auto chosen = std::make_shared<std::optional<size_t>>();
+        for (size_t i = 0; i < spec.buttons.size(); ++i) {
+            const OperationDialogButton& b = spec.buttons[i];
+            const DialogResult result = b.role == DialogButtonRole::Cancel
+                    ? DialogResult::Cancel : DialogResult::Yes;
+            dialog->AddCustomButton(b.label, result, b.role, [chosen, i]() { *chosen = i; });
+        }
+        dialog->onResult = [chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
+            if (chosen->has_value()) {
+                if (onAnswer) onAnswer(**chosen, *applyToAll);
+            } else if (onDismiss) {
+                onDismiss();
             }
         };
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         return true;
     }
 
-    bool UltraCanvasFilerWidget::ShowProceedSkipDialog(
-            DialogConfig& cfg,
-            const std::string& proceedLabel, const std::string& skipLabel,
-            const std::string& allLabel, bool proceedDefault,
-            std::function<void(bool proceed, bool all)> onContinue,
-            std::function<void()> onCancel) {
-        return ShowProblemChoiceDialog(cfg, {proceedLabel, skipLabel},
-                proceedDefault ? 0 : 1, allLabel,
-                [onContinue](size_t index, bool all) {
-                    if (onContinue) onContinue(index == 0, all);
-                },
-                std::move(onCancel));
-    }
-
     void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
                                                 std::vector<std::string> paths,
                                                 bool cut,
                                                 std::function<void(bool changed)> onDone) {
+        // A move changes where the files live whichever gesture asked for it:
+        // when the confirmation covers moves, a Cut + Paste asks the question
+        // a dropped move asks - and offers Copy beside Move, as that does.
+        // (A drop has already asked by the time it gets here; it goes through
+        // StartPaste directly.) The paste checks the same preconditions.
+        std::error_code ec;
+        if (cut && !paths.empty() && !pendingPaste && !fileOp &&
+            PasteMoveNeedsConfirmation() &&
+            fs::is_directory(PathFromUtf8(folder), ec)) {
+            auto done = std::make_shared<std::function<void(bool)>>(std::move(onDone));
+            ConfirmTransfer(paths, folder, /*copyRequested=*/false,
+                    [this, folder, paths, done](bool copy) {
+                        StartPaste(folder, paths, /*cut=*/!copy, *done);
+                    },
+                    [done]() { if (*done) (*done)(false); });
+            return;
+        }
+        StartPaste(std::move(folder), std::move(paths), cut, std::move(onDone));
+    }
+
+    void UltraCanvasFilerWidget::StartPaste(std::string folder,
+                                            std::vector<std::string> paths,
+                                            bool cut,
+                                            std::function<void(bool changed)> onDone) {
         // One paste (and its dialogs) at a time, and one file operation at a
         // time: a paste started while a delete is still running would share
         // the progress session with it and report into the wrong window.
@@ -5076,7 +5438,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(folder, ec)) {
+        if (!fs::is_directory(PathFromUtf8(folder), ec)) {
             ReportError("Paste target is not a writable folder: " + folder);
             if (onDone) onDone(false);
             return;
@@ -5089,8 +5451,35 @@ namespace UltraCanvas {
         pendingPaste = std::make_unique<PendingPaste>();
         pendingPaste->folder = std::move(folder);
         pendingPaste->sources = std::move(paths);
+        pendingPaste->itemFolders.assign(pendingPaste->sources.size(), std::string());
+        pendingPaste->itemKinds.assign(pendingPaste->sources.size(),
+                                       PendingPaste::ItemKind::Entry);
         pendingPaste->cut = cut;
         pendingPaste->onDone = std::move(onDone);
+        // The host's standing answers, where it gave any: they stand in for
+        // the first dialog of each kind, the way an "Apply to all" does.
+        switch (conflictPolicy) {
+            case FilerConflictPolicy::KeepBoth:
+                pendingPaste->action = PasteConflictAction::KeepBoth;
+                pendingPaste->applyToAll = true;
+                break;
+            case FilerConflictPolicy::Replace:
+                pendingPaste->action = PasteConflictAction::Replace;
+                pendingPaste->applyToAll = true;
+                break;
+            case FilerConflictPolicy::Skip:
+                pendingPaste->action = PasteConflictAction::Skip;
+                pendingPaste->applyToAll = true;
+                break;
+            default:
+                break;
+        }
+        if (folderConflictPolicy == FilerFolderConflictPolicy::Merge) {
+            pendingPaste->folderAction = PasteConflictAction::Merge;
+            pendingPaste->applyToAllFolders = true;
+        }
+        if (problemPolicy == FilerProblemPolicy::SkipAndReport)
+            pendingPaste->skipFailedForAll = true;   // listed in the summary
         // The work runs on the file-operation worker; the window over it opens
         // only if the paste is still going two seconds from now.
         const std::string verb = cut ? "Moving" : "Copying";
@@ -5113,23 +5502,50 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::PasteWorkerLoop(PendingPaste* pp) {
+        using ItemKind = PendingPaste::ItemKind;
         std::error_code ec;
         FileOperation* op = fileOp.get();
+        auto advance = [pp]() {
+            ++pp->next;
+            pp->currentRetried = false;
+            pp->currentDecided = false;
+        };
         while (pp->next < pp->sources.size()) {
             if (op && op->cancelled.load()) {
                 pp->stop = FileOpStop::Cancelled;
                 return;
             }
             const std::string src = pp->sources[pp->next];
-            const fs::path from(src);
-            if (!fs::exists(from, ec)) { ++pp->next; continue; }
-            // Cut-pasting into the folder the file already lives in is a no-op,
-            // and a folder must never be pasted into itself.
-            if (pp->cut && from.parent_path() == PathFromUtf8(pp->folder)) {
-                ++pp->next;
+            const fs::path from = PathFromUtf8(src);
+            const ItemKind kind = pp->itemKinds[pp->next];
+            const std::string folder = pp->itemFolders[pp->next].empty()
+                    ? pp->folder : pp->itemFolders[pp->next];
+
+            if (kind == ItemKind::MergedFolder) {
+                // The merged folder's entries are through. A move leaves the
+                // folder itself behind; it goes once nothing is left in it
+                // (an entry that was skipped keeps it, and its place).
+                if (pp->cut && fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) && fs::is_empty(UltraCanvas::PathFromUtf8(from), ec)) {
+                    fs::remove(UltraCanvas::PathFromUtf8(from), ec);
+                    if (!ec) {
+                        const std::string vacated = PathToUtf8(from.parent_path());
+                        if (!vacated.empty()) pp->vacatedFolders.push_back(vacated);
+                    }
+                }
+                FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+                credit.Finish();
+                advance();
                 continue;
             }
-            if (fs::is_directory(from, ec) && PathIsSameOrBelow(pp->folder, src)) {
+            if (!fs::exists(UltraCanvas::PathFromUtf8(from), ec)) { advance(); continue; }
+            // Cut-pasting into the folder the file already lives in is a no-op,
+            // and a folder must never be pasted into itself.
+            if (pp->cut && from.parent_path() == PathFromUtf8(folder)) {
+                advance();
+                continue;
+            }
+            const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec);
+            if (isDir && PathIsSameOrBelow(folder, src)) {
                 // The worker cannot report anything itself: the message is
                 // handed to the UI thread, which shows it when the stretch ends.
                 if (op) {
@@ -5137,31 +5553,69 @@ namespace UltraCanvas {
                     op->deferredErrors.push_back(
                             "Cannot paste a folder into itself: " + src);
                 }
-                ++pp->next;
+                advance();
                 continue;
             }
             // What to do about a name that is already taken: the answer this
-            // entry was given, the answer given for all of them, or a dialog.
-            // Copy-pasting alongside the original never asks — the copy simply
-            // takes the next free name, exactly like Duplicate.
+            // entry was given, the answer given for all of its kind (files
+            // and folders are remembered apart), or a dialog. Copy-pasting
+            // alongside the original never asks — the copy simply takes the
+            // next free name, exactly like Duplicate.
             PasteConflictAction action = PasteConflictAction::KeepBoth;
-            const std::string dest = PathToUtf8(PathFromUtf8(pp->folder) / from.filename());
-            if (fs::exists(dest, ec) && dest != src) {
-                if (pp->currentDecided)       action = pp->currentAction;
-                else if (pp->applyToAll)      action = pp->action;
+            const std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
+            if (fs::exists(PathFromUtf8(dest), ec) && dest != src) {
+                const bool bothFolders = isDir && fs::is_directory(PathFromUtf8(dest), ec);
+                if (pp->currentDecided)                         action = pp->currentAction;
+                else if (bothFolders && pp->applyToAllFolders)  action = pp->folderAction;
+                else if (!bothFolders && pp->applyToAll)        action = pp->action;
                 else {
                     pp->stop = FileOpStop::Conflict;
                     pp->stopSource = src;
                     return;
                 }
+                if (action == PasteConflictAction::Merge && !bothFolders)
+                    action = PasteConflictAction::KeepBoth;   // a file cannot be merged
+                if (action == PasteConflictAction::Merge) {
+                    // Merge: the folder's entries go INTO the existing folder,
+                    // spliced into the queue right after it - each asked about
+                    // in turn when its own name is taken there - and the
+                    // folder itself comes round again once they are through.
+                    // Nothing already in the existing folder is touched.
+                    std::vector<std::string> children;
+                    for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(from), ec), endIt; !ec && it != endIt;
+                         it.increment(ec))
+                        children.push_back(PathToUtf8(it->path()));
+                    std::sort(children.begin(), children.end());
+                    const auto at = static_cast<std::ptrdiff_t>(pp->next + 1);
+                    pp->sources.insert(pp->sources.begin() + at, children.begin(), children.end());
+                    pp->itemFolders.insert(pp->itemFolders.begin() + at, children.size(), dest);
+                    pp->itemKinds.insert(pp->itemKinds.begin() + at, children.size(),
+                                         ItemKind::MergedEntry);
+                    const auto after = at + static_cast<std::ptrdiff_t>(children.size());
+                    pp->sources.insert(pp->sources.begin() + after, src);
+                    pp->itemFolders.insert(pp->itemFolders.begin() + after, folder);
+                    pp->itemKinds.insert(pp->itemKinds.begin() + after, ItemKind::MergedFolder);
+                    if (op) op->totalUnits.fetch_add((children.size() + 1) * kFileOpItemUnits);
+                    // This entry's own slice: there is nothing to copy for the
+                    // folder itself, its entries carry their own.
+                    FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+                    credit.SetFile(PathToUtf8(from.filename()));
+                    credit.Finish();
+                    advance();
+                    continue;
+                }
+                if (action == PasteConflictAction::Skip)
+                    pp->skipped.push_back({src, "Skipped: the name is already taken", folder});
             }
             pp->currentAction = action;
             for (;;) {
                 FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
                 credit.SetFile(PathToUtf8(from.filename()));
                 std::string why;
-                if (PasteOneEntry(*pp, src, action, credit, why)) {
+                if (PasteOneEntry(*pp, src, folder, action,
+                                  kind == ItemKind::MergedEntry, credit, why)) {
                     credit.Finish();          // this entry's slice, in full
+                    if (action != PasteConflictAction::Skip) ++pp->pasted;
                     break;
                 }
                 credit.Rollback();            // an attempt that failed counts
@@ -5169,7 +5623,11 @@ namespace UltraCanvas {
                     pp->stop = FileOpStop::Cancelled;
                     return;
                 }
-                if (pp->skipFailedForAll) break;    // skip it, silently
+                if (pp->skipFailedForAll) {         // skip it, for the summary
+                    pp->skipped.push_back({src, why.empty() ? std::string("unknown error") : why,
+                                           folder});
+                    break;
+                }
                 if (pp->retryFailedForAll && !pp->currentRetried) {
                     pp->currentRetried = true;      // one silent retry, then ask
                     continue;
@@ -5179,9 +5637,7 @@ namespace UltraCanvas {
                 pp->stopReason = why;
                 return;
             }
-            ++pp->next;
-            pp->currentRetried = false;
-            pp->currentDecided = false;
+            advance();
         }
         pp->stop = FileOpStop::Done;
     }
@@ -5205,8 +5661,12 @@ namespace UltraCanvas {
         if (!pendingPaste) return;
         EndFileOperation();   // the window goes before the refresh it triggers
         const bool changed = pendingPaste->changed;
+        const bool cut = pendingPaste->cut;
+        const bool walkedToEnd = pendingPaste->stop == FileOpStop::Done;
+        const size_t pasted = pendingPaste->pasted;
         const std::string destination = pendingPaste->folder;
         std::vector<std::string> vacated = std::move(pendingPaste->vacatedFolders);
+        std::vector<SkippedItem> skipped = std::move(pendingPaste->skipped);
         std::function<void(bool)> onDone = std::move(pendingPaste->onDone);
         pendingPaste.reset();
         if (onDone) onDone(changed);               // the caller owns refresh / history
@@ -5221,32 +5681,125 @@ namespace UltraCanvas {
         std::unordered_set<std::string> reported{destination};
         for (const std::string& folder : vacated)
             if (reported.insert(folder).second) NotifyFolderModified(folder);
+
+        // The summary: what was skipped and why, once the queue ran to its
+        // end. A Stop or a Cancel already said what happened, and a paste
+        // where nothing was skipped needs no window after its own.
+        if (walkedToEnd && !skipped.empty()) {
+            const size_t total = pasted + skipped.size();
+            std::string message = std::string(cut ? "Moved " : "Copied ")
+                    + std::to_string(pasted) + " of " + std::to_string(total)
+                    + (total == 1 ? " item. " : " items. ")
+                    + std::to_string(skipped.size())
+                    + (skipped.size() == 1 ? " was skipped." : " were skipped.");
+            ShowOperationSummary(cut ? "Move finished" : "Copy finished", message, skipped,
+                    "**Into:** " + FactPath(destination),
+                    cut ? "Move skipped items again" : "Copy skipped items again",
+                    [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
+        }
+    }
+
+    void UltraCanvasFilerWidget::RetrySkippedPaste(const std::vector<SkippedItem>& items,
+                                                   bool cut) {
+        if (items.empty() || pasteRetry) return;
+        auto retry = std::make_unique<PasteRetry>();
+        retry->cut = cut;
+        for (const SkippedItem& item : items) {
+            auto group = std::find_if(retry->groups.begin(), retry->groups.end(),
+                    [&item](const auto& g) { return g.first == item.folder; });
+            if (group == retry->groups.end()) {
+                retry->groups.emplace_back(item.folder, std::vector<std::string>{item.path});
+            } else {
+                group->second.push_back(item.path);
+            }
+        }
+        pasteRetry = std::move(retry);
+        ContinuePasteRetry();
+    }
+
+    void UltraCanvasFilerWidget::ContinuePasteRetry() {
+        if (!pasteRetry) return;
+        if (pasteRetry->index >= pasteRetry->groups.size()) {
+            pasteRetry.reset();
+            return;
+        }
+        auto& group = pasteRetry->groups[pasteRetry->index++];
+        const std::string folder = group.first;
+        StartPaste(folder, group.second, pasteRetry->cut,
+                   [this, folder](bool changed) {
+                       Refresh();
+                       if (changed) NotifyFolderModified(folder);
+                       ContinuePasteRetry();
+                   });
+    }
+
+    void UltraCanvasFilerWidget::ShowOperationSummary(
+            const std::string& title, const std::string& message,
+            const std::vector<SkippedItem>& skipped, const std::string& facts,
+            const std::string& retryLabel, std::function<void()> onRetry) {
+        OperationDialogSpec spec;
+        spec.title = title;
+        spec.type = DialogType::Information;
+        spec.question = message;
+        spec.facts = facts;
+        for (const SkippedItem& item : skipped) {
+            if (spec.listed.size() >= kOperationListRows) break;
+            FilerEntry e;
+            if (!StatEntryForPath(item.path, e)) {   // gone, or never there
+                e.path = item.path;
+                e.name = PathToUtf8(PathFromUtf8(item.path).filename());
+                e.extension = LowerExtension(e.name);
+                ApplyEntryTypeInfo(e);
+            }
+            spec.listed.push_back(std::move(e));
+            spec.rowNotes.push_back(item.reason);
+        }
+        spec.listDetails = false;   // the reason takes the room
+        spec.listVisibleRows = 8;
+        if (skipped.size() > spec.listed.size())
+            spec.listCaption = "The first " + std::to_string(spec.listed.size())
+                             + " of " + std::to_string(skipped.size()) + " skipped items:";
+        if (!retryLabel.empty() && onRetry)
+            spec.buttons.push_back({retryLabel, DialogButtonRole::Normal});
+        spec.buttons.push_back({"Close", DialogButtonRole::Default});
+        spec.width = 620;
+        const bool hasRetry = !retryLabel.empty() && onRetry;
+        if (!ShowOperationDialog(spec,
+                [hasRetry, onRetry](size_t button, bool) {
+                    if (hasRetry && button == 0 && onRetry) onRetry();
+                },
+                nullptr)) {
+            // No dialogs: the count goes where the other errors go.
+            ReportError(message);
+        }
     }
 
     bool UltraCanvasFilerWidget::PasteOneEntry(PendingPaste& pp,
                                                const std::string& src,
+                                               const std::string& folder,
                                                PasteConflictAction action,
+                                               bool mergedEntry,
                                                FileOpItemCredit& credit,
                                                std::string& whyFailed) {
         whyFailed.clear();
         if (action == PasteConflictAction::Skip) return true;
         std::error_code ec;
-        const fs::path from(src);
-        std::string dest = PathToUtf8(PathFromUtf8(pp.folder) / from.filename());
-        if (fs::exists(dest, ec)) {
+        const fs::path from = PathFromUtf8(src);
+        std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
+        if (fs::exists(PathFromUtf8(dest), ec)) {
             if (action == PasteConflictAction::Replace && dest != src) {
-                fs::remove_all(dest, ec);
+                fs::remove_all(PathFromUtf8(dest), ec);
                 if (ec) {
                     whyFailed = ec.message();
                     return false;
                 }
             } else {   // keep both (also a copy pasted alongside its original)
-                dest = UniquePathIn(pp.folder, PathToUtf8(from.filename()));
+                dest = UniquePathIn(folder, PathToUtf8(from.filename()));
             }
         }
         ec.clear();
         if (pp.cut) {
-            fs::rename(from, dest, ec);
+            fs::rename(UltraCanvas::PathFromUtf8(from), PathFromUtf8(dest), ec);
             if (ec) {
                 // Either the two paths are on different volumes - where a
                 // rename cannot work and copy + delete is the move - or the
@@ -5263,7 +5816,7 @@ namespace UltraCanvas {
                 if (!CopyTreeWithProgress(src, dest, credit, fallback) || fallback) {
                     // Nothing of a move that did not happen stays behind.
                     std::error_code cleanup;
-                    fs::remove_all(dest, cleanup);
+                    fs::remove_all(PathFromUtf8(dest), cleanup);
                     whyFailed = credit.Cancelled() ? std::string("cancelled")
                                                    : renameError.message();
                     return false;
@@ -5279,7 +5832,7 @@ namespace UltraCanvas {
                     // copy, so a move that failed does not leave the entry in
                     // both places.
                     std::error_code cleanup;
-                    fs::remove_all(dest, cleanup);
+                    fs::remove_all(PathFromUtf8(dest), cleanup);
                     whyFailed = renameError.message();
                     return false;
                 }
@@ -5292,7 +5845,7 @@ namespace UltraCanvas {
                 // cancelled or failed. Left there, it would also make the
                 // "Try again" of the problem dialog paste alongside it.
                 std::error_code cleanup;
-                fs::remove_all(dest, cleanup);
+                fs::remove_all(PathFromUtf8(dest), cleanup);
                 whyFailed = ec ? ec.message() : std::string("cancelled");
                 return false;
             }
@@ -5303,7 +5856,9 @@ namespace UltraCanvas {
         }
         // A move leaves the folder the entry came from one entry shorter:
         // remember it, so FinishPendingPaste can report it as changed too.
-        if (pp.cut) {
+        // An entry of a merged folder came from the folder being merged, which
+        // is reported (or removed) when the merge is through.
+        if (pp.cut && !mergedEntry) {
             const std::string vacated = PathToUtf8(from.parent_path());
             if (!vacated.empty()) pp.vacatedFolders.push_back(vacated);
         }
@@ -5313,49 +5868,44 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::ShowPasteProblemDialog(const std::string& src,
                                                         const std::string& reason) {
+        if (!pendingPaste) return;
         std::error_code ec;
-        const std::string name = PathToUtf8(PathFromUtf8(src).filename());
-        const std::string kind = fs::is_directory(src, ec) ? "folder" : "file";
+        const fs::path from = PathFromUtf8(src);
+        const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
+        const std::string kind = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) ? "folder" : "file";
+        const bool moving = pendingPaste->cut;
+        const std::string verb = moving ? "moved" : "copied";
+        const size_t at = pendingPaste->next;
+        const std::string folder =
+                at < pendingPaste->itemFolders.size() && !pendingPaste->itemFolders[at].empty()
+                ? pendingPaste->itemFolders[at] : pendingPaste->folder;
+        const std::string why = reason.empty() ? std::string("unknown error") : reason;
 
-        const bool moving = pendingPaste && pendingPaste->cut;
-        const std::string verb   = moving ? "moved" : "copied";
-        const std::string folder = pendingPaste ? pendingPaste->folder : std::string();
-
-        DialogConfig cfg;
-        cfg.title = moving ? "Cannot Move" : "Cannot Copy";
-        cfg.dialogType = DialogType::Warning;
-        cfg.message = "The " + kind + " \"" + name + "\" could not be " + verb + ".";
-        // The whole failure, spelled out: what was attempted, on which paths,
-        // and the operating system's own words for why it did not work. Paths
-        // go in code spans so a Windows backslash survives the Markdown pass.
-        cfg.details =
-                "**Reason:** "
-                + (reason.empty() ? std::string("unknown error") : reason) + "\n\n"
-                + "**" + (moving ? std::string("Move") : std::string("Copy")) + ":** `"
-                + src + "`\n\n"
-                + "**Into:** `"
-                + (folder.empty() ? std::string("(unknown folder)") : folder) + "`\n\n"
-                + "A " + kind + " that another program still holds open - or that is "
-                  "still being shown in a preview - cannot be " + verb + " until that "
-                  "program lets go of it. Close it and choose \"Try again\", or skip "
-                  "this " + kind + ".";
-        cfg.width = 620;
-        cfg.height = 340;
+        OperationDialogSpec spec;
+        spec.title = std::string(moving ? "Move" : "Copy") + ": a " + kind
+                   + " could not be " + verb;
+        spec.type = DialogType::Warning;
+        spec.question = "\"" + name + "\" could not be " + verb + ".";
+        // The whole failure, spelled out: the operating system's own words for
+        // why, the folder it was in and the one it was headed for.
+        spec.facts = "**Reason:** " + why
+                   + "\n\n**From:** " + FactPath(PathToUtf8(from.parent_path()))
+                   + "\n\n**Into:** " + FactPath(folder);
+        spec.note = "A " + kind + " that another program still holds open - or that is "
+                    "shown in a preview - cannot be " + verb + " until that program lets "
+                    "go of it. Close it there, then try again.";
+        spec.applyToAllLabel = "Apply to all later failures";
+        spec.buttons = {{"Try again", DialogButtonRole::Default},
+                        {"Skip", DialogButtonRole::Normal},
+                        {"Stop", DialogButtonRole::Cancel}};
+        spec.width = 620;
 
         auto self = this;
-        const bool shown = ShowProceedSkipDialog(cfg,
-                "Try again", "Skip this " + kind,
-                "Do this for all remaining items",
-                /*proceedDefault=*/true,
-                [self](bool proceed, bool all) {
+        const bool shown = ShowOperationDialog(spec,
+                [self, src, why, folder](size_t button, bool all) {
                     if (!self->pendingPaste) return;
                     PendingPaste& pp = *self->pendingPaste;
-                    if (!proceed) {
-                        if (all) pp.skipFailedForAll = true;
-                        ++pp.next;
-                        pp.currentRetried = false;
-                        pp.currentDecided = false;
-                    } else {
+                    if (button == 0) {
                         // Try again now; a stored "for all" grants every later
                         // failing entry one silent retry before asking again.
                         if (all) pp.retryFailedForAll = true;
@@ -5363,16 +5913,24 @@ namespace UltraCanvas {
                         // Keep the answer the conflict dialog gave this entry
                         // (pp.currentAction) when the worker picks it up again.
                         pp.currentDecided = true;
+                    } else if (button == 1) {
+                        if (all) pp.skipFailedForAll = true;
+                        pp.skipped.push_back({src, why, folder});
+                        ++pp.next;
+                        pp.currentRetried = false;
+                        pp.currentDecided = false;
+                    } else {
+                        // Stop keeps what was already pasted and drops the rest.
+                        self->FinishPendingPaste();
+                        return;
                     }
                     self->ContinuePendingPaste();
                 },
-                [self]() {
-                    // Cancel keeps what was already pasted and drops the rest.
-                    self->FinishPendingPaste();
-                });
+                [self]() { self->FinishPendingPaste(); });
         if (!shown) {   // dialogs disabled — the old fixed behavior
             ReportError((moving ? std::string("Move") : std::string("Copy"))
                         + " failed for " + src + ": " + reason);
+            pendingPaste->skipped.push_back({src, why, folder});
             ++pendingPaste->next;
             pendingPaste->currentRetried = false;
             pendingPaste->currentDecided = false;
@@ -5380,83 +5938,161 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // How many entries a folder holds, straight under it.
+        size_t CountDirectEntries(const std::string& folder) {
+            std::error_code ec;
+            size_t n = 0;
+            for (fs::directory_iterator it(PathFromUtf8(folder), ec), end; !ec && it != end;
+                 it.increment(ec))
+                ++n;
+            return n;
+        }
+        std::string Items(size_t n) {
+            return std::to_string(n) + (n == 1 ? " item" : " items");
+        }
+        // What tells two entries of the same name apart, for the row beside
+        // each: which is newer, or that nothing does ("same": a file of the
+        // same size and date).
+        void NewerOlderNotes(const FilerEntry& a, const FilerEntry& b,
+                             std::string& aNote, std::string& bNote) {
+            const bool identical = !a.isDirectory && !b.isDirectory &&
+                                   a.size == b.size && a.modifiedTime == b.modifiedTime;
+            if (identical)                              aNote = bNote = "same";
+            else if (a.modifiedTime == b.modifiedTime)  aNote = bNote = "same date";
+            else if (b.modifiedTime > a.modifiedTime) { aNote = "older"; bNote = "newer"; }
+            else                                      { aNote = "newer"; bNote = "older"; }
+        }
+    }
+
     void UltraCanvasFilerWidget::ShowPasteConflictDialog(const std::string& src) {
+        if (!pendingPaste) return;
+        using ItemKind = PendingPaste::ItemKind;
+        PendingPaste& pp = *pendingPaste;
         std::error_code ec;
-        const std::string name = PathToUtf8(PathFromUtf8(src).filename());
-        const bool isDir = fs::is_directory(src, ec);
+        const size_t at = pp.next;
+        const std::string folder =
+                at < pp.itemFolders.size() && !pp.itemFolders[at].empty()
+                ? pp.itemFolders[at] : pp.folder;
+        const fs::path from = PathFromUtf8(src);
+        const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
+        const std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
+        const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) &&
+                           fs::is_directory(PathFromUtf8(dest), ec);
         const std::string kind = isDir ? "folder" : "file";
+        std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
+        if (folderName.empty()) folderName = folder;
 
-        DialogConfig cfg;
-        cfg.title = isDir ? "Folder Already Exists" : "File Already Exists";
-        cfg.dialogType = DialogType::Question;
-        cfg.message = "A " + kind + " named \"" + name
-                    + "\" already exists in this folder.";
-        cfg.details = "Choose what to do with the pasted " + kind + ":";
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        cfg.width = 560;
-        cfg.height = 330;
-
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        auto self = this;
-        if (!dialog) {   // dialogs disabled — keep both, the old fixed behavior
-            pendingPaste->action = PasteConflictAction::KeepBoth;
-            pendingPaste->applyToAll = true;
-            ContinuePendingPaste();
-            return;
+        // The two of them side by side, with what tells them apart.
+        FilerEntry existing, pasted;
+        if (!StatEntryForPath(dest, existing)) {
+            existing.path = dest; existing.name = name; existing.isDirectory = isDir;
+        }
+        if (!StatEntryForPath(src, pasted)) {
+            pasted.path = src; pasted.name = name; pasted.isDirectory = isDir;
+        }
+        const size_t existingCount = isDir ? CountDirectEntries(dest) : 0;
+        const size_t pastedCount = isDir ? CountDirectEntries(src) : 0;
+        const bool identical = !isDir && existing.size == pasted.size &&
+                               existing.modifiedTime == pasted.modifiedTime;
+        std::string existingNote, pastedNote;
+        NewerOlderNotes(existing, pasted, existingNote, pastedNote);
+        if (isDir) {
+            existingNote = Items(existingCount) + ", " + existingNote;
+            pastedNote = Items(pastedCount) + ", " + pastedNote;
         }
 
-        // The action, one switch per choice (the common Keep both / Replace /
-        // Skip trio), exclusive. The last dialog's choice is preselected.
-        static const PasteConflictAction kActions[3] = {
-            PasteConflictAction::KeepBoth, PasteConflictAction::Replace,
-            PasteConflictAction::Skip,
-        };
-        size_t checkedIndex = 0;
-        for (size_t i = 0; i < 3; ++i)
-            if (kActions[i] == pendingPaste->action) checkedIndex = i;
-        AddExclusiveSwitches(dialog.get(), "FilerPasteOpt",
-                {"Keep both " + kind + "s (the pasted one is renamed)",
-                 "Replace the existing " + kind,
-                 "Skip this " + kind},
-                checkedIndex,
-                [self](size_t index) {
-                    if (self->pendingPaste)
-                        self->pendingPaste->action = kActions[index];
-                });
+        // How many more of this kind are waiting, for the scope checkbox:
+        // the entries after this one whose name is taken where they go.
+        // (What a folder still to be merged holds is not known yet.)
+        size_t remaining = 0;
+        for (size_t i = at + 1; i < pp.sources.size(); ++i) {
+            if (pp.itemKinds[i] == ItemKind::MergedFolder) continue;
+            const fs::path f = PathFromUtf8(pp.sources[i]);
+            const std::string fol = pp.itemFolders[i].empty() ? pp.folder : pp.itemFolders[i];
+            const std::string d = PathToUtf8(PathFromUtf8(fol) / f.filename());
+            if (d == pp.sources[i] || !fs::exists(PathFromUtf8(d), ec)) continue;
+            const bool folders = fs::is_directory(f, ec) && fs::is_directory(PathFromUtf8(d), ec);
+            if (folders == isDir) ++remaining;
+        }
 
-        // Scope: ask again on the next conflict (off, the default) or apply
-        // this choice to every remaining conflict of this paste.
-        auto allSwitch = UltraCanvasSwitch::Create(
-                "FilerPasteAll", 0, 0, "Do this for all remaining conflicts",
-                pendingPaste->applyToAll);
-        allSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        allSwitch->onStateChanged = [self](CheckedState, CheckedState state) {
-            if (self->pendingPaste)
-                self->pendingPaste->applyToAll = (state == CheckedState::Checked);
-        };
-        dialog->AddDialogElement(allSwitch);
+        const std::string keepBothName = PathToUtf8(PathFromUtf8(
+                UniquePathIn(folder, PathToUtf8(from.filename()))).filename());
+        const std::string moveVerb = pp.cut ? "moves" : "copies";
 
-        // The switches update pendingPaste as they are toggled, so the
-        // buttons only decide whether the paste goes on. Escape and the
-        // window's close button land in onResult as Cancel / NoResult.
-        dialog->AddCustomButton("Continue", DialogResult::Yes, nullptr);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        dialog->onResult = [self](DialogResult result) {
-            if (!self->pendingPaste) return;
-            if (result != DialogResult::Yes) {
-                // Cancel keeps what was already pasted and drops the rest.
-                self->FinishPendingPaste();
-                return;
-            }
-            // The switches wrote the choice into the queue as they were
-            // toggled; this one applies to the entry the worker stopped on,
-            // and `applyToAll` decides whether it also applies to the rest.
-            self->pendingPaste->currentAction = self->pendingPaste->action;
-            self->pendingPaste->currentDecided = true;
-            self->ContinuePendingPaste();
-        };
+        OperationDialogSpec spec;
+        spec.title = std::string(pp.cut ? "Move" : "Copy") + ": the name is already taken";
+        spec.type = DialogType::Question;
+        spec.question = isDir
+                ? "A folder \"" + name + "\" already exists in \"" + folderName + "\"."
+                : "\"" + name + "\" already exists in \"" + folderName + "\".";
+        spec.listed = {existing, pasted};
+        spec.rowLabels = {"Existing", "Pasted"};
+        spec.rowNotes = {existingNote, pastedNote};
+        spec.listVisibleRows = 2;
+        if (isDir) {
+            spec.note = "Merge " + moveVerb + " the " + Items(pastedCount)
+                      + " into the existing folder and asks about any name that is "
+                        "taken inside it. Replace deletes the existing folder and its "
+                      + Items(existingCount) + " first.";
+        } else if (identical) {
+            spec.note = "The two files have the same size and date. Keep both renames "
+                        "the pasted file to \"" + keepBothName + "\".";
+        } else {
+            spec.note = "Keep both renames the pasted file to \"" + keepBothName + "\".";
+        }
+        if (remaining > 0) {
+            spec.applyToAllLabel = "Apply to all " + std::to_string(remaining) + " remaining "
+                                 + (isDir ? "folder conflicts" : "conflicts");
+            spec.applyToAllChecked = isDir ? pp.applyToAllFolders : pp.applyToAll;
+        }
+        if (isDir) {
+            spec.buttons = {{"Merge", DialogButtonRole::Default},
+                            {"Replace", DialogButtonRole::Destructive},
+                            {"Skip", DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+        } else {
+            spec.buttons = {{"Keep both", identical ? DialogButtonRole::Normal
+                                                    : DialogButtonRole::Default},
+                            {"Replace", DialogButtonRole::Normal},
+                            {"Skip", identical ? DialogButtonRole::Default
+                                               : DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+        }
+        spec.width = 700;
 
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        auto self = this;
+        const bool shown = ShowOperationDialog(spec,
+                [self, isDir](size_t button, bool all) {
+                    if (!self->pendingPaste) return;
+                    PendingPaste& q = *self->pendingPaste;
+                    if (button >= 3) {   // Stop keeps what was pasted, drops the rest
+                        self->FinishPendingPaste();
+                        return;
+                    }
+                    static const PasteConflictAction kFile[3] = {
+                        PasteConflictAction::KeepBoth, PasteConflictAction::Replace,
+                        PasteConflictAction::Skip };
+                    static const PasteConflictAction kFolder[3] = {
+                        PasteConflictAction::Merge, PasteConflictAction::Replace,
+                        PasteConflictAction::Skip };
+                    const PasteConflictAction action = isDir ? kFolder[button] : kFile[button];
+                    if (isDir) { q.folderAction = action; q.applyToAllFolders = all; }
+                    else       { q.action = action;       q.applyToAll = all; }
+                    // This one applies to the entry the worker stopped on; the
+                    // scope decides whether it also applies to the rest.
+                    q.currentAction = action;
+                    q.currentDecided = true;
+                    self->ContinuePendingPaste();
+                },
+                [self]() { self->FinishPendingPaste(); });
+        if (!shown) {   // dialogs disabled — keep both / merge, the old fixed behavior
+            pp.action = PasteConflictAction::KeepBoth;
+            pp.applyToAll = true;
+            pp.folderAction = PasteConflictAction::Merge;
+            pp.applyToAllFolders = true;
+            ContinuePendingPaste();
+        }
     }
 
     namespace {
@@ -5473,7 +6109,7 @@ namespace UltraCanvas {
         }
 
         bool WriteFileBytes(const std::string& path, const void* data, size_t size) {
-            std::ofstream out(path, std::ios::binary);
+            std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!out) return false;
             out.write(static_cast<const char*>(data),
                       static_cast<std::streamsize>(size));
@@ -5552,7 +6188,20 @@ namespace UltraCanvas {
             if (onDone) onDone(false);
             return;
         }
+        if (TrashDeleteNeedsNoQuestion(victims, preferred)) {
+            PerformDeletion(victims, std::move(onDone), FilerDeleteMode::MoveToTrash);
+            return;
+        }
         ShowDeleteConfirmation(victims, preferred, std::move(onDone));
+    }
+
+    bool UltraCanvasFilerWidget::TrashDeleteNeedsNoQuestion(
+            const std::vector<FilerEntry>& victims, FilerDeleteMode preferred) const {
+        // The host switched the question off for the trash (the delete can
+        // be undone from there), and the trash can take these entries. A
+        // permanent delete always asks.
+        return !confirmTrashDelete && preferred == FilerDeleteMode::MoveToTrash &&
+               CanMoveToTrash(victims);
     }
 
     std::vector<FilerEntry> UltraCanvasFilerWidget::EntriesForPaths(
@@ -5562,7 +6211,7 @@ namespace UltraCanvas {
         std::error_code ec;
         for (const std::string& path : paths) {
             if (path.empty()) continue;
-            const fs::file_status st = fs::status(path, ec);
+            const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) continue;                  // gone already: nothing to do
             FilerEntry entry;
             entry.path = path;
@@ -5593,6 +6242,10 @@ namespace UltraCanvas {
             PerformDeletion(victims, nullptr, mode);
             return;
         }
+        if (TrashDeleteNeedsNoQuestion(victims, preferred)) {
+            PerformDeletion(victims, nullptr, FilerDeleteMode::MoveToTrash);
+            return;
+        }
         ShowDeleteConfirmation(victims, preferred);
     }
 
@@ -5603,7 +6256,7 @@ namespace UltraCanvas {
         // file for the trash to take, only an archive to rewrite.
         std::error_code ec;
         for (const FilerEntry& e : victims) {
-            if (!fs::exists(fs::symlink_status(e.path, ec))) return false;
+            if (!fs::exists(fs::symlink_status(UltraCanvas::PathFromUtf8(e.path), ec))) return false;
         }
         return true;
     }
@@ -5657,6 +6310,11 @@ namespace UltraCanvas {
             if (onDone) onDone(false);
             return;
         }
+        // Not the running application's own files: see the dialog.
+        if (RefuseDeletingOwnInstallation(victims)) {
+            if (onDone) onDone(false);
+            return;
+        }
         // When the delete takes the whole selection away, hand the selection
         // on to the entry that fills its place instead of leaving nothing
         // selected (SetSelectNextAfterDelete). Picked here, while the old
@@ -5704,7 +6362,7 @@ namespace UltraCanvas {
         for (const FilerEntry& e : victims) {
             // A real file/dir always wins - even if a path component looks
             // like an archive name (a real folder named "backup.zip").
-            if (!fs::exists(e.path, ec)) {
+            if (!fs::exists(PathFromUtf8(e.path), ec)) {
                 auto resolved = VirtualFS::VirtualFSPath::Resolve(e.path);
                 if (resolved.isInsideArchive && !resolved.virtualPath.empty()) {
                     auto& list = archiveVictims[resolved.realPath];
@@ -5739,6 +6397,8 @@ namespace UltraCanvas {
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
         pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
+        if (problemPolicy == FilerProblemPolicy::SkipAndReport)
+            pendingDelete->skipFailedForAll = true;   // listed in the summary
         // The removals run on the file-operation worker; the window over them
         // opens only if the delete is still going two seconds from now.
         const std::string verb = pendingDelete->toTrash
@@ -5780,7 +6440,12 @@ namespace UltraCanvas {
                 std::string trashError;
                 if (!MoveToTrash(e.path, trashError)) {
                     credit.Rollback();
-                    if (pd->skipFailedForAll) { AdvancePendingDelete(); continue; }
+                    if (pd->skipFailedForAll) {
+                        pd->skipped.push_back({e.path, trashError.empty()
+                                ? std::string("unknown error") : trashError, {}});
+                        AdvancePendingDelete();
+                        continue;
+                    }
                     if (pd->retryFailedForAll && !pd->currentRetried) {
                         pd->currentRetried = true;   // one silent retry, then ask
                         continue;
@@ -5790,9 +6455,12 @@ namespace UltraCanvas {
                     pd->stop = FileOpStop::Problem;
                     pd->stopKind = DeleteProblemKind::Failed;
                     pd->stopReason = trashError;
+                    pd->stopPath.clear();
+                    pd->stopHolders.clear();
                     return;
                 }
                 credit.Finish();
+                ++pd->removed;
                 const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
                 if (!folder.empty()) pd->modifiedFolders.push_back(folder);
                 AdvancePendingDelete();
@@ -5806,16 +6474,19 @@ namespace UltraCanvas {
                 else {
                     pd->stop = FileOpStop::Protected;
                     pd->stopKind = DeleteProblemKind::WriteProtected;
+                    pd->stopPath.clear();
+                    pd->stopHolders.clear();
                     return;
                 }
                 if (action == DeleteProblemAction::Skip) {
+                    pd->skipped.push_back({e.path, "Skipped: write-protected", {}});
                     AdvancePendingDelete();
                     continue;
                 }
                 // Delete anyway: lift the protection first — a read-only
                 // entry cannot be removed at all on Windows without this.
                 std::error_code pec;
-                fs::permissions(e.path, fs::perms::owner_write,
+                fs::permissions(PathFromUtf8(e.path), fs::perms::owner_write,
                                 fs::perm_options::add, pec);
             }
             FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
@@ -5824,7 +6495,8 @@ namespace UltraCanvas {
             // instead of jumping once it is gone.
             credit.total = CountTreeEntries(e.path, credit);
             ec.clear();
-            if (!RemoveTreeWithProgress(e.path, credit, ec)) {
+            std::string failedPath;
+            if (!RemoveTreeWithProgress(e.path, credit, ec, &failedPath)) {
                 // A removal that got part way - cancelled inside a big folder,
                 // or stopped by one locked file in it - still emptied part of
                 // the folder, and whoever shows that folder has to hear about
@@ -5840,31 +6512,68 @@ namespace UltraCanvas {
                     pd->stop = FileOpStop::Cancelled;
                     return;
                 }
-                // "Access is denied" from a standard-user process is what
-                // Explorer answers with its shield button: the entry can be
-                // deleted, just not by this user. Where the host wired the
-                // elevated helper the dialog offers that retry; the entry
-                // then waits for the one helper run at the end of the queue.
-                const bool needsPermission =
-                        ElevatedFileOperations::IsAvailable() &&
+                // The failure is about the file that refused, which inside a
+                // folder is rarely the folder: the dialog names it, and the
+                // questions below are asked of it.
+                if (failedPath == e.path) failedPath.clear();
+                const std::string& culprit = failedPath.empty() ? e.path : failedPath;
+                // "Access is denied" is two different things on Windows. A
+                // file a running program has loaded - its executable, a DLL
+                // - answers it, and no administrator can delete that either;
+                // the lock probe (Restart Manager) says who holds it. Only
+                // the rest is Explorer's shield-button case: deletable, just
+                // not by this user. Where the host wired the elevated helper
+                // the dialog offers that retry; the entry then waits for the
+                // one helper run at the end of the queue.
+                const bool permissionDenied =
+                        ec == std::errc::permission_denied ||
                         ElevatedFileOperations::IsPermissionFailure(ec);
+                std::vector<std::string> holders;
+                bool inUse = false;
+                if (permissionDenied && FileLockProbeAvailable()) {
+                    const FileLockInfo lock = ProbeFileLock(culprit, /*wantHolders=*/true);
+                    inUse = lock.Blocks() || !lock.holders.empty();
+                    holders = lock.holders;
+                }
+                const bool needsPermission = !inUse && permissionDenied &&
+                                             ElevatedFileOperations::IsAvailable();
                 if (needsPermission && pd->elevateForAll) {
                     pd->elevatedVictims.push_back(e);
                     AdvancePendingDelete();
                     continue;
                 }
-                if (pd->skipFailedForAll) { AdvancePendingDelete(); continue; }
+                std::string reason = ec ? ec.message() : std::string("unknown error");
+                if (inUse) {
+                    reason = "in use";
+                    if (!holders.empty()) {
+                        reason += " by ";
+                        for (size_t i = 0; i < holders.size(); ++i)
+                            reason += (i ? ", " : "") + holders[i];
+                    }
+                }
+                if (pd->skipFailedForAll) {
+                    pd->skipped.push_back({e.path, failedPath.empty()
+                            ? reason
+                            : PathToUtf8(PathFromUtf8(failedPath).filename()) + ": " + reason,
+                            {}});
+                    AdvancePendingDelete();
+                    continue;
+                }
                 if (pd->retryFailedForAll && !pd->currentRetried) {
                     pd->currentRetried = true;   // one silent retry, then ask
                     continue;
                 }
                 pd->stop = FileOpStop::Problem;
-                pd->stopKind = needsPermission ? DeleteProblemKind::NeedsPermission
+                pd->stopKind = inUse           ? DeleteProblemKind::InUse
+                             : needsPermission ? DeleteProblemKind::NeedsPermission
                                                : DeleteProblemKind::Failed;
                 pd->stopReason = ec ? ec.message() : std::string("unknown error");
+                pd->stopPath = failedPath;
+                pd->stopHolders = holders;
                 return;
             }
             credit.Finish();
+            ++pd->removed;
             const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
             if (!folder.empty()) pd->modifiedFolders.push_back(folder);
             AdvancePendingDelete();
@@ -5949,7 +6658,7 @@ namespace UltraCanvas {
         std::error_code ec;
         size_t gone = 0;
         for (const FilerEntry& v : pd.elevatedVictims) {
-            if (fs::exists(v.path, ec)) continue;
+            if (fs::exists(PathFromUtf8(v.path), ec)) continue;
             ++gone;
             const std::string folder = PathToUtf8(PathFromUtf8(v.path).parent_path());
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
@@ -5962,35 +6671,19 @@ namespace UltraCanvas {
         switch (result.outcome) {
             case ElevatedOutcome::Completed:
                 if (!result.failures.empty()) {
-                    // The system's reason per entry: the dialog names the
-                    // first few; without dialogs the count goes to onError.
-                    DialogConfig cfg;
-                    cfg.dialogType = DialogType::Warning;
-                    cfg.title = "Cannot Delete";
-                    cfg.width = 560;
-                    cfg.height = 280;
-                    if (result.failures.size() == 1) {
-                        cfg.message = "\"" + PathToUtf8(PathFromUtf8(result.failures.front().path).filename())
-                                + "\" could not be deleted even with administrator permission: "
-                                + result.failures.front().reason + ".";
-                    } else {
-                        cfg.message = items(result.failures.size())
-                                + " could not be deleted even with administrator permission.";
-                        std::string lines;
-                        const size_t shown = std::min<size_t>(result.failures.size(), 4);
-                        for (size_t i = 0; i < shown; ++i) {
-                            if (i) lines += "\n";
-                            lines += PathToUtf8(PathFromUtf8(result.failures[i].path).filename())
-                                    + ": " + result.failures[i].reason;
-                        }
-                        if (result.failures.size() > shown)
-                            lines += "\n… and " + items(result.failures.size() - shown) + " more";
-                        cfg.details = lines;
-                    }
-                    cfg.buttons = DialogButtons::OK;
-                    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-                    if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
-                    else        ReportError(cfg.message);
+                    // The system's reason per entry, in the summary every
+                    // delete with leftovers ends on; without dialogs the
+                    // count goes to onError.
+                    std::vector<SkippedItem> failed;
+                    for (const auto& f : result.failures)
+                        failed.push_back({f.path, f.reason, std::string()});
+                    const std::string message = result.failures.size() == 1
+                            ? "\"" + PathToUtf8(PathFromUtf8(result.failures.front().path).filename())
+                              + "\" could not be deleted even with administrator permission."
+                            : items(result.failures.size())
+                              + " could not be deleted even with administrator permission.";
+                    ShowOperationSummary("Delete finished", message, failed,
+                                         std::string(), std::string(), nullptr);
                 }
                 break;
             case ElevatedOutcome::Declined:
@@ -6021,6 +6714,7 @@ namespace UltraCanvas {
             return;
         }
         std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
+        const bool walkedToEnd = pd->stop == FileOpStop::Done;
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
         // would fold an attached preview pane away and open it again.
@@ -6038,204 +6732,326 @@ namespace UltraCanvas {
         // A caller that ran its own confirmation (DeletePaths) is told what
         // came of it, the way a paste's caller is.
         if (pd->onDone) pd->onDone(!pd->modifiedFolders.empty());
+
+        // The summary: what stayed and why, once the queue ran to its end.
+        // (Entries handed to the administrator were reported by that run.)
+        if (walkedToEnd && !pd->skipped.empty()) {
+            const bool toTrash = pd->toTrash;
+            const size_t total = pd->removed + pd->skipped.size();
+            std::string message = std::string(toTrash ? "Moved " : "Deleted ")
+                    + std::to_string(pd->removed) + " of " + std::to_string(total)
+                    + (total == 1 ? " item" : " items")
+                    + (toTrash ? " to the " + TrashDisplayName() + ". " : std::string(". "))
+                    + std::to_string(pd->skipped.size())
+                    + (pd->skipped.size() == 1 ? " was skipped." : " were skipped.");
+            std::vector<std::string> again;
+            for (const SkippedItem& item : pd->skipped) again.push_back(item.path);
+            ShowOperationSummary("Delete finished", message, pd->skipped, std::string(),
+                    "Delete skipped items again",
+                    [this, again, toTrash]() {
+                        DeletePaths(again, nullptr, toTrash ? FilerDeleteMode::MoveToTrash
+                                                            : FilerDeleteMode::Permanently);
+                    });
+        }
     }
 
     void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,
                                                          DeleteProblemKind kind,
                                                          const std::string& reason) {
+        if (!pendingDelete) return;
         const std::string kindWord = entry.isDirectory ? "folder" : "file";
         const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
         const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
+        const bool inUse = kind == DeleteProblemKind::InUse;
+        const bool toTrash = pendingDelete->toTrash;
+        const std::string name = RepairLegacyEncodedName(entry.name);
+        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        // The file inside the folder that refused, when the failure is not
+        // the entry's own: the question is about the entry the user chose,
+        // the facts name the file that stopped it.
+        const std::string culprit = pendingDelete->stopPath;
+        const std::string culpritName = culprit.empty()
+                ? std::string()
+                : RepairLegacyEncodedName(PathToUtf8(PathFromUtf8(culprit).filename()));
+        const std::vector<std::string> holders = pendingDelete->stopHolders;
+        auto entryFact = [&]() {
+            std::string facts = "**" + std::string(entry.isDirectory ? "Folder" : "File")
+                              + ":** " + FactPath(entry.path);
+            if (!culprit.empty())
+                facts += "\n\n**Stopped at:** " + FactPath(culprit);
+            return facts;
+        };
+        // Whether the file belongs to this very program: the delete is then
+        // taking the running application apart, which is what the refusal
+        // up front is for - this catches what reaches the folder from
+        // elsewhere (a link, a second copy of the installation).
+        const std::string ownDir = GetExecutableDir();
+        const bool ownFile = !ownDir.empty() &&
+                PathIsSameOrBelowCI(culprit.empty() ? entry.path : culprit, ownDir);
 
-        DialogConfig cfg;
-        cfg.dialogType = DialogType::Warning;
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        cfg.width = 560;
-        cfg.height = needsPermission ? 340 : 300;   // one switch more
-        const std::string failure = "\"" + entry.name + "\" could not be deleted: "
-                + (reason.empty() ? std::string("unknown error") : reason) + ".";
-        std::vector<std::string> choices;
-        std::string allLabel;
-        size_t defaultChoice = 0;
+        // Which button means what, per flavor (the Stop button is always last).
+        enum Answer { Proceed, TryAgain, Skip, Elevate };
+        std::vector<Answer> answers;
+
+        OperationDialogSpec spec;
+        spec.type = DialogType::Warning;
+        spec.width = 640;
         if (writeProtected) {
-            cfg.title = entry.isDirectory
-                    ? "Folder Is Write-Protected" : "File Is Write-Protected";
-            cfg.message = "\"" + entry.name + "\" is write-protected.";
-            cfg.details = "Choose what to do with the locked " + kindWord + ":";
-            choices = {"Delete it anyway", "Skip this " + kindWord};
-            defaultChoice = 1;   // skipping is the safe default for a locked entry
-            allLabel = "Do this for all remaining write-protected items";
+            spec.title = "Delete: a " + kindWord + " is write-protected";
+            spec.question = "\"" + name + "\" is write-protected.";
+            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
+                       + FactPath(entry.path)
+                       + "\n\n**Why:** the read-only attribute is set";
+            spec.note = "Delete anyway removes the protection first.";
+            spec.applyToAllLabel = "Apply to all remaining write-protected items";
+            // Skipping is the safe default for a locked entry.
+            spec.buttons = {{"Skip", DialogButtonRole::Default},
+                            {"Delete anyway", DialogButtonRole::Destructive},
+                            {"Stop", DialogButtonRole::Cancel}};
+            answers = {Skip, Proceed};
+        } else if (inUse) {
+            // A program holds the file - a running program's own executable
+            // or library, as a rule. Not a permission problem, whatever the
+            // system's wording: an administrator cannot delete it either, so
+            // the answer is to close that program, and the dialog names it.
+            spec.title = culprit.empty()
+                    ? "Delete: the " + kindWord + " is in use"
+                    : "Delete: a file in the folder is in use";
+            spec.question = culprit.empty()
+                    ? "\"" + name + "\" is in use by another program."
+                    : "\"" + culpritName + "\" in \"" + name + "\" is in use by another program.";
+            std::string facts = entryFact();
+            if (!holders.empty()) {
+                facts += "\n\n**In use by:** ";
+                for (size_t i = 0; i < holders.size(); ++i)
+                    facts += (i ? ", " : "") + holders[i];
+            }
+            facts += "\n\n**Reason:** " + why;
+            spec.facts = facts;
+            if (ownFile) {
+                spec.note = "That program is this one: it is running from the folder "
+                            "being deleted. Close it, then delete the folder from "
+                            "another file manager or from a copy started elsewhere.";
+            } else {
+                spec.note = "Close the program that holds it, then try again. "
+                            "Administrator rights do not help: a file a running "
+                            "program has loaded cannot be deleted by anyone.";
+            }
+            spec.applyToAllLabel = "Apply to all later files in use";
+            spec.buttons = {{"Skip", DialogButtonRole::Default},
+                            {"Try again", DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+            answers = {Skip, TryAgain};
         } else if (needsPermission) {
             // Explorer's "You'll need to provide administrator permission to
             // delete this file": the entry is deletable, just not by this
             // user. Windows asks for consent before the helper runs.
-            cfg.title = "Administrator Permission Needed";
-            cfg.message = failure;
-            cfg.details = "Deleting this " + kindWord + " needs administrator permission. "
-                    "Windows will ask you to confirm before it is deleted.";
-            choices = {"Delete as administrator", "Try again", "Skip this " + kindWord};
-            defaultChoice = 0;
-            allLabel = "Do this for all remaining items";
-        } else if (pendingDelete && pendingDelete->toTrash) {
+            spec.title = "Delete: administrator permission needed";
+            spec.question = culprit.empty()
+                    ? "\"" + name + "\" needs administrator permission to be deleted."
+                    : "\"" + culpritName + "\" in \"" + name
+                              + "\" needs administrator permission to be deleted.";
+            spec.facts = entryFact() + "\n\n**Reason:** " + why;
+            spec.note = "Windows asks you to confirm once, at the end, for every item "
+                        "handed to the administrator.";
+            spec.applyToAllLabel = "Apply to all later permission failures";
+            spec.buttons = {{"Delete as administrator", DialogButtonRole::Default},
+                            {"Try again", DialogButtonRole::Normal},
+                            {"Skip", DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+            answers = {Elevate, TryAgain, Skip};
+        } else if (toTrash) {
             const std::string trash = TrashDisplayName();
-            cfg.title = "Cannot Move to the " + trash;
-            cfg.message = "\"" + RepairLegacyEncodedName(entry.name) +
-                    "\" could not be moved to the " + trash + ": " +
-                    (reason.empty() ? std::string("unknown error") : reason) + ".";
-            cfg.details = "To remove it anyway, cancel and delete it with "
-                    "\"Delete permanently\" (Shift+Del).";
-            choices = {"Try again", "Skip this " + kindWord};
-            defaultChoice = 0;
-            allLabel = "Do this for all remaining items";
+            spec.title = "Delete: a " + kindWord + " could not be moved to the " + trash;
+            spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
+            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
+                       + FactPath(entry.path) + "\n\n**Reason:** " + why;
+            spec.note = "It is never deleted for good instead. To remove it anyway, "
+                        "stop and delete it with Delete permanently (Shift+Del).";
+            spec.applyToAllLabel = "Apply to all later failures";
+            spec.buttons = {{"Try again", DialogButtonRole::Default},
+                            {"Skip", DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+            answers = {TryAgain, Skip};
         } else {
-            cfg.title = "Cannot Delete";
-            cfg.message = failure;
-            cfg.details = "The " + kindWord
-                    + " may be locked or in use by another program.";
-            choices = {"Try again", "Skip this " + kindWord};
-            defaultChoice = 0;   // trying again is the default for a failure
-            allLabel = "Do this for all remaining items";
+            spec.title = "Delete: a " + kindWord + " could not be deleted";
+            spec.question = culprit.empty()
+                    ? "\"" + name + "\" could not be deleted."
+                    : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
+            spec.facts = entryFact() + "\n\n**Reason:** " + why;
+            spec.note = "The " + (culprit.empty() ? kindWord : std::string("file"))
+                        + " may be locked or in use by another program. "
+                        "Close it there, then try again.";
+            spec.applyToAllLabel = "Apply to all later failures";
+            spec.buttons = {{"Try again", DialogButtonRole::Default},
+                            {"Skip", DialogButtonRole::Normal},
+                            {"Stop", DialogButtonRole::Cancel}};
+            answers = {TryAgain, Skip};
         }
 
         auto self = this;
-        // What each switch index means, per flavor: the write-protected and
-        // failed dialogs have proceed at 0 and skip at 1; the permission
-        // dialog puts the administrator retry first, try again second.
         const FilerEntry victim = entry;   // `entry` aliases the queue
-        const bool shown = ShowProblemChoiceDialog(cfg, choices, defaultChoice, allLabel,
-                [self, kind, victim](size_t choice, bool all) {
+        // What the summary says about a skipped entry: the file that
+        // stopped it and, for one in use, who holds it.
+        std::string skipReason = why;
+        if (inUse) {
+            skipReason = "in use";
+            for (size_t i = 0; i < holders.size(); ++i)
+                skipReason += (i ? ", " : " by ") + holders[i];
+        }
+        if (!culpritName.empty()) skipReason = culpritName + ": " + skipReason;
+        const bool shown = ShowOperationDialog(spec,
+                [self, kind, victim, answers, skipReason](size_t button, bool all) {
                     if (!self->pendingDelete) return;
                     PendingDelete& pd = *self->pendingDelete;
-                    if (kind == DeleteProblemKind::WriteProtected) {
-                        const bool proceed = (choice == 0);
-                        if (all) {
-                            pd.protectedForAll = true;
-                            pd.protectedAction = proceed
-                                    ? DeleteProblemAction::Delete
-                                    : DeleteProblemAction::Skip;
-                        }
-                        if (!proceed) {
-                            self->AdvancePendingDelete();
-                        } else {
+                    if (button >= answers.size()) {   // Stop: keep what went, drop the rest
+                        self->CancelPendingDelete();
+                        return;
+                    }
+                    switch (answers[button]) {
+                        case Proceed:   // a write-protected entry: delete it anyway
+                            if (all) {
+                                pd.protectedForAll = true;
+                                pd.protectedAction = DeleteProblemAction::Delete;
+                            }
                             pd.currentDecided = true;
                             pd.currentAction = DeleteProblemAction::Delete;
-                        }
-                    } else {
-                        // Failed: 0 = try again, 1 = skip.
-                        // NeedsPermission: 0 = as administrator, 1 = try
-                        // again, 2 = skip.
-                        const bool elevate = kind == DeleteProblemKind::NeedsPermission
-                                && choice == 0;
-                        const bool skip = choice ==
-                                (kind == DeleteProblemKind::NeedsPermission ? 2u : 1u);
-                        if (elevate) {
-                            // Deferred to the one helper run at the end of
-                            // the queue; "for all" sends every later
-                            // permission failure there without asking.
+                            break;
+                        case Skip:
+                            if (kind == DeleteProblemKind::WriteProtected) {
+                                if (all) {
+                                    pd.protectedForAll = true;
+                                    pd.protectedAction = DeleteProblemAction::Skip;
+                                }
+                                pd.skipped.push_back({victim.path, "Skipped: write-protected", {}});
+                            } else {
+                                if (all) pd.skipFailedForAll = true;
+                                pd.skipped.push_back({victim.path, skipReason, {}});
+                            }
+                            self->AdvancePendingDelete();
+                            break;
+                        case Elevate:
+                            // Deferred to the one helper run at the end of the
+                            // queue; "for all" sends every later permission
+                            // failure there without asking.
                             if (all) pd.elevateForAll = true;
                             pd.elevatedVictims.push_back(victim);
                             self->AdvancePendingDelete();
-                        } else if (skip) {
-                            if (all) pd.skipFailedForAll = true;
-                            self->AdvancePendingDelete();
-                        } else {
+                            break;
+                        case TryAgain:
                             // Try again now; a stored "for all" grants every
                             // later failing entry one silent retry before
                             // asking again.
                             if (all) pd.retryFailedForAll = true;
                             pd.currentRetried = true;
-                        }
+                            break;
                     }
                     self->ContinuePendingDelete();
                 },
-                [self]() {
-                    // Cancel keeps what was already deleted and drops the rest.
-                    self->CancelPendingDelete();
-                });
+                [self]() { self->CancelPendingDelete(); });
         if (!shown) {   // dialogs disabled — the old fixed behavior
             if (writeProtected) {   // attempt the delete like before
                 pendingDelete->currentDecided = true;
                 pendingDelete->currentAction = DeleteProblemAction::Delete;
             } else {
                 ReportError("Delete failed for " + entry.path + ": " + reason);
+                pendingDelete->skipped.push_back({entry.path, why, {}});
                 AdvancePendingDelete();
             }
             ContinuePendingDelete();
         }
     }
 
-    namespace {
-        // At most this many rows in the delete confirmation's list.
-        constexpr size_t kDeletePreviewRows = 40;
-
-        // The delete confirmation's list delegate: the default one, with the
-        // file display's own icon for the entry drawn in front of the name.
-        class FilerDeletePreviewDelegate : public UltraCanvasDefaultListDelegate {
-        public:
-            std::vector<FilerEntry> entries;
-            std::function<void(IRenderContext*, const FilerEntry&, const Rect2Di&)> drawIcon;
-
-            void RenderItem(IRenderContext* ctx, const IListModel* listModel,
-                            int row, int column,
-                            const ListItemStyleOption& option) override {
-                if (column != 0 || row < 0 || row >= static_cast<int>(entries.size()) ||
-                    !drawIcon) {
-                    UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, option);
-                    return;
-                }
-                constexpr int kIcon = 16, kGap = 6, kPad = 4;
-                const Rect2Di icon(option.columnX + kPad,
-                                   option.rect.y + (option.rect.height - kIcon) / 2,
-                                   kIcon, kIcon);
-                ctx->PushState();
-                drawIcon(ctx, entries[static_cast<size_t>(row)], icon);
-                ctx->PopState();
-                ListItemStyleOption shifted = option;
-                shifted.columnX += kPad + kIcon + kGap - 6;   // the default pads by 6
-                shifted.columnWidth -= kPad + kIcon + kGap - 6;
-                UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, shifted);
+    bool UltraCanvasFilerWidget::RefuseDeletingOwnInstallation(
+            const std::vector<FilerEntry>& victims) {
+        const std::string ownDir = GetExecutableDir();
+        if (ownDir.empty() || victims.empty()) return false;
+        // A victim at or below the executable's folder takes a piece out of
+        // the running program; a victim above it takes the whole program.
+        // Either way the files it has loaded refuse to go (Windows answers
+        // "access denied", which is not a permission problem and not one an
+        // administrator can get past), and the ones it has not loaded yet
+        // go - the fonts, the icons, the plugins - and the program ends in
+        // a crash the moment it reaches for one of them. That is how the
+        // Filer, started from an unpacked download, deleted that download.
+        const FilerEntry* hit = nullptr;
+        for (const FilerEntry& v : victims) {
+            if (PathIsSameOrBelowCI(v.path, ownDir) || PathIsSameOrBelowCI(ownDir, v.path)) {
+                hit = &v;
+                break;
             }
-        };
+        }
+        if (!hit) return false;
+
+        std::string program = PathToUtf8(PathFromUtf8(ownDir).filename());
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            if (!app->GetAppName().empty()) program = app->GetAppName();
+        const std::string name = RepairLegacyEncodedName(hit->name);
+        const bool whole = PathIsSameOrBelowCI(ownDir, hit->path);
+
+        DialogConfig cfg;
+        cfg.title = "Cannot delete: " + program + " is running from here";
+        cfg.dialogType = DialogType::Warning;
+        cfg.width = 560;
+        cfg.height = 240;
+        cfg.message = whole
+                ? "\"" + name + "\" holds the " + program + " you are using right now."
+                : "\"" + name + "\" is part of the " + program + " you are using right now.";
+        cfg.details = "**Program folder:** " + FactPath(ownDir) + "\n\n"
+                      "A running program cannot delete its own files: the ones it has "
+                      "loaded refuse to go, and taking the rest away makes it crash. "
+                      "Close this " + program + " and delete the folder from another "
+                      "file manager, or from a copy of " + program + " started elsewhere.";
+        cfg.buttons = DialogButtons::OK;
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (dialog) {
+            dialog->SetStyle(DialogStyleForFonts(dialog->GetStyle()));
+            UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        } else {
+            ReportError(cfg.message + " Close it and delete the folder from elsewhere.");
+        }
+        return true;
+    }
+
+    ModalDialogStyle UltraCanvasFilerWidget::DialogStyleForFonts(
+            const ModalDialogStyle& base) const {
+        ModalDialogStyle fonts = base;
+        if (style.fontSize > 0.0f) {
+            fonts.messageFontSize = style.fontSize;
+            fonts.buttonFontSize = style.fontSize;
+        }
+        if (style.smallFontSize > 0.0f) fonts.detailsFontSize = style.smallFontSize;
+        return fonts;
     }
 
     void UltraCanvasFilerWidget::ShowDeleteConfirmation(
             const std::vector<FilerEntry>& victims, FilerDeleteMode preferred,
             std::function<void(bool changed)> onDone) {
+        if (victims.empty()) return;
         // ===== WHAT IS ABOUT TO GO =====
-        // A list of it - icon, name, size, modified - under the choice: the
+        // A list of it - icon, name, size, modified - under the facts: the
         // selected items when there are several, what the folder holds when
         // one folder is deleted (folders first, then by name, as the display
         // sorts). A single file needs none: the question already names it.
         std::vector<FilerEntry> listed;
         size_t listedTotal = 0;
         std::string listCaption;
+        std::string amount;
         if (victims.size() > 1) {
             listedTotal = victims.size();
-            size_t folders = 0;
-            uint64_t bytes = 0;
-            for (const FilerEntry& e : victims) {
-                if (e.isDirectory) ++folders;
-                else bytes += e.size;
-            }
-            const size_t files = victims.size() - folders;
-            listCaption = std::to_string(victims.size()) + " items: ";
-            if (folders) listCaption += std::to_string(folders) +
-                                        (folders == 1 ? " folder" : " folders");
-            if (folders && files) listCaption += ", ";
-            if (files) listCaption += std::to_string(files) + (files == 1 ? " file" : " files") +
-                                      " (" + FormatSize(bytes) + ")";
+            amount = DescribeEntries(victims);
             listed.assign(victims.begin(), victims.begin() +
-                          static_cast<std::ptrdiff_t>(std::min(victims.size(), kDeletePreviewRows)));
+                          static_cast<std::ptrdiff_t>(std::min(victims.size(), kOperationListRows)));
         } else if (victims.front().isDirectory) {
             const FilerEntry& folder = victims.front();
             std::error_code ec;
-            if (fs::is_directory(folder.path, ec)) {
+            if (fs::is_directory(PathFromUtf8(folder.path), ec)) {
                 // Every name first (the listing's own file type is cached, so
                 // this costs no stat per entry), then only the rows shown are
                 // stat-ed in full.
                 std::vector<std::pair<bool, std::string>> names;
-                for (fs::directory_iterator it(folder.path, ec), end; !ec && it != end;
-                     it.increment(ec)) {
+                for (fs::directory_iterator it(PathFromUtf8(folder.path), ec), end;
+                     !ec && it != end; it.increment(ec)) {
                     std::error_code dec;
                     names.emplace_back(it->is_directory(dec), PathToUtf8(it->path()));
                 }
@@ -6245,7 +7061,7 @@ namespace UltraCanvas {
                 });
                 listedTotal = names.size();
                 for (const auto& [isDir, path] : names) {
-                    if (listed.size() >= kDeletePreviewRows) break;
+                    if (listed.size() >= kOperationListRows) break;
                     FilerEntry e;
                     if (StatEntryForPath(path, e)) listed.push_back(std::move(e));
                 }
@@ -6256,7 +7072,7 @@ namespace UltraCanvas {
                 const auto inner = VirtualFS::VirtualFS_ListDirectory(folder.path);
                 listedTotal = inner.size();
                 for (const VirtualFS::VirtualFSEntry& v : inner) {
-                    if (listed.size() >= kDeletePreviewRows) break;
+                    if (listed.size() >= kOperationListRows) break;
                     FilerEntry e;
                     e.name = v.name;
                     e.path = folder.path + "/" + v.name;
@@ -6268,23 +7084,20 @@ namespace UltraCanvas {
                 }
             }
 #endif
-            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains " +
-                          std::to_string(listedTotal) + (listedTotal == 1 ? " item" : " items");
+            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains "
+                        + Items(listedTotal);
             if (listedTotal == 0) listCaption = "Folder \"" +
                     RepairLegacyEncodedName(folder.name) + "\" is empty.";
         }
         if (listedTotal > listed.size())
-            listCaption += " (first " + std::to_string(listed.size()) + " shown)";
-        // Ten rows show at once; the rest scroll.
-        constexpr int kPreviewRowHeight = 22;
-        constexpr int kPreviewHeaderHeight = 24;
-        const int visibleRows = static_cast<int>(std::min<size_t>(listed.size(), 10));
-        const int listHeight = listed.empty() ? 0
-                : kPreviewHeaderHeight + visibleRows * kPreviewRowHeight + 2;
+            listCaption += (listCaption.empty() ? "The first " : " (the first ")
+                         + std::to_string(listed.size())
+                         + (listCaption.empty() ? " of " + std::to_string(listedTotal) + " items:"
+                                                : " shown)");
 
         // The trash / permanent choice. Where the trash cannot take these
-        // entries only the permanent delete is offered, and the details line
-        // says why rather than leaving a greyed-out option unexplained.
+        // entries only the permanent delete is offered, and the note says why
+        // rather than leaving a greyed-out button unexplained.
         const std::string trash = TrashDisplayName();
         const bool trashPossible = CanMoveToTrash(victims);
         std::string noTrashWhy;
@@ -6299,124 +7112,57 @@ namespace UltraCanvas {
         const bool startInTrash =
                 trashPossible && preferred == FilerDeleteMode::MoveToTrash;
         const bool one = victims.size() == 1;
-        auto detailsFor = [trash, noTrashWhy, one](bool toTrash) {
-            if (toTrash)
-                return std::string(one ? "It" : "They") + " can be restored from the "
-                       + trash + ".";
-            return noTrashWhy.empty() ? std::string("This cannot be undone.")
-                                      : "This cannot be undone. " + noTrashWhy;
-        };
 
-        DialogConfig cfg;
-        cfg.title = "Confirm Delete";
-        cfg.dialogType = DialogType::Warning;
-        cfg.message = one
+        OperationDialogSpec spec;
+        spec.title = "Delete";
+        spec.type = DialogType::Warning;
+        spec.question = one
                 ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
                 : "Delete " + std::to_string(victims.size()) + " items?";
-        cfg.details = detailsFor(startInTrash);
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        // Room for the two choices, and for the list and its caption.
-        cfg.width = listed.empty() ? 480 : 600;
-        cfg.height = 260 + (listCaption.empty() ? 0 : 24) + (listed.empty() ? 0 : listHeight + 8);
-
-        const FilerDeleteMode startMode = startInTrash ? FilerDeleteMode::MoveToTrash
-                                                       : FilerDeleteMode::Permanently;
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (!dialog) {   // dialogs disabled — fall back to an immediate delete
-            PerformDeletion(victims, std::move(onDone), startMode);
-            return;
+        std::vector<std::string> paths;
+        for (const FilerEntry& v : victims) paths.push_back(v.path);
+        const std::string from = CommonParentFolder(paths);
+        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
+                                                   : FactPath(from));
+        if (!amount.empty()) spec.facts += "\n\n**Size:** " + amount;
+        spec.listed = std::move(listed);
+        spec.listCaption = listCaption;
+        spec.listVisibleRows = 10;
+        if (trashPossible) {
+            spec.note = "Move to " + trash + " can be undone from the " + trash
+                      + ". Delete permanently cannot be undone.";
+            spec.buttons = {{"Move to " + trash, startInTrash ? DialogButtonRole::Default
+                                                              : DialogButtonRole::Normal},
+                            {"Delete permanently", startInTrash ? DialogButtonRole::Destructive
+                                                                : DialogButtonRole::DestructiveDefault},
+                            {"Cancel", DialogButtonRole::Cancel}};
+        } else {
+            spec.note = "This cannot be undone. " + noTrashWhy;
+            spec.buttons = {{"Delete permanently", DialogButtonRole::DestructiveDefault},
+                            {"Cancel", DialogButtonRole::Cancel}};
         }
-
-        // The two radio buttons. Wired to each other rather than through an
-        // UltraCanvasRadioGroup: the group keeps a raw pointer to itself in
-        // each button, which a dialog built per delete would have to outlive.
-        // The back-references are raw for the same reason every callback's is
-        // (AGENTS.md): each radio is kept alive by the dialog that holds the
-        // callbacks, so a shared_ptr each way would be a cycle.
-        auto choice = std::make_shared<FilerDeleteMode>(startMode);
-        auto choiceBox = std::make_shared<UltraCanvasContainer>("FilerDelChoice");
-        choiceBox->layout.SetFlexColumn().SetFlexGap(6);
-        choiceBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        auto toTrash = UltraCanvasRadio::Create("FilerDelToTrash", 0, 0,
-                "Move to the " + trash, startInTrash);
-        auto permanently = UltraCanvasRadio::Create("FilerDelPermanently", 0, 0,
-                "Delete permanently", !startInTrash);
-        if (!trashPossible) toTrash->SetDisabled(true);
-        UltraCanvasModalDialog* dlg = dialog.get();
-        toTrash->onChecked = [choice, other = permanently.get(), dlg, detailsFor]() {
-            *choice = FilerDeleteMode::MoveToTrash;
-            other->SetChecked(false);
-            dlg->SetDetails(detailsFor(true));
-        };
-        permanently->onChecked = [choice, other = toTrash.get(), dlg, detailsFor]() {
-            *choice = FilerDeleteMode::Permanently;
-            other->SetChecked(false);
-            dlg->SetDetails(detailsFor(false));
-        };
-        choiceBox->AddChild(toTrash);
-        choiceBox->AddChild(permanently);
-        dialog->AddDialogElement(choiceBox);
-
-        if (!listCaption.empty()) {
-            auto caption = std::make_shared<UltraCanvasLabel>(
-                    "FilerDelPreviewCap", 0, 0, 0, 18);
-            caption->SetText(listCaption);
-            caption->SetFontSize(11);
-            caption->SetTextColor(Color(90, 90, 96, 255));
-            caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            dialog->AddDialogElement(caption);
-        }
-        if (!listed.empty()) {
-            // Name (with the display's own icon for the entry), size, date -
-            // the columns of the Details view, formatted the same way.
-            auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
-            model->AddColumn(ListColumnDef("Name", 270));
-            model->AddColumn(ListColumnDef("Size", 80, TextAlignment::Right));
-            model->AddColumn(ListColumnDef("Modified", 130));
-            for (const FilerEntry& e : listed) {
-                MultiColumnListItem item({RepairLegacyEncodedName(e.name),
-                                          e.isDirectory ? std::string() : FormatSize(e.size),
-                                          FormatTime(e.modifiedTime)});
-                item.tooltip = RepairLegacyEncodedName(e.path);
-                model->AddItem(item);
-            }
-
-            auto list = std::make_shared<UltraCanvasListView>(
-                    "FilerDelPreviewList", 0, 0, 0, listHeight);
-            ListViewStyle listStyle;
-            listStyle.showHeader = true;
-            listStyle.headerHeight = kPreviewHeaderHeight;
-            listStyle.headerFontSize = 10;
-            listStyle.rowHeight = kPreviewRowHeight;
-            listStyle.alternateRowColors = true;
-            list->SetStyle(listStyle);
-            // The icon column draws through DrawEntryIcon, so every row wears
-            // the icon the display gives that entry - type glyph or the host's
-            // icon - where the old thumbnail grid drew a picture for image
-            // files and nothing at all for everything else.
-            auto delegate = std::make_shared<FilerDeletePreviewDelegate>();
-            delegate->entries = listed;
-            delegate->drawIcon = [this](IRenderContext* ctx, const FilerEntry& e,
-                                        const Rect2Di& r) { DrawEntryIcon(ctx, e, r); };
-            delegate->SetFontSize(11);
-            delegate->SetRowHeight(kPreviewRowHeight);
-            list->SetModel(model);
-            list->SetDelegate(delegate);
-            list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            dialog->AddDialogElement(list);
-        }
+        spec.width = spec.listed.empty() ? 520 : 640;
 
         auto self = this;
         std::vector<FilerEntry> captured = victims;
-        dialog->AddCustomButton("Delete", DialogResult::Yes,
-                [self, captured, choice, onDone]() {
-            self->PerformDeletion(captured, onDone, *choice);
-        });
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel,
-                [onDone]() { if (onDone) onDone(false); });
-
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        auto done = std::make_shared<std::function<void(bool)>>(std::move(onDone));
+        const bool shown = ShowOperationDialog(spec,
+                [self, captured, done, trashPossible](size_t button, bool) {
+                    const size_t cancel = trashPossible ? 2 : 1;
+                    if (button >= cancel) {
+                        if (*done) (*done)(false);
+                        return;
+                    }
+                    const FilerDeleteMode mode = trashPossible && button == 0
+                            ? FilerDeleteMode::MoveToTrash : FilerDeleteMode::Permanently;
+                    self->PerformDeletion(captured, *done, mode);
+                },
+                [done]() { if (*done) (*done)(false); });
+        if (!shown) {   // dialogs disabled — fall back to an immediate delete
+            PerformDeletion(victims, *done,
+                            startInTrash ? FilerDeleteMode::MoveToTrash
+                                         : FilerDeleteMode::Permanently);
+        }
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
@@ -6553,7 +7299,7 @@ namespace UltraCanvas {
         // case-insensitive filesystem (Windows, macOS) "photos" -> "Photos"
         // resolves to the same directory, and rejecting it would make a
         // case-only rename impossible.
-        if (fs::exists(target, ec) && !fs::equivalent(oldPath, target, ec)) {
+        if (fs::exists(UltraCanvas::PathFromUtf8(target), ec) && !fs::equivalent(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(target), ec)) {
             ShowRenameReplaceDialog(oldPath, PathToUtf8(target));
             return;
         }
@@ -6579,7 +7325,7 @@ namespace UltraCanvas {
         if (wasOnlySelection) DeselectPathsForModification({oldPath});
 
         std::error_code ec;
-        fs::rename(oldPath, targetPath, ec);
+        fs::rename(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(targetPath), ec);
         if (ec) {
             ReportError("Rename failed for " + oldPath + ": " + ec.message());
             // Nothing moved: the entry keeps its old name, so put the
@@ -6608,45 +7354,61 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ShowRenameReplaceDialog(
             const std::string& oldPath, const std::string& targetPath) {
         std::error_code ec;
-        const std::string newName = PathToUtf8(PathFromUtf8(targetPath).filename());
-        const std::string kind = fs::is_directory(targetPath, ec) ? "folder"
-                                                                  : "file";
-        DialogConfig cfg;
-        cfg.title = "Name Already Taken";
-        cfg.dialogType = DialogType::Warning;
-        cfg.message = "A " + kind + " named \"" + newName
-                + "\" already exists in this folder.";
-        cfg.details = "Replacing it overwrites the existing " + kind
-                + ". This cannot be undone.";
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        cfg.width = 520;
-        cfg.height = 200;
+        const fs::path target = PathFromUtf8(targetPath);
+        const std::string newName = RepairLegacyEncodedName(PathToUtf8(target.filename()));
+        const std::string oldName = RepairLegacyEncodedName(
+                PathToUtf8(PathFromUtf8(oldPath).filename()));
+        const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(target), ec);
+        const std::string kind = isDir ? "folder" : "file";
 
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (!dialog) {   // dialogs disabled — refuse, the old fixed behavior
-            ReportError("Rename failed: \"" + newName + "\" already exists");
-            RequestRedraw();
-            return;
+        // The two of them side by side: the entry that has the name, and the
+        // entry about to take it.
+        FilerEntry existing, renamed;
+        if (!StatEntryForPath(targetPath, existing)) {
+            existing.path = targetPath; existing.name = newName; existing.isDirectory = isDir;
         }
+        if (!StatEntryForPath(oldPath, renamed)) {
+            renamed.path = oldPath; renamed.name = oldName;
+        }
+        std::string existingNote, renamedNote;
+        NewerOlderNotes(existing, renamed, existingNote, renamedNote);
+
+        OperationDialogSpec spec;
+        spec.title = "Rename: the name is already taken";
+        spec.type = DialogType::Warning;
+        spec.question = "A " + kind + " \"" + newName + "\" already exists in this folder.";
+        spec.facts = "**Folder:** " + FactPath(PathToUtf8(target.parent_path()));
+        spec.listed = {existing, renamed};
+        spec.rowLabels = {"Existing", "Renamed"};
+        spec.rowNotes = {existingNote, renamedNote};
+        spec.listVisibleRows = 2;
+        spec.note = "Replace deletes the existing " + kind + " and gives \"" + oldName
+                  + "\" its name. This cannot be undone.";
+        spec.buttons = {{"Replace", DialogButtonRole::DestructiveDefault},
+                        {"Cancel", DialogButtonRole::Cancel}};
+        spec.width = 640;
 
         auto self = this;
-        dialog->AddCustomButton("Replace", DialogResult::Yes, nullptr);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        dialog->onResult = [self, oldPath, targetPath](DialogResult result) {
-            if (result != DialogResult::Yes) {   // keep the old name
-                self->RequestRedraw();
-                return;
-            }
-            std::error_code rec;
-            fs::remove_all(targetPath, rec);
-            if (rec) {
-                self->ReportError("Rename could not replace " + targetPath
-                                  + ": " + rec.message());
-                return;
-            }
-            self->PerformRename(oldPath, targetPath);
-        };
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        const bool shown = ShowOperationDialog(spec,
+                [self, oldPath, targetPath](size_t button, bool) {
+                    if (button != 0) {   // keep the old name
+                        self->RequestRedraw();
+                        return;
+                    }
+                    std::error_code rec;
+                    fs::remove_all(PathFromUtf8(targetPath), rec);
+                    if (rec) {
+                        self->ReportError("Rename could not replace " + targetPath
+                                          + ": " + rec.message());
+                        return;
+                    }
+                    self->PerformRename(oldPath, targetPath);
+                },
+                [self]() { self->RequestRedraw(); });
+        if (!shown) {   // dialogs disabled — refuse, the old fixed behavior
+            ReportError("Rename failed: \"" + newName + "\" already exists");
+            RequestRedraw();
+        }
     }
 
     void UltraCanvasFilerWidget::CancelRename(bool restoreFocus) {
@@ -6810,17 +7572,17 @@ namespace UltraCanvas {
         // empty files is real work, and a ring that stands at 0 % all through
         // it is a ring that says the operation is stuck.
         std::error_code ec;
-        const fs::path root(path);
-        const fs::file_status st = fs::status(root, ec);   // follows links, as
+        const fs::path root(UltraCanvas::PathFromUtf8(path));
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(root), ec);   // follows links, as
         if (ec) return 1;                                  // the copy does
         if (!fs::is_directory(st)) {
             if (!fs::is_regular_file(st)) return 1;
-            const uintmax_t size = fs::file_size(root, ec);
+            const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(root), ec);
             return ec ? 1 : 1 + static_cast<uint64_t>(size);
         }
         uint64_t units = 1;
         std::error_code iterEc;
-        fs::recursive_directory_iterator it(root, iterEc), end;
+        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
         if (iterEc) return units;
         for (; it != end; it.increment(iterEc)) {
             if (iterEc || credit.Cancelled()) break;
@@ -6838,11 +7600,11 @@ namespace UltraCanvas {
     uint64_t UltraCanvasFilerWidget::CountTreeEntries(const std::string& path,
                                                       const FileOpItemCredit& credit) {
         std::error_code ec;
-        const fs::path root(path);
+        const fs::path root = PathFromUtf8(path);
         if (!fs::is_directory(fs::symlink_status(root, ec)) || ec) return 1;
         uint64_t entries = 1;
         std::error_code iterEc;
-        fs::recursive_directory_iterator it(root, iterEc), end;
+        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
         if (iterEc) return entries;
         for (; it != end; it.increment(iterEc)) {
             if (iterEc || credit.Cancelled()) break;
@@ -6858,10 +7620,10 @@ namespace UltraCanvas {
         ec.clear();
         credit.SetFile(PathToUtf8(PathFromUtf8(from).filename()));
         std::error_code sizeEc;
-        const uintmax_t size = fs::file_size(from, sizeEc);
+        const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(from), sizeEc);
         const uint64_t bytes = sizeEc ? 0 : static_cast<uint64_t>(size);
         if (sizeEc || bytes <= kFileOpChunkThreshold) {
-            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+            fs::copy_file(UltraCanvas::PathFromUtf8(from), UltraCanvas::PathFromUtf8(to), fs::copy_options::overwrite_existing, ec);
             if (ec) return false;
             credit.Step(1 + bytes, {});
             return true;
@@ -6870,8 +7632,8 @@ namespace UltraCanvas {
         // A big file is copied in chunks so the ring moves inside it: a single
         // four-gigabyte file is the case a percentage is most wanted for, and
         // it is also the case where Cancel must not mean "wait for the file".
-        std::ifstream in(from, std::ios::binary);
-        std::ofstream out(to, std::ios::binary | std::ios::trunc);
+        std::ifstream in(UltraCanvas::PathFromUtf8(from), std::ios::binary);
+        std::ofstream out(UltraCanvas::PathFromUtf8(to), std::ios::binary | std::ios::trunc);
         if (!in || !out) {
             ec = std::make_error_code(std::errc::io_error);
             return false;
@@ -6883,7 +7645,7 @@ namespace UltraCanvas {
                 in.close();
                 out.close();
                 std::error_code rm;
-                fs::remove(to, rm);             // half a file helps nobody
+                fs::remove(UltraCanvas::PathFromUtf8(to), rm);             // half a file helps nobody
                 return false;
             }
             in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
@@ -6902,14 +7664,14 @@ namespace UltraCanvas {
         if (readFailed || !out) {
             ec = std::make_error_code(std::errc::io_error);
             std::error_code rm;
-            fs::remove(to, rm);
+            fs::remove(UltraCanvas::PathFromUtf8(to), rm);
             return false;
         }
         // copy_file gives the copy the original's permissions; a chunked copy
         // has to do it itself, or the two halves of this function would
         // produce different files.
         std::error_code pec;
-        const fs::file_status st = fs::status(from, pec);
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
         if (!pec) fs::permissions(to, st.permissions(),
                                   fs::perm_options::replace, pec);
         return true;
@@ -6921,21 +7683,21 @@ namespace UltraCanvas {
                                                       std::error_code& ec) {
         ec.clear();
         if (credit.Cancelled()) return false;
-        const fs::path source(from);
-        const fs::path target(to);
+        const fs::path source(UltraCanvas::PathFromUtf8(from));
+        const fs::path target(UltraCanvas::PathFromUtf8(to));
         // status(), not symlink_status(): this replaces a
         // std::filesystem::copy(..., recursive) call, which follows symlinks,
         // and a copy that suddenly stopped following them would be a silent
         // change of what lands in the destination.
-        const fs::file_status st = fs::status(source, ec);
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(source), ec);
         if (ec) return false;
 
         if (fs::is_directory(st)) {
-            fs::create_directories(target, ec);
+            fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
             if (ec) return false;
             credit.Step(1, PathToUtf8(source.filename()));
             std::error_code iterEc;
-            fs::directory_iterator it(source, iterEc), end;
+            fs::directory_iterator it(UltraCanvas::PathFromUtf8(source), iterEc), end;
             if (iterEc) { ec = iterEc; return false; }
             for (; it != end; it.increment(iterEc)) {
                 if (iterEc) { ec = iterEc; return false; }
@@ -6957,7 +7719,7 @@ namespace UltraCanvas {
             return CopyFileWithProgress(from, to, credit, ec);
         // Anything else - a device node, a socket, a link the library has its
         // own idea about: hand it to the library, which knows what it can do.
-        fs::copy(source, target, fs::copy_options::recursive, ec);
+        fs::copy(UltraCanvas::PathFromUtf8(source), UltraCanvas::PathFromUtf8(target), fs::copy_options::recursive, ec);
         if (ec) return false;
         credit.Step(1, PathToUtf8(source.filename()));
         return true;
@@ -6965,22 +7727,29 @@ namespace UltraCanvas {
 
     bool UltraCanvasFilerWidget::RemoveTreeWithProgress(const std::string& path,
                                                         FileOpItemCredit& credit,
-                                                        std::error_code& ec) {
+                                                        std::error_code& ec,
+                                                        std::string* failedPath) {
         ec.clear();
         if (credit.Cancelled()) return false;
-        const fs::path victim(path);
+        const fs::path victim = PathFromUtf8(path);
+        // Whatever fails below is about this entry unless a deeper call
+        // already named a deeper one.
+        auto failedHere = [&]() {
+            if (failedPath && failedPath->empty()) *failedPath = path;
+            return false;
+        };
         // symlink_status: a link is removed as the link it is and never
         // followed - std::filesystem::remove_all's rule, and the one that
         // keeps a link into somebody's home folder from taking the home
         // folder with it.
         std::error_code statEc;
-        const fs::file_status st = fs::symlink_status(victim, statEc);
+        const fs::file_status st = fs::symlink_status(UltraCanvas::PathFromUtf8(victim), statEc);
         // Nothing there is not a failure: std::filesystem::remove_all says as
         // much by answering 0 for a path that is not there, and a delete whose
         // entry vanished under it (a folder watcher, another program) must not
         // stop the queue with a dialog about it.
         if (st.type() == fs::file_type::not_found) return true;
-        if (statEc) { ec = statEc; return false; }
+        if (statEc) { ec = statEc; return failedHere(); }
         if (fs::is_directory(st)) {
             // Reading a directory while unlinking out of it may skip entries
             // (POSIX leaves it unspecified), so the pass is repeated until it
@@ -6990,19 +7759,32 @@ namespace UltraCanvas {
                 bool sawEntry = false;
                 std::error_code iterEc;
                 fs::directory_iterator it(victim, iterEc), end;
-                if (iterEc) { ec = iterEc; return false; }
+                if (iterEc) { ec = iterEc; return failedHere(); }
                 for (; it != end; it.increment(iterEc)) {
-                    if (iterEc) { ec = iterEc; return false; }
+                    if (iterEc) { ec = iterEc; return failedHere(); }
                     if (credit.Cancelled()) return false;
                     sawEntry = true;
-                    if (!RemoveTreeWithProgress(PathToUtf8(it->path()), credit, ec))
+                    if (!RemoveTreeWithProgress(PathToUtf8(it->path()), credit, ec,
+                                                failedPath))
                         return false;
                 }
                 if (!sawEntry) break;
             }
         }
         fs::remove(victim, ec);
-        if (ec) return false;
+        if (ec == std::errc::permission_denied && !fs::is_directory(st)) {
+            // A read-only file inside the folder: Windows refuses to delete
+            // it with the same "access denied" a real permission problem
+            // gives. The entry's own write protection was lifted before the
+            // attempt (or asked about); one inside it is lifted here, so a
+            // folder unpacked with its read-only bits goes in one pass and
+            // without a question about administrator rights it never needed.
+            std::error_code pec;
+            fs::permissions(victim, fs::perms::owner_write,
+                            fs::perm_options::add, pec);
+            if (!pec) fs::remove(victim, ec);
+        }
+        if (ec) return failedHere();
         credit.Step(1, PathToUtf8(victim.filename()));
         return true;
     }
@@ -7027,6 +7809,11 @@ namespace UltraCanvas {
         fileOp->caption = caption;
         fileOp->started = std::chrono::steady_clock::now();
         fileOp->totalUnits.store(std::max<uint64_t>(1, itemCount) * kFileOpItemUnits);
+        // Until the progress window is due the pointer says something is
+        // going on - a stalled network volume is not two seconds of nothing.
+        // Shown at once, held until the window opens or the operation ends.
+        if (auto* win = GetWindow())
+            win->ShowBusyPointer(0, static_cast<int>(progressWindowDelayMs) + 1000);
         if (auto* app = UltraCanvasApplication::GetInstance())
             fileOp->timer = app->StartTimer(kFileOpPollIntervalMs, true,
                                             [this](TimerId) { PollFileOperation(); });
@@ -7084,8 +7871,10 @@ namespace UltraCanvas {
         if (!stretchEnded && op->running.load() && !op->dialogDue &&
             !op->cancelled.load()) {
             const auto elapsed = std::chrono::steady_clock::now() - op->started;
-            if (elapsed >= std::chrono::milliseconds(kFileOpProgressDelayMs)) {
+            if (elapsed >= std::chrono::milliseconds(progressWindowDelayMs)) {
                 op->dialogDue = true;
+                // The window takes over from the busy pointer.
+                if (auto* win = GetWindow()) win->HideBusyPointer();
                 // The window is measured from the start of the whole
                 // operation, not of this stretch: a paste that spent the first
                 // two seconds in a conflict dialog does not start the wait
@@ -7152,6 +7941,7 @@ namespace UltraCanvas {
         }
         if (op->worker.joinable()) op->worker.join();
         if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
+        if (auto* win = GetWindow()) win->HideBusyPointer();
         FlushFileOperationErrors();
         fileOp.reset();
     }
@@ -7252,7 +8042,7 @@ namespace UltraCanvas {
         // already wrote - those are real files the user may still want.
         if (cancelled && job->packing && !job->destination.empty()) {
             std::error_code ec;
-            fs::remove(job->destination, ec);
+            fs::remove(PathFromUtf8(job->destination), ec);
         }
         if (job->onFinished) job->onFinished(ok, cancelled);
     }
@@ -7321,11 +8111,11 @@ namespace UltraCanvas {
             const FilerEntry& e = pe.archives[pe.next];
             const std::string destDir =
                     PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(e.name).stem());
-            if (fs::exists(destDir, ec) && !pe.applyToAll) {
+            if (fs::exists(UltraCanvas::PathFromUtf8(destDir), ec) && !pe.applyToAll) {
                 ShowExtractConflictDialog(e);
                 return;
             }
-            if (!ExtractCurrentAndAdvance(fs::exists(destDir, ec)
+            if (!ExtractCurrentAndAdvance(fs::exists(UltraCanvas::PathFromUtf8(destDir), ec)
                                                   ? pe.action
                                                   : PasteConflictAction::KeepBoth))
                 return;   // running on the archive worker; it resumes the queue
@@ -7351,13 +8141,13 @@ namespace UltraCanvas {
         if (archiveJob) return false;   // a job is already running
 
         const std::string baseName = PathToUtf8(PathFromUtf8(e.name).stem());
-        std::string destDir = PathToUtf8(PathFromUtf8(currentPath) / baseName);
+        std::string destDir = PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(baseName));
         std::error_code ec;
         // Keep both renames the destination; Replace merges the archive
         // content into the existing folder.
-        if (action == PasteConflictAction::KeepBoth && fs::exists(destDir, ec))
+        if (action == PasteConflictAction::KeepBoth && fs::exists(UltraCanvas::PathFromUtf8(destDir), ec))
             destDir = UniqueChildPath(baseName);
-        fs::create_directories(destDir, ec);
+        fs::create_directories(UltraCanvas::PathFromUtf8(destDir), ec);
 
         // Initialize on the UI thread: the worker must not be the first caller
         // to build the VirtualFS provider registry.
@@ -7404,59 +8194,45 @@ namespace UltraCanvas {
         cfg.height = 330;
 
         auto self = this;
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (!dialog) {   // dialogs disabled — keep both, the old fixed behavior
+        OperationDialogSpec spec;
+        spec.title = "Extract: the folder name is already taken";
+        spec.type = DialogType::Question;
+        spec.question = cfg.message;
+        spec.facts = "**Archive:** " + FactPath(archive.path)
+                   + "\n\n**Folder:** " + FactPath(PathToUtf8(
+                             PathFromUtf8(archive.path).parent_path() / folderName));
+        spec.note = "Keep both extracts into a renamed folder; Extract into existing "
+                    "adds the archive's entries to the folder that is there.";
+        if (pendingExtract->archives.size() > pendingExtract->next + 1)
+            spec.applyToAllLabel = "Apply to all remaining archives";
+        spec.applyToAllChecked = pendingExtract->applyToAll;
+        spec.buttons = {{"Keep both", DialogButtonRole::Default},
+                        {"Extract into existing", DialogButtonRole::Normal},
+                        {"Skip", DialogButtonRole::Normal},
+                        {"Stop", DialogButtonRole::Cancel}};
+        spec.width = 640;
+        const bool shown = ShowOperationDialog(spec,
+                [self](size_t button, bool all) {
+                    if (!self->pendingExtract) return;
+                    if (button >= 3) {   // Stop keeps what was extracted, drops the rest
+                        self->FinishPendingExtract();
+                        return;
+                    }
+                    static const PasteConflictAction kActions[3] = {
+                        PasteConflictAction::KeepBoth, PasteConflictAction::Replace,
+                        PasteConflictAction::Skip,
+                    };
+                    self->pendingExtract->action = kActions[button];
+                    self->pendingExtract->applyToAll = all;
+                    self->ExtractCurrentAndAdvance(self->pendingExtract->action);
+                    self->ContinuePendingExtract();
+                },
+                [self]() { self->FinishPendingExtract(); });
+        if (!shown) {   // dialogs disabled — keep both, the old fixed behavior
             pendingExtract->action = PasteConflictAction::KeepBoth;
             pendingExtract->applyToAll = true;
             ContinuePendingExtract();
-            return;
         }
-
-        // The destination, one exclusive switch per choice. The last
-        // dialog's choice is preselected.
-        static const PasteConflictAction kActions[3] = {
-            PasteConflictAction::KeepBoth, PasteConflictAction::Replace,
-            PasteConflictAction::Skip,
-        };
-        size_t checkedIndex = 0;
-        for (size_t i = 0; i < 3; ++i)
-            if (kActions[i] == pendingExtract->action) checkedIndex = i;
-        AddExclusiveSwitches(dialog.get(), "FilerExtractOpt",
-                {"Keep both (extract into a renamed folder)",
-                 "Extract into the existing folder",
-                 "Skip this archive"},
-                checkedIndex,
-                [self](size_t index) {
-                    if (self->pendingExtract)
-                        self->pendingExtract->action = kActions[index];
-                });
-
-        // Scope: ask again on the next conflict (off, the default) or apply
-        // this choice to every remaining archive of this extract.
-        auto allSwitch = UltraCanvasSwitch::Create(
-                "FilerExtractAll", 0, 0, "Do this for all remaining archives",
-                pendingExtract->applyToAll);
-        allSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        allSwitch->onStateChanged = [self](CheckedState, CheckedState state) {
-            if (self->pendingExtract)
-                self->pendingExtract->applyToAll =
-                        (state == CheckedState::Checked);
-        };
-        dialog->AddDialogElement(allSwitch);
-
-        dialog->AddCustomButton("Continue", DialogResult::Yes, nullptr);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        dialog->onResult = [self](DialogResult result) {
-            if (!self->pendingExtract) return;
-            if (result != DialogResult::Yes) {
-                // Cancel keeps what was already extracted and drops the rest.
-                self->FinishPendingExtract();
-                return;
-            }
-            self->ExtractCurrentAndAdvance(self->pendingExtract->action);
-            self->ContinuePendingExtract();
-        };
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 #endif   // ULTRACANVAS_HAS_VIRTUALFS
 
@@ -7758,34 +8534,34 @@ namespace UltraCanvas {
         if (baseName.empty()) baseName = d.extractMode ? "Extracted" : "archive";
 
         std::error_code ec;
-        fs::path dir(d.destDir.empty() ? currentPath : d.destDir);
-        if (!fs::is_directory(dir, ec)) dir = currentPath;
+        fs::path dir = PathFromUtf8(d.destDir.empty() ? currentPath : d.destDir);
+        if (!fs::is_directory(dir, ec)) dir = PathFromUtf8(currentPath);
 
         if (d.extractMode) {
             // The name is the destination folder the archives unpack into.
-            fs::path target = dir / baseName;
+            fs::path target = dir / PathFromUtf8(baseName);
             int n = 2;
-            while (fs::exists(target, ec))
-                target = dir / (baseName + " (" + std::to_string(n++) + ")");
-            fs::create_directories(target, ec);
-            if (ec || !fs::is_directory(target, ec)) {
+            while (fs::exists(UltraCanvas::PathFromUtf8(target), ec))
+                target = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")");
+            fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
+            if (ec || !fs::is_directory(UltraCanvas::PathFromUtf8(target), ec)) {
                 ReportError("Extraction failed: cannot create " + PathToUtf8(target));
                 return;
             }
             std::vector<std::pair<std::string, std::string>> jobs;
             for (const std::string& src : d.sourcePaths) {
-                fs::path dest = target;
+                fs::path dest = UltraCanvas::PathFromUtf8(target);
                 if (d.sourcePaths.size() > 1) {
                     // Several archives: each unpacks into its own subfolder so
                     // their contents cannot collide.
                     std::string stem =
                             ArchiveBaseNameOf(PathToUtf8(PathFromUtf8(src).filename()), false);
                     if (stem.empty()) stem = "archive";
-                    dest = target / stem;
+                    dest = target / PathFromUtf8(stem);
                     int m = 2;
-                    while (fs::exists(dest, ec))
-                        dest = target / (stem + " (" + std::to_string(m++) + ")");
-                    fs::create_directories(dest, ec);
+                    while (fs::exists(UltraCanvas::PathFromUtf8(dest), ec))
+                        dest = target / PathFromUtf8(stem + " (" + std::to_string(m++) + ")");
+                    fs::create_directories(UltraCanvas::PathFromUtf8(dest), ec);
                 }
                 jobs.emplace_back(src, PathToUtf8(dest));
             }
@@ -7798,10 +8574,10 @@ namespace UltraCanvas {
 
         // Uniquify while keeping the full (possibly compound) extension intact,
         // so ".tar.gz" stays ".tar.gz" rather than becoming ".tar (2).gz".
-        fs::path candidate = dir / (baseName + "." + ext);
+        fs::path candidate = dir / PathFromUtf8(baseName + "." + ext);
         int n = 2;
-        while (fs::exists(candidate, ec)) {
-            candidate = dir / (baseName + " (" + std::to_string(n++) + ")." + ext);
+        while (fs::exists(UltraCanvas::PathFromUtf8(candidate), ec)) {
+            candidate = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")." + ext);
         }
         std::string dest = PathToUtf8(candidate);
 
@@ -8126,10 +8902,10 @@ namespace UltraCanvas {
         }
         std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
         if (!type.templatePath.empty() && fs::exists(type.templatePath, ec)) {
-            fs::copy_file(type.templatePath, dest, ec);
+            fs::copy_file(type.templatePath, UltraCanvas::PathFromUtf8(dest), ec);
             if (ec) { ReportError("New document failed: " + ec.message()); return; }
         } else {
-            std::ofstream out(dest, std::ios::binary);
+            std::ofstream out(UltraCanvas::PathFromUtf8(dest), std::ios::binary);
             if (!out) { ReportError("New document failed: " + dest); return; }
         }
         Refresh();
@@ -8171,7 +8947,7 @@ namespace UltraCanvas {
             return;
         }
         const std::string dest = UniqueChildPath("New folder");
-        fs::create_directory(dest, ec);
+        fs::create_directory(UltraCanvas::PathFromUtf8(dest), ec);
         if (ec) {
             ReportError("New folder failed: " + ec.message());
             return;
@@ -8236,7 +9012,7 @@ namespace UltraCanvas {
         std::error_code ec;
         for (const FilerEntry& e : sel) {
             if (e.isDirectory) continue;
-            if (!fs::is_regular_file(e.path, ec) || ec) continue;
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(e.path), ec) || ec) continue;
             paths.push_back(e.path);
         }
         if (paths.empty()) return;
@@ -8278,9 +9054,10 @@ namespace UltraCanvas {
         ReportError("\"" + name + "\" was extracted only in part - some entries were skipped");
 
         // The extractor's text: a heading per kind of problem, ending in ':',
-        // then one entry per line. Headings become paragraphs of their own,
-        // entries the lines under them; entry names are shown decoded.
-        std::string details;
+        // then one entry per line. The heading is the reason beside each of
+        // the entries under it; entry names are shown decoded.
+        std::vector<SkippedItem> skipped;
+        std::string reason;
         size_t start = 0;
         while (start <= detail.size()) {
             size_t end = detail.find('\n', start);
@@ -8289,25 +9066,22 @@ namespace UltraCanvas {
             start = end + 1;
             if (line.empty()) continue;
             if (line.back() == ':') {
-                if (!details.empty()) details += "\n\n";
-                details += line;
+                reason = line.substr(0, line.size() - 1);
             } else {
-                details += "\n" + RepairLegacyEncodedName(line);
+                skipped.push_back({RepairLegacyEncodedName(line),
+                                   reason.empty() ? std::string("skipped") : reason,
+                                   std::string()});
             }
         }
-
-        DialogConfig cfg;
-        cfg.title = "Extraction Incomplete";
-        cfg.dialogType = DialogType::Warning;
-        cfg.message = "Not everything in \"" + name + "\" was extracted. "
-                      "The rest of the archive was unpacked.";
-        cfg.details = details;
-        cfg.buttons = DialogButtons::OK;
-        cfg.width = 600;
-        cfg.height = 340;
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
-        else        ReportError(cfg.message + " " + details);
+        const std::string message = "Not everything in \"" + name + "\" was extracted. "
+                                    "The rest of the archive was unpacked.";
+        if (skipped.empty()) {   // text in a shape not expected: still say it
+            ReportError(message + " " + detail);
+            return;
+        }
+        ShowOperationSummary("Extraction incomplete", message, skipped,
+                             "**Archive:** " + FactPath(archivePath),
+                             std::string(), nullptr);
     }
 
     // ===== EXTRACT AND RUN =====
@@ -8568,6 +9342,7 @@ namespace UltraCanvas {
             if (!fileListMode &&
                 kDetailsColumnSpecs[i].id == FilerDetailsColumn::Path)
                 continue;
+            if (i != 0 && (hiddenDetailsColumns & (1u << i))) continue;
             vis.push_back(i);
         }
         return vis;
@@ -8606,7 +9381,8 @@ namespace UltraCanvas {
             ItemLayout it;
             it.entryIndex = i;
             it.rect = Rect2Di(area.x, y, x - area.x, rowH);
-            it.imageRect = Rect2Di(area.x + 4, y + 3, rowH - 6, rowH - 6);
+            it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
+                                   rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
@@ -8626,8 +9402,8 @@ namespace UltraCanvas {
             it.entryIndex = i;
             it.rect = Rect2Di(area.x + col * (colW + gap), area.y + row * rowH,
                               colW, rowH);
-            it.imageRect = Rect2Di(it.rect.x + 2, it.rect.y + 2,
-                                   rowH - 4, rowH - 4);
+            it.imageRect = Rect2Di(it.rect.x + 2 + FavoriteMarkGutter(),
+                                   it.rect.y + 2, rowH - 4, rowH - 4);
             items.push_back(it);
         }
         int cols = (static_cast<int>(entries.size()) + rowsPerColumn - 1)
@@ -8728,7 +9504,8 @@ namespace UltraCanvas {
             ItemLayout it;
             it.entryIndex = i;
             it.rect = Rect2Di(area.x, y, area.width - kScrollbarGutter, rowH);
-            it.imageRect = Rect2Di(area.x + 4, y + 3, rowH - 6, rowH - 6);
+            it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
+                                   rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
@@ -9163,6 +9940,11 @@ namespace UltraCanvas {
                 // Render.
                 DrawEmptyState(ctx, bounds,
                                "No matches for \"" + nameFilter + "\"");
+            } else if (typeFilteredCount > 0 &&
+                       fileTypeFilterMode == FilerTypeFilterMode::Hide) {
+                // The folder has files, just none of the type the host asked
+                // for - "Folder is empty!" would send the user elsewhere.
+                DrawEmptyState(ctx, bounds, "No files of the chosen type");
             } else if (!listingPendingStatus.empty()) {
                 // A remote folder still on its way: what is happening, under
                 // a turning ring - not "empty", which it may well not be.
@@ -9202,6 +9984,16 @@ namespace UltraCanvas {
             if (top + item.rect.height < bounds.y || top > bounds.y + bounds.height) continue;
             if (left + item.rect.width < bounds.x || left > bounds.x + bounds.width) continue;
             bool hov = (static_cast<int>(item.entryIndex) == hoveredIndex);
+            // A file the type filter does not ask for (ShowDimmed) is drawn
+            // greyed out as a whole - name, columns, icon or thumbnail, the
+            // badges on it - through the context's global alpha, the way a
+            // disabled button fades its icon. Hidden-mode filtering never
+            // gets here: those entries are not in the listing.
+            const bool dimmed = IsDimmedEntry(entries[item.entryIndex]);
+            if (dimmed) {
+                ctx->PushState();
+                ctx->SetAlpha(dimmedEntryOpacity);
+            }
             switch (viewType) {
                 case FilerViewType::Details: DrawDetailsRow(ctx, item, hov); break;
                 case FilerViewType::List:    DrawListItem(ctx, item, hov); break;
@@ -9209,6 +10001,9 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            if (favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]))
+                DrawFavoriteMark(ctx, item);
+            if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
             if (IsCutEntry(entries[item.entryIndex])) {
@@ -9877,6 +10672,15 @@ namespace UltraCanvas {
         // a moment is longer than the microseconds an immediate retry takes.
         constexpr uint8_t kUnreadableMaxAttempts = 4;
         constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
+        // A job that has kept a worker this long is taken to be stuck - a
+        // video in a cloud folder being downloaded in full before its first
+        // frame can be read, a file on a drive that stopped answering, a
+        // shell call that never returns. Nothing can interrupt it, but with
+        // every worker on such a job no other thumbnail in any folder was
+        // made again for the rest of the session; so for each stuck job one
+        // more worker is started, up to kThumbExtraWorkersMax.
+        constexpr auto kThumbJobStuckAfter = std::chrono::seconds(20);
+        constexpr unsigned kThumbExtraWorkersMax = 8;
 
         // ===== FOLDER CONTENT PREVIEWS =====
         // Below this icon edge a picture inside a folder is a smudge: the
@@ -9908,7 +10712,7 @@ namespace UltraCanvas {
         bool PeekFolderContents(const std::string& path,
                                 std::vector<FilerEntry>& out) {
             std::error_code ec;
-            fs::directory_iterator it(path, ec);
+            fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) return false;
             auto lessByName = [](const FilerEntry& a, const FilerEntry& b) {
                 const size_t n = std::min(a.name.size(), b.name.size());
@@ -9988,7 +10792,7 @@ namespace UltraCanvas {
         // moments ago is given the same benefit of the doubt.
         bool WrittenVeryRecently(const std::string& path) {
             std::error_code ec;
-            const auto written = fs::last_write_time(path, ec);
+            const auto written = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) return false;
             const auto age = fs::file_time_type::clock::now() - written;
             // A timestamp in the future (a clock that was set back, a file
@@ -10419,13 +11223,39 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
-        if (!thumbWorkers.empty() || thumbShutdown) return;
-        unsigned hw = std::thread::hardware_concurrency();
-        unsigned count = std::min(4u, std::max(1u, hw / 2));
-        thumbWorkers.reserve(count);
-        for (unsigned i = 0; i < count; ++i) {
+        if (thumbShutdown) return;
+        if (thumbWorkers.empty()) {
+            unsigned hw = std::thread::hardware_concurrency();
+            thumbWorkerBase = std::min(4u, std::max(1u, hw / 2));
+            thumbWorkers.reserve(thumbWorkerBase + kThumbExtraWorkersMax);
+            for (unsigned i = 0; i < thumbWorkerBase; ++i)
+                thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+            return;
+        }
+        // Watchdog: one more worker for every job that has run past
+        // kThumbJobStuckAfter, so the stuck ones no longer hold up the rest.
+        const auto now = std::chrono::steady_clock::now();
+        unsigned stuck = 0;
+        const std::string* stuckKey = nullptr;
+        for (const auto& [key, started] : thumbJobsStarted) {
+            if (now - started < kThumbJobStuckAfter) continue;
+            ++stuck;
+            stuckKey = &key;
+        }
+        const unsigned target =
+                thumbWorkerBase + std::min(stuck, kThumbExtraWorkersMax);
+        while (thumbWorkers.size() < target) {
+            debugOutput << "UltraCanvasFilerWidget: a thumbnail job has run for "
+                        << "over 20 s (" << (stuckKey ? *stuckKey : std::string())
+                        << "); starting another worker" << std::endl;
             thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteThumbJobLocked(const std::string& key,
+                                                    bool running) {
+        if (running) thumbJobsStarted[key] = std::chrono::steady_clock::now();
+        else thumbJobsStarted.erase(key);
     }
 
     void UltraCanvasFilerWidget::StopThumbnailWorkers() {
@@ -10452,6 +11282,7 @@ namespace UltraCanvas {
         thumbNativeBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
+        thumbFailedPaths.clear();
         textQueue.clear();
         textSlots.clear();
         peekQueue.clear();
@@ -10490,6 +11321,17 @@ namespace UltraCanvas {
         // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
         if (!ThumbnailEnabledFor(e)) return 0.0f;
+        {
+            // A picture whose thumbnail could not be made is drawn as its
+            // type glyph, and a glyph needs the whole square: a row shortened
+            // for the picture squeezed the glyph instead, so a folder whose
+            // thumbnails failed showed its glyphs at two sizes - one per row,
+            // changing whenever the thumbnail switches were touched.
+            const std::string& src =
+                    e.thumbnailPath.empty() ? e.path : e.thumbnailPath;
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            if (thumbFailedPaths.count(src) != 0) return 0.0f;
+        }
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -10530,7 +11372,27 @@ namespace UltraCanvas {
         st.iconBudget = kNativeIconBudgetBytes;
         st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
+        st.inFlightEntries = thumbPathsInFlight.size();
+        st.workerCount = thumbWorkers.size();
+        const auto now = std::chrono::steady_clock::now();
+        for (const auto& [key, started] : thumbJobsStarted) {
+            const int secs = static_cast<int>(
+                    std::chrono::duration_cast<std::chrono::seconds>(
+                            now - started).count());
+            if (st.longestJobPath.empty() || secs > st.longestJobSeconds) {
+                st.longestJobSeconds = secs;
+                st.longestJobPath = key.substr(key.find(':') + 1);
+            }
+        }
         for (const auto& kv : thumbSlots) {
+            if (kv.second.state == ThumbState::Pending) {
+                ++st.pendingEntries;
+                continue;
+            }
+            if (kv.second.state == ThumbState::Failed) {
+                ++st.failedEntries;
+                continue;
+            }
             if (kv.second.state != ThumbState::Ready) continue;
             ++st.entries;
             st.storedBytes += kv.second.bytes;
@@ -10610,6 +11472,7 @@ namespace UltraCanvas {
                         req = std::move(*qit);
                         thumbQueue.erase(qit);
                         thumbPathsInFlight.insert(req.path);
+                        NoteThumbJobLocked("image:" + req.path, true);
                         break;
                     }
                     // Nothing to decode: read a text-content preview instead.
@@ -10633,6 +11496,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         textPathsInFlight.insert(*tit);
+                        NoteThumbJobLocked("text:" + *tit, true);
                         textGeneration = thumbGeneration;
                         textPath = std::move(*tit);
                         textQueue.erase(tit);
@@ -10653,6 +11517,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         peekPathsInFlight.insert(*pit);
+                        NoteThumbJobLocked("folder:" + *pit, true);
                         peekGeneration = thumbGeneration;
                         peekPath = std::move(*pit);
                         peekQueue.erase(pit);
@@ -10677,6 +11542,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     peekPathsInFlight.erase(peekPath);
+                    NoteThumbJobLocked("folder:" + peekPath, false);
                     if (thumbShutdown) return;
                     if (peekGeneration == thumbGeneration) {
                         FolderPeekSlot& slot = peekSlots[peekPath];
@@ -10707,6 +11573,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     textPathsInFlight.erase(textPath);
+                    NoteThumbJobLocked("text:" + textPath, false);
                     if (thumbShutdown) return;
                     if (textGeneration == thumbGeneration) {
                         TextPreviewSlot& slot = textSlots[textPath];
@@ -10905,6 +11772,7 @@ namespace UltraCanvas {
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
                 thumbPathsInFlight.erase(req.path);
+                NoteThumbJobLocked("image:" + req.path, false);
                 if (thumbShutdown) return;
                 if (req.generation == thumbGeneration) {
                     const std::string key = ThumbSlotKey(req.path, req.w, req.h,
@@ -10965,6 +11833,10 @@ namespace UltraCanvas {
                         } else {
                             slot.state = ThumbState::Failed;
                             producedNothing = true;
+                            // Its row no longer shrinks for it (EntryAspect).
+                            if (!nativeIcon &&
+                                thumbFailedPaths.insert(req.path).second)
+                                thumbFailuresChanged.store(true);
                         }
                     }
                     report = true;
@@ -11174,6 +12046,9 @@ namespace UltraCanvas {
         app->PostToUIThread([this, alive]() {
             if (!alive->load()) return;   // widget destroyed meanwhile
             thumbRedrawPosted.store(false);
+            // A picture given up on gives its row back the full height.
+            if (thumbFailuresChanged.exchange(false) && shrinkThumbnailRows)
+                InvalidateFilerLayout();
             RequestRedraw();
         });
     }
@@ -11406,6 +12281,69 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(ink);
         ctx->SetStrokeWidth(std::max(1.0f, static_cast<float>(box * 0.09)));
         ctx->DrawArc(body.x + bodyW / 2.0, body.y, shackleR, M_PI, 2.0 * M_PI);
+    }
+
+    int UltraCanvasFilerWidget::FavoriteMarkGutter() const {
+        // Room for a heart of up to 12 px plus a pixel either side. Only the
+        // row views use it; tiles and treemap cells have space of their own.
+        return favoriteMarkProvider ? 14 : 0;
+    }
+
+    void UltraCanvasFilerWidget::DrawFavoriteMark(IRenderContext* ctx,
+                                                  const ItemLayout& item) {
+        // Where it goes: the outermost left of the item, vertically centred
+        // on the row - or, on a tile, on the icon box, so the heart sits
+        // beside the picture rather than beside the caption.
+        int edge = 0;
+        double left = item.rect.x + 1.0;
+        double midY = item.rect.y + item.rect.height / 2.0;
+        switch (viewType) {
+            case FilerViewType::Details:
+            case FilerViewType::List:
+            case FilerViewType::BarSize:
+                edge = std::min(12, std::max(0, item.rect.height - 6));
+                break;
+            case FilerViewType::TreeMap:
+                // A cell too small to also carry the heart keeps its colour:
+                // the treemap is about sizes, and a heart would hide them.
+                if (item.rect.width < 46 || item.rect.height < 42) return;
+                edge = 12;
+                left = item.rect.x + 4.0;
+                break;
+            default:
+                edge = std::max(12, std::min(20, static_cast<int>(
+                        std::lround(item.imageRect.height * 0.2))));
+                left = item.rect.x + 3.0;
+                midY = item.imageRect.y + item.imageRect.height / 2.0;
+                break;
+        }
+        if (edge < 8) return;
+
+        // The heart of the toolbar's Favorites button (rating-heart-on.svg):
+        // its 24-unit outline, which spans x 2..22 and y 3..21.35, scaled to
+        // `edge` across.
+        const double k = edge / 20.0;
+        const double ox = left - 2.0 * k;
+        const double oy = midY - 12.175 * k;
+        auto X = [&](double v) { return ox + v * k; };
+        auto Y = [&](double v) { return oy + v * k; };
+        ctx->ClearPath();
+        ctx->MoveTo(X(12), Y(21.35));
+        ctx->BezierCurveTo(X(12), Y(21.35), X(2), Y(14.6), X(2), Y(8.5));
+        ctx->BezierCurveTo(X(2), Y(5.42), X(4.42), Y(3), X(7.5), Y(3));
+        ctx->BezierCurveTo(X(9.24), Y(3), X(10.91), Y(3.81), X(12), Y(5.09));
+        ctx->BezierCurveTo(X(13.09), Y(3.81), X(14.76), Y(3), X(16.5), Y(3));
+        ctx->BezierCurveTo(X(19.58), Y(3), X(22), Y(5.42), X(22), Y(8.5));
+        ctx->BezierCurveTo(X(22), Y(14.6), X(12), Y(21.35), X(12), Y(21.35));
+        ctx->ClosePath();
+        ctx->SetFillPaint(Color(226, 67, 74, 255));
+        ctx->FillPathPreserve();
+        // A light rim keeps it a heart where it overlaps an icon or sits on
+        // the selection colour.
+        ctx->SetStrokePaint(Color(255, 255, 255, 200));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
     }
 
     void UltraCanvasFilerWidget::DrawTextPreview(IRenderContext* ctx,
@@ -12354,7 +13292,10 @@ namespace UltraCanvas {
             FolderStats st;
             st.ready = true;
             std::error_code ec;
-            if (fs::is_directory(path, ec)) {
+            // UTF-8 in, UTF-16 on Windows: a plain string here goes through
+            // the ANSI code page and misses a Thai or CJK folder.
+            const fs::path walkRoot = PathFromUtf8(path);
+            if (fs::is_directory(walkRoot, ec)) {
                 // Guarded although every call takes an error_code: the
                 // iterator still builds a path object per entry, and a
                 // subtree the walk cannot represent must end the count, not
@@ -12362,7 +13303,7 @@ namespace UltraCanvas {
                 RunGuarded("folder size walk", path, [&]() {
                 uint64_t visited = 0;
                 for (fs::recursive_directory_iterator rit(
-                         path, fs::directory_options::skip_permission_denied, ec), end;
+                         walkRoot, fs::directory_options::skip_permission_denied, ec), end;
                      rit != end; rit.increment(ec)) {
                     if (ec) break;
                     if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
@@ -12550,12 +13491,12 @@ namespace UltraCanvas {
         // Windows, where ::stat neither takes what path::c_str() returns nor
         // reaches a name outside the local codepage.
         std::error_code ec;
-        const auto dirTime = fs::last_write_time(path, ec);
+        const auto dirTime = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec);
         if (ec) return 0;   // gone or unreadable: signature 0
         uint64_t dirHash = fnv(1469598103934665603ull,
                 static_cast<uint64_t>(dirTime.time_since_epoch().count()));
 
-        for (fs::directory_iterator it(path, ec), end; it != end; it.increment(ec)) {
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec), end; it != end; it.increment(ec)) {
             if (ec) break;
             const std::string name = PathToUtf8(it->path().filename());
             if (!includeHidden && !name.empty() && name[0] == '.') continue;
@@ -12585,7 +13526,8 @@ namespace UltraCanvas {
         // Only a real directory is watched: an archive interior or a file list
         // has no folder whose changes would mean anything here.
         const std::string target =
-                (folderWatchEnabled && !path.empty() && fs::is_directory(path, ec))
+                (folderWatchEnabled && !path.empty() &&
+                 fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
         // The operating system can usually tell us the moment something
@@ -13390,11 +14332,16 @@ namespace UltraCanvas {
         // out of the way, exactly as it does in Explorer.
         if (e.isShortcut && !e.linkTarget.empty()) {
             std::error_code lec;
-            if (fs::is_directory(e.linkTarget, lec) && !lec) {
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) {
                 SetPath(e.linkTarget);
                 return;
             }
         }
+        // A file the type filter dims is on display, not on offer: the user
+        // can see it is there, and opening it does nothing, as a disabled
+        // control does nothing. (Folders and archives entered above, filter
+        // or not; a Hide filter never lists such a file in the first place.)
+        if (!EntryPassesFileTypeFilter(e)) return;
         if (onFileActivated) {
             onFileActivated(e);
             return;
@@ -13414,7 +14361,7 @@ namespace UltraCanvas {
         // An application bundle is a directory, and launching it is the
         // platform's business: the "Other application" launch path already
         // knows what a .app is on macOS.
-        if (e.isBundle && fs::is_directory(e.path, ec) && !ec) {
+        if (e.isBundle && fs::is_directory(UltraCanvas::PathFromUtf8(e.path), ec) && !ec) {
             std::string bundleError;
             ShowLaunchPointer();
             if (!FileAssociations::OpenWithApplicationPath(e.path, {}, bundleError))
@@ -13424,7 +14371,7 @@ namespace UltraCanvas {
         // Only a real file — an entry inside an archive is a virtual path no
         // external application (or the kernel) can read. A program in there
         // is unpacked first and started from where it was unpacked to.
-        if (!fs::is_regular_file(e.path, ec) || ec) {
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(e.path), ec) || ec) {
             if (CanExtractAndRun(e)) ExtractAndRunEntry(e);
             return;
         }
@@ -13472,7 +14419,7 @@ namespace UltraCanvas {
         // that can run Windows programs itself installs onFileActivated and
         // never reaches this.
         if (e.isShortcut && !e.linkTarget.empty() &&
-            fs::is_regular_file(e.linkTarget, ec) && !ec) {
+            fs::is_regular_file(PathFromUtf8(e.linkTarget), ec) && !ec) {
             FilerEntry target = e;
             target.path = e.linkTarget;
             target.name = PathToUtf8(PathFromUtf8(e.linkTarget).filename());
@@ -13507,42 +14454,38 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ShowRunOrOpenDialog(const FilerEntry& e) {
-        DialogConfig cfg;
-        cfg.title = "Executable Script";
-        cfg.dialogType = DialogType::Question;
-        cfg.message = "\"" + e.name + "\" is an executable script.";
-        cfg.details = "Run it, or open it to view its contents?";
-        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        cfg.width = 520;
-        cfg.height = 200;
-
-        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
-        if (!dialog) {   // dialogs disabled — open, the old fixed behavior
-            std::string error;
-            ShowLaunchPointer();
-            if (!FileAssociations::OpenWithDefaultApplication({e.path}, error))
-                ReportError(error);
-            return;
-        }
-
         auto self = this;
         const std::string path = e.path;
-        dialog->AddCustomButton("Run", DialogResult::Yes, nullptr);
-        dialog->AddCustomButton("Open", DialogResult::No, nullptr);
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
-        dialog->onResult = [self, path](DialogResult result) {
+        auto run = [self, path]() {
             std::string error;
-            if (result == DialogResult::Yes) {
-                self->ShowLaunchPointer();
-                if (!FileAssociations::LaunchExecutable(path, error))
-                    self->ReportError(error);
-            } else if (result == DialogResult::No) {
-                self->ShowLaunchPointer();
-                if (!FileAssociations::OpenWithDefaultApplication({path}, error))
-                    self->ReportError(error);
-            }
+            self->ShowLaunchPointer();
+            if (!FileAssociations::LaunchExecutable(path, error))
+                self->ReportError(error);
         };
-        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        auto open = [self, path]() {
+            std::string error;
+            self->ShowLaunchPointer();
+            if (!FileAssociations::OpenWithDefaultApplication({path}, error))
+                self->ReportError(error);
+        };
+
+        OperationDialogSpec spec;
+        spec.title = "Run or open";
+        spec.type = DialogType::Question;
+        spec.question = "\"" + RepairLegacyEncodedName(e.name) + "\" is an executable script.";
+        spec.facts = "**File:** " + FactPath(e.path);
+        spec.note = "Run starts it. Open shows its contents in the program for its type.";
+        spec.buttons = {{"Run", DialogButtonRole::Default},
+                        {"Open", DialogButtonRole::Normal},
+                        {"Cancel", DialogButtonRole::Cancel}};
+        spec.width = 560;
+        const bool shown = ShowOperationDialog(spec,
+                [run, open](size_t button, bool) {
+                    if (button == 0) run();
+                    else if (button == 1) open();
+                },
+                nullptr);
+        if (!shown) open();   // dialogs disabled — open, the old fixed behavior
     }
 
     void UltraCanvasFilerWidget::OpenContextMenu(const Point2Di& localPoint) {
@@ -13590,7 +14533,7 @@ namespace UltraCanvas {
             if (openable) {
                 std::error_code ec;
                 for (const std::string& p : targetPaths) {
-                    if (fs::is_regular_file(p, ec) && !ec) continue;
+                    if (fs::is_regular_file(PathFromUtf8(p), ec) && !ec) continue;
                     openable = false;
                     break;
                 }

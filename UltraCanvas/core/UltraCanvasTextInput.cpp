@@ -576,12 +576,8 @@ namespace UltraCanvas {
         ctx->SetTextStyle(textStyle);
         ctx->SetTextPaint(color);
 
-        // Match the baseline calculation used in GetCaretYPosition
-        double lineHeight = ctx->GetTextLineHeight(renderText);
-        double centeredY = area.y + (area.height - lineHeight) / 2.0f;
-        double baselineY = centeredY;
-
-        Point2Dd textPos(area.x - scrollOffset, baselineY);
+        Rect2Dd lineBox = GetTextLineBox(area, ctx);
+        Point2Dd textPos(area.x - scrollOffset, lineBox.y);
         ctx->DrawText(renderText, textPos);
     }
 
@@ -616,12 +612,12 @@ namespace UltraCanvas {
         double selWidth = ctx->GetTextLineWidth(selectedText);
 
         // Cover the full text line box (font ascent + descent) so tall and deep glyphs
-        // are fully highlighted, then pad by 2px above and below. Mirrors the line height
-        // RenderText uses so the highlight stays aligned with the drawn text.
+        // are fully highlighted, then pad by 2px above and below. The box is the
+        // one RenderText draws into, so the highlight stays aligned with the text.
         const double selectionPadding = 2.0;
-        double lineHeight = ctx->GetTextLineHeight(displayText);
-        double selectionHeight = lineHeight + 2.0 * selectionPadding;
-        double selectionY = area.y + (area.height - lineHeight) / 2.0 - selectionPadding;
+        Rect2Dd lineBox = GetTextLineBox(area, ctx);
+        double selectionHeight = lineBox.height + 2.0 * selectionPadding;
+        double selectionY = lineBox.y - selectionPadding;
 
         // Ensure selection is within visible area
         double visibleStartX = std::max(selStartX, area.x);
@@ -657,9 +653,11 @@ namespace UltraCanvas {
             caretX = textArea.x + textWidth - scrollOffset;
         }
 
-        float lineHeight = style.fontStyle.fontSize * 1.4f;
-        // Total height should be about lineHeight for visibility
-        float caretStartY = GetCaretYPosition();
+        // The caret spans the text's line box, the same one the glyphs and
+        // the selection highlight use.
+        Rect2Dd lineBox = GetTextLineBox(textArea, ctx);
+        float lineHeight = static_cast<float>(lineBox.height);
+        float caretStartY = static_cast<float>(lineBox.y);
 
         // Only hide if completely outside control bounds (element-local)
         Rect2Di controlBounds = GetLocalBounds();
@@ -1353,12 +1351,23 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetCaretYPosition() {
-        Rect2Dd textArea = GetTextArea();
+        return static_cast<float>(GetTextLineBox(GetTextArea(), GetRenderContext()).y);
+    }
 
-        // Single line: match baseline positioning
-        float lineHeight = style.fontStyle.fontSize * 1.2f;
-        float centeredY = textArea.y + (textArea.height - lineHeight) / 2.0f;
-        return centeredY;
+    Rect2Dd UltraCanvasTextInput::GetTextLineBox(const Rect2Dd& area, IRenderContext* ctx) const {
+        if (!ctx) {
+            // No context to measure with: approximate the font's line box.
+            double lineHeight = style.fontStyle.fontSize * 1.2;
+            return Rect2Dd(area.x, area.y + (area.height - lineHeight) / 2.0, area.width, lineHeight);
+        }
+        // Centre the capitals rather than the line box, which holds the
+        // ascender and descender space too and so hung the text a shade below
+        // the elements beside the field. The height is the font's, not the
+        // current text's, so an empty or all-lowercase field measures the same.
+        ctx->SetFontStyle(style.fontStyle);
+        double lineHeight = ctx->GetTextLineHeight("H");
+        double top = ctx->TextTopCentredOnCaps(area, style.fontStyle);
+        return Rect2Dd(area.x, top, area.width, lineHeight);
     }
 
     ValidationRule ValidationRule::Required(const std::string &message) {

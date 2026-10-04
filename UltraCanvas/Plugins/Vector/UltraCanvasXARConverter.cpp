@@ -25,6 +25,7 @@
 #include <functional>
 #include <map>
 #include <variant>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -233,7 +234,7 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
         }
 
         bool XARConverter::ValidateFile(const std::string& filename) const {
-            std::ifstream file(filename, std::ios::binary);
+            std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) return false;
 
             uint8_t signature[8];
@@ -2533,7 +2534,7 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
             auto data = ExportToMemory(document, options, xarOptions);
             if (data.empty()) return false;
 
-            std::ofstream file(filename, std::ios::binary);
+            std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) {
                 LogWarning("Failed to create XAR file: " + filename);
                 return false;

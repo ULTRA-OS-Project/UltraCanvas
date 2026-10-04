@@ -5,13 +5,15 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
+// Version: 1.3.4 - a percentage height resolves against a block parent's set height
+//                 (percentHeightBase) when no definite height comes down
 // Version: 1.3.3 - position:fixed children go through ArrangeFixedChild so their
 //                 finalBounds stay parent-relative (no double ancestor offset).
 // Version: 1.3.2 - A fully-constrained (both-axes Exact) grid container now
 //                 derives its content extent from the constraint rather than its
 //                 own explicit size, so a grown/stretched grid lays out its tracks
 //                 against its USED size, not its specified size.
-// Last Modified: 2026-07-13
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -451,7 +453,8 @@ namespace UltraCanvas {
 
                 // Container content extents (when known).
                 auto ownW = resolveDimension(e.size.width,  parentInline, ctx);
-                auto ownH = resolveDimension(e.size.height, parentBlock,  ctx);
+                auto ownH = resolveDimension(e.size.height,
+                                             parentBlock ? parentBlock : e.percentHeightBase, ctx);
                 if (authoritative && parentInline.has_value()) {
                     s.availW = std::max(0.f, *parentInline - s.padH - s.bordH);
                     s.widthKnown = true;

@@ -100,4 +100,30 @@ IODeviceResult PrintTextWithDialog(const std::string& documentName,
                                    const std::string& textContent,
                                    UltraCanvasWindowBase* parent = nullptr);
 
+// The same for a document already rendered - a PDF above all, which is how a
+// formatted document keeps its fonts, pictures and pages on paper. `mimeType`
+// says what `data` is ("application/pdf").
+//
+// `pages` is the same document as pages that draw themselves
+// (IOPrintJob::pages), for the renderers that cannot lay out a PDF - the
+// Windows GDI renderer, GutenPrint, and an IPP printer that takes no PDF.
+// With it, those draw the pages; without it, they refuse the job by name. A
+// formatted document makes them with CreateRichDocumentPrintPages()
+// (UltraCanvasRichTextPrint.h).
+IOPrintJob MakeDocumentPrintJob(const IOPrintDialogChoice& chosen,
+                                const std::string& documentName,
+                                const std::vector<uint8_t>& data,
+                                const std::string& mimeType,
+                                const IPrintPageSourcePtr& pages = nullptr);
+IODeviceResult PrintDocumentWithSettings(const IOPrintDialogChoice& chosen,
+                                         const std::string& documentName,
+                                         const std::vector<uint8_t>& data,
+                                         const std::string& mimeType,
+                                         const IPrintPageSourcePtr& pages = nullptr);
+IODeviceResult PrintDocumentWithDialog(const std::string& documentName,
+                                       const std::vector<uint8_t>& data,
+                                       const std::string& mimeType,
+                                       UltraCanvasWindowBase* parent = nullptr,
+                                       const IPrintPageSourcePtr& pages = nullptr);
+
 }  // namespace UltraCanvas

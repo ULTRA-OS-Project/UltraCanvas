@@ -43,6 +43,18 @@ namespace UltraCanvas {
     protected:
         Window xWindow;
         XIC xic;                    // X Input Context for this window
+        // On-the-spot input context: the pre-edit text goes to the focused
+        // element (TextComposition) instead of the input method's window.
+        // Used while an element that draws it has focus.
+        XIC xicInline = nullptr;
+        mutable XIC activeXic = nullptr;
+        std::u32string preedit;
+        XIMCallback preeditStart{}, preeditDone{}, preeditDraw{}, preeditCaret{};
+        static int OnPreeditStart(XIC, XPointer client, XPointer);
+        static void OnPreeditDone(XIC, XPointer client, XPointer);
+        static void OnPreeditDraw(XIC, XPointer client, XPointer callData);
+        static void OnPreeditCaret(XIC, XPointer client, XPointer callData);
+        void PushComposition(int caretCharacters);
 
         UltraCanvasLinuxDragDrop dragDropHandler;
 
@@ -88,7 +100,10 @@ namespace UltraCanvas {
 
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
-        XIC GetXIC() const { return xic; }
+        // The input context for the focused element (and the one given the
+        // X input focus when that changes); UnfocusXICs on focus loss.
+        XIC GetXIC() const;
+        void UnfocusXICs();
 
 
         bool HandleXEvent(const XEvent& event);

@@ -35,7 +35,6 @@ using namespace UltraCanvas;
 class TexterWindowManager;
 
 // ===== GLOBAL APPLICATION STATE =====
-static UltraCanvasApplication* g_app = nullptr;
 static TexterWindowManager* g_windowManager = nullptr;
 
 // ===== WINDOW MANAGER =====
@@ -181,14 +180,10 @@ void HandleFatalError(const std::string& error) {
 
 // ===== SIGNAL HANDLERS =====
 #ifdef __linux__
-void SignalHandler(int signal) {
-    debugOutput << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
-
-    if (g_app) {
-        g_app->RequestExit();
-    }
-
-    std::exit(EXIT_SUCCESS);
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
+void SignalHandler(int) {
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 #endif
 
@@ -309,7 +304,6 @@ int main(int argc, char* argv[]) {
 
     // Create application instance
     UltraCanvasApplication app;
-    g_app = &app;
 
     try {
         // Initialize system

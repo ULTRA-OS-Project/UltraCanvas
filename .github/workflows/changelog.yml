@@ -24,6 +24,12 @@ on:
     branches: [main]
     paths:
       - 'Docs/**/CHANGELOG.md'
+      # A pending entry is a changelog change too, and since the framework's
+      # number moved to main (changelog-fold.yml) it is the usual one: most
+      # pull requests touch no CHANGELOG.md at all. Without this line the
+      # check never ran on them, so its rule that a pending entry carries no
+      # version header went unenforced in CI.
+      - 'Docs/UltraCanvas/changelog.d/**'
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'
@@ -41,6 +47,12 @@ on:
       - 'claude/**'
     paths:
       - 'Docs/**/CHANGELOG.md'
+      # A pending entry is a changelog change too, and since the framework's
+      # number moved to main (changelog-fold.yml) it is the usual one: most
+      # pull requests touch no CHANGELOG.md at all. Without this line the
+      # check never ran on them, so its rule that a pending entry carries no
+      # version header went unenforced in CI.
+      - 'Docs/UltraCanvas/changelog.d/**'
       - 'cmake/UltraCanvasVersion.cmake'
       - 'scripts/check_changelog.py'
       - '.github/workflows/changelog.yml'

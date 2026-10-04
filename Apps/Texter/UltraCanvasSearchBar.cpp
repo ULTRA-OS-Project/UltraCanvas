@@ -1,11 +1,12 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
-// Version: 1.3.0
-// Last Modified: 2026-06-23
+// Version: 1.4.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSearchBar.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include <string>
 #include <algorithm>
 
@@ -32,6 +33,10 @@ namespace UltraCanvas {
     UltraCanvasSearchBar::UltraCanvasSearchBar(const std::string& id)
             : UltraCanvasContainer(id)
     {
+    }
+
+    bool UltraCanvasSearchBar::IsLiveSearchText(const std::string& text) {
+        return utf8_length(text) >= MinLiveSearchChars;
     }
 
     int UltraCanvasSearchBar::GetBarHeight() const {
@@ -198,7 +203,7 @@ namespace UltraCanvas {
         settingsMenu->AddItem(MenuItemData::Separator());
         settingsMenu->AddItem(MenuItemData::Checkbox("Case sensitive", caseSensitive, [this](bool checked) {
             caseSensitive = checked;
-            if (!searchText.empty()) {
+            if (IsLiveSearchText(searchText)) {
                 if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
                 else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
@@ -206,7 +211,7 @@ namespace UltraCanvas {
 
         settingsMenu->AddItem(MenuItemData::Checkbox("Whole words", wholeWord, [this](bool checked) {
             wholeWord = checked;
-            if (!searchText.empty()) {
+            if (IsLiveSearchText(searchText)) {
                 if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
                 else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
@@ -292,10 +297,11 @@ namespace UltraCanvas {
             if (nextButton)       nextButton->SetDisabled(!hasText);
             if (prevButton)       prevButton->SetDisabled(!hasText);
             if (firstMatchButton) firstMatchButton->SetDisabled(!hasText);
-            if (!hasText && countLabel) countLabel->SetText("");
+            if (!IsLiveSearchText(text)) ClearMatchCount();
             if (onSearchTextChanged) onSearchTextChanged(text);
             // Live search as user types — anchor to the caret, do NOT advance.
-            if (hasText) {
+            // Not before MinLiveSearchChars: the host clears the highlights instead.
+            if (IsLiveSearchText(text)) {
                 if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
                 else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
@@ -465,6 +471,12 @@ namespace UltraCanvas {
             countLabel->SetText(std::to_string(totalMatches) + " found");
             countLabel->SetTextColor(Color(60, 150, 60, 255));
         }
+    }
+
+    void UltraCanvasSearchBar::ClearMatchCount() {
+        if (!countLabel) return;
+        countLabel->SetText("");
+        countLabel->SetTooltip("");
     }
 
     // ── CONTENT SETTERS ───────────────────────────────────────────────────────

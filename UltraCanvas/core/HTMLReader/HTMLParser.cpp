@@ -1,7 +1,8 @@
 // core/HTMLReader/HTMLParser.cpp
 // Tolerant HTML/XHTML parser implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.2.0 - <!DOCTYPE> recorded; quirks mode decided from it
+// Version: 1.1.0 - <style media="..."> becomes an @media block
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -159,6 +160,8 @@ Document Parser::Parse(const std::string& html, const ParseOptions& options) {
     htmlNode->children.push_back(bodyNode);
     htmlNode->parent = nullptr;
     doc.root = htmlNode;
+    doc.doctype = doctype;
+    doc.quirksMode = IsQuirksDoctype(doctype, sawDoctype);
 
     // Collect title / styles / meta from the whole tree (head elements often
     // end up in odd places in tolerant parsing).
@@ -166,7 +169,14 @@ Document Parser::Parse(const std::string& html, const ParseOptions& options) {
         if (element.tag == "title" && doc.title.empty()) {
             doc.title = Trimmed(element.TextContent());
         } else if (element.tag == "style") {
-            doc.styleSheets.push_back(element.TextContent());
+            // <style media="screen and (min-width:480px)">: the same as an
+            // @media block around the sheet.
+            std::string media = Trimmed(element.GetAttribute("media"));
+            if (media.empty()) {
+                doc.styleSheets.push_back(element.TextContent());
+            } else {
+                doc.styleSheets.push_back("@media " + media + " {\n" + element.TextContent() + "\n}");
+            }
         } else if (element.tag == "link") {
             if (ToLower(element.GetAttribute("rel")) == "stylesheet") {
                 doc.styleSheetLinks.push_back(element.GetAttribute("href"));
@@ -274,7 +284,18 @@ void Parser::ParseComment() {
         }
         return;
     }
-    // <!DOCTYPE ...> or any other markup declaration.
+    // <!DOCTYPE ...>: kept for the quirks-mode decision. Any other markup
+    // declaration is skipped.
+    if (!sawDoctype && input.size() - pos >= 9) {
+        std::string head = input.substr(pos + 2, 7);
+        for (char& ch : head) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (head == "doctype") {
+            const size_t start = pos + 9;
+            const size_t end = input.find('>', start);
+            doctype = input.substr(start, end == std::string::npos ? std::string::npos : end - start);
+            sawDoctype = true;
+        }
+    }
     SkipUntil(">");
 }
 
@@ -473,6 +494,43 @@ void Parser::Error(const std::string& message) {
     if (errors.size() < 100) {
         errors.push_back(message + " (at offset " + std::to_string(pos) + ")");
     }
+}
+
+
+bool IsQuirksDoctype(const std::string& text, bool present) {
+    if (!present) return true;
+    std::string d;
+    for (char ch : text) d += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    size_t i = d.find_first_not_of(" \t\r\n");
+    if (i == std::string::npos || d.compare(i, 4, "html") != 0) return true;
+    i += 4;
+    if (i < d.size() && !std::isspace(static_cast<unsigned char>(d[i]))) return true;   // "htmlx"
+    // The quoted public and system ids, if any.
+    std::vector<std::string> quoted;
+    for (size_t p = i; p < d.size() && quoted.size() < 2; ++p) {
+        if (d[p] != '"' && d[p] != '\'') continue;
+        const size_t close = d.find(d[p], p + 1);
+        if (close == std::string::npos) break;
+        quoted.push_back(d.substr(p + 1, close - p - 1));
+        p = close;
+    }
+    const bool hasPublic = d.find("public", i) != std::string::npos && !quoted.empty();
+    if (!hasPublic) return false;                      // <!DOCTYPE html> (or SYSTEM only)
+    const std::string& pub = quoted[0];
+    const bool hasSystem = quoted.size() > 1;
+    static const char* const kQuirkPrefixes[] = {
+        "-//w3c//dtd html 3", "-//w3c//dtd html 2", "-//ietf//", "-//w3o//", "-//netscape",
+        "-//microsoft", "-//ibm//", "-//sq//", "-//softquad", "-//spyglass", "-//sun microsystems",
+        "-//webtechs//", "-//o'reilly", "-//metrius//", "-//as//", "-//advasoft",
+        "-//w3c//dtd html 4.0 transitional", "-//w3c//dtd html 4.0 frameset",
+        "-//w3c//dtd html experimental", "-//w3c//dtd w3 html", "-//w3c//dtd html extended",
+    };
+    for (const char* prefix : kQuirkPrefixes)
+        if (pub.rfind(prefix, 0) == 0) return true;
+    if (pub == "-//w3o//dtd w3 html strict 3.0//en//" || pub == "html") return true;
+    if (!hasSystem && (pub.rfind("-//w3c//dtd html 4.01 transitional", 0) == 0 ||
+                       pub.rfind("-//w3c//dtd html 4.01 frameset", 0) == 0)) return true;
+    return false;
 }
 
 } // namespace HTML

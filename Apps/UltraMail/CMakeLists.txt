@@ -21,10 +21,12 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
     engine/UltraMailSenderBrands.cpp
+    engine/UltraMailSenderBrandTable.cpp
     engine/UltraMailSenderIconCache.cpp
     engine/UltraMailSenderTrust.cpp
     engine/UltraMailThreatScan.cpp
     engine/UltraMailUnsubscribe.cpp
+    engine/UltraMailRecipientComplete.cpp
     engine/UltraMailInlineImages.cpp
     engine/UltraMailMessageFilter.cpp
     engine/UltraMailSyncEngine.cpp
@@ -33,6 +35,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailLoginCheck.cpp
     engine/UltraMailComposer.cpp
     engine/UltraMailRichComposer.cpp
+    engine/UltraMailSignature.cpp
     engine/UltraMailSender.cpp
     engine/UltraMailOutbox.cpp
     engine/UltraMailSyncService.cpp
@@ -195,10 +198,14 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailAttachmentStrip.cpp
     ui/UltraMailContactsView.cpp
     ui/UltraMailComposeWindow.cpp
+    ui/UltraMailFormatBar.cpp
+    ui/UltraMailOutboxView.cpp
     ui/UltraMailPassphraseDialog.cpp
     ui/UltraMailWaitDialog.cpp
     ui/UltraMailOAuthCodeDialog.cpp
     ui/UltraMailServerSettingsDialog.cpp
+    ui/UltraMailSettingsDialog.cpp
+    ui/UltraMailSignatureDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

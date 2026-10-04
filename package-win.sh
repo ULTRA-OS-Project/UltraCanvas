@@ -203,6 +203,34 @@ for EXE_PATH in $DIST_DIR/*.exe ; do
   done
 done
 
+# Windows' own System32, for the DLL-name checks below. MSYS2 exports
+# SYSTEMROOT as a Windows path (C:\WINDOWS); cygpath turns it into one this
+# shell can test. Empty on a host without one, where the fixed names in
+# is_system_dll_name still apply.
+SYSTEM32=""
+if [ -n "$SYSTEMROOT" ] && command -v cygpath >/dev/null 2>&1; then
+    SYSTEM32="$(cygpath -u "$SYSTEMROOT")/System32"
+elif [ -d /c/Windows/System32 ]; then
+    SYSTEM32=/c/Windows/System32
+fi
+
+# Is this DLL base name one Windows itself uses? Windows keys the modules of
+# a process by base name, so a DLL of ours with a system DLL's name shadows
+# the real one for every later import of that name once it is in the
+# process (see the ImageMagick coders below). The names known to collide on
+# Windows 10 and 11 are fixed here, so every packaging machine produces the
+# same package; System32 answers for anything new when it can be seen.
+#   mpr.dll  Multiple Provider Router (network drives) - the one that bit
+#   url.dll  Internet Shortcut shell extension
+#   dpx.dll  Delta Package Expander (servicing stack)
+#   vid.dll  Hyper-V virtualization infrastructure
+is_system_dll_name() {
+    case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in
+        mpr.dll|url.dll|dpx.dll|vid.dll) return 0 ;;
+    esac
+    [ -n "$SYSTEM32" ] && [ -f "$SYSTEM32/$1" ]
+}
+
 # Copy libvips modules (only the ones we need and can bundle)
 VIPS_MODULE_DIR=$(ls -d $MSYS_PREFIX/lib/vips-modules-* 2>/dev/null | head -1)
 if [ -d "$VIPS_MODULE_DIR" ]; then
@@ -238,8 +266,56 @@ if [ -d "$IM_LIB_DIR" ]; then
     # "NoDecodeDelegateForThisImageFormat" (e.g. .tga would not open at all).
     # Shipping every coder keeps what the demo advertises in sync with what it
     # can actually decode.
-    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.dll "$CODERS_DEST/" 2>/dev/null || true
-    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.la  "$CODERS_DEST/" 2>/dev/null || true
+    #
+    # But no coder may reach the process under a Windows system DLL's name.
+    # ImageMagick loads every coder the first time libvips asks whether it
+    # recognises a file, and Windows keys loaded modules by base name: with
+    # the coder mpr.dll (the MPR: in-memory image registry) in the process,
+    # any system DLL that imports "MPR.dll" by name was bound to the coder
+    # instead, and its import failed - "The procedure entry point
+    # WNetGetConnectionW could not be located in pcacli.dll" on UltraFiler's
+    # "Delete as administrator" (pcacli.dll is what the shell loads for the
+    # runas verb), the same box naming daxexec.dll when a Store app is the
+    # default for a double-click. See "Entry point not found in a Windows
+    # DLL" in Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md.
+    #
+    # mpr and url (fetch over HTTP) are pseudo-formats of no use here and are
+    # dropped. A real format whose name collides (dpx: SMPTE DPX, which the
+    # export dialog offers; vid) ships under another file name. ImageMagick
+    # reaches a coder through its .la file, whose dlname line says which DLL
+    # to load, so the rename is invisible to it; the process then holds
+    # "dpx-coder.dll", a name no system DLL has. The .la travels with its
+    # DLL either way, and stays behind with a dropped one, so ImageMagick
+    # never lists a coder it cannot open.
+    for coder in "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.dll; do
+        [ -e "$coder" ] || continue
+        coder_name=$(basename "$coder")
+        coder_la="${coder%.dll}.la"
+        if ! is_system_dll_name "$coder_name"; then
+            cp "$coder" "$CODERS_DEST/"
+            [ -f "$coder_la" ] && cp "$coder_la" "$CODERS_DEST/"
+            continue
+        fi
+        case "$(printf '%s' "$coder_name" | tr 'A-Z' 'a-z')" in
+            mpr.dll|url.dll)
+                echo "  Not shipping coder $coder_name: a Windows system DLL has that name"
+                continue ;;
+        esac
+        if [ ! -f "$coder_la" ]; then
+            echo "Error: coder $coder_name needs another file name (a Windows system DLL has this one) but has no .la beside it to carry the new name" >&2
+            exit 1
+        fi
+        renamed="${coder_name%.dll}-coder.dll"
+        cp "$coder" "$CODERS_DEST/$renamed"
+        sed -e "s/^dlname='[^']*'/dlname='$renamed'/" \
+            -e "s/^library_names='[^']*'/library_names='$renamed'/" \
+            "$coder_la" > "$CODERS_DEST/$(basename "$coder_la")"
+        if ! grep -q "^dlname='$renamed'" "$CODERS_DEST/$(basename "$coder_la")"; then
+            echo "Error: could not point $(basename "$coder_la") at $renamed" >&2
+            exit 1
+        fi
+        echo "  Coder $coder_name ships as $renamed: a Windows system DLL has that name"
+    done
     if [ -d "$IM_LIB_DIR/config-Q16HDRI" ]; then
         cp -r "$IM_LIB_DIR/config-Q16HDRI" "$DIST_DIR/lib/$IM_BASENAME/"
     fi
@@ -271,6 +347,28 @@ while : ; do
     after=$(find "$DIST_DIR" -name '*.dll' | wc -l)
     [ "$before" = "$after" ] && break
 done
+
+# No DLL in the package may carry a Windows system DLL's name, wherever it
+# sits: once such a file is in the process, every later import of that name
+# lands on it instead of on the real one (the mpr.dll case above). One next
+# to the executables is worse still, since the application directory comes
+# before System32 in the search order. Any hit fails the build with the
+# file named, so the choice - drop it or rename it - is made here and not
+# by a loader box on a user's machine.
+echo ""
+echo "Checking for DLLs named like Windows system DLLs..."
+SHADOW_HITS=0
+while IFS= read -r dll; do
+    if is_system_dll_name "$(basename "$dll")"; then
+        echo "  ERROR: $dll has a Windows system DLL's name and would shadow it in the process" >&2
+        SHADOW_HITS=$((SHADOW_HITS + 1))
+    fi
+done < <(find "$DIST_DIR" -iname '*.dll')
+if [ "$SHADOW_HITS" -gt 0 ]; then
+    echo "Error: $SHADOW_HITS DLL(s) would shadow a Windows system DLL (see above); drop or rename them" >&2
+    exit 1
+fi
+echo "  none"
 
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)
 #if [ -d "$MSYS_PREFIX/share/glib-2.0/schemas" ]; then

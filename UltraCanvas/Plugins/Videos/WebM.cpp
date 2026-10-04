@@ -27,6 +27,7 @@
 #include <chrono>
 #include <fstream>
 #include <algorithm>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -128,7 +129,7 @@ bool UltraCanvasWebMVideo::LoadFromFile(const std::string& filePath) {
     }
 
     // Read file into memory
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         std::string reason = DescribeFileReadError(filePath);
         NotifyError(reason.empty() ? ("Cannot open WebM file: " + filePath) : reason);

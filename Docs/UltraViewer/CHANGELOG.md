@@ -1,3 +1,22 @@
+#### 2026-10-01 *1.0.3*
+- **Open and Save use the framework's new file dialog.** The toolbar's Open
+  button showed the platform's picker, because `main.cpp` turned native
+  dialogs on and `UltraCanvasFileLoader`'s file dialogs follow that setting.
+  It is now off, so Open (several files at once, as before) and Save image as
+  open `UltraCanvasFileDialog`: the folder tree, the filer-widget listing with
+  its Details / list / icon views, and the same look on every platform. The
+  viewer shows no message boxes, so nothing else changes.
+- **Open picks file types with toggle buttons.** Below the file name the
+  dialog has a row of buttons - Images, Audio, Video, Documents, Text and
+  All files - instead of a dropdown of extension lists. Turn on as many as
+  you want; the listing shows the files any of them matches. All except All
+  files start on, so every file the viewer can open is listed from the
+  start. Each button holds every extension of that kind the viewer opens,
+  including what a plugin or codec adds: Images covers bitmaps, vector
+  drawings and 3D models, Text covers plain text and every programming
+  language the viewer highlights, and Documents holds PDFs, spreadsheets,
+  e-books and fonts. Hover over the buttons for the extensions.
+
 #### 2026-09-28 *1.0.2*
 - **The version is in the window title** — `UltraViewer 1.0.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

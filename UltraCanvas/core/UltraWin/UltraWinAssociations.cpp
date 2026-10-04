@@ -49,7 +49,7 @@ std::string AssociationsPath() {
 // replacing a deleted one at the same path — the classic Downloads
 // folder case — without hashing whole installers. "" when unreadable.
 std::string FileFingerprint(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return {};
     uint64_t hash = 1469598103934665603ull;  // FNV offset basis
     char buf[4096];
@@ -64,7 +64,7 @@ std::string FileFingerprint(const std::string& path) {
         if (n < static_cast<std::streamsize>(sizeof buf)) break;
     }
     std::error_code ec;
-    uint64_t size = static_cast<uint64_t>(fs::file_size(path, ec));
+    uint64_t size = static_cast<uint64_t>(fs::file_size(UltraCanvas::PathFromUtf8(path), ec));
     if (ec) return {};
     std::ostringstream out;
     out << size << ':' << std::hex << hash;

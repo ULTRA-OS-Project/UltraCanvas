@@ -1,4 +1,14 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.12.0 - mail addresses: a clicked mailto: (HTML) or address (plain text)
+//                 opens a new message to it in UltraMail
+// Version: 0.11.0 - a web address in plain-text mail opens when clicked
+// Version: 0.10.0 - the plain-text view reports the web address under the pointer
+//                 too (status line or tooltip, as Settings > Display > Links says)
+// Version: 0.9.0 - a link's address as a tooltip when Settings > Display > Links says so
+// Version: 0.8.0 - reports the body's links and the hovered link (status line);
+//                re-scans verdicts older than the current threat rules
+// Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
+// Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
 // Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
 // Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
 //                  is scanned on first read and the verdict stored, with a
@@ -6,9 +16,10 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailHeaderText.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -16,6 +27,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTooltipManager.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"      // OpenURL
@@ -68,6 +80,104 @@ std::string HtmlToText(const std::string& html) {
     }
     return out;
 }
+
+// Opens a link of the message in the browser - web and mail addresses only,
+// never a file: or javascript: target a message could carry. A bare
+// "www.example.com" from plain text opens as https.
+void OpenMessageLink(const std::string& href) {
+    std::string lower = href;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
+        lower.rfind("mailto:", 0) == 0)
+        UltraCanvas::OpenURL(href);
+    else if (lower.rfind("www.", 0) == 0)
+        UltraCanvas::OpenURL("https://" + href);
+}
+
+// The plain-text body: a read-only text area whose links (web and mail
+// addresses written in the text) work like the HTML view's links - the one under the pointer is
+// reported (to the status line, or as a tooltip that follows the pointer
+// along it) and a click on it opens it. A drag still selects text.
+class PlainBodyArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+
+    std::function<void(const std::string& href)> onLinkHovered;
+    std::function<void(const std::string& href)> onLinkActivated;
+    bool linkTooltips = false;
+
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseMove:
+                Hover(Contains(event.pointer) ? LinkUnder(event.pointer) : std::string(),
+                      event.pointerWindow);
+                break;
+            case UCEventType::MouseLeave:
+                Hover(std::string(), event.pointerWindow);
+                break;
+            case UCEventType::MouseDown:
+                pressedLink_ = event.button == UCMouseButton::Left && Contains(event.pointer)
+                                   ? LinkUnder(event.pointer) : std::string();
+                break;
+            case UCEventType::MouseUp: {
+                const std::string pressed = std::move(pressedLink_);
+                pressedLink_.clear();
+                const bool handled = UltraCanvasTextArea::OnEvent(event);
+                // A click - pressed and released on the same link, nothing
+                // selected by a drag - opens it.
+                if (!pressed.empty() && event.button == UCMouseButton::Left &&
+                    !HasSelection() && LinkUnder(event.pointer) == pressed && onLinkActivated) {
+                    onLinkActivated(pressed);
+                    return true;
+                }
+                return handled;
+            }
+            default:
+                break;
+        }
+        return UltraCanvasTextArea::OnEvent(event);
+    }
+
+    // The pointing hand over a link, as over a link in formatted mail.
+    UCMouseCursor GetMouseCursor() const override {
+        return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
+    }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
+
+    std::string LinkUnder(const Point2Di& pointer) {
+        const LineColumnIndex hit = PosToLineColumn(pointer);
+        if (!hit.IsValid()) return std::string();
+        const std::string line = GetLine(hit.lineIndex);
+        // Codepoint column → byte offset; past the end of the line is no link.
+        std::size_t byte = 0;
+        for (int cp = 0; cp < hit.columnIndex && byte < line.size(); ++cp) {
+            ++byte;
+            while (byte < line.size() && (static_cast<unsigned char>(line[byte]) & 0xC0) == 0x80)
+                ++byte;
+        }
+        if (byte >= line.size()) return std::string();
+        return PlainLinkAt(line, byte);
+    }
+
+    void Hover(const std::string& href, const Point2Di& pointerWindow) {
+        if (href == hovered_) {
+            if (linkTooltips && !href.empty() &&
+                (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending()))
+                UltraCanvasTooltipManager::UpdateTooltipPosition(pointerWindow);
+            return;
+        }
+        hovered_ = href;
+        if (onLinkHovered) onLinkHovered(href);
+        if (!linkTooltips) return;
+        if (!href.empty() && GetWindow())
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), href, pointerWindow);
+        else
+            UltraCanvasTooltipManager::HideTooltip();
+    }
+};
 
 std::string SanitizeFolder(const std::string& folder) {
     std::string out;
@@ -347,28 +457,42 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     return root_;
 }
 
+void MessagePreview::ReRender() {
+    if (!bodyHost_ || !hasMessage_) return;
+    blockedRemote_.clear();
+    RenderBody(lastBody_, lastIsHtml_);
+    FetchTrustedHostImages();
+    UpdateRemoteBar();
+}
+
 void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (!bodyHost_) return;
+    if (&body != &lastBody_) lastBody_ = body;
+    lastIsHtml_ = isHtml;
     bodyHost_->ClearChildren();
+    // The links the reader can check before clicking one.
+    if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
 
-    if (isHtml) {
+    // Settings > Reading > "as plain text": no layout and nothing fetched.
+    if (isHtml && showHtml) {
         // Full render through the HTMLReader element builder: the CSSLayout
         // engine measures and lays out a native UltraCanvas tree (containers +
         // Pango-markup labels + images).
         HTML::BuildOptions opts;
-        opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
+        opts.style.baseFontSizePx = bodyFontSizePx;   // 12px ≈ the 9pt UI font
         opts.enableImages = true;
+        // @media queries (a newsletter's side-by-side columns from 480px up)
+        // are answered for the pane the message is shown in.
+        if (bodyHost_->GetWidth() > 0.f) opts.viewportWidth = bodyHost_->GetWidth();
         // Embedded images from the message; remote ones only once loaded.
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
         // file: or javascript: target a message could carry).
-        opts.onLinkActivated = [](const std::string& href) {
-            std::string lower = href;
-            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
-                lower.rfind("mailto:", 0) == 0)
-                UltraCanvas::OpenURL(href);
+        opts.onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
+        opts.onLinkHovered = [this](const std::string& href) {
+            if (onLinkHovered) onLinkHovered(href);
         };
+        opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
@@ -403,7 +527,12 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     }
 
     // The text area is sized by the host's flex column, so it follows the pane.
-    auto text = std::make_shared<UltraCanvasTextArea>("prevBodyText", 0, 0, 0, 0);
+    auto text = std::make_shared<PlainBodyArea>("prevBodyText", 0, 0, 0, 0);
+    text->onLinkHovered = [this](const std::string& href) {
+        if (onLinkHovered) onLinkHovered(href);
+    };
+    text->onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
+    text->linkTooltips = linkTooltips;
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
@@ -411,6 +540,19 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
+void MessagePreview::ActivateLink(const std::string& href) {
+    std::string lower = href.substr(0, 7);
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "mailto:" && onComposeTo) {
+        std::string selfName, selfAddr;
+        for (const auto& a : accounts_)
+            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
+        onComposeTo(selfName, selfAddr, href);
+        return;
+    }
+    OpenMessageLink(href);
 }
 
 std::vector<uint8_t> MessagePreview::LoadBodyImage(const std::string& src) {
@@ -449,6 +591,51 @@ void MessagePreview::UpdateRemoteBar() {
     remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
     if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
         remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+}
+
+void MessagePreview::FetchTrustedHostImages() {
+    if (remoteAllowed_ || remoteDangerous_ || !remoteImageHostTrusted ||
+        blockedRemote_.empty())
+        return;
+    std::vector<std::string> urls;
+    for (const auto& u : blockedRemote_)
+        if (remoteImageHostTrusted(u)) urls.push_back(u);
+    if (!urls.empty()) FetchSomeRemoteImages(urls);
+}
+
+void MessagePreview::FetchSomeRemoteImages(const std::vector<std::string>& urls) {
+    if (fetchingRemote_ || urls.empty()) return;
+    fetchingRemote_ = true;
+    UpdateRemoteBar();
+    const uint64_t token = showToken_;
+    std::thread([this, urls, token]() {
+        auto results = std::make_shared<std::map<std::string, std::vector<uint8_t>>>();
+        for (const auto& src : urls) {
+            const std::string url = src.rfind("//", 0) == 0 ? "https:" + src : src;
+            UltraNetHttpOptions options;
+            options.timeoutMs = 15000;
+            options.connectTimeoutMs = 8000;
+            options.maxReceiveSize = 5 * 1024 * 1024;
+            UltraNetResponse response;
+            if (UltraNet_HttpGet(url, response, options) && response.statusCode >= 200 &&
+                response.statusCode < 300 && !response.body.empty())
+                (*results)[src] = std::move(response.body);
+            else
+                (*results)[src] = {};
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, results, token]() {
+            fetchingRemote_ = false;
+            if (remoteCache_.size() + results->size() > 400) remoteCache_.clear();
+            for (auto& [src, bytes] : *results) remoteCache_[src] = std::move(bytes);
+            if (token != showToken_) return;
+            // The others stay blocked: the new render lists them again.
+            blockedRemote_.clear();
+            RenderBody(curHtml_, true);
+            UpdateRemoteBar();
+        });
+    }).detach();
 }
 
 void MessagePreview::FetchRemoteImages() {
@@ -503,12 +690,15 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    if (!sec.Scanned()) {
+    // Also when the stored verdict came from older rules (kThreatRulesRevision):
+    // what an earlier version let through is judged again.
+    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
     // And its attachment count, for the list's paperclip, when the body was
@@ -524,7 +714,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 }
 
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
-                                         const MessageSecurity& security) {
+                                         const MessageSecurity& security,
+                                         const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     // Only the two verdicts worth interrupting a reader for. Advertisements and
@@ -534,19 +725,44 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         return;
     }
 
-    const bool scam = status.cls == SenderClass::Scam;
+    // A dangerous message whose button leads off the sender's own domain is
+    // what phishing looks like: say so plainly, and show both domains so the
+    // reader can see the mismatch for themselves rather than take our word.
+    // Only on the scan's own verdict: a newsletter that is merely sitting in
+    // Junk links to its tracking domain too, and is not phishing for that.
+    DomainMismatch mismatch;
+    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    const bool phishing = mismatch.found;
+
+    const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (scam ? "This message looks like a scam or phishing attempt"
+        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+         : status.cls == SenderClass::Scam
+              ? "This message looks like a scam or phishing attempt"
               : "Parts of this message do not add up"));
 
-    std::string text = status.reason;
+    std::string text;
+    if (phishing) {
+        text = "Mismatch of domains\n"
+               "Sender domain: " + mismatch.senderDomain + "\n" +
+               (mismatch.isButton ? "Button domain: " : "Link domain: ") +
+               mismatch.linkDomain;
+        if (!mismatch.linkText.empty())
+            text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
+        text += "\n";
+    } else {
+        text = status.reason;
+    }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
     text += "\nDo not sign in, pay or reply through the links in this message unless you "
             "are sure who sent it.";
+    if (phishing)
+        text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
+                "to hack your accounts on other websites.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }
@@ -595,10 +811,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Decode RFC 2047 encoded-words for display (idempotent: messages synced
     // before header decoding are still stored raw).
-    const std::string subject  = UltraNet_MimeDecodeHeader(env.subject);
-    const std::string fromName = UltraNet_MimeDecodeHeader(env.fromName);
+    const std::string subject  = DisplayHeader(env.subject);
+    const std::string fromName = DisplayHeader(env.fromName);
     std::vector<std::string> toList = env.to;
-    for (auto& addr : toList) addr = UltraNet_MimeDecodeHeader(addr);
+    for (auto& addr : toList) addr = DisplayHeader(addr);
 
     // Name on the first line; address and recipients on the second, with the
     // full sender in the tooltip.
@@ -635,8 +851,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
-    fs::path path = PathFromUtf8(mailDir_) / env.accountId / SanitizeFolder(env.folder)
-                  / (std::to_string(env.uid) + ".eml");
+    fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
+                  / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
@@ -688,7 +904,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         if (!security.reason.empty()) tip += "\n" + security.reason;
         from_->SetTooltip(tip);
     }
-    ShowSecurityWarning(status, security);
+    ShowSecurityWarning(status, security, raw);
 
     // The body, with its images: the message's own always, remote ones when
     // the reader has allowed this sender - never for a suspicious message.
@@ -704,6 +920,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         if (remoteAllowed_ && !blockedRemote_.empty()) {
             remoteAllowed_ = false;      // FetchRemoteImages sets it once loaded
             FetchRemoteImages();
+        } else {
+            FetchTrustedHostImages();    // pictures on trusted websites only
         }
     }
     UpdateRemoteBar();

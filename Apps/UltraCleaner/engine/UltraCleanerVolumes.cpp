@@ -32,7 +32,7 @@ namespace fs = std::filesystem;
 // disappeared between listing and asking.
 bool ReadCapacity(VolumeInfo& volume) {
     std::error_code ec;
-    const fs::space_info space = fs::space(volume.mountPoint, ec);
+    const fs::space_info space = fs::space(UltraCanvas::PathFromUtf8(volume.mountPoint), ec);
     if (ec || space.capacity == 0 ||
         space.capacity == static_cast<uintmax_t>(-1)) {
         return false;

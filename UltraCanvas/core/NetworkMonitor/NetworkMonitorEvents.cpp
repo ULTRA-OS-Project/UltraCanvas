@@ -13,7 +13,7 @@
 // a matched Opened is attributed too, though the socket is gone by then.
 //
 // Version: 0.8.0
-// Last Modified: 2026-09-23
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorEvents.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
@@ -143,7 +143,11 @@ void TakeChain(NetworkConnectionEvent& e, const NetworkConnection& c) {
 // refreshed at most a few times a second, for an Opened or Accepted; from
 // what that Opened told, for a Closed.
 void Attribute(NetworkConnectionEvent& e) {
-    if (e.process && e.chainDecoded) return;
+    // Nothing to add: process and chain known, and the process named
+    // beyond its PID (a source that knows only the PID gets the table's
+    // identity for it below).
+    if (e.process && e.chainDecoded && !e.process->executablePath.empty()) return;
+    if (e.process && e.chainDecoded && e.kind == NetworkEventKind::Closed) return;
     Attribution& a = TheAttribution();
     std::lock_guard<std::mutex> lock(a.mutex);
 
@@ -202,7 +206,14 @@ void Attribute(NetworkConnectionEvent& e) {
                 // The chain of this socket: the event's own (same), or the
                 // socket the event now describes after the swap above.
                 const bool describesThisSocket = same || !e.process;
-                if (!e.process) e.process = c.process;
+                if (!e.process) {
+                    e.process = c.process;
+                } else if (describesThisSocket && c.process && c.process->pid == e.process->pid &&
+                           e.process->executablePath.empty() && !c.process->executablePath.empty()) {
+                    // The source knew the PID and no more (ETW); the table's
+                    // identity for it has the name, path and user.
+                    e.process = c.process;
+                }
                 if (!e.chainDecoded && describesThisSocket) TakeChain(e, c);
                 found = true;
                 break;

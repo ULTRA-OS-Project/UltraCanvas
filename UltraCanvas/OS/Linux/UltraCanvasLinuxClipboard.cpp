@@ -158,6 +158,64 @@ namespace UltraCanvas {
         return success;
     }
 
+    // text/html next to the text flavours: browsers, office suites and mail
+    // clients paste the HTML, everything else the text.
+    bool UltraCanvasLinuxClipboard::SetClipboardHtml(const std::string& html, const std::string& plainText) {
+        if (!display) return false;
+        std::vector<uint8_t> text(plainText.begin(), plainText.end());
+        std::vector<std::pair<Atom, std::vector<uint8_t>>> offers;
+        offers.emplace_back(XInternAtom(display, "text/html", False), std::vector<uint8_t>(html.begin(), html.end()));
+        offers.emplace_back(atomUtf8String, text);
+        offers.emplace_back(atomTextPlainUtf8, text);
+        offers.emplace_back(atomTextPlain, text);
+        offers.emplace_back(atomString, text);
+        offers.emplace_back(atomText, std::move(text));
+        return WriteClipboardTargets(atomClipboard, std::move(offers));
+    }
+
+    bool UltraCanvasLinuxClipboard::GetClipboardHtml(std::string& html) {
+        if (!display) return false;
+        std::vector<uint8_t> data;
+        std::string format;
+        if (!ReadClipboardData(atomClipboard, XInternAtom(display, "text/html", False), data, format) || data.empty()) {
+            return false;
+        }
+        // Firefox offers it as UTF-16 with a byte order mark.
+        if (data.size() >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF))) {
+            const bool little = data[0] == 0xFF;
+            html.clear();
+            for (size_t i = 2; i + 1 < data.size(); i += 2) {
+                uint32_t unit = little ? (data[i] | (data[i + 1] << 8)) : ((data[i] << 8) | data[i + 1]);
+                if (unit >= 0xD800 && unit <= 0xDBFF && i + 3 < data.size()) {
+                    const uint32_t low = little ? (data[i + 2] | (data[i + 3] << 8)) : ((data[i + 2] << 8) | data[i + 3]);
+                    if (low >= 0xDC00 && low <= 0xDFFF) {
+                        unit = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                        i += 2;
+                    }
+                }
+                if (unit == 0) break;
+                if (unit < 0x80) html += static_cast<char>(unit);
+                else if (unit < 0x800) {
+                    html += static_cast<char>(0xC0 | (unit >> 6));
+                    html += static_cast<char>(0x80 | (unit & 0x3F));
+                } else if (unit < 0x10000) {
+                    html += static_cast<char>(0xE0 | (unit >> 12));
+                    html += static_cast<char>(0x80 | ((unit >> 6) & 0x3F));
+                    html += static_cast<char>(0x80 | (unit & 0x3F));
+                } else {
+                    html += static_cast<char>(0xF0 | (unit >> 18));
+                    html += static_cast<char>(0x80 | ((unit >> 12) & 0x3F));
+                    html += static_cast<char>(0x80 | ((unit >> 6) & 0x3F));
+                    html += static_cast<char>(0x80 | (unit & 0x3F));
+                }
+            }
+        } else {
+            html.assign(reinterpret_cast<const char*>(data.data()), data.size());
+            while (!html.empty() && html.back() == '\0') html.pop_back();
+        }
+        return !html.empty();
+    }
+
     bool UltraCanvasLinuxClipboard::GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) {
         return ReadImageFromClipboard(atomClipboard, imageData, format);
     }
@@ -534,7 +592,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& selEvent) {
         if (selEvent.property == None) {
-            LogError("HandleSelectionNotify", "Selection conversion failed");
+            // The owner has nothing in the requested target - an empty
+            // clipboard, or text asked of an image. That is an answer, not
+            // an error: a clipboard monitor asks every half second and would
+            // otherwise fill the log with it.
             selectionData.clear();
             selectionFormat.clear();
             selectionReady = true;

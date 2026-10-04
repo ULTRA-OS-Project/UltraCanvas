@@ -30,6 +30,7 @@
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
@@ -59,10 +60,12 @@
 #include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -88,8 +91,51 @@ static std::string LowerExt(const std::string& path) {
 
 static std::string BaseName(const std::string& path) {
     std::error_code ec;
-    fs::path p(path);
+    fs::path p(UltraCanvas::PathFromUtf8(path));
     return PathToUtf8(p.filename());
+}
+
+// ----- Toolbar icons -----
+// The toolbars are icons rather than captions: an icon-only row fits the
+// narrow pane UltraFiler gives the viewer, and a picture is read before a word.
+// The caption moves to the tooltip, so what a button does is still one hover
+// away. Icons come from the framework's own set under media/icons/; the
+// toolbar draws them as masks, so they take the toolbar's foreground colour
+// and grey out with the button.
+static std::string ViewerIconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+
+// Finish an icon-only toolbar button: no text, so no gap reserved for one,
+// and the caption as the tooltip.
+static std::shared_ptr<UltraCanvasButton> IconOnly(std::shared_ptr<UltraCanvasButton> b,
+                                            const std::string& tooltip) {
+    if (b) {
+        b->SetIconSpacing(0);
+        b->SetTooltip(tooltip);
+    }
+    return b;
+}
+
+// The image's error message, cut to what a person can use: libvips reports a
+// decode failure as several lines ("<file>: bad seek to 25996", then
+// "heif: Unsupported feature: Unsupported codec"), behind the framework's own
+// prefixes. The last line names the actual cause.
+static std::string DecodeFailureReason(const std::string& error) {
+    std::string reason;
+    size_t start = 0;
+    while (start < error.size()) {
+        size_t end = error.find('\n', start);
+        if (end == std::string::npos) end = error.size();
+        std::string line = error.substr(start, end - start);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (!line.empty()) reason = line;
+        start = end + 1;
+    }
+    for (const char* prefix : { "Failed to make pixmap Err:", "Failed to decode image pixels: " }) {
+        if (reason.rfind(prefix, 0) == 0) reason.erase(0, std::strlen(prefix));
+    }
+    return reason.empty() ? std::string("unknown error") : reason;
 }
 
 static std::string HumanSize(uintmax_t bytes) {
@@ -127,7 +173,7 @@ static std::string ResolutionText(double dpiX, double dpiY) {
 // stall the viewer. Returns false if the file can't be opened.
 static bool ReadTextFile(const std::string& path, std::string& out,
                          size_t maxBytes = 16u * 1024u * 1024u) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     if (out.size() > maxBytes) {
@@ -167,7 +213,7 @@ static uint32_t ReadLE32(const unsigned char* p) {
 }
 
 static bool ReadUCDHeader(const std::string& path, UCDHeader& out) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     unsigned char h[28];
     if (!f.read(reinterpret_cast<char*>(h), sizeof(h))) return false;
@@ -196,7 +242,7 @@ static bool ReadUCDThumbnail(const std::string& path, const UCDHeader& hdr,
     constexpr uint32_t kMaxThumbBytes = 64u * 1024u * 1024u;
     if (!hdr.valid || !hdr.HasThumbnail() || hdr.IsPrivate() ||
         hdr.thumbnailLength > kMaxThumbBytes) return false;
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     f.seekg(28 + (std::streamoff)hdr.extensionLength);
     out.resize(hdr.thumbnailLength);
@@ -225,7 +271,7 @@ static std::string BuildUCDDetailsText(const std::string& path,
     os << "File: " << BaseName(path) << "\n";
     os << "Path: " << path << "\n";
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
     if (!hdr.valid) {
         os << "\nNot a UCD v2 container (no valid signature).\n"
@@ -379,6 +425,7 @@ void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
     }
 
     image = std::move(img);
+    decodeFailureReported = false;
     // Each new image starts fit-to-window with no rotation/mirror.
     zoom = 1.0;
     panX = panY = 0.0;
@@ -559,13 +606,32 @@ void UltraCanvasMediaSurface::DrawBackdrop(IRenderContext* ctx, const Rect2Df& b
     ctx->PopState();
 }
 
+bool UltraCanvasMediaSurface::HasDecodeFailure() const {
+    return image && !image->errorMessage.empty();
+}
+
+void UltraCanvasMediaSurface::ReportDecodeFailure() {
+    if (decodeFailureReported || !HasDecodeFailure()) return;
+    decodeFailureReported = true;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app || !onDecodeFailed) return;
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(0, false, [self, this](TimerId) {
+        if (self.expired()) return;
+        if (onDecodeFailed) onDecodeFailed();
+    });
+}
+
 void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b) {
     if (!image || !image->IsValid()) {
+        // A picture whose pixels would not decode says so; the reason is in
+        // the info bar and the Details panel.
+        const char* text = HasDecodeFailure() ? "Cannot decode this picture" : "No media";
         ctx->SetFontSize(16);
         ctx->SetTextPaint(Color(130, 130, 140, 255));
         Point2Dd p = ctx->CalculateCenteredTextPosition(
-                "No media", Rect2Dd(b.x, b.y, b.width, b.height));
-        ctx->DrawText("No media", p);
+                text, Rect2Dd(b.x, b.y, b.width, b.height));
+        ctx->DrawText(text, p);
         return;
     }
     double iw = image->GetWidth();
@@ -653,6 +719,14 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
     }
 
     ctx->PopState();
+
+    // Only drawing decodes the pixels, so only now is a failure known. The
+    // first frame of a broken picture is empty; the next one carries the
+    // message above.
+    if (HasDecodeFailure() && !decodeFailureReported) {
+        ReportDecodeFailure();
+        RequestRedraw();
+    }
 }
 
 bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
@@ -925,31 +999,48 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    toolbar->AddButton("mv_open", "Open", "", [this] { ShowOpenDialog(); });
+    IconOnly(toolbar->AddButton("mv_open", "", ViewerIconPath("folder-open.svg"),
+                                [this] { ShowOpenDialog(); }),
+             "Open a file or folder");
     toolbar->AddSeparator("mv_sep0");
-    toolbar->AddButton("mv_prev", "Prev", "", [this] { Previous(); });
-    toolbar->AddButton("mv_next", "Next", "", [this] { Next(); });
+    IconOnly(toolbar->AddButton("mv_prev", "", ViewerIconPath("angle-left.svg"),
+                                [this] { Previous(); }),
+             "Previous file (Left)");
+    IconOnly(toolbar->AddButton("mv_next", "", ViewerIconPath("angle-right.svg"),
+                                [this] { Next(); }),
+             "Next file (Right)");
     toolbar->AddSeparator("mv_sep1");
-    playButton = toolbar->AddToggleButton("mv_play", "Slideshow", "",
-            [this](bool on) { if (on) PlaySlideshow(); else PauseSlideshow(); });
-    toolbar->AddDropdownButton("mv_interval", "Interval",
-            { "3 s", "5 s", "7 s", "10 s" },
-            [this](const std::string& s) {
-                double sec = std::atof(s.c_str());
-                if (sec > 0) SetSlideshowIntervalSeconds(sec);
-            });
-    toolbar->AddDropdownButton("mv_trans", "Transition",
-            { "None", "Cross fade", "Fade out/in", "Slide H", "Slide V", "Zoom" },
-            [this](const std::string& s) {
-                MediaTransition t = MediaTransition::CrossFade;
-                if      (s == "None")        t = MediaTransition::NoTransition;
-                else if (s == "Cross fade")  t = MediaTransition::CrossFade;
-                else if (s == "Fade out/in") t = MediaTransition::FadeOutIn;
-                else if (s == "Slide H")     t = MediaTransition::SlideHorizontal;
-                else if (s == "Slide V")     t = MediaTransition::SlideVertical;
-                else if (s == "Zoom")        t = MediaTransition::ZoomFade;
-                SetTransition(t);
-            });
+    playButton = IconOnly(toolbar->AddToggleButton("mv_play", "", ViewerIconPath("slideshow.svg"),
+            [this](bool on) { if (on) PlaySlideshow(); else PauseSlideshow(); }),
+            "Slideshow (Space)");
+    // The two dropdowns show their current value - "5 s", "Cross fade" - which
+    // is what a value picker is for; the tooltip says which value it is.
+    {
+        auto dd = toolbar->AddDropdownButton("mv_interval", "",
+                { "3 s", "5 s", "7 s", "10 s" },
+                [this](const std::string& s) {
+                    double sec = std::atof(s.c_str());
+                    if (sec > 0) SetSlideshowIntervalSeconds(sec);
+                });
+        dd->SetTooltip("Slideshow interval");
+        dd->SetSelectedIndex(1, false);      // 5 s, the default
+    }
+    {
+        auto dd = toolbar->AddDropdownButton("mv_trans", "",
+                { "None", "Cross fade", "Fade out/in", "Slide H", "Slide V", "Zoom" },
+                [this](const std::string& s) {
+                    MediaTransition t = MediaTransition::CrossFade;
+                    if      (s == "None")        t = MediaTransition::NoTransition;
+                    else if (s == "Cross fade")  t = MediaTransition::CrossFade;
+                    else if (s == "Fade out/in") t = MediaTransition::FadeOutIn;
+                    else if (s == "Slide H")     t = MediaTransition::SlideHorizontal;
+                    else if (s == "Slide V")     t = MediaTransition::SlideVertical;
+                    else if (s == "Zoom")        t = MediaTransition::ZoomFade;
+                    SetTransition(t);
+                });
+        dd->SetTooltip("Slideshow transition");
+        dd->SetSelectedIndex(1, false);      // Cross fade, the default
+    }
     AddChild(toolbar);
 
     // ----- TOP TOOLBAR ROW 2: view + edit -----
@@ -957,26 +1048,47 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    toolbar2->AddButton("mv_zoomout", "Zoom -", "", [this] { ZoomOutAction(); });
-    toolbar2->AddDropdownButton("mv_zoom", "Zoom",
+    IconOnly(toolbar2->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
+                                 [this] { ZoomOutAction(); }),
+             "Zoom out (-)");
+    toolbar2->AddDropdownButton("mv_zoom", "",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
-            });
-    toolbar2->AddButton("mv_zoomin", "Zoom +", "", [this] { ZoomInAction(); });
-    toolbar2->AddButton("mv_fit", "Fit", "", [this] { ZoomFitAction(); });
+            })->SetTooltip("Zoom level");
+    IconOnly(toolbar2->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
+                                 [this] { ZoomInAction(); }),
+             "Zoom in (+)");
+    IconOnly(toolbar2->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
+                                 [this] { ZoomFitAction(); }),
+             "Fit to window");
     toolbar2->AddSeparator("mv_sep3");
-    toolbar2->AddButton("mv_rotl", "Rotate L", "", [this] { if (surface) surface->RotateBy(-1); });
-    toolbar2->AddButton("mv_rotr", "Rotate R", "", [this] { if (surface) surface->RotateBy(1); });
-    toolbar2->AddButton("mv_mirh", "Mirror H", "", [this] { if (surface) surface->ToggleFlipHorizontal(); });
-    toolbar2->AddButton("mv_mirv", "Mirror V", "", [this] { if (surface) surface->ToggleFlipVertical(); });
+    IconOnly(toolbar2->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
+                                 [this] { if (surface) surface->RotateBy(-1); }),
+             "Rotate left");
+    IconOnly(toolbar2->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
+                                 [this] { if (surface) surface->RotateBy(1); }),
+             "Rotate right");
+    IconOnly(toolbar2->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
+                                 [this] { if (surface) surface->ToggleFlipHorizontal(); }),
+             "Mirror horizontally");
+    IconOnly(toolbar2->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
+                                 [this] { if (surface) surface->ToggleFlipVertical(); }),
+             "Mirror vertically");
     toolbar2->AddSeparator("mv_sep4");
-    toolbar2->AddToggleButton("mv_adjust", "Adjust", "",
-            [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
-    toolbar2->AddButton("mv_curves", "Curves", "", [this] { ShowCurvesDialog(); });
-    toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
-    toolbar2->AddButton("mv_info", "Info", "", [this] { ToggleDetails(); });
+    IconOnly(toolbar2->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
+            [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); }),
+            "Adjustments: gamma, brightness, colour, sharpen");
+    IconOnly(toolbar2->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
+                                 [this] { ShowCurvesDialog(); }),
+             "Curves");
+    IconOnly(toolbar2->AddButton("mv_save", "", ViewerIconPath("save.svg"),
+                                 [this] { ShowSaveDialog(); }),
+             "Save as\xE2\x80\xA6");
+    IconOnly(toolbar2->AddButton("mv_info", "", ViewerIconPath("file-info.svg"),
+                                 [this] { ToggleDetails(); }),
+             "Details");
     AddChild(toolbar2);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
@@ -1002,17 +1114,32 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     adjustPanel->AddChild(BuildAdjustSlider("adj_sharp", "Sharpen", 0.0f, 3.0f, 0.0f,
             [this](float v) { adjustments.sharpen = v; ApplyAdjustments(); }));
 
-    auto autoBtn = std::make_shared<UltraCanvasButton>("adj_auto", 0, 0, 96, 28, "Auto");
-    autoBtn->onClick = [this] {
-        adjustments.autoOptimize = !adjustments.autoOptimize;
+    // Auto-optimise latches (it is a state of the adjustments, not an action),
+    // so it is a toggle whose pressed look says whether it is on; Reset is a
+    // plain click. Both are icons with the caption as tooltip, like the toolbar.
+    auto makeAdjustButton = [](const std::string& id, const std::string& icon,
+                               const std::string& tooltip) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 34, 28, "");
+        b->SetIcon(ViewerIconPath(icon));
+        b->SetIconSize(18, 18);
+        b->SetIconPosition(ButtonIconPosition::Center);
+        b->SetIconSpacing(0);
+        b->SetUseIconAsMask(true);
+        b->SetTooltip(tooltip);
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return b;
+    };
+    auto autoBtn = makeAdjustButton("adj_auto", "wand.svg", "Auto-optimise");
+    autoBtn->SetCanToggled(true);
+    autoBtn->onToggle = [this](bool on) {
+        adjustments.autoOptimize = on;
         ApplyAdjustments();
     };
-    autoBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    adjustResetters.push_back([b = autoBtn.get()] { b->SetPressed(false); });
     adjustPanel->AddChild(autoBtn);
 
-    auto resetBtn = std::make_shared<UltraCanvasButton>("adj_reset", 0, 0, 96, 28, "Reset");
+    auto resetBtn = makeAdjustButton("adj_reset", "reload.svg", "Reset adjustments");
     resetBtn->onClick = [this] { ResetAdjustments(); };
-    resetBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     adjustPanel->AddChild(resetBtn);
     AddChild(adjustPanel);
 
@@ -1022,6 +1149,10 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     surface->onNavigate = [this](int d) { if (d < 0) Previous(); else Next(); };
     surface->onViewChanged = [this] { UpdateInfoBar(); };
+    surface->onDecodeFailed = [this] {
+        UpdateInfoBar();
+        if (IsDetailsVisible()) UpdateDetailedInfo();
+    };
     surface->onFilesDropped = [this](const std::vector<std::string>& files) {
         HandleDroppedFiles(files);
     };
@@ -1213,7 +1344,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     infoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bottomBar->AddChild(infoLabel);
 
-    auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 72, 20, "Details");
+    auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 28, 20, "");
+    detailsBtn->SetIcon(ViewerIconPath("file-info.svg"));
+    detailsBtn->SetIconSize(14, 14);
+    detailsBtn->SetIconPosition(ButtonIconPosition::Center);
+    detailsBtn->SetIconSpacing(0);
+    detailsBtn->SetUseIconAsMask(true);
+    detailsBtn->SetTooltip("Details");
     detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
@@ -1314,14 +1451,21 @@ bool UltraCanvasMediaViewer::IsFontFile(const std::string& path) {
     return IsFontFileExtension(path);
 }
 
+// The e-book container formats IsEBookFile claims, also offered by the Open
+// dialog's "All supported media" filter.
+static const std::vector<std::string>& EBookExtensions() {
+    static const std::vector<std::string> exts = {
+        "epub", "fb2", "mobi", "prc", "azw", "azw3"
+    };
+    return exts;
+}
+
 bool UltraCanvasMediaViewer::IsEBookFile(const std::string& path) {
     // e-books open in UltraCanvasEBookViewer through the engine registry
     // (EPUB / FB2 / MOBI and Kindle variants). Plain text stays in the text
     // view even though a TXT e-book engine exists, so only the dedicated
     // e-book container formats are claimed here.
-    static const std::vector<std::string> b = {
-        "epub", "fb2", "mobi", "prc", "azw", "azw3"
-    };
+    const auto& b = EBookExtensions();
     std::string e = LowerExt(path);
     return !e.empty() && std::find(b.begin(), b.end(), e) != b.end();
 }
@@ -1369,17 +1513,24 @@ bool UltraCanvasMediaViewer::IsImageFile(const std::string& path) {
     return std::find(exts.begin(), exts.end(), e) != exts.end();
 }
 
+// Plain-text and markup extensions IsTextFile claims besides the syntax
+// tokenizer's source languages.
+static const std::vector<std::string>& PlainTextExtensions() {
+    static const std::vector<std::string> exts = {
+        "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
+        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
+        "tex", "srt", "vtt", "diff", "patch"
+    };
+    return exts;
+}
+
 bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // Text / markup / source files open in a read-only UltraCanvasTextArea. A
     // curated set of plain-text & markup extensions, plus any source language
     // the syntax tokenizer recognises (so highlighting matches the editor).
     std::string e = LowerExt(path);
     if (e.empty()) return false;
-    static const std::vector<std::string> textExts = {
-        "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
-        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
-        "tex", "srt", "vtt", "diff", "patch"
-    };
+    const auto& textExts = PlainTextExtensions();
     if (std::find(textExts.begin(), textExts.end(), e) != textExts.end()) return true;
     // Reuse the syntax tokenizer's language registry for source code (cpp, py,
     // js, java, …). Constructed once; mutation of its current-language state is
@@ -1441,8 +1592,8 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
     std::vector<std::string> out;
     std::error_code ec;
-    if (!fs::is_directory(folder, ec)) return out;
-    for (fs::directory_iterator it(folder, ec), end; it != end && !ec; it.increment(ec)) {
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec)) return out;
+    for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(folder), ec), end; it != end && !ec; it.increment(ec)) {
         std::error_code fec;
         if (it->is_regular_file(fec)) {
             std::string p = PathToUtf8(it->path());
@@ -1503,7 +1654,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
 
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
     std::error_code ec;
-    fs::path p(filePath);
+    fs::path p(UltraCanvas::PathFromUtf8(filePath));
     std::string folder = PathToUtf8(p.parent_path());
     if (folder.empty()) folder = ".";
     OpenFolder(folder, filePath);
@@ -1550,13 +1701,79 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     // they hold nothing open once loaded.
 }
 
+// Every extension the viewer opens, for the Open dialog's type toggles.
+// Several kinds are decided at run time (the codec registry, the model and
+// vector readers a plugin registered, the tokenizer's languages), so the
+// candidates are gathered from every list those checks use and each is kept
+// only when IsSupportedMedia accepts it: the toggles then offer exactly what
+// browsing a folder would show. Lowercase, undotted, sorted, unique.
+static std::vector<std::string> SupportedOpenExtensions() {
+    std::vector<std::string> candidates = ImageExtensions();
+    auto add = [&candidates](const std::vector<std::string>& exts) {
+        candidates.insert(candidates.end(), exts.begin(), exts.end());
+    };
+    add(PlainTextExtensions());
+    add(EBookExtensions());
+    add({ "pdf", "ods", "csv", "tsv", "ucd" });
+    add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
+          "pcf", "bdf", "fon", "fnt" });
+    add(PreviewableModelExtensions());
+    add(PreviewableVectorExtensions());
+    for (MediaCodecKind kind : { MediaCodecKind::Video, MediaCodecKind::Audio }) {
+        for (const auto& codec : GetRegisteredMediaCodecs(kind)) {
+            candidates.push_back(codec.extension);
+            add(codec.aliases);
+        }
+    }
+    for (MediaFormatCategory category : {
+             MediaFormatCategory::Bitmap, MediaFormatCategory::Vector,
+             MediaFormatCategory::Model3D, MediaFormatCategory::Document,
+             MediaFormatCategory::Spreadsheet, MediaFormatCategory::Audio,
+             MediaFormatCategory::Video, MediaFormatCategory::Font }) {
+        add(UltraCanvasSupportedFormats::GetLoadExtensions(category));
+    }
+    static SyntaxTokenizer tokenizer;
+    for (const auto& language : tokenizer.GetLanguageExtensions()) add(language.second);
+
+    std::vector<std::string> out;
+    for (std::string e : candidates) {
+        if (!e.empty() && e.front() == '.') e.erase(0, 1);
+        std::transform(e.begin(), e.end(), e.begin(),
+                       [](unsigned char c) { return (char)std::tolower(c); });
+        if (e.empty() || e == "*") continue;
+        if (UltraCanvasMediaViewer::IsSupportedMedia("file." + e)) out.push_back(e);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
 void UltraCanvasMediaViewer::ShowOpenDialog() {
+    // One toggle button per kind of file rather than a list of extensions:
+    // each supported extension goes to the kind the viewer would show it as.
+    enum Group { Images, Audio, Video, Documents, Text, GroupCount };
+    static const char* const groupNames[GroupCount] = {
+        "Images", "Audio", "Video", "Documents", "Text" };
+    std::vector<std::string> groups[GroupCount];
+    for (const std::string& e : SupportedOpenExtensions()) {
+        switch (ClassifyFile("file." + e)) {
+            case MediaKind::Image:
+            case MediaKind::Vector:
+            case MediaKind::Model:    groups[Images].push_back(e);    break;
+            case MediaKind::Audio:    groups[Audio].push_back(e);     break;
+            case MediaKind::Video:    groups[Video].push_back(e);     break;
+            case MediaKind::Text:     groups[Text].push_back(e);      break;
+            default:                  groups[Documents].push_back(e); break;
+        }
+    }
+
     FileDialogOptions opts;
-    opts.SetTitle("Open media")
-        .AddFilter("Images", std::vector<std::string>{
-            "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif",
-            "svg", "ico", "heic", "heif", "avif", "jxl", "tga", "ppm", "qoi" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Open media").SetFilterToggles(true);
+    // A kind this build cannot show at all (no video backend) gets no button.
+    for (int g = 0; g < GroupCount; ++g) {
+        if (!groups[g].empty()) opts.AddFilter(groupNames[g], groups[g]);
+    }
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
             [this](DialogResult r, const std::vector<std::string>& files) {
@@ -1740,6 +1957,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateInfoBar();
+        if (IsDetailsVisible()) UpdateDetailedInfo();
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -2021,7 +2239,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // transparent image, gone for everything else.
     UpdateTransparencyPalette();
     UpdateInfoBar();
-    UpdateDetailedInfo();
+    // The Details text costs a metadata read of the file; it is built only
+    // while the panel is open, and SetDetailsVisible() builds it on opening.
+    if (IsDetailsVisible()) UpdateDetailedInfo();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -2235,7 +2455,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   UC DOCUMENT";
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
@@ -2252,7 +2472,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                << " / " << pv->GetPageCount();
         }
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         if (pv->HasDocument()) {
@@ -2282,7 +2502,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                    << " / " << fv->GetFaceCount();
         }
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
@@ -2300,13 +2520,27 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
         return;
     }
 
+    if (surface && surface->HasDecodeFailure()) {
+        // The header read (so the size is known) but the pixels did not.
+        auto img = surface->GetImage();
+        std::ostringstream os;
+        os << BaseName(path)
+           << "   \xC2\xB7   " << img->GetWidth() << " x " << img->GetHeight();
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   cannot decode - " << DecodeFailureReason(img->errorMessage)
+           << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
     if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
         infoLabel->SetText("No media");
         return;
@@ -2317,7 +2551,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
        << "   \xC2\xB7   " << img->GetWidth() << " x " << img->GetHeight();
 
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
 
     std::string ext = LowerExt(path);
@@ -2340,7 +2574,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 }
 
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
-    if (!surface || playlist.empty()) return;
+    if (!surface) return;
+    if (playlist.empty()) {
+        ShowDetailsText("No media\n");
+        return;
+    }
     const std::string& path = playlist[currentIndex];
 
     if (!ucdDetails.empty()) {
@@ -2356,7 +2594,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         bos << "File: " << BaseName(path) << "\n";
         bos << "Path: " << path << "\n";
         std::error_code bec;
-        auto bsz = fs::file_size(path, bec);
+        auto bsz = fs::file_size(UltraCanvas::PathFromUtf8(path), bec);
         if (!bec) bos << "Size: " << HumanSize(bsz) << "\n";
         std::string ext = LowerExt(path);
         std::transform(ext.begin(), ext.end(), ext.begin(),
@@ -2390,7 +2628,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         dos << "File: " << BaseName(path) << "\n";
         dos << "Path: " << path << "\n";
         std::error_code dec;
-        auto dsz = fs::file_size(path, dec);
+        auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
         dos << "Type: PDF document\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
@@ -2416,7 +2654,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         mos << "File: " << BaseName(path) << "\n";
         mos << "Path: " << path << "\n";
         std::error_code mec;
-        auto msz = fs::file_size(path, mec);
+        auto msz = fs::file_size(UltraCanvas::PathFromUtf8(path), mec);
         if (!mec) mos << "Size: " << HumanSize(msz) << "\n";
         std::string ext = LowerExt(path);
         std::transform(ext.begin(), ext.end(), ext.begin(),
@@ -2432,11 +2670,13 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     os << "Path: " << path << "\n";
 
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
 
     if (auto img = surface->GetImage()) {
         os << "Dimensions: " << img->GetWidth() << " x " << img->GetHeight() << " px\n";
+        if (surface->HasDecodeFailure())
+            os << "Decoding: failed - " << DecodeFailureReason(img->errorMessage) << "\n";
         if (img->IsAnimated()) {
             os << "Animation: " << img->GetFrameCount() << " frames\n";
         }
@@ -2568,7 +2808,8 @@ bool UltraCanvasMediaViewer::IsDetailsVisible() const {
 
 void UltraCanvasMediaViewer::SetDetailsVisible(bool visible) {
     if (!detailsView || detailsView->IsVisible() == visible) return;
-    if (visible) static_cast<UltraCanvasTextArea*>(detailsView.get())->ScrollTo(0);
+    // Filled for the file showing now (UpdateDetailedInfo scrolls to the top).
+    if (visible) UpdateDetailedInfo();
     detailsView->SetVisible(visible);
     InvalidateLayout();
     RequestRedraw();
@@ -2602,6 +2843,8 @@ void UltraCanvasMediaViewer::SetDetailsFontSize(float size) {
 
 void UltraCanvasMediaViewer::PlaySlideshow() {
     slideshowPlaying = true;
+    // Space and the API reach here too; the toolbar toggle shows the state.
+    if (playButton && !playButton->IsPressed()) playButton->SetPressed(true);
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
     if (slideshowTimer) app->StopTimer(slideshowTimer);
@@ -2611,6 +2854,7 @@ void UltraCanvasMediaViewer::PlaySlideshow() {
 
 void UltraCanvasMediaViewer::PauseSlideshow() {
     slideshowPlaying = false;
+    if (playButton && playButton->IsPressed()) playButton->SetPressed(false);
     if (slideshowTimer) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;

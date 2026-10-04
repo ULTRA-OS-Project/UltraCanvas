@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace VirtualFS;
@@ -177,8 +178,8 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
 int main(int argc, char** argv) {
     std::string outDir = (argc > 1) ? argv[1] : "vfsdelete-test-out";
     std::error_code ec;
-    fs::remove_all(outDir, ec);
-    fs::create_directories(outDir);
+    fs::remove_all(UltraCanvas::PathFromUtf8(outDir), ec);
+    fs::create_directories(UltraCanvas::PathFromUtf8(outDir));
 
     // The bulk folder is 800 files - enough that an
     // O(N * archive size) implementation would visibly hang the test,

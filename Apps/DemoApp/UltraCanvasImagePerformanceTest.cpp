@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
-// Version: 2.5.8
-// Last Modified: 2026-06-01
+// Version: 2.5.9
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -267,9 +267,9 @@ namespace UltraCanvas {
 
 // ============================================================================
 // EXTERNAL HELPER (defined in UltraCanvasBitmapFormatDemo.cpp)
-// Opens a full-size 1:1 image viewer window with zoom/pan support.
+// Opens the file in the demo's shared UltraCanvasMediaViewerWindow.
 // ============================================================================
-    void ShowFullSizeImageViewer(const std::string& imagePath);
+    void ShowInMediaViewer(const std::string& path);
 
 // ============================================================================
 // FILE-SCOPE HELPERS (anonymous namespace — no symbols escape this TU)
@@ -548,7 +548,7 @@ namespace UltraCanvas {
                 WriteLE32(infoHdr + 36, 0);      // important colours
 
                 // ---- WRITE FILE ----
-                FILE* fp = std::fopen(outPath.c_str(), "wb");
+                FILE* fp = UltraCanvas::OpenFileUtf8(outPath, "wb");
                 if (!fp) return "BMP encode: failed to open output file";
 
                 if (std::fwrite(fileHdr, 1, 14, fp) != 14 ||
@@ -598,7 +598,7 @@ namespace UltraCanvas {
         // are out of scope — the encoder never produces them, and supporting
         // arbitrary BMPs would be irrelevant to the timing experiment.
         bool DecodeBMPFile(const std::string& path) {
-            FILE* fp = std::fopen(path.c_str(), "rb");
+            FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
             if (!fp) return false;
 
             unsigned char fileHdr[14];
@@ -675,9 +675,9 @@ namespace UltraCanvas {
         std::string InitialImageDir() {
             std::string dir = GetResourcesDir() + "media/images";
             std::error_code ec;
-            if (std::filesystem::exists(dir, ec)) return dir;
+            if (std::filesystem::exists(UltraCanvas::PathFromUtf8(dir), ec)) return dir;
             std::string alt = GetResourcesDir() + "media";
-            if (std::filesystem::exists(alt, ec)) return alt;
+            if (std::filesystem::exists(UltraCanvas::PathFromUtf8(alt), ec)) return alt;
             return PathToUtf8(std::filesystem::current_path(ec));
         }
 
@@ -1551,7 +1551,7 @@ namespace UltraCanvas {
             for (auto& r : state->results) {
                 if (!r.encodedFilePath.empty()) {
                     std::error_code ec;
-                    std::filesystem::remove(r.encodedFilePath, ec);
+                    std::filesystem::remove(UltraCanvas::PathFromUtf8(r.encodedFilePath), ec);
                 }
             }
             state->results.clear();
@@ -1713,7 +1713,7 @@ namespace UltraCanvas {
                 if (r.errorMessage.empty()) {
                     std::error_code ec;
                     r.encodedSizeBytes = static_cast<size_t>(
-                            std::filesystem::file_size(outPath, ec));
+                            std::filesystem::file_size(UltraCanvas::PathFromUtf8(outPath), ec));
                     if (ec) r.encodedSizeBytes = 0;
 
                     double d0 = 0.0, d1 = 0.0;
@@ -1788,7 +1788,7 @@ namespace UltraCanvas {
                         thumb->SetVisible(true);
                         std::string slotPath = outPath;
                         thumb->onClick = [slotPath]() {
-                            ShowFullSizeImageViewer(slotPath);
+                            ShowInMediaViewer(slotPath);
                         };
                         thumb->RequestRedraw();
                     }

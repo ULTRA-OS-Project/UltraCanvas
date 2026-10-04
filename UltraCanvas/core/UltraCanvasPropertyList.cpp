@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -35,10 +36,10 @@ namespace UltraCanvas {
 
         bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
             std::error_code ec;
-            if (!fs::is_regular_file(path, ec) || ec) return false;
-            const uintmax_t size = fs::file_size(path, ec);
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+            const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
             if (ec || size == 0 || size > kMaxPropertyListBytes) return false;
-            std::ifstream in(path, std::ios::binary);
+            std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!in) return false;
             out.resize(static_cast<size_t>(size));
             in.read(reinterpret_cast<char*>(out.data()),

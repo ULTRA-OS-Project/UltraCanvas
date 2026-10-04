@@ -61,6 +61,13 @@ namespace UltraCanvas {
         // so a widget losing focus can never hide a successor's caret.
         void Hide(UltraCanvasUIElement* ownerElement);
 
+        // Drop the caret's own render context so the next composite rebuilds
+        // it against the window's current surface. The window calls this
+        // when its device scale changes: the context was made similar to the
+        // old surface, and Composite() only rebuilds on a size change, so
+        // the caret would otherwise keep painting at the old scale.
+        void InvalidateContext();
+
         // Restart the blink interval with the caret visible (typing activity).
         void ResetBlink(UltraCanvasUIElement* ownerElement);
 

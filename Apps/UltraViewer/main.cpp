@@ -109,7 +109,11 @@ int main(int argc, char* argv[]) {
         }
         app.SetDefaultWindowIcon(
                 NormalizePath(GetResourcesDir() + "media/appicon/UltraViewer.png"));
-        UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        // The framework's own dialogs, not the platform's: the toolbar's Open
+        // and Save buttons get UltraCanvasFileDialog (folder tree, filer-widget
+        // listing, view buttons), the same on every platform. The viewer shows
+        // no message boxes, so this changes only its file dialogs.
+        UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
         UltraViewerWindow mainWindow;
         if (!mainWindow.Initialize(pathsToOpen)) {

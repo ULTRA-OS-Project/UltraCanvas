@@ -14,8 +14,8 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-16
+// Version: 1.2.1
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -350,7 +351,7 @@ namespace UltraCanvas {
             // The framework logo, embedded in the document's media store so the
             // document stays self-contained when it is saved.
             const std::string logoPath = NormalizePath(GetResourcesDir() + "media/images/UltraCanvas-logo.png");
-            std::ifstream logoFile(logoPath, std::ios::binary);
+            std::ifstream logoFile(UltraCanvas::PathFromUtf8(logoPath), std::ios::binary);
             if (logoFile) {
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(logoFile)),
                                            std::istreambuf_iterator<char>());
@@ -727,11 +728,10 @@ namespace UltraCanvas {
         page->status = status.get();
 
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
-        notes->SetText("Known limits of this first version: tables render but are not edited in place, "
-                       "images are not resized interactively, math runs render as their LaTeX source, "
-                       "there is no spell checking yet, and rich paste between applications still needs "
-                       "clipboard MIME flavours the backend does not carry — copy and paste inside the "
-                       "application does keep formatting.");
+        notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
+                       "paragraph keeps left-to-right indents, the input method's candidate window is not "
+                       "placed at the caret, and macOS has no screen-reader bridge yet (Linux and Windows "
+                       "have one). See UltraCanvasRichTextEdit.md.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);
@@ -749,6 +749,269 @@ namespace UltraCanvas {
         };
 
         page->Sync();
+        return root;
+    }
+
+    // ===== CHINESE, ARABIC AND MYANMAR =====
+    // The same editor on three scripts the Latin sample does not exercise.
+    // Chinese has no spaces: a line may break between any two characters.
+    // Arabic runs right to left and joins its letters; a right-to-left
+    // paragraph starts at the right, and a Latin word or a number inside it
+    // keeps its own direction (the Unicode bidi rules). Myanmar (Burmese,
+    // Unicode encoding) stacks consonants, medials and vowel signs into one
+    // syllable that the shaper reorders, and leaves no spaces between words.
+    // The text is plain UTF-8 in the document. Chinese and Arabic come from
+    // the system's fonts (every desktop ships one for each); Myanmar often
+    // has none on Linux, so the demo carries Noto Sans Myanmar
+    // (media/textsamples/fonts, SIL OFL) and registers it for this process.
+
+    namespace {
+
+        RichDocBlock RightToLeft(RichDocBlock block) {
+            block.rightToLeft = true;
+            return block;
+        }
+
+        const char* const kMyanmarFont = "Noto Sans Myanmar";
+
+        // Registers the Noto Sans Myanmar files the demo ships. They are kept
+        // out of media/fonts on purpose: that folder is loaded into every
+        // application, and only this page needs the script. Registering twice
+        // is a no-op, so reopening the page costs nothing.
+        void RegisterMyanmarFont() {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            const std::string dir = NormalizePath(GetResourcesDir() + "media/textsamples/fonts/");
+            for (const char* file : {"NotoSansMyanmar-Regular.ttf", "NotoSansMyanmar-Bold.ttf"}) {
+                app->RegisterFontFile(dir + file);
+            }
+        }
+
+        // Names the Myanmar font on every run, so the text does not depend on
+        // which font fontconfig's fallback happens to rank first (on a bare
+        // Linux system that is often the bitmap Unifont). The family is saved
+        // with the document, as a word processor would.
+        RichDocBlock InMyanmarFont(RichDocBlock block) {
+            for (auto& run : block.runs) run.fontFamily = kMyanmarFont;
+            return block;
+        }
+
+        RichTableCell InMyanmarFont(RichTableCell cell) {
+            for (auto& run : cell.runs) run.fontFamily = kMyanmarFont;
+            return cell;
+        }
+
+        std::shared_ptr<UCRichDocument> BuildInternationalDocument() {
+            auto document = std::make_shared<UCRichDocument>();
+            document->metadata.title = "Chinese, Arabic and Myanmar";
+
+            // ----- Chinese -----
+            document->blocks.push_back(MakeHeading(1, "多语言文档示例"));
+            {
+                std::vector<RichTextRun> runs;
+                runs.push_back(MakeRun("这是一个用 UltraCanvasRichTextEdit 编辑的中文段落。中文在任意两个汉字之间都可以换行，"
+                                       "不需要空格。"));
+                RichTextRun bold = MakeRun("粗体");
+                bold.bold = true;
+                runs.push_back(bold);
+                runs.push_back(MakeRun("、"));
+                RichTextRun italic = MakeRun("斜体");
+                italic.italic = true;
+                runs.push_back(italic);
+                runs.push_back(MakeRun("和"));
+                RichTextRun red = MakeRun("红色文字");
+                red.color = "#CC0000";
+                runs.push_back(red);
+                runs.push_back(MakeRun("都是文字本身的属性。使用输入法（例如拼音）输入时，正在组合的文字会带下划线显示在光标处，"
+                                       "确认后才写入文档"));
+                // A footnote, written in Chinese too.
+                RichTextRun reference = MakeRun("1");
+                reference.noteIndex = 0;
+                reference.superscript = true;
+                runs.push_back(reference);
+                runs.push_back(MakeRun("。"));
+                document->blocks.push_back(MakeParagraph(std::move(runs)));
+
+                RichNote note;
+                note.blocks.push_back(MakeParagraph({MakeRun("脚注也可以用中文书写；在页面视图中它显示在页面底部。")}));
+                document->notes.push_back(std::move(note));
+            }
+            document->blocks.push_back(MakeListItem("表格与列表", false));
+            document->blocks.push_back(MakeListItem("脚注、批注和修订", false));
+            document->blocks.push_back(MakeListItem("导出为 .odt、.docx 和 PDF", false));
+
+            // ----- Arabic -----
+            document->blocks.push_back(RightToLeft(MakeHeading(1, "مثال على النص العربي")));
+            {
+                std::vector<RichTextRun> runs;
+                runs.push_back(MakeRun("هذه فقرة باللغة العربية. يبدأ النص من اليمين، وتتحرك مفاتيح الأسهم في الاتجاه "
+                                       "الذي تشير إليه. "));
+                RichTextRun bold = MakeRun("الخط العريض");
+                bold.bold = true;
+                runs.push_back(bold);
+                runs.push_back(MakeRun(" و"));
+                RichTextRun italic = MakeRun("المائل");
+                italic.italic = true;
+                runs.push_back(italic);
+                runs.push_back(MakeRun(" من خصائص النص نفسه. يمكن خلط الأرقام مثل 2026 والكلمات الإنجليزية مثل "
+                                       "UltraCanvas في السطر نفسه."));
+                document->blocks.push_back(RightToLeft(MakeParagraph(std::move(runs))));
+            }
+            {
+                RichDocBlock first = MakeListItem("الجداول والقوائم", true);
+                RichDocBlock second = MakeListItem("الحواشي والتعليقات", true);
+                RichDocBlock third = MakeListItem("التصدير إلى PDF", true);
+                document->blocks.push_back(RightToLeft(first));
+                document->blocks.push_back(RightToLeft(second));
+                document->blocks.push_back(RightToLeft(third));
+            }
+
+            // ----- Myanmar -----
+            document->blocks.push_back(InMyanmarFont(MakeHeading(1, "မြန်မာဘာသာ နမူနာ")));
+            {
+                std::vector<RichTextRun> runs;
+                runs.push_back(MakeRun("ဤစာပိုဒ်ကို မြန်မာဘာသာဖြင့် ရေးသားထားပါသည်။ မြန်မာစာတွင် စကားလုံးများကြားတွင် "
+                                       "နေရာလွတ် မထားလေ့ရှိဘဲ စကားစုများကြားတွင်သာ ခြားထားပါသည်။ "));
+                RichTextRun bold = MakeRun("စာလုံးမည်း");
+                bold.bold = true;
+                runs.push_back(bold);
+                runs.push_back(MakeRun("နှင့် "));
+                RichTextRun italic = MakeRun("စာလုံးစောင်း");
+                italic.italic = true;
+                runs.push_back(italic);
+                runs.push_back(MakeRun("ကိုလည်း သုံးနိုင်ပါသည်။ ခုနှစ် ၂၀၂၆ ကဲ့သို့ မြန်မာဂဏန်းများလည်း ပါဝင်နိုင်ပါသည်။"));
+                document->blocks.push_back(InMyanmarFont(MakeParagraph(std::move(runs))));
+            }
+            document->blocks.push_back(InMyanmarFont(MakeListItem("ဇယားများနှင့် စာရင်းများ", false)));
+            document->blocks.push_back(InMyanmarFont(MakeListItem("အောက်ခြေမှတ်စုများနှင့် မှတ်ချက်များ", false)));
+            document->blocks.push_back(InMyanmarFont(MakeListItem("PDF အဖြစ် ထုတ်ယူခြင်း", false)));
+
+            // ----- All of them, and a table -----
+            document->blocks.push_back(MakeHeading(2, "Mixed directions in one line"));
+            document->blocks.push_back(MakeParagraph({MakeRun(
+                "An English sentence can hold an Arabic phrase, مرحبا بالعالم, and a Chinese one, 你好，世界, "
+                "and each keeps its own direction while the line reads left to right.")}));
+            {
+                RichDocBlock table;
+                table.type = RichBlockType::Table;
+                auto row = [&](const char* english, const char* chinese, const char* arabic, const char* myanmar,
+                               bool header) {
+                    RichTableRow r;
+                    r.header = header;
+                    r.cells.push_back(MakeCell(english, header));
+                    r.cells.push_back(MakeCell(chinese, header));
+                    r.cells.push_back(MakeCell(arabic, header));
+                    r.cells.push_back(InMyanmarFont(MakeCell(myanmar, header)));
+                    table.tableRows.push_back(r);
+                };
+                row("English", "中文", "العربية", "မြန်မာ", true);
+                row("Hello", "你好", "مرحبا", "မင်္ဂလာပါ", false);
+                row("Thank you", "谢谢", "شكرا", "ကျေးဇူးတင်ပါတယ်", false);
+                row("Book", "书", "كتاب", "စာအုပ်", false);
+                row("Document", "文档", "مستند", "စာရွက်စာတမ်း", false);
+                document->blocks.push_back(table);
+            }
+            document->UpdateNoteMarks();
+            return document;
+        }
+
+    } // namespace
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGInternationalExamples() {
+        const float kWidth = 1020.0f;
+        const float kHeight = 780.0f;
+
+        auto root = std::make_shared<UltraCanvasContainer>("WYSIWYGIntlExamples", 0, 0, kWidth, kHeight);
+        root->SetBackgroundColor(Color(248, 248, 250, 255));
+
+        auto title = std::make_shared<UltraCanvasLabel>("wysiwygIntlTitle", 20, 12, 960, 28);
+        title->SetText("WYSIWYG Editor — Chinese, Arabic & Myanmar");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        root->AddChild(title);
+
+        auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygIntlSubtitle", 20, 44, 960, 20);
+        subtitle->SetText("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
+                          "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
+        subtitle->SetFontSize(12);
+        subtitle->SetTextColor(Color(100, 100, 100, 255));
+        root->AddChild(subtitle);
+
+        RegisterMyanmarFont();
+        auto edit = CreateRichTextEdit("wysiwygIntlEditor", 20, 120, 960, 560);
+        edit->SetDocument(BuildInternationalDocument());
+        edit->SetModified(false);
+        root->AddChild(edit);
+
+        auto status = std::make_shared<UltraCanvasLabel>("wysiwygIntlStatus", 20, 688, 960, 22);
+        status->SetFontSize(12);
+        status->SetTextColor(Color(70, 70, 70, 255));
+        root->AddChild(status);
+
+        // Raw pointers only: the root owns both, and the callbacks below live
+        // exactly as long as it does.
+        UltraCanvasRichTextEdit* editor = edit.get();
+        UltraCanvasLabel* statusLabel = status.get();
+        auto describe = [editor, statusLabel]() {
+            const RichDocPosition caret = editor->GetEditor().GetCaret();
+            std::string text = "Paragraph " + std::to_string(caret.blockIndex + 1) + ": "
+                             + (editor->IsRightToLeft() ? "right to left" : "left to right");
+            if (!editor->GetCompositionText().empty()) text += " — composing \"" + editor->GetCompositionText() + "\"";
+            statusLabel->SetText(text);
+        };
+
+        auto bar = MakeToolbar("wysiwygIntlBar", 72);
+        MakeToolbarButton(bar->AddButton("wysiwygIntlDirection", "Right-to-left", "",
+            [editor, describe]() {
+                editor->SetRightToLeft(!editor->IsRightToLeft());
+                describe();
+            }), "Toggle the caret paragraph's direction");
+        MakeToolbarButton(bar->AddButton("wysiwygIntlPageView", "Page view", "",
+            [editor]() { editor->SetPageView(!editor->IsPageView()); }),
+            "Show the pages (the footnote goes to the foot of its page)");
+        bar->AddSeparator();
+        MakeToolbarButton(bar->AddButton("wysiwygIntlBold", "", Icon("md-bold.svg"),
+            [editor]() { editor->ToggleBold(); }), "Bold (Ctrl+B)");
+        MakeToolbarButton(bar->AddButton("wysiwygIntlItalic", "", Icon("md-italic.svg"),
+            [editor]() { editor->ToggleItalic(); }), "Italic (Ctrl+I)");
+        MakeToolbarButton(bar->AddButton("wysiwygIntlUndo", "", Icon("undo.svg"),
+            [editor]() { editor->Undo(); }), "Undo (Ctrl+Z)");
+        MakeToolbarButton(bar->AddButton("wysiwygIntlRedo", "", Icon("redo.svg"),
+            [editor]() { editor->Redo(); }), "Redo (Ctrl+Y)");
+        bar->AddSeparator();
+        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as…", Icon("save.svg"),
+            [editor, statusLabel]() {
+                FileDialogOptions options;
+                options.SetTitle("Save Document As")
+                       .SetDefaultFileName("multilingual.odt")
+                       .AddFilter("OpenDocument Text (*.odt)", "odt")
+                       .AddFilter("Word Document (*.docx)", "docx");
+                UltraCanvasFileLoader::SaveFileDialog(options,
+                    [editor, statusLabel](DialogResult result, const std::string& path) {
+                        if (result != DialogResult::OK || path.empty()) return;
+                        std::string error;
+                        if (!UCWordDocumentIO::Save(path, *editor->GetDocument(), error)) {
+                            statusLabel->SetText("Could not save: " + error);
+                            return;
+                        }
+                        editor->SetModified(false);
+                        statusLabel->SetText("Saved " + PathToUtf8(PathFromUtf8(path).filename())
+                                             + " — the paragraph directions go with it");
+                    });
+            }), "Save as .odt or .docx");
+        root->AddChild(bar);
+
+        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
+        notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
+                       "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
+                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
+                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
+        notes->SetFontSize(11);
+        notes->SetTextColor(Color(120, 120, 120, 255));
+        root->AddChild(notes);
+
+        edit->onSelectionChanged = describe;
+        describe();
         return root;
     }
 

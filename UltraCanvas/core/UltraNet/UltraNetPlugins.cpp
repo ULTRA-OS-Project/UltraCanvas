@@ -1,11 +1,19 @@
 // core/UltraNet/UltraNetPlugins.cpp
-// Plugin registry. Plug-ins register themselves via UltraNet_RegisterPlugin
-// at static-init time (or at runtime via the future RefreshPlugins loader).
-// The registry maintains two indexes: by plug-in name and by URL scheme.
-// Version: 0.3.1 (Stage 3)
+// Plugin registry. Plug-ins register through UltraNet_RegisterPlugin - built-in
+// ones directly, DSOs through the host table UltraNet_RefreshPlugins hands to
+// their UltraNet_PluginInit. The registry maintains two indexes: by plug-in
+// name and by URL scheme.
+// Version: 0.5.1 - plug-ins are loaded RTLD_LOCAL. 0.5.0: only
+//                  UltraNet_PluginInit is loaded (the POSIX-only v1 entry is
+//                  gone). 0.4.0: host ABI 2 - the core functions a plug-in
+//                  calls travel in the host table.
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
+#include "UltraNet/UltraNetMime.h"
+#include "UltraNet/UltraNetUrl.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -35,7 +43,14 @@ using UltraCanvas::PathToUtf8;
 #else
   #include <dlfcn.h>
   using PluginLibHandle = void*;
-  static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_GLOBAL); }
+  // RTLD_LOCAL: a plug-in takes nothing from the host's symbol table any more
+  // (everything comes through the host table), so nothing it exports needs to
+  // join the process-wide scope - where it would bind the symbols of every
+  // library loaded after it, another plug-in's included (two plug-ins built
+  // from the same helper source export the same names). The plug-in still
+  // resolves its own references against the host first, so the type
+  // information behind the host's dynamic_cast is unaffected.
+  static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
   static void*           PluginSym (PluginLibHandle h,
                                     const char* sym)    { return dlsym(h, sym); }
 #endif
@@ -54,21 +69,43 @@ static bool IsPluginFile(const std::filesystem::path& p) {
 #endif
 }
 
-// Plug-in DSO contract — see UltraNetPlugins.h for the full description.
-// We resolve v2 (UltraNet_PluginInit) first, fall back to v1
-// (UltraNet_PluginRegister) for backward compatibility with POSIX plug-ins
-// built before the host-vtable contract.
-using UltraNet_PluginRegisterFn = void (*)();   // v1 (POSIX-only)
-static constexpr const char* kPluginEntryV1 = "UltraNet_PluginRegister";
-static constexpr const char* kPluginEntryV2 = "UltraNet_PluginInit";
+// Plug-in DSO contract — see UltraNetPlugins.h for the full description. The
+// one entry point is UltraNet_PluginInit(host). The v1 entry
+// (UltraNet_PluginRegister, which resolved UltraNet_RegisterPlugin from the
+// host's symbol table) is no longer loaded: it only ever worked on POSIX, and
+// only when the host happened to carry every core function the plug-in called.
+static constexpr const char* kPluginEntry = "UltraNet_PluginInit";
 
-// Host vtable handed to v2 plug-ins. RegisterPlugin needs a non-template
-// wrapper for the function-pointer slot (UltraNet_RegisterPlugin is a free
-// function, not a template, so this just takes its address).
-static UltraNetPluginHost g_pluginHost = {
+// The table handed to every v2 plug-in (see UltraNetPlugins.h). Everything a
+// plug-in needs from the core goes through it, so a plug-in DSO has no
+// undefined core symbols. Because the loader passes this table's address,
+// every host that loads plug-ins also links every function named in it -
+// which is what makes plug-ins load into an app on a static core.
+namespace {
+void HttpHeadersSet(UltraNetHttpHeaders& headers, const std::string& name,
+                    const std::string& value) {
+    headers.Set(name, value);
+}
+} // namespace
+
+static const UltraNetPluginHost g_pluginHost = {
     ULTRANET_PLUGIN_HOST_ABI_VERSION,
-    &UltraNet_RegisterPlugin
+    &UltraNet_RegisterPlugin,
+    &UltraNet_ParseUrl,
+    &UltraNet_UrlEncode,
+    &UltraNet_UrlDecode,
+    &UltraNet_ResolveCaBundlePath,
+    &UltraNet_DescribeTrustRoots,
+    &UltraNet_DescribePlatform,
+    &UltraNet_MimeBuild,
+    &UltraNet_HttpGet,
+    &UltraNet_HttpRequest,
+    &HttpHeadersSet,
 };
+
+const UltraNetPluginHost* UltraNet_GetPluginHost() {
+    return &g_pluginHost;
+}
 
 namespace {
 
@@ -162,7 +199,7 @@ void UltraNet_RefreshPlugins() {
     if (dir.empty()) return;
 
     std::error_code ec;
-    auto it = std::filesystem::directory_iterator(dir, ec);
+    auto it = std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec);
     if (ec) return;
 
     for (const auto& entry : it) {
@@ -171,7 +208,7 @@ void UltraNet_RefreshPlugins() {
         if (!IsPluginFile(path)) continue;
 
         const std::string canonical =
-            PathToUtf8(std::filesystem::weakly_canonical(path, ec));
+            PathToUtf8(std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(path), ec));
         if (ec || canonical.empty()) continue;
 
         {
@@ -181,23 +218,16 @@ void UltraNet_RefreshPlugins() {
         PluginLibHandle h = PluginOpen(canonical.c_str());
         if (!h) continue;
 
-        // Prefer the v2 entry point (host-vtable injection — works on
-        // Windows too); fall back to v1 (POSIX-only symbol resolution).
-        auto init = reinterpret_cast<UltraNet_PluginInitFn>(
-            PluginSym(h, kPluginEntryV2));
-        UltraNet_PluginRegisterFn reg = nullptr;
-        if (!init) {
-            reg = reinterpret_cast<UltraNet_PluginRegisterFn>(
-                PluginSym(h, kPluginEntryV1));
-        }
-        if (!init && !reg) continue;   // leave lib loaded; later refresh may need it
+        // The host-table entry point, the same on every platform. A library
+        // without it is not an UltraNet plug-in (a v1-only one is refused).
+        auto init = reinterpret_cast<UltraNet_PluginInitFn>(PluginSym(h, kPluginEntry));
+        if (!init) continue;   // leave lib loaded; later refresh may need it
 
         {
             std::lock_guard<std::mutex> lk(r.mutex);
             r.loaded[canonical] = h;
         }
-        if (init) init(&g_pluginHost);
-        else      reg();
+        init(&g_pluginHost);
     }
 }
 

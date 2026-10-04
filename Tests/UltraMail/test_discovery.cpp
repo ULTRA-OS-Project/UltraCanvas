@@ -2,6 +2,7 @@
 // Account auto-discovery: provider presets, Mozilla-autoconfig XML parsing,
 // username placeholder resolution and server-URL construction. All pure — no
 // network.
+// Version: 0.2.0 - ServerNameProblem
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -45,6 +46,35 @@ TEST(looks_like_email_address_rejects_typos) {
     REQUIRE(!LooksLikeEmailAddress("erika@example."));   // trailing dot
     REQUIRE(!LooksLikeEmailAddress("a@b@example.com"));  // two @
     REQUIRE(!LooksLikeEmailAddress("erika @example.com"));  // whitespace
+}
+
+TEST(server_name_problem_accepts_real_server_names) {
+    REQUIRE(ServerNameProblem("mail.interkontakt.net").empty());
+    REQUIRE(ServerNameProblem("imap.gmail.com").empty());
+    REQUIRE(ServerNameProblem("smtp-relay.example.co.uk").empty());
+    REQUIRE(ServerNameProblem("example.com.").empty());          // fully qualified
+    REQUIRE(ServerNameProblem("mailserver").empty());            // a one-word LAN name
+    REQUIRE(ServerNameProblem("192.168.1.20").empty());
+    REQUIRE(ServerNameProblem("[2001:db8::1]").empty());
+    REQUIRE(ServerNameProblem("mail.b\xC3\xBC" "cher.de").empty());  // an international name
+}
+
+TEST(server_name_problem_rejects_what_cannot_be_a_server) {
+    // The address's @ typed for the name's dot: the dot is suggested.
+    REQUIRE_EQ(ServerNameProblem("mail@interkontakt.net"),
+               std::string("A server name has no @ - did you mean mail.interkontakt.net?"));
+    REQUIRE(!ServerNameProblem("a@b@example.com").empty());
+    REQUIRE(!ServerNameProblem("").empty());
+    REQUIRE(!ServerNameProblem("mail .example.com").empty());    // a space
+    REQUIRE(!ServerNameProblem("imaps://mail.example.com").empty());
+    REQUIRE(!ServerNameProblem("mail.example.com:993").empty()); // port after a colon
+    REQUIRE(!ServerNameProblem("mail.example.com/imap").empty());
+    REQUIRE(!ServerNameProblem("mail..example.com").empty());    // empty part
+    REQUIRE(!ServerNameProblem(".example.com").empty());
+    REQUIRE(!ServerNameProblem("-mail.example.com").empty());
+    REQUIRE(!ServerNameProblem("mail,example.com").empty());     // a comma
+    REQUIRE(!ServerNameProblem(std::string(64, 'a') + ".com").empty());
+    REQUIRE(!ServerNameProblem("[2001:db8::1").empty());
 }
 
 // ---- presets ---------------------------------------------------------------
@@ -313,10 +343,14 @@ TEST(credential_vault_roundtrip) {
     REQUIRE(vault.Retrieve("erika", got));
     REQUIRE_EQ(got, std::string("s3cr3t-p@ss"));
 
-    // The vault file must not contain the plaintext secret.
-    std::ifstream is(vault.VaultPath(), std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    REQUIRE(content.find("s3cr3t-p@ss") == std::string::npos);
+    // The vault file must not contain the plaintext secret. The stream is
+    // closed before Remove() rewrites the file: Windows will not replace a
+    // file that is still open.
+    {
+        std::ifstream is(vault.VaultPath(), std::ios::binary);
+        std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+        REQUIRE(content.find("s3cr3t-p@ss") == std::string::npos);
+    }
 
     // The 0.1 key file must not be recreated — the key is derived, not stored.
     REQUIRE(!fs::exists(dir / "vault.key"));

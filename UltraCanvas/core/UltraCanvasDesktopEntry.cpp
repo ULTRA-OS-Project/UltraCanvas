@@ -133,8 +133,8 @@ namespace UltraCanvas {
         // first group that has it. Used for the desktop's own settings files.
         std::string ReadSettingsKey(const fs::path& file, const std::string& key) {
             std::error_code ec;
-            if (!fs::is_regular_file(file, ec) || ec) return {};
-            std::ifstream in(file);
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(file), ec) || ec) return {};
+            std::ifstream in(UltraCanvas::PathFromUtf8(file));
             if (!in) return {};
             std::string line;
             while (std::getline(in, line)) {
@@ -324,7 +324,7 @@ namespace UltraCanvas {
                     for (const char* category : kIconCategories) {
                         for (const char* ext : kIconExtensions) {
                             const fs::path candidate =
-                                    dir->path / category / (name + "." + ext);
+                                    dir->path / category / PathFromUtf8(name + "." + ext);
                             if (IsFile(candidate)) return PathToUtf8(candidate);
                         }
                     }
@@ -398,10 +398,10 @@ namespace UltraCanvas {
 
     bool ReadDesktopEntry(const std::string& path, UCDesktopEntry& out) {
         std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || ec) return false;
-        const uintmax_t size = fs::file_size(path, ec);
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+        const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (ec || size == 0 || size > kMaxDesktopEntryBytes) return false;
-        std::ifstream in(path);
+        std::ifstream in(UltraCanvas::PathFromUtf8(path));
         if (!in) return false;
 
         UCDesktopEntry entry;

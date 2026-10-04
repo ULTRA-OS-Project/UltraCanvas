@@ -30,6 +30,7 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -53,7 +54,7 @@ namespace {
     std::vector<std::string> CollectSTLFiles(const std::string& dir) {
         std::vector<std::string> paths;
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec)) {
             if (!entry.is_regular_file()) continue;
             if (!UltraCanvasSTLLoader::HasSTLExtension(PathToUtf8(entry.path()))) continue;
             paths.push_back(PathToUtf8(entry.path()));
@@ -68,7 +69,7 @@ namespace {
         sample.fileName = PathToUtf8(PathFromUtf8(path).filename());
 
         std::error_code ec;
-        sample.bytes = std::filesystem::file_size(path, ec);
+        sample.bytes = std::filesystem::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (ec) sample.bytes = 0;
 
         auto start = std::chrono::steady_clock::now();
@@ -284,7 +285,7 @@ namespace {
         auto fullscreenBtn = MakeToolButton("STLFullscreen", 290, 450, 150, "Open in Viewer",
                                             [files, currentIndex]() {
                                                 if (*currentIndex < files.size())
-                                                    ShowFullSizeImageViewer(files[*currentIndex]);
+                                                    ShowInMediaViewer(files[*currentIndex]);
                                             });
         viewerPanel->AddChild(fullscreenBtn);
 

@@ -1,0 +1,52 @@
+// VideoFX/core/VideoFXMusic.h
+// Internal: the arithmetic of background music - its volume envelope, the
+// ducker that lowers it under the segments' own sound, and the slideshow
+// length that matches a song. Pure C++, no FFmpeg, unit-tested.
+// Version: 0.4.1
+// Last Modified: 2026-10-02
+// Author: UltraCanvas Framework
+#pragma once
+
+#include "VideoFX/VideoFXTypes.h"
+
+#include <cstddef>
+#include <string>
+
+namespace VideoFX {
+namespace Internal {
+
+// Check a music setting's values (the file itself is checked by the exporter)
+bool ValidateMusic(const VideoFXMusic& music, std::string& error);
+
+// Gain at `t` seconds of an export lasting `total` seconds (0 = unknown, no
+// fade-out): volume x fade-in x fade-out, before ducking
+double MusicEnvelope(const VideoFXMusic& music, double t, double total);
+
+// Lowers the music while the segments' own sound is present. Fed one block
+// at a time with that sound's RMS level (0..1 full scale): goes down quickly
+// (attack), waits for a pause before coming back (hold), comes back slowly
+// (release), so speech does not make it pump between words. The level, the
+// threshold and the three times come from the music settings
+// (duckingLevel, duckingThresholdDb, duckingAttack / Hold / Release).
+class MusicDucker {
+public:
+    explicit MusicDucker(const VideoFXMusic& music);
+    // Advance by `seconds`; returns the gain (duckingLevel..1) at the block's end
+    double Update(double rms, double seconds);
+    double Gain() const { return gain; }
+
+private:
+    double level;
+    double threshold;                             // linear RMS, 0..1
+    double attack, hold, release;                 // seconds
+    double gain = 1.0;
+    double quiet = 1e9;                           // seconds since the sound was last present
+};
+
+// Seconds per image so `images` photos joined by `transition`-second overlaps
+// last `musicSeconds`: n*s - (n-1)*t = music. At least 1 s and twice the
+// transition.
+double SlideshowSecondsForMusic(double musicSeconds, size_t images, double transition);
+
+} // namespace Internal
+} // namespace VideoFX

@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -110,7 +111,7 @@ std::shared_ptr<VectorStorage::VectorDocument> DWGConverter::ImportFromString(
     std::string dwgPath = base + ".dwg";
     std::string dxfPath = base + ".dxf";
     {
-        std::ofstream f(dwgPath, std::ios::binary);
+        std::ofstream f(UltraCanvas::PathFromUtf8(dwgPath), std::ios::binary);
         if (!f.is_open()) return nullptr;
         f.write(data.data(), static_cast<std::streamsize>(data.size()));
     }
@@ -119,7 +120,7 @@ std::shared_ptr<VectorStorage::VectorDocument> DWGConverter::ImportFromString(
     std::remove(dwgPath.c_str());
     std::string dxfData;
     {
-        std::ifstream f(dxfPath, std::ios::binary);
+        std::ifstream f(UltraCanvas::PathFromUtf8(dxfPath), std::ios::binary);
         if (f.is_open()) {
             std::ostringstream ss;
             ss << f.rdbuf();
@@ -162,7 +163,7 @@ std::string DWGConverter::ExportToString(
     std::string dxfPath = base + ".dxf";
     std::string dwgPath = base + ".dwg";
     {
-        std::ofstream f(dxfPath, std::ios::binary);
+        std::ofstream f(UltraCanvas::PathFromUtf8(dxfPath), std::ios::binary);
         if (!f.is_open()) return {};
         f.write(dxfData.data(), static_cast<std::streamsize>(dxfData.size()));
     }
@@ -171,7 +172,7 @@ std::string DWGConverter::ExportToString(
     std::remove(dxfPath.c_str());
     std::string result;
     {
-        std::ifstream f(dwgPath, std::ios::binary);
+        std::ifstream f(UltraCanvas::PathFromUtf8(dwgPath), std::ios::binary);
         if (f.is_open()) {
             std::ostringstream ss;
             ss << f.rdbuf();
@@ -189,7 +190,7 @@ std::string DWGConverter::ExportToString(
 }
 
 bool DWGConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) return false;
     std::string head(6, '\0');
     file.read(head.data(), static_cast<std::streamsize>(head.size()));

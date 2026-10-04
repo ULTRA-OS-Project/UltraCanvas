@@ -14,7 +14,7 @@
 // a channel of its own, one per distinct list, kept for the life of the
 // process like the default one: a channel is never destroyed while a query
 // may still be in flight on it, and a list that is used again reuses it.
-// Version: 0.2.0 - one channel per per-call server list; ports honoured
+// Version: 0.2.1 - the PTR parser is given the queried address
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef ULTRANET_HAS_CARES
@@ -147,9 +147,12 @@ struct Pending {
     int                       status = ARES_ENOTFOUND;
     std::vector<std::string>  results;
 
-    // Async only: type we requested (so the raw-packet callback can
-    // dispatch parsing) and the user's completion callback.
-    UltraNetDnsType type = UltraNetDnsType::A;
+    // The type we requested (so the raw-packet callback can dispatch
+    // parsing), and for PTR the queried address's wire bytes and family for
+    // the parser; the user's completion callback for the async form.
+    UltraNetDnsType            type = UltraNetDnsType::A;
+    std::vector<unsigned char> address;
+    int                        family = AF_INET;
     std::function<void(const std::vector<std::string>&)> asyncCb;
 };
 
@@ -230,13 +233,18 @@ void ParseCname(const unsigned char* buf, int len, std::vector<std::string>& out
     if (he) ares_free_hostent(he);
 }
 
-void ParsePtr(const unsigned char* buf, int len, std::vector<std::string>& out) {
+// `address` / `family` are the queried address's wire bytes, decoded from the
+// in-addr.arpa / ip6.arpa name when the query was issued: ares_parse_ptr_reply
+// puts them into the hostent it builds. Empty when the name was not a reverse
+// name (a raw PTR query for some other name), in which case c-ares is given
+// no address and still fills h_name.
+void ParsePtr(const unsigned char* buf, int len,
+              const std::vector<unsigned char>& address, int family,
+              std::vector<std::string>& out) {
     struct hostent* he = nullptr;
-    // PTR parse needs the queried IP, but we just want the result name.
-    // ares_parse_ptr_reply takes the wire IP bytes which we don't have at
-    // this layer; pass nullptr/0 — c-ares tolerates that and still fills
-    // h_name with the resolved hostname.
-    if (ares_parse_ptr_reply(buf, len, nullptr, 0, AF_INET, &he) != ARES_SUCCESS) return;
+    const void* addr    = address.empty() ? nullptr : address.data();
+    const int   addrlen = static_cast<int>(address.size());
+    if (ares_parse_ptr_reply(buf, len, addr, addrlen, family, &he) != ARES_SUCCESS) return;
     if (he && he->h_name) out.emplace_back(he->h_name);
     if (he) ares_free_hostent(he);
 }
@@ -292,7 +300,7 @@ void OnQueryCallback(void* arg, int status, int /*timeouts*/,
             case UltraNetDnsType::SRV:   ParseSrv(abuf, alen, results);   break;
             case UltraNetDnsType::NS:    ParseNs(abuf, alen, results);    break;
             case UltraNetDnsType::CNAME: ParseCname(abuf, alen, results); break;
-            case UltraNetDnsType::PTR:   ParsePtr(abuf, alen, results);   break;
+            case UltraNetDnsType::PTR:   ParsePtr(abuf, alen, p->address, p->family, results); break;
             case UltraNetDnsType::SOA:   ParseSoa(abuf, alen, results);   break;
             default: break;
         }
@@ -349,6 +357,24 @@ UltraNetResultCode MapAresStatus(int s) {
 void Issue(Channel& ch, const PendingPtr& p, const std::string& host,
            UltraNetDnsType type) {
     p->type = type;
+    if (type == UltraNetDnsType::PTR) {
+        // The address the reverse name stands for, as wire bytes, for the
+        // parser; a PTR query for a name that is not a reverse name has none.
+        std::string text;
+        in_addr  v4{};
+        in6_addr v6{};
+        if (UltraNet_DnsReverseNameToAddress(host, text)) {
+            if (inet_pton(AF_INET, text.c_str(), &v4) == 1) {
+                p->family = AF_INET;
+                p->address.assign(reinterpret_cast<const unsigned char*>(&v4),
+                                  reinterpret_cast<const unsigned char*>(&v4) + sizeof v4);
+            } else if (inet_pton(AF_INET6, text.c_str(), &v6) == 1) {
+                p->family = AF_INET6;
+                p->address.assign(reinterpret_cast<const unsigned char*>(&v6),
+                                  reinterpret_cast<const unsigned char*>(&v6) + sizeof v6);
+            }
+        }
+    }
     auto* owner = new PendingPtr(p);
     if (type == UltraNetDnsType::A || type == UltraNetDnsType::AAAA) {
         const int family = (type == UltraNetDnsType::AAAA) ? AF_INET6 : AF_INET;

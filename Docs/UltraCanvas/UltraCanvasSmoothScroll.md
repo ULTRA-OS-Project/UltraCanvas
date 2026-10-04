@@ -106,8 +106,10 @@ animator:
   sheet model (`SetScrollPosition(row, col)`), read by the grid painter, the
   header painters, hit-testing and the scrollbar fractions.
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
-- The `UltraCanvasFileDialog` file list and the `UltraCanvasNewDocumentDialog`
-  document list (item indices, also used for click hit-testing).
+- The `UltraCanvasNewDocumentDialog` document list (item indices, also used
+  for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
+  folder tree is an `UltraCanvasTreeView` and its listing an
+  `UltraCanvasFilerWidget`, both of which scroll smoothly.)
 
 ---
 

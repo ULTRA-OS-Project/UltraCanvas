@@ -1,8 +1,72 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.23.0 - BuildOptions::linkTooltips: text links and linked pictures
+// Version: 1.22.0 - merged with main's 1.5.0-1.6.0 (floats, clear, shrink-to-fit
+//                   tables, list markers, stacking cells, content-box px sizes):
+//                   size limits are passed as the whole box's, cells size their
+//                   content as in browsers
+// Version: 1.21.0 - letter-spacing (Pango letter_spacing spans)
+// Version: 1.20.0 - line-height on text; HTML boxes draw overflowing content
+//                   (overflow: visible) unless overflow: hidden; a cell keeps its
+//                   last child's bottom margin
+// Version: 1.19.0 - a table is placed by its container's alignment, not its own
+//                   text-align; a cell's children with a width of their own keep it
+//                   (placed by the cell's align) instead of being stretched
+// Version: 1.18.0 - width / height in percent on blocks: the content's share, padding
+//                   and border added as pixels (Dimension::PctPlus) - no switch to
+//                   content-box sizing
+// Version: 1.17.0 - min / max width and height in percent; under box-sizing:
+//                   border-box a percentage limit loses the padding and border
+//                   (Dimension::PctPlus)
+// Version: 1.16.0 - <img>: min / max width and height with the picture's ratio (CSS
+//                   2.1 10.4); max-width in percent on images and blocks
+// Version: 1.15.0 - min-width, min-height, max-height (content-box; border-box
+//                   with box-sizing: border-box)
+// Version: 1.14.0 - width / height of a block are its content's (CSS content-box);
+//                   box-sizing: border-box keeps them whole; tables, cells and
+//                   images keep their own sizing
+// Version: 1.13.0 - border-collapse: collapse draws a shared cell edge once (the
+//                   wider border wins); <table border> rules join the resolution
+// Version: 1.12.0 - vertical-align on images sharing a line: top, middle, bottom
+// Version: 1.11.0 - the gap between images a space apart is a space of their font,
+//                   measured (SpaceWidth)
+// Version: 1.10.0 - borders per side (width, colour, dashed / dotted); <hr> is its
+//                   border box, as in a browser
+// Version: 1.9.0 - images in a block without text share a line, side by side (a
+//                  space's gap where the HTML has whitespace between them),
+//                  wrapping when it is full; display:block ones keep their own.
+// Version: 1.8.0 - <img> border, background, padding and rounded corners, block and
+//                  inline; width / height size the picture (content box), the
+//                  frame goes around it; border-radius in percent.
+// Version: 1.7.0 - object-fit / object-position on <img>, block and inline (CSS's
+//                  default fill: a box of another shape stretches the picture).
+// Version: 1.6.0 - background-repeat: the picture tiles as the layer says (CSS's
+//                  default repeats both ways).
+// Version: 1.5.0 - background-position: the picture sits where the layer says
+//                  (CSS's default top-left, not always centred).
+// From main:
+// Version: 1.6.0 - floats: float:left/right and <table align="left|right">
+//                  go to their edge and the content after them flows beside
+//                  them (CSSLayout floats); clear; a table without a width
+//                  is shrink-to-fit; a list marker starts the item's first
+//                  block; vertical-align: top / bottom on an inline box
+// Version: 1.5.0 - display:block cells of a row stack in one anonymous cell
+//                  (mail-template columns on a narrow screen); align="center"
+//                  / "right" on a container places its narrowed blocks too;
+//                  a px width / height is the content box unless
+//                  box-sizing: border-box (padding and border on top)
+// Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
+//                  images (first url() layer that loads, fitted by
+//                  background-size); rounded borderless boxes; max-width;
+//                  margin: auto centres a narrowed block or table.
+// Version: 1.3.0 - tables on the CSSLayout table engine (shared columns,
+//                  colspan / rowspan, min/max-content widths, cellspacing,
+//                  valign); inline-block boxes and inline tables sit on the
+//                  line beside their text (mail buttons); an inline around a
+//                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -59,6 +123,12 @@ std::string ColorHex(const CssColor& c) {
 // Pango <span size="..."> takes 1/1024ths of a point; px → pt at 96 dpi.
 int PangoSize(float px) {
     return static_cast<int>(px * 72.f / 96.f * 1024.f + 0.5f);
+}
+
+// Pango <span letter_spacing="...">: in Pango units (1/1024 of a pixel on the
+// render contexts here, which lay text out in device pixels).
+int PangoLetterSpacing(float px) {
+    return static_cast<int>(std::lround(px * 1024.f));
 }
 
 // Block containers use the engine's Block flow, which measures children at
@@ -136,6 +206,151 @@ std::string FormControlText(const Node& e) {
     return std::string();
 }
 
+ImageFitMode ToImageFit(ObjectFitMode fit) {
+    switch (fit) {
+        case ObjectFitMode::Contain:   return ImageFitMode::Contain;
+        case ObjectFitMode::Cover:     return ImageFitMode::Cover;
+        case ObjectFitMode::NoScaling: return ImageFitMode::NoScale;
+        case ObjectFitMode::ScaleDown: return ImageFitMode::ScaleDown;
+        case ObjectFitMode::Fill:      break;
+    }
+    return ImageFitMode::Fill;
+}
+
+ImagePosition ToImagePosition(const BackgroundPosition& p) {
+    auto axis = [](const BackgroundAxisPosition& a) {
+        return a.pixels ? ImageAxisPosition::Pixels(a.value, a.fromEnd)
+                        : ImageAxisPosition::Fraction(a.value);
+    };
+    return ImagePosition{ axis(p.x), axis(p.y) };
+}
+
+// Whether a run holds nothing but whitespace text (spaces, newlines, &nbsp;)
+// - between two images it is the space that separates them on their line.
+bool OnlyWhitespace(const std::vector<Node*>& run) {
+    for (const Node* n : run) {
+        if (n->type != NodeType::Text) return false;
+        const std::string& t = n->text;
+        for (size_t i = 0; i < t.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(t[i]);
+            if (std::isspace(c)) continue;
+            if (c == 0xC2 && i + 1 < t.size() && static_cast<unsigned char>(t[i + 1]) == 0xA0) {
+                ++i;            // U+00A0, &nbsp;
+                continue;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+// The label font for a style: its family (monospace when asked), size,
+// weight and slant. FontStyle sizes are points; CSS sizes are px (96 dpi).
+// Inline <span size> markup converts the same way (PangoSize), so a 15px
+// button caption is no longer smaller than the 12px text around it.
+FontStyle FontOf(const ComputedStyle& style) {
+    FontStyle font;
+    font.fontFamily = style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
+    font.fontSize = style.fontSizePx * 72.f / 96.f;
+    font.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
+    font.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
+    return font;
+}
+
+// The dash a border side is stroked with: none for solid, dashes three
+// widths long for dashed, width-long dots for dotted.
+UCDashPattern BorderDash(const BorderSide& side) {
+    const double w = std::max(1.f, side.Width());
+    switch (side.style) {
+        case BorderLineStyle::Dashed: return UCDashPattern({ 3.0 * w, 3.0 * w });
+        case BorderLineStyle::Dotted: return UCDashPattern({ w, w });
+        default:                      return UCDashPattern();
+    }
+}
+
+// The display size of an image's picture: its width / height (one of them
+// keeps the picture's shape), else the picture's own size.
+// The size an image's picture is shown at: its width / height (one of them
+// keeps the picture's shape), else the picture's own size - then held within
+// min-width / max-width / min-height / max-height (px), keeping the shape
+// where CSS does (CSS 2.1 10.4: a size not given follows the ratio; with
+// neither given the table of constraint violations decides). `keepsRatio`
+// says whether the result still has the picture's shape.
+struct ImageUsedSize {
+    Size2Df size;
+    bool keepsRatio = true;
+};
+ImageUsedSize UsedImageSize(const ComputedStyle& style, const UCImage& raster) {
+    const float nw = static_cast<float>(raster.GetWidth());
+    const float nh = static_cast<float>(raster.GetHeight());
+    const float minW = style.minWidthPx.value_or(0.f);
+    const float maxW = std::max(minW, style.maxWidthPx.value_or(INFINITY));
+    const float minH = style.minHeightPx.value_or(0.f);
+    const float maxH = std::max(minH, style.maxHeightPx.value_or(INFINITY));
+    auto clampW = [&](float v) { return std::clamp(v, minW, maxW); };
+    auto clampH = [&](float v) { return std::clamp(v, minH, maxH); };
+    ImageUsedSize out;
+    if (nw <= 0.f || nh <= 0.f) {
+        out.size = Size2Df(clampW(style.widthPx.value_or(nw)), clampH(style.heightPx.value_or(nh)));
+        out.keepsRatio = false;
+        return out;
+    }
+    if (style.widthPx && style.heightPx) {
+        out.size = Size2Df(clampW(*style.widthPx), clampH(*style.heightPx));
+        out.keepsRatio = false;                       // both given: no ratio
+    } else if (style.widthPx) {
+        const float w = clampW(*style.widthPx), h = w * nh / nw, ch = clampH(h);
+        out.size = Size2Df(w, ch);
+        out.keepsRatio = std::fabs(ch - h) < 0.01f;
+    } else if (style.heightPx) {
+        const float h = clampH(*style.heightPx), w = h * nw / nh, cw = clampW(w);
+        out.size = Size2Df(cw, h);
+        out.keepsRatio = std::fabs(cw - w) < 0.01f;
+    } else {
+        float w = nw, h = nh;
+        const bool wHigh = w > maxW, wLow = w < minW, hHigh = h > maxH, hLow = h < minH;
+        if (wHigh && hHigh) {
+            if (maxW / w <= maxH / h) { h = std::max(minH, maxW * h / w); w = maxW; }
+            else                      { w = std::max(minW, maxH * w / h); h = maxH; }
+        } else if (wLow && hLow) {
+            if (minW / w <= minH / h) { w = std::min(maxW, minH * w / h); h = minH; }
+            else                      { h = std::min(maxH, minW * h / w); w = minW; }
+        } else if (wLow && hHigh) { w = minW; h = maxH; out.keepsRatio = false; }
+        else if (wHigh && hLow)   { w = maxW; h = minH; out.keepsRatio = false; }
+        else if (wHigh) { h = std::max(maxW * h / w, minH); w = maxW; }
+        else if (wLow)  { h = std::min(minW * h / w, maxH); w = minW; }
+        else if (hHigh) { w = std::max(maxH * w / h, minW); h = maxH; }
+        else if (hLow)  { w = std::min(minH * w / h, maxW); h = minH; }
+        out.size = Size2Df(w, h);
+        if (out.keepsRatio) out.keepsRatio = std::fabs(w * nh - h * nw) < 0.01f * nw * nh;
+    }
+    return out;
+}
+
+Size2Df ImageContentSize(const ComputedStyle& style, const UCImage& raster) {
+    return UsedImageSize(style, raster).size;
+}
+
+// border-radius in px for a border box of `boxW` x `boxH`: a percentage of
+// the box (the shorter side, so 50% of a square is a circle), capped at half
+// the shorter side as CSS caps overlapping corners.
+float BorderRadiusPx(const ComputedStyle& style, float boxW, float boxH) {
+    const float shorter = std::max(0.f, std::min(boxW, boxH));
+    const float r = style.borderRadiusPercent > 0.f ? shorter * style.borderRadiusPercent / 100.f
+                                                     : style.borderRadius;
+    return std::min(r, shorter / 2.f);
+}
+
+// The href of the nearest <a href> around `node` (not `node` itself): text
+// and images inside a link's blocks - <a href><div>..</div></a> - are that
+// link too.
+std::string AncestorLink(const Node& node) {
+    for (const Node* p = node.parent; p; p = p->parent) {
+        if (p->IsElement("a") && p->HasAttribute("href")) return p->GetAttribute("href");
+    }
+    return std::string();
+}
+
 bool MarkupHasVisibleText(const std::string& markup) {
     bool inTag = false;
     for (char c : markup) {
@@ -169,6 +384,7 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     nextId = 0;
 
     resolver.ClearStyleSheets();
+    resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
     for (const auto& href : document.styleSheetLinks) {
         if (opts.resourceLoader) {
             std::vector<uint8_t> bytes = opts.resourceLoader(href);
@@ -234,6 +450,10 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::MakeContainer(const std::s
     // nested block.
     ContainerStyle style = container->GetContainerStyle();
     style.autoShowScrollbars = false;
+    // CSS's overflow: visible - content wider than its box (a 280px paragraph
+    // in a 250px box) is drawn past it; overflow: hidden turns the clip on
+    // (ApplyBoxStyle).
+    style.clipChildren = false;
     container->SetContainerStyle(style);
     return container;
 }
@@ -249,6 +469,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*container, style);
     ConfigureBlockLayout(*container);
+    ApplyBackgroundImage(*container, style);
 
     BuildChildrenInto(*container, element);
     return container;
@@ -258,8 +479,24 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                                        int listItemIndex) {
     const ComputedStyle& blockStyle = resolver.StyleOf(&element);
 
+    // The current line's inline content. Text and inline elements gather in
+    // `inlineRun` (one label); an inline box (an inline-block button, an
+    // inline table) ends the run, and the runs and boxes of the line collect
+    // in `lineParts` - a line with a box in it is laid out as a wrapping row.
+    struct LinePart {
+        std::vector<Node*> run;
+        Node* box = nullptr;
+    };
     std::vector<Node*> inlineRun;
-    bool markerPending = (element.tag == "li");
+    std::vector<LinePart> lineParts;
+    // The list marker still to place: this item's own, or one its list item
+    // handed down (see carriedMarker).
+    std::string pendingMarker;
+    if (element.tag == "li") pendingMarker = MarkerText(blockStyle.listMarker, listItemIndex);
+    if (!carriedMarker.empty()) {
+        pendingMarker = std::move(carriedMarker);
+        carriedMarker.clear();
+    }
     int listCounter = 0;
 
     // Vertical rhythm: the engine's Block flow stacks children edge-to-edge,
@@ -267,76 +504,268 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     // margins collapse to the larger one, like CSS margin collapsing.
     float pendingMargin = 0.f;
     bool anyFlowChild = false;
+    // The line the last image went on, while nothing but whitespace has come
+    // after it: the next (inline) image joins it, side by side.
+    std::shared_ptr<UltraCanvasContainer> imageLine;
+    std::shared_ptr<UltraCanvasUIElement> lastImage;   // the line's last image
+    float lastImageMarginRight = 0.f;
     // Images in a block that also has text flow in that text; in a block of
     // images alone each gets a line of its own (BuildImage).
     const bool flowImages = opts.enableImages && HasInlineText(element);
+    // Where the flow goes: `parent`, or - from the first float on, until a
+    // clear - one block holding the floats and what flows around them.
+    UltraCanvasContainer* flow = &parent;
     auto addFlowChild = [&](std::shared_ptr<UltraCanvasUIElement> child,
                             float topMargin, float bottomMargin) {
+        imageLine.reset();          // anything else in the flow ends the image line
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
                                      : topMargin;
         if (spacing > 0.5f) {
             auto spacer = MakeContainer("gap");
             spacer->size.height = CSSLayout::Dimension::Px(spacing);
-            parent.AddChild(spacer);
+            spacer->layoutItem.SetFlexShrink(0.f);
+            flow->AddChild(spacer);
         }
-        parent.AddChild(std::move(child));
+        flow->AddChild(std::move(child));
         ++elementCount;
         pendingMargin = bottomMargin;
         anyFlowChild = true;
     };
 
-    auto flushRun = [&]() {
-        if (inlineRun.empty() && !markerPending) return;
-        std::string marker;
-        if (markerPending) {
-            marker = MarkerText(blockStyle.listMarker, listItemIndex);
-            markerPending = false;
-        }
-        auto label = BuildInlineRun(inlineRun, blockStyle, marker);
-        // Anchors inside the run map to its label; runs that produce no label
-        // (e.g. an empty <a id="..."/> target) fall back to the enclosing
-        // block so #fragment navigation still lands nearby.
+    // Anchors inside a run map to its label; runs that produce no label
+    // (e.g. an empty <a id="..."/> target) fall back to the enclosing
+    // block so #fragment navigation still lands nearby.
+    auto registerRun = [&](const std::vector<Node*>& run,
+                           const std::shared_ptr<UltraCanvasUIElement>& label) {
         std::shared_ptr<UltraCanvasUIElement> anchorTarget = label;
         if (!anchorTarget) {
             anchorTarget = std::static_pointer_cast<UltraCanvasUIElement>(
                 parent.shared_from_this());
         }
-        for (const Node* node : inlineRun) {
+        for (const Node* node : run) {
             RegisterAnchors(*node, anchorTarget, /*deep=*/true);
         }
-        if (label) {
-            addFlowChild(label, 0.f, 0.f);
-        }
-        inlineRun.clear();
     };
 
-    for (const auto& childPtr : element.children) {
-        Node& child = *childPtr;
+    auto flushRun = [&]() {
+        if (lineParts.empty()) {
+            if (inlineRun.empty() && pendingMarker.empty()) return;
+            std::string marker = std::move(pendingMarker);
+            pendingMarker.clear();
+            auto label = BuildInlineRun(inlineRun, blockStyle, marker, &element);
+            registerRun(inlineRun, label);
+            if (label) addFlowChild(label, 0.f, 0.f);
+            inlineRun.clear();
+            return;
+        }
 
-        if (child.type == NodeType::Comment) continue;
+        // A line with boxes in it: a wrapping row, placed by text-align, its
+        // items centred on each other (a button beside its caption).
+        if (!inlineRun.empty()) {
+            lineParts.push_back({ inlineRun, nullptr });
+            inlineRun.clear();
+        }
+        auto line = MakeContainer("line");
+        line->size.width = CSSLayout::Dimension::Pct(100.f);
+        CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
+        if (blockStyle.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
+        else if (blockStyle.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
+        line->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::Wrap)
+                    .SetFlexJustifyContent(justify)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+        std::string marker = std::move(pendingMarker);
+        pendingMarker.clear();
+        auto addLabel = [&](const std::vector<Node*>& run) {
+            auto label = BuildInlineRun(run, blockStyle, marker, &element);
+            marker.clear();
+            registerRun(run, label);
+            if (!label) return;
+            // Its own width in the row, wrapping only when the line is full.
+            label->size.width = CSSLayout::Dimension::Auto();
+            label->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+            line->AddChild(label);
+            ++elementCount;
+        };
+        if (!marker.empty() && lineParts.front().box) addLabel({});
+        for (auto& part : lineParts) {
+            if (!part.box) {
+                addLabel(part.run);
+                continue;
+            }
+            if (auto box = BuildInlineBox(*part.box)) {
+                // vertical-align: top / bottom on the box (side-by-side mail
+                // columns are top); otherwise centred on its neighbours.
+                switch (resolver.StyleOf(part.box).verticalAlign) {
+                    case VerticalAlignMode::Top:
+                        box->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start); break;
+                    case VerticalAlignMode::Bottom:
+                        box->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::End); break;
+                    default: break;
+                }
+                line->AddChild(box);
+                ++elementCount;
+            }
+        }
+        lineParts.clear();
+        if (!line->GetChildren().empty()) addFlowChild(line, 0.f, 0.f);
+    };
+
+    // An image in a block without text. Images that are inline (as <img> is
+    // by default) share one wrapping line, side by side, until text or a block
+    // comes between them; whitespace between two of them is a space's gap.
+    // display:block puts an image on a line of its own.
+    auto addImage = [&](Node& node, const std::string& href) {
+        const ComputedStyle& st = resolver.StyleOf(&node);
+        bool spaced = false;
+        if (!inlineRun.empty()) {
+            if (lineParts.empty() && OnlyWhitespace(inlineRun)) {
+                spaced = true;
+                inlineRun.clear();
+            } else {
+                imageLine.reset();
+            }
+        }
+        if (!lineParts.empty()) imageLine.reset();
+        flushRun();
+        auto row = std::dynamic_pointer_cast<UltraCanvasContainer>(BuildImage(node, href));
+        if (!row || row->GetChildren().empty()) return;
+        const bool inlineImage = !IsBlockDisplay(st.display);
+        std::shared_ptr<UltraCanvasUIElement> image = row->GetChildren().front();
+        if (inlineImage) {
+            // An inline box's vertical margins grow its line; they do not
+            // collapse with the blocks around it.
+            image->box.margin.top = CSSLayout::Dimension::Px(st.marginTop);
+            image->box.margin.bottom = CSSLayout::Dimension::Px(st.marginBottom);
+            // vertical-align against the line's other images: top, middle,
+            // or standing on its bottom (baseline, bottom - the line has no
+            // text, so its baseline is its bottom).
+            switch (st.verticalAlign) {
+                case VerticalAlignMode::Top:
+                    image->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start); break;
+                case VerticalAlignMode::Middle:
+                    image->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center); break;
+                case VerticalAlignMode::Bottom:
+                case VerticalAlignMode::Baseline:
+                    break;
+            }
+        }
+        if (inlineImage && imageLine) {
+            row->RemoveChild(image);
+            // The space goes after the image before it: at the end of a full
+            // line it is lost as a browser loses it, rather than indenting
+            // the next line.
+            if (spaced && lastImage) {
+                const float space = SpaceWidth(st);
+                lastImage->box.margin.right = CSSLayout::Dimension::Px(lastImageMarginRight + space);
+            }
+            RegisterAnchors(node, image);
+            imageLine->AddChild(image);
+            lastImage = image;
+            lastImageMarginRight = st.marginRight;
+            return;
+        }
+        RegisterAnchors(node, row);
+        if (inlineImage) {
+            addFlowChild(row, 0.f, 0.f);
+            imageLine = row;
+            lastImage = image;
+            lastImageMarginRight = st.marginRight;
+        } else {
+            addFlowChild(row, st.marginTop, st.marginBottom);
+        }
+    };
+
+    auto addBox = [&](Node& child) {
+        if (!inlineRun.empty()) {
+            lineParts.push_back({ inlineRun, nullptr });
+            inlineRun.clear();
+        }
+        lineParts.push_back({ {}, &child });
+    };
+
+    // float: left / right, and <table align="left|right">: the float goes
+    // to its edge of a block that holds it and everything after it up to a
+    // clear, and that block's layout narrows the content beside the floats
+    // (CSSLayout floats) - two 300px <table align="left"> columns of a mail
+    // template sit side by side, a picture's caption runs beside it.
+    auto isFloat = [&](Node& n) {
+        if (!n.IsElement()) return false;
+        const ComputedStyle& st = resolver.StyleOf(&n);
+        if (st.floatMode == FloatMode::NoFloat || st.display == DisplayMode::Hidden) return false;
+        return n.tag == "table" || n.tag == "img" || IsBlockDisplay(st.display) ||
+               st.display == DisplayMode::InlineBlock;
+    };
+    bool afterFloat = false;   // whitespace right after a float renders nothing
+    auto addFloat = [&](Node& n) {
+        const ComputedStyle& st = resolver.StyleOf(&n);
+        std::shared_ptr<UltraCanvasUIElement> item;
+        if (n.tag == "table") {
+            item = BuildTable(n);
+        } else if (n.tag == "img") {
+            if (!opts.enableImages) return;
+            item = BuildImage(n, AncestorLink(n));
+            if (item) item->size.width = CSSLayout::Dimension::Auto();
+        } else {
+            item = BuildBlock(n);
+        }
+        if (!item) return;
+        if (flow == &parent) {
+            auto area = MakeContainer("floats");
+            ConfigureBlockLayout(*area);
+            area->size.width = CSSLayout::Dimension::Pct(100.f);
+            addFlowChild(area, 0.f, 0.f);
+            flow = area.get();
+        }
+        RegisterAnchors(n, item);
+        item->layoutItem.SetFloat(st.floatMode == FloatMode::Right ? CSSLayout::FloatSide::Right
+                                                                   : CSSLayout::FloatSide::Left);
+        // A float's margins do not collapse: they are its own.
+        item->box.margin.top = CSSLayout::Dimension::Px(st.marginTop);
+        item->box.margin.bottom = CSSLayout::Dimension::Px(st.marginBottom);
+        flow->AddChild(item);
+        ++elementCount;
+    };
+
+    std::function<void(Node&)> processChild = [&](Node& child) {
+        if (child.type == NodeType::Comment) return;
+
+        if (isFloat(child)) {
+            flushRun();
+            addFloat(child);
+            afterFloat = true;
+            return;
+        }
+        if (afterFloat && child.type == NodeType::Text &&
+            std::all_of(child.text.begin(), child.text.end(),
+                        [](unsigned char ch) { return std::isspace(ch) != 0; }))
+            return;
+        afterFloat = false;
+        // clear (and <br clear="all">): what follows starts below the floats -
+        // after the block that holds them.
+        if (flow != &parent && child.IsElement() && resolver.StyleOf(&child).clear) {
+            flushRun();
+            flow = &parent;
+            if (child.tag == "br") return;
+        }
 
         if (child.type == NodeType::Text) {
             inlineRun.push_back(&child);
-            continue;
+            return;
         }
-        if (!child.IsElement()) continue;
+        if (!child.IsElement()) return;
 
         const ComputedStyle& childStyle = resolver.StyleOf(&child);
-        if (childStyle.display == DisplayMode::Hidden) continue;
+        if (childStyle.display == DisplayMode::Hidden) return;
 
-        if ((child.tag == "img" || child.tag == "image") && flowImages) {
-            inlineRun.push_back(&child);
-            continue;
-        }
         if (child.tag == "img" || child.tag == "image") {
-            flushRun();
-            if (opts.enableImages) {
-                if (auto image = BuildImage(child)) {
-                    RegisterAnchors(child, image);
-                    addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
-                }
+            if (flowImages) {
+                inlineRun.push_back(&child);
+                return;
             }
-            continue;
+            if (opts.enableImages) addImage(child, AncestorLink(child));
+            else flushRun();
+            return;
         }
         if (child.tag == "svg") {
             // EPUB cover pages wrap the image in an <svg> viewport
@@ -347,7 +776,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 Node* svgImage = child.FindFirst("image");
                 if (!svgImage) svgImage = child.FindFirst("img");
                 if (svgImage) {
-                    if (auto image = BuildImage(*svgImage)) {
+                    if (auto image = BuildImage(*svgImage, AncestorLink(child))) {
                         RegisterAnchors(child, image, /*deep=*/true);
                         addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
                     }
@@ -355,7 +784,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                     warnings.push_back("svg without raster <image> skipped");
                 }
             }
-            continue;
+            return;
         }
         if (child.tag == "hr") {
             flushRun();
@@ -363,14 +792,21 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 RegisterAnchors(child, rule);
                 addFlowChild(rule, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
-        if (childStyle.display == DisplayMode::Table) {
+        // A table is a table whatever its display says: display:inline (the
+        // mail-button idiom) makes it an inline table, a box on the line.
+        if (child.tag == "table" || childStyle.display == DisplayMode::Table) {
+            if (childStyle.display == DisplayMode::Inline ||
+                childStyle.display == DisplayMode::InlineBlock) {
+                addBox(child);
+                return;
+            }
             flushRun();
             if (auto table = BuildTable(child)) {
                 addFlowChild(table, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
         // Form controls route to BuildFormControl by tag (not display): a void
         // <input> would otherwise fall through to BuildBlock, which recurses
@@ -381,7 +817,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             if (auto control = BuildFormControl(child)) {
                 addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
 
         if (childStyle.display == DisplayMode::ListItem) {
@@ -390,15 +826,66 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             RegisterAnchors(child, item);
             ApplyBoxStyle(*item, childStyle);
             ConfigureBlockLayout(*item);
+            ApplyBackgroundImage(*item, childStyle);
             BuildChildrenInto(*item, child, ++listCounter);
             addFlowChild(item, childStyle.marginTop, childStyle.marginBottom);
-            continue;
+            return;
         }
 
         if (IsBlockDisplay(childStyle.display)) {
-            flushRun();
-            addFlowChild(BuildBlock(child), childStyle.marginTop, childStyle.marginBottom);
-            continue;
+            // Whitespace before a block renders nothing; dropping it keeps a
+            // pending list marker for the block instead of a line of its own.
+            if (!pendingMarker.empty() && lineParts.empty() &&
+                std::all_of(inlineRun.begin(), inlineRun.end(), [](const Node* n) {
+                    return n->type == NodeType::Text &&
+                           std::all_of(n->text.begin(), n->text.end(),
+                                       [](unsigned char ch) { return std::isspace(ch) != 0; });
+                }))
+                inlineRun.clear();
+            if (!inlineRun.empty() || !lineParts.empty()) flushRun();
+            // align="center" / "right" on the container (<td align>, <div
+            // align>, <center>) places a narrowed block too, as browsers do -
+            // the mail template's <td align="center"><div style="max-width:
+            // 280px">: placed like margin: auto, unless the block has its own.
+            ComputedStyle placement = childStyle;
+            if (!placement.marginLeftAuto && !placement.marginRightAuto) {
+                std::string align = element.tag == "center" ? std::string("center")
+                                                            : element.GetAttribute("align");
+                for (char& ch : align) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                if (align == "center" || align == "middle") {
+                    placement.marginLeftAuto = placement.marginRightAuto = true;
+                } else if (align == "right") {
+                    placement.marginLeftAuto = true;
+                }
+            }
+            // A list item whose text is in a block (<li><div>text</div>):
+            // the marker starts that block's first line, not one of its own.
+            carriedMarker = std::move(pendingMarker);
+            pendingMarker.clear();
+            auto block = BuildBlock(child);
+            if (!carriedMarker.empty()) {   // nothing in the block took it
+                pendingMarker = std::move(carriedMarker);
+                carriedMarker.clear();
+            }
+            addFlowChild(PlaceByAutoMargins(block, placement),
+                         childStyle.marginTop, childStyle.marginBottom);
+            return;
+        }
+
+        // An inline-block with a box of its own - the mail "button" - is a
+        // box on the line.
+        if (NeedsInlineBox(child)) {
+            addBox(child);
+            return;
+        }
+        // An inline element around a block or a table (<a href><table>,
+        // <font><div>): as in a browser, the block breaks the line and the
+        // inline's formatting carries on inside it - so look through it.
+        if (HasBlockDescendant(child)) {
+            RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
+                                       parent.shared_from_this()));
+            for (const auto& grand : child.children) processChild(*grand);
+            return;
         }
 
         // An inline element holding an image (<a href><img></a>, the banner
@@ -419,11 +906,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                         std::string gHref = href;
                         if (g.tag == "a" && g.HasAttribute("href")) gHref = g.GetAttribute("href");
                         if (g.tag == "img" || g.tag == "image") {
-                            flushRun();
-                            if (auto image = BuildImage(g, gHref)) {
-                                RegisterAnchors(g, image);
-                                addFlowChild(image, gs.marginTop, gs.marginBottom);
-                            }
+                            addImage(g, gHref);
                         } else if (g.FindFirst("img") || g.FindFirst("image")) {
                             lift(g, gHref);
                         } else {
@@ -433,17 +916,30 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 };
             RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
                                        parent.shared_from_this()));
-            std::string href;
+            std::string href = AncestorLink(child);
             if (child.tag == "a" && child.HasAttribute("href")) href = child.GetAttribute("href");
             lift(child, href);
-            continue;
+            return;
         }
 
-        // Inline / inline-block content joins the current run.
+        // Inline content joins the current run.
         inlineRun.push_back(&child);
-    }
+    };
+
+    for (const auto& childPtr : element.children) processChild(*childPtr);
 
     flushRun();
+    // The last child's bottom margin stays inside a box it cannot collapse
+    // through: a table cell, or a box with bottom padding or a bottom border.
+    const bool keepsMargins = element.tag == "td" || element.tag == "th" ||
+                              blockStyle.display == DisplayMode::TableCell ||
+                              blockStyle.paddingBottom > 0.f || blockStyle.borderBottom.Width() > 0.f;
+    if (keepsMargins && anyFlowChild && pendingMargin > 0.5f) {
+        auto spacer = MakeContainer("gap");
+        spacer->size.height = CSSLayout::Dimension::Px(pendingMargin);
+        spacer->layoutItem.SetFlexShrink(0.f);
+        parent.AddChild(spacer);
+    }
 }
 
 // ============================================================================
@@ -452,7 +948,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
 std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     const std::vector<Node*>& run, const ComputedStyle& blockStyle,
-    const std::string& markerPrefix) {
+    const std::string& markerPrefix, const Node* blockNode) {
 
     std::string markup;
     runPlain.clear();
@@ -463,9 +959,47 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         runPlain += markerPrefix;
     }
 
+    // Whether every piece of text in the run is kept on one line (nowrap on
+    // the block, <nobr> or white-space: nowrap around it).
+    bool anyText = false, allNoWrap = true;
+    std::function<void(const Node&)> scanWrap = [&](const Node& n) {
+        if (n.type == NodeType::Text) {
+            bool visible = false;
+            for (unsigned char c : n.text) if (!std::isspace(c)) { visible = true; break; }
+            if (!visible) return;
+            anyText = true;
+            const Node* p = n.parent;
+            if (!(p ? resolver.StyleOf(p).noWrap : blockStyle.noWrap)) allNoWrap = false;
+            return;
+        }
+        for (const auto& c : n.children) scanWrap(*c);
+    };
+
     for (const Node* node : run) {
-        AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
+        scanWrap(*node);
+        const int start = static_cast<int>(runPlain.size());
+        // A text node whose parent is not the block is inside an inline the
+        // builder looked through (it wraps a block): format it as that inline.
+        const Node* p = node->parent;
+        if (node->type == NodeType::Text && blockNode && p && p != blockNode && p->IsElement()) {
+            std::string prefix, suffix;
+            StyleWrap(resolver.StyleOf(p), blockStyle, prefix, suffix);
+            markup += prefix;
+            AppendInlineMarkup(*node, resolver.StyleOf(p),
+                               resolver.StyleOf(p).preserveWhitespace, markup);
+            markup += suffix;
+        } else {
+            AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
+        }
+        // Inside a link that is not part of the run (the run is the content
+        // of a block or box inside <a href>): the whole piece is that link.
+        const int end = static_cast<int>(runPlain.size());
+        if (end > start) {
+            std::string href = AncestorLink(*node);
+            if (!href.empty()) runLinks.push_back({ start, end, href });
+        }
     }
+    const bool runNoWrap = blockStyle.noWrap || (anyText && allNoWrap);
 
     // Trim a leading collapse-space. Literal leading spaces in the markup are
     // rendered text, so runPlain starts with the same spaces — trim both and
@@ -495,9 +1029,15 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                    runLinks.end());
 
     if (!MarkupHasVisibleText(markup)) return nullptr;
+    // The block's own letter-spacing: around the whole run (its inline
+    // elements' own spacing, where it differs, is a span inside).
+    if (std::fabs(blockStyle.letterSpacingPx) > 0.01f) {
+        markup = "<span letter_spacing=\"" + std::to_string(PangoLetterSpacing(blockStyle.letterSpacingPx)) +
+                 "\">" + markup + "</span>";
+    }
 
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
-    ConfigureLabel(*label, blockStyle);
+    ConfigureLabel(*label, blockStyle, runNoWrap);
     label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
@@ -508,9 +1048,42 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     if (!runLinks.empty() && opts.onLinkActivated) {
         label->SetTextLinks(runLinks);
         label->onLinkActivated = opts.onLinkActivated;
+        label->onLinkHovered = opts.onLinkHovered;
+        label->SetShowLinkTooltips(opts.linkTooltips);
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
     return label;
+}
+
+void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
+                               std::string& prefix, std::string& suffix,
+                               const std::string& tag) {
+    auto wrap = [&](const std::string& open, const std::string& close) {
+        prefix += open;
+        suffix = close + suffix;
+    };
+
+    if (style.bold && !runStyle.bold) wrap("<b>", "</b>");
+    if (style.italic && !runStyle.italic) wrap("<i>", "</i>");
+    if (style.underline && !runStyle.underline) wrap("<u>", "</u>");
+    if (style.strikethrough && !runStyle.strikethrough) wrap("<s>", "</s>");
+    if (style.monospace && !runStyle.monospace) wrap("<tt>", "</tt>");
+    if (tag == "sub") wrap("<sub>", "</sub>");
+    else if (tag == "sup") wrap("<sup>", "</sup>");
+    else if (std::fabs(style.fontSizePx - runStyle.fontSizePx) > 0.5f) {
+        wrap("<span size=\"" + std::to_string(PangoSize(style.fontSizePx)) + "\">",
+             "</span>");
+    }
+    if (std::fabs(style.letterSpacingPx - runStyle.letterSpacingPx) > 0.01f) {
+        wrap("<span letter_spacing=\"" + std::to_string(PangoLetterSpacing(style.letterSpacingPx)) + "\">",
+             "</span>");
+    }
+    bool colorDiffers = style.color.r != runStyle.color.r ||
+                        style.color.g != runStyle.color.g ||
+                        style.color.b != runStyle.color.b;
+    if (colorDiffers) {
+        wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
+    }
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
@@ -546,17 +1119,33 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
             std::shared_ptr<UCImage> raster =
                 bytes.empty() ? nullptr : UCImageRaster::LoadFromMemory(bytes);
             if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) {
-                float w = static_cast<float>(raster->GetWidth());
-                float h = static_cast<float>(raster->GetHeight());
-                if (style.widthPx && style.heightPx) { w = *style.widthPx; h = *style.heightPx; }
-                else if (style.widthPx)  { h = h * *style.widthPx / w;  w = *style.widthPx; }
-                else if (style.heightPx) { w = w * *style.heightPx / h; h = *style.heightPx; }
+                const Size2Df size = ImageContentSize(style, *raster);
+                const float w = size.width, h = size.height;
                 if (w >= 1.f && h >= 1.f) {
                     LabelInlineImage image;
                     image.byteOffset = static_cast<int>(runPlain.size());
                     image.width = w;
                     image.height = h;
                     image.image = raster;
+                    image.fit = ToImageFit(style.objectFit);
+                    image.position = ToImagePosition(style.objectPosition);
+                    // Its CSS box: margins, border, padding, background.
+                    LabelInlineImageFrame& f = image.frame;
+                    f.marginTop = style.marginTop;       f.marginRight = style.marginRight;
+                    f.marginBottom = style.marginBottom; f.marginLeft = style.marginLeft;
+                    f.paddingTop = style.paddingTop;       f.paddingRight = style.paddingRight;
+                    f.paddingBottom = style.paddingBottom; f.paddingLeft = style.paddingLeft;
+                    auto border = [&](const BorderSide& b) {
+                        return LabelInlineImageBorder{ b.Width(), ToColor(b.color), BorderDash(b) };
+                    };
+                    f.borderTop = border(style.borderTop);
+                    f.borderRight = border(style.borderRight);
+                    f.borderBottom = border(style.borderBottom);
+                    f.borderLeft = border(style.borderLeft);
+                    if (style.backgroundColor) f.background = ToColor(*style.backgroundColor);
+                    f.borderRadius = BorderRadiusPx(style,
+                        w + f.paddingLeft + f.paddingRight + style.BorderHorizontal(),
+                        h + f.paddingTop + f.paddingBottom + style.BorderVertical());
                     switch (style.verticalAlign) {
                         case VerticalAlignMode::Middle: image.align = LabelInlineImageAlign::Middle; break;
                         case VerticalAlignMode::Top:    image.align = LabelInlineImageAlign::Top;    break;
@@ -583,28 +1172,7 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Span wrappers derived from the difference to the enclosing run style.
     std::string prefix, suffix;
-    auto wrap = [&](const std::string& open, const std::string& close) {
-        prefix += open;
-        suffix = close + suffix;
-    };
-
-    if (style.bold && !runStyle.bold) wrap("<b>", "</b>");
-    if (style.italic && !runStyle.italic) wrap("<i>", "</i>");
-    if (style.underline && !runStyle.underline) wrap("<u>", "</u>");
-    if (style.strikethrough && !runStyle.strikethrough) wrap("<s>", "</s>");
-    if (style.monospace && !runStyle.monospace) wrap("<tt>", "</tt>");
-    if (node.tag == "sub") wrap("<sub>", "</sub>");
-    else if (node.tag == "sup") wrap("<sup>", "</sup>");
-    else if (std::fabs(style.fontSizePx - runStyle.fontSizePx) > 0.5f) {
-        wrap("<span size=\"" + std::to_string(PangoSize(style.fontSizePx)) + "\">",
-             "</span>");
-    }
-    bool colorDiffers = style.color.r != runStyle.color.r ||
-                        style.color.g != runStyle.color.g ||
-                        style.color.b != runStyle.color.b;
-    if (colorDiffers) {
-        wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
-    }
+    StyleWrap(style, runStyle, prefix, suffix, node.tag);
 
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
@@ -671,23 +1239,65 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
 
     auto image = std::make_shared<UltraCanvasImageElement>(MakeId("img"));
     image->LoadFromImage(raster);
+    image->SetHeightFollowsWidth(true);   // <img width="800">: the height in proportion
 
     const ComputedStyle& style = resolver.StyleOf(&element);
-    ApplyBoxStyle(*image, style, /*fillWidth=*/false);
+    // object-fit / object-position: how the picture fills the box its width
+    // and height give it (CSS's default stretches it), and where it sits.
+    image->SetFitMode(ToImageFit(style.objectFit));
+    image->SetImagePosition(ToImagePosition(style.objectPosition));
+    // Border, background, padding and rounded corners go around the picture:
+    // width / height size the picture itself (CSS's content-box), and the
+    // horizontal margins stay margins - the background must not fill them.
+    ComputedStyle boxStyle = style;
+    const Size2Df content = ImageContentSize(style, *raster);
+    boxStyle.borderRadius = BorderRadiusPx(style,
+        content.width + style.paddingLeft + style.paddingRight + style.BorderHorizontal(),
+        content.height + style.paddingTop + style.paddingBottom + style.BorderVertical());
+    ApplyBoxStyle(*image, boxStyle, /*fillWidth=*/false, /*realMargins=*/false,
+                  /*borderBoxSizes=*/true);
+    image->box.boxSizing = CSSLayout::BoxSizing::ContentBox;
+    image->box.padding.left = CSSLayout::Dimension::Px(style.paddingLeft);
+    image->box.padding.right = CSSLayout::Dimension::Px(style.paddingRight);
+    image->box.margin.left = CSSLayout::Dimension::Px(style.marginLeft);
+    image->box.margin.right = CSSLayout::Dimension::Px(style.marginRight);
+    if (style.heightPercent && !style.heightPx) image->size.height = CSSLayout::Dimension::Auto();
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent. Cap at the column width so oversized
     // images (covers, photos) shrink to fit instead of overflowing; a zero
     // minimum lets the row below shrink it (its min-content is its natural
     // width, which would otherwise pin it).
     CSSLayout::BoxConstraints constraints;
-    constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);
-    constraints.minWidth = CSSLayout::Dimension::Px(0.f);
+    constraints.maxWidth = CSSLayout::Dimension::Pct(
+        std::min(100.f, style.maxWidthPercent.value_or(100.f)));   // max-width: 50%
+    constraints.minWidth = style.minWidthPercent ? CSSLayout::Dimension::Pct(*style.minWidthPercent)
+                                                 : CSSLayout::Dimension::Px(0.f);
+    // Height percentages limit only where the container's height is set.
+    if (style.maxHeightPercent) constraints.maxHeight = CSSLayout::Dimension::Pct(*style.maxHeightPercent);
+    if (style.minHeightPercent) constraints.minHeight = CSSLayout::Dimension::Pct(*style.minHeightPercent);
     image->boxConstraints = constraints;
+    // min / max width and height in px: the size they leave the picture,
+    // shaped as CSS shapes it. A size that keeps the picture's shape gives
+    // the width only - the height follows it, and a line narrower than it
+    // still shrinks the picture in proportion (MeasureOwnContent); a size
+    // that breaks the shape gives both.
+    if (style.minWidthPx || style.maxWidthPx || style.minHeightPx || style.maxHeightPx) {
+        const ImageUsedSize used = UsedImageSize(style, *raster);
+        image->size.width = CSSLayout::Dimension::Px(used.size.width);
+        if (used.keepsRatio)
+            image->size.height = CSSLayout::Dimension::Auto();
+        else
+            image->size.height = CSSLayout::Dimension::Px(used.size.height);
+    }
     image->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     if (!linkHref.empty() && opts.onLinkActivated) {
         image->SetClickable(true);
         image->onClick = [activate = opts.onLinkActivated, linkHref]() { activate(linkHref); };
-        image->SetTooltip(linkHref);
+        if (opts.onLinkHovered) {
+            image->onHoverEnter = [hover = opts.onLinkHovered, linkHref]() { hover(linkHref); };
+            image->onHoverLeave = [hover = opts.onLinkHovered]() { hover(std::string()); };
+        }
+        if (opts.linkTooltips) image->SetTooltip(linkHref);
     }
 
     // Block flow gives every child the full column width, and the image
@@ -701,9 +1311,11 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
     if (style.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
     else if (style.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
-    row->layout.SetFlexRow()
+    // Wrapping, because the images after it may join this line; they stand
+    // on its bottom, as images stand on a line's baseline.
+    row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::Wrap)
                .SetFlexJustifyContent(justify)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+               .SetFlexAlignItems(CSSLayout::AlignItems::End);
     row->AddChild(image);
     return row;
 }
@@ -712,11 +1324,11 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
     auto rule = MakeContainer("hr");
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*rule, style);
-    rule->size.height = CSSLayout::Dimension::Px(
-        style.borderWidth > 0 ? style.borderWidth : 1.f);
-    Color line = style.borderWidth > 0 ? ToColor(style.borderColor)
-                                       : Color(160, 160, 160, 255);
-    rule->SetBackgroundColor(line);
+    // A rule is its border box: an empty box (unless it has a height) inside
+    // its borders - the user agent's inset 1px lines, or the author's
+    // (border-top: 1px solid #eee), or a height with a background.
+    const float height = style.heightPx.value_or(0.f) + style.BorderVertical();
+    rule->size.height = CSSLayout::Dimension::Px(height);
     return rule;
 }
 
@@ -750,65 +1362,337 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& ele
     return box;
 }
 
-std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) {
-    // v1 table support: each row is a flex row, cells share the width
-    // equally (flex-grow 1). TODO: use CSSLayout Grid for real column sizing.
+bool ElementBuilder::HasBlockDescendant(const Node& element) const {
+    for (const auto& childPtr : element.children) {
+        const Node& child = *childPtr;
+        if (!child.IsElement()) continue;
+        const ComputedStyle& style = resolver.StyleOf(&child);
+        if (style.display == DisplayMode::Hidden) continue;
+        if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own
+        if (HasBlockDescendant(child)) return true;
+    }
+    return false;
+}
+
+bool ElementBuilder::NeedsInlineBox(const Node& element) const {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    if (style.display != DisplayMode::InlineBlock) return false;
+    if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
+    if (HasBlockDescendant(element)) return true;
+    return style.backgroundColor.has_value() || style.HasBorder() ||
+           style.paddingTop > 0.f || style.paddingRight > 0.f ||
+           style.paddingBottom > 0.f || style.paddingLeft > 0.f ||
+           style.widthPx.has_value() || style.heightPx.has_value();
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    if (element.tag == "table" || style.display == DisplayMode::Table) {
+        return BuildTable(element, /*inlineBox=*/true);
+    }
+    auto box = MakeContainer(element.tag);
+    RegisterAnchors(element, box);
+    ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
+    ConfigureBlockLayout(*box);
+    ApplyBackgroundImage(*box, style);
+    BuildChildrenInto(*box, element);
+    // As wide as its content (shrink-to-fit), narrower only when the line is.
+    box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    return box;
+}
+
+// border-collapse: collapse. Neighbouring cells share an edge, drawn once:
+// the wider of the two borders, kept by the cell to the left of it or above
+// it (the other cell drops its side); on a tie the left / upper cell's. Where
+// the table draws a border of its own, the cells along that edge leave it to
+// the table. Then every cell gets its settled sides.
+template <typename Entry, typename Apply>
+void CollapseBorders(std::vector<Entry>& cells, const ComputedStyle& table, Apply apply) {
+    int rows = 0, cols = 0;
+    for (const auto& e : cells) {
+        rows = std::max(rows, e.row + e.rowSpan);
+        cols = std::max(cols, e.col + e.colSpan);
+    }
+    std::vector<int> grid(static_cast<size_t>(rows) * cols, -1);
+    for (size_t i = 0; i < cells.size(); ++i)
+        for (int r = cells[i].row; r < cells[i].row + cells[i].rowSpan; ++r)
+            for (int c = cells[i].col; c < cells[i].col + cells[i].colSpan; ++c)
+                grid[static_cast<size_t>(r) * cols + c] = static_cast<int>(i);
+    auto at = [&](int r, int c) {
+        return (r < 0 || c < 0 || r >= rows || c >= cols) ? -1 : grid[static_cast<size_t>(r) * cols + c];
+    };
+    // `keep` (left / upper) and `drop` (right / lower) meet: the wider wins.
+    auto settle = [](BorderSide& keep, BorderSide& drop) {
+        if (drop.Width() > keep.Width()) keep = drop;
+        drop = BorderSide{};
+    };
+    for (size_t i = 0; i < cells.size(); ++i) {
+        Entry& e = cells[i];
+        for (int r = e.row; r < e.row + e.rowSpan; ++r) {       // right edge
+            const int j = at(r, e.col + e.colSpan);
+            if (j >= 0 && j != static_cast<int>(i)) settle(e.borders.borderRight, cells[j].borders.borderLeft);
+        }
+        for (int c = e.col; c < e.col + e.colSpan; ++c) {       // bottom edge
+            const int j = at(e.row + e.rowSpan, c);
+            if (j >= 0 && j != static_cast<int>(i)) settle(e.borders.borderBottom, cells[j].borders.borderTop);
+        }
+    }
+    for (Entry& e : cells) {
+        if (table.borderTop.Width() > 0.f && e.row == 0) e.borders.borderTop = BorderSide{};
+        if (table.borderLeft.Width() > 0.f && e.col == 0) e.borders.borderLeft = BorderSide{};
+        if (table.borderBottom.Width() > 0.f && e.row + e.rowSpan == rows) e.borders.borderBottom = BorderSide{};
+        if (table.borderRight.Width() > 0.f && e.col + e.colSpan == cols) e.borders.borderRight = BorderSide{};
+        apply(e);
+    }
+}
+
+std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, bool inlineBox) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
     auto table = MakeContainer("table");
     RegisterAnchors(element, table);
     ++elementCount;
-    const ComputedStyle& style = resolver.StyleOf(&element);
-    ApplyBoxStyle(*table, style);
-    ConfigureBlockLayout(*table);
+    ApplyBoxStyle(*table, style, /*fillWidth=*/false, /*realMargins=*/inlineBox,
+                  /*borderBoxSizes=*/true);
+    // border-spacing: CSS, else cellspacing, else a browser's 2px.
+    const float spacing = style.borderCollapse ? 0.f : style.borderSpacing.value_or(2.f);
+    table->layout.SetTableSpacing(spacing, spacing);
+    ApplyBackgroundImage(*table, style);
+    // <table border="1"> rules every cell too.
+    const bool ruledCells = element.tag == "table" && style.HasBorder() &&
+                            element.HasAttribute("border");
 
-    std::function<void(Node&)> addRows = [&](Node& parent) {
-        for (const auto& childPtr : parent.children) {
+    auto isRow = [&](const Node& n) {
+        return n.tag == "tr" || resolver.StyleOf(&n).display == DisplayMode::TableRow;
+    };
+    auto isCell = [&](const Node& n) {
+        return n.tag == "td" || n.tag == "th" ||
+               resolver.StyleOf(&n).display == DisplayMode::TableCell;
+    };
+
+    // Rows in document order - through thead / tbody / tfoot. Anything else
+    // at row level (a stray block) gets a row of its own, as in a browser's
+    // anonymous row and cell.
+    struct RowEntry { Node* row = nullptr; Node* lone = nullptr; };
+    std::vector<RowEntry> rows;
+    std::function<void(Node&)> collect = [&](Node& parentNode) {
+        for (const auto& childPtr : parentNode.children) {
             Node& child = *childPtr;
             if (!child.IsElement()) continue;
+            if (resolver.StyleOf(&child).display == DisplayMode::Hidden) continue;
             if (child.tag == "thead" || child.tag == "tbody" || child.tag == "tfoot") {
-                addRows(child);
-                continue;
+                collect(child);
+            } else if (isRow(child)) {
+                rows.push_back({ &child, nullptr });
+            } else if (isCell(child)) {
+                rows.push_back({ nullptr, &child });
+            } else if (child.tag != "caption" && child.tag != "colgroup" && child.tag != "col") {
+                rows.push_back({ nullptr, &child });
             }
-            if (child.tag != "tr") continue;
-
-            auto row = MakeContainer("tr");
-            ++elementCount;
-            row->layout.SetFlex(CSSLayout::FlexDirection::Row);
-
-            for (const auto& cellPtr : child.children) {
-                Node& cell = *cellPtr;
-                if (!cell.IsElement()) continue;
-                if (cell.tag != "td" && cell.tag != "th") continue;
-
-                const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
-                auto cellBox = MakeContainer(cell.tag);
-                RegisterAnchors(cell, cellBox);
-                ++elementCount;
-                ApplyBoxStyle(*cellBox, cellStyle);
-                ConfigureBlockLayout(*cellBox);
-                // Honor an explicit cell width: a fixed-px cell (e.g. an 8px
-                // spacer gutter, the ubiquitous email layout idiom) keeps its
-                // width and does not grow; a percentage cell takes that share;
-                // a cell with no width grows to fill what is left. Sharing the
-                // width equally (the old behavior) crushed content columns that
-                // sit between fixed spacer cells.
-                if (cellStyle.widthPx) {
-                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(0.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(*cellStyle.widthPx));
-                } else if (cellStyle.widthPercent) {
-                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Pct(*cellStyle.widthPercent));
-                } else {
-                    cellBox->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(0));
-                }
-                BuildChildrenInto(*cellBox, cell);
-                row->AddChild(cellBox);
-            }
-            table->AddChild(row);
         }
     };
-    addRows(element);
-    return table;
+    collect(element);
+
+    // Slots taken by row-spanning cells of earlier rows.
+    std::vector<std::vector<bool>> taken(rows.size());
+    auto isTaken = [&](size_t r, int c) {
+        return c < static_cast<int>(taken[r].size()) && taken[r][c];
+    };
+    auto take = [&](size_t r, int c) {
+        if (static_cast<int>(taken[r].size()) <= c) taken[r].resize(c + 1, false);
+        taken[r][c] = true;
+    };
+    auto spanAttr = [](const Node& n, const char* name) {
+        std::string v = n.GetAttribute(name);
+        int value = 1;
+        if (!v.empty()) {
+            try { value = std::stoi(v); } catch (...) { value = 1; }
+        }
+        return value;
+    };
+
+    // Each cell's place and the borders it is to draw. Separate borders are
+    // drawn as built; collapsed ones once the whole grid is known.
+    struct CellEntry {
+        std::shared_ptr<UltraCanvasContainer> box;
+        int row = 0, col = 0, rowSpan = 1, colSpan = 1;
+        ComputedStyle borders;      // the cell's style, with its resolved sides
+    };
+    std::vector<CellEntry> cellEntries;
+
+    auto addCell = [&](Node& cell, const ComputedStyle& rowStyle, size_t r, int& c) {
+        while (isTaken(r, c)) ++c;
+        const int colSpan = std::clamp(spanAttr(cell, "colspan"), 1, 1000);
+        int rowSpan = spanAttr(cell, "rowspan");
+        const int rowsLeft = static_cast<int>(rows.size() - r);
+        rowSpan = rowSpan <= 0 ? rowsLeft : std::clamp(rowSpan, 1, rowsLeft);
+        for (int dr = 0; dr < rowSpan; ++dr)
+            for (int dc = 0; dc < colSpan; ++dc) take(r + dr, c + dc);
+
+        const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
+        auto cellBox = MakeContainer(cell.tag.empty() ? std::string("td") : cell.tag);
+        RegisterAnchors(cell, cellBox);
+        ++elementCount;
+        // The cell's borders: its own, else the 1px rule of <table border>.
+        ComputedStyle boxStyle = cellStyle;
+        if (ruledCells && !cellStyle.HasBorder()) {
+            BorderSide rule;
+            rule.width = 1.f;
+            rule.style = BorderLineStyle::Solid;
+            rule.color = CssColor{128, 128, 128, 255};
+            rule.currentColor = false;
+            boxStyle.SetAllBorders(rule);
+        }
+        CellEntry entry{ cellBox, static_cast<int>(r), c, rowSpan, colSpan, boxStyle };
+        if (style.borderCollapse) {
+            // Settled with the neighbours' once every cell is placed.
+            boxStyle.SetAllBorders(BorderSide{});
+        }
+        // A px / % width is the column's width (the table layout reads it).
+        // A cell's width / height size its content, as in browsers (a 25px cell
+        // with 10px padding is 45px).
+        ApplyBoxStyle(*cellBox, boxStyle, /*fillWidth=*/false);
+        if (!cellStyle.backgroundColor && rowStyle.backgroundColor) {
+            cellBox->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
+        }
+        cellEntries.push_back(std::move(entry));
+        // valign / vertical-align of the cell, else of its row; a cell
+        // centres its content by default, as in a browser.
+        VerticalAlignMode va = cellStyle.verticalAlign;
+        if (va == VerticalAlignMode::Baseline) va = rowStyle.verticalAlign;
+        CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::Center;
+        if (va == VerticalAlignMode::Top)         justify = CSSLayout::JustifyContent::FlexStart;
+        else if (va == VerticalAlignMode::Bottom) justify = CSSLayout::JustifyContent::FlexEnd;
+        cellBox->layout.SetFlex(CSSLayout::FlexDirection::Column)
+                       .SetFlexJustifyContent(justify)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        cellBox->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, rowSpan, colSpan);
+        ApplyBackgroundImage(*cellBox, cellStyle);
+        BuildChildrenInto(*cellBox, cell);
+        // A cell lays its content out as a column that stretches every child
+        // across it. A child with a width of its own (<div style="width:250px">,
+        // <table width="420">) keeps that width, placed as the cell's align
+        // attribute places blocks in a browser (-moz-center / -webkit-right).
+        {
+            std::string cellAlign = cell.GetAttribute("align");
+            std::transform(cellAlign.begin(), cellAlign.end(), cellAlign.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            const CSSLayout::AlignSelf place =
+                cellAlign == "center" || cellAlign == "middle" ? CSSLayout::AlignSelf::Center
+                : cellAlign == "right" ? CSSLayout::AlignSelf::End : CSSLayout::AlignSelf::Start;
+            for (const auto& child : cellBox->GetChildren()) {
+                const CSSLayout::Dimension& w = child->size.width;
+                const bool fullLine = w.unit == CSSLayout::DimensionUnit::Percent &&
+                                      w.value >= 99.5f && w.offsetPx == 0.f;
+                if (!w.isAuto() && !fullLine) child->layoutItem.SetAlignSelf(place);
+            }
+        }
+        table->AddChild(cellBox);
+        c += colSpan;
+    };
+
+    static const ComputedStyle kNoRowStyle{};
+    for (size_t r = 0; r < rows.size(); ++r) {
+        int c = 0;
+        if (rows[r].lone) {
+            addCell(*rows[r].lone, kNoRowStyle, r, c);
+            continue;
+        }
+        Node& row = *rows[r].row;
+        const ComputedStyle& rowStyle = resolver.StyleOf(&row);
+        // A <td> made display:block is no longer a cell: as in a browser, the
+        // blocks next to each other in a row share one anonymous cell and
+        // stack in it. This is how mail templates turn their side-by-side
+        // columns into one column on a narrow screen
+        // (@media (max-width:620px) { .stack .column { display:block } }).
+        std::vector<Node*> stacked;
+        auto flushStacked = [&]() {
+            if (stacked.empty()) return;
+            while (isTaken(r, c)) ++c;
+            take(r, c);
+            auto anon = MakeContainer("td");
+            ++elementCount;
+            anon->layout.SetFlex(CSSLayout::FlexDirection::Column)
+                        .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexStart)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            anon->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, 1, 1);
+            if (rowStyle.backgroundColor) anon->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
+            for (Node* block : stacked) {
+                auto box = BuildBlock(*block);
+                box->layoutItem.SetFlexShrink(0.f);
+                anon->AddChild(box);
+                ++elementCount;
+            }
+            table->AddChild(anon);
+            ++c;
+            stacked.clear();
+        };
+        for (const auto& cellPtr : row.children) {
+            Node& cell = *cellPtr;
+            if (!cell.IsElement() || !isCell(cell)) continue;
+            const DisplayMode display = resolver.StyleOf(&cell).display;
+            if (display == DisplayMode::Hidden) continue;
+            if (display == DisplayMode::Block) {
+                stacked.push_back(&cell);
+                continue;
+            }
+            flushStacked();
+            addCell(cell, rowStyle, r, c);
+        }
+        flushStacked();
+    }
+
+    if (style.borderCollapse && !cellEntries.empty()) {
+        CollapseBorders(cellEntries, style,
+                        [&](CellEntry& e) { ApplyBorders(*e.box, e.borders); });
+    }
+
+    // A floated table is placed by the float layout (BuildChildrenInto).
+    if (style.floatMode != FloatMode::NoFloat) return table;
+    const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;
+    if (inlineBox || fullWidth) {
+        if (inlineBox) table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+        return table;
+    }
+
+    // A table narrower than its line: <table align>, else the alignment its
+    // container asks for (<td align="right">, <center>) - as mail clients
+    // render it.
+    // The container's alignment, not the table's own text-align (that aligns
+    // the table's text: <table style="text-align:left"> in a centring cell
+    // is still centred).
+    TextAlignMode align = element.parent && element.parent->IsElement()
+                              ? resolver.StyleOf(element.parent).textAlign : style.textAlign;
+    std::string alignAttr = element.GetAttribute("align");
+    std::transform(alignAttr.begin(), alignAttr.end(), alignAttr.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (style.marginLeftAuto && style.marginRightAuto) align = TextAlignMode::Center;
+    else if (style.marginLeftAuto) align = TextAlignMode::Right;
+    if (alignAttr == "center" || alignAttr == "middle") align = TextAlignMode::Center;
+    else if (alignAttr == "right") align = TextAlignMode::Right;
+    else if (alignAttr == "left") align = TextAlignMode::Left;
+    // A table without a width is shrink-to-fit (CSS 2.1 §17.5.2): as wide as
+    // its content, not its line - the mail's 30px logo table, its button.
+    const bool autoWidth = !style.widthPx && !style.widthPercent;
+    if (align != TextAlignMode::Center && align != TextAlignMode::Right && !autoWidth) {
+        // At the start of the line, at its own width: a cell (a flex column)
+        // would otherwise stretch it across.
+        table->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+        return table;
+    }
+
+    auto line = MakeContainer("tableline");
+    line->size.width = CSSLayout::Dimension::Pct(100.f);
+    line->layout.SetFlexRow()
+                .SetFlexJustifyContent(align == TextAlignMode::Center
+                                           ? CSSLayout::JustifyContent::Center
+                                           : align == TextAlignMode::Right
+                                               ? CSSLayout::JustifyContent::FlexEnd
+                                               : CSSLayout::JustifyContent::FlexStart)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    line->AddChild(table);
+    return line;
 }
 
 // ============================================================================
@@ -816,49 +1700,206 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
 // ============================================================================
 
 void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
-                                   const ComputedStyle& style, bool fillWidth) {
+                                   const ComputedStyle& style, bool fillWidth,
+                                   bool realMargins, bool borderBoxSizes) {
     using CSSLayout::Dimension;
 
     // Vertical margins become sibling spacer elements (see BuildChildrenInto);
-    // horizontal margins fold into padding so width:100% never overflows.
+    // horizontal margins fold into padding so width:100% never overflows -
+    // except on an inline box, whose background must stay inside its margin.
     target.box.boxSizing = CSSLayout::BoxSizing::BorderBox;
 
+    const float foldRight = realMargins ? 0.f : style.marginRight;
+    const float foldLeft  = realMargins ? 0.f : style.marginLeft;
     target.box.padding.top = Dimension::Px(style.paddingTop);
-    target.box.padding.right = Dimension::Px(style.paddingRight + style.marginRight);
+    target.box.padding.right = Dimension::Px(style.paddingRight + foldRight);
     target.box.padding.bottom = Dimension::Px(style.paddingBottom);
-    target.box.padding.left = Dimension::Px(style.paddingLeft + style.marginLeft);
+    target.box.padding.left = Dimension::Px(style.paddingLeft + foldLeft);
+    if (realMargins) {
+        target.box.margin.top = Dimension::Px(style.marginTop);
+        target.box.margin.right = Dimension::Px(style.marginRight);
+        target.box.margin.bottom = Dimension::Px(style.marginBottom);
+        target.box.margin.left = Dimension::Px(style.marginLeft);
+    }
 
+    // width / height: the content's (CSS content-box), so the box is that
+    // plus its padding (and the margins folded into it) and border - or the
+    // whole box with box-sizing: border-box. The box stays border-box; a px
+    // size grows by what goes around the content, a percentage carries it as
+    // pixels on top (calc(50% + 24px), Dimension::PctPlus). A percentage
+    // height resolves against the container's set height, else it is auto
+    // (images size their picture themselves and drop it).
+    const bool contentBox = !borderBoxSizes && !style.borderBox;
+    const float aroundW = contentBox ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
+                                       style.BorderHorizontal() : 0.f;
+    const float aroundH = contentBox ? style.paddingTop + style.paddingBottom + style.BorderVertical()
+                                     : 0.f;
     if (style.widthPx) {
-        target.size.width = Dimension::Px(*style.widthPx);
+        target.size.width = Dimension::Px(*style.widthPx + aroundW);
     } else if (style.widthPercent) {
-        target.size.width = Dimension::Pct(*style.widthPercent);
+        target.size.width = Dimension::PctPlus(*style.widthPercent, aroundW);
     } else if (fillWidth) {
         target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
-        target.size.height = Dimension::Px(*style.heightPx);
+        target.size.height = Dimension::Px(*style.heightPx + aroundH);
+    } else if (style.heightPercent) {
+        // Of the container's set height (a cell: the table's); with none it
+        // is auto - so mail's height="100%" on tables in a body of auto
+        // height changes nothing, as in a browser.
+        target.size.height = Dimension::PctPlus(*style.heightPercent, aroundH);
     }
 
     if (style.backgroundColor) {
         target.SetBackgroundColor(ToColor(*style.backgroundColor));
     }
-    if (style.borderWidth > 0) {
-        target.box.border.top = Dimension::Px(style.borderWidth);
-        target.box.border.right = Dimension::Px(style.borderWidth);
-        target.box.border.bottom = Dimension::Px(style.borderWidth);
-        target.box.border.left = Dimension::Px(style.borderWidth);
+    // min / max width and height (px or %).
+    if (style.maxWidthPx || style.maxWidthPercent || style.minWidthPx || style.minWidthPercent ||
+        style.maxHeightPx || style.maxHeightPercent || style.minHeightPx || style.minHeightPercent) {
+        CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        // The engine limits a border-box element's whole box: a content-box
+        // limit (CSS's default) gains the padding and border around the
+        // content; under box-sizing: border-box it is the box's already.
+        const bool contentLimits = !borderBoxSizes && !style.borderBox;
+        const float addW = contentLimits ? style.paddingLeft + style.paddingRight + foldLeft + foldRight +
+                                           style.BorderHorizontal() : 0.f;
+        const float addH = contentLimits ? style.paddingTop + style.paddingBottom + style.BorderVertical()
+                                         : 0.f;
+        // A px limit, else a percentage of the container (calc(50% + 24px)).
+        auto limit = [](const std::optional<float>& px, const std::optional<float>& pct,
+                        float add, Dimension& out) {
+            if (px) out = Dimension::Px(std::max(0.f, *px + add));
+            else if (pct) out = Dimension::PctPlus(*pct, add);
+        };
+        limit(style.maxWidthPx,  style.maxWidthPercent,  addW, limits.maxWidth);
+        limit(style.minWidthPx,  style.minWidthPercent,  addW, limits.minWidth);
+        limit(style.maxHeightPx, style.maxHeightPercent, addH, limits.maxHeight);
+        limit(style.minHeightPx, style.minHeightPercent, addH, limits.minHeight);
+        target.boxConstraints = limits;
+    }
+    ApplyBorders(target, style);
+    if (style.overflowHidden) {
+        if (auto* box = dynamic_cast<UltraCanvasContainer*>(&target)) {
+            ContainerStyle cs = box->GetContainerStyle();
+            cs.clipChildren = true;
+            box->SetContainerStyle(cs);
+        }
     }
 }
 
-void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style) {
+// The four border sides (each its own width, colour, dash) and the radius.
+void ElementBuilder::ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style) {
+    if (style.HasBorder() && style.UniformBorder()) {
+        // Width, colour and radius together: box.border alone reserves the
+        // space but paints nothing.
+        const BorderSide& b = style.borderTop;
+        target.SetBorders(b.Width(), ToColor(b.color), style.borderRadius, BorderDash(b));
+    } else if (style.HasBorder()) {
+        // Each side its own (border-bottom: 1px solid #eee); the radius on
+        // every corner, bordered or not.
+        auto side = [&](const BorderSide& b, auto setter) {
+            if (b.Width() > 0.f)
+                (target.*setter)(b.Width(), ToColor(b.color), style.borderRadius, BorderDash(b));
+        };
+        side(style.borderTop, &UltraCanvasUIElement::SetBorderTop);
+        side(style.borderRight, &UltraCanvasUIElement::SetBorderRight);
+        side(style.borderBottom, &UltraCanvasUIElement::SetBorderBottom);
+        side(style.borderLeft, &UltraCanvasUIElement::SetBorderLeft);
+        if (style.borderRadius > 0) target.SetBorderRadius(style.borderRadius);
+    } else if (style.borderRadius > 0) {
+        target.SetBorderRadius(style.borderRadius);   // a rounded, borderless box
+    }
+}
+
+void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style) {
+    if (style.backgroundImages.empty() || !opts.enableImages || !opts.resourceLoader) return;
+    std::shared_ptr<UCImage> raster;
+    size_t layer = 0;
+    for (; layer < style.backgroundImages.size(); ++layer) {
+        const std::string& url = style.backgroundImages[layer];
+        std::vector<uint8_t> bytes = opts.resourceLoader(url);
+        if (!bytes.empty()) raster = UCImageRaster::LoadFromMemory(bytes);
+        if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) break;
+        raster.reset();
+        warnings.push_back("background image not shown: " + url);
+    }
+    if (!raster) return;
+
+    auto image = std::make_shared<UltraCanvasImageElement>(MakeId("bgimg"));
+    image->LoadFromImage(raster);
+    // The size and position of the layer that loaded.
+    switch (style.BackgroundSizeAt(layer)) {
+        case BackgroundSizeMode::Contain: image->SetFitMode(ImageFitMode::Contain); break;
+        case BackgroundSizeMode::Cover:   image->SetFitMode(ImageFitMode::Cover);   break;
+        case BackgroundSizeMode::Auto:    image->SetFitMode(ImageFitMode::NoScale); break;
+    }
+    image->SetImagePosition(ToImagePosition(style.BackgroundPositionAt(layer)));
+    const BackgroundRepeat repeat = style.BackgroundRepeatAt(layer);
+    image->SetImageRepeat(repeat.x, repeat.y);
+    // Out of flow, filling the box: it neither sizes the box nor pushes its
+    // content, and as the first child it is drawn underneath that content.
+    CSSLayout::Position fill;
+    fill.top = fill.right = fill.bottom = fill.left = CSSLayout::Dimension::Px(0.f);
+    image->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
+    box.AddChild(image);
+    ++elementCount;
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::PlaceByAutoMargins(
+    std::shared_ptr<UltraCanvasUIElement> box, const ComputedStyle& style) {
+    if (!box || !style.marginLeftAuto) return box;   // right-auto alone: start of line, as is
+    const bool narrowed = style.widthPx || style.maxWidthPx ||
+                          (style.widthPercent && *style.widthPercent < 99.5f) ||
+                          (style.maxWidthPercent && *style.maxWidthPercent < 99.5f);
+    if (!narrowed) return box;
+    auto line = MakeContainer("autoline");
+    line->size.width = CSSLayout::Dimension::Pct(100.f);
+    line->layout.SetFlexRow()
+                .SetFlexJustifyContent(style.marginRightAuto ? CSSLayout::JustifyContent::Center
+                                                             : CSSLayout::JustifyContent::FlexEnd)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    line->AddChild(box);
+    return line;
+}
+
+float ElementBuilder::SpaceWidth(const ComputedStyle& style) {
+    const FontStyle font = FontOf(style);
+    const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + "|" +
+                            (style.bold ? "b" : "") + (style.italic ? "i" : "");
+    if (auto it = spaceWidths.find(key); it != spaceWidths.end()) return it->second;
+    float width = style.fontSizePx * 0.28f;          // no context: a common face's space
+    if (!measureContext) measureContext = CreateRenderContext(Size2Di(8, 8), nullptr);
+    if (measureContext) {
+        // "x x" less "xx": the space between two glyphs, as a line sets it.
+        auto measure = [&](const std::string& text) -> double {
+            auto layout = measureContext->CreateTextLayout(text, false);
+            if (!layout) return -1.0;
+            layout->SetFontStyle(font);
+            return layout->GetLayoutWidth();
+        };
+        const double spaced = measure("x x"), tight = measure("xx");
+        if (spaced > 0.0 && tight > 0.0 && spaced > tight)
+            width = static_cast<float>(spaced - tight);
+    }
+    spaceWidths[key] = width;
+    return width;
+}
+
+void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
+                                    bool noWrap) {
     LabelStyle labelStyle;
-    labelStyle.fontStyle.fontFamily =
-        style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
-    labelStyle.fontStyle.fontSize = style.fontSizePx;
-    labelStyle.fontStyle.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
-    labelStyle.fontStyle.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
+    labelStyle.fontStyle = FontOf(style);
+    // line-height as set: px, or a factor of this text's font size.
+    if (style.lineHeightSet) {
+        labelStyle.lineHeightPx = style.lineHeightPx ? *style.lineHeightPx
+                                                     : style.lineHeight * style.fontSizePx;
+        // line-height: 0 (spacer cells) is next to nothing, not "the font's".
+        labelStyle.lineHeightPx = std::max(labelStyle.lineHeightPx, 0.01f);
+    }
     labelStyle.textColor = ToColor(FlattenOverWhite(style.color));
-    labelStyle.wrap = style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
+    labelStyle.wrap = noWrap ? TextWrap::WrapNone
+                    : style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
 
     switch (style.textAlign) {
         case TextAlignMode::Left: labelStyle.horizontalAlign = TextAlignment::Left; break;

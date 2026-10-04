@@ -1,7 +1,12 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.8.1
-// Last Modified: 2026-06-01
+// Version: 4.12.0 - merged with main's 4.10.0 (LayoutItem::floatSide)
+// Version: 4.11.0 - Element::percentHeightBase: a block parent's set height for
+//                   percentage min-height / max-height
+// Version: 4.10.0 - Dimension::offsetPx: a length plus pixels (calc(50% - 20px))
+// Version: 4.10.0 (main) - LayoutItem::floatSide (float: left / right in block layout)
+// Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +31,10 @@ namespace UltraCanvas {
         struct Dimension {
             DimensionUnit unit = DimensionUnit::Auto;
             float value = 0.f;
+            // Pixels added once the value is resolved (CSS calc(50% - 20px)):
+            // for px, %, vw / vh, em / rem. A percentage that cannot resolve
+            // (no definite parent size) stays unresolved, offset and all.
+            float offsetPx = 0.f;
 
             static Dimension Auto();
             static Dimension Px(float v);
@@ -35,6 +44,8 @@ namespace UltraCanvas {
             static Dimension Vh(float v);   // % of viewport height
             static Dimension Em(float v);   // multiple of current font size
             static Dimension Rem(float v);  // multiple of root font size
+            // A percentage plus (or, negative, minus) pixels.
+            static Dimension PctPlus(float pct, float px);
 
             bool isAuto() const { return unit == DimensionUnit::Auto; }
         };
@@ -122,7 +133,12 @@ namespace UltraCanvas {
 
         // ---- Box / display ----
 
-        enum class DisplayType    { Block, Flex, Grid, Inline, InlineBlock, NoDisplay };
+        // Table: HTML's automatic table layout (CSS 2.1 §17.5.2.2). Cells are the
+        // container's children, placed with SetGridRowColSimplified (row/column
+        // + spans); columns share one width across every row, sized from the
+        // cells' min-/max-content and their explicit px / % widths. Spacing
+        // (border-spacing) comes from SetTableSpacing.
+        enum class DisplayType    { Block, Flex, Grid, Inline, InlineBlock, NoDisplay, Table };
         enum class BoxSizing      { ContentBox, BorderBox };
         // AbsoluteUI: positioned exactly like Absolute (against the padding-box),
         // but ALSO contributes to the container's measured size during Measure
@@ -131,6 +147,10 @@ namespace UltraCanvas {
         enum class PositionType   { Static, Relative, Absolute, Fixed, AbsoluteUI };
         enum class Overflow       { Visible, Hidden, Scroll, Auto };
         enum class Visibility     { Visible, Hidden };  // Hidden reserves space (unlike NoDisplay)
+        // float, honoured by block layout: the child sits at the left / right
+        // edge and the blocks after it are narrowed beside it. Not `None`:
+        // X11 defines that as a macro.
+        enum class FloatSide      { NoFloat, Left, Right };
 
         // ---- Flex ----
 
@@ -298,6 +318,12 @@ namespace UltraCanvas {
             Layout& SetGridGap(float gap);
             Layout& SetGridGap(float row, float column);
             Layout& SetGridAutoFlow(GridAutoFlow f);
+
+            // ---- Table configuration (display: table; data is a GridLayout
+            // whose gaps are the border-spacing, applied between cells AND
+            // around the outer ones, as in CSS) ----
+            Layout& SetTable();
+            Layout& SetTableSpacing(float horizontal, float vertical);
             Layout& SetDisplay(DisplayType dt);
             Layout& Show();
             Layout& Hide();
@@ -310,10 +336,13 @@ namespace UltraCanvas {
             // For Relative: left/top/right/bottom act as a post-layout offset.
             // For Absolute/Fixed: insets define the box against the containing block.
             std::optional<Position> position;
+            // float: left / right - only a Block parent honours it.
+            FloatSide floatSide = FloatSide::NoFloat;
 
             // ---- Positioning kind / insets ----
             LayoutItem& SetPositionType(PositionType p) { positionType = p; return *this; }
             LayoutItem& SetPositionInsets(const Position& insets) { position = insets; return *this; }
+            LayoutItem& SetFloat(FloatSide f) { floatSide = f; return *this; }
 
             // ---- Flex item properties (initializes data to FlexItem on first call) ----
             LayoutItem& SetFlexGrow(float g);
@@ -365,6 +394,14 @@ namespace UltraCanvas {
             // layout
             Layout layout;
             LayoutItem layoutItem;
+
+            // The content height a percentage min-height / max-height resolves
+            // against when no definite height comes down as a constraint: set
+            // by a block parent whose own height is given (CSS: such a
+            // percentage needs the containing block's height to be specified;
+            // otherwise it limits nothing). Empty for children of other
+            // layouts, which pass definite heights as constraints.
+            std::optional<float> percentHeightBase;
 
             // caches
             MeasureResult  measured;    // extrinsic, keyed by MeasureConstraints

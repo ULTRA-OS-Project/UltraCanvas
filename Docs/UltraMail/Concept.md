@@ -232,12 +232,35 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning.
-- **Signatures** — per account, appended automatically, editable in
-  settings.
+- **Signatures** — per account, in *Account Settings > Signature*: none,
+  plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
+  (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
+  alignment, lists, links, pictures, a rule) or written as HTML source. Put
+  below the line the message is written on and above any quote, in new mail
+  and - unless switched off - in replies and forwards; an HTML signature makes
+  the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
+- **Formatting** — a *Plain text | Formatted* switch on every message, and in
+  formatted mode the same toolbar as the signature editor (character
+  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
   engine flushes when online (so send never blocks and survives
   restarts); optional "undo send" delay of 0–30 s.
+  *(Implemented in UltraMail 0.10.14: Send queues the message in the local
+  outbox and closes the compose window; the send runs in the background, a
+  copy waits in the account's Drafts folder until the message has gone out,
+  a message not sent is reported with Retry and is tried again by itself -
+  after 1, 2, 5 and 10 minutes, then every 30, and at once when the
+  connection is back. Autosave and undo-send are still to come. Since
+  0.10.19 a sent message is filed in the Sent folder - except on servers
+  that do that themselves (Gmail, Outlook.com / Microsoft 365) - and the
+  **Outbox window** (toolbar *Outbox (N)*, shown while messages wait) lists
+  the waiting messages with why they have not gone out, and offers *Send
+  now*, *Edit…* (correct and send again; the old version is held meanwhile
+  and replaced) and *Delete* (with its Drafts copy, expunged; when the
+  server cannot be reached, by a later pass). Both wait for a running send
+  instead of refusing.)*
 
 ### 3.2 Everyday comfort features (v1.0)
 

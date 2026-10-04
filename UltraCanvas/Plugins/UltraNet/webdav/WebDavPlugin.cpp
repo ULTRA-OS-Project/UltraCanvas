@@ -5,7 +5,7 @@
 // when issuing libcurl requests.
 //
 // Build: produces libultranet_webdav.{so,dylib,dll}.
-// Entry points: UltraNet_PluginInit (v2) and UltraNet_PluginRegister (v1).
+// Entry point: UltraNet_PluginInit (v2; core functions via the host table).
 // Version: 0.1.2
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +13,7 @@
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetFtp.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 #include <UltraCanvasUtils.h>
 
@@ -38,6 +39,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace {
 
@@ -154,7 +156,7 @@ void ParseMultistatus(const std::string& body,
                       std::vector<UltraNetFtpEntry>& out) {
     for (const auto& resp : SplitResponses(body)) {
         UltraNetFtpEntry e;
-        std::string href = UltraCanvas::Trim(ExtractTag(resp, "href"));
+        std::string href = UltraCanvas::TrimWhitespace(ExtractTag(resp, "href"));
         if (href.empty()) continue;
         // The href is URL-encoded; decode the last path segment as the name.
         std::string decodedHref = UltraNet_UrlDecode(href);
@@ -170,7 +172,7 @@ void ParseMultistatus(const std::string& body,
         }
         if (name.empty() || name == "." || name == "..") continue;
 
-        const std::string display = UltraCanvas::Trim(ExtractTag(resp, "displayname"));
+        const std::string display = UltraCanvas::TrimWhitespace(ExtractTag(resp, "displayname"));
         if (!display.empty()) name = display;
         e.name     = name;
         e.fullPath = listUrl + name;
@@ -184,9 +186,9 @@ void ParseMultistatus(const std::string& body,
         } else {
             e.type = UltraNetFtpEntryType::File;
         }
-        const std::string size = UltraCanvas::Trim(ExtractTag(resp, "getcontentlength"));
+        const std::string size = UltraCanvas::TrimWhitespace(ExtractTag(resp, "getcontentlength"));
         if (!size.empty()) e.size = std::atoll(size.c_str());
-        e.modificationTime = UltraCanvas::Trim(ExtractTag(resp, "getlastmodified"));
+        e.modificationTime = UltraCanvas::TrimWhitespace(ExtractTag(resp, "getlastmodified"));
 
         out.push_back(std::move(e));
     }
@@ -263,7 +265,7 @@ public:
     UltraNetResult Download(const std::string& url,
                             const std::string& localPath,
                             const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = std::fopen(localPath.c_str(), "wb");
+        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
         if (!fp) return UltraNetResult::Error(
             UltraNetResultCode::AccessDenied, "cannot open local file");
         std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
@@ -283,7 +285,7 @@ public:
     UltraNetResult Upload(const std::string& localPath,
                           const std::string& url,
                           const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = std::fopen(localPath.c_str(), "rb");
+        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
         if (!fp) return UltraNetResult::Error(
             UltraNetResultCode::NotFound, "cannot open local file");
         std::fseek(fp, 0, SEEK_END);
@@ -371,11 +373,8 @@ private:
 
 extern "C" ULTRANET_PLUGIN_EXPORT
 void UltraNet_PluginInit(const UltraNetPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    // ABI 2: the core functions this plug-in calls come through `host`
+    // (UltraNetPluginHostShim); an older host cannot serve them.
+    if (!UltraNetPlugin_AttachHost(host)) return;
     host->RegisterPlugin(std::make_shared<WebDavPlugin>());
 }
-#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
-extern "C" void UltraNet_PluginRegister(void) {
-    UltraNet_RegisterPlugin(std::make_shared<WebDavPlugin>());
-}
-#endif

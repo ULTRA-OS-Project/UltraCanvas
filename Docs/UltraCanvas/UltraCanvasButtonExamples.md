@@ -22,31 +22,52 @@ UltraCanvasButton is a customizable button control in the UltraCanvas framework 
 // Using constructor
 auto button = std::make_shared<UltraCanvasButton>(
     "MyButton",    // identifier
-    101,           // id
     100, 50,       // x, y position
     120, 40,       // width, height
     "Click Me"     // button text
 );
 
 // Using factory function
-auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
+auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");
 
-// Using auto-sized button
-auto button = CreateAutoButton("MyButton", 100, 50, "Click Me");
+// Size only: the position comes from the layout it is added to
+auto button = std::make_shared<UltraCanvasButton>("MyButton", 120, 40, "Click Me");
+
+// Text only: the layout sizes it as well
+auto button = std::make_shared<UltraCanvasButton>("MyButton", "Click Me");
+
+// With an icon beside the text
+auto button = CreateIconButton("MyButton", 100, 50, 120, 40, "media/icons/ok.png", "Click Me");
 ```
+
+There is no numeric id argument: an element is identified by its identifier
+string, and a button placed by a layout needs no position at all.
 
 ## Class Reference
 
-### Constructor
+### Constructors
 
 ```cpp
-UltraCanvasButton(
-    const std::string& identifier = "Button",
-    long id = 0,
-    long x = 0, long y = 0,
-    long w = 100, long h = 30,
-    const std::string& buttonText = "Button"
-);
+UltraCanvasButton(const std::string& identifier,
+                  float x, float y, float w, float h,
+                  const std::string& buttonText = "Button");
+UltraCanvasButton(const std::string& identifier,
+                  float w, float h,
+                  const std::string& buttonText = "Button");   // positioned by a layout
+UltraCanvasButton(const std::string& identifier,
+                  const std::string& buttonText);               // sized by a layout too
+```
+
+### Factories
+
+```cpp
+std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
+                                                float x, float y, float w, float h,
+                                                const std::string& text = "Button");
+std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
+                                                    float x, float y, float w, float h,
+                                                    const std::string& iconPath,
+                                                    const std::string& text = "");
 ```
 
 ### Core Methods
@@ -161,7 +182,7 @@ button->onContextMenu = [menu, container](int windowX, int windowY) {
 ### Event Usage Example
 
 ```cpp
-auto button = CreateButton("MyButton", 1, 10, 10, 100, 30, "Click Me");
+auto button = CreateButton("MyButton", 10, 10, 100, 30, "Click Me");
 
 // Set click handler
 button->onClick = []() {
@@ -262,7 +283,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
 ### Standard Button
 
 ```cpp
-auto standardBtn = CreateButton("StandardButton", 1, 20, 20, 100, 30, "Standard");
+auto standardBtn = CreateButton("StandardButton", 20, 20, 100, 30, "Standard");
 standardBtn->onClick = []() {
     std::cerr << "Standard button clicked" << std::endl;
 };
@@ -271,7 +292,7 @@ standardBtn->onClick = []() {
 ### Colored Button
 
 ```cpp
-auto primaryBtn = CreateButton("PrimaryButton", 2, 20, 60, 100, 30, "Primary");
+auto primaryBtn = CreateButton("PrimaryButton", 20, 60, 100, 30, "Primary");
 primaryBtn->SetColors(
     Color(0, 123, 255, 255),  // Normal
     Color(0, 100, 225, 255),  // Hover
@@ -301,7 +322,7 @@ a `▾` character: a text renderer draws that glyph at a fraction of the
 section around it, while the icon fills the size it is given.
 
 ```cpp
-auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+auto newButton = CreateButton("New", 10, 10, 138, 28, "New folder");
 newButton->SetSplitEnabled(true);
 newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
 newButton->SetSplitSecondaryText("");        // the icon is the whole content
@@ -329,7 +350,7 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
 ### Disabled Button
 
 ```cpp
-auto disabledBtn = CreateButton("DisabledButton", 3, 20, 140, 100, 30, "Disabled");
+auto disabledBtn = CreateButton("DisabledButton", 20, 140, 100, 30, "Disabled");
 disabledBtn->SetEnabled(false);
 ```
 

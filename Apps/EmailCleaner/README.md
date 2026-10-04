@@ -23,21 +23,43 @@ Full concept: [`Docs/EmailCleaner/Concept.md`](../../Docs/EmailCleaner/Concept.m
 > block from the selected block, and a rule editor in the UI rather than a
 > text file.
 
-## It does not fetch mail — UltraMail does
+## Where the mail comes from: UltraMail, or EmailCleaner's own accounts
 
-[`Apps/UltraMail`](../UltraMail) already owns accounts: auto-discovery, the
-credential vault, the IMAP sync engine, and a cache of every message body at
+**Accounts set up in UltraMail are shared.** [`Apps/UltraMail`](../UltraMail)
+owns them: auto-discovery, the credential vault, the IMAP sync engine, and a
+cache of every message body at
 
 ```
 <UltraMail data dir>/mail/<accountId>/<folder>/<uid>.eml
 ```
 
-EmailCleaner reads that cache. Configure and sync an account in UltraMail, then
-press **Load mail** here. The two apps share one mailbox without either
-reaching into the other's tables: EmailCleaner mirrors the account list into
-its own database and never writes to UltraMail's.
+EmailCleaner reads that cache. Sync the account in UltraMail, then press
+**Load mail** here. EmailCleaner mirrors the account list into its own
+database and never writes to UltraMail's.
 
-Point it at a different mailbox with `EMAILCLEANER_MAIL_DIR`.
+**Or add an account to EmailCleaner itself** — no UltraMail needed.
+**Accounts…** lists every account with where its mail comes from, and holds
+the form for a new one: the address (**Find servers** fills the IMAP server in
+from the provider table, then autoconfig), a password — an *app password* for
+Gmail, Outlook and Yahoo — and **Sign in and add**, which checks the sign-in
+against the server before anything is saved. The account then belongs to
+EmailCleaner alone:
+
+```
+<EmailCleaner data dir>/accounts.db                    its account list
+<EmailCleaner data dir>/vault/emailcleaner.vault       its password
+<EmailCleaner data dir>/mail/ec-<account>/<folder>/<uid>.eml
+```
+
+**Load mail** downloads what is new on the server for these accounts — the
+inbox, and the junk folder when the server names one — with UltraMail's own
+`SyncEngine`, then analyses it like any other cache. **Remove** deletes the
+password, the downloaded copy and the analysis; nothing on the server changes.
+An address UltraMail already shares cannot be added a second time, and an
+OAuth sign-in (rather than an app password) is still set up in UltraMail.
+
+Point it at a different UltraMail mailbox with `EMAILCLEANER_MAIL_DIR`, and at
+the UltraNet plug-in folder (the IMAP DSO) with `EMAILCLEANER_PLUGIN_DIR`.
 
 ## Layout
 
@@ -80,10 +102,17 @@ Apps/EmailCleaner/
     EmailCleanerAttachments.{h,cpp}  reads one attachment back out of the cached
                                      .eml — and refuses executables, scripts and
                                      macro-bearing documents outright
+    EmailCleanerAccounts.{h,cpp}     EmailCleaner's own accounts: their list (an
+                                     UltraMail LocalStore of its own), the "add
+                                     account" validation, and the inbox + junk
+                                     download through UltraMail's SyncEngine
   ui/                                UltraCanvas UI layer
     EmailCleanerApp.{h,cpp}          app manager: owns store + ingest + window
-    EmailCleanerAccountBar.{h,cpp}   account picker, Load mail / Re-analyse, the
-                                     filters every view shares, the status line
+    EmailCleanerAccountBar.{h,cpp}   account picker, Accounts… / Load mail /
+                                     Re-analyse, the filters every view shares,
+                                     the status line
+    EmailCleanerAccountsDialog.{h,cpp} every account and its source; the form
+                                     that adds one to EmailCleaner alone
     EmailCleanerMapView.{h,cpp}      the map: UltraCanvasTreeMapElement over the
                                      analytics hierarchy, metric + grouping
                                      pickers, category legend
@@ -132,7 +161,10 @@ Selecting a block on the map arms the actions strip above the message list:
 **Block sender**, **Unsubscribe** and **Move to Trash**, in any combination.
 The strip shows the resulting plan as you tick — how many messages, from where,
 and every warning — and **Apply** repeats the whole thing in a confirmation
-before anything happens.
+before anything happens. The block is applied at once; the steps that talk to
+the server (the unsubscribe request, the moves) run in the background with a
+count on the status line, so the window keeps answering, and **Apply** waits
+until they are done.
 
 Three rules the panel will not bend:
 
@@ -145,13 +177,23 @@ Three rules the panel will not bend:
 - **Deleting means moving to Trash**, resolved from the account's own folder
   list (the SPECIAL-USE role first, then `Trash` / `[Gmail]/Bin` /
   `Deleted Items` / `Papierkorb` / ...). If no Trash can be identified the move
-  is refused rather than guessed at.
+  is refused rather than guessed at. What reached Trash leaves the analysis
+  straight away, and stays out: the move is remembered, because the body is
+  still in the mail cache it was read from, and Trash folders are not
+  analysed at all.
 - **Blocking is local and reversible.** It changes what the map shows, never
   the server, and every entry can be taken back from **Blocked senders…**.
 
-The mail half needs UltraNet's IMAP plug-in and the account's password from
-UltraMail's vault. Without them the panel says which is missing and the local
-half still works.
+The mail half needs UltraNet's IMAP plug-in and a way to sign in: the
+account's password — from UltraMail's vault, or from EmailCleaner's own for an
+account added under **Accounts…** — or, for an UltraMail account that signed
+in through its provider's browser login (Gmail, Outlook, Yahoo), its OAuth2
+token set. EmailCleaner renews that token itself before each server call,
+with UltraMail's OAuth client (the same environment, baked-in client and
+`oauth.ini`), and keeps the renewed one in memory: it only ever reads
+UltraMail's vault. When the sign-in can no longer be renewed, the action says
+so — sign in again in UltraMail. Without any of this the panel says what is
+missing and the local half still works.
 
 ## Correcting a verdict
 
@@ -171,7 +213,9 @@ either can be true without the other.
 A message with attachments carries an **Attachments** button in the message
 list. The index holds only metadata — the bytes stay in the .eml UltraMail
 cached and are read back on demand — so what you open is the message as it
-arrived.
+arrived. The copy written for the viewer (`<EmailCleaner data
+dir>/attachments`) is pruned at every start: what was not opened for a week
+goes, then the oldest until the rest fits in 256 MB.
 
 Executable, script and macro-bearing attachments are **not** opened and **not**
 copied anywhere. There is no button for them, only a note saying why: an app

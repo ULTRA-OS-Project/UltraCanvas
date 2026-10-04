@@ -21,9 +21,11 @@ namespace UltraCanvas {
 // PRINTING
 // ============================================================================
 
-IODeviceResult PrintTextWithSettings(const IOPrintDialogChoice& chosen,
-                                     const std::string& documentName,
-                                     const std::string& textContent) {
+namespace {
+
+// Finds the printer a dialog answer names, opens it if it is not open, prints
+// `job` and closes it again if it opened it.
+IODeviceResult SubmitToChosenPrinter(const IOPrintDialogChoice& chosen, const IOPrintJob& job) {
     if (!chosen.IsOK()) {
         return IODeviceResult::Error(IODeviceResultCode::Cancelled,
                                      "The print dialog was cancelled");
@@ -74,13 +76,42 @@ IODeviceResult PrintTextWithSettings(const IOPrintDialogChoice& chosen,
         }
     }
 
-    IODeviceResult printed =
-        printer->Print(MakeTextPrintJob(chosen, documentName, textContent));
+    IODeviceResult printed = printer->Print(job);
 
     if (!wasConnected) {
         printer->Disconnect();
     }
     return printed;
+}
+
+} // namespace
+
+IODeviceResult PrintTextWithSettings(const IOPrintDialogChoice& chosen,
+                                     const std::string& documentName,
+                                     const std::string& textContent) {
+    return SubmitToChosenPrinter(chosen, MakeTextPrintJob(chosen, documentName, textContent));
+}
+
+IODeviceResult PrintDocumentWithSettings(const IOPrintDialogChoice& chosen,
+                                         const std::string& documentName,
+                                         const std::vector<uint8_t>& data,
+                                         const std::string& mimeType,
+                                         const IPrintPageSourcePtr& pages) {
+    return SubmitToChosenPrinter(chosen, MakeDocumentPrintJob(chosen, documentName, data, mimeType, pages));
+}
+
+IODeviceResult PrintDocumentWithDialog(const std::string& documentName,
+                                       const std::vector<uint8_t>& data,
+                                       const std::string& mimeType,
+                                       UltraCanvasWindowBase* parent,
+                                       const IPrintPageSourcePtr& pages) {
+    const NativePrintResult chosen =
+        UltraCanvasNativeDialogs::RequestPrintSettings(documentName, parent);
+    if (!chosen.IsOK()) {
+        return IODeviceResult::Error(IODeviceResultCode::Cancelled,
+                                     "The print dialog was cancelled");
+    }
+    return PrintDocumentWithSettings(chosen, documentName, data, mimeType, pages);
 }
 
 IODeviceResult PrintTextWithDialog(const std::string& documentName,

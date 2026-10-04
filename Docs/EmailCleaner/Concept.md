@@ -37,12 +37,14 @@ worth removing.
 ## Architecture
 
 ```
-UltraMail                        EmailCleaner
-─────────                        ────────────
-accounts + credentials
-IMAP sync ──> mail.db
-          └─> mail/<account>/<folder>/<uid>.eml
-                                  │
+UltraMail                        EmailCleaner (own accounts, 0.4)
+─────────                        ────────────────────────────────
+accounts + credentials           accounts.db + vault/
+IMAP sync ──> mail.db            IMAP sync (the same SyncEngine)
+          └─> mail/<account>/...           └─> mail/ec-<account>/...
+                     │                             │
+                     └──────────────┬──────────────┘
+                                    │
                                   │  ingest: parse (UltraNet MIME),
                                   │  classify, store
                                   v
@@ -60,12 +62,28 @@ IMAP sync ──> mail.db
                              BarChart)
 ```
 
-**EmailCleaner does not speak IMAP.** UltraMail already owns accounts,
+**EmailCleaner does not implement IMAP.** UltraMail already owns accounts,
 auto-discovery, the credential vault and the sync engine, and it caches every
 message body on disk. Re-implementing that would mean two mailbox
-implementations to keep correct and two sets of credentials to protect.
-EmailCleaner reads UltraMail's body cache and mirrors its account list; it
-never writes to UltraMail's tables.
+implementations to keep correct. EmailCleaner reads UltraMail's body cache and
+mirrors its account list; it never writes to UltraMail's tables.
+
+**It can still have accounts of its own** (0.4). Needing a mail client set up
+before a mailbox can be cleaned was the wrong way round for someone who only
+wants the cleaner, so **Accounts…** adds an account to EmailCleaner alone. It
+reuses UltraMail's *engine* rather than UltraMail's *data*: the same
+`LocalStore` schema for the account list (`accounts.db`), the same
+`SyncEngine` to download the inbox and junk folder, the same device-key vault
+class under its own file name and key prefix (`vault/emailcleaner.vault`,
+`mail.emailcleaner.`), and a body cache of the same layout under
+EmailCleaner's data directory. So there is still one IMAP implementation —
+only a second place its results are kept. An own account's id is
+`ec-<address slug>`, which cannot collide with UltraMail's id for the same
+address, and adding an address UltraMail already shares is refused rather
+than loading one mailbox twice. Adding an account there is password-only (an
+app password at Gmail, Outlook and Yahoo); a browser (OAuth) sign-in is still
+set up in UltraMail — and such an UltraMail account can be acted on from here
+(0.4.1): EmailCleaner reads its token set and renews it itself.
 
 ### Layers
 
@@ -150,11 +168,12 @@ versioned migrations:
 
 | Table | Holds |
 |---|---|
-| `accounts` | The mail accounts, mirrored from UltraMail. No secrets. |
+| `accounts` | The mail accounts — mirrored from UltraMail, or EmailCleaner's own (`source`). No secrets. |
 | `messages` | One row per analysed message: sender, domain, subject, date, size, flags, attachment counts, category, score. |
 | `attachments` | Per-attachment metadata — filename, media type, size, inline, risky. Never the bytes. |
 | `keyword_hits` | The terms that fired, per message: the evidence behind a verdict. |
 | `ingest_state` | How far the ingest has got per account/folder. |
+| `moved_messages` | Messages EmailCleaner moved to Trash (account, folder, UID, Message-ID): they left the analysis, and a scan of the cache — where their bodies remain — skips them. |
 
 Attachments and hits are **derived data**: an upsert replaces them wholesale,
 so re-analysing after a rule change can never leave stale evidence behind. A
@@ -222,8 +241,12 @@ touches the server. Every entry can be seen and taken back from **Blocked
 senders…**, because a block the user cannot undo is not a block, it is a
 mistake waiting.
 
-The mail half needs UltraNet's IMAP plug-in and a password from UltraMail's
-vault. When either is missing the panel says which, and the local half still
+The mail half needs UltraNet's IMAP plug-in and a way to sign in: the
+account's password — from UltraMail's vault, or from EmailCleaner's own for an
+account added there — or the OAuth2 token set of an UltraMail account that
+signed in through its provider's browser login, renewed before each server
+call with UltraMail's OAuth client and kept in memory (UltraMail's vault is
+only ever read). When either is missing the panel says which, and the local half still
 works — that is the normal state on a machine where UltraMail has not been set
 up, not an error.
 

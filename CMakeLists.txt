@@ -171,12 +171,66 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# macOS: record only the dylibs a binary actually takes a symbol from. On
+# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
+# so every application's link line carries the core's whole PUBLIC dependency
+# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
+# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
+# command for each one whether the program uses it or not. package-macos.sh
+# then copies every one of them, with its own dependencies, into each .app's
+# Frameworks/, six bundles over. With this flag an app that never reaches the
+# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
+# that supplied no symbol at link time are dropped, so nothing an app calls
+# can go missing; it would only matter for a library needed purely for a side
+# effect of its initializer, and none of the Homebrew dependencies is that.
+if(APPLE)
+    add_link_options(LINKER:-dead_strip_dylibs)
+endif()
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Executables go to the build root so the portable Linux package can place them
 # alongside lib/ and share/ (see package-linux.sh).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Every application runs from that directory, and GetResourcesDir()
+# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources in the
+# platform's packaged place first (exe/Resources/ on Windows, the bundle's
+# Contents/Resources/ on macOS) and then at <exe dir>/share/media and
+# <exe dir>/../share/media. Give the build tree that share/, pointing at the
+# repository's media/ and Docs/, so an application started straight from the
+# build tree finds its icons, fonts, wallpaper and bundled documents on every
+# desktop platform without an install step or a hand-made link. Links, not
+# copies: media/ is over 100 MB and a link follows edits to the sources. On
+# Windows a symbolic link needs Developer Mode or elevation, so a directory
+# junction (which needs neither) is the second try and a copy the last; a
+# copied share/ is left alone on later configures, so delete it to refresh.
+# Android gets its resources from the APK and Emscripten from the preload.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    foreach(_uc_resource media Docs)
+        set(_uc_link "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+        set(_uc_target "${CMAKE_SOURCE_DIR}/${_uc_resource}")
+        if(NOT EXISTS "${_uc_link}")
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/share")
+            file(CREATE_LINK "${_uc_target}" "${_uc_link}" RESULT _uc_linked SYMBOLIC)
+            if(WIN32 AND NOT _uc_linked EQUAL 0)
+                file(TO_NATIVE_PATH "${_uc_link}" _uc_link_native)
+                file(TO_NATIVE_PATH "${_uc_target}" _uc_target_native)
+                execute_process(COMMAND cmd /c mklink /J "${_uc_link_native}" "${_uc_target_native}"
+                                RESULT_VARIABLE _uc_linked OUTPUT_QUIET ERROR_QUIET)
+            endif()
+            if(NOT _uc_linked EQUAL 0)
+                message(STATUS "share/${_uc_resource}: no link possible here, copying the directory")
+                file(COPY "${_uc_target}" DESTINATION "${CMAKE_BINARY_DIR}/share")
+            endif()
+        endif()
+    endforeach()
+    unset(_uc_resource)
+    unset(_uc_link)
+    unset(_uc_target)
+    unset(_uc_linked)
+endif()
 
 # ===== ANDROID DEFAULTS (phase 1: core library only) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
@@ -251,6 +305,9 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)"
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
+# VideoFX always builds; FFmpeg (found by pkg-config) turns its engine on,
+# otherwise the same API is a stub returning VideoFXResult::NotAvailable.
+option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion module" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -267,6 +324,15 @@ if(ULTRACANVAS_USE_VIRTUALFS)
     message(STATUS "")
     message(STATUS "── Building VirtualFS Module ──")
     add_subdirectory(VirtualFS)
+endif()
+
+# ===== BUILD VIDEOFX MODULE =====
+# Independent sibling module (video probing, frames, trim / effects / join /
+# export on FFmpeg). Nothing in the core links it; applications and Tests/ do.
+if(ULTRACANVAS_USE_VIDEOFX)
+    message(STATUS "")
+    message(STATUS "── Building VideoFX Module ──")
+    add_subdirectory(VideoFX)
 endif()
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
@@ -412,6 +478,40 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRACANVASSTART =====
+# Sets a computer up for UltraCanvas development: detects the platform and
+# package manager, checks and installs the development libraries, names the
+# matching SDK artifact, writes a project skeleton and explains the AI
+# workflow. Headless --check / --plan modes for the terminal and CI.
+option(BUILD_ULTRACANVASSTART "Build the UltraCanvasStart application" ON)
+if(BUILD_ULTRACANVASSTART)
+    message(STATUS "")
+    message(STATUS "── Building UltraCanvasStart ──")
+    add_subdirectory(Apps/UltraCanvasStart)
+endif()
+
+# ===== UOS-SETTINGS =====
+# The ULTRA OS settings application: settings that belong to the system rather
+# than to one application, starting with where the file dialogs of all
+# applications open (FileDialog.conf, UltraCanvasFileDialogSettings.h).
+option(BUILD_UOS_SETTINGS "Build the UOS-Settings application" ON)
+if(BUILD_UOS_SETTINGS)
+    message(STATUS "")
+    message(STATUS "── Building UOS-Settings ──")
+    add_subdirectory(Apps/UOSSettings)
+endif()
+
+# ===== ULTRACLAUDE =====
+# A chat window for Claude on a Claude Pro / Max subscription: it runs the
+# official Claude Code CLI as a child process and shows its streamed output,
+# with a sign-in page that hands login to the CLI (claude auth login).
+option(BUILD_ULTRACLAUDE "Build the UltraClaude application" ON)
+if(BUILD_ULTRACLAUDE)
+    message(STATUS "")
+    message(STATUS "── Building UltraClaude ──")
+    add_subdirectory(Apps/UltraClaude)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless
@@ -421,6 +521,19 @@ if(BUILD_ULTRANETMONITOR)
     message(STATUS "")
     message(STATUS "── Building UltraNetMonitor ──")
     add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
+# ===== ULTRADESKTOP =====
+# The ULTRA OS desktop: taskbar with the running applications, desktop
+# organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
+# info panel with the devices and services, on one screen-sized window under
+# everything else. Built on the UltraCanvasDesktopShell module; headless
+# --windows / --apps / --devices / --screenshot modes for the command line.
+option(BUILD_ULTRADESKTOP "Build the UltraDesktop application" ON)
+if(BUILD_ULTRADESKTOP)
+    message(STATUS "")
+    message(STATUS "── Building UltraDesktop ──")
+    add_subdirectory(Apps/UltraDesktop)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -449,6 +562,16 @@ endif()
 option(BUILD_ULTRAAUTHENTICATOR "Build the UltraAuthenticator application" ON)
 if(BUILD_ULTRAAUTHENTICATOR AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraAuthenticator)
+endif()
+
+# ===== ULTRAPASSWORD =====
+# Password vault: groups in a tree, a card per password with the site's
+# sign-in method, one Argon2id + XChaCha20-Poly1305 file that is also the
+# export format. The core needs only UltraCrypt and builds headless; the GUI
+# is added on top when the framework is available.
+option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
+if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
+    add_subdirectory(Apps/UltraPassword)
 endif()
 
 # ===== DEMO APPLICATION =====
@@ -482,6 +605,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChipExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
+            Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
@@ -581,6 +705,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
+            Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
@@ -588,7 +713,6 @@ if(BUILD_DEMO_APP)
     # These files depend on libvips
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
-            Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
         )
@@ -727,18 +851,9 @@ if(BUILD_DEMO_APP)
         ${ULTRACANVAS_LIBRARY}
     )
 
-    # The core library resolves fmt too, but its imported target is scoped to
-    # that directory — resolve again here (cheap) before falling back to a fetch.
-    if(NOT TARGET fmt::fmt)
-        find_package(fmt CONFIG QUIET)
-    endif()
-    if(NOT TARGET fmt::fmt)
-        FetchContent_Declare(
-                fmt
-                GIT_REPOSITORY https://github.com/fmtlib/fmt
-                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-        FetchContent_MakeAvailable(fmt)
-    endif()
+    # fmt::fmt is the core library's (UltraCanvas/CMakeLists.txt resolves it
+    # and makes it visible to every directory), the same target every other
+    # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
@@ -823,6 +938,16 @@ option(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS "Build the vector format tests with
 if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
+endif()
+
+# ===== FILER TESTS WITHOUT THE FULL SUITE =====
+# FilerFolderPreviewTest and FilerNameEncodingTest alone, for builds that
+# leave BUILD_TESTS off (the Windows CI rows): the file display lists and draws
+# Thai, CJK and emoji names on the platform that converts them to UTF-16.
+option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
 # ===== ULTRANET TESTS =====
@@ -981,6 +1106,18 @@ if(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS AND TARGET UltraCleanerEngine)
     message(STATUS "── UltraCleaner engine test suite enabled (target: UltraCleanerEngineTests) ──")
 endif()
 
+# ===== ULTRACANVASSTART ENGINE TESTS =====
+# Headless tests of the setup app's engine: os-release parsing, version
+# comparison, the dependency table, the install command, SDK names, the plan
+# and the project scaffold. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS "Build the UltraCanvasStart engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraCanvasStart)
+    message(STATUS "")
+    message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
@@ -1075,6 +1212,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPrompt.cpp
             Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerFindTextDialog.cpp
+            Apps/UltraFiler/UltraFilerFolderExport.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
@@ -1508,6 +1646,18 @@ if (BUILD_TESTS)
     add_test(NAME HTMLImageAlignTest COMMAND HTMLImageAlignTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # HTML tables on the CSSLayout table engine: shared columns, spans, px/%
+    # widths, nowrap, mail buttons (builder + layout, headless).
+    add_executable(HTMLTableLayoutTest Tests/HTMLTableLayoutTest.cpp)
+    target_include_directories(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLTableLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLTableLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
     # module and its vendored engine, so it runs headless without the UI stack.
     add_executable(JSONTests
@@ -1627,6 +1777,20 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorStoreTests COMMAND UltraAuthenticatorStoreTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Password vault core: model, encrypted vault file / export round trips,
+    # wrong-password refusal, tamper detection, CSV exchange and the
+    # generator. Links only UltraCrypt, so it runs headless.
+    if(TARGET UltraPasswordCore)
+        add_executable(UltraPasswordTests Tests/UltraPasswordTests.cpp)
+        target_link_libraries(UltraPasswordTests PRIVATE UltraPasswordCore)
+        target_compile_features(UltraPasswordTests PRIVATE cxx_std_20)
+        set_target_properties(UltraPasswordTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraPasswordTests COMMAND UltraPasswordTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # Encrypted backup file: round trip, refusal to reuse the master password,
     # tamper detection, and that a restore never overwrites a live account.
@@ -1988,28 +2152,10 @@ if(TARGET UltraCanvasLaTeX)
 endif()
 
 # ===== PACKAGE CONFIGURATION =====
-include(CMakePackageConfigHelpers)
-
-# Generate version file
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-# Generate config file
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    @ONLY
-)
-
-# Install config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/UltraCanvasConfigVersion.cmake"
-    DESTINATION lib/cmake/UltraCanvas
-)
+# UltraCanvasConfig.cmake, its version file and the UltraCanvasTargets export
+# are generated and installed by UltraCanvas/CMakeLists.txt ("INSTALLATION AND
+# THE CMAKE PACKAGE"), where the link interface and the dependency choices they
+# describe are in scope. Tests/PackageConsumer builds against the result.
 
 # ===== CPack CONFIGURATION =====
 #set(CPACK_PACKAGE_NAME "UltraCanvas")

@@ -1,12 +1,42 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.22 - recipient suggestions ranked by how often - and how lately - each
+//                   address is written to
+// Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
+// Version: 0.9.20 - a mailto: link's cc and bcc go into the new message
+// Version: 0.9.19 - a clicked mail address in a message opens a new message to it
+// Version: 0.9.18 - Settings > Display > Links: a link's address in the status line or
+//                   as a tooltip (ApplyLinkDisplay)
+// Version: 0.9.17 - the status line lists a message's links (summary, every link in
+//                   its tooltip) and shows where the link under the pointer goes
+// Version: 0.9.16 - Edit and Delete in the Outbox window wait for a running
+//                   send instead of refusing; a Drafts copy that cannot be
+//                   deleted now is deleted by a later pass
+// Version: 0.9.15 - the Outbox window: the waiting messages with Send now,
+//                   Edit and Delete (toolbar "Outbox (N)"); a sent message
+//                   is filed in the Sent folder; outbox work runs in one queue
+// Version: 0.9.14 - Send queues the message, closes the compose window and sends
+//                   in the background, keeping a copy in Drafts until it has
+//                   gone out; a message not sent is reported with Retry and
+//                   tried again by itself (OutboxRetryClock)
+// Version: 0.9.13 - a compose window per message: each has its own view, so a
+//                   second one no longer takes over the first one's buttons
+// Version: 0.9.12 - a signature per account (Account Settings > Signature): put
+//                   into new mail, replies and forwards
+// Version: 0.9.11 - and right after the computer wakes from sleep (WakeDetector)
+// Version: 0.9.10 - new mail is fetched right after start, not five minutes later
+// Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
+//                  UltraFiler): layout, HTML / plain text, text size, remote-image
+//                  policy with trusted websites, sender icons
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
+#include "UltraMailHeaderText.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
 #include "UltraMailAttachmentCache.h"
@@ -14,6 +44,7 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailRichComposer.h"
+#include "UltraMailSignatureDialog.h"
 #include "UltraMailSender.h"
 #include "UltraMailContactCollector.h"
 #include "UltraMailSyncService.h"
@@ -28,6 +59,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
@@ -40,8 +72,8 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
+#include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -49,6 +81,9 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include "UltraCanvasPathUtf8.h"
+#include "UltraMailSenderBrands.h"   // RegistrableDomain
+#include <map>
 
 // ULTRAMAIL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -66,6 +101,12 @@ namespace {
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
 constexpr int   kActionIcon    = 12;
+// The first fetch after start waits this long, so the main window is painted
+// (with the cached mail) before the network work begins.
+constexpr unsigned int kStartupSyncDelayMs = 400;
+// After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
+// seconds to reconnect, and a check before that would only report "offline".
+constexpr unsigned int kWakeSyncDelayMs = 5000;
 
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
@@ -104,11 +145,12 @@ UltraMailApp::~UltraMailApp() {
 
 bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError) {
     std::error_code ec;
-    std::filesystem::create_directories(dataDir, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dataDir), ec);
     if (ec && outError) *outError = ec.message();
     const std::string dbPath = dataDir + "/mail.db";
 
     UltraDbResult opened = store_.Open("ultramail", dbPath);
+    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath);
     if (!opened) {
         if (outError) *outError = DetailLine(opened);
         return false;
@@ -116,11 +158,22 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
 
     dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
+    // Attachments opened in the viewer are copies of what the message already
+    // holds, so their folder is pruned at every start - before any viewer has
+    // one open: what was not opened for a week goes, then the oldest until
+    // the rest fits in 256 MB. Earlier versions wrote them straight into the
+    // cache folder, where nothing else keeps files (the sender icons have a
+    // folder of their own); those loose files are cleared once.
+    attachmentDir_ = cacheDir_ + "/attachments";
+    AttachmentCache(cacheDir_).Prune(/*maxAgeSeconds=*/-1, /*maxBytes=*/0);
+    AttachmentCache(attachmentDir_).Prune(/*maxAgeSeconds=*/7 * 24 * 3600,
+                                          /*maxBytes=*/256ull * 1024 * 1024);
     mailDir_  = dataDir + "/mail";
     // App-wide view preferences (e.g. the reading pane). A missing file keeps
     // the defaults; it is written the first time the user changes a setting.
     prefsPath_ = dataDir + "/preferences.ini";
     prefs_.Load(prefsPath_);
+    ApplyNeedsAnswerRules();
     // The sender-icon cache (the badge left of every subject line) lives under
     // the cache directory; it is safe to point at it before the folder exists.
     ConfigureSenderIcons();
@@ -182,6 +235,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // logo, app title and the "Add email account" button.
     auto start = startPage_.Build();
     startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    startPage_.onSettings   = [this]() { OpenSettings(); };
     window_->AddChild(start);
 
     // Account view — actions column + account bar on top, inbox | message below.
@@ -198,6 +252,13 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // Register accounts for background sync (the live loop starts only when the
     // IMAP plug-in is present).
     StartBackgroundSync();
+    // Messages left in the outbox by an earlier run go out by themselves,
+    // shortly after start (once the window is up and the network had a moment).
+    StartOutboxRetryTimer();
+    // (and Drafts copies of deleted messages still to be removed)
+    if (OutboxPending() > 0 || OutboxWithdrawn() > 0)
+        outboxRetry_.RetryAt(NowMonotonicSec() + 20);
+    RefreshOutbox();
 
     // Migration: an existing vault made with a master password (before device
     // keys) stays locked after Initialize's silent attempt. Prompt once now so
@@ -205,12 +266,27 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // device key, so this is the only time it is asked.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
+    } else if (!accounts_.empty() && ImapPlugin()) {
+        // Fetch new mail right after start. The periodic timer's first tick is
+        // five minutes out, so without this the inbox showed only what was
+        // cached until Update was pressed - and the status line never said it
+        // was checking. Every account is due (never synced in this run). A
+        // background sync, not a user one: a network that is not up yet right
+        // after boot takes the offline grace period instead of an alert. Run
+        // from the loop, shortly after the window is shown, so it paints first.
+        if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
+            app->StartTimer(kStartupSyncDelayMs, /*periodic=*/false,
+                            [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
+        }
     }
 
-    // Demo path: seed mail, auto-collect senders, and open the contact manager.
-    if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol == '1') {
+    // Demo path: seed mail and auto-collect its senders; the main window shows
+    // the mail. "contacts" also opens the contact manager on the collected
+    // senders — on request only, since it lands on top of the main window.
+    if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol) {
         SeedDemoMail();
-        OpenContacts();
+        Refresh();
+        if (std::string(dcol) == "contacts") OpenContacts();
     }
     // Demo path: seed contacts and open the contact manager.
     if (const char* dc = std::getenv("ULTRAMAIL_DEMO_CONTACTS"); dc && *dc == '1') {
@@ -242,8 +318,8 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // (exercises Attach file / Attach cloud link without a server).
     if (const char* dcl = std::getenv("ULTRAMAIL_DEMO_CLOUD"); dcl && *dcl) {
         SeedDemoCloud();
-        OpenComposer(Composer::NewMessage("Erika Example", "erika@example.com"));
-        if (*dcl == '2') composeView_.OpenCloudLinkPicker();   // =2: picker open too
+        ComposeView* view = OpenComposer(Composer::NewMessage("Erika Example", "erika@example.com"));
+        if (*dcl == '2' && view) view->OpenCloudLinkPicker();   // =2: picker open too
     }
     // Demo path: open a reply-prefilled compose window.
     if (const char* dcomp = std::getenv("ULTRAMAIL_DEMO_COMPOSE"); dcomp && *dcomp == '1') {
@@ -255,6 +331,25 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         src.body = "Hi Erika,\n\nHere are the notes from our meeting.\n\nBest,\nAnna";
         src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
         OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
+    }
+    // Demo path: the account signature. =1 opens the signature editor on a
+    // designed HTML signature; =2 a new message from the demo account (seeded
+    // by ULTRAMAIL_DEMO_MAIL=1) signed with it.
+    if (const char* dsig = std::getenv("ULTRAMAIL_DEMO_SIGNATURE"); dsig && *dsig) {
+        Signature sig;
+        sig.kind = SignatureKind::Html;
+        sig.text = "Erika Example\nSales, ACME Ltd.";
+        sig.html = "<p><b><span style=\"color:#1E3A8A\">Erika Example</span></b><br>"
+                   "<i>Sales</i>, ACME Ltd.<br>"
+                   "<a href=\"https://acme.example\">acme.example</a></p>";
+        if (*dsig == '1') {
+            SignatureDialog::Show(window_.get(), "erika@example.com", sig,
+                                  [](const Signature&) {});
+        } else {
+            SaveSignature("erika", sig);
+            OpenComposer(WithSignature(Composer::NewMessage("Erika Example", "erika@example.com"),
+                                       DraftPurpose::NewMessage));
+        }
     }
 
     return window_;
@@ -296,7 +391,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         if (addr.empty() && !accounts_.empty()) {
             name = accounts_.front().displayName; addr = accounts_.front().email;
         }
-        OpenComposer(Composer::NewMessage(name, addr));
+        OpenComposer(WithSignature(Composer::NewMessage(name, addr), DraftPurpose::NewMessage));
     });
     // Update: download new mail for the account on screen now, rather than
     // waiting for the background check.
@@ -304,12 +399,19 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                [this]() { HandleReload(); });
     reloadButton_->SetTooltip("Download new mail for this account now");
     makeAction("umContacts", "Contacts", 76, "", false, [this]() { OpenContacts(); });
+    // Shown while messages wait to be sent (RefreshOutbox keeps the count).
+    outboxButton_ = makeAction("umOutbox", "Outbox", 76, "", false, [this]() { OpenOutbox(); });
+    outboxButton_->SetTooltip("Messages waiting to be sent");
+    outboxButton_->SetVisible(false);
     toolbar->AddStretchSpacer(1);
     makeAction("umSettings", "Account Settings", 0, "", false, [this]() {
         if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
     });
     makeAction("umAddAccount", "Add account", 0, "", false,
                [this]() { HandleAddAccount(); });
+    // The gear at the far right opens the settings window (UltraFiler's gear).
+    toolbar->AddChild(SettingsDialog::MakeGearButton("umAppSettings", Theme::kControlHeight,
+                                                     [this]() { OpenSettings(); }));
     // "Delete account" moved to the account settings dialog's bottom row
     // (ServerSettingsDialog, red button) — see HandleAccountSettings.
     accountView_->AddChild(toolbar);
@@ -326,6 +428,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         // Its last failure, if any, before Refresh() - whose folder fetch
         // replaces it with "Opening …" while it runs.
         ShowAccountStatus();
+        UpdateConnectionIndicator();
         Refresh();
     };
     accountView_->AddChild(bar);
@@ -354,13 +457,13 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                const std::string& selfAddr) {
         Draft draft = Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false);
         MakeRichReply(draft, src);
-        OpenComposer(draft);
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::ReplyOrForward));
     };
     mailView_.onForward = [this](const SourceMessage& src, const std::string& selfName,
                                  const std::string& selfAddr) {
         Draft draft = Composer::Forward(src, selfName, selfAddr);
         MakeRichForward(draft, src);
-        OpenComposer(draft);
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::ReplyOrForward));
     };
     mailView_.onDelete     = [this](const MessageEnvelope& e) { HandleDeleteMessage(e); };
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
@@ -370,11 +473,33 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return a;
     };
+    // Settings > Privacy > Images: whether a message's pictures on the web load
+    // by themselves. Junk and suspicious mail never ask here (the preview
+    // decides that first).
     mailView_.remoteImagesAllowed = [this, lowerAddr](const std::string& addr) {
-        return prefs_.remoteImageSenders.count(lowerAddr(addr)) > 0;
+        switch (prefs_.remoteImages) {
+            case RemoteImagePolicy::LoadAlways: return true;
+            case RemoteImagePolicy::LoadNever:  return false;
+            case RemoteImagePolicy::LoadTrusted: break;
+        }
+        const std::string a = lowerAddr(addr);
+        if (prefs_.remoteImageSenders.count(a)) return true;
+        if (const auto at = a.rfind('@'); at != std::string::npos &&
+            prefs_.IsTrustedDomain(a.substr(at + 1)))
+            return true;
+        Contact contact;
+        bool found = false;
+        return contacts_.FindByEmail(a, contact, found) && found;
+    };
+    // ... and, for any other message, the pictures hosted on a trusted website.
+    mailView_.remoteImageHostTrusted = [this](const std::string& url) {
+        return prefs_.remoteImages == RemoteImagePolicy::LoadTrusted && prefs_.IsTrustedDomain(url);
     };
     mailView_.onAlwaysAllowRemoteImages = [this, lowerAddr](const std::string& addr) {
-        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) prefs_.Save(prefsPath_);
+        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) {
+            prefs_.Save(prefsPath_);
+            SettingsDialog::SyncWithPreferences();
+        }
     };
     mailView_.onAddToContactGroup = [this](const MessageEnvelope& e, const ContactPlace& p) {
         AddSenderToContactGroup(e, p);
@@ -400,12 +525,30 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onViewSource = [this](const std::string& subject, const std::string& raw) {
         OpenSourceViewer(subject, raw);
     };
+    mailView_.onLinksShown = [this](const std::vector<MessageLink>& links) { ShowMessageLinks(links); };
+    mailView_.onLinkHovered = [this](const std::string& href) { ShowHoveredLink(href); };
+    // A mail address clicked in a message (mailto: or written in plain text):
+    // a new message to it, with the copies, subject and text the link carries.
+    // A blind copy is shown in the composer's Bcc row, never sent unseen.
+    mailView_.onComposeTo = [this](const std::string& selfName, const std::string& selfAddr,
+                                   const std::string& href) {
+        const MailtoTarget target = ParseMailto(href);
+        if (target.to.empty() && target.cc.empty() && target.bcc.empty()) return;
+        Draft draft = Composer::NewMessage(selfName, selfAddr);
+        draft.to  = target.to;
+        draft.cc  = target.cc;
+        draft.bcc = target.bcc;
+        draft.subject = target.subject;
+        draft.body    = target.body;
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::NewMessage));
+    };
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
     mailView_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
         ShowAccountStatus();
+        UpdateConnectionIndicator();
         store_.ListAccounts(accounts_);
         store_.GetAccountStatus(status_);
         accountBar_.Rebuild(accounts_, status_, selectedAccount_);
@@ -426,13 +569,16 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             return;                                   // opened again too soon; throttle
         folderSyncInFlight_.insert(key);
         folderSyncedAt_[key] = now;
-        SyncFolder(accountId, folder);
+        SyncFolder(accountId, folder, /*userInitiated=*/false);
     };
     auto mail = mailView_.Build();
     accountView_->AddChild(mail);
     mail->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
+    mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+    mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
+                                 prefs_.folderTreeWidth);
 
     // ----- Status line: what the app is currently doing -----
     // A turning ring left of the text while anything runs in the background
@@ -461,9 +607,149 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                    Theme::kSizeSecondary, Theme::kTextSecondary);
     statusRow->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+    // The links of the message being read, so the reader can check where they
+    // go before clicking: a summary, every link in its tooltip, and the target
+    // of the link under the pointer while it is on one.
+    linksLabel_ = Theme::MakeLine("umLinks", "", statusHeight,
+                                  Theme::kSizeSecondary, Theme::kTextSecondary);
+    linksLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    statusRow->AddChild(linksLabel_);
+    ApplyLinkDisplay();
+
+    // The connection pill, right-aligned: the selected account's last contact
+    // with its mail server. Hovering it tells the server, when it was last
+    // reached and why it was not.
+    connectionBadge_ = CreateBadge("umConnection", 0, 0, "Not checked",
+                                   BadgeVariant::Neutral);
+    BadgeStyle badgeStyle = connectionBadge_->GetStyle();
+    badgeStyle.height   = statusHeight * 0.7f;
+    badgeStyle.fontSize = Theme::kSizeSmall;
+    badgeStyle.paddingH = Theme::kGap;
+    connectionBadge_->SetStyle(badgeStyle);
+    connectionBadge_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusRow->AddChild(connectionBadge_);
+    statusRow->SetPadding(0, Theme::kGap, 0, 0);   // the pill clear of the edge
     UpdateBusyIndicator();
+    UpdateConnectionIndicator();
 
     return accountView_;
+}
+
+void UltraMailApp::NoteConnection(const std::string& accountId, ConnectionState state,
+                                  const std::string& reason) {
+    ConnectionInfo& c = connection_[accountId];
+    const std::time_t now = std::time(nullptr);
+    switch (state) {
+        case ConnectionState::Checking:
+            c.lastTry = now;
+            break;
+        case ConnectionState::Connected:
+            c.lastOk = now;
+            c.failures = 0;
+            c.reason.clear();
+            break;
+        case ConnectionState::Unreachable:
+        case ConnectionState::Failed:
+            ++c.failures;
+            c.reason = reason;
+            break;
+        case ConnectionState::Unknown:
+            break;
+    }
+    c.state = state;
+    if (accountId == selectedAccount_) UpdateConnectionIndicator();
+}
+
+namespace {
+std::string ClockTime(std::time_t t) {
+    if (t == 0) return "not yet";
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+#else
+    localtime_r(&t, &local);
+#endif
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%H:%M", &local);
+    return buf;
+}
+} // namespace
+
+void UltraMailApp::UpdateConnectionIndicator() {
+    if (!connectionBadge_) return;
+    const Account* account = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == selectedAccount_) account = &a;
+    if (!account) {
+        connectionBadge_->SetVisible(false);
+        return;
+    }
+    connectionBadge_->SetVisible(true);
+    auto it = connection_.find(account->accountId);
+    const ConnectionInfo info = it != connection_.end() ? it->second : ConnectionInfo{};
+
+    // The pill: one word and a colour.
+    std::string label, stateText;
+    BadgeVariant variant = BadgeVariant::Neutral;
+    switch (info.state) {
+        case ConnectionState::Unknown:
+            label = "Not checked"; variant = BadgeVariant::Neutral;
+            stateText = "Not contacted yet in this session";
+            break;
+        case ConnectionState::Checking:
+            label = "Checking…"; variant = BadgeVariant::Primary;
+            stateText = "Contacting the server";
+            break;
+        case ConnectionState::Connected:
+            label = "Connected"; variant = BadgeVariant::Successful;
+            stateText = "The server answered and the mailbox was read";
+            break;
+        case ConnectionState::Unreachable:
+            label = "Offline"; variant = BadgeVariant::Warning;
+            stateText = "The server could not be reached";
+            break;
+        case ConnectionState::Failed:
+            label = "Failed"; variant = BadgeVariant::Danger;
+            stateText = "The server answered but refused the request";
+            break;
+    }
+    connectionBadge_->SetText(label);
+    connectionBadge_->SetVariant(variant);
+
+    // The tooltip: where, when, and why not.
+    const DiscoveryResult settings = SettingsFor(*account);
+    std::string server = settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+    if (server.empty()) server = "no server known";
+    TooltipContent tip;
+    tip.AddTitle("Mail server connection")
+       .AddRow("Account", account->email)
+       .AddRow("Server", server)
+       .AddRow("State", stateText)
+       .AddRow("Last contact", ClockTime(info.lastOk))
+       .AddRow("Last attempt", ClockTime(info.lastTry));
+    if (!info.reason.empty()) tip.AddRow("Reason", info.reason);
+    if (info.failures > 1) tip.AddRow("Failed attempts", std::to_string(info.failures));
+    tip.AddSeparator();
+    switch (info.state) {
+        case ConnectionState::Unreachable:
+            tip.AddText(offline_.InGrace(account->accountId, NowMonotonicSec())
+                        ? "Probably the network is not up yet. UltraMail tries again "
+                          "every minute and alerts after ten minutes offline."
+                        : "Check the network connection, or the server name and "
+                          "port on the account's settings page.");
+            break;
+        case ConnectionState::Failed:
+            tip.AddText("Update tries again; the account's settings page lets you "
+                        "correct the sign-in.");
+            break;
+        case ConnectionState::Unknown:
+            tip.AddText("Update contacts the server now.");
+            break;
+        default:
+            tip.AddText("Mail is checked every five minutes; Update checks now.");
+            break;
+    }
+    connectionBadge_->SetTooltipContent(tip);
 }
 
 void UltraMailApp::SetStatus(const std::string& text) {
@@ -471,10 +757,81 @@ void UltraMailApp::SetStatus(const std::string& text) {
     UpdateBusyIndicator();
 }
 
+void UltraMailApp::ShowMessageLinks(const std::vector<MessageLink>& links) {
+    if (!linksLabel_) return;
+    // Sites by registrable domain, most links first.
+    std::map<std::string, int> perSite;
+    for (const auto& link : links) {
+        if (link.host.empty()) continue;
+        ++perSite[RegistrableDomain(link.host)];
+    }
+    std::vector<std::pair<std::string, int>> sites(perSite.begin(), perSite.end());
+    std::stable_sort(sites.begin(), sites.end(),
+                     [](const auto& a, const auto& b) { return a.second > b.second; });
+    if (links.empty()) {
+        linksSummary_ = "No links";
+    } else {
+        const std::size_t n = links.size();
+        linksSummary_ = std::to_string(n) + (n == 1 ? " link" : " links") + " \xE2\x86\x92 ";
+        if (sites.empty()) linksSummary_ += "no web site";
+        for (std::size_t i = 0; i < sites.size() && i < 3; ++i) {
+            if (i) linksSummary_ += ", ";
+            linksSummary_ += sites[i].first;
+        }
+        if (sites.size() > 3) linksSummary_ += " +" + std::to_string(sites.size() - 3);
+    }
+    linksLabel_->SetText(linksSummary_);
+    // Every link: what it shows, and where it really goes.
+    std::string list;
+    const std::size_t shown = std::min<std::size_t>(links.size(), 40);
+    for (std::size_t i = 0; i < shown; ++i) {
+        std::string text = links[i].text;
+        for (char& c : text) if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+        if (text.size() > 50) text = text.substr(0, 47) + "...";
+        std::string href = links[i].href;
+        if (href.size() > 90) href = href.substr(0, 87) + "...";
+        if (!list.empty()) list += "\n";
+        list += (text.empty() ? std::string("(no text)") : "\"" + text + "\"") + "  \xE2\x86\x92  " + href;
+    }
+    if (links.size() > shown) list += "\n... and " + std::to_string(links.size() - shown) + " more";
+    linksLabel_->SetTooltip(list);
+}
+
+void UltraMailApp::ApplyLinkDisplay() {
+    const bool tooltip = prefs_.linkDisplay == LinkDisplay::Tooltip;
+    mailView_.SetLinkTooltips(tooltip);
+    if (!linksLabel_) return;
+    linksLabel_->SetText(linksSummary_);
+    linksLabel_->SetVisible(!tooltip);
+    linksLabel_->RequestRedraw();
+}
+
+void UltraMailApp::ShowHoveredLink(const std::string& href) {
+    if (!linksLabel_ || prefs_.linkDisplay == LinkDisplay::Tooltip) return;
+    linksLabel_->SetText(href.empty() ? linksSummary_ : "\xE2\x86\x92 " + href);
+}
+
 void UltraMailApp::UpdateBusyIndicator() {
     if (!busyIndicator_) return;
     busyIndicator_->SetRunning(syncsInFlight_ > 0 || outboxFlushInFlight_ ||
                                mailboxActionsInFlight_ > 0);
+}
+
+void UltraMailApp::RefreshAccountCounts() {
+    store_.GetAccountStatus(status_);
+    accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    PublishUnreadNotice();
+}
+
+bool UltraMailApp::ApplyNeedsAnswerRules() {
+    NeedsAnswerRules rules;
+    rules.maxAgeDays    = prefs_.needsAnswerMaxAgeDays;
+    rules.onlyWrittenTo = prefs_.needsAnswerOnlyWrittenTo;
+    const NeedsAnswerRules& current = store_.GetNeedsAnswerRules();
+    if (current.maxAgeDays == rules.maxAgeDays && current.onlyWrittenTo == rules.onlyWrittenTo)
+        return false;
+    store_.SetNeedsAnswerRules(rules);
+    return true;
 }
 
 void UltraMailApp::ShowAccountStatus() {
@@ -508,7 +865,8 @@ void UltraMailApp::HandleReload() {
         // Reload also refreshes the folder in view when it is not the inbox (the
         // account sync covers the inbox); other folders are lazily fetched.
         const std::string folder = mailView_.CurrentFolder();
-        if (!folder.empty() && folder != "INBOX") SyncFolder(target, folder);
+        if (!folder.empty() && folder != "INBOX")
+            SyncFolder(target, folder, /*userInitiated=*/true);
         Refresh();
     });
 }
@@ -537,7 +895,7 @@ std::string UltraMailApp::ResolvePluginDirectory() {
         // The build tree puts the executable at <build>/ and the DSOs at
         // <build>/Plugins/UltraNet; an installed or copied app may sit one
         // or two levels deeper (bin/, Apps/UltraMail/).
-        fs::path base = exeDir;
+        fs::path base = UltraCanvas::PathFromUtf8(exeDir);
         for (int up = 0; up < 3; ++up) {
             candidates.push_back(base / relative);
             base = base.parent_path();
@@ -568,28 +926,98 @@ void UltraMailApp::ReportMissingImapPlugin() {
                  "that holds it, then restart UltraMail.");
 }
 
-void UltraMailApp::OpenComposer(const Draft& draft) {
+Draft UltraMailApp::WithSignature(Draft draft, DraftPurpose purpose) const {
+    const std::string from = ToLowerCase(draft.fromAddr);
+    for (const Account& account : accounts_) {
+        if (ToLowerCase(account.email) != from) continue;
+        ApplySignature(draft, account.signature, purpose);
+        break;
+    }
+    return draft;
+}
+
+void UltraMailApp::SaveSignature(const std::string& accountId, const Signature& signature) {
+    if (UltraDbResult up = store_.SetAccountSignature(accountId, signature); !up) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The signature could not be saved.", DetailLine(up));
+        return;
+    }
+    for (Account& account : accounts_)
+        if (account.accountId == accountId) account.signature = signature;
+}
+
+ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutboxId) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
     cfg.width  = 640;
-    cfg.height = 520;
+    cfg.height = 560;   // two toolbar rows above the body
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
 
-    composeView_.SetDraft(draft);
-    composeView_.SetParentWindow(win.get());
-    composeView_.SetCloud(cloud_.get());
-    composeView_.onSend   = [this](const Draft& d) { HandleSendDraft(d); };
-    UltraCanvasWindow* raw = win.get();
-    composeView_.onCancel = [raw]() { raw->Close(); };
-    auto view = composeView_.Build();
-    win->AddChild(view);
-    composeView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
-    win->onWindowResize = [this](int cw, int ch) {
-        composeView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    // Its own view: the buttons, the toolbar and Send act on this window's
+    // message, whatever other compose windows are open.
+    auto view = std::make_shared<ComposeView>();
+    view->SetDraft(draft);
+    view->SetParentWindow(win.get());
+    view->SetCloud(cloud_.get());
+    // To / Cc / Bcc complete from the address book as it is when the window
+    // opens (one read, then matched in memory as the writer types), the
+    // addresses written to most - by the mail in the Sent folders, recent
+    // mail weighing more than old - first.
+    auto book = std::make_shared<std::vector<Contact>>();
+    if (contacts_.IsOpen()) contacts_.ListAll(*book);
+    auto written = std::make_shared<std::map<std::string, double>>();
+    store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
+    view->suggestRecipients = [book, written](const std::string& query,
+                                              const std::string& fieldText) {
+        return SuggestRecipients(*book, query, fieldText, 8, written.get());
     };
+    UltraCanvasWindow* raw = win.get();
+    // Sent, or safely queued in the outbox: the window has done its job. It
+    // stays open when the message was not queued (no recipient, no outbox),
+    // so nothing typed is lost. The send's own result (sent / waiting in the
+    // outbox / failed) is reported over the main window.
+    view->onSend   = [this, raw, replacesOutboxId](const Draft& d) {
+        if (!HandleSendDraft(d, replacesOutboxId)) return;
+        // The old version is being deleted now: closing must not let it go.
+        for (auto& s : composers_) if (s.window.get() == raw) s.editsOutboxId = 0;
+        raw->Close();
+    };
+    view->onCancel = [raw]() { raw->Close(); };
+    win->AddChild(view->Build());
+    view->Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    // Raw: the window owns these callbacks, and the view lives as long as the
+    // window's entry in composers_.
+    ComposeView* rawView = view.get();
+    win->onWindowResize = [rawView](int cw, int ch) {
+        rawView->Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
+    win->onWindowClosed = [this, raw]() { RetireComposer(raw); };
     win->Show();
-    viewerWindows_.push_back(win);
+    composers_.push_back({win, view, replacesOutboxId});
+    return rawView;
+}
+
+void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
+    // Closed without sending the correction: the waiting message it was made
+    // from is sent as it is after all.
+    for (auto& s : composers_) {
+        if (s.window.get() != window || s.editsOutboxId == 0) continue;
+        outbox_.SetHeld(s.editsOutboxId, false);
+        s.editsOutboxId = 0;
+        RefreshOutbox();
+    }
+    // Deferred: dropping the last reference to a window from inside its own
+    // close callback would destroy it while it is still running.
+    auto drop = [this, window]() {
+        composers_.erase(std::remove_if(composers_.begin(), composers_.end(),
+                                        [window](const ComposeSession& s) {
+                                            return s.window.get() == window;
+                                        }),
+                         composers_.end());
+    };
+    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(drop);
+    else drop();
 }
 
 std::string UltraMailApp::FolderWithRole(const std::string& accountId, FolderRole role) const {
@@ -654,7 +1082,7 @@ void UltraMailApp::RunMailboxAction(
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
             } else {
-                SyncEngine engine(store_, *imap, mailDir_);
+                SyncEngine engine(workerStore_, *imap, mailDir_);
                 outcome = op(engine, serverUrl, opts);
             }
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
@@ -713,7 +1141,7 @@ void UltraMailApp::RunMailboxActionQuiet(
         UltraNetResult cred = ResolveCredentials(accountId, username, provider,
                                                  opts.credentials);
         if (!cred) return;
-        SyncEngine engine(store_, *imap, mailDir_);
+        SyncEngine engine(workerStore_, *imap, mailDir_);
         op(engine, serverUrl, opts);
     }).detach();
 }
@@ -732,6 +1160,7 @@ void UltraMailApp::HandleMarkRead(const MessageEnvelope& env) {
     // rebuild keeps it read even if the server push below is slow or offline.
     store_.SetFlags(env.accountId, env.folder, env.uid, Flag_Seen, true);
     mailView_.MarkRead(env.accountId, env.folder, env.uid);
+    RefreshAccountCounts();   // the account's unread number goes down with it
     // Only reach for the server when the vault is already open — a passive click
     // must never pop the master-password dialog.
     if (!ImapPlugin() || !vault_.IsUnlocked()) return;
@@ -749,10 +1178,10 @@ void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
             if (!trash.empty() && trash != env.folder)
                 return engine.MoveMessage(env.accountId, env.folder, env.uid, trash, url, opts);
             // No Trash mailbox (or already in it): flag \Deleted on the server and
-            // drop the local row so it leaves the list.
+            // drop the local row and its cached body so it leaves the list.
             SyncOutcome o = engine.SetFlag(env.accountId, env.folder, env.uid,
                                            Flag_Deleted, true, url, opts);
-            if (o) store_.RemoveMessage(env.accountId, env.folder, env.uid);
+            if (o) engine.ForgetMessage(env.accountId, env.folder, env.uid);
             return o;
         },
         "Delete");
@@ -834,7 +1263,7 @@ void UltraMailApp::UnsubscribeWith(const MessageEnvelope& env, const std::string
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
     const UnsubscribeInfo info = ReadUnsubscribe(raw);
     const std::string sender = env.fromName.empty() ? env.fromAddr
-                                                    : UltraNet_MimeDecodeHeader(env.fromName);
+                                                    : DisplayHeader(env.fromName);
     if (!info.Any()) {
         AlertWarning(parent, "This message offers no way to unsubscribe.",
                      "It has no List-Unsubscribe header, so UltraMail cannot leave the "
@@ -957,7 +1386,7 @@ void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::strin
     viewerWindows_.push_back(win);
 }
 
-void UltraMailApp::HandleSendDraft(const Draft& draft) {
+bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId) {
     auto join = [](const std::vector<std::string>& v) {
         std::string s;
         for (std::size_t i = 0; i < v.size(); ++i) { if (i) s += ", "; s += v[i]; }
@@ -970,14 +1399,14 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
     if (draft.to.empty() && draft.cc.empty() && draft.bcc.empty()) {
         AlertWarning(parent, "This message has no recipient.",
                      "Add at least one address in To, Cc or Bcc before sending.");
-        return;
+        return false;
     }
     if (!outbox_.IsOpen()) {
         AlertError(parent, "The message could not be queued for sending.",
                    outboxError_.empty()
                        ? "UltraMail's outbox database is not available."
                        : outboxError_);
-        return;
+        return false;
     }
 
     DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
@@ -985,143 +1414,293 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
 
     // Always queue to the persistent outbox first (survives restarts / offline).
     int64_t id = 0;
-    if (UltraDbResult q = outbox_.Enqueue(SlugFromEmail(draft.fromAddr), smtpUrl, draft, id); !q) {
+    // Filed under the account that owns the From address (its sign-in and
+    // servers send it and keep its Drafts copy); the slug for an address no
+    // account has.
+    std::string accountId = SlugFromEmail(draft.fromAddr);
+    for (const auto& a : accounts_)
+        if (ToLowerCase(a.email) == ToLowerCase(draft.fromAddr)) { accountId = a.accountId; break; }
+    if (UltraDbResult q = outbox_.Enqueue(accountId, smtpUrl, draft, id); !q) {
         AlertError(parent, "The message could not be queued for sending, so it "
                            "has not been saved.",
                    DetailLine(q));
-        return;
+        return false;
     }
+
+    // A corrected message replaces the one it was made from: that one goes
+    // (with its Drafts copy) before the pass below can pick it up - it is
+    // held until then.
+    if (replacesOutboxId != 0) DeleteFromOutbox(replacesOutboxId, /*quiet=*/true);
+    RefreshOutbox();
 
     // Remember the people we write to.
     for (const auto& addr : draft.to) ContactCollector::Collect(contacts_, "", addr);
     for (const auto& addr : draft.cc) ContactCollector::Collect(contacts_, "", addr);
 
-    // Attempt an immediate flush if the SMTP plug-in is loaded.
-    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
-    IMailProtocolPlugin* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
-
-    if (smtp && !smtpUrl.empty()) {
-        // Sending needs the account password, so unlock first. The message is
-        // already safely queued: if the user cancels, it waits in the outbox.
-        EnsureVaultUnlocked([this, draft, parent, join]() {
-            FlushAndReport(draft, parent, join(draft.to));
-        });
-        return;
-    }
-
-    // No SMTP plug-in / no server: queued, not failed — a warning, not an error.
-    int n = 0; outbox_.PendingCount(n);
-    AlertWarning(parent,
-        "The message is queued in the outbox (" + std::to_string(n) + " pending) "
-        "but was not sent yet.",
-        smtp ? "No outgoing (SMTP) server is known for " + draft.fromAddr + "."
-             : "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail "
-               "server yet. It will be sent once the plug-in is on the plug-in "
-               "path and you are online"
-               + (smtpUrl.empty() ? "." : (" (" + smtpUrl + ").")));
-}
-
-void UltraMailApp::FlushAndReport(const Draft& draft,
-                                  UltraCanvas::UltraCanvasWindowBase* parent,
-                                  const std::string& recipients) {
-    DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
-    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
-    auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
-    if (!smtp) {
-        AlertError(parent, "The message could not be sent.",
-                   "The SMTP plug-in is no longer loaded.");
-        return;
-    }
+    // Sending, and the copy in Drafts, need the account's sign-in: open the
+    // vault first. The message is already safe in the outbox; a cancelled
+    // unlock leaves it there.
     const std::string from = draft.fromAddr;
-    FlushOutboxInBackground(plugin, [this, parent, recipients, from](const Outbox::FlushStats& stats) {
-        if (stats.sent > 0) {
-            AlertSuccess(parent, "Message sent to " + recipients + ".");
-            return;
-        }
-        // Failed: say why. The reason came back from SMTP in stats.lastFailure
-        // and is also persisted as the outbox row's last_error.
-        const std::string why    = FriendlyMessage(stats.lastFailure);
-        const std::string detail = WithDiagnostics(DetailLine(stats.lastFailure),
-                                                   stats.lastFailure.diagnostics);
-        const std::string summary =
-            "The message could not be sent, so it is waiting in the outbox.\n" + why;
-        if (IsRetryable(stats.lastFailure)) {
-            AlertErrorRetry(parent, summary, detail,
-                            [this, from]() { RetryOutbox(from); });
-        } else {
-            AlertError(parent, summary, detail);
-        }
-    });
+    const std::string recipients =
+        join(!draft.to.empty() ? draft.to : !draft.cc.empty() ? draft.cc : draft.bcc);
+    EnsureVaultUnlocked([this, from, recipients]() { SendQueued(from, recipients); });
+    return true;
 }
 
-void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
+void UltraMailApp::SendQueued(const std::string& fromAddr, const std::string& recipients) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
-
     DiscoveryResult disc = SettingsForEmail(fromAddr);
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
-    if (!smtp) {
-        AlertError(parent, "The message could not be sent.",
-                   "The SMTP plug-in is no longer loaded.");
+
+    UltraNetResult cannotSend = UltraNetResult::Ok();
+    if (!smtp)
+        cannotSend = UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+            "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail server. "
+            "Put it on the plug-in path (" + pluginDir_ + ") and choose Retry.");
+    else if (!disc.found || AutoDiscovery::SmtpServerUrl(disc.smtp).empty())
+        cannotSend = UltraNetResult::Error(UltraNetResultCode::InvalidState,
+            "No outgoing (SMTP) server is known for " + fromAddr
+            + ". Enter it in Account Settings and choose Retry.");
+    if (!cannotSend) {
+        // Nothing can be sent now: keep the copy in Drafts all the same.
+        FlushOutboxInBackground(nullptr,
+            [this, fromAddr, recipients, cannotSend](const Outbox::FlushStats& stats) {
+                NoteOutboxPass();
+                ReportNotSent(fromAddr, recipients, cannotSend, stats);
+            });
         return;
     }
+    FlushOutboxInBackground(plugin,
+        [this, parent, fromAddr, recipients](const Outbox::FlushStats& stats) {
+            NoteOutboxPass();
+            if (stats.failed == 0) {
+                AlertSuccess(parent, recipients.empty()
+                    ? "The outbox was sent (" + std::to_string(stats.sent) + " message"
+                          + (stats.sent == 1 ? "" : "s") + ")."
+                    : "Message sent to " + recipients + ".");
+                return;
+            }
+            ReportNotSent(fromAddr, recipients, stats.lastFailure, stats);
+        });
+}
 
-    if (!vault_.IsUnlocked()) {
-        EnsureVaultUnlocked([this, fromAddr]() { RetryOutbox(fromAddr); });
-        return;
-    }
+void UltraMailApp::ReportNotSent(const std::string& fromAddr, const std::string& recipients,
+                                 const UltraNetResult& why, const Outbox::FlushStats& stats) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    // Where the waiting messages are now: each has a copy in Drafts, or only
+    // the outbox holds them.
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    // A message the user is deleting (queued behind this pass) is not one
+    // to warn about; with nothing else left, there is nothing to say.
+    pending.erase(std::remove_if(pending.begin(), pending.end(),
+                                 [this](const OutboxItem& item) {
+                                     return outboxDeleting_.count(item.id) != 0;
+                                 }),
+                  pending.end());
+    if (pending.empty()) return;
+    bool allInDrafts = !pending.empty();
+    for (const auto& item : pending) if (!item.HasDraftCopy()) allInDrafts = false;
 
-    FlushOutboxInBackground(plugin, [this, parent, fromAddr](const Outbox::FlushStats& stats) {
-        if (stats.failed == 0) {
-            AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
-                                 + " message" + (stats.sent == 1 ? "" : "s") + ").");
-            return;
-        }
-        const std::string why    = FriendlyMessage(stats.lastFailure);
-        const std::string detail = WithDiagnostics(DetailLine(stats.lastFailure),
-                                                   stats.lastFailure.diagnostics);
-        if (IsRetryable(stats.lastFailure)) {
-            AlertErrorRetry(parent, "Still could not send.\n" + why, detail,
-                            [this, fromAddr]() { RetryOutbox(fromAddr); });
-        } else {
-            AlertError(parent, "Still could not send.\n" + why, detail);
-        }
+    // A reason as a sentence: capital first letter, a full stop at the end.
+    auto sentence = [](std::string text) {
+        if (!text.empty()) text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+        if (!text.empty() && text.back() != '.' && text.back() != '!' && text.back() != '?')
+            text += '.';
+        return text;
+    };
+    std::string where = allInDrafts
+        ? "It is kept in your Drafts folder and in UltraMail's outbox until it has been sent."
+        : "It is kept in UltraMail's outbox until it has been sent.";
+    if (!allInDrafts && stats.draftFailures > 0)
+        where += " It could not be saved to the Drafts folder: "
+               + sentence(FriendlyMessage(stats.lastDraftFailure));
+    const std::string detail = WithDiagnostics(
+        sentence(FriendlyMessage(why)) + "\n\n" + where
+            + "\n\nUltraMail tries again by itself - in a minute, then less often, and "
+              "as soon as the connection is back. Choose Retry to send it now.",
+        why.diagnostics);
+    AlertWarningRetry(parent,
+        "The message" + (recipients.empty() ? std::string() : " to " + recipients)
+            + " could not be sent yet.",
+        detail,
+        [this, fromAddr, recipients]() { RetryOutbox(fromAddr, recipients); });
+}
+
+void UltraMailApp::RetryOutbox(const std::string& fromAddr, const std::string& recipients) {
+    EnsureVaultUnlocked([this, fromAddr, recipients]() { SendQueued(fromAddr, recipients); });
+}
+
+int UltraMailApp::OutboxPending() const {
+    int n = 0;
+    if (outbox_.IsOpen()) outbox_.PendingCount(n);
+    return n;
+}
+
+int UltraMailApp::OutboxWithdrawn() const {
+    int n = 0;
+    if (outbox_.IsOpen()) outbox_.WithdrawnCount(n);
+    return n;
+}
+
+void UltraMailApp::NoteOutboxPass() {
+    // A message held for correcting is not one the pass failed to send; a
+    // deleted message's Drafts copy still on the server is work left over.
+    if (OutboxPending() - outbox_.HeldCount() <= 0 && OutboxWithdrawn() == 0)
+        outboxRetry_.Succeeded();
+    else
+        outboxRetry_.Failed(NowMonotonicSec());
+}
+
+void UltraMailApp::StartOutboxRetryTimer() {
+    if (outboxRetryTimerStarted_) return;
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    outboxRetryTimerStarted_ = true;
+    app->StartTimer(30000, /*periodic=*/true, [this](UltraCanvas::TimerId) {
+        if (outboxRetry_.Due(NowMonotonicSec())) AutoRetryOutbox();
     });
+}
+
+void UltraMailApp::AutoRetryOutbox() {
+    // A pass the user started is running, or the vault is locked: an
+    // automatic pass never prompts for a password. It stays due and runs on
+    // a later tick.
+    if (outboxFlushInFlight_ || !vault_.IsUnlocked()) return;
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    if (pending.empty()) {
+        if (OutboxWithdrawn() == 0) { outboxRetry_.Succeeded(); return; }
+        // Only Drafts copies of deleted messages to remove: no send.
+        FlushOutboxInBackground(nullptr, [this](const Outbox::FlushStats&) { NoteOutboxPass(); });
+        return;
+    }
+
+    const std::string from = pending.front().draft.fromAddr;
+    DiscoveryResult disc = SettingsForEmail(from);
+    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    const bool canSend = plugin && dynamic_cast<IMailProtocolPlugin*>(plugin.get())
+                      && disc.found && !AutoDiscovery::SmtpServerUrl(disc.smtp).empty();
+    // Silent: the warning was shown when the message first failed. A pass
+    // that cannot send still saves the Drafts copies.
+    FlushOutboxInBackground(canSend ? plugin : nullptr,
+        [this](const Outbox::FlushStats& stats) {
+            NoteOutboxPass();
+            if (stats.sent > 0)
+                SetStatus(stats.sent == 1
+                    ? std::string("A waiting message was sent.")
+                    : std::to_string(stats.sent) + " waiting messages were sent.");
+        });
+}
+
+ServerCopies UltraMailApp::MakeServerCopies() {
+    ServerCopies copies;
+    copies.imap = ImapPlugin();
+    if (!copies.imap) return copies;
+    // Copied here, on the UI thread: the worker must not read accounts_.
+    struct Target {
+        DiscoveryResult settings;
+        std::string     email;
+        std::string     draftsFolder;
+        std::string     sentFolder;
+    };
+    auto targets = std::make_shared<std::map<std::string, Target>>();
+    for (const auto& a : accounts_) {
+        Target t;
+        t.settings = SettingsFor(a);
+        t.email = a.email;
+        // The folders the server marks as Drafts and Sent (known once the
+        // folders were synced), else the usual names.
+        t.draftsFolder = FolderWithRole(a.accountId, FolderRole::Drafts);
+        if (t.draftsFolder.empty()) t.draftsFolder = "Drafts";
+        // No Sent copy where the server files sent mail itself (a second one).
+        if (!ServerFilesSentMail(t.settings.imap.host)) {
+            t.sentFolder = FolderWithRole(a.accountId, FolderRole::Sent);
+            if (t.sentFolder.empty()) t.sentFolder = "Sent";
+        }
+        (*targets)[a.accountId] = std::move(t);
+    }
+    copies.prepare = [this, targets](const std::string& accountId, ServerFolders& out) {
+        auto it = targets->find(accountId);
+        if (it == targets->end())
+            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                         "the account of this message no longer exists");
+        const Target& t = it->second;
+        out.serverUrl = t.settings.found ? AutoDiscovery::ImapServerUrl(t.settings.imap) : "";
+        if (out.serverUrl.empty())
+            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                         "no incoming (IMAP) server is known for " + t.email);
+        out.draftsFolder = t.draftsFolder;
+        out.sentFolder = t.sentFolder;
+        ApplyConnection(t.settings.imap, out.options);
+        const std::string username =
+            t.settings.imap.username.empty() ? t.email : t.settings.imap.username;
+        out.options.credentials.username = username;
+        return ResolveCredentials(accountId, username, OAuthProviderFor(t.settings),
+                                  out.options.credentials);
+    };
+    return copies;
 }
 
 void UltraMailApp::FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plugin,
                                            std::function<void(const Outbox::FlushStats&)> onDone) {
-    if (outboxFlushInFlight_) {
-        // One flush at a time: a second one would pick up the same queued
-        // message and send it twice. This one runs when the current one ends.
-        pendingFlushes_.push_back({std::move(plugin), std::move(onDone)});
-        return;
-    }
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
-    if (!smtp) return;
-    outboxFlushInFlight_ = true;
-    SetStatus("Sending…");
-
     // Copied here, on the UI thread: the worker must not read accounts_.
     auto accounts = std::make_shared<std::map<std::string, SmtpAccount>>(SmtpAccounts());
-    std::thread([this, plugin, smtp, accounts, onDone]() {
+    auto stats = std::make_shared<Outbox::FlushStats>();
+    RunOutboxJob(
+        // `plugin` rides along: it keeps the SMTP plug-in loaded while it sends.
+        [this, plugin, smtp, accounts, stats](Outbox& ob, const ServerCopies* copies) {
+            if (smtp) {
+                *stats = ob.Flush(*smtp,
+                    [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
+                        return PrepareSmtp(*accounts, acc, o);
+                    },
+                    copies);
+            } else if (copies) {
+                *stats = ob.SaveDraftCopies(*copies);
+            }
+        },
+        smtp ? "Sending…" : "Saving to Drafts…",
+        [stats, onDone]() { if (onDone) onDone(*stats); });
+}
+
+void UltraMailApp::RunOutboxJob(OutboxJob job, const std::string& status,
+                                std::function<void()> onDone) {
+    if (outboxFlushInFlight_) {
+        // One job at a time: two passes would pick up the same queued message
+        // and send it twice. This one runs when the current one ends.
+        pendingOutboxJobs_.push_back({std::move(job), status, std::move(onDone)});
+        return;
+    }
+    outboxFlushInFlight_ = true;
+    SetStatus(status);
+    RefreshOutbox();   // the Outbox window says it is busy
+    // Copied here, on the UI thread: the worker must not read accounts_.
+    auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
+    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone)]() {
         Outbox ob(outbox_);
-        Outbox::FlushStats stats = ob.Flush(*smtp,
-            [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
-                return PrepareSmtp(*accounts, acc, o);
-            });
+        job(ob, copies->imap ? copies.get() : nullptr);
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
-        app->PostToUIThread([this, stats, onDone]() {
+        app->PostToUIThread([this, onDone]() {
             outboxFlushInFlight_ = false;
             UpdateBusyIndicator();
             ShowAccountStatus();
-            if (onDone) onDone(stats);
-            if (!pendingFlushes_.empty()) {
-                PendingFlush next = std::move(pendingFlushes_.front());
-                pendingFlushes_.erase(pendingFlushes_.begin());
-                FlushOutboxInBackground(std::move(next.plugin), std::move(next.onDone));
+            if (onDone) onDone();
+            RefreshOutbox();
+            if (!pendingOutboxJobs_.empty()) {
+                PendingOutboxJob next = std::move(pendingOutboxJobs_.front());
+                pendingOutboxJobs_.erase(pendingOutboxJobs_.begin());
+                RunOutboxJob(std::move(next.job), next.status, std::move(next.onDone));
+                return;
             }
+            // The queue is empty: what waited for it (Edit) runs now.
+            std::vector<std::function<void()>> waiting;
+            waiting.swap(whenOutboxIdle_);
+            if (outboxWindow_) outboxView_.SetNote("");
+            for (auto& action : waiting) action();
         });
     }).detach();
 }
@@ -1243,7 +1822,44 @@ void UltraMailApp::StartBackgroundSync() {
         app->StartTimer(300000, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
         syncTimerStarted_ = true;
+        // The five-minute timer cannot tell a wake from sleep: after one it may
+        // be minutes before it fires. This short one can (see WakeDetector).
+        wake_.Tick(static_cast<int64_t>(std::time(nullptr)));   // start its clock
+        app->StartTimer(static_cast<unsigned int>(wake_.TickSec() * 1000), /*periodic=*/true,
+                        [this](UltraCanvas::TimerId) {
+                            if (wake_.Tick(static_cast<int64_t>(std::time(nullptr))))
+                                OnWokeFromSleep();
+                        });
     }
+}
+
+void UltraMailApp::OnWokeFromSleep() {
+    if (accounts_.empty() || wakeCheckPending_) return;
+    // Whatever was unreachable before the sleep is a fresh question now: a
+    // first failure after the wake is held back like one right after boot.
+    offline_.Clear();
+    // Waiting messages too: the connection is probably back after the wake.
+    if (OutboxPending() > 0)
+        outboxRetry_.RetryAt(NowMonotonicSec() + kWakeSyncDelayMs / 1000 + 5);
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    wakeCheckPending_ = true;
+    app->StartTimer(kWakeSyncDelayMs, /*periodic=*/false, [this](UltraCanvas::TimerId) {
+        wakeCheckPending_ = false;
+        SyncAllInBackground();
+    });
+}
+
+void UltraMailApp::SyncAllInBackground() {
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
 }
 
 void UltraMailApp::RunSyncs(bool force) {
@@ -1263,6 +1879,37 @@ void UltraMailApp::RunSyncs(bool force) {
     SyncAccounts(targets, /*userInitiated=*/force);
 }
 
+void UltraMailApp::ScheduleOfflineRetry() {
+    // One pending retry at a time; it fires only for the accounts whose grace
+    // period is still running, and re-arms itself from their next failure —
+    // never from a success, and never past the grace period, after which the
+    // regular cadence takes over.
+    if (offlineRetryPending_) return;
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    offlineRetryPending_ = true;
+    app->StartTimer(static_cast<unsigned int>(kOfflineRetrySec * 1000), /*periodic=*/false,
+                    [this](UltraCanvas::TimerId) {
+                        offlineRetryPending_ = false;
+                        RetryUnreachableAccounts();
+                    });
+}
+
+void UltraMailApp::RetryUnreachableAccounts() {
+    const std::vector<std::string> ids = offline_.AccountsInGrace(NowMonotonicSec());
+    if (ids.empty()) return;
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        if (std::find(ids.begin(), ids.end(), a.accountId) == ids.end()) continue;
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
+}
+
 void UltraMailApp::SyncAccount(const std::string& accountId) {
     for (const auto& a : accounts_) {
         if (a.accountId != accountId) continue;
@@ -1275,7 +1922,8 @@ void UltraMailApp::SyncAccount(const std::string& accountId) {
     }
 }
 
-void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder) {
+void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder,
+                              bool userInitiated) {
     IMailboxProtocolPlugin* imap = ImapPlugin();
     if (!imap || !vault_.IsUnlocked()) return;
 
@@ -1297,18 +1945,19 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     const std::string provider = OAuthProviderFor(settings);
     opts.credentials.username  = username;
 
-    auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+    auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
     SetStatus("Opening " + FriendlyFolderName(folder) + "…");
+    NoteConnection(accountId, ConnectionState::Checking);
     auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
     svc->SyncFolderInBackground(accountId, folder, serverUrl, opts,
         [this, accountId, username, provider](UltraNetMailOptions& o) {
             return ResolveCredentials(accountId, username, provider, o.credentials);
         },
-        [this, svc, accountId, folder, who](SyncOutcome outcome) {
+        [this, svc, accountId, folder, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
-            app->PostToUIThread([this, accountId, folder, who, outcome]() {
+            app->PostToUIThread([this, accountId, folder, who, userInitiated, outcome]() {
                 // Clear the in-flight guard first — even on failure — so the next
                 // open can retry once the throttle window passes. (Harmless no-op
                 // for callers that never set it, e.g. HandleReload.)
@@ -1322,7 +1971,26 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                 }
                 if (!outcome) {
                     accountError_[accountId] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    NoteConnection(accountId, outcome.NetworkUnreachable()
+                                                  ? ConnectionState::Unreachable
+                                                  : ConnectionState::Failed,
+                                   outcome.message);
                     if (last || accountId == selectedAccount_) ShowAccountStatus();
+                    // Opening a folder is a passive refresh: a server it cannot
+                    // reach right after boot is the network not being up yet,
+                    // so it takes the same grace period as a background sync
+                    // (status line, a retry in a minute, the alert after ten
+                    // minutes offline). Reload reports as before.
+                    if (!userInitiated && outcome.NetworkUnreachable()) {
+                        if (!offline_.Unreachable(accountId, NowMonotonicSec())) {
+                            ScheduleOfflineRetry();
+                            return;
+                        }
+                    } else {
+                        offline_.Reached(accountId);
+                    }
+                    // Once per run of failures, on Reload too: its account sync
+                    // reports the same server in its own alert.
                     if (syncErrorReported_.insert(accountId).second) {
                         AlertError(window_ ? window_.get() : nullptr,
                                    "That folder could not be fetched for " + who + ".",
@@ -1331,7 +1999,9 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     return;
                 }
                 syncErrorReported_.erase(accountId);
+                offline_.Reached(accountId);
                 accountError_.erase(accountId);
+                NoteConnection(accountId, ConnectionState::Connected);
                 if (last) ShowAccountStatus();
                 Refresh();   // re-query the store; the open folder now shows its mail
             });
@@ -1414,10 +2084,11 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         const std::string provider = OAuthProviderFor(settings);
         opts.credentials.username = username;
 
-        auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+        auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
         const std::string aid = acc.accountId;
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
         SetStatus("Checking " + who + "…");
+        NoteConnection(aid, ConnectionState::Checking);
         // onDone keeps `svc` alive until the worker thread finishes; it marshals
         // the follow-up work back to the UI thread.
         // The outcome carries the reason a sync failed (bad password, untrusted
@@ -1455,6 +2126,10 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 }
                 if (!outcome) {
                     accountError_[aid] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    NoteConnection(aid, outcome.NetworkUnreachable()
+                                            ? ConnectionState::Unreachable
+                                            : ConnectionState::Failed,
+                                   outcome.message);
                     if (last || aid == selectedAccount_) ShowAccountStatus();
                     // A dead OAuth sign-in offers Retry → re-sign-in (which
                     // re-syncs the account), but only when the user asked — a
@@ -1463,6 +2138,20 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                         MaybeOfferReauth(aid, *credCode, provider, nullptr)) {
                         syncErrorReported_.insert(aid);
                         return;
+                    }
+                    // The server could not be reached at all. On a background
+                    // sync that is most often the network not being up yet —
+                    // right after the computer starts, or between two Wi-Fi
+                    // networks — so the status line carries it, the account is
+                    // retried sooner than the regular cadence, and the alert
+                    // waits until the account has stayed unreachable for the
+                    // whole grace period. The user's own Reload always reports.
+                    if (!userInitiated && outcome.NetworkUnreachable()) {
+                        const int64_t now = NowMonotonicSec();
+                        const bool persisted = offline_.Unreachable(aid, now);
+                        if (!persisted) { ScheduleOfflineRetry(); return; }
+                    } else {
+                        offline_.Reached(aid);   // the server answered: not a network gap
                     }
                     const bool firstReport = syncErrorReported_.insert(aid).second;
                     if (userInitiated || firstReport) {
@@ -1473,7 +2162,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     return;
                 }
                 syncErrorReported_.erase(aid);   // recovered: arm the next report
+                offline_.Reached(aid);
+                // The server answered, so the connection is up: messages that
+                // failed to go out are worth another try now.
+                if (outboxRetry_.Failures() > 0) outboxRetry_.RetryAt(NowMonotonicSec());
                 accountError_.erase(aid);
+                NoteConnection(aid, ConnectionState::Connected);
                 vaultLockReported_ = false;
                 if (last) ShowAccountStatus();
                 CollectContacts(aid, "INBOX");
@@ -1490,15 +2184,11 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             senderIcons_.EnsureIconForAddress(m.fromAddr);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             progressBuf->push_back(m);
-            std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
-                         (long long)m.uid, progressBuf->size(), aid.c_str());
             if (progressBuf->size() < 20) return;   // bound UI churn on big syncs
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) { progressBuf->clear(); return; }
             auto batch = std::make_shared<std::vector<MessageEnvelope>>();
             batch->swap(*progressBuf);
-            std::fprintf(stderr, "[UMSTREAM] flush batch=%zu aid=%s selected=%s\n",
-                         batch->size(), aid.c_str(), selectedAccount_.c_str());
             app->PostToUIThread([this, aid, batch]() {
                 statusReceived_ += static_cast<int>(batch->size());
                 SetStatus("Receiving messages… (" + std::to_string(statusReceived_) + ")");
@@ -1557,7 +2247,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     if (!found) {
         // New - or the index said "known" but the store no longer has it.
         contact = Contact{};
-        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        contact.displayName = DisplayHeader(m.fromName);
         ContactEmail e; e.address = m.fromAddr; e.primary = true;
         contact.emails.push_back(e);
     }
@@ -1581,7 +2271,7 @@ void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
     } else if (r) {
         // New: the sender's name and address, filed where asked.
         contact = Contact{};
-        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        contact.displayName = DisplayHeader(m.fromName);
         if (contact.displayName.empty()) contact.displayName = m.fromAddr;
         if (place.isGroup) contact.group = place.group;
         else               contact.section = place.section;
@@ -1640,6 +2330,172 @@ void UltraMailApp::OpenContacts() {
     win->Show();
 }
 
+void UltraMailApp::OpenOutbox() {
+    if (!outbox_.IsOpen()) {
+        AlertError(window_ ? window_.get() : nullptr, "The outbox could not be opened.",
+                   outboxError_.empty() ? "UltraMail's outbox database is not available."
+                                        : outboxError_);
+        return;
+    }
+    if (outboxWindow_) {
+        outboxWindow_->RaiseAndFocus();
+        return;
+    }
+    WindowConfig cfg;
+    cfg.title  = "Outbox";
+    cfg.width  = 760;
+    cfg.height = 380;
+    cfg.backgroundColor = Theme::kPageBackground;
+    auto win = CreateWindow(cfg);
+    UltraCanvasWindow* raw = win.get();
+
+    outboxView_.onSendNow = [this]() {
+        std::vector<OutboxItem> pending;
+        outbox_.ListPending(pending);
+        for (const auto& item : pending) {
+            if (outbox_.IsHeld(item.id)) continue;
+            RetryOutbox(item.draft.fromAddr);
+            return;
+        }
+    };
+    outboxView_.onEdit   = [this](int64_t id) { EditFromOutbox(id); };
+    outboxView_.onDelete = [this](int64_t id) { ConfirmDeleteFromOutbox(id); };
+    outboxView_.onClose  = [raw]() { raw->Close(); };
+    win->AddChild(outboxView_.Build());
+    outboxView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    win->onWindowResize = [this](int cw, int ch) {
+        outboxView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
+    // Closed (by any means): drop the panel and the window after the close
+    // has finished with them, so the next Outbox opens a fresh one.
+    win->onWindowClosed = [this]() {
+        outboxView_.Release();
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        auto drop = [this]() { outboxWindow_.reset(); };
+        if (app) app->PostToUIThread(drop); else drop();
+    };
+    outboxWindow_ = win;
+    RefreshOutbox();
+    win->Show();
+}
+
+void UltraMailApp::RefreshOutbox() {
+    std::vector<OutboxItem> pending;
+    if (outbox_.IsOpen()) outbox_.ListPending(pending);
+    if (outboxButton_) {
+        outboxButton_->SetText("Outbox (" + std::to_string(pending.size()) + ")");
+        outboxButton_->SetVisible(!pending.empty());
+    }
+    if (outboxWindow_) {
+        std::set<int64_t> held;
+        for (const auto& item : pending) if (outbox_.IsHeld(item.id)) held.insert(item.id);
+        outboxView_.SetItems(pending, outboxFlushInFlight_, held);
+    }
+}
+
+void UltraMailApp::ConfirmDeleteFromOutbox(int64_t id) {
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    const OutboxItem* item = nullptr;
+    for (const auto& p : pending) if (p.id == id) item = &p;
+    if (!item) { RefreshOutbox(); return; }   // sent meanwhile
+    std::string to;
+    for (const auto& list : {item->draft.to, item->draft.cc, item->draft.bcc})
+        for (const auto& a : list) to += (to.empty() ? "" : ", ") + a;
+    const std::string subject = item->draft.subject.empty() ? "(no subject)" : item->draft.subject;
+    const std::string where = item->HasDraftCopy()
+        ? " Its copy in " + item->draftsFolder + " is deleted too." : std::string();
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Delete \"" + subject + "\" to " + to + "? It will not be sent." + where,
+        "Delete message",
+        [this, id](bool confirmed) {
+            if (!confirmed) return;
+            // The Drafts copy is deleted on the server: that needs the sign-in.
+            // Queued behind a send that is running now: it may be sending
+            // this very message, and says so if it did.
+            EnsureVaultUnlocked([this, id]() { DeleteFromOutbox(id, /*quiet=*/false); });
+        },
+        outboxWindow_ ? outboxWindow_.get()
+                      : (window_ ? static_cast<UltraCanvas::UltraCanvasWindowBase*>(window_.get())
+                                 : nullptr));
+}
+
+void UltraMailApp::DeleteFromOutbox(int64_t id, bool quiet) {
+    auto result = std::make_shared<UltraDbResult>(UltraDbResult::Ok());
+    auto outcome = std::make_shared<Outbox::DeleteOutcome>(Outbox::DeleteOutcome::Deleted);
+    outboxDeleting_.insert(id);
+    RunOutboxJob(
+        [id, result, outcome](Outbox& ob, const ServerCopies* copies) {
+            *result = ob.DeleteMessage(id, copies, outcome.get());
+        },
+        "Deleting from the outbox…",
+        [this, id, quiet, result, outcome]() {
+            outbox_.SetHeld(id, false);
+            outboxDeleting_.erase(id);
+            UltraCanvas::UltraCanvasWindowBase* parent =
+                outboxWindow_ ? outboxWindow_.get() : (window_ ? window_.get() : nullptr);
+            if (!*result) {
+                AlertError(parent, "The message could not be deleted from the outbox.",
+                           DetailLine(*result));
+                return;
+            }
+            // Nothing left to do: the automatic retries end. A Drafts copy
+            // still on the server: a pass comes back for it.
+            if (OutboxPending() - outbox_.HeldCount() <= 0 && OutboxWithdrawn() == 0)
+                outboxRetry_.Succeeded();
+            else if (!outboxRetry_.Scheduled())
+                outboxRetry_.Failed(NowMonotonicSec());
+            if (quiet) return;
+            if (*outcome == Outbox::DeleteOutcome::AlreadyGone)
+                AlertSuccess(parent, "This message had been sent before it could be deleted.");
+            else if (*outcome == Outbox::DeleteOutcome::CopyLeftForLater)
+                AlertSuccess(parent, "The message was deleted from the outbox and will not be sent.",
+                             "Its copy in the Drafts folder could not be deleted yet - the "
+                             "server could not be reached. UltraMail deletes it the next time "
+                             "it does.");
+        });
+}
+
+void UltraMailApp::WhenOutboxIdle(std::function<void()> action) {
+    if (!outboxFlushInFlight_) { action(); return; }
+    whenOutboxIdle_.push_back(std::move(action));
+}
+
+void UltraMailApp::EditFromOutbox(int64_t id) {
+    // Already open for correcting: that window, not a second one.
+    for (const auto& s : composers_) {
+        if (s.editsOutboxId != id) continue;
+        s.window->RaiseAndFocus();
+        return;
+    }
+    UltraCanvas::UltraCanvasWindowBase* parent =
+        outboxWindow_ ? outboxWindow_.get() : (window_ ? window_.get() : nullptr);
+    if (outboxFlushInFlight_) {
+        // A send is running, maybe of this very message: the window opens
+        // once it has finished (or says the message has gone out).
+        if (outboxWindow_)
+            outboxView_.SetNote("The message opens for correcting once the current attempt "
+                                "to send has finished.");
+        WhenOutboxIdle([this, id]() { EditFromOutbox(id); });
+        return;
+    }
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    for (const auto& item : pending) {
+        if (item.id != id) continue;
+        // Held from now on: no pass sends the old version while it is corrected.
+        outbox_.SetHeld(id, true);
+        Draft draft = item.draft;
+        draft.messageId.clear();   // the corrected message is a new one
+        MakeRichEdit(draft);       // an HTML message opens formatted
+        OpenComposer(draft, id);
+        RefreshOutbox();
+        return;
+    }
+    AlertSuccess(parent, "This message has been sent meanwhile.");
+    RefreshOutbox();
+}
+
 // Earlier releases kept the cloud account secrets in obfuscated files under
 // <data dir>/cloud-vault (UltraCloud's old FileSecretStore). They belong in
 // the mail vault; carry them across once it is open and drop the files.
@@ -1683,7 +2539,7 @@ void UltraMailApp::SeedDemoContacts() {
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
-    AttachmentCache cache(cacheDir_);
+    AttachmentCache cache(attachmentDir_);
     const std::string path = cache.Write(attachment);
     if (path.empty()) {
         AlertError(parent,
@@ -1691,7 +2547,7 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
                    "\"" + (attachment.filename.empty() ? std::string("(unnamed)")
                                                        : attachment.filename)
                    + "\" could not be written to the attachment cache in "
-                   + cacheDir_ + ". Check that the folder exists and is writable.");
+                   + attachmentDir_ + ". Check that the folder exists and is writable.");
         return;
     }
 
@@ -1750,7 +2606,7 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
                        ext.substr(1));
     opts.AddFilter("All files", "*");
 
-    const std::string cacheDir = cacheDir_;
+    const std::string cacheDir = attachmentDir_;
     UltraCanvas::UltraCanvasFileLoader::SaveFileDialog(
         opts,
         [attachment, cacheDir, parent, name](UltraCanvas::DialogResult result,
@@ -1797,13 +2653,30 @@ void UltraMailApp::Refresh() {
     RefreshContactIndex();
 
     accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    UpdateConnectionIndicator();   // follows the selection settled above
     mailView_.SetAccounts(accounts_);
     mailView_.ShowAccount(selectedAccount_);
+    PublishUnreadNotice();
 
     // No account yet → only the start page; otherwise only the account view.
     const bool firstRun = accounts_.empty();
     if (auto page = startPage_.Container()) page->SetVisible(firstRun);
     if (accountView_) accountView_->SetVisible(!firstRun);
+}
+
+// The desktop's mail icon shows the unread total as a badge. It reads the
+// notice UltraCanvasDesktopShell keeps (one small file per application), so
+// the desktop never links UltraMail and UltraMail never knows the desktop.
+void UltraMailApp::PublishUnreadNotice() {
+    int unread = 0;
+    int today = 0;
+    for (const auto& st : status_) {
+        unread += st.unread;
+        today += st.unreadToday;
+    }
+    std::string text = std::to_string(unread) + " unread";
+    if (today > 0) text += ", " + std::to_string(today) + " today";
+    UltraCanvasDesktopShell::PublishNotice("UltraMail", unread, text);
 }
 
 void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
@@ -1881,10 +2754,12 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
             if (!confirmed) return;
 
             // Stop future background syncs for the account first. An in-flight
-            // sync worker (syncsInFlight_) still holds valid store_/mailDir_
+            // sync worker (syncsInFlight_) still holds valid workerStore_/mailDir_
             // references; at worst it re-inserts a few rows after this, which
             // the next removal (or a restart) clears — acceptable here.
             scheduler_.Remove(accountId);
+            offline_.Reached(accountId);   // and its held-back network failure
+            connection_.erase(accountId);
 
             // Forget the stored password / OAuth tokens. Best-effort: these are
             // no-ops when the vault is locked, and the leftover encrypted
@@ -1900,7 +2775,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
 
             // Delete the downloaded mail bodies (mailDir_/<accountId>/…).
             std::error_code ec;
-            std::filesystem::remove_all(PathFromUtf8(mailDir_) / accountId, ec);
+            std::filesystem::remove_all(PathFromUtf8(mailDir_) / PathFromUtf8(accountId), ec);
 
             // Drop the selection; Refresh() re-selects the first account left.
             if (selectedAccount_ == accountId) selectedAccount_.clear();
@@ -2025,6 +2900,22 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     });
 }
 
+void UltraMailApp::OpenSettings() {
+    SettingsDialog::Show(window_ ? window_.get() : nullptr, &prefs_, [this]() {
+        // Every change is saved and applied at once.
+        prefs_.Save(prefsPath_);
+        mailView_.SetReadingPane(prefs_.showReadingPane);
+        mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
+                                     prefs_.folderTreeWidth);
+        senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+        ApplyLinkDisplay();
+        // New waiting-for-reply rules: the account bar's count and the list's
+        // reply marks are worked out again.
+        if (ApplyNeedsAnswerRules()) Refresh();
+    });
+}
+
 void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
     const Account* found = nullptr;
     for (const auto& a : accounts_) if (a.accountId == accountId) found = &a;
@@ -2053,11 +2944,14 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
-        fields.showReadingPane  = prefs_.showReadingPane;
-        fields.fetchSenderIcons = prefs_.fetchSenderIcons;
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
+        // The Signature row: the editor saves on its own Save.
+        fields.signature       = account.signature;
+        fields.onSaveSignature = [this, accountId](const Signature& signature) {
+            SaveSignature(accountId, signature);
+        };
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the
@@ -2082,18 +2976,6 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
             "before the changes are saved.",
             current,
             [this, account, provider](const ServerSettingsDialog::Result& r) {
-                // The reading-pane checkbox is an app-wide view option; apply and
-                // remember it regardless of the server/credential outcome below.
-                if (r.showReadingPane != prefs_.showReadingPane) {
-                    prefs_.showReadingPane = r.showReadingPane;
-                    prefs_.Save(prefsPath_);
-                    mailView_.SetReadingPane(prefs_.showReadingPane);
-                }
-                if (r.fetchSenderIcons != prefs_.fetchSenderIcons) {
-                    prefs_.fetchSenderIcons = r.fetchSenderIcons;
-                    prefs_.Save(prefsPath_);
-                    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
-                }
                 Account updated = account;
                 AutoDiscovery::ApplyTo(updated, r.settings);
                 updated.displayName =
@@ -2324,6 +3206,9 @@ UltraNetResult UltraMailApp::PrepareSmtp(const std::map<std::string, SmtpAccount
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "no outgoing (SMTP) server is known for " + account.email);
     ApplyConnection(settings.smtp, o);
+    // The account's server as it is now: a message queued before the server
+    // was known (or before it was corrected) still goes out on Retry.
+    o.serverUrl = AutoDiscovery::SmtpServerUrl(settings.smtp);
     const std::string username =
         settings.smtp.username.empty() ? account.email : settings.smtp.username;
     return ResolveCredentials(accountId, username, OAuthProviderFor(settings), o.credentials);

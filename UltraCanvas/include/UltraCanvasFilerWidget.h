@@ -87,8 +87,16 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.33.0
-// Last Modified: 2026-09-24
+// SetDetailsColumnVisible leaves Details columns out of the table.
+// SetEntryFilter narrows what the listing shows to the entries a host
+// predicate accepts - a file picker's "Files of type" filter.
+// A picture whose thumbnail could not be made no longer shortens its row
+// (the type glyph drawn instead keeps the full tile), and
+// GetThumbnailCacheStats also counts the thumbnails still waiting, being
+// made and given up on. A thumbnail job running past 20 s gets another
+// worker started beside it, so one stuck file cannot stop every thumbnail.
+// Version: 1.37.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,6 +130,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "UltraCanvasModalDialog.h"   // DialogType, DialogButtonRole (the operation dialogs)
 
 namespace UltraCanvas {
 
@@ -140,8 +149,26 @@ namespace UltraCanvas {
     enum class PasteConflictAction {
         KeepBoth,
         Replace,
-        Skip
+        Skip,
+        // Folders only: the pasted folder's entries go INTO the existing
+        // folder, each of them asked about in turn when its own name is
+        // taken there; nothing already in the existing folder is removed.
+        // (Replace on a folder removes the existing folder first, with
+        // everything in it that the pasted one does not have.)
+        Merge
     };
+
+    // ===== WHAT THE HOST DECIDED ABOUT CONFLICTS AND FAILURES =====
+    // Standing answers a host can give in place of the per-entry dialogs
+    // (UltraFiler's Settings > Handling > File operations).
+    // A name that is already taken: ask (the default), or always do the same.
+    enum class FilerConflictPolicy { Ask, KeepBoth, Replace, Skip };
+    // A folder pasted over a folder: merge without asking (the default - the
+    // answer every file manager gives), or ask Merge / Replace / Skip.
+    enum class FilerFolderConflictPolicy { Merge, Ask };
+    // An entry that cannot be copied, moved or deleted: ask Try again / Skip
+    // (the default), or skip it and list it in the summary at the end.
+    enum class FilerProblemPolicy { Ask, SkipAndReport };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -350,7 +377,8 @@ namespace UltraCanvas {
     enum class FilerDropConfirmation {
         NeverConfirm,
         MoveOnly,
-        AlwaysConfirm
+        AlwaysConfirm,
+        CopyOnly       // ask only when the drop copies (a move is carried out)
     };
 
     // ===== WHAT A DELETE DOES =====
@@ -385,6 +413,19 @@ namespace UltraCanvas {
         NoNotice,
         WhenIgnored,
         WhenAnyHidden
+    };
+
+    // ===== WHAT A FILE TYPE FILTER DOES WITH THE OTHER FILES =====
+    // SetFileTypeFilter() names the file types a host is interested in - the
+    // extensions a load or save dialog's filter dropdown stands for. The
+    // files of every other type are then either left out of the listing, as
+    // a file dialog does, or kept in it and drawn greyed out - name and
+    // thumbnail alike - so the user still sees what else the folder holds
+    // ("the photo IS here, it is just not a PNG") while the picks on offer
+    // stand out. Folders are never filtered: they are the way to the files.
+    enum class FilerTypeFilterMode {
+        Hide,         // other types are not listed (a dialog's usual behaviour)
+        ShowDimmed    // other types stay listed, greyed out and not activatable
     };
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
@@ -630,6 +671,48 @@ namespace UltraCanvas {
         void SetFilterEmptyAction(const std::string& label,
                                   std::function<void()> action);
 
+        // ===== FILE TYPE FILTER (load / save dialogs) =====
+        // Narrows the listing to the files whose extension is in
+        // `extensions` (matched lowercase, with or without the leading dot;
+        // "*" or an empty list means every file and ends the filter). What
+        // happens to the other files is the mode's call: Hide leaves them out
+        // of the listing the way a file dialog does, ShowDimmed keeps them in
+        // it greyed out - text and thumbnail - and refuses to activate them
+        // (double-click / Enter do nothing, onFileActivated never fires for
+        // one), while they can still be selected and looked at. Folders
+        // always pass: they are how the user reaches the files (an archive is
+        // dimmed like any other file, but a double-click still enters it the
+        // way it enters a folder). The filter survives SetPath(), rescans and
+        // the name filter (both apply), so a dialog sets it once and
+        // navigates. A dialog hands over the FileFilter its dropdown picked
+        // (UltraCanvasModalDialog.h) through the second overload.
+        void SetFileTypeFilter(const std::vector<std::string>& extensions,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide);
+        void SetFileTypeFilter(const FileFilter& filter,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide) {
+            SetFileTypeFilter(filter.extensions, mode);
+        }
+        void ClearFileTypeFilter() {
+            SetFileTypeFilter(std::vector<std::string>{}, fileTypeFilterMode);
+        }
+        bool HasFileTypeFilter() const { return !fileTypeExtensions.empty(); }
+        const std::vector<std::string>& GetFileTypeFilter() const { return fileTypeExtensions; }
+        // Switches between hiding and dimming the other types without
+        // restating the extensions.
+        void SetFileTypeFilterMode(FilerTypeFilterMode mode);
+        FilerTypeFilterMode GetFileTypeFilterMode() const { return fileTypeFilterMode; }
+        // Whether `e` is one of the files the filter asks for (true for every
+        // folder, and for everything while no filter is set). A dialog's OK
+        // button asks this about the selection; a dimmed entry answers false.
+        bool EntryPassesFileTypeFilter(const FilerEntry& e) const;
+        // How many files the last listing left out (Hide) or dimmed
+        // (ShowDimmed) because of the type filter. A Hide listing with every
+        // file filtered out says so instead of "Folder is empty!".
+        int GetTypeFilteredCount() const { return typeFilteredCount; }
+        // The alpha a dimmed entry is drawn with (0..1); 0.38 by default.
+        void SetDimmedEntryOpacity(double opacity);
+        double GetDimmedEntryOpacity() const { return dimmedEntryOpacity; }
+
         // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
         // Selects the next entry — after the current selection, wrapping
         // around — whose name starts with `ch` (case-insensitive); when the
@@ -689,6 +772,15 @@ namespace UltraCanvas {
         // reveals them like any hidden entry, and they count into
         // GetHiddenItemCount() / GetIgnoredItemCount(), so the notice above
         // offers them.
+        // Which entries the display lists at all: while set, a scanned entry
+        // the predicate answers false for is left out of the listing, in every
+        // folder and whatever SetShowHiddenFiles says - a file picker's
+        // "Files of type" filter, or a folder picker that lists folders only.
+        // Unlike the ignored names above this is not "hidden": nothing counts
+        // it into GetHiddenItemCount() and the notice never offers it. Setting
+        // or clearing it rescans the folder being shown.
+        void SetEntryFilter(std::function<bool(const FilerEntry&)> filter);
+
         void SetIgnoredNamePatterns(std::vector<std::string> patterns,
                                     const std::string& onlyInFolder = std::string());
         const std::vector<std::string>& GetIgnoredNamePatterns() const {
@@ -817,6 +909,21 @@ namespace UltraCanvas {
             size_t hotBudget = 0;     // ceiling for the decompressed tiles
             size_t iconEntries = 0;   // how many of `entries` are icons
             size_t iconBytes = 0;     // and what they occupy
+            // The thumbnails not held: still waiting for a worker, being made
+            // by one right now, and given up on (the tile keeps its type
+            // glyph). Waiting ones that never move while nothing is made
+            // mean the workers are stuck; failed ones mean the files would
+            // not decode - the log names each of those.
+            size_t pendingEntries = 0;
+            size_t inFlightEntries = 0;
+            size_t failedEntries = 0;
+            // The background workers, and the job that has kept one of them
+            // busy longest right now (empty path / 0 when all are idle). A
+            // job running for minutes is what stops a whole folder's
+            // thumbnails: see kThumbJobStuckAfter in the source.
+            size_t workerCount = 0;
+            std::string longestJobPath;
+            int longestJobSeconds = 0;
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
 
@@ -915,6 +1022,38 @@ namespace UltraCanvas {
         // another program are copies and are covered by AlwaysConfirm.
         void SetDropConfirmation(FilerDropConfirmation mode) { dropConfirmation = mode; }
         FilerDropConfirmation GetDropConfirmation() const { return dropConfirmation; }
+        // The confirmation offers both verbs - Move and Copy - with the one
+        // the gesture asked for as the coloured default, so a wrong modifier
+        // never needs a second drag. A move asked for by Cut + Paste (Ctrl+X,
+        // Ctrl+V, or PasteFilesInto with `cut`) asks under the same setting
+        // when it covers moves: it changes where the files live just the
+        // same. A Ctrl+V copy is deliberate and never asks.
+
+        // ===== STANDING ANSWERS (Settings > Handling > File operations) =====
+        // Whether a delete to the trash asks first (true, the default). Off,
+        // Del moves the selection to the trash straight away; a permanent
+        // delete (Shift+Del, or where no trash can take the entries) always
+        // asks - it cannot be undone.
+        void SetConfirmTrashDelete(bool ask) { confirmTrashDelete = ask; }
+        bool GetConfirmTrashDelete() const { return confirmTrashDelete; }
+        // What a paste does with a file whose name is taken: ask (default)
+        // or always Keep both / Replace / Skip.
+        void SetConflictPolicy(FilerConflictPolicy policy) { conflictPolicy = policy; }
+        FilerConflictPolicy GetConflictPolicy() const { return conflictPolicy; }
+        // What a paste does with a folder whose name is taken: merge into the
+        // existing folder without asking (default), or ask.
+        void SetFolderConflictPolicy(FilerFolderConflictPolicy policy) { folderConflictPolicy = policy; }
+        FilerFolderConflictPolicy GetFolderConflictPolicy() const { return folderConflictPolicy; }
+        // What a paste or delete does with an entry that fails: ask Try
+        // again / Skip (default), or skip it and report it in the summary.
+        void SetProblemPolicy(FilerProblemPolicy policy) { problemPolicy = policy; }
+        FilerProblemPolicy GetProblemPolicy() const { return problemPolicy; }
+        // How long a copy, move or delete runs before the progress window
+        // opens over it (2000 ms by default; 0 opens it at once). Until
+        // then the window shows the busy pointer, so a stalled network
+        // volume is not two seconds of nothing.
+        void SetProgressWindowDelay(unsigned milliseconds) { progressWindowDelayMs = milliseconds; }
+        unsigned GetProgressWindowDelay() const { return progressWindowDelayMs; }
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -953,6 +1092,19 @@ namespace UltraCanvas {
         bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
         void SetExtensionBadge(FilerExtensionBadge badge);
         FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // ===== FAVORITE MARK =====
+        // A small red heart at the outermost left of an entry, vertically
+        // centred - on the row of the Details / List / Size bars views, beside
+        // the icon of a thumbnail tile, inside a treemap cell. The provider is
+        // asked for every drawn entry and answers whether it is one of the
+        // host's favorites, so it must be a lookup, not a disk walk; the
+        // widget keeps no list of its own. While a provider is set the row
+        // views reserve a narrow gutter left of the icon for the heart, so a
+        // row with and without one keeps its icon and name in line. After the
+        // host's favorites change, RequestRedraw() is enough - nothing is
+        // cached. Pass an empty function to drop the marks and the gutter.
+        void SetFavoriteMarkProvider(std::function<bool(const FilerEntry&)> provider);
+        bool HasFavoriteMarkProvider() const { return bool(favoriteMarkProvider); }
         // The menu label of a badge mode ("Bar"), shared by the Display
         // submenu and by an application's settings page.
         static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
@@ -1128,6 +1280,11 @@ namespace UltraCanvas {
         void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
         int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
         void ResetDetailsColumnWidths();          // back to the built-in widths
+        // Leave a Details column out (Name always stays). A compact display -
+        // a file picker - shows Name, Size, Type and Modified so the name
+        // gets the width the others would take. All are shown by default.
+        void SetDetailsColumnVisible(FilerDetailsColumn column, bool visible);
+        bool IsDetailsColumnVisible(FilerDetailsColumn column) const;
 
         // List view column width (same value as FilerStyle::listColumnWidth).
         void SetListColumnWidth(int pixels);
@@ -1229,6 +1386,11 @@ namespace UltraCanvas {
         // one (TrashAvailable) and each entry is a real file here - not inside
         // an archive, not on a remote drive.
         bool CanMoveToTrash(const std::vector<FilerEntry>& victims) const;
+        // A delete to the trash goes without a question when the host turned
+        // that question off (SetConfirmTrashDelete(false)) and the trash can
+        // take the entries.
+        bool TrashDeleteNeedsNoQuestion(const std::vector<FilerEntry>& victims,
+                                        FilerDeleteMode preferred) const;
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
         // What a delete that wipes out the whole selection leaves selected.
@@ -1539,10 +1701,19 @@ namespace UltraCanvas {
         // centered action button of the "no matches" state (a real
         // UltraCanvasButton child, drawn by Render like the rename editor).
         std::string nameFilter;
+        std::function<bool(const FilerEntry&)> entryFilter;   // SetEntryFilter
         std::vector<FilerEntry> filterAllEntries;
         std::string filterEmptyLabel;
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
+        // ===== FILE TYPE FILTER =====
+        // The wanted extensions (lowercase, no dot; empty = no filter), what
+        // becomes of the other files, how many the last listing hid or
+        // dimmed, and how faint a dimmed entry is drawn.
+        std::vector<std::string> fileTypeExtensions;
+        FilerTypeFilterMode fileTypeFilterMode = FilerTypeFilterMode::Hide;
+        int typeFilteredCount = 0;
+        double dimmedEntryOpacity = 0.38;
         bool showHiddenFiles = false;
         std::string fileListEmptyMessage;   // SetFileListEmptyMessage
         // Hidden-items notice (SetHiddenItemsNotice): when the host
@@ -1583,6 +1754,8 @@ namespace UltraCanvas {
         // and the tag the thumbnail tiles carry instead of / beside it.
         bool fileExtensionsInNames = true;
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+        // SetFavoriteMarkProvider: which entries carry the heart.
+        std::function<bool(const FilerEntry&)> favoriteMarkProvider;
         // Display > File icons: whose icons an entry with no picture of its
         // own is drawn with.
         FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
@@ -1726,6 +1899,7 @@ namespace UltraCanvas {
         // the other columns leave, so it always fills the table out to the
         // widget edge.
         std::vector<int> detailsColumnWidths;
+        uint32_t hiddenDetailsColumns = 0;   // bit per FilerDetailsColumn
 
         // BarSize columns: the name column on the left, the size label on the
         // right, the bar in between. 0 = auto for the value column (as wide as
@@ -1884,6 +2058,12 @@ namespace UltraCanvas {
         bool dragEnabled = true;
         bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         FilerDropConfirmation dropConfirmation = FilerDropConfirmation::NeverConfirm;
+        // The standing answers (see the setters above).
+        bool confirmTrashDelete = true;
+        FilerConflictPolicy conflictPolicy = FilerConflictPolicy::Ask;
+        FilerFolderConflictPolicy folderConflictPolicy = FilerFolderConflictPolicy::Merge;
+        FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
+        unsigned progressWindowDelayMs = 2000;
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -1992,6 +2172,21 @@ namespace UltraCanvas {
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
         std::unordered_set<std::string> thumbPathsInFlight;
+        // Files whose content thumbnail was given up on, at any size. The
+        // tile draws its type glyph instead, which needs the full square, so
+        // the layout does not shorten a row on behalf of a picture that will
+        // never be drawn (EntryAspect). Cleared with the cache.
+        std::unordered_set<std::string> thumbFailedPaths;
+        // When each running job (image, text read or folder listing) started,
+        // keyed "<kind>:<path>". Guarded by thumbMutex. What the watchdog in
+        // StartThumbnailWorkersLocked reads to tell a stuck worker, and what
+        // GetThumbnailCacheStats reports as the longest job.
+        std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+                thumbJobsStarted;
+        unsigned thumbWorkerBase = 0;   // workers started for the widget
+        void NoteThumbJobLocked(const std::string& key, bool running);
+        // A worker added to thumbFailedPaths: the next repaint relays out.
+        std::atomic<bool> thumbFailuresChanged{false};
         // Compressed mode: LRU of decompressed pixmaps for the tiles being
         // drawn, so repaints never re-inflate. Guarded by thumbMutex.
         struct HotThumb {
@@ -2530,6 +2725,13 @@ namespace UltraCanvas {
         bool EntryMatchesNameFilter(const FilerEntry& e) const;
         // Erase the entries the active filter hides (no-op without one).
         void ApplyNameFilterToEntries();
+        // ===== FILE TYPE FILTER (helpers) =====
+        // Erase from `list` the files a Hide-mode type filter leaves out and
+        // add them to typeFilteredCount; a ShowDimmed filter only counts the
+        // files it will dim. A no-op without a filter.
+        void ApplyFileTypeFilter(std::vector<FilerEntry>& list);
+        // Drawn greyed out: a file a ShowDimmed type filter does not ask for.
+        bool IsDimmedEntry(const FilerEntry& e) const;
         // Create / show / hide the "no matches" action button to match the
         // current filter and listing; positioned under the notice each frame
         // by PositionFilterEmptyButton (called from Render, which measures
@@ -2568,6 +2770,11 @@ namespace UltraCanvas {
         // corner, so the padlock stacks above it instead of on top of it.
         void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect,
                              bool shortcut);
+        // The favorite heart (SetFavoriteMarkProvider) at the outermost left
+        // of the item, vertically centred, and the width the row views keep
+        // free for it left of the icon (0 without a provider).
+        void DrawFavoriteMark(IRenderContext* ctx, const ItemLayout& item);
+        int  FavoriteMarkGutter() const;
         // The box an entry's icon is drawn in, per view - the geometry the
         // badges are placed against, so their hit tests land where they are
         // drawn. `outFit` reports the fit mode the same call decided.
@@ -2793,12 +3000,19 @@ namespace UltraCanvas {
                            const std::string& destDir, bool copy);
         // Does dropConfirmation want this drop confirmed?
         bool DropNeedsConfirmation(bool copy) const;
-        // The "Move / Copy N items into <folder>?" dialog. `proceed` runs on
-        // the confirming answer and nothing runs on the other one; with
-        // dialogs disabled it runs straight away, so a drop is never lost.
-        void ConfirmDrop(const std::vector<std::string>& sources,
-                         const std::string& destDir, bool copy,
-                         std::function<void()> proceed);
+        // A move asked for by a paste (Cut + Paste) asks when the drop
+        // confirmation covers moves.
+        bool PasteMoveNeedsConfirmation() const;
+        // The "Move / Copy N items into <folder>?" dialog: the facts (from,
+        // into, how much), the entries, and BOTH verbs as buttons with the
+        // one the gesture asked for (`copyRequested`) as the coloured
+        // default. `proceed(copy)` runs with the verb that was chosen and
+        // nothing runs on Cancel; with dialogs disabled it runs straight
+        // away with the requested verb, so a drop is never lost.
+        void ConfirmTransfer(const std::vector<std::string>& sources,
+                             const std::string& destDir, bool copyRequested,
+                             std::function<void(bool copy)> proceed,
+                             std::function<void()> onCancel = nullptr);
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;
@@ -2899,7 +3113,8 @@ namespace UltraCanvas {
         // ===== COPY / MOVE / DELETE WORKER =====
         // Copying, moving and deleting run on a worker thread, and a progress
         // window opens over them once the operation has been running for
-        // kFileOpProgressDelayMs. Anything quicker never shows a window at
+        // progressWindowDelayMs (2 s unless the host set another). Anything
+        // quicker never shows a window at
         // all: a file manager that flashes a dialog for every copied text file
         // is worse than one that shows none. Packing and unpacking (ArchiveJob
         // below) open theirs at once instead, because those are never quick.
@@ -3010,9 +3225,14 @@ namespace UltraCanvas {
         // Removes `path` and everything under it, crediting entries as it
         // goes: post-order, and a symlink is removed as the link it is —
         // std::filesystem::remove_all's semantics, which this replaces.
+        // `failedPath`, when given, names the entry the failure is about:
+        // a file deep inside `path` as often as `path` itself. A file that
+        // answers "permission denied" is retried once with its read-only
+        // bit lifted, as the entry's own delete lifts it before the attempt.
         static bool RemoveTreeWithProgress(const std::string& path,
                                            FileOpItemCredit& credit,
-                                           std::error_code& ec);
+                                           std::error_code& ec,
+                                           std::string* failedPath = nullptr);
         // Copies one file, in chunks once it is big enough for the ring to
         // move inside it (and for Cancel to be answered before it ends).
         static bool CopyFileWithProgress(const std::string& from,
@@ -3030,14 +3250,53 @@ namespace UltraCanvas {
         // ===== PASTE CONFLICTS =====
         // One paste in flight: the sources not yet processed and the choices
         // the conflict dialog collected so far.
+        // An entry a paste or delete left where it was, for the summary at
+        // the end and its "… again" button: the entry, why, and (a paste)
+        // the folder it was headed for.
+        struct SkippedItem {
+            std::string path;
+            std::string reason;
+            std::string folder;
+        };
+        // The summary's "Copy skipped items again": the skipped entries
+        // grouped by destination, pasted one group after the other (one
+        // paste runs at a time).
+        struct PasteRetry {
+            std::vector<std::pair<std::string, std::vector<std::string>>> groups;
+            size_t index = 0;
+            bool cut = false;
+        };
+        std::unique_ptr<PasteRetry> pasteRetry;
+        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut);
+        void ContinuePasteRetry();
+
         struct PendingPaste {
             std::string folder;
             std::vector<std::string> sources;
+            // Per source, where it goes (empty = `folder`) and what it is:
+            // an ordinary entry, an entry of a folder being MERGED into an
+            // existing folder (it goes into that folder), or the merged
+            // folder itself once its entries are through (a move removes it
+            // when it is empty by then). Parallel to `sources`; a merge
+            // splices its entries in after the folder they came from.
+            enum class ItemKind : unsigned char { Entry, MergedEntry, MergedFolder };
+            std::vector<std::string> itemFolders;
+            std::vector<ItemKind> itemKinds;
             size_t next = 0;
             bool cut = false;
             PasteConflictAction action = PasteConflictAction::KeepBoth;
-            bool applyToAll = false;   // reuse `action` for later conflicts
+            bool applyToAll = false;   // reuse `action` for later file conflicts
+            // The same for folders whose name is taken: Merge, Replace or
+            // Skip, remembered apart from the file answer because Merge means
+            // nothing for a file.
+            PasteConflictAction folderAction = PasteConflictAction::Merge;
+            bool applyToAllFolders = false;
             bool changed = false;
+            // What the summary at the end lists: the entries that were not
+            // pasted, with why (a failure the user or the policy skipped, a
+            // conflict answered with Skip), and how many were.
+            std::vector<SkippedItem> skipped;
+            size_t pasted = 0;
             // The folders a move actually emptied - the parent of every
             // source that was renamed away. The caller of a paste knows the
             // destination and nothing else, so these are reported to
@@ -3081,34 +3340,85 @@ namespace UltraCanvas {
         // `action` when the name is taken. False = failed, with the reason.
         // Worker-side: it reports its bytes into `credit`.
         bool PasteOneEntry(PendingPaste& pp, const std::string& src,
-                           PasteConflictAction action,
+                           const std::string& folder,
+                           PasteConflictAction action, bool mergedEntry,
                            FileOpItemCredit& credit, std::string& whyFailed);
-        // The "already exists" dialog: exclusive Keep both / Replace / Skip
-        // switches, a "do this for all remaining conflicts" switch, and
-        // Continue / Cancel buttons.
+        // The paste behind ConfirmTransfer / PasteFilesInto, once any
+        // confirmation is answered: builds the queue and starts the worker.
+        void StartPaste(std::string folder, std::vector<std::string> paths,
+                        bool cut, std::function<void(bool changed)> onDone);
+        // The "already exists" dialog: the existing and the pasted entry side
+        // by side (icon, name, size, modified, which is newer), the name Keep
+        // both would use, and the answers as buttons - Keep both / Replace /
+        // Skip / Stop for a file, Merge / Replace / Skip / Stop for a folder -
+        // with an "Apply to all N remaining conflicts" checkbox.
         void ShowPasteConflictDialog(const std::string& src);
-        // The paste failure dialog: Try again / Skip, like a failed delete's.
+        // The paste failure dialog: Try again / Skip / Stop, like a failed
+        // delete's, with the reason, the source folder and the destination.
         void ShowPasteProblemDialog(const std::string& src,
                                     const std::string& reason);
+        // The summary a paste or delete ends on when entries were skipped:
+        // how many were done, the skipped ones with why, and a button that
+        // runs the operation again for those.
+        void ShowOperationSummary(const std::string& title,
+                                  const std::string& message,
+                                  const std::vector<SkippedItem>& skipped,
+                                  const std::string& facts,
+                                  const std::string& retryLabel,
+                                  std::function<void()> onRetry);
 
-        // A problem dialog in the house style: one exclusive switch per
-        // choice (try again / delete anyway / skip / …), a "do this for all"
-        // scope switch, and Continue / Cancel buttons. onContinue gets the
-        // index of the chosen label. False = modal dialogs are unavailable
-        // and the caller must fall back.
-        bool ShowProblemChoiceDialog(
-                DialogConfig& cfg,
-                const std::vector<std::string>& choiceLabels, size_t defaultChoice,
-                const std::string& allLabel,
-                std::function<void(size_t choice, bool all)> onContinue,
-                std::function<void()> onCancel);
-        // The two-choice form of it: proceed (index 0) vs. skip (index 1).
-        bool ShowProceedSkipDialog(
-                DialogConfig& cfg,
-                const std::string& proceedLabel, const std::string& skipLabel,
-                const std::string& allLabel, bool proceedDefault,
-                std::function<void(bool proceed, bool all)> onContinue,
-                std::function<void()> onCancel);
+        // ===== THE OPERATION DIALOG =====
+        // Every question a copy, move or delete asks is one of these: a
+        // question line, the facts under it (from / into / reason, as
+        // Markdown), an optional list of entries, a note, and a footer with
+        // an optional "Apply to all …" checkbox at the left and the answers
+        // as buttons at the right. The answer is the button: Return takes
+        // the one with the Default role, Escape the one with the Cancel
+        // role, and each button has a mnemonic letter. Every button is as
+        // wide as its label.
+        struct OperationDialogButton {
+            std::string label;
+            DialogButtonRole role = DialogButtonRole::Normal;
+        };
+        struct OperationDialogSpec {
+            std::string title;
+            DialogType type = DialogType::Question;
+            std::string question;                 // the message line
+            std::string facts;                    // Markdown under it, may be empty
+            std::string note;                     // Markdown under the list, may be empty
+            // Entries listed under the facts (the display's own icons, size,
+            // modified) with an optional caption above; `rowNotes`, when
+            // given per row, replaces the size / modified columns with one
+            // text column (the summary's reason).
+            std::vector<FilerEntry> listed;
+            std::vector<std::string> rowNotes;
+            std::vector<std::string> rowLabels;   // a first column, per row ("Existing")
+            bool listDetails = true;              // the Size and Modified columns
+            std::string listCaption;
+            int listVisibleRows = 10;
+            std::string applyToAllLabel;          // empty = no checkbox
+            bool applyToAllChecked = false;
+            std::vector<OperationDialogButton> buttons;
+            int width = 560;
+            bool showIcon = false;
+        };
+        // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
+        // button that was pressed, `onDismiss` when the dialog went without
+        // one (Escape without a Cancel-role button, the close box). False =
+        // modal dialogs are unavailable and nothing was shown.
+        bool ShowOperationDialog(const OperationDialogSpec& spec,
+                                 std::function<void(size_t button, bool applyToAll)> onAnswer,
+                                 std::function<void()> onDismiss);
+        // The entry list the operation dialogs share (the delete confirmation's
+        // list, generalised): at most kOperationListRows rows, `visibleRows`
+        // of them at a time, the rest behind a scrollbar.
+        std::shared_ptr<UltraCanvasUIElement> BuildOperationEntryList(
+                const std::string& id, const std::vector<FilerEntry>& listed,
+                const std::vector<std::string>& rowNotes,
+                const std::vector<std::string>& rowLabels, bool details,
+                int visibleRows, int& outHeight);
+        // At most this many rows in an operation dialog's list.
+        static constexpr size_t kOperationListRows = 200;
 
         // ===== DELETE PROBLEMS =====
         // What the delete-problem dialog decides for the entry it is about:
@@ -3120,7 +3430,12 @@ namespace UltraCanvas {
         // before the attempt), a failed delete, or a failed delete that a
         // retry with administrator rights may resolve (Windows, when the
         // host wired UltraCanvasElevatedFileOperations).
-        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission };
+        // A delete refused because a program holds the file - a running
+        // program's own executable or library above all - is InUse: Windows
+        // answers it with the same "access denied" as a permission problem,
+        // but no administrator can delete it either, so that dialog offers
+        // no such retry and names the program instead.
+        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission, InUse };
 
         // One delete in flight: the real-filesystem victims not yet processed
         // and the choices the problem dialogs collected so far.
@@ -3153,10 +3468,20 @@ namespace UltraCanvas {
             FileOpStop stop = FileOpStop::Done;
             DeleteProblemKind stopKind = DeleteProblemKind::Failed;
             std::string stopReason;
+            // The entry the failure is about when it is not the victim
+            // itself: the file inside a folder that refused to go. Empty
+            // when the victim is a file, or failed on its own account.
+            std::string stopPath;
+            // Who holds it (InUse), as "Program (pid)", when the platform
+            // can say.
+            std::vector<std::string> stopHolders;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
             // Each entry goes to the trash instead of being removed.
             bool toTrash = false;
+            // For the summary at the end: the entries that stayed, with why.
+            std::vector<SkippedItem> skipped;
+            size_t removed = 0;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
 
@@ -3189,6 +3514,16 @@ namespace UltraCanvas {
         void ShowDeleteProblemDialog(const FilerEntry& entry,
                                      DeleteProblemKind kind,
                                      const std::string& reason);
+        // Refuses, with a dialog, a delete that would take the running
+        // application's own installation apart: a victim inside the
+        // folder the executable runs from, or a folder holding it.
+        // Deleting files out from under a running program ends it in a
+        // crash, and the files it has loaded cannot be deleted anyway.
+        // True = refused, nothing was touched.
+        bool RefuseDeletingOwnInstallation(const std::vector<FilerEntry>& victims);
+        // The dialog fonts of this widget: its own style's sizes, so every
+        // dialog it opens reads like the display under it.
+        ModalDialogStyle DialogStyleForFonts(const ModalDialogStyle& base) const;
 
         // Executable script activated: Run / Open (view it) / Cancel.
         void ShowRunOrOpenDialog(const FilerEntry& e);

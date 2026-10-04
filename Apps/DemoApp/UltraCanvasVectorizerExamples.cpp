@@ -11,6 +11,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
 
@@ -67,7 +68,7 @@ std::string TempSvgPath() {
 }
 
 bool WriteFile(const std::string& path, const std::string& bytes) {
-    std::ofstream os(path, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!os) return false;
     os.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     return os.good();

@@ -1,3 +1,98 @@
+#### 2026-10-02 *0.4.2*
+- **Mail in folders and accounts with non-English names is read on
+  Windows.** Scanning the mail cache and opening a message for its
+  attachments joined the account and folder onto the path as plain strings,
+  which Windows converts in its ANSI code page, so a folder such as
+  "Entwürfe" was looked for under a mangled name and its mail was left out
+  of the analysis. Both now pass every part through `PathFromUtf8`. Found
+  by EmailCleaner's engine tests, which now run on Windows CI too.
+
+#### 2026-09-29 *0.4.1*
+- **UltraMail accounts that signed in through the browser can be acted on.**
+  An account set up in UltraMail with its provider's browser login (OAuth2 -
+  Gmail, Outlook, Yahoo) keeps a token set in UltraMail's vault, not a
+  password, and EmailCleaner only ever looked for a password: such an account
+  was analysed but never registered with the mail backend, so **Move to
+  Trash** and the unsubscribe mail refused its messages. EmailCleaner now reads
+  the token set too and, before every call to the server, signs in with a
+  current access token (XOAUTH2), renewing it through the provider when it has
+  expired - with UltraMail's own OAuth client, whose refresh token it is
+  (environment, baked-in client, and now UltraMail's `oauth.ini` as well). The
+  renewed token stays in memory: UltraMail's vault is only ever read. When the
+  sign-in cannot be renewed the action fails before anything reaches the
+  server, and says to sign in again in UltraMail.
+- **Acting on mail no longer freezes the window.** **Apply** ran every step on
+  the UI thread: the unsubscribe request, a sign-in (and now possibly a token
+  refresh), and one IMAP round trip per message moved to Trash - so moving a
+  few hundred messages left the window unresponsive until the last one was
+  done. The block, which is local and instant, still happens at once; the
+  steps that talk to a server run on a worker, the status line counts the
+  messages as they move ("Moving to Trash… 40 of 212"), and the outcome and
+  any warning appear when they are done. **Apply** stays disabled until then,
+  so a second plan cannot start against messages that are still moving. The
+  mail backend is now safe to use from that worker while an account is added
+  or registered again on the UI thread (the account records were an unguarded
+  map; ThreadSanitizer reported the race and is clean now).
+- **Mail moved to Trash leaves the map.** A message **Move to Trash** moved
+  stayed in the analysis - the map, the counts, the message list - until the
+  account was scanned again, and even that did not help: the body is still in
+  the mail cache it was read from (UltraMail kept every cached `.eml` for
+  good until its 0.10.15, and removes one only at its next sync of the folder
+  now), so the scan analysed it again. Now the
+  moved messages are taken out of the analysis as soon as the moves come
+  back, and the move is remembered (schema 5, `moved_messages`), so neither
+  **Load mail** nor **Re-analyse** brings them back. The record keeps the
+  Message-ID, so a UID the server hands to a different message after a
+  UIDVALIDITY reset is analysed again. And Trash folders are no longer
+  analysed at all - found by the server's folder role where UltraMail or
+  EmailCleaner knows it, and by name (`Trash`, `[Gmail]/Bin`, `Deleted Items`,
+  `Papierkorb`, ...) - so what was moved does not come back from there either;
+  rows an earlier scan stored for a Trash folder are removed.
+- **Opened attachments no longer pile up.** Opening an attachment writes a
+  copy into `<data dir>/attachments` for the viewer, and none was ever
+  deleted. The folder is now pruned at every start, before any viewer has a
+  file open: what was not opened for a week goes, then the oldest until the
+  rest fits in 256 MB (`PruneAttachmentCache`, on UltraMail's
+  `AttachmentCache::Prune`, the rule UltraMail applies to its own copies).
+  Opening an attachment again makes its copy new.
+- **Two attachments with the same name no longer overwrite each other.**
+  The viewer's copy was written under the attachment's name, truncating
+  whatever was there: opening a second "invoice.pdf" from another sender
+  replaced the first - even while it was still open in a viewer. The copies
+  are now written through UltraMail's `AttachmentCache`: the same bytes reuse
+  the copy already there, different bytes get "invoice (1).pdf".
+
+#### 2026-09-29 *0.4.0*
+- **EmailCleaner can have accounts of its own.** Until now every account came
+  from UltraMail, so a mailbox could only be cleaned after it had been set up
+  in a mail client. **Accounts…** in the toolbar lists every account with where
+  its mail comes from, and adds one to EmailCleaner alone: the address (**Find
+  servers** fills the IMAP server in from UltraMail's provider table, then
+  autoconfig), a password — an app password at Gmail, Outlook and Yahoo — and
+  **Sign in and add**, which checks the sign-in against the server before
+  anything is saved. The account keeps its own list (`accounts.db`), its own
+  password (`vault/emailcleaner.vault`) and its own downloaded copy of the
+  inbox and junk folder (`mail/ec-<account>/`) under EmailCleaner's data
+  directory, fetched by UltraMail's own `SyncEngine` — one IMAP implementation,
+  two places its results are kept. **Load mail** downloads what is new for
+  these accounts before analysing, and **Remove** deletes the password, the
+  copy and the analysis without touching the server. UltraMail's accounts are
+  shared exactly as before; an address UltraMail already shares cannot be
+  added twice, and its id (`ec-…`) cannot collide with UltraMail's. The
+  analysis database records each account's source (schema 4).
+- **EmailCleaner loads UltraNet's plug-ins.** It asked the registry for the
+  IMAP plug-in without ever initialising it, so the plug-in was never found and
+  Block's companions — **Move to Trash** and the unsubscribe mail — always said
+  "The IMAP plug-in is not loaded". It now brings the registry up at start-up
+  from `Plugins/UltraNet` beside the executable (as UltraMail does), or from
+  `EMAILCLEANER_PLUGIN_DIR`, and names the folder it looked in when the
+  plug-in is missing.
+- **UltraMail accounts use the servers UltraMail stored.** The mail backend
+  looked each shared account's server up in the provider table only, so an
+  account whose servers were found by autoconfig or typed in by hand in
+  UltraMail could not be acted on. It now takes the account's stored servers,
+  and the provider table only when there are none.
+
 #### 2026-09-28 *0.3.3*
 - **The version is in the window title** — `EmailCleaner 0.3.3` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

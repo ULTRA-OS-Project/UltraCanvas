@@ -220,7 +220,7 @@ UltraNetResult MultipartPost(const std::string& url,
 UltraNetResult LoadFileBytes(const std::string& path,
                              std::vector<uint8_t>& outBytes) {
     outBytes.clear();
-    std::ifstream is(path, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!is) {
         return UltraNetResult::Error(UltraNetResultCode::NotFound,
                                      "cannot read media file: " + path);

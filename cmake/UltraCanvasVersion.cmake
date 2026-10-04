@@ -23,6 +23,7 @@
 #   ULTRACLEANER_VERSION        e.g. "0.50"    (Docs/UltraCleaner/CHANGELOG.md)
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
+#   ULTRACANVASSTART_VERSION    e.g. "0.1.0"   (Docs/UltraCanvasStart/CHANGELOG.md)
 #
 # and one <APP>_VERSION triple per application that keeps its own changelog:
 #
@@ -36,6 +37,7 @@
 #   ULTRAVIEWER_VERSION        (Docs/UltraViewer/CHANGELOG.md)
 #   ULTRAPAINT_VERSION         (Docs/UltraPaint/CHANGELOG.md)
 #   ARTCREATOR_VERSION         (Docs/ArtCreator/CHANGELOG.md)
+#   UOSSETTINGS_VERSION        (Docs/UOSSettings/CHANGELOG.md)
 #   ULTRAWIN_VERSION           (Docs/Modules/UltraWin/CHANGELOG.md)
 #
 # Each of those also gets _VERSION_DATE (the date on the same changelog line —
@@ -119,12 +121,17 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 # Applications that keep their own changelog and version themselves.
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRACANVASSTART    "Docs/UltraCanvasStart/CHANGELOG.md")
+_ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRADESKTOP        "Docs/UltraDesktop/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAUTHENTICATOR  "Docs/UltraAuthenticator/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAPASSWORD       "Docs/UltraPassword/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAFILER          "Docs/UltraFiler/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAFIBU           "Docs/UltraFIBU/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAMAIL           "Docs/UltraMail/CHANGELOG.md")

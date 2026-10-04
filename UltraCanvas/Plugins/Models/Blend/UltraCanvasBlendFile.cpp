@@ -33,6 +33,7 @@
 #include <sstream>
 
 #include <zlib.h>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -630,7 +631,7 @@ BlendFileInfo ReadBlendFileInfo(const std::vector<uint8_t>& data,
 
 BlendFileInfo ReadBlendFileInfo(const std::string& filePath,
                                 const std::function<void(const std::string&)>& warn) {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!file) {
         BlendFileInfo info;
         info.Error = "cannot read " + filePath;

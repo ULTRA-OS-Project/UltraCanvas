@@ -145,7 +145,9 @@ In the window, the **Photo albums** tab reviews by *group*, not by file: each
 group shows every picture in it with the suggested keeper marked, and one
 checkbox for the whole group. Nothing is ticked for you. Removal goes through
 the same Remover as the rest of the app, so it inherits the same PathGuard,
-the same trash support and the same simulate-by-default posture.
+the same trash support. The folder is looked through as soon as it is chosen
+(or, started with a folder on the command line, as soon as the window opens);
+the Scan button repeats it.
 
 ## Using it
 
@@ -179,9 +181,14 @@ on macOS and `GetLogicalDriveStringsW` on Windows, with capacity from
 tmpfs, snap loopbacks, …) left out. It is read once when the page is built
 and again on `HomeView::Refresh()`.
 
-On the System junk tab, the toolbar runs a scan, chooses what should happen to what the scan found
-(simulate / move to trash / delete permanently) and starts the cleanup. The
-left panel lists one row per category — an `UltraCanvasCheckbox` for
+The System junk tab scans itself the first time it is opened — from the tab
+strip or from the overview's button — so it opens on the list rather than on
+a button that makes one; a tab switch afterwards keeps the list and its ticks,
+and the toolbar's Scan button repeats the scan. The toolbar also chooses what
+should happen to what the scan found (move to trash, the default, or delete
+permanently) and starts the cleanup; the engine's simulate mode is not offered
+in the window, because the confirmation dialog already names what would go.
+The left panel lists one row per category — an `UltraCanvasCheckbox` for
 "clean this" and an `UltraCanvasBadge` with the recoverable size. The right
 panel is an `UltraCanvasColumnsTreeView` naming every path that would go, its
 size, when it last changed and which rule proposed it; double-clicking a row
@@ -305,7 +312,7 @@ locations the rule table resolved; that case is covered by
 
 | Mode | What happens |
 |---|---|
-| `Simulate` | Nothing is touched. Reports what would go and how much it would free. The default everywhere — the GUI's dropdown and the CLI's `--clean` both start here. |
+| `Simulate` | Nothing is touched. Reports what would go and how much it would free. The engine's default, and where the CLI's `--clean` starts; the window does not offer it. |
 | `MoveToTrash` | XDG trash on Linux (`files/` plus a `.trashinfo` record, so the desktop's "Restore" works), `~/.Trash` on macOS, `SHFileOperationW` with `FOF_ALLOWUNDO` on Windows. Falls back to copy-then-remove when the trash is on another filesystem. |
 | `DeletePermanently` | `std::filesystem::remove_all`. |
 
@@ -318,9 +325,14 @@ permanent delete the user did not ask for. Emptying the trash is what
 `DeletePermanently` is for, and the GUI and CLI both say so when the count is
 non-zero.
 
-Failures are collected rather than thrown: a report names each path that
-would not go and why, capped by `RemovalOptions::failureLimit` so a wall of
-permission errors does not bury the summary.
+Failures are collected rather than thrown, and none of them ends the run: a
+report names each path that would not go and why, and the remover carries on
+to the next item. There used to be a cap of fifty failures after which the
+run stopped, and on Windows a temp directory routinely holds more files
+another program has open than that, so a clean of 1400 items ended after six.
+The window shows the failures in a scrolling dialog grouped by reason — one
+heading per distinct message, the paths under it — so fifty locked temp files
+read as one line and a list, not fifty copies of the same sentence.
 
 ## Engine API
 

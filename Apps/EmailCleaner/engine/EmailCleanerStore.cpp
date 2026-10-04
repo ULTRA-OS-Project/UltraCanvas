@@ -234,6 +234,26 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
           "  category TEXT NOT NULL,"
           "  reason TEXT,"
           "  added INTEGER DEFAULT 0);" },
+
+        { 4, "account source",
+          // 0.4. Accounts can be added in EmailCleaner itself now, beside the
+          // ones mirrored from UltraMail; the app reads each one's mail from a
+          // different cache, so the row has to say which list it came from.
+          // Every existing row was mirrored from UltraMail.
+          "ALTER TABLE accounts ADD COLUMN source TEXT DEFAULT 'ultramail';" },
+
+        { 5, "messages moved away",
+          // 0.4.1. A message moved to Trash leaves the analysis, but its body
+          // stays in the cache it was read from; this remembers the move so a
+          // re-scan does not bring it back. message_id tells a reused UID
+          // (after a UIDVALIDITY reset) from the message that was moved.
+          "CREATE TABLE moved_messages("
+          "  account_id TEXT NOT NULL,"
+          "  folder TEXT NOT NULL,"
+          "  uid INTEGER NOT NULL,"
+          "  message_id TEXT DEFAULT '',"
+          "  moved_at INTEGER DEFAULT 0,"
+          "  PRIMARY KEY(account_id, folder, uid));" },
     };
     // The list above must end at the version the header advertises.
     if (!steps.empty() && steps.back().version != kSchemaVersion) {
@@ -247,25 +267,35 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
 
 // ---- Accounts --------------------------------------------------------------
 
+std::string ToString(AccountSource source) {
+    return source == AccountSource::Own ? "own" : "ultramail";
+}
+
+AccountSource AccountSourceFromString(const std::string& s) {
+    return s == "own" ? AccountSource::Own : AccountSource::UltraMail;
+}
+
 UltraDbResult AnalysisStore::UpsertAccount(const StoredAccount& account) {
     if (account.accountId.empty())
         return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
                                     "account id must not be empty");
     return UltraDb_Exec(connection_,
-        "INSERT INTO accounts(account_id, display_name, email, short_name) "
-        "VALUES(?, ?, ?, ?) "
+        "INSERT INTO accounts(account_id, display_name, email, short_name, source) "
+        "VALUES(?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id) DO UPDATE SET "
         "  display_name = excluded.display_name,"
         "  email = excluded.email,"
-        "  short_name = excluded.short_name",
-        { account.accountId, account.displayName, account.email, account.shortName });
+        "  short_name = excluded.short_name,"
+        "  source = excluded.source",
+        { account.accountId, account.displayName, account.email, account.shortName,
+          ToString(account.source) });
 }
 
 UltraDbResult AnalysisStore::ListAccounts(std::vector<StoredAccount>& out) const {
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult r = UltraDb_Query(connection_,
-        "SELECT account_id, display_name, email, short_name FROM accounts "
+        "SELECT account_id, display_name, email, short_name, source FROM accounts "
         "ORDER BY email", rs);
     if (!r) return r;
     for (const UltraDbRow& row : rs) {
@@ -274,6 +304,7 @@ UltraDbResult AnalysisStore::ListAccounts(std::vector<StoredAccount>& out) const
         a.displayName = row["display_name"].AsString();
         a.email       = row["email"].AsString();
         a.shortName   = row["short_name"].AsString();
+        a.source      = AccountSourceFromString(row["source"].AsString());
         out.push_back(std::move(a));
     }
     return r;
@@ -283,6 +314,8 @@ UltraDbResult AnalysisStore::RemoveAccount(const std::string& accountId) {
     UltraDbResult r = ClearMessages(accountId);
     if (!r) return r;
     r = UltraDb_Exec(connection_, "DELETE FROM ingest_state WHERE account_id = ?", { accountId });
+    if (!r) return r;
+    r = UltraDb_Exec(connection_, "DELETE FROM moved_messages WHERE account_id = ?", { accountId });
     if (!r) return r;
     return UltraDb_Exec(connection_, "DELETE FROM accounts WHERE account_id = ?", { accountId });
 }
@@ -399,6 +432,66 @@ bool AnalysisStore::HasMessage(const std::string& accountId, const std::string& 
         "SELECT 1 FROM messages WHERE account_id = ? AND folder = ? AND uid = ?",
         { accountId, folder, uid }, rs);
     return r && !rs.Empty();
+}
+
+UltraDbResult AnalysisStore::RecordMovedAway(const std::vector<AnalyzedMessage>& messages,
+                                             int64_t movedAt) {
+    if (messages.empty()) return UltraDbResult::Ok();
+
+    UltraDbResult error;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &error);
+    if (tx == UltraDbInvalidHandle) return error;
+
+    for (const AnalyzedMessage& m : messages) {
+        const UltraDbParams key = { m.accountId, m.folder, m.uid };
+        for (const char* sql : {
+                 "DELETE FROM keyword_hits WHERE account_id = ? AND folder = ? AND uid = ?",
+                 "DELETE FROM attachments WHERE account_id = ? AND folder = ? AND uid = ?",
+                 "DELETE FROM messages WHERE account_id = ? AND folder = ? AND uid = ?" }) {
+            UltraDbResult r = UltraDb_ExecInTx(tx, sql, key);
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+        UltraDbResult r = UltraDb_ExecInTx(tx,
+            "INSERT INTO moved_messages(account_id, folder, uid, message_id, moved_at) "
+            "VALUES(?, ?, ?, ?, ?) "
+            "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
+            "  message_id = excluded.message_id, moved_at = excluded.moved_at",
+            { m.accountId, m.folder, m.uid, m.messageId, movedAt });
+        if (!r) { UltraDb_Rollback(tx); return r; }
+    }
+    return UltraDb_Commit(tx);
+}
+
+bool AnalysisStore::FindMovedAway(const std::string& accountId, const std::string& folder,
+                                  int64_t uid, std::string& messageId) const {
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT message_id FROM moved_messages "
+        "WHERE account_id = ? AND folder = ? AND uid = ?",
+        { accountId, folder, uid }, rs);
+    if (!r || rs.Empty()) return false;
+    messageId = rs.Row(0)["message_id"].AsString();
+    return true;
+}
+
+UltraDbResult AnalysisStore::ForgetMovedAway(const std::string& accountId,
+                                             const std::string& folder, int64_t uid) {
+    return UltraDb_Exec(connection_,
+        "DELETE FROM moved_messages WHERE account_id = ? AND folder = ? AND uid = ?",
+        { accountId, folder, uid });
+}
+
+UltraDbResult AnalysisStore::ClearFolder(const std::string& accountId,
+                                         const std::string& folder) {
+    const UltraDbParams key = { accountId, folder };
+    for (const char* sql : {
+             "DELETE FROM keyword_hits WHERE account_id = ? AND folder = ?",
+             "DELETE FROM attachments WHERE account_id = ? AND folder = ?",
+             "DELETE FROM messages WHERE account_id = ? AND folder = ?" }) {
+        UltraDbResult r = UltraDb_Exec(connection_, sql, key);
+        if (!r) return r;
+    }
+    return UltraDbResult::Ok();
 }
 
 UltraDbResult AnalysisStore::ClearMessages(const std::string& accountId) {

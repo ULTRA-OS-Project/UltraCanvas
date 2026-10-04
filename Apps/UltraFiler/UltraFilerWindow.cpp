@@ -18,8 +18,11 @@
 // menu offers Copy / Delete / Paste on folders, a Pin submenu whose
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
-// submenu ends with an app-provided block (extrasMenuProvider): "Open
-// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// submenu ends with an app-provided block (extrasMenuProvider): "Find
+// text", an Export submenu - "Folder content" / "Folder tree content" / "Folder
+// tree as CSV" open a text window with the folder written out as a listing,
+// as a tree drawn with line characters or as a CSV table, and save it
+// (UltraFilerFolderExport) - "Open prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
 // (media/icons), and any folder can be given a picture through "Set folder
@@ -55,13 +58,14 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.22.0
-// Last Modified: 2026-09-24
+// Version: 1.24.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -103,6 +107,7 @@
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -186,7 +191,7 @@ namespace {
     // same way). Binary and unreadable files never match.
     bool FileContainsText(const fs::path& path, const std::string& needle,
                           bool foldCase, const std::atomic<bool>& cancelled) {
-        std::ifstream in(path, std::ios::binary);
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         if (!in) return false;
         std::vector<char> chunk(kContentSearchChunkBytes);
         // The tail of the previous piece is carried over, so a match that
@@ -416,7 +421,7 @@ namespace {
         // throws filesystem_error when a read fails part-way through (a
         // removable or network drive going away), and this runs on the probe
         // worker thread, where a throw ends the process.
-        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
             if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
@@ -450,7 +455,7 @@ namespace {
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
-        for (fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec),
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
             if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
@@ -722,7 +727,7 @@ namespace {
             if (e.extension == ext) return true;
         if (!e.extension.empty()) return false;
         std::error_code ec;
-        const fs::perms p = fs::status(e.path, ec).permissions();
+        const fs::perms p = fs::status(UltraCanvas::PathFromUtf8(e.path), ec).permissions();
         if (ec) return false;
         return (p & (fs::perms::owner_exec | fs::perms::group_exec |
                      fs::perms::others_exec)) != fs::perms::none;
@@ -802,6 +807,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
+    exportWindows.clear();      // each joins the walk building its text
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
@@ -989,6 +995,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     };
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
+    WireFavoriteMarkProvider(folderPreview.get());
 
     // The pane is narrow, so it carries the one way out of it: a round button
     // floating over the middle of its left edge that moves the folder it
@@ -1088,10 +1095,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // Resolved against the working directory while that is still the one we
     // were started in - the move below changes what a relative path means.
     if (!start.empty()) {
-        fs::path absolute = fs::absolute(start, ec);
+        fs::path absolute = fs::absolute(UltraCanvas::PathFromUtf8(start), ec);
         if (!ec) start = PathToUtf8(absolute.lexically_normal());
     }
-    if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
+    if (start.empty() || !fs::is_directory(UltraCanvas::PathFromUtf8(start), ec)) start = UserHomeDir();
     if (start.empty()) start = PathToUtf8(fs::current_path(ec));
 
     // A process holds its working directory open, and on Windows that handle
@@ -1104,7 +1111,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // folder), so the working directory moves to the home folder, which is
     // not a folder anybody replaces.
     const std::string home = UserHomeDir();
-    if (!home.empty() && fs::is_directory(home, ec)) {
+    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec)) {
         fs::current_path(home, ec);   // a refusal changes nothing but the lock
     }
 
@@ -1354,6 +1361,15 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     applyingDisplayFormats = wasApplying;
 }
 
+void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target) {
+    target.SetConfirmTrashDelete(settings.confirmTrashDelete);
+    target.SetConflictPolicy(settings.conflictPolicy);
+    target.SetFolderConflictPolicy(settings.folderConflictPolicy);
+    target.SetProblemPolicy(settings.problemPolicy);
+    target.SetProgressWindowDelay(
+            static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -1377,11 +1393,13 @@ void UltraFilerWindow::ApplySettings() {
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
         state->filer->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*state->filer);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*folderPreview);
     }
     // Extras > Cache. The disk cache is one per process, so it is set once
     // rather than per display; how thumbnails are held in memory is each
@@ -1533,6 +1551,7 @@ void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
             [this]() {   // Clear Favorites
         favorites.ClearAll();
         RefreshPinnedTreeNodes();
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -1557,6 +1576,36 @@ void UltraFilerWindow::OpenSystemPrompt() {
         UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
+std::string UltraFilerWindow::ExportTargetFolder() const {
+    const std::vector<FilerEntry> targets = PinTargets();
+    if (targets.size() != 1 || !targets.front().isDirectory) return {};
+    const std::string& path = targets.front().path;
+    // The walk reads the local file system: a remote drive's folders, and
+    // the folders inside an archive, are not directories on it.
+    if (path.empty() || IsRemoteFilerPath(path)) return {};
+    std::error_code ec;
+    if (!fs::is_directory(PathFromUtf8(path), ec) || ec) return {};
+    return path;
+}
+
+void UltraFilerWindow::ExportFolder(FolderExportKind kind) {
+    const std::string folder = ExportTargetFolder();
+    if (folder.empty()) return;
+    exportWindows.erase(
+            std::remove_if(exportWindows.begin(), exportWindows.end(),
+                           [](const std::shared_ptr<UltraFilerFolderExportWindow>& w) {
+                               return !w || w->IsClosed();
+                           }),
+            exportWindows.end());
+    // The export sees what the display shows: hidden entries only while it
+    // lists them too.
+    UltraCanvasFilerWidget* shown = VisibleFiler();
+    const bool includeHidden = shown && shown->GetShowHiddenFiles();
+    auto exportWindow = std::make_shared<UltraFilerFolderExportWindow>();
+    exportWindow->Open(folder, kind, includeHidden, window.get());
+    exportWindows.push_back(std::move(exportWindow));
+}
+
 UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
     if (favoritesShown) return ActiveFavoritesFiler();
     if (historyShown) return ActiveHistoryFiler();
@@ -1574,7 +1623,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
     if (!historyShown && !favoritesShown && !computerShown) {
         const std::string path = f->GetPath();
         std::error_code ec;
-        if (!path.empty() && fs::is_directory(path, ec) && !ec) {
+        if (!path.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec) {
             FilerEntry folder;
             folder.path = path;
             folder.name = PathToUtf8(PathFromUtf8(path).filename());
@@ -1649,8 +1698,22 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this]() { OpenFindTextDialog(); });
     findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
 
+    // Export writes out one folder: the selected one, or the shown one while
+    // nothing is selected.
+    const bool canExport = !ExportTargetFolder().empty();
+    MenuItemData exportContent = MenuItemData::Action("Folder content",
+            [this]() { ExportFolder(FolderExportKind::Content); });
+    exportContent.enabled = canExport;
+    MenuItemData exportTree = MenuItemData::Action("Folder tree content",
+            [this]() { ExportFolder(FolderExportKind::Tree); });
+    exportTree.enabled = canExport;
+    MenuItemData exportCsv = MenuItemData::Action("Folder tree as CSV",
+            [this]() { ExportFolder(FolderExportKind::Csv); });
+    exportCsv.enabled = canExport;
+
     return {
             findText,
+            MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -1697,6 +1760,19 @@ void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
     target->folderIconProvider = [this](const FilerEntry& entry) {
         return FolderIconPath(entry.path);
     };
+}
+
+void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
+        return favorites.IsFavorite(entry.path);
+    });
+}
+
+void UltraFilerWindow::RepaintFavoriteMarks() {
+    // The displays ask the provider while they paint, so a repaint is all a
+    // changed pin needs.
+    for (UltraCanvasFilerWidget* f : AllFilers()) f->RequestRedraw();
 }
 
 std::vector<std::string> UltraFilerWindow::FolderIconTargets() const {
@@ -1804,6 +1880,7 @@ void UltraFilerWindow::PinTargetsToFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Pin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -1825,6 +1902,7 @@ void UltraFilerWindow::UnpinTargetsFromFavorites() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets())
         changed |= favorites.Unpin(FavoriteKindOf(e), e.path);
+    if (changed) RepaintFavoriteMarks();
     if (changed && favoritesShown) {
         RefreshFavoritesTabs();
         UpdateStatusBar();
@@ -2179,12 +2257,23 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     std::string name = mountPath;
     for (const auto& disc : UltraFilerRamDisks::List())
         if (disc.mountPath == mountPath) name = disc.name;
-    UltraCanvasAlert::Confirm(
-            "Eject the RAM disc \"" + name + "\"?\n\nEverything on it is "
-            "deleted and cannot be recovered.",
-            "Eject RAM disc",
-            [this, mountPath, name](bool confirmed) {
-        if (!confirmed) return;
+    // The answer on the button, the way the file display's own questions
+    // put it: Eject, red, since everything on the disc goes with it.
+    DialogConfig cfg;
+    cfg.title = "Eject RAM disc";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = "Eject the RAM disc \"" + name + "\"?";
+    cfg.details = "Everything on it is deleted and cannot be recovered.";
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 480;
+    cfg.height = 180;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is ejected unasked
+    dialog->AddCustomButton("Eject", DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, mountPath, name](DialogResult result) {
+        if (result != DialogResult::Yes) return;
         // Tabs leave first: a display still listing the disc keeps no file
         // open, but it would show a folder that no longer exists.
         const std::string home = UserHomeDir();
@@ -2205,7 +2294,8 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         // when the platform reports the unmount.
         RefreshDriveNodes();
         if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
-    }, window.get());
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
@@ -3057,13 +3147,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     viewDropdown->AddItem("Treemap", "Treemap", IconPath("view-treemap.svg"));
     viewDropdown->SetSelectedIndex(3, false);
     viewDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (syncingControls || !filer) return;
+        // The display on screen - a History / Favorites page while one is up,
+        // not the folder tab hidden behind it.
+        UltraCanvasFilerWidget* shown = VisibleFiler();
+        if (syncingControls || !shown) return;
         static const FilerViewType types[] = {
             FilerViewType::Details, FilerViewType::List,
             FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
             FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized,
             FilerViewType::BarSize, FilerViewType::TreeMap};
-        if (index >= 0 && index < 8) filer->SetViewType(types[index]);
+        if (index >= 0 && index < 8) shown->SetViewType(types[index]);
     };
     viewDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(viewDropdown);
@@ -3084,7 +3177,10 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     sortDropdown->AddItem("Date created");
     sortDropdown->SetSelectedIndex(0, false);
     sortDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (syncingControls || !filer) return;
+        std::string fixedLabel;
+        bool fixedAscending = true;
+        if (syncingControls || !filer ||
+            VisibleFixedOrder(fixedLabel, fixedAscending)) return;
         static const FilerSortField fields[] = {
             FilerSortField::Name, FilerSortField::Size, FilerSortField::Type,
             FilerSortField::ModifiedDate, FilerSortField::CreatedDate};
@@ -3099,6 +3195,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // stored view, and the arrow has to follow all of them.
     sortOrderButton = MakeToolButton("ufl-sort-order", "", "sort-up.svg", 30,
             [this]() {
+        std::string fixedLabel;
+        bool fixedAscending = true;
+        if (VisibleFixedOrder(fixedLabel, fixedAscending)) return;
         if (filer) filer->SetSortAscending(!filer->IsSortAscending());
     });
     row->AddChild(sortOrderButton);
@@ -3332,7 +3431,7 @@ void UltraFilerWindow::BuildFolderTree() {
         // path that looks like a dead mount. The drive answers for itself.
         if (IsRemoteFilerPath(path)) { NavigateTo(path); return; }
         std::error_code ec;
-        if (fs::is_directory(path, ec) && !ec) NavigateTo(path);
+        if (fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec) NavigateTo(path);
     };
     folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowTreeContextMenu(node, event);
@@ -3363,7 +3462,7 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
         return remoteDrives && remoteDrives->CanUpload(path);
     // A regular folder node accepts a move into the folder it stands for.
     std::error_code ec;
-    return fs::is_directory(path, ec) && !ec;
+    return fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec;
 }
 
 
@@ -3380,7 +3479,7 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         bool changed = false;
         for (const std::string& f : files) {
             std::error_code ec;
-            if (fs::is_directory(f, ec) && !ec)
+            if (fs::is_directory(PathFromUtf8(f), ec) && !ec)
                 changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
         }
         if (changed) {
@@ -3405,7 +3504,7 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         return true;
     }
     std::error_code ec;
-    if (!fs::is_directory(dest, ec) || ec) return false;
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(dest), ec) || ec) return false;
 
     // Entries dragged off a drive onto a local folder row: those come DOWN,
     // and none of the local move machinery below applies to them - it would
@@ -3728,7 +3827,7 @@ void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     std::error_code ec;
     // The changed folder can be the one that went away: a move reports the
     // folder an entry left, and that folder may itself have been moved.
-    if (!fs::is_directory(folder, ec) || ec) {
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec) || ec) {
         DropTreeSubtree(folder);
         RefreshPinnedTreeNodes();
         folderTree->RequestRedraw();
@@ -3992,7 +4091,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
             for (std::string p = path; !p.empty(); p = RemoteFilerParent(p))
                 chain.push_back(p);
         } else {
-            fs::path p(path);
+            fs::path p(UltraCanvas::PathFromUtf8(path));
             while (true) {
                 chain.push_back(PathToUtf8(p));
                 const fs::path parent = p.parent_path();
@@ -4143,6 +4242,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
             [this, target](bool checked) {
         if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
         else favorites.Unpin(FilerFavoriteKind::Folder, target);
+        RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
             UpdateStatusBar();
@@ -4354,6 +4454,9 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->SetDropConfirmation(settings.dropConfirmation);
+    // Handling > File operations: the standing answers to a copy, move or
+    // delete's questions.
+    ApplyFileOperationSettings(*state->filer);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
     // Display > Files: what this display starts with. Its own Display >
@@ -4446,7 +4549,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // those through VirtualFS, and is the only thing that can show them.
         if (settings.doubleClickOpensRegisteredApp) {
             std::error_code ec;
-            if (fs::is_regular_file(entry.path, ec) && !ec &&
+            if (fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) && !ec &&
                 HasRegisteredApplication(entry.path)) {
                 if (tab->filer) tab->filer->OpenEntryWithOS(entry);
                 return;
@@ -4480,37 +4583,16 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         if (!previewEnabled) SetPreviewEnabled(true);
         else UpdatePreviewPane();
     };
-    tab->filer->onSortChanged = [this, tab](FilerSortField field, bool /*ascending*/) {
+    // Only the tab on screen drives the command bar; one that is behind a
+    // History / Favorites view leaves it describing that view
+    // (SyncCommandBarToVisibleDisplay decides).
+    tab->filer->onSortChanged = [this, tab](FilerSortField, bool) {
         RememberFolderView(tab);
-        if (!IsActiveTab(tab)) return;
-        UpdateSortOrderButton();
-        if (!sortDropdown) return;
-        syncingControls = true;
-        switch (field) {
-            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
-            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
-            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
-            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
-            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
-        }
-        syncingControls = false;
+        if (IsActiveTab(tab)) SyncCommandBarToVisibleDisplay();
     };
-    tab->filer->onViewTypeChanged = [this, tab](FilerViewType type) {
+    tab->filer->onViewTypeChanged = [this, tab](FilerViewType) {
         RememberFolderView(tab);
-        if (!IsActiveTab(tab) || !viewDropdown) return;
-        syncingControls = true;
-        switch (type) {
-            case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
-            case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
-            case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
-            case FilerViewType::ThumbnailsMedium:    viewDropdown->SetSelectedIndex(3, false); break;
-            case FilerViewType::ThumbnailsBig:       viewDropdown->SetSelectedIndex(4, false); break;
-            case FilerViewType::ThumbnailsMaximized: viewDropdown->SetSelectedIndex(5, false); break;
-            case FilerViewType::BarSize:             viewDropdown->SetSelectedIndex(6, false); break;
-            case FilerViewType::TreeMap:             viewDropdown->SetSelectedIndex(7, false); break;
-            default: break;
-        }
-        syncingControls = false;
+        if (IsActiveTab(tab)) SyncCommandBarToVisibleDisplay();
     };
     // Work done in a folder - a file created, pasted, dropped in or out,
     // renamed, duplicated, deleted, packed or extracted - is what puts it in
@@ -4539,6 +4621,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
+    WireFavoriteMarkProvider(tab->filer.get());
 }
 
 void UltraFilerWindow::HandleTabSwitched(int index) {
@@ -4585,17 +4668,63 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
     UpdateStatusBar();
     UpdateWindowTitle();
 
-    // Mirror the tab's sort / view settings into the command bar.
-    UpdateSortOrderButton();
-    syncingControls = true;
-    switch (filer->GetSortField()) {
-        case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
-        case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
-        case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
-        case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
-        case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+    // Mirror the sort / view settings of what is on screen into the command
+    // bar.
+    SyncCommandBarToVisibleDisplay();
+
+    UpdatePreviewPane();
+}
+
+bool UltraFilerWindow::VisibleFixedOrder(std::string& label, bool& ascending) const {
+    // The orders below are the information these lists carry, so the
+    // displays keep them as handed over (SetFileListOrderPreserved) and
+    // sorting does nothing there.
+    if (historyShown) {
+        label = "Last used";
+        ascending = false;              // most recently used first
+        return true;
     }
-    switch (filer->GetViewType()) {
+    if (favoritesShown) {
+        label = "Order pinned";
+        ascending = true;               // first pinned first
+        return true;
+    }
+    if (computerShown) {
+        label = "Home first";
+        ascending = true;
+        return true;
+    }
+    return false;
+}
+
+void UltraFilerWindow::SyncCommandBarToVisibleDisplay() {
+    UltraCanvasFilerWidget* shown = VisibleFiler();
+    if (!shown || !sortDropdown || !viewDropdown) return;
+    std::string fixedLabel;
+    bool fixedAscending = true;
+    const bool fixed = VisibleFixedOrder(fixedLabel, fixedAscending);
+
+    syncingControls = true;
+    // The fixed order is not a sort field, so it gets an entry of its own
+    // behind the five fields, present only while such a view is up.
+    constexpr int kSortFieldCount = 5;
+    while (sortDropdown->GetItemCount() > kSortFieldCount)
+        sortDropdown->RemoveItem(sortDropdown->GetItemCount() - 1);
+    if (fixed) {
+        sortDropdown->AddItem(fixedLabel);
+        sortDropdown->SetSelectedIndex(kSortFieldCount, false);
+    } else {
+        switch (shown->GetSortField()) {
+            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
+            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
+            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
+            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
+            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+        }
+    }
+    sortDropdown->SetDisabled(fixed);
+
+    switch (shown->GetViewType()) {
         case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
         case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
         case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
@@ -4607,8 +4736,19 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
         default: break;
     }
     syncingControls = false;
+    sortDropdown->RequestRedraw();
+    viewDropdown->RequestRedraw();
 
-    UpdatePreviewPane();
+    if (!sortOrderButton) return;
+    if (!fixed) {
+        sortOrderButton->SetDisabled(false);
+        UpdateSortOrderButton();
+        return;
+    }
+    sortOrderButton->SetIcon(IconPath(fixedAscending ? "sort-up.svg" : "sort-down.svg"));
+    sortOrderButton->SetTooltip(fixedLabel + " - this list keeps its own order");
+    sortOrderButton->SetDisabled(true);
+    sortOrderButton->RequestRedraw();
 }
 
 UltraFilerWindow::FilerTabState* UltraFilerWindow::ActiveTabState() const {
@@ -4717,6 +4857,7 @@ void UltraFilerWindow::BuildHistoryView() {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     historyTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
+        SyncCommandBarToVisibleDisplay();   // each page has its own view
     };
 
     for (int i = 0; i < HistoryTabCount; ++i) {
@@ -4782,6 +4923,11 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
+        WireFavoriteMarkProvider(histFiler.get());
+        // Display > Type from the page's own context menu.
+        histFiler->onViewTypeChanged = [this](FilerViewType) {
+            SyncCommandBarToVisibleDisplay();
+        };
 
         page->AddChild(histFiler);
         historyFilers[i] = histFiler;
@@ -4809,6 +4955,7 @@ void UltraFilerWindow::SetHistoryVisible(bool visible) {
         historyPane->SetVisible(false);
         split->SetVisible(true);
     }
+    SyncCommandBarToVisibleDisplay();
     UpdateStatusBar();
     UpdateWindowTitle();
 }
@@ -4924,7 +5071,7 @@ void UltraFilerWindow::RecordFolderInHistory(const std::string& folder) {
     // Archive interiors are not real directories - they would only be pruned
     // from the list again on the next read.
     std::error_code ec;
-    if (folder.empty() || !fs::is_directory(folder, ec) || ec) return;
+    if (folder.empty() || !fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec) || ec) return;
     history.Record(FilerHistoryKind::Folder, folder);
     // The Folders tab is stale now if it is on screen.
     if (historyShown && historyFilers[HistoryFolders]) {
@@ -4970,6 +5117,7 @@ void UltraFilerWindow::BuildFavoritesView() {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     favoritesTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
+        SyncCommandBarToVisibleDisplay();   // each page has its own view
     };
 
     for (int i = 0; i < HistoryTabCount; ++i) {
@@ -5035,6 +5183,9 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
+        favFiler->onViewTypeChanged = [this](FilerViewType) {
+            SyncCommandBarToVisibleDisplay();
+        };
 
         page->AddChild(favFiler);
         favoritesFilers[i] = favFiler;
@@ -5062,6 +5213,7 @@ void UltraFilerWindow::SetFavoritesVisible(bool visible) {
         favoritesPane->SetVisible(false);
         split->SetVisible(true);
     }
+    SyncCommandBarToVisibleDisplay();
     UpdateStatusBar();
     UpdateWindowTitle();
 }
@@ -5133,6 +5285,9 @@ void UltraFilerWindow::BuildComputerPage() {
         UpdateStatusBar();
     };
     computerFolders->onFolderRefreshed = [this]() { UpdateStatusBar(); };
+    computerFolders->onViewTypeChanged = [this](FilerViewType) {
+        SyncCommandBarToVisibleDisplay();
+    };
     computerFolders->onFileActivated = [this](const FilerEntry& entry) {
         RecordEntryInHistory(entry);
         RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
@@ -5228,6 +5383,7 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
         }
     }
     RefreshPaneBreadcrumbs();
+    SyncCommandBarToVisibleDisplay();
     UpdateNavButtons();
     UpdateStatusBar();
     UpdateWindowTitle();
@@ -5248,7 +5404,7 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
     std::vector<std::string> paths;
     const std::string home = UserHomeDir();
     std::error_code ec;
-    if (!home.empty() && fs::is_directory(home, ec) && !ec) paths.push_back(home);
+    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec) paths.push_back(home);
     // The cloud folders are the ones the tree's Cloud Storage section holds:
     // found once, off the UI thread, by QueueCloudStorageDiscovery.
     if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
@@ -5498,7 +5654,7 @@ void UltraFilerWindow::NavigateUp() {
         else SetComputerPageVisible(true);
         return;
     }
-    const fs::path p(current);
+    const fs::path p(UltraCanvas::PathFromUtf8(current));
     if (p.has_parent_path() && p.parent_path() != p) {
         NavigateTo(PathToUtf8(p.parent_path()));
         return;
@@ -6283,7 +6439,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             std::string start = settings.splitSecondFolder;
             std::error_code ec;
             if (start.empty() || (!IsRemoteFilerPath(start) &&
-                                  (!fs::is_directory(start, ec) || ec)))
+                                  (!fs::is_directory(UltraCanvas::PathFromUtf8(start), ec) || ec)))
                 start = filer ? filer->GetPath() : std::string();
             if (start.empty()) start = UserHomeDir();
             secondPane->filer->SetPath(start);

@@ -1,7 +1,7 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.5.0
+// Version: 3.6.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -13,6 +13,8 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTreeView.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <vector>
@@ -21,6 +23,7 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -61,6 +64,21 @@ namespace UltraCanvas {
         YesNoCancel = static_cast<int>(DialogButton::Yes) | static_cast<int>(DialogButton::No) | static_cast<int>(DialogButton::Cancel),
         RetryCancel = static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Cancel),
         AbortRetryIgnore = static_cast<int>(DialogButton::Abort) | static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Ignore)
+    };
+
+// ===== CUSTOM BUTTON ROLES =====
+    // What a custom button (AddCustomButton) is to the dialog beyond its
+    // label. Default is the button Return activates and the one drawn in the
+    // accent colour; Destructive is drawn red, so an answer that cannot be
+    // undone (Delete permanently, Replace a folder) looks different from the
+    // one beside it; Cancel is the button Escape and the close box map to.
+    // A button can be Default and Destructive at once: DestructiveDefault.
+    enum class DialogButtonRole {
+        Normal,
+        Default,
+        Destructive,
+        DestructiveDefault,
+        Cancel
     };
 
 // ===== DIALOG RESULT =====
@@ -178,6 +196,10 @@ namespace UltraCanvas {
         // Typography
         float messageFontSize = 12.0f;
         float detailsFontSize = 11.0f;
+        // The footer buttons' label size; 0 keeps UltraCanvasButton's own
+        // default. An application that runs its UI at one size (the Filer at
+        // 9) sets all three so a dialog reads like the window under it.
+        float buttonFontSize = 0.0f;
 
         // Buttons
         float buttonWidth = 80.0f;
@@ -293,6 +315,17 @@ namespace UltraCanvas {
         int selectedFilterIndex = 0;
         bool allowMultipleSelection = false;
         bool showHiddenFiles = false;
+        // Show the filters as a row of toggle buttons ("Show: Images | Audio |
+        // Video ...") instead of the "Files of type" dropdown. Any number can
+        // be on, the listing shows the files any of them matches, and the last
+        // one on cannot be switched off. All start on except an "All files"
+        // ("*") filter, unless that is the only kind there is. For an Open
+        // dialog whose filters are kinds of file rather than one format each.
+        bool filterToggles = false;
+        // Save: ask "Replace it?" before accepting a name that is already a
+        // file, as the platforms' own save dialogs do. Off for a caller that
+        // asks itself (or appends to the file).
+        bool confirmOverwrite = true;
         bool validateNames = true;
         bool addToRecent = true;
 
@@ -367,8 +400,14 @@ namespace UltraCanvas {
             DialogButton type = DialogButton::NoneButton;
             DialogResult result = DialogResult::NoResult;
             char mnemonic = 0;   // uppercase ASCII, 0 = no mnemonic
+            DialogButtonRole role = DialogButtonRole::Normal;   // custom buttons
         };
         std::vector<DialogButtonEntry> dialogButtons;
+        // Elements AddFooterElement() put at the left of the button bar (an
+        // "Apply to all" checkbox), and the spacer that pushes the buttons to
+        // the right once there is one.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> footerElements;
+        std::shared_ptr<UltraCanvasContainer> footerSpacer;
 
         // ===== KEYBOARD STATE =====
         // Keys that were already held when the dialog was shown. Their KeyDown /
@@ -417,6 +456,21 @@ namespace UltraCanvas {
 
         // ===== BUTTON MANAGEMENT =====
         void AddCustomButton(const std::string& text, DialogResult result, std::function<void()> callback = nullptr);
+        // The same with a role: which button Return activates and wears the
+        // accent colour (Default), which is drawn red (Destructive), which
+        // Escape maps to (Cancel). Buttons are laid out in the order they are
+        // added and each is as wide as its label needs. `callback` runs before
+        // the dialog closes with `result`.
+        void AddCustomButton(const std::string& text, DialogResult result,
+                             DialogButtonRole role,
+                             std::function<void()> callback = nullptr);
+        // Puts `element` at the left end of the button bar; the buttons move
+        // to the right end. For the scope choice of a question that is asked
+        // once per entry - "Apply to all 7 remaining conflicts" - which
+        // belongs beside the answers, not among the facts above them. Give
+        // the element an explicit size: the bar is laid out before the
+        // dialog has a render context to measure text with.
+        void AddFooterElement(std::shared_ptr<UltraCanvasUIElement> element);
         void SetButtonDisabled(DialogButton button, bool disabled);
         void SetButtonVisible(DialogButton button, bool visible);
 
@@ -460,6 +514,9 @@ namespace UltraCanvas {
         // Width follows the label (never below style.buttonWidth), so a longer
         // caption is not ellipsized away.
         void SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button);
+        // style.buttonFontSize on one button, when it is set; after the role
+        // style, which carries a font size of its own.
+        void ApplyButtonFont(const std::shared_ptr<UltraCanvasButton>& button);
         void WireButtonCallbacks();
 
         // ===== TYPE-SPECIFIC =====
@@ -473,8 +530,13 @@ namespace UltraCanvas {
         // Combined Markdown source fed to the message area (message + details).
         std::string ComposeMessageMarkdown() const;
         // Grow/shrink the window height so the message fits, clamped to the
-        // monitor. Called from ShowModal() before the dialog is positioned.
+        // monitor, after widening it when the footer row (the checkbox and
+        // the buttons) needs more than the configured width. Called from
+        // ShowModal() before the dialog is positioned.
         void AutoSizeToContent();
+        // The width the footer's row asks for at the current layout: its
+        // padding, every visible element and button, and the gaps between.
+        float FooterContentWidth() const;
 
         // ===== EVENT HELPERS =====
         void OnDialogButtonClick(DialogButton button);
@@ -533,6 +595,9 @@ namespace UltraCanvas {
 // ===== DIALOG MANAGER =====
     class UltraCanvasInputDialog;
     class UltraCanvasFileDialog;
+    class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
+    class UltraCanvasSegmentedControl;
+    struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
     private:
@@ -583,6 +648,9 @@ namespace UltraCanvas {
 
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);
+        // The framework's own file browser (open / save / select folder), for
+        // a caller that wants it whatever the native-dialogs setting says.
+        static std::shared_ptr<UltraCanvasFileDialog> CreateFileDialog(const FileDialogConfig& config);
         static void ShowDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,
                                std::function<void(DialogResult)> onResult = nullptr,
                                UltraCanvasWindowBase* parent = nullptr);
@@ -610,7 +678,9 @@ namespace UltraCanvas {
         // (GTK on Linux, Win32 MessageBox on Windows, NSAlert on macOS)
         // instead of the internal UltraCanvas modal dialog system.
         // Native dialogs are BLOCKING - callbacks are invoked immediately before return.
-        // File dialogs ALWAYS use native dialogs regardless of this setting.
+        // UltraCanvasFileLoader's file dialogs (open, open multiple, save,
+        // select folder) follow the same setting: native when it is on, the
+        // UltraCanvasFileDialog below when it is off.
         static void SetUseNativeDialogs(bool useNative);
         static bool GetUseNativeDialogs();
 
@@ -631,7 +701,6 @@ namespace UltraCanvas {
         static std::shared_ptr<UltraCanvasModalDialog> CreateMessageDialog(const std::string& message, const std::string& title,
                                                                            DialogType type, DialogButtons buttons);
         static std::shared_ptr<UltraCanvasInputDialog> CreateInputDialog(const InputDialogConfig& config);
-        static std::shared_ptr<UltraCanvasFileDialog> CreateFileDialog(const FileDialogConfig& config);
     };
 
 // ===== INPUT DIALOG CLASS =====
@@ -663,43 +732,62 @@ namespace UltraCanvas {
     };
 
 // ===== FILE DIALOG CLASS =====
+    // The framework's own open / save / select-folder dialog, used whenever
+    // native dialogs are off (UltraCanvasFileLoader's file dialogs, Cloud
+    // pickers). It is assembled from elements: an editable path field with an
+    // "up" button, a folder tree (the user's places and every mounted drive,
+    // loaded as it is expanded) beside the listing of the current folder, and
+    // the file-name field and file-type dropdown below them.
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
-        // File browser state
-        std::vector<std::string> directoryList;
-        std::vector<std::string> fileList;
-        int selectedFileIndex = -1;
-        int scrollOffset = 0;
-        int maxVisibleItems = 15;
-        std::string fileNameText;
         bool showHiddenFiles = false;
 
-        // Layout properties
-        int itemHeight = 20;
-        int pathBarHeight = 30;
-        int buttonHeight = 30;
-        int filterHeight = 25;
+        // ===== ELEMENTS =====
+        std::shared_ptr<UltraCanvasTextInput> pathInput;
+        std::shared_ptr<UltraCanvasButton> upButton;
+        std::shared_ptr<UltraCanvasTreeView> folderTree;
+        // The listing of the current folder: the framework's file display.
+        std::shared_ptr<UltraCanvasFilerWidget> filerView;
+        // Details / list / icon sizes for the listing.
+        std::shared_ptr<UltraCanvasSegmentedControl> viewSelector;
+        int viewIndex = 0;   // the view button chosen (remembered across dialogs)
+        // Details column widths (remembered across dialogs).
+        int sizeColumnWidth = 80;
+        int typeColumnWidth = 105;
+        int modifiedColumnWidth = 145;
+        std::shared_ptr<UltraCanvasTextInput> fileNameInput;
+        std::shared_ptr<UltraCanvasDropdown> filterDropdown;
+        // The filters as toggle buttons, in place of the dropdown, when
+        // fileConfig.filterToggles is set; activeFilters holds the ones on.
+        std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
+        std::set<int> activeFilters;
+        // A "Replace it?" question is showing: OK and activation wait for it.
+        bool overwritePromptOpen = false;
 
-        // Layout rects
-        Rect2Di pathBarRect;
-        Rect2Di fileListRect;
-        Rect2Di fileNameInputRect;
-        Rect2Di filterSelectorRect;
-
-        // Colors
-        Color listBackgroundColor = Colors::White;
-        Color listBorderColor = Colors::Gray;
-        Color selectedItemColor = Color(173, 216, 230, 128);
-        Color hoverItemColor = Color(220, 240, 255, 128);
-        Color directoryColor = Color(70, 130, 180, 255);
-        Color fileColor = Colors::Black;
-
-        // Hover state
-        int hoverItemIndex = -1;
+        // Folder-tree nodes whose sub-folders have been read.
+        std::set<std::string> loadedTreeNodes;
+        // The drive roots shown in the tree, used to find the row of a folder.
+        std::vector<std::string> treeDriveRoots;
+        // Set while the dialog itself selects a tree row, so that selection is
+        // not taken for the user navigating there.
+        bool syncingTree = false;
+        // The name the dialog put into the name field for the listing's
+        // selection; while the field still holds it, OK takes the selection.
+        std::string autoFileName;
+        // A file of the listing was activated (double click, Enter) and is
+        // accepted on the next loop pass, outside the widget's own handler;
+        // OK in between must not accept a second time.
+        bool activationPending = false;
+        // Set while the dialog itself points the listing at a folder, so the
+        // listing's path notification is not taken for the user's navigation.
+        bool settingListingPath = false;
+        // The tree row of the current folder is to be scrolled into view at
+        // the next layout: before the first one the tree has no height.
+        bool revealTreeSelectionPending = false;
 
     public:
         // Callbacks
@@ -737,58 +825,55 @@ namespace UltraCanvas {
         std::string GetSelectedFilePath() const;
         std::vector<std::string> GetSelectedFilePaths() const;
 
-        // Rendering override
-        void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-
-        // Event handling override
-        bool OnEvent(const UCEvent& event) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+        // Remembers the view and the window size for the next file dialog.
+        void PerformClose() override;
 
     protected:
-        void SetupFileInterface();
-        void PopulateFileList();
-        void OnFileSelected(const std::string& filename);
-        void OnDirectoryChanged(const std::string& directory);
+        // The name field takes the focus (the listing for a folder picker),
+        // so typing a name works at once.
+        void FocusInitialElement() override;
 
-        // Layout calculations
-        void CalculateFileDialogLayout();
-        Rect2Di GetPathBarBounds() const;
-        Rect2Di GetFileListBounds() const;
-        Rect2Di GetFileNameInputBounds() const;
-        Rect2Di GetFilterSelectorBounds() const;
+        // ===== CONSTRUCTION =====
+        void BuildFileInterface();
+        void RebuildFilterDropdown();
+        // Rebuilds the toggle buttons from fileConfig.filters and switches on
+        // the default set (see FileDialogConfig::filterToggles).
+        void RebuildFilterToggles();
+        // Closes the dialog with `files` as the result, once Accept has
+        // settled any overwrite question.
+        void FinishAccept(const std::vector<std::string>& files);
+        // True when the file name passes the type filter: the selected
+        // dropdown entry, or any toggle that is on.
+        bool MatchesTypeFilter(const std::string& fileName) const;
 
-        // Rendering helpers
-        void RenderPathBar(IRenderContext* ctx);
-        void RenderFileList(IRenderContext* ctx);
-        void RenderFileItem(IRenderContext* ctx, const std::string& name, int index, int y, bool isDirectory);
-        void RenderScrollbar(IRenderContext* ctx);
-        void RenderFileNameInput(IRenderContext* ctx);
-        void RenderFilterSelector(IRenderContext* ctx);
+        // ===== FOLDER TREE =====
+        void PopulateFolderTree();
+        void AddFolderTreeNode(const std::string& parentId, const std::string& nodeId,
+                               const std::string& label, const std::string& iconFile,
+                               bool probeSubFolders);
+        void LoadFolderTreeChildren(TreeNode* node);
+        // Selects the tree row of the current folder, opening its ancestors.
+        void SyncFolderTree();
 
-        // The file-name field is drawn by this dialog rather than being a real
-        // text input, so letters typed here are text, not mnemonics.
-        bool HasEditableTextField() const override { return fileConfig.dialogType != FileDialogType::SelectFolder; }
-        // The list and the name field are drawn by the dialog and handled at
-        // window level; focusing a button would take Return and the arrow keys
-        // away from them before OnEvent ever sees them.
-        void FocusInitialElement() override { ClearFocus(); }
+        // ===== LISTING =====
+        void OnListingSelectionChanged(const std::vector<FilerEntry>& selected);
+        // The listing entered a folder of its own accord (double click, Enter).
+        void OnListingPathChanged(const std::string& path);
+        // Applies the file-type filter (and folders-only for a folder
+        // picker) to the listing.
+        void ApplyListingFilter();
 
-        // Event handlers
-        void HandleFileListClick(const UCEvent& event);
-        void HandleFileListDoubleClick(const UCEvent& event);
-        // Returns false for keys the browser does not use, so Escape and the
-        // dialog's other keyboard handling still get their chance.
-        bool HandleKeyDown(const UCEvent& event);
-        void HandleTextInput(const UCEvent& event);
-        void HandleMouseWheel(const UCEvent& event);
-        void HandleFilterDropdownClick();
-        void HandleOkButton();
-        void HandleCancelButton();
-
-        // Navigation helpers
+        // ===== NAVIGATION =====
+        // Makes `directory` the current folder. syncTree: select its row in
+        // the folder tree (false when the tree is where the user chose it).
+        bool GoToDirectory(const std::string& directory, bool syncTree);
         void NavigateToDirectory(const std::string& dirName);
         void NavigateToParentDirectory();
-        void EnsureItemVisible();
-        void UpdateSelection();
+        void HandleOkButton();
+        // Closes the dialog with `files` (names in the current folder, or
+        // absolute paths) as the result.
+        void Accept(const std::vector<std::string>& files);
 
         // File helpers
         bool IsFileMatchingFilter(const std::string& fileName) const;

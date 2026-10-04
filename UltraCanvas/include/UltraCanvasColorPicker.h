@@ -1,6 +1,6 @@
 // include/UltraCanvasColorPicker.h
 // Comprehensive colour picker widget with HSV colour wheel (ring or bar
-// layout), SV square, foreground/background swatches, hex input, mode selector
+// layout, or a hue x lightness field / colour + intensity sliders), SV square, foreground/background swatches, hex input, mode selector
 // (HSV/HSL/RGB as either a tab bar or a dropdown) and editable channel sliders
 // (thin or thick style, optional +/- spinners, optionally collapsible) with an
 // alpha channel. Hovering a swatch floods the whole widget surface with that
@@ -10,8 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.3.1
-// Last Modified: 2026-09-26
+// Version: 1.4.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +26,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 namespace UltraCanvas {
     class UltraCanvasTextInput;
@@ -54,7 +55,14 @@ namespace UltraCanvas {
 // ===== HUE + SV AREA PRESENTATION =====
     enum class ColorPickerWheelStyle {
         Ring,       // circular hue ring with the SV square inscribed (default)
-        Bar         // maximised SV rectangle with a hue bar underneath
+        Bar,        // maximised SV rectangle with a hue bar underneath
+        // Hue x lightness field at full saturation: hue runs top (red) to
+        // bottom through the spectrum, lightness left (black) through the pure
+        // colour to right (white). One click picks colour and intensity.
+        HueLightnessField,
+        // Two sliders: a hue ("colour") bar, and an intensity bar running from
+        // white through the pure colour to black. Full saturation, as above.
+        HueLightnessSliders
     };
 
 // ===== STYLING =====
@@ -227,8 +235,11 @@ namespace UltraCanvas {
         ColorPickerSliderStyle GetSliderStyle() const { return sliderStyle; }
         void SetSliderStyle(ColorPickerSliderStyle s);
 
-        // Hue/SV presentation: circular ring with the inscribed SV square, or a
-        // maximised SV rectangle with the full hue range as a bar underneath.
+        // Hue/SV presentation: circular ring with the inscribed SV square, a
+        // maximised SV rectangle with the full hue range as a bar underneath,
+        // a hue x lightness field, or a hue slider plus an intensity
+        // (white -> colour -> black) slider. The last two pick at full
+        // saturation; the channel sliders below still edit any colour.
         ColorPickerWheelStyle GetWheelStyle() const { return wheelStyle; }
         void SetWheelStyle(ColorPickerWheelStyle s);
 
@@ -332,6 +343,7 @@ namespace UltraCanvas {
         // No TextDrag member: selecting text by dragging is the editor
         // child's own gesture, not one the picker tracks.
         enum class DragTarget { NoneTarget, HueRing, HueBar, SVSquare,
+                                HLField, LightnessBar,
                                 Channel0, Channel1, Channel2, Alpha };
         DragTarget dragTarget = DragTarget::NoneTarget;
 
@@ -388,7 +400,9 @@ namespace UltraCanvas {
         Point2Df wheelCenter;
         float ringOuter = 0, ringInner = 0;
         Rect2Df svRect;             // saturation/value square / rectangle
-        Rect2Df hueBarRect;         // hue bar (Bar style)
+        Rect2Df hueBarRect;         // hue bar (Bar / HueLightnessSliders)
+        Rect2Df hlFieldRect;        // hue x lightness field (HueLightnessField)
+        Rect2Df lightBarRect;       // intensity bar (HueLightnessSliders)
         Rect2Df currentSwatchRect;
         Rect2Df previousSwatchRect;
         Rect2Df swapArrowRect;
@@ -417,6 +431,14 @@ namespace UltraCanvas {
         void RenderHueRing(IRenderContext* ctx);
         void RenderHueBar(IRenderContext* ctx);
         void RenderSVSquare(IRenderContext* ctx);
+        void RenderHueLightnessField(IRenderContext* ctx);
+        void RenderLightnessBar(IRenderContext* ctx);
+        // Thick rounded bar filled with `stops`, with a round handle of
+        // `handleColor` at position t (0..1) travelling inside it.
+        void RenderGradientBar(IRenderContext* ctx, const Rect2Df& rect,
+                               const std::vector<GradientStop>& stops,
+                               float t, const Color& handleColor);
+        float GradientBarPosition(const Rect2Df& rect, const Point2Df& p) const;
         void RenderSwatches(IRenderContext* ctx);
         void RenderModeButton(IRenderContext* ctx);
         void RenderScreenPickButton(IRenderContext* ctx);
@@ -456,6 +478,16 @@ namespace UltraCanvas {
         std::string ChannelTooltip(const std::string& label) const;
         void UpdateHueFromBar(const Point2Df& p);
         void UpdateSVFromPoint(const Point2Df& p);
+        void UpdateHLFromPoint(const Point2Df& p);
+        void UpdateLightnessFromBar(const Point2Df& p);
+        // HSL lightness of the working colour, and setting hue + lightness at
+        // full HSL saturation (the two hue x lightness styles pick this way).
+        float CurrentLightness() const { return val * (1.0f - sat * 0.5f); }
+        void SetHueLightness(float h, float l);
+        bool IsHueLightnessStyle() const {
+            return wheelStyle == ColorPickerWheelStyle::HueLightnessField ||
+                   wheelStyle == ColorPickerWheelStyle::HueLightnessSliders;
+        }
         void UpdateSwatchHover(const Point2Df& p);           // full-surface preview
 
         // Value-field spinner zones (< and > arrows). Row 0..3 (3 = alpha).

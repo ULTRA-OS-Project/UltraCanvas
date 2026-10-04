@@ -1,5 +1,7 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.3.0 - WeighSentRecipients (recent mail weighs more)
+// Version: 0.2.0 - schema 8: the account's signature (SetAccountSignature)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailLocalStore.h"
@@ -10,6 +12,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -86,6 +90,20 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
 
     connection_ = connectionName;
 
+    // Write-ahead logging: a reader never waits for a writer, and a commit no
+    // longer forces the disk (synchronous=NORMAL is crash-safe under WAL; only
+    // the last commits before a power cut can be lost, and the next sync
+    // fetches them again). The background sync writes a row per message, and
+    // in the default rollback journal every one of those was its own fsync -
+    // with the UI reading the same file, switching accounts while a sync ran
+    // took 10-20 seconds. journal_mode is stored in the file; synchronous is
+    // per connection, so both are set on every open. Not for ":memory:",
+    // which has no journal file.
+    if (databasePath != ":memory:") {
+        UltraDb_Exec(connection_, "PRAGMA journal_mode=WAL");
+        UltraDb_Exec(connection_, "PRAGMA synchronous=NORMAL");
+    }
+
     std::vector<UltraDbMigration> steps = {
         { 1, "initial schema",
           "CREATE TABLE accounts("
@@ -159,6 +177,12 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
         { 7, "attachment count per message",
           // -1 = not counted yet; filled when a body is downloaded or read.
           "ALTER TABLE message_security ADD COLUMN attachments INTEGER DEFAULT -1;" },
+        { 8, "account signature",
+          // 'none' keeps what existing accounts did: no signature.
+          "ALTER TABLE accounts ADD COLUMN signature_kind TEXT DEFAULT 'none';"
+          "ALTER TABLE accounts ADD COLUMN signature_text TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN signature_html TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN signature_replies INTEGER DEFAULT 1;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -200,7 +224,8 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         "SELECT account_id, display_name, email, short_name, "
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
-        "  provider_name, imap_auth, smtp_auth FROM accounts "
+        "  provider_name, imap_auth, smtp_auth, "
+        "  signature_kind, signature_text, signature_html, signature_replies FROM accounts "
         "ORDER BY short_name", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -222,9 +247,25 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         a.providerName  = row["provider_name"].AsString();
         a.imap.auth     = MailAuthFromString(row["imap_auth"].AsString());
         a.smtp.auth     = MailAuthFromString(row["smtp_auth"].AsString());
+        a.signature.kind      = SignatureKindFromString(row["signature_kind"].AsString());
+        a.signature.text      = row["signature_text"].AsString();
+        a.signature.html      = row["signature_html"].AsString();
+        a.signature.onReplies = row["signature_replies"].AsInt() != 0;
         out.push_back(std::move(a));
     }
     return UltraDbResult::Ok();
+}
+
+UltraDbResult LocalStore::SetAccountSignature(const std::string& accountId,
+                                              const Signature& signature) {
+    if (accountId.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "account id must not be empty");
+    return UltraDb_Exec(connection_,
+        "UPDATE accounts SET signature_kind=?, signature_text=?, signature_html=?, "
+        "signature_replies=? WHERE account_id=?",
+        { ToString(signature.kind), signature.text, signature.html,
+          static_cast<int64_t>(signature.onReplies ? 1 : 0), accountId });
 }
 
 UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
@@ -375,12 +416,68 @@ UltraDbResult LocalStore::GetMaxUid(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult LocalStore::WeighSentRecipients(std::map<std::string, double>& out,
+                                              int64_t now, double halfLifeDays) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT s.to_addrs AS t, s.date AS d FROM messages s JOIN folders sf "
+        "ON sf.account_id = s.account_id AND sf.name = s.folder "
+        "WHERE sf.role = 'sent' AND (s.flags & " + std::to_string(Flag_Deleted) + ")=0",
+        {}, rs);
+    if (!q) return q;
+    for (const auto& row : rs) {
+        // A message dated in the future (a wrong clock) weighs as one sent now.
+        const double ageDays =
+            std::max<double>(0.0, static_cast<double>(now - row["d"].AsInt64()) / 86400.0);
+        const double weight = halfLifeDays > 0.0 ? std::exp2(-ageDays / halfLifeDays) : 1.0;
+        std::set<std::string> once;   // an address listed twice counts once
+        for (std::string addr : Split(row["t"].AsString(), '\n')) {
+            // "Name <addr>" or a bare address.
+            const std::size_t lt = addr.rfind('<'), gt = addr.rfind('>');
+            if (lt != std::string::npos && gt != std::string::npos && gt > lt)
+                addr = addr.substr(lt + 1, gt - lt - 1);
+            std::size_t b = 0, e = addr.size();
+            while (b < e && std::isspace(static_cast<unsigned char>(addr[b]))) ++b;
+            while (e > b && std::isspace(static_cast<unsigned char>(addr[e - 1]))) --e;
+            addr = addr.substr(b, e - b);
+            for (char& c : addr) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!addr.empty() && once.insert(addr).second) out[addr] += weight;
+        }
+    }
+    return UltraDbResult::Ok();
+}
+
+std::string LocalStore::NeedsAnswerRulesSql(int64_t now) const {
+    std::string rules;
+    if (needsAnswerRules_.maxAgeDays > 0) {
+        const int64_t cutoff = now - static_cast<int64_t>(needsAnswerRules_.maxAgeDays) * 86400;
+        rules += "m.date >= " + std::to_string(cutoff);
+    }
+    if (needsAnswerRules_.onlyWrittenTo) {
+        // The sender is one of the recipients (newline-separated to_addrs) of
+        // the account's Sent mail - or the account has no Sent mail stored.
+        const std::string sent =
+            "SELECT 1 FROM messages s JOIN folders sf "
+            "ON sf.account_id = s.account_id AND sf.name = s.folder "
+            "WHERE s.account_id = m.account_id AND sf.role = 'sent'";
+        if (!rules.empty()) rules += " AND ";
+        rules += "(NOT EXISTS (" + sent + ") OR EXISTS (" + sent +
+                 " AND instr(lower(char(10) || s.to_addrs || char(10)), "
+                 "char(10) || lower(m.from_addr) || char(10)) > 0))";
+    }
+    // The user's own "needs an answer" mark counts whatever the rules say.
+    return rules.empty() ? std::string("1") : "(m.answer_mark > 0 OR (" + rules + "))";
+}
+
 UltraDbResult LocalStore::ListNeedsAnswer(const std::string& accountId,
                                           std::vector<MessageEnvelope>& out) const {
     out.clear();
     std::string sql = std::string("SELECT ") + kMsgColumns +
-        " FROM messages WHERE account_id=? AND needs_answer=1 AND (flags & " +
-        std::to_string(Flag_Deleted) + ")=0 ORDER BY date DESC";
+        " FROM messages m WHERE m.account_id=? AND m.needs_answer=1 AND (m.flags & " +
+        std::to_string(Flag_Deleted) + ")=0 AND " +
+        NeedsAnswerRulesSql(static_cast<int64_t>(std::time(nullptr))) +
+        " ORDER BY m.date DESC";
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_, sql, { accountId }, rs);
     if (!q) return q;
@@ -610,7 +707,8 @@ UltraDbResult LocalStore::GetAccountStatus(std::vector<AccountStatus>& out,
         "  THEN 1 ELSE 0 END), 0) AS unread_today, "
         "COALESCE(SUM(CASE WHEN " + unreadInbox + " AND m.date < " + today +
         "  THEN 1 ELSE 0 END), 0) AS unread_older, "
-        "COALESCE(SUM(CASE WHEN m.needs_answer=1 AND (m.flags & " + del + ")=0 "
+        "COALESCE(SUM(CASE WHEN m.needs_answer=1 AND (m.flags & " + del + ")=0 AND " +
+        NeedsAnswerRulesSql(static_cast<int64_t>(std::time(nullptr))) +
         "  THEN 1 ELSE 0 END), 0) AS needs "
         "FROM accounts a "
         "LEFT JOIN messages m ON m.account_id = a.account_id "

@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.1
-// Last Modified: 2026-06-22
+// Version: 3.7.2
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 // Constructor
@@ -739,7 +740,7 @@ namespace UltraCanvas {
             LineColumnIndex hit = PosToLineColumn({curRect.x, targetY});
             if (hit.lineIndex >= 0) newPos = hit;
         } else if (cursorPosition.lineIndex > 0) {
-            newPos.lineIndex  = std::max(0, cursorPosition.lineIndex - 10);
+            newPos.lineIndex  = std::max(0, cursorPosition.lineIndex - PageLineCount());
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
                                           GetLineVisibleLength(newPos.lineIndex));
         } else {
@@ -767,7 +768,7 @@ namespace UltraCanvas {
             LineColumnIndex hit = PosToLineColumn({curRect.x, targetY});
             if (hit.lineIndex >= 0) newPos = hit;
         } else if (cursorPosition.lineIndex < (int)lines.size() - 1) {
-            newPos.lineIndex  = std::min((int)lines.size() - 1, cursorPosition.lineIndex + 10);
+            newPos.lineIndex  = std::min((int)lines.size() - 1, cursorPosition.lineIndex + PageLineCount());
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
                                           GetLineVisibleLength(newPos.lineIndex));
         } else {
@@ -1777,7 +1778,6 @@ namespace UltraCanvas {
                 hexFirstVisibleRow = std::min(maxFirstRow, hexFirstVisibleRow + scrollAmount);
             }
         } else {
-            float h = std::max(1.0f, computedLineHeight);
             if (event.wheelDelta > 0) {
                 ScrollUp(3);
             } else {
@@ -1921,7 +1921,12 @@ namespace UltraCanvas {
                 else handled = false;
                 break;
             case UCKeys::Escape:
-                break;
+                // Nothing in a text area to cancel, so leave the key to the
+                // window: a dialog maps it to Cancel. Swallowing it here kept
+                // every dialog with a notes field open on Escape while the
+                // caret was in that field. Returned straight away rather than
+                // falling through, so the key's "\x1b" text is never typed.
+                return false;
             default:
                 handled = false;
                 break;
@@ -2400,17 +2405,38 @@ namespace UltraCanvas {
         return std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
     }
 
-    // The wheel and the page keys come through here, so both glide. Consecutive
-    // steps chain onto the pending target, which is what turns a held-down
-    // PageDown into one continuous move instead of a series of jumps.
+    // The wheel, Ctrl+Up/Down and the drag autoscroll come through here, so
+    // all of them glide. Consecutive steps chain onto the pending target,
+    // which is what turns a held-down key into one continuous move instead
+    // of a series of jumps. (The page keys move the caret by a page and let
+    // the view follow it: see MoveCursorPageUp / PageLineCount.)
+    // One step is one line as laid out (computedLineHeight, the measured
+    // font line height times style.lineHeight), so a wheel notch moves the
+    // text by whole lines. It used to guess 1.3 x the font size, which
+    // drifted from the real height by a few pixels a notch and left the
+    // top line cut part-way through after a few turns. Before the first
+    // layout pass the measured value is not there yet; the estimate stands
+    // in until it is.
+    float UltraCanvasTextArea::ScrollStepHeight() const {
+        return computedLineHeight > 0 ? computedLineHeight : style.fontStyle.fontSize * 1.3f;
+    }
+
+    // Lines that fit the visible text area: what one PageUp / PageDown moves
+    // by when the caret has no on-screen rectangle to measure a page from
+    // (before the first layout, or with the caret in a collapsed line). It
+    // was a fixed ten, which is most of a small area and a fraction of a
+    // tall one. Never less than one line, so the keys always move.
+    int UltraCanvasTextArea::PageLineCount() const {
+        float step = std::max(1.0f, ScrollStepHeight());
+        return std::max(1, static_cast<int>(visibleTextArea.height / step));
+    }
+
     void UltraCanvasTextArea::ScrollUp(int lineCount) {
-        float h = style.fontStyle.fontSize * 1.3f;
-        scrollAnimV.AnimateBy(-lineCount * h, 0.0, MaxVerticalScroll());
+        scrollAnimV.AnimateBy(-lineCount * ScrollStepHeight(), 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollDown(int lineCount) {
-        float h = style.fontStyle.fontSize * 1.3f;
-        scrollAnimV.AnimateBy(lineCount * h, 0.0, MaxVerticalScroll());
+        scrollAnimV.AnimateBy(lineCount * ScrollStepHeight(), 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollLeft(int chars) {
@@ -2538,7 +2564,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
         if (!result) {
-            std::filesystem::path p(filename);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filename));
             std::string ext = PathToUtf8(p.extension());
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);
@@ -2830,16 +2856,10 @@ namespace UltraCanvas {
         if (findText.empty()) return;
 
         SaveState();
-        int findLen = utf8_length(findText);
         int replaceLen = utf8_length(replaceText);
 
         if (all) {
-            int pos = 0;
-            while ((pos = utf8_find(textContent, findText, pos, lastSearchCaseSensitive)) >= 0) {
-                utf8_replace(textContent, pos, findLen, replaceText);
-                pos += replaceLen;
-            }
-            SetText(textContent);
+            SetText(utf8_replace_all(textContent, findText, replaceText, lastSearchCaseSensitive));
         } else {
             if (HasSelection()) {
                 std::string selected = GetSelectedText();
@@ -2893,10 +2913,10 @@ namespace UltraCanvas {
         }
 
         int searchLen = utf8_length(searchText);
-        int pos = 0;
-        while ((pos = utf8_find(textContent, searchText, pos, lastSearchCaseSensitive)) >= 0) {
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, lastSearchCaseSensitive);
+        searchHighlights.reserve(matches.size());
+        for (int pos : matches) {
             searchHighlights.push_back({pos, pos + searchLen});
-            pos += searchLen;
         }
         RequestRedraw();
     }
@@ -3103,15 +3123,7 @@ namespace UltraCanvas {
             return count;
         }
 
-        int count = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            count++;
-            pos += searchLen;
-        }
-        return count;
+        return static_cast<int>(utf8_find_all(textContent, searchText, caseSensitive).size());
     }
 
     int UltraCanvasTextArea::GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive) const {
@@ -3143,16 +3155,9 @@ namespace UltraCanvas {
         int currentPos = GetSelectionMinGrapheme();
         if (currentPos < 0) currentPos = 0;
 
-        int index = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            index++;
-            if (pos == currentPos) {
-                return index;
-            }
-            pos += searchLen;
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, caseSensitive);
+        for (size_t i = 0; i < matches.size(); i++) {
+            if (matches[i] == currentPos) return static_cast<int>(i) + 1;
         }
         return 0; // Current selection doesn't match any occurrence
     }
@@ -3295,16 +3300,22 @@ namespace UltraCanvas {
     }
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
-        LineLayoutBase* line;
-        if (lineLayouts.empty()) {
-            UpdateLineLayouts(GetRenderContext());
-        }
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
         }
-        if (idx >= 0 && idx <= (int)lineLayouts.size()) {
+        // Layouts are built through the render context, and an element that is
+        // not in a window yet has none (a ScrollTo() or a cursor query straight
+        // after SetText() on a detached text area). Nothing is laid out then;
+        // the first Render builds the layouts.
+        IRenderContext* ctx = GetRenderContext();
+        if (lineLayouts.empty()) {
+            if (!ctx) return nullptr;
+            UpdateLineLayouts(ctx);
+        }
+        if (idx >= 0 && idx < (int)lineLayouts.size()) {
             if (!lineLayouts[idx]) {
-                UpdateLineLayouts(GetRenderContext());
+                if (!ctx) return nullptr;
+                UpdateLineLayouts(ctx);
             }
             return lineLayouts[idx].get();
         }
@@ -3741,13 +3752,11 @@ namespace UltraCanvas {
                     ctx->SetFontStyle(style.fontStyle);
                     ctx->SetTextPaint(markdownStyle.imagePlaceholderTextColor);
                     float tw = static_cast<float>(ctx->GetTextLineWidth(label));
-                    int lh = computedLineHeight > 0
-                             ? computedLineHeight
-                             : static_cast<int>(style.fontStyle.fontSize * 1.3f);
                     float tx = static_cast<float>(dst.x) +
                                std::max(0.0f, (static_cast<float>(dst.width) - tw) / 2.0f);
-                    float ty = static_cast<float>(dst.y) +
-                               std::max(0.0f, (static_cast<float>(dst.height) - lh) / 2.0f);
+                    // A single line centred in the box: on its capitals, as every
+                    // other single-line label in the framework is.
+                    float ty = static_cast<float>(ctx->TextTopCentredOnCaps(dst, style.fontStyle));
                     ctx->DrawText(label, Point2Dd(tx, ty));
                     ctx->PopState();
                 }

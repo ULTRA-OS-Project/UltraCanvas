@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.19.0
-// Last Modified: 2026-09-24
+// Version: 1.21.0
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,6 +106,7 @@
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerFindTextDialog.h"
+#include "UltraFilerFolderExport.h"
 #include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
@@ -409,6 +410,14 @@ private:
     // option, then starts a content search of the browsing view's folder and
     // its sub folders (RunSearch).
     void OpenFindTextDialog();
+    // Extras > Export: the one folder the menu acts on (the selected folder,
+    // or the shown folder while nothing is selected) - empty when the
+    // selection is not exactly one local folder.
+    std::string ExportTargetFolder() const;
+    // Extras > Export > Folder content / Folder tree content / Folder tree as
+    // CSV: opens a text window with the export of ExportTargetFolder(),
+    // which can be saved.
+    void ExportFolder(FolderExportKind kind);
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
     // name filter — no disk walk). When nothing matches, the filer shows the
@@ -602,6 +611,12 @@ private:
     // Installs FolderIconPath as a freshly created file display's
     // folderIconProvider, so every view of it draws the icons.
     void WireFolderIconProvider(UltraCanvasFilerWidget* target);
+    // Installs the favorite heart: every entry that is in the Favorites view
+    // (not one only pinned into the tree) carries it at the left of its row
+    // or tile. Not on the Favorites view's own pages, where every entry is
+    // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
+    void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with
     // nothing selected, to the shown folder). Extras > Remove folder icon
@@ -677,6 +692,19 @@ private:
     // Repaints the sort-direction button from the filer's own direction:
     // sort-up.svg while ascending, sort-down.svg while descending.
     void UpdateSortOrderButton();
+    // Points the command bar's View dropdown, Sort dropdown and sort-direction
+    // button at the display on screen (VisibleFiler): the active tab's folder,
+    // or a History / Favorites page, or the Computer page. Those three show
+    // lists in an order of their own (most recently used first, pin order,
+    // Home first) that sorting cannot change, so while one is up the Sort
+    // dropdown names that order in an entry of its own and is greyed out
+    // together with the direction button; the View dropdown stays live and
+    // switches the page shown. Leaving the view puts the tab's own sort back
+    // into both. Called whenever what is on screen changes.
+    void SyncCommandBarToVisibleDisplay();
+    // The fixed order of the display on screen ("Last used", "Order pinned",
+    // ...) and its direction, or false for a sortable folder display.
+    bool VisibleFixedOrder(std::string& label, bool& ascending) const;
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
@@ -786,6 +814,9 @@ private:
     // the History and Favorites lists) so it opens configured rather than
     // waiting for the next settings change.
     void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
+    // Handling > File operations: the standing answers to the questions a
+    // copy, move or delete asks, pushed into one display.
+    void ApplyFileOperationSettings(UltraCanvasFilerWidget& target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
     // History / Clear Favorites actions. `page` points it straight at one
@@ -970,6 +1001,10 @@ private:
     // *.cpp; *.h", ", match case" ("" for a plain search of every file).
     std::string searchFindQualifier;
     FilerFindTextOptions lastFindText;     // Find text dialog's previous options
+    // The open Extras > Export windows. Each owns the worker building its
+    // text, so they are kept (and joined on destruction) here; closed ones
+    // are let go when the next export opens.
+    std::vector<std::shared_ptr<UltraFilerFolderExportWindow>> exportWindows;
     std::string searchStatus;              // what the status bar says about it
     bool searchResultsShown = false;       // first batch already on display
     bool scanButtonStops = false;          // the in-field button reads "Stop"

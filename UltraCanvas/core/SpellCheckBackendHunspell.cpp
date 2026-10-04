@@ -79,7 +79,7 @@ DictionaryEncoding ParseEncodingName(const std::string& rawName) {
 // Reads the SET directive from a .aff file. Hunspell's documented default when
 // the directive is absent is ISO-8859-1.
 DictionaryEncoding ReadAffixEncoding(const std::string& affixPath) {
-    std::ifstream input(affixPath);
+    std::ifstream input(UltraCanvas::PathFromUtf8(affixPath));
     if (!input) return DictionaryEncoding::Unsupported;
 
     std::string line;
@@ -253,10 +253,10 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
 
     for (const std::string& directory : BuildDictionarySearchPaths()) {
         std::error_code directoryError;
-        if (!fs::is_directory(directory, directoryError) || directoryError) continue;
+        if (!fs::is_directory(PathFromUtf8(directory), directoryError) || directoryError) continue;
 
         std::error_code iterationError;
-        fs::directory_iterator it(directory, iterationError);
+        fs::directory_iterator it(PathFromUtf8(directory), iterationError);
         if (iterationError) continue;
 
         for (const fs::directory_entry& entry : it) {
@@ -271,7 +271,7 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
             dictionaryPath.replace_extension(".dic");
 
             std::error_code existsError;
-            if (!fs::exists(dictionaryPath, existsError) || existsError) continue;
+            if (!fs::exists(UltraCanvas::PathFromUtf8(dictionaryPath), existsError) || existsError) continue;
 
             fs::path base = entry.path();
             base.replace_extension();

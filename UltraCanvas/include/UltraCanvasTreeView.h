@@ -1,6 +1,6 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-09-08
+// Last Modified: 2026-10-02 - GetRequiredWidth (the width the widest row on show needs)
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -466,6 +466,17 @@ public:
     void ScrollBy(int deltaY);
     // Jump back to the first row (animated when the scrollbar has smooth scrolling on).
     void ScrollToTop();
+
+    // ===== MEASURING =====
+    // The width the tree needs to show its widest row in full: from its left
+    // edge to the end of the longest label (indent, expander and check-flag
+    // slots, left icon and text), plus its right padding and border, the right
+    // icon of that row and the vertical scrollbar while one is shown. Only the
+    // rows on show count - the children of a collapsed node do not. Text is
+    // measured with `ctx`, or the window's render context when null; returns 0
+    // when neither is there yet (the tree is not in a window), so a caller that
+    // sizes a pane from it can try again once the window is up.
+    int GetRequiredWidth(IRenderContext* ctx = nullptr);
 
     // ===== SCROLL-TO-TOP BUTTON =====
     // A floating "move to the top" button drawn over the bottom-right corner of

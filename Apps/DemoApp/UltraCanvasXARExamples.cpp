@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasXARExamples.cpp
 // Xara (.xar) vector graphics demo examples for UltraCanvas Framework
-// Version: 1.3.0
-// Last Modified: 2026-09-14
+// Version: 1.3.1
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -68,7 +68,7 @@ namespace UltraCanvas {
             element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        ShowFullSizeImageViewer(path);
+                        ShowInMediaViewer(path);
                         statusLabel->SetText("Opened in the media viewer: " + path);
                         return true;
                     case UCEventType::MouseEnter:

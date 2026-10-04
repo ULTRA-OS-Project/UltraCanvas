@@ -6,6 +6,7 @@
 #include "EmailCleanerIngest.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
+#include "EmailCleanerMailBackend.h"   // LooksLikeTrash
 #include "EmailCleanerUnsubscribe.h"
 
 #include <UltraNet/UltraNetMime.h>
@@ -93,15 +94,24 @@ void IngestStats::Add(const IngestStats& other) {
     failed      += other.failed;
     unwanted    += other.unwanted;
     attachments += other.attachments;
+    movedAway   += other.movedAway;
+    foldersLeftOut += other.foldersLeftOut;
 }
 
 bool ReadFileBytes(const std::string& path, std::string& out) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
     out = buffer.str();
     return true;
+}
+
+bool LooksLikeTrashDirectory(const std::string& directoryName) {
+    if (MailBackend::LooksLikeTrash(directoryName)) return true;
+    std::string path = directoryName;
+    std::replace(path.begin(), path.end(), '_', '/');
+    return MailBackend::LooksLikeTrash(path);
 }
 
 int64_t UidFromFileName(const std::string& fileName) {
@@ -249,12 +259,12 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
                                             const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    if (!std::filesystem::is_directory(directory, ec)) return stats;
+    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(directory), ec)) return stats;
 
     // Sort by uid so an interrupted run resumes in a predictable place and the
     // progress numbers move monotonically.
     std::vector<std::pair<int64_t, std::filesystem::path>> files;
-    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+    for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(directory), ec)) {
         if (ec) break;
         if (!entry.is_regular_file(ec)) continue;
         const std::string name = PathToUtf8(entry.path().filename());
@@ -273,7 +283,15 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
         if (options.maxMessages > 0 && stats.analysed >= options.maxMessages) break;
         ++stats.filesSeen;
 
-        if (options.skipExisting && uid != 0 &&
+        // A message EmailCleaner moved to Trash is still in this cache - the
+        // cache is not ours to prune (UltraMail drops it at its next sync) -
+        // so the move is looked up before
+        // anything else, on a re-analyse as much as on a scan.
+        std::string movedId;
+        const bool movedAway = uid != 0 &&
+            store_.FindMovedAway(accountId, folder, uid, movedId);
+
+        if (!movedAway && options.skipExisting && uid != 0 &&
             store_.HasMessage(accountId, folder, uid)) {
             ++stats.skipped;
             continue;
@@ -287,6 +305,15 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
 
         AnalyzedMessage message =
             Analyze(raw, accountId, folder, uid, options.ownerAddress);
+        if (movedAway) {
+            if (message.messageId == movedId) {
+                ++stats.movedAway;
+                continue;
+            }
+            // The server reused the UID (a UIDVALIDITY reset): a different
+            // message, which is analysed like any other.
+            store_.ForgetMovedAway(accountId, folder, uid);
+        }
         if (!options.storeHits) message.hits.clear();
         ++stats.analysed;
         if (IsUnwanted(message.category)) ++stats.unwanted;
@@ -322,13 +349,22 @@ IngestStats Ingestor::IngestMailCache(const std::string& mailCacheDir,
                                       const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    const std::filesystem::path root = PathFromUtf8(mailCacheDir) / accountId;
+    const std::filesystem::path root = PathFromUtf8(mailCacheDir) / PathFromUtf8(accountId);
     if (!std::filesystem::is_directory(root, ec)) return stats;
 
     std::vector<std::filesystem::path> folders;
     for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
         if (ec) break;
-        if (entry.is_directory(ec)) folders.push_back(entry.path());
+        if (!entry.is_directory(ec)) continue;
+        const std::string name = PathToUtf8(entry.path().filename());
+        if (options.skipFolders.count(name) ||
+            (options.skipTrash && LooksLikeTrashDirectory(name))) {
+            // Left out - and anything an earlier scan stored for it goes too.
+            store_.ClearFolder(accountId, name);
+            ++stats.foldersLeftOut;
+            continue;
+        }
+        folders.push_back(entry.path());
     }
     std::sort(folders.begin(), folders.end());
 

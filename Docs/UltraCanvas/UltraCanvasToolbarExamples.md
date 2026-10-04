@@ -4,7 +4,7 @@
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.1.0
+**Version:** 1.6.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -17,8 +17,9 @@
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
 - **Builder API**: Fluent `UltraCanvasToolbarBuilder`
 - **Preset Factories**: One-call construction of common toolbar shapes
-- **Item Badges and Tooltips**: Visual notification badges and hover tooltips
-- **Auto-Hide and Drag Modes**: Optional auto-hide and drag-to-move / drag-to-reorder
+- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
+- **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
+- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
 ## Header Include
 
@@ -42,6 +43,8 @@ void SetOrientation(ToolbarOrientation orient);
 void SetToolbarPosition(ToolbarPosition pos);
 void SetAppearance(const ToolbarAppearance& app);
 void SetOverflowMode(ToolbarOverflowMode mode);
+void SetScrollHints(bool show);          // Scroll mode: the chevron at the edge (default on)
+bool ScrollHintsEnabled() const;
 void SetVisibility(ToolbarVisibility vis);
 void SetDragMode(ToolbarDragMode mode);
 
@@ -52,19 +55,42 @@ const ToolbarAppearance& GetAppearance() const;
 
 ### Item Management
 
+The toolbar is a facade over its flex children: every `Add*` creates a real
+widget and adds it as a child; removal works by id or by index. A badge set on
+an item is a child too — an absolutely positioned overlay anchored to the item —
+but never an *item*: the item helpers below skip it.
+
 ```cpp
-void AddItem(const ToolbarItemDescriptor& descriptor);
-void AddItem(std::shared_ptr<UltraCanvasToolbarItem> item);
-void InsertItem(int index, const ToolbarItemDescriptor& descriptor);
-void InsertItem(int index, std::shared_ptr<UltraCanvasToolbarItem> item);
 void RemoveItem(const std::string& identifier);
 void RemoveItemAt(int index);
 void ClearItems();
 
-std::shared_ptr<UltraCanvasToolbarItem> GetItem(const std::string& identifier);
-std::shared_ptr<UltraCanvasToolbarItem> GetItemAt(int index);
-int GetItemCount() const;
+std::shared_ptr<UltraCanvasUIElement> GetWidget(const std::string& identifier);
+std::shared_ptr<UltraCanvasUIElement> GetWidgetAt(int index);   // items only
+int GetItemCount() const;                                        // items only
+std::vector<std::shared_ptr<UltraCanvasUIElement>> GetItems() const;
+int GetItemIndex(const std::string& identifier) const;           // -1 if none
+bool MoveItem(int fromIndex, int toIndex);                       // fires onItemReordered
+std::vector<std::string> GetItemOrder() const;                   // ids in order, "" for unnamed
 ```
+
+### Item Badges
+
+```cpp
+std::shared_ptr<UltraCanvasBadge> SetItemBadge(const std::string& id, const std::string& text,
+                                               std::optional<Color> color = std::nullopt);
+std::shared_ptr<UltraCanvasBadge> SetItemBadgeCount(const std::string& id, int count,
+                                                    std::optional<Color> color = std::nullopt);
+std::shared_ptr<UltraCanvasBadge> SetItemBadgeDot(const std::string& id, const Color& color);
+std::shared_ptr<UltraCanvasBadge> GetItemBadge(const std::string& id);
+void ClearItemBadge(const std::string& id);
+void SetItemBadgeCorner(BadgeCorner corner, float offsetX = -7, float offsetY = 7);
+```
+
+Each call replaces what the item showed before; a count of 0 hides the badge
+(the `UltraCanvasBadge` rule), `ClearItemBadge` removes it. The badge follows
+its item through reorders and scrolling. The returned badge is the real
+[`UltraCanvasBadge`](UltraCanvasBadge.md) for any further styling.
 
 ### Convenience Methods
 
@@ -101,11 +127,20 @@ bool IsAutoHidden() const;
 ### Drag and Drop
 
 ```cpp
-void EnableItemReordering(bool enable);
-void BeginDrag(const Point2Di& startPos);
-void UpdateDrag(const Point2Di& currentPos);
-void EndDrag();
+void EnableItemReordering(bool enable);   // the user drags items into a new order
+bool IsItemReorderingEnabled() const;
+bool IsReorderingItem() const;            // a drag is in progress right now
+void SetDragMode(ToolbarDragMode mode);   // Movable: drag the whole toolbar
 ```
+
+With reordering on, a press on an item followed by a drag of six pixels along
+the toolbar picks the item up; it moves past its neighbours as the pointer
+does and `onItemReordered(from, to)` fires once on release when the order
+changed. A plain click still clicks. Spacers and separators are not dragged
+(they take no events). The toolbar watches the window's pointer events for
+this — an item's button consumes the press before the toolbar would see it —
+so the watch is installed when the toolbar reaches a window and removed with
+it.
 
 ## Enumerations
 
@@ -135,16 +170,6 @@ enum class ToolbarStyle {
 };
 ```
 
-### ToolbarItemType
-
-```cpp
-enum class ToolbarItemType {
-    Button, ToggleButton, DropdownButton, SplitButton,
-    Separator, Spacer, Label, TextInput, Dropdown,
-    Checkbox, RadioButton, CustomWidget, ButtonGroup, SearchBox
-};
-```
-
 ### ToolbarOverflowMode
 
 ```cpp
@@ -152,6 +177,21 @@ enum class ToolbarOverflowMode {
     OverflowNone, Wrap, Menu, Scroll, Hide
 };
 ```
+
+`Scroll` is the one that does something today: items keep their size instead
+of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
+beyond it, and the mouse wheel scrolls them into view along the toolbar's
+axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
+case: it must not squeeze twenty icons into the room for eight.
+
+While there is something past an edge, a 12 px strip in the toolbar's colour
+covers that edge with a small chevron pointing the way the items go, so a
+clipped bar never looks like a complete one; a click on the strip scrolls a
+page (the visible length less the strip). The strip is drawn over the edge
+of the item under it and takes that press, which is why the hint is a window
+watch like the reorder drag and not a child. Nothing is drawn while the items
+fit, and `SetScrollHints(false)` turns the strips off for a toolbar that
+wants the wheel alone.
 
 ### ToolbarIconSize
 
@@ -214,58 +254,14 @@ struct ToolbarAppearance {
 };
 ```
 
-## ToolbarItemDescriptor
+## Items are widgets
 
-A declarative description that the toolbar turns into a concrete item.
-
-```cpp
-struct ToolbarItemDescriptor {
-    ToolbarItemType type = ToolbarItemType::Button;
-    std::string identifier;
-    std::string text;
-    std::string iconPath;
-    std::string tooltip;
-
-    bool isToggle  = false;
-    bool isChecked = false;
-    bool isEnabled = true;
-    bool isVisible = true;
-
-    int visibilityPriority = 0;   // Higher = stays visible longer in overflow
-
-    std::vector<std::string> dropdownItems;
-
-    std::function<void()>                    onClick;
-    std::function<void(bool)>                onToggle;
-    std::function<void(const std::string&)>  onDropdownSelect;
-    std::function<void(const std::string&)>  onTextChange;
-
-    int   minWidth   = 0;
-    int   maxWidth   = 0;
-    int   fixedWidth = 0;
-    float stretch    = 0.0f;
-
-    // Badge
-    bool        hasBadge   = false;
-    std::string badgeText;
-    Color       badgeColor = Color(255, 0, 0, 255);
-
-    // Factory methods
-    static ToolbarItemDescriptor CreateButton(const std::string& id, const std::string& text,
-                                              const std::string& icon = "",
-                                              std::function<void()> onClick = nullptr);
-    static ToolbarItemDescriptor CreateToggleButton(const std::string& id, const std::string& text,
-                                                    const std::string& icon = "",
-                                                    std::function<void(bool)> onToggle = nullptr);
-    static ToolbarItemDescriptor CreateDropdown(const std::string& id, const std::string& text,
-                                                const std::vector<std::string>& items,
-                                                std::function<void(const std::string&)> onSelect = nullptr);
-    static ToolbarItemDescriptor CreateSeparator(const std::string& id = "");
-    static ToolbarItemDescriptor CreateSpacer(int size = 8);
-    static ToolbarItemDescriptor CreateFlexSpacer(float stretch = 1.0f);
-    static ToolbarItemDescriptor CreateLabel(const std::string& id, const std::string& text);
-};
-```
+There is no descriptor type: an item is the widget `AddButton`,
+`AddToggleButton`, `AddDropdownButton`, `AddSeparator`, `AddSpacer`,
+`AddStretch`, `AddLabel`, `AddSearchBox` or `AddAutoComplete` returns, and it
+is configured on that widget — a tooltip with `SetTooltip`, a style with
+`SetStyle`, a badge with the toolbar's `SetItemBadge*` calls. Anything the
+convenience methods do not cover is done on the returned `shared_ptr`.
 
 ## Events and Callbacks
 
@@ -278,7 +274,7 @@ std::function<void(int, int)>               onItemReordered;
 std::function<void(ToolbarPosition)>        onPositionChanged;
 ```
 
-Per-item callbacks live on the descriptors or the typed item objects (`UltraCanvasToolbarButton::SetOnClick`, `SetOnToggle`, etc.).
+Per-item callbacks live on the widgets themselves (`UltraCanvasButton::onClick`, `onToggle`, `onContextMenu`, …).
 
 ## Builder Pattern
 
@@ -447,23 +443,26 @@ auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
     .Build();
 ```
 
-### Item Descriptor with Badge
+### Badges and Reordering — a Taskbar
 
 ```cpp
-ToolbarItemDescriptor notif = ToolbarItemDescriptor::CreateButton(
-    "notifications", "", "media/icons/bell-icon.png",
-    [](){ /* open notifications */ });
-notif.hasBadge   = true;
-notif.badgeText  = "3";
-notif.badgeColor = Color(255, 0, 0, 255);
+auto running = std::make_shared<UltraCanvasToolbar>("Running", 0, 0, 0, 0);
+running->SetOrientation(ToolbarOrientation::Vertical);
+running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full, chevrons at the edges
+running->EnableItemReordering(true);                     // drag to reorder
+running->onItemReordered = [](int from, int to) { /* remember the order */ };
 
-toolbar->AddItem(notif);
+auto mail = running->AddButton("mail", "", "media/icons/desktop/mail.svg", [](){});
+mail->SetTooltip("Email");
+running->SetItemBadgeCount("mail", 14, Color(90, 90, 90, 255));   // a grey "14" pill
+running->SetItemBadgeDot("webcam", Color(220, 30, 30, 255));      // a red dot: on
+running->ClearItemBadge("webcam");                                // off again
 ```
 
 ## Implementation Notes
 
 - Use `UltraCanvasToolbarBuilder` for fluent construction; for one-off items, the convenience methods on the toolbar itself are equivalent.
-- `AddSpacer(size)` inserts a fixed-width spacer; `AddStretch(weight)` (or `ToolbarItemDescriptor::CreateFlexSpacer`) inserts a flexible spacer that consumes remaining space.
+- `AddSpacer(size)` inserts a fixed-width spacer; `AddStretch(weight)` inserts a flexible spacer that consumes remaining space.
 - `AddSeparator()` adds a thin visual divider that adapts to the toolbar's orientation.
 - Horizontal and vertical orientations are fully supported by all styles.
 - Built-in styles: `Standard`, `Flat`, `Docked` (macOS dock), `Ribbon`, `Sidebar`, `StatusBar`.

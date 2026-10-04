@@ -9,9 +9,16 @@
 // on stdin and writes the device's own language on stdout. So a page has to
 // be handed over in that format, and this is the writer for it.
 //
-// The format is a 4-byte sync word, then a 1796-byte page header, then the
-// pixels, repeated per page. Everything is big-endian, because that is what
-// the sync word chosen below declares.
+// The format is a 4-byte sync word, once, at the start of the stream; then,
+// for each page, a 1796-byte header and the pixels. Everything is big-endian,
+// because that is what the sync word chosen below declares.
+//
+// "Once" is the part that matters. A sync word before every page reads, to
+// the filter, as the first four bytes of the second page's header: every
+// field after it is shifted, and CUPS's reader stops at that header without
+// an error - so a multi-page job printed its first page and nothing else,
+// successfully. That is what this writer did until the sync word was made
+// its own call.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -85,12 +92,13 @@ struct IOCupsRasterPage {
     }
 };
 
-// The number of bytes a page header occupies, sync word included. Fixed by
-// the format, and asserted by the tests rather than trusted.
+// The sizes the format fixes: the sync word that opens a stream, and the
+// header that opens each page. Asserted by the tests rather than trusted.
 constexpr size_t kCupsRasterSyncBytes = 4;
 constexpr size_t kCupsRasterHeaderBytes = 1796;
 
-// Appends the sync word and the page header to `out`.
+// Appends the sync word that opens a stream. Once per stream, before the
+// first page header - never again.
 //
 // The sync word is "RaS3": version 3, big-endian, and **uncompressed**. V2
 // raster is run-length encoded, and the encoder is the kind of code that is
@@ -98,8 +106,13 @@ constexpr size_t kCupsRasterHeaderBytes = 1796;
 // here is worth that: the raster goes down a pipe to a filter that reads it
 // immediately, so the bytes never reach a disk or a network and the size
 // costs nothing but a moment of memory.
-bool WriteCupsRasterPageHeader(const IOCupsRasterPage& page,
-                               std::vector<uint8_t>& out);
+void AppendCupsRasterSync(std::vector<uint8_t>& out);
+
+// Appends one page's header - the header only; the stream's sync word is
+// AppendCupsRasterSync's. False, with nothing appended, for a page that
+// fails IsValid().
+bool AppendCupsRasterPageHeader(const IOCupsRasterPage& page,
+                                std::vector<uint8_t>& out);
 
 // Appends one row, converting from 32-bit RGBA (top-down, tightly packed).
 //

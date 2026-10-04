@@ -4,8 +4,9 @@ TOTP (RFC 6238) and HOTP (RFC 4226) one-time codes, kept in a single file
 encrypted with a key derived from a master password. One card per account,
 each showing its current code and the seconds left before it rolls over.
 
-Accounts are enrolled by pointing the camera at the service's QR code, or by
-typing the Base32 setup key when there is no camera. They can be taken out
+Accounts are enrolled by pointing the camera at the service's QR code, by
+reading that code from an image file or straight off the screen, or by
+typing the Base32 setup key. They can be taken out
 again — one at a time, or all at once into an encrypted backup — because an
 authenticator that can only swallow secrets strands its users.
 
@@ -31,7 +32,7 @@ Changelog and version:
 | `NewVaultDialog.*` | First launch: the master password typed twice, with a strength meter; Create or Quit |
 | `SettingsDialog.*` | Idle timeout, lock on minimise, hide codes |
 | `AddAccountDialog.*` | Manual entry — issuer, account name, Base32 key, masked while typing |
-| `ScanAccountDialog.*` | Camera enrolment: preview, poll, decode, hand the URI to the same parser manual entry uses |
+| `ScanAccountDialog.*` | QR enrolment from the camera (preview, poll, decode), from an image file, or from the screen (captured in memory); every source hands the URI to the same parser manual entry uses |
 | `EditAccountDialog.*` | Rewrites an account's label and its OTP parameters |
 | `RevealSecretDialog.*` | Shows one account's setup key, so it can be enrolled elsewhere |
 | `ChangePasswordDialog.*` | Re-derives the vault key from a new master password |
@@ -97,12 +98,26 @@ thumbnailer would leak the second factor permanently. Frames are polled by the
 dialog's own timer on the UI thread rather than through the recorder's
 callback, whose thread is not documented.
 
+The same dialog reads a code that is not in front of a camera. *From image…*
+decodes a picture file — the QR the site offered to download, a photo copied
+off a phone. The file is opened by the QR scanner and nothing else: it is not
+copied, not thumbnailed, and not registered as a recent file, since the file
+already holds the seed in the clear and the desktop's recent list would hand
+it to anyone. *From screen* decodes what a browser window on this same
+machine is showing, which is the ordinary desktop case: the enrolment page
+and the authenticator share one display, and no camera can see either. The
+capture is `UltraCanvasDesktopShell::CaptureScreenImage`, which stays in
+memory — the framework's PNG-writing `CaptureScreen` would have put the seed
+in the Pictures folder — and the buffer is wiped as soon as it has been
+decoded. Both work without a camera, and both need the same libzbar decoder
+the camera path does.
+
 *Enter key* is the same destination by hand: issuer, account name and the
 Base32 setup key, masked while typing. It builds an `otpauth://` URI and hands
 that over, so manual entry and the scanner converge on one validated path.
 
-Both go through `AccountStore::AddFromUri`, which means a hostile QR code
-faces exactly the parser `Tests/UltraOtpTests.cpp` exercises. There is no
+All of them go through `AccountStore::AddFromUri`, which means a hostile QR
+code faces exactly the parser `Tests/UltraOtpTests.cpp` exercises. There is no
 second, laxer way into the vault. A duplicate is refused rather than silently
 replaced: overwriting an account destroys a second factor, so it has to be a
 deliberate *Remove* followed by an add.

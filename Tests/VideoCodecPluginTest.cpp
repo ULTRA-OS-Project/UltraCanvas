@@ -22,6 +22,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -129,7 +130,7 @@ MediaCodecRegistration FakeCodec() {
 
 std::string WriteSourceFile(const std::string& name) {
     const std::string path = "/tmp/" + name;
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     f << "not really a video, the plugin does not care";
     return path;
 }

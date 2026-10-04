@@ -14,6 +14,7 @@
 #include <fstream>
 #include <map>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -23,7 +24,7 @@ namespace UltraCanvas {
 
 bool EBookEngineBase::LoadFromFile(const std::string& filePath,
                                    const std::string& password) {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         Fail("Failed to open file: " + filePath);
         return false;

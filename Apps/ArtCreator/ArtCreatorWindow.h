@@ -18,6 +18,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasSlider.h"
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasGradientEditor.h"
@@ -124,6 +125,10 @@ private:
     // ----- tools and panels -----
     void SelectTool(ArtToolId id);
     ArtTool* ActiveTool() const;
+    // Display quality from the toolbar slider: 0 outlines, 1 fills and
+    // lines, 2 antialiased (VectorDisplayQuality).
+    void SetDisplayQuality(int level);
+    static const char* DisplayQualityName(VectorDisplayQuality quality);
     void RebuildToolOptions();
     void RebuildLayerPanel();
     void RebuildLinePanel();
@@ -158,6 +163,8 @@ private:
     std::shared_ptr<UltraCanvasContainer>       statusBar;
     std::shared_ptr<UltraCanvasLabel>           statusPos, statusZoom, statusSelection, statusHint;
     std::shared_ptr<UltraCanvasButton>          undoButton, redoButton;
+    std::shared_ptr<UltraCanvasSlider>          qualitySlider;
+    std::shared_ptr<UltraCanvasLabel>           qualityLabel;
     std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
 
     std::shared_ptr<VectorStorage::VectorDocument> document;

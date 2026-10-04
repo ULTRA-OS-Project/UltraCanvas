@@ -176,6 +176,23 @@ code.
 
 ## Version
 
+- 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
+  answered a registered handler that would not start from our process by
+  starting it from Explorer's, which hid the reason; the reason was the
+  packaged `mpr.dll` coder, kept out of the package since and repaired in an
+  installed one on start ([`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)).
+  A default open that fails now names the shell's error. The loader's
+  hard-error box stays off on the launching thread.
+- 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
+  "entry point not found" box: the shell loads a packaged app's activation
+  DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
+  process, and hard-error boxes are now off on that thread around every
+  launch. When the default open still fails for a registered handler, the
+  file is handed to `explorer.exe`, which activates the app from its own
+  process (removed again in 1.2.3). (Why the import failed at all - a packaged ImageMagick coder
+  named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
+  same day; see [*"Entry point not found" in a Windows
+  DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
 - 1.2.1 (2026-09-12): macOS default open goes through Launch Services
   (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
   spawning `/usr/bin/open`, so "nothing is registered for this file type" is

@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -40,7 +41,7 @@ inline VolumeSpace QueryVolumeSpace(const std::string& path) {
     VolumeSpace space;
     space.path = path;
     std::error_code ec;
-    const std::filesystem::space_info info = std::filesystem::space(path, ec);
+    const std::filesystem::space_info info = std::filesystem::space(UltraCanvas::PathFromUtf8(path), ec);
     if (ec || info.capacity == 0 ||
         info.capacity == static_cast<uintmax_t>(-1)) {
         return space;

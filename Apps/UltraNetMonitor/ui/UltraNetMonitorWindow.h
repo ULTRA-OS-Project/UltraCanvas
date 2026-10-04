@@ -22,7 +22,7 @@
 // queries share, so the single SQLite connection is never used from two
 // threads at once. The name and event sources themselves are started by
 // main.cpp before the window opens; the window only reports them.
-// Version: 0.9.0
+// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -63,6 +63,9 @@ public:
     // sources it started or could not (a proxy port that needed privilege,
     // a tracker that needs root); the Names and Events tabs show them.
     bool Initialize(std::vector<std::string> nameNotes = {});
+    // --debug-layout: after every snapshot, log the Live tab's two lists -
+    // bounds, rows, the scrollbar's range and where it sits - to debugOutput.
+    void SetLayoutDebug(bool enabled) { layoutDebug_ = enabled; }
     void Show();
 
 private:
@@ -84,6 +87,7 @@ private:
     void StopWorker();
     void ApplyPendingSnapshot();       // UI thread, from the timer
     void RefreshStatus();
+    void LogLayout();                  // --debug-layout, after each snapshot
     void SetPaused(bool paused);
 
     // ===== FILTERING =====
@@ -154,6 +158,7 @@ private:
     // "Purge" asks twice: the first click arms it, the second acts. A refresh
     // or a tab change disarms it.
     bool purgeArmed_ = false;
+    bool layoutDebug_ = false;
 
     // Names tab
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> namesFilter_;

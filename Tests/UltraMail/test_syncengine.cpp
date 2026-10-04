@@ -9,6 +9,7 @@
 #include "test_framework.h"
 
 #include "UltraMailSyncEngine.h"
+#include "UltraMailSyncService.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 
@@ -21,6 +22,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraMail;
@@ -67,10 +69,19 @@ public:
         out.uidValidity = uidValidity;
         return UltraNetResult::Ok();
     }
+    // Set to fail every envelope fetch with this UltraNet code — the way the
+    // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
+    // refuses the sign-in (AuthenticationFailed).
+    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Success;
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
+        if (fetchEnvelopesFail != UltraNetResultCode::Success) {
+            UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
+            r.diagnostics = "Server: imaps://x/";
+            return r;
+        }
         auto it = envelopes.find(folder);
         if (it != envelopes.end())
             for (const auto& e : it->second)
@@ -169,7 +180,7 @@ struct Fixture {
         REQUIRE(store.UpsertAccount(a).success);
 
         emlDir = (fs::temp_directory_path() / ("ultramail_sync_" + tag)).string();
-        fs::remove_all(emlDir);
+        fs::remove_all(UltraCanvas::PathFromUtf8(emlDir));
 
         fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent") };
         fake.envelopes["INBOX"] = {
@@ -181,7 +192,7 @@ struct Fixture {
         fake.bodies["INBOX/2"] = BuildRaw("Ann <ann@x.com>", "Re: thanks", "thanks!");
         fake.bodies["INBOX/3"] = BuildRaw("List <list@x.com>", "Newsletter", "news");
     }
-    ~Fixture() { std::error_code ec; fs::remove_all(emlDir, ec); }
+    ~Fixture() { std::error_code ec; fs::remove_all(UltraCanvas::PathFromUtf8(emlDir), ec); }
 };
 
 int NeedsFor(LocalStore& s) {
@@ -198,6 +209,56 @@ int UnreadFor(LocalStore& s) {
 }
 
 } // namespace
+
+TEST(sync_outcome_classifies_a_network_gap) {
+    // The codes UltraNet produces when the server is not there at all …
+    for (auto c : {UltraNetResultCode::HostNotFound, UltraNetResultCode::ConnectionRefused,
+                   UltraNetResultCode::ConnectionReset, UltraNetResultCode::ConnectionTimeout,
+                   UltraNetResultCode::Timeout}) {
+        SyncOutcome o = SyncOutcome::Fail(UltraNetResult::Error(c, "gap"));
+        REQUIRE(!o.ok);
+        REQUIRE(o.code == c);
+        REQUIRE(o.NetworkUnreachable());
+    }
+    // … and the ones that prove it answered.
+    for (auto c : {UltraNetResultCode::AuthenticationFailed, UltraNetResultCode::TlsCertificateInvalid,
+                   UltraNetResultCode::TlsHandshakeFailed, UltraNetResultCode::AccessDenied,
+                   UltraNetResultCode::NotFound, UltraNetResultCode::Unknown}) {
+        SyncOutcome o = SyncOutcome::Fail(UltraNetResult::Error(c, "no"));
+        REQUIRE(!o.NetworkUnreachable());
+    }
+    // A failure that did not come from UltraNet carries no code.
+    SyncOutcome local = SyncOutcome::Fail("disk full");
+    REQUIRE(local.code == UltraNetResultCode::Unknown);
+    REQUIRE(!local.NetworkUnreachable());
+    // Success is never a gap.
+    REQUIRE(!SyncOutcome{}.NetworkUnreachable());
+}
+
+TEST(sync_now_keeps_the_inbox_failure_code_and_details) {
+    Fixture fx("syncnow-fail");
+    SyncService svc(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::HostNotFound;
+    SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(!r.ok);
+    REQUIRE(r.code == UltraNetResultCode::HostNotFound);
+    REQUIRE(r.NetworkUnreachable());
+    REQUIRE_EQ(r.message, std::string("could not fetch"));
+    REQUIRE_EQ(r.diagnostics, std::string("Server: imaps://x/"));
+    REQUIRE_EQ(r.stats.folders, 2);           // the folder LIST before it still counts
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::AuthenticationFailed;
+    r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(!r.ok);
+    REQUIRE(!r.NetworkUnreachable());
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Success;
+    r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE(r.code == UltraNetResultCode::Success);
+}
 
 TEST(sync_folders_populates_store) {
     Fixture fx("folders");
@@ -294,6 +355,21 @@ TEST(sync_messages_is_incremental) {
     REQUIRE_EQ(msgs.size(), (size_t)4);
 }
 
+TEST(cached_body_path_keeps_a_non_ascii_folder_name) {
+    // IMAP folder names are often outside the ANSI code page ("Entw\xc3\xbcrfe",
+    // "\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0"). Joined onto the path as a
+    // bare std::string, Windows converted them in that code page and the body
+    // was cached under a mangled folder - one EmailCleaner, reading the same
+    // cache as UTF-8, never found. Every part must go through PathFromUtf8.
+    for (const std::string folder : { std::string("Entw\xc3\xbcrfe"),
+                                      std::string("\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0") }) {
+        const std::string expected = UltraCanvas::PathToUtf8(
+            UltraCanvas::PathFromUtf8("cache") / UltraCanvas::PathFromUtf8("erika-\xc3\xb6") /
+            UltraCanvas::PathFromUtf8(folder) / "7.eml");
+        REQUIRE_EQ(CachedBodyPath("cache", "erika-\xc3\xb6", folder, 7), expected);
+    }
+}
+
 TEST(fetch_bodies_writes_parseable_eml) {
     Fixture fx("bodies");
     SyncEngine engine(fx.store, fx.fake, fx.emlDir);
@@ -311,8 +387,8 @@ TEST(fetch_bodies_writes_parseable_eml) {
     REQUIRE_EQ(fx.fake.lastBodyUids.size(), static_cast<std::size_t>(3));
 
     const std::string path = engine.BodyPath("erika", "INBOX", 1);
-    REQUIRE(fs::exists(path));
-    std::ifstream is(path, std::ios::binary);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(path)));
+    std::ifstream is(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     std::string raw((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
     ParsedMessage pm = MimeCodec::Parse(raw);
     REQUIRE_EQ(pm.subject, std::string("Please reply"));
@@ -471,4 +547,106 @@ TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
     REQUIRE(!HasUid(fx.store, 3));
     REQUIRE(HasUid(fx.store, 10));            // refetched from UID 0
     REQUIRE(HasUid(fx.store, 11));
+}
+
+// ---- The body cache follows the index ---------------------------------------
+
+namespace {
+bool BodyCached(const SyncEngine& engine, int64_t uid, const std::string& folder = "INBOX") {
+    return fs::exists(engine.BodyPath("erika", folder, uid));
+}
+} // namespace
+
+TEST(reconcile_flags_deletes_the_bodies_of_expunged_mail) {
+    Fixture fx("reconcile-bodies");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 3));
+
+    // An earlier version dropped uid2's row when the server expunged it but
+    // left the body behind; and a sync running alongside has just written a
+    // newer message's body (uid 9, not in the index snapshot yet).
+    REQUIRE(fx.store.RemoveMessage("erika", "INBOX", 2).success);
+    REQUIRE(!engine.WriteBody("erika", "INBOX", 9, fx.fake.bodies["INBOX/1"]).empty());
+
+    // The server now lists uid1 only: uid3 was deleted elsewhere.
+    fx.fake.serverFlags["INBOX"] = { { 1u, UltraNetMailFlags::Seen } };
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.expunged, 1);         // uid3's row
+    REQUIRE_EQ(r.stats.bodiesRemoved, 2);    // uid3's body + uid2's leftover
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(!BodyCached(engine, 2));
+    REQUIRE(!BodyCached(engine, 3));
+    REQUIRE(BodyCached(engine, 9));          // newer than the snapshot: untouched
+}
+
+TEST(reconcile_flags_keeps_every_body_when_the_folder_was_not_enumerated) {
+    Fixture fx("reconcile-bodies-fail");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+
+    fx.fake.serverFlags["INBOX"] = {};       // success, but enumerates nothing
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.bodiesRemoved, 0);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 3));
+}
+
+TEST(move_message_deletes_the_source_body) {
+    Fixture fx("move-body");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 2));
+
+    REQUIRE(engine.MoveMessage("erika", "INBOX", 2, "Trash", "imaps://x/", opts).ok);
+    REQUIRE(!HasUid(fx.store, 2));
+    REQUIRE(!BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 1));
+}
+
+TEST(forget_message_drops_the_row_and_the_body) {
+    Fixture fx("forget");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+
+    REQUIRE(engine.ForgetMessage("erika", "INBOX", 3).success);
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE(!BodyCached(engine, 3));
+    // A message whose body was never downloaded is forgotten just the same.
+    REQUIRE(fx.store.RemoveMessage("erika", "INBOX", 1).success);
+    REQUIRE(engine.ForgetMessage("erika", "INBOX", 1).success);
+}
+
+TEST(a_uidvalidity_reset_deletes_the_folders_old_bodies) {
+    Fixture fx("uidvalidity-bodies");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    fx.fake.uidValidity = 100;
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 3));
+
+    fx.fake.uidValidity = 200;
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+    };
+    fx.fake.bodies["INBOX/10"] = fx.fake.bodies["INBOX/1"];
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(!BodyCached(engine, 1));         // the old numbering's files are gone
+    REQUIRE(!BodyCached(engine, 3));
+    REQUIRE(BodyCached(engine, 10));         // the new one is cached
 }

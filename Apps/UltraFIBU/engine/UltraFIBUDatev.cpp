@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraFIBU {
 
@@ -236,7 +237,7 @@ bool DatevDefinition::Laden(const std::string& dateipfad, std::string& fehler) {
                  "ULTRAFIBU_DATA_DIR setzen oder die Datei neben das Programm legen.";
         return false;
     }
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         fehler = "Die Spaltendefinition \"" + dateipfad + "\" ist nicht lesbar.";
         return false;
@@ -372,7 +373,7 @@ bool SchreibeDatei(const std::string& pfad, const DatevKopf& kopf,
 
     const std::string kodiert = NachCp1252(inhalt, zeichenverlust);
 
-    std::FILE* datei = std::fopen(pfad.c_str(), "wb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "wb");
     if (datei == nullptr) {
         fehler = "Die Datei \"" + pfad + "\" konnte nicht geschrieben werden.";
         return false;
@@ -704,7 +705,7 @@ DatevImportBericht LeseBuchungsstapel(
         const std::vector<Konto>& konten) {
     DatevImportBericht bericht;
 
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         bericht.fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
         return bericht;
@@ -1160,7 +1161,7 @@ KontenImportBericht LeseKontenbeschriftungen(const std::string& dateipfad,
     (void)definition;   // the file's own column line decides, see below
     KontenImportBericht bericht;
 
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         bericht.fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
         return bericht;
@@ -1363,7 +1364,7 @@ DatevPruefung PruefeDateiGegenDefinition(const std::string& dateipfad,
     DatevPruefung pruefung;
     pruefung.spaltenInDefinition = definition.Anzahl();
 
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         pruefung.fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
         return pruefung;

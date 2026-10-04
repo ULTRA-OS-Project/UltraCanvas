@@ -1,13 +1,13 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor
-# and DeviceExplorer as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
+# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor,
+# DeviceExplorer, UltraAuthenticator and UltraPassword as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
 # command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
-#   --dmg              Also create a DMG disk image
+#   --dmg              Also create a DMG disk image (signed, and notarized with --notarize)
 #   --no-sign          Skip code signing
 #   --notarize         Submit signed bundles to Apple notary service and staple
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
@@ -434,25 +434,32 @@ codesign_bundle() {
 # $2 = false skips stapling: a ticket can only be stapled to a bundle, a disk
 # image or an installer package, never to a bare command-line executable.
 # Gatekeeper looks the notarization of such a tool up online instead.
+#
+# $1 may also be a disk image: notarytool takes a .dmg as it is, so only a
+# bundle or a tool folder is zipped first.
 notarize_bundle() {
     local app_bundle="$1"
     local staple="${2:-true}"
-    local zip_path="${app_bundle%.app}-notarize.zip"
+    local submit_path="$app_bundle" zip_path=""
     local submit_log
     submit_log=$(mktemp)
 
-    echo "  Creating zip for notarization..."
-    /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    if [ -d "$app_bundle" ]; then
+        zip_path="${app_bundle%.app}-notarize.zip"
+        submit_path="$zip_path"
+        echo "  Creating zip for notarization..."
+        /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    fi
 
     echo "  Submitting to Apple notary service (this may take a few minutes)..."
     # Tee to a temp file so we keep live progress output AND can parse the result
-    xcrun notarytool submit "$zip_path" \
+    xcrun notarytool submit "$submit_path" \
         --apple-id "$APPLE_ID" \
         --team-id "$APPLE_TEAM_ID" \
         --password "$APPLE_APP_PASSWORD" \
         --wait 2>&1 | tee "$submit_log"
 
-    rm -f "$zip_path"
+    [ -n "$zip_path" ] && rm -f "$zip_path"
 
     # Parse the submission ID and final status from the captured output
     local submission_id status
@@ -498,14 +505,35 @@ notarize_bundle() {
 # runtime folder added later is shipped by default instead of silently missing.
 DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagrams sample.pdf)
 
-# Copy media/ into $1; with $2 = "samples" the demo sample content comes too.
+# Apps that never typeset LaTeX, so their bundles get neither the LaTeX module
+# (PlugIns/libUltraCanvasLaTeX.dylib and the libraries it pulls into
+# Frameworks/) nor its fonts (media/microtex). Neither app has a text area,
+# rich-text or Markdown view of its own; the one Markdown view they reach is
+# the modal dialog's message, which shows $...$ as plain text (Greek names
+# substituted) when the module is absent - and their dialogs carry only their
+# own status and error text. An app added to the bundle list keeps LaTeX by
+# default; add it here only after checking the same.
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer)
+
+# True when the app $1 is in NO_LATEX_APPS.
+app_without_latex() {
+    local a
+    for a in "${NO_LATEX_APPS[@]}"; do
+        [ "$a" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Copy media/ into $1; with $2 = "samples" the demo sample content comes too,
+# with $3 = "nolatex" the MicroTeX fonts stay out.
 copy_media() {
-    local dest="$1" with_samples="$2"
+    local dest="$1" with_samples="$2" latex="${3:-}"
     mkdir -p "$dest"
     local entry name skip s
     for entry in "$SCRIPT_DIR"/media/*; do
         name="$(basename "$entry")"
         skip=false
+        [ "$latex" = "nolatex" ] && [ "$name" = "microtex" ] && skip=true
         if [ "$with_samples" != "samples" ]; then
             for s in "${DEMO_SAMPLE_MEDIA[@]}"; do
                 [ "$name" = "$s" ] && { skip=true; break; }
@@ -526,9 +554,13 @@ build_app_bundle() {
     local extra_plist="$6"
     local samples="${7:-}"   # "samples": the demo's sample media and sources
 
+    # Most targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY
+    # to bin/ (UltraAuthenticator, UltraPassword), so look in both, as
+    # package-linux.sh and package-win.sh do.
     local exe_path="$BUILD_DIR/$exe_name"
+    [ -f "$exe_path" ] || exe_path="$BUILD_DIR/bin/$exe_name"
     if [ ! -f "$exe_path" ]; then
-        echo "Warning: Executable not found: $exe_path (skipping $display_name)"
+        echo "Warning: Executable not found in $BUILD_DIR or $BUILD_DIR/bin (skipping $display_name)"
         return 1
     fi
 
@@ -560,7 +592,9 @@ build_app_bundle() {
     # Copy media assets to Resources/media/ (the sample content only for the
     # demo - see DEMO_SAMPLE_MEDIA)
     if [ -d "$SCRIPT_DIR/media" ]; then
-        copy_media "$contents_dir/Resources/media" "$samples"
+        local latex_media=""
+        app_without_latex "$exe_name" && latex_media="nolatex"
+        copy_media "$contents_dir/Resources/media" "$samples" "$latex_media"
         if [ "$samples" = "samples" ]; then
             echo "  Copied media assets (with the demo samples)"
         else
@@ -593,16 +627,20 @@ build_app_bundle() {
     # ".dylib", but accept a tree from before that and ship it under the
     # name the loader asks for.
     local latex_module=""
-    for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
-        if [ -f "$cand" ]; then latex_module="$cand"; break; fi
-    done
-    if [ -n "$latex_module" ]; then
-        mkdir -p "$contents_dir/PlugIns"
-        cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+    if app_without_latex "$exe_name"; then
+        echo "  Skipping LaTeX module ($display_name does not typeset LaTeX)"
     else
-        echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
+            if [ -f "$cand" ]; then latex_module="$cand"; break; fi
+        done
+        if [ -n "$latex_module" ]; then
+            mkdir -p "$contents_dir/PlugIns"
+            cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+            echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
+        else
+            echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
+        fi
     fi
 
     # Bundle Homebrew dylibs
@@ -617,7 +655,11 @@ build_app_bundle() {
         bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
     fi
 
-    strip_binaries "$contents_dir/MacOS" "$contents_dir/Frameworks" "$contents_dir/PlugIns"
+    # PlugIns/ is absent from a bundle without the LaTeX module, and a missing
+    # path makes strip_binaries' du fail - fatal under set -e -o pipefail.
+    local strip_dirs=("$contents_dir/MacOS" "$contents_dir/Frameworks")
+    [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
+    strip_binaries "${strip_dirs[@]}"
 
     # Code sign
     if $DO_SIGN; then
@@ -788,6 +830,25 @@ build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraAuthenticator and UltraPassword. Both need libsodium (UltraCrypt)
+# and are not built without it, so a missing one is a skip, not a failure of
+# the whole run (the calls above abort it under set -e).
+build_app_bundle \
+    "UltraAuthenticator" \
+    "UltraAuthenticator" \
+    "com.cloverleaf.UltraAuthenticator" \
+    "media/appicon/UltraAuthenticator.png" \
+    "public.app-category.utilities" \
+    "" || echo "  UltraAuthenticator not packaged"
+
+build_app_bundle \
+    "UltraPassword" \
+    "UltraPassword" \
+    "com.cloverleaf.UltraPassword" \
+    "media/appicon/UltraPassword.png" \
+    "public.app-category.utilities" \
+    "" || echo "  UltraPassword not packaged"
+
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 build_cli_tool "ultramsg"
 
@@ -815,14 +876,41 @@ if $CREATE_DMG; then
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
 
-    # Create compressed DMG
-    hdiutil create \
-        -volname "UltraCanvas $VERSION" \
-        -srcfolder "$DMG_STAGING" \
-        -ov -format UDZO \
-        "$OUTPUT_DIR/$DMG_NAME"
+    # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
+    # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
+    # against 503 MB for the zip of the same .app folders, so only LZMA beats
+    # that. It needs macOS 10.15 to open, below the apps' own
+    # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
+    # with "Resource busy" while the system indexes the staging folder, so it
+    # gets three tries.
+    dmg_try=1
+    until hdiutil create \
+            -volname "UltraCanvas $VERSION" \
+            -srcfolder "$DMG_STAGING" \
+            -ov -format ULMO \
+            "$OUTPUT_DIR/$DMG_NAME"; do
+        if [ "$dmg_try" -ge 3 ]; then
+            echo "  ERROR: hdiutil create failed $dmg_try times"
+            exit 1
+        fi
+        dmg_try=$((dmg_try + 1))
+        echo "  hdiutil create failed - retrying ($dmg_try/3) in 10 s"
+        sleep 10
+    done
 
     rm -rf "$DMG_STAGING"
+
+    # The image is what a user downloads and opens, so it carries the same
+    # Developer ID signature as the apps inside it and, on a notarized run, its
+    # own stapled ticket - Gatekeeper then checks it once, offline, on open.
+    if $DO_SIGN; then
+        echo "  Signing DMG..."
+        codesign --force --timestamp --sign "$IDENTITY" "$OUTPUT_DIR/$DMG_NAME"
+        codesign --verify --verbose=2 "$OUTPUT_DIR/$DMG_NAME"
+    fi
+    if $NOTARIZE; then
+        notarize_bundle "$OUTPUT_DIR/$DMG_NAME"
+    fi
 
     DMG_SIZE=$(du -sh "$OUTPUT_DIR/$DMG_NAME" | cut -f1)
     echo "  DMG created: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)"
@@ -840,3 +928,32 @@ ls -1 "$OUTPUT_DIR/" | while read -r item; do
         echo "    $item ($(du -sh "$OUTPUT_DIR/$item" | cut -f1))"
     fi
 done
+
+# Per-bundle breakdown: how much of each bundle is bundled libraries. Every
+# .app carries its own Frameworks/, so this is where the macOS download's size
+# goes; written to the job summary too when run in GitHub Actions, so a change
+# to what the apps link shows up as a number on the run page.
+echo ""
+echo "  Bundled libraries per bundle:"
+SIZE_TABLE="| Bundle | Total | Frameworks | dylibs |"$'\n'"|---|---:|---:|---:|"
+for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
+    [ -d "$item" ] || continue
+    fw_dir="$item/Contents/Frameworks"
+    [ -d "$fw_dir" ] || fw_dir="$item/Frameworks"
+    total=$(du -sh "$item" | cut -f1)
+    fw_size=$(du -sh "$fw_dir" 2>/dev/null | cut -f1)
+    fw_count=$(find "$fw_dir" -name '*.dylib' 2>/dev/null | wc -l | tr -d ' ')
+    echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count |"
+done
+for dmg in "$OUTPUT_DIR"/*.dmg; do
+    [ -f "$dmg" ] || continue
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
+done
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+        echo "### macOS bundle sizes ($(uname -m))"
+        echo ""
+        echo "$SIZE_TABLE"
+    } >> "$GITHUB_STEP_SUMMARY"
+fi

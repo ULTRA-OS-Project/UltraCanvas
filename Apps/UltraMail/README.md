@@ -31,7 +31,15 @@ and **UltraDatabase** (local store) modules.
 > once the IMAP plug-in is present, and the address book **auto-collects** the
 > people you correspond with. When mail cannot be fetched — no IMAP plug-in, no
 > known server for the address, no stored password, a rejected login — Reload
-> and the first sync say so instead of doing nothing.
+> and the first sync say so instead of doing nothing. A background sync that
+> cannot reach the server at all — or a folder opened while it cannot — is
+> the exception: right after boot that is the network not being up yet, so it
+> is retried every minute and reported
+> only once the account has stayed unreachable for ten minutes
+> (`OfflineGrace` in `UltraMailSyncScheduler.h`). A **connection pill** at
+> the right end of the status line shows the selected account's last contact
+> with its server (Not checked / Checking… / Connected / Offline / Failed);
+> its tooltip has the server, the times and the reason.
 > Every message row carries a **sender badge** left of its subject — the
 > service's icon for a known sender, otherwise the sender's initial, framed in
 > the colour of the verdict (contact / business contact / new / advertisement /
@@ -78,13 +86,26 @@ Apps/UltraMail/
                                   token refresh, credentials for IMAP/SMTP
     UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
                                   (Re:/Fwd:, quoting, threading headers)
+    UltraMailSignature.{h,cpp}    the account signature in a draft: plain text
+                                  below "-- ", HTML as rich blocks (a plain
+                                  draft becomes a formatted one), above the quote
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
                                   (IMailProtocolPlugin)
     UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
-                                  Enqueue + Flush (sent->remove, fail->retry)
+                                  Enqueue + Flush (sent->remove, fail->retry);
+                                  a copy in the Drafts folder (IMAP APPEND)
+                                  until sent, then deleted, and a copy in the
+                                  Sent folder once sent (ServerCopies; none
+                                  where the server files sent mail itself);
+                                  DeleteMessage (a copy the server cannot be
+                                  reached for is deleted by a later pass:
+                                  withdrawn messages), held messages (being
+                                  corrected); OutboxRetryClock: automatic
+                                  retry timing
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
-    UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now)
+    UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);
+                                  OfflineGrace holds back a not-yet-online failure
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
   ui/                             UltraCanvas UI layer
@@ -105,18 +126,52 @@ Apps/UltraMail/
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
+                                  waiting messages (To · Subject · From · Tries
+                                  · Status) with Send now, Edit… and Delete
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
-    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
-                                  strip, Send / Attach file / Attach cloud link
+    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject, the formatting
+                                  toolbar with Plain text | Formatted, the body
+                                  (text area or RichTextEdit), attachment strip,
+                                  Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
+    UltraMailFormatBar.{h,cpp}    the formatting toolbar for a RichTextEdit, shared
+                                  by the compose window and the signature editor
+                                  (the compose window's adds Quote + / Quote −)
     UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
-                                  port, security, username; validates in place
+                                  port, security, username; validates in place;
+                                  as Account Settings also name, password, Signature
+    UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
+                                  HTML (WYSIWYG RichTextEdit + FormatBar, or
+                                  HTML source); also on replies and forwards
+    UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
+                                  UltraFiler): Reading > Layout / Messages,
+                                  Privacy > Images / Sender icons
+    UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
+
+**Settings:** the gear at the right end of the toolbar (on the start page, in
+its top-right corner) opens the Settings window, built like UltraFiler's (page tree on the left, notes at the foot of
+each page, *Restore default* in the bottom bar). Changes apply and are saved
+(`preferences.ini` in the data folder) at once:
+
+- *Reading > Layout* — a message opens beside the list or in its place.
+- *Reading > Messages* — HTML mail formatted or as plain text (nothing
+  fetched); the message text size (11 / 12 / 14 / 16 px).
+- *Privacy > Images* — pictures on the web load **always**, **only from trusted
+  websites, trusted senders and contacts** (the default), or **never by
+  themselves**. Trusted websites are domains (`example.com` covers its
+  subdomains): mail from them shows its pictures, and a picture hosted there
+  loads in any mail. Trusted senders are the "Always from <sender>" list. Junk
+  and suspicious mail never load pictures by themselves.
+- *Privacy > Sender icons* — whether the known senders' icons are downloaded.
+
+An account's servers and sign-in stay in its own *Account Settings*.
 
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
@@ -125,6 +180,9 @@ the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
 PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
 seeds a demo inbox (two messages dated today, one with an attachment) so the
 whole main window can be exercised without a live sync.
+`ULTRAMAIL_DEMO_COLLECT=1` seeds the same inbox and auto-collects its senders
+into the address book, leaving the main window on top;
+`ULTRAMAIL_DEMO_COLLECT=contacts` also opens the contact manager on them.
 
 **Contacts:** the address book (`ContactStore` on UltraDatabase) organises
 contacts into **Family / Friends / Work / Leisure / Services** sections, each

@@ -18,6 +18,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -795,7 +796,7 @@ private:
 };
 
 bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) return false;
     const std::streamoff size = file.tellg();
     if (size <= 0) return false;
@@ -875,7 +876,7 @@ bool ThreeDSConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool ThreeDSConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> header(kChunkHeaderSize);
     if (!file.read(reinterpret_cast<char*>(header.data()), kChunkHeaderSize)) return false;
@@ -1359,7 +1360,7 @@ bool ThreeDSConverter::Export(const ModelDocument& document, const std::string& 
                               const ConversionOptions& options) {
     std::vector<uint8_t> data;
     if (!ExportToMemory(document, data, options)) return false;
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("3DS: cannot write " + filename);
         return false;

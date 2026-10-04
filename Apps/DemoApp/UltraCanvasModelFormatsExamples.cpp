@@ -29,6 +29,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
 
@@ -179,10 +180,10 @@ namespace {
         sample.attempted = true;
 
         std::error_code ec;
-        sample.bytes = std::filesystem::file_size(sample.path, ec);
+        sample.bytes = std::filesystem::file_size(UltraCanvas::PathFromUtf8(sample.path), ec);
         if (ec) sample.bytes = 0;
 
-        if (!std::filesystem::exists(sample.path, ec)) {
+        if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(sample.path), ec)) {
             sample.error = "Sample not found: " + sample.path;
             return;
         }

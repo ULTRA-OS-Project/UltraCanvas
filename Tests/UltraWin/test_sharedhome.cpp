@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace ultrawin_internal;
@@ -27,7 +28,7 @@ std::string ScratchRoot() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-share-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     return root;

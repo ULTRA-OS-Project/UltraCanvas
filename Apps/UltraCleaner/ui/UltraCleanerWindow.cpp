@@ -3,6 +3,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerWindow.h"
 
+#include "UltraCleanerPaths.h"
 #include "UltraCleanerRules.h"
 
 // ULTRACLEANER_VERSION comes from the build alone: CMake reads the first line
@@ -18,12 +19,15 @@
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSplitPane.h"
 
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <map>
 #include <thread>
 
 using namespace UltraCanvas;
@@ -42,12 +46,67 @@ constexpr int kOverviewTab = 0;
 constexpr int kRuleTab     = 1;
 constexpr int kAlbumTab    = 2;
 
-// The dropdown's order, and what each entry means to the remover.
+// The dropdown's order, and what each entry means to the remover. The
+// engine's Simulate mode is not offered here: a clean is confirmed in a
+// dialog that names what goes, so a dry run only added a step that changed
+// nothing and puzzled people. The CLI's `--clean` still simulates by default.
 const RemovalMode kModes[] = {
-    RemovalMode::Simulate,
     RemovalMode::MoveToTrash,
     RemovalMode::DeletePermanently
 };
+constexpr int kModeCount = 2;
+
+RemovalMode ModeAt(int index) {
+    return (index >= 0 && index < kModeCount) ? kModes[index]
+                                              : RemovalMode::MoveToTrash;
+}
+
+// How many paths one reason lists before the rest are counted instead. A
+// thousand identical lines say nothing the count does not.
+constexpr size_t kPathsPerReason = 200;
+
+// The failures of a run as Markdown, grouped by reason so that forty-nine
+// temp files another program still holds open read as one heading and a
+// list, not forty-nine copies of the same sentence. Largest group first.
+std::string FailuresMarkdown(const RemovalReport& result) {
+    if (result.failures.empty()) return {};
+
+    // Group in order of first appearance, then sort the groups by size.
+    std::vector<std::pair<std::string, std::vector<std::string>>> groups;
+    std::map<std::string, size_t> indexOf;
+    for (const auto& failure : result.failures) {
+        auto found = indexOf.find(failure.reason);
+        if (found == indexOf.end()) {
+            found = indexOf.emplace(failure.reason, groups.size()).first;
+            groups.push_back({ failure.reason, {} });
+        }
+        groups[found->second].second.push_back(failure.path);
+    }
+    std::stable_sort(groups.begin(), groups.end(),
+                     [](const auto& a, const auto& b) {
+                         return a.second.size() > b.second.size();
+                     });
+
+    std::string md = "**" + std::to_string(result.failures.size()) +
+                     (result.failures.size() == 1 ? " item" : " items") +
+                     " could not be removed.**\n";
+    for (const auto& [reason, paths] : groups) {
+        md += "\n### " + (reason.empty() ? std::string("No reason given")
+                                         : reason) +
+              "  (" + std::to_string(paths.size()) +
+              (paths.size() == 1 ? " item)" : " items)") + "\n";
+        size_t shown = 0;
+        for (const auto& path : paths) {
+            if (shown == kPathsPerReason) break;
+            md += "- `" + path + "`\n";
+            ++shown;
+        }
+        if (paths.size() > shown) {
+            md += "- …and " + std::to_string(paths.size() - shown) + " more\n";
+        }
+    }
+    return md;
+}
 
 // ===== RULE PAGE METRICS =====
 // One margin around the page, one gap between its bands (toolbar, the two
@@ -155,11 +214,13 @@ bool UltraCleanerWindow::Initialize(const std::string& albumFolder) {
     tabs_->AddTab("Overview", BuildHomePage());
     tabs_->AddTab("System junk", BuildRulePage());
     tabs_->AddTab("Photo albums", BuildAlbumPage());
+    // A cleaning page scans itself the first time it is opened — through the
+    // tab strip, the overview's buttons or a folder on the command line —
+    // so the user arrives at the list, not at a button that makes one.
+    tabs_->onTabSelect = [this](int index) { OnTabEntered(index); };
     if (!albumFolder.empty()) {
         // Started with a folder to look at: go straight to it.
         albumView_.SetFolder(albumFolder);
-        albumView_.SetStatus("Ready — press “Scan” to look through " +
-                             albumFolder + ".");
         tabs_->SetActiveTab(kAlbumTab);
     } else {
         tabs_->SetActiveTab(kOverviewTab);
@@ -330,8 +391,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildRuleFooter() {
     divider->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     divider->layoutItem.SetFlexShrink(0);
 
-    summaryLabel_ = CreateLabel("ucSummary", 0, 0, 0, 0,
-                                "Nothing scanned yet — press “Scan”.");
+    summaryLabel_ = CreateLabel("ucSummary", 0, 0, 0, 0, "Not scanned yet.");
     summaryLabel_->SetElementSize(CSSLayout::Dimension::Pct(100),
                                   CSSLayout::Dimension::Auto());
     footer->AddChild(summaryLabel_);
@@ -418,7 +478,6 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildToolbar() {
     bar->AddChild(CreateLabel("ucModeLabel", 0, 0, 60, 24, "Then:"));
 
     modeDropdown_ = CreateDropdown("ucMode", 0, 0, 210, 28);
-    modeDropdown_->AddItem("Simulate — change nothing");
     modeDropdown_->AddItem("Move to Trash");
     modeDropdown_->AddItem("Delete permanently");
     modeDropdown_->SetSelectedIndex(0, /*runNotifications=*/false);
@@ -557,8 +616,19 @@ std::shared_ptr<UltraCanvasContainer> UltraCleanerWindow::BuildDetailPanel() {
 
 // ===== ACTIONS =====
 
+void UltraCleanerWindow::OnTabEntered(int index) {
+    if (working_) return;   // whichever page it is, one job at a time
+    if (index == kRuleTab && !junkScannedOnce_) {
+        StartScan();
+    } else if (index == kAlbumTab && !albumView_.Folder().empty() &&
+               albumView_.Folder() != albumScannedFolder_) {
+        StartAlbumScan();
+    }
+}
+
 void UltraCleanerWindow::StartScan() {
     if (working_.exchange(true)) return;
+    junkScannedOnce_ = true;
 
     SetBusy(true);
     SetStatus("Scanning…");
@@ -622,14 +692,8 @@ void UltraCleanerWindow::StartClean() {
         return;
     }
 
-    const int index = modeDropdown_ ? modeDropdown_->GetSelectedIndex() : 0;
     const RemovalMode mode =
-        (index >= 0 && index < 3) ? kModes[index] : RemovalMode::Simulate;
-
-    if (mode == RemovalMode::Simulate) {
-        ConfirmAndClean(mode);   // a simulation needs no warning
-        return;
-    }
+        ModeAt(modeDropdown_ ? modeDropdown_->GetSelectedIndex() : 0);
 
     const std::string what =
         std::to_string(SelectedItemCount()) + " items (" +
@@ -653,7 +717,7 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
     if (working_.exchange(true)) return;
 
     SetBusy(true);
-    SetStatus(mode == RemovalMode::Simulate ? "Simulating…" : "Cleaning…");
+    SetStatus("Cleaning…");
 
     RemovalOptions options;
     options.mode = mode;
@@ -676,18 +740,11 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
             working_ = false;
             SetBusy(false);
 
-            std::string message;
-            if (result.simulated) {
-                message = "Simulation: " + std::to_string(result.removedItems) +
-                          " items would go, freeing " +
-                          FormatByteSize(result.freedBytes) + ".";
-            } else {
-                message = std::to_string(result.removedItems) + " items " +
-                          (options.mode == RemovalMode::MoveToTrash
-                               ? "moved to the trash"
-                               : "removed") +
-                          ", " + FormatByteSize(result.freedBytes) + " freed.";
-            }
+            std::string message =
+                std::to_string(result.removedItems) + " items " +
+                (options.mode == RemovalMode::MoveToTrash ? "moved to the trash"
+                                                          : "removed") +
+                ", " + FormatByteSize(result.freedBytes) + " freed.";
             if (result.skippedMissing > 0) {
                 message += "  " + std::to_string(result.skippedMissing) +
                            " had already gone.";
@@ -702,37 +759,18 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
                            "choose “Delete permanently” to empty it.";
             }
             if (result.cancelled) message += "  Stopped early.";
-            SetStatus(message);
-
+            // The status line gets a pointer to the dialog; the dialog itself
+            // carries the list.
+            std::string status = message;
             if (!result.failures.empty()) {
-                std::string detail;
-                size_t shown = 0;
-                for (const auto& failure : result.failures) {
-                    if (shown++ >= 12) break;
-                    detail += failure.path + "\n    " + failure.reason + "\n";
-                }
-                if (result.failures.size() > shown) {
-                    detail += "…and " +
-                              std::to_string(result.failures.size() - shown) +
-                              " more.";
-                }
-                UltraCanvasDialogManager::ShowWarning(
-                    message + "\n\nSome items could not be removed:\n" + detail,
-                    "Finished with warnings", nullptr, window_.get());
-            } else if (!result.simulated) {
-                UltraCanvasDialogManager::ShowInformation(
-                    message, "Cleanup finished", nullptr, window_.get());
-            } else {
-                UltraCanvasDialogManager::ShowInformation(
-                    message + "\n\nNothing was changed. Pick “Move to Trash” "
-                              "or “Delete permanently” to act on it.",
-                    "Simulation finished", nullptr, window_.get());
+                status += "  " + std::to_string(result.failures.size()) +
+                          " could not be removed — see the report.";
             }
+            SetStatus(status);
+            ShowCleanResult(message, result);
 
             // What is on disk has changed; the old report no longer describes it.
-            if (!result.simulated && result.removedItems > 0) {
-                StartScan();
-            }
+            if (result.removedItems > 0) StartScan();
         });
     }).detach();
 }
@@ -740,15 +778,28 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
 // ===== ALBUM =====
 
 void UltraCleanerWindow::ChooseAlbumFolder() {
+    // The loader follows the app's native-dialogs setting, which main.cpp
+    // leaves off, so this is the framework's file dialog in its folder mode
+    // like every other dialog in the app.
     FileDialogOptions options;
     options.title = "Choose a folder of photos";
     options.parentWindow = window_.get();
+    // Open where the pictures are likely to be: the folder chosen last time,
+    // else the user's Pictures folder, else home.
+    std::string start = albumView_.Folder();
+    if (start.empty()) {
+        std::error_code ec;
+        const std::string pictures = HomeDir() + "/Pictures";
+        start = std::filesystem::is_directory(PathFromUtf8(pictures), ec)
+                    ? pictures : HomeDir();
+    }
+    options.initialDirectory = start;
     UltraCanvasFileLoader::SelectFolderDialog(
         options, [this](DialogResult result, const std::string& folder) {
             if (result != DialogResult::OK || folder.empty()) return;
             albumView_.SetFolder(folder);
-            albumView_.SetStatus("Ready — press “Scan” to look through "
-                                 + folder + ".");
+            // Choosing the folder is the request: no second button press.
+            if (!working_) StartAlbumScan();
         });
 }
 
@@ -760,6 +811,7 @@ void UltraCleanerWindow::StartAlbumScan() {
         return;
     }
     if (working_.exchange(true)) return;
+    albumScannedFolder_ = albumView_.Folder();
 
     albumView_.SetBusy(true);
     albumView_.SetStatus("Reading pictures…");
@@ -847,23 +899,12 @@ void UltraCleanerWindow::CleanAlbumSelection() {
     const ScanReport removal = ToRemovalReport(albumReport_, selected);
     if (removal.items.empty()) return;
 
-    const int index = modeDropdown_ ? modeDropdown_->GetSelectedIndex() : 0;
     const RemovalMode mode =
-        (index >= 0 && index < 3) ? kModes[index] : RemovalMode::Simulate;
+        ModeAt(modeDropdown_ ? modeDropdown_->GetSelectedIndex() : 0);
 
     const std::string what = std::to_string(removal.items.size()) +
                              " pictures (" +
                              FormatByteSize(removal.totalBytes) + ")";
-    if (mode == RemovalMode::Simulate) {
-        UltraCanvasDialogManager::ShowInformation(
-            "Simulation: " + what + " would go, one picture kept from each of "
-            + std::to_string(selected.size()) + " groups.\n\nNothing was "
-            "changed. Pick “Move to Trash” or “Delete permanently” on the "
-            "System junk tab to act on it.",
-            "Simulation finished", nullptr, window_.get());
-        return;
-    }
-
     const std::string message =
         mode == RemovalMode::MoveToTrash
             ? "Move " + what + " to the trash?\n\nOne picture is kept from "
@@ -893,14 +934,41 @@ void UltraCleanerWindow::CleanAlbumSelection() {
                         (options.mode == RemovalMode::MoveToTrash
                              ? "moved to the trash" : "removed") +
                         ", " + FormatByteSize(result.freedBytes) + " freed.";
-                    albumView_.SetStatus(done);
-                    UltraCanvasDialogManager::ShowInformation(
-                        done + "\n\nRescan the folder to see what is left.",
-                        "Cleanup finished", nullptr, window_.get());
+                    std::string status = done;
+                    if (!result.failures.empty()) {
+                        status += "  " +
+                                  std::to_string(result.failures.size()) +
+                                  " could not be removed — see the report.";
+                    }
+                    albumView_.SetStatus(status);
+                    ShowCleanResult(done + "\n\nRescan the folder to see what "
+                                    "is left.", result);
                 });
             }).detach();
         },
         window_.get());
+}
+
+void UltraCleanerWindow::ShowCleanResult(const std::string& summary,
+                                         const RemovalReport& result) {
+    // A custom dialog rather than ShowWarning: the failure list is long and
+    // structured, so it goes in as Markdown in the details slot and scrolls
+    // when it is taller than the screen allows the window to be. (The app
+    // used to ask for native dialogs, and the platform's message box neither
+    // scrolls nor renders Markdown, so fifty failures came out as one wall
+    // of text cut off at "…and 37 more".)
+    DialogConfig config;
+    config.title      = result.failures.empty() ? "Cleanup finished"
+                                                : "Finished with warnings";
+    config.dialogType = result.failures.empty() ? DialogType::Information
+                                                : DialogType::Warning;
+    config.buttons    = DialogButtons::OK;
+    config.width      = result.failures.empty() ? 460 : 720;
+    config.resizable  = !result.failures.empty();
+    config.message    = summary;
+    config.details    = FailuresMarkdown(result);
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window_.get());
 }
 
 // ===== VIEW UPDATES =====
@@ -982,7 +1050,8 @@ void UltraCleanerWindow::RefreshDetailRow(size_t itemIndex) {
 void UltraCleanerWindow::RefreshSummary() {
     if (!summaryLabel_) return;
     if (report_.totalItems == 0) {
-        summaryLabel_->SetText("Nothing scanned yet — press “Scan”.");
+        summaryLabel_->SetText(junkScannedOnce_ ? "Nothing to clean was found."
+                                                : "Not scanned yet.");
         return;
     }
     summaryLabel_->SetText(

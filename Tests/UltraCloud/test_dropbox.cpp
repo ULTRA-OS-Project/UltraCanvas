@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud;
 
@@ -65,8 +66,8 @@ TEST(dropbox_upload_sends_api_arg_header) {
         return Ok();
     };
     const std::string dir = (std::filesystem::temp_directory_path() / "ultracloud-dropbox").string();
-    std::filesystem::create_directories(dir);
-    std::ofstream(dir + "/x.txt") << "hello";
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
+    std::ofstream(UltraCanvas::PathFromUtf8(dir + "/x.txt")) << "hello";
     DropboxProvider dropbox(fake);
     Account a; Credentials c; c.token = "tok";
     REQUIRE(dropbox.Upload(a, c, dir + "/x.txt", "/Shared/x.txt"));
@@ -137,8 +138,8 @@ TEST(dropbox_large_upload_uses_a_session) {
     };
     // 25 bytes with a 10-byte chunk and a 20-byte simple limit → start(10) + append(10) + finish(5).
     const std::string dir = (std::filesystem::temp_directory_path() / "ultracloud-dropbox").string();
-    std::filesystem::create_directories(dir);
-    std::ofstream(dir + "/big.bin", std::ios::binary) << "0123456789abcdefghijKLMNO";
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
+    std::ofstream(UltraCanvas::PathFromUtf8(dir + "/big.bin"), std::ios::binary) << "0123456789abcdefghijKLMNO";
     DropboxProvider dropbox(fake);
     dropbox.SetUploadLimits(/*simple=*/20, /*chunk=*/10);
     Account a; Credentials c; c.token = "tok";
@@ -159,7 +160,7 @@ TEST(dropbox_large_upload_uses_a_session) {
 
     // A file exactly two chunks long ends with an empty finish.
     endpoints.clear(); bodies.clear();
-    std::ofstream(dir + "/two.bin", std::ios::binary) << "0123456789abcdefghij0123456789";
+    std::ofstream(UltraCanvas::PathFromUtf8(dir + "/two.bin"), std::ios::binary) << "0123456789abcdefghij0123456789";
     REQUIRE(dropbox.Upload(a, c, dir + "/two.bin", "/two.bin"));
     REQUIRE_EQ(endpoints.size(), (size_t)3);
     REQUIRE_EQ(bodies[2], std::string("0123456789"));

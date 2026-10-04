@@ -218,6 +218,14 @@ public:
     // load them). Lets the drop work whether the event lands on the surface or
     // bubbles up to the viewer.
     std::function<void(const std::vector<std::string>&)> onFilesDropped;
+    // Called once per shown image when drawing finds its pixels do not decode
+    // (the header read, so it was shown; the reason is in the image's
+    // errorMessage). Runs after the frame, not inside Render, so the handler
+    // may relabel and re-lay out freely.
+    std::function<void()> onDecodeFailed;
+
+    // True when the shown image's header read but its pixels did not decode.
+    bool HasDecodeFailure() const;
 
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
@@ -244,11 +252,14 @@ private:
                       double scale, double cx, double cy, int rotQ, double alpha);
 
     void DrawCurrent(IRenderContext* ctx, const Rect2Df& b);
+    // Tell onDecodeFailed, once per shown image, after this frame.
+    void ReportDecodeFailure();
     void StartTransitionTimer(int durationMs);
     void StopTransitionTimer();
 
     std::shared_ptr<UCImage>  image;
     std::shared_ptr<UCPixmap> processed;     // colour-adjusted full-res pixmap (or null)
+    bool decodeFailureReported = false;      // onDecodeFailed already told for `image`
     MediaAdjustments adjust;
 
     // Frame stepping for animated images (GIF, animated WebP). Plays while
@@ -467,7 +478,8 @@ public:
     // The panel the "Details" button opens over the display area: file facts
     // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
     // PNG text), laid out as Markdown tables in a scrollable text area.
-    // Works for every kind of file the viewer shows. Escape closes it.
+    // Works for every kind of file the viewer shows. Escape closes it. The
+    // text is built on opening and for each file loaded while it is open.
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;

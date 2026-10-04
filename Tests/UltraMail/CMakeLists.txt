@@ -11,24 +11,32 @@ set(ULTRAMAIL_TEST_SOURCES
     test_senderidentity.cpp
     test_threatscan.cpp
     test_unsubscribe.cpp
+    test_recipientcomplete.cpp
     test_inlineimages.cpp
     test_messagefilter.cpp
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp
     test_richcomposer.cpp
+    test_signature.cpp
     test_outbox.cpp
+    test_draftscopy.cpp
     test_scheduler.cpp
     test_oauth.cpp
     test_logincheck.cpp
     test_feedpublisher.cpp
+    test_preferences.cpp
+    test_headertext.cpp
+    # The Settings window's preferences file: plain C++, no UI.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailPreferences.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})
 
 target_compile_features(UltraMailEngineTests PRIVATE cxx_std_20)
 target_link_libraries(UltraMailEngineTests PRIVATE UltraMailEngine)
-target_include_directories(UltraMailEngineTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(UltraMailEngineTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
 
 # UltraNet's MIME parser — which the composer and the sync engine build on —
 # calls the UltraCanvas string and Base64 helpers (UltraCanvasUtils), so the

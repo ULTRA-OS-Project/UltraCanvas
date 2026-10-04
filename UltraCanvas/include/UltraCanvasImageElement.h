@@ -1,7 +1,11 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
-// Version: 1.1.0
-// Last Modified: 2026-05-11
+// Version: 1.6.0 - onHoverEnter / onHoverLeave
+// Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
+// Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
+// Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
+// Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +40,9 @@ enum class ImageLoadState {
     Failed
 };
 
+// ImagePosition / ImageAxisPosition and FitImageRect live in
+// UltraCanvasCommonTypes.h (the label's in-text images use them too).
+
 // ===== IMAGE ELEMENT COMPONENT =====
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
@@ -45,6 +52,11 @@ private:
     
     // Display properties
     ImageFitMode fitMode = ImageFitMode::Contain;
+    ImagePosition imagePosition;   // centred unless set
+    bool heightFollowsWidth = false;  // see SetHeightFollowsWidth
+    bool hoverNotified = false;       // onHoverEnter sent, onHoverLeave not yet
+    bool repeatX = false;           // tile across / down the element
+    bool repeatY = false;
     Color tintColor = Colors::White;
     float opacity = 1.0f;
     bool smoothScaling = true;
@@ -79,6 +91,10 @@ public:
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;
     std::function<void()> onClick;
+    // The pointer came onto / left the image (a linked picture tells the
+    // status line where it goes).
+    std::function<void()> onHoverEnter;
+    std::function<void()> onHoverLeave;
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
@@ -102,6 +118,27 @@ public:
     void SetFitMode(ImageFitMode mode) { fitMode = mode; RequestRedraw(); }
     
     ImageFitMode GetFitMode() const { return fitMode; }
+    // Where the fitted image sits in the element (default: centred).
+    void SetImagePosition(const ImagePosition& position) { imagePosition = position; RequestRedraw(); }
+    const ImagePosition& GetImagePosition() const { return imagePosition; }
+    // Tile the image across (x) and / or down (y) the element - CSS
+    // background-repeat. The tiles line up on the one ImageDrawRect places,
+    // at the fitted size; one pattern fill draws them all, so a 1-pixel strip
+    // repeated across a large box costs the same as one picture.
+    void SetImageRepeat(bool x, bool y) { repeatX = x; repeatY = y; RequestRedraw(); }
+    // CSS replaced-element sizing: with a width and no height, the height is
+    // the picture's at that width - larger as well as smaller (an HTML <img
+    // width="800"> of a 400x200 picture is 800x400). Off by default: the
+    // element then only shrinks its height with a narrower width and keeps
+    // the picture's own height otherwise.
+    void SetHeightFollowsWidth(bool follows) { heightFollowsWidth = follows; InvalidateLayout(); }
+    bool GetHeightFollowsWidth() const { return heightFollowsWidth; }
+    bool GetImageRepeatX() const { return repeatX; }
+    bool GetImageRepeatY() const { return repeatY; }
+    // The rectangle (element-local) the image is drawn into for the current
+    // fit mode and position; it may reach past the content box (Cover,
+    // NoScale), which clips it. Empty without an image.
+    Rect2Df ImageDrawRect() const;
     void SetTintColor(const Color& color) { tintColor = color; }
     void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
@@ -168,6 +205,8 @@ public:
 private:
     // Natural (intrinsic) image size in pixels; {0,0} if no valid image is loaded.
     Size2Df NaturalImageSize() const;
+    // The repeating (SetImageRepeat) draw path.
+    void DrawRepeatedImage(IRenderContext* ctx, const Rect2Df& contentRect);
 
     void SetError(const std::string& message);
 

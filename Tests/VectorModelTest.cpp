@@ -57,13 +57,17 @@ std::shared_ptr<VectorRect> MakeRect(double x, double y, double w, double h) {
 // Renders a document into an offscreen context of the given size and
 // returns the un-premultiplied RGBA of one pixel. Needs no display.
 struct Rgba { int r, g, b, a; };
-Rgba RenderAndSample(const VectorDocument& doc, int w, int h, int px, int py) {
+Rgba RenderAndSample(const VectorDocument& doc, int w, int h, int px, int py,
+                     VectorDisplayQuality quality = VectorDisplayQuality::Normal) {
     UCPixmap pixmap;
     if (!pixmap.Init(w, h)) return {-1, -1, -1, -1};
     std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
     if (!ctx) return {-1, -1, -1, -1};
     ctx->Clear(Color(0, 0, 0, 0));
     VectorRenderer renderer;
+    VectorRenderOptions opts = renderer.GetOptions();
+    opts.DisplayQuality = quality;
+    renderer.SetOptions(opts);
     renderer.RenderDocument(ctx.get(), doc);
     ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
     pixmap.MarkDirty();
@@ -80,7 +84,66 @@ Rgba RenderAndSample(const VectorDocument& doc, int w, int h, int px, int py) {
 
 } // namespace
 
+namespace {
+
+// A path parsed from SVG path data.
+std::shared_ptr<VectorPath> MakePath(const std::string& d) {
+    auto path = std::make_shared<VectorPath>();
+    path->Path = ParsePathString(d);
+    return path;
+}
+
+void TestPathBounds() {
+    // Relative curves: the bounds follow the pen, not the raw offsets.
+    // (astronaut.svg is written this way, and its selection box came out
+    // near the origin, the size of the offsets.)
+    auto rel = MakePath("m100 200c10 0 20 10 20 20s-10 20-20 20z");
+    Check(NearRect(rel->GetBoundingBox(), 100, 200, 20, 40, 0.01),
+          "relative c / s path: bounds at the pen position, curve extrema included");
+
+    // H / V and their relative forms.
+    auto hv = MakePath("M10 10H50V30h-20v15z");
+    Check(NearRect(hv->GetBoundingBox(), 10, 10, 40, 35), "H / V / h / v path bounds");
+
+    // A curve bulges past its endpoints but not to its control points.
+    auto cubic = MakePath("M0 0C0 100 100 100 100 0");
+    Check(NearRect(cubic->GetBoundingBox(), 0, 0, 100, 75, 1e-3),
+          "cubic bounds stop at the curve's extremum (75), not its control points (100)");
+
+    // Quadratic and arc segments count.
+    auto quad = MakePath("M0 0Q50 100 100 0");
+    Check(NearRect(quad->GetBoundingBox(), 0, 0, 100, 50, 0.01), "quadratic bounds include its peak");
+    auto arc = MakePath("M0 0A50 50 0 0 1 100 0");
+    const Rect2Dd ab = arc->GetBoundingBox();
+    Check(Near(ab.x, 0, 0.01) && Near(ab.width, 100, 0.01) && Near(ab.y, -50, 0.5) && Near(ab.height, 50, 0.5),
+          "arc bounds include the half circle");
+}
+
+void TestDisplayQuality() {
+    VectorDocument doc;
+    doc.ViewBox = Rect2Dd{0, 0, 40, 40};
+    auto layer = std::make_shared<VectorLayer>();
+    // On the half pixel, so the one-pixel outline covers whole pixels.
+    auto rect = MakeRect(10.5, 10.5, 20, 20);
+    rect->Style.Fill = Color(255, 0, 0, 255);
+    layer->AddChild(rect);
+    doc.Layers.push_back(layer);
+
+    const Rgba full = RenderAndSample(doc, 40, 40, 20, 20, VectorDisplayQuality::Normal);
+    Check(full.r == 255 && full.a == 255, "normal quality fills the rectangle");
+    const Rgba simple = RenderAndSample(doc, 40, 40, 20, 20, VectorDisplayQuality::Simple);
+    Check(simple.r == 255 && simple.a == 255, "simple quality fills the rectangle");
+    const Rgba inside = RenderAndSample(doc, 40, 40, 20, 20, VectorDisplayQuality::Outline);
+    Check(inside.a == 0, "outline quality leaves the inside unfilled");
+    const Rgba edge = RenderAndSample(doc, 40, 40, 10, 20, VectorDisplayQuality::Outline);
+    Check(edge.a > 0 && edge.r < 128, "outline quality draws the edge in the outline colour");
+}
+
+} // namespace
+
 int main() {
+    TestPathBounds();
+    TestDisplayQuality();
     // ===== Matrix3x3 =====
     {
         Matrix3x3 t = Matrix3x3::Translate(10, 20);

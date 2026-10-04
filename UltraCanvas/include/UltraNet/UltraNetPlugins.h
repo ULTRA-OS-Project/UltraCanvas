@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -344,6 +345,22 @@ public:
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      "FetchAllFlags not implemented");
     }
+
+    // Removes one message already flagged \Deleted from the folder for good
+    // (UID EXPUNGE, RFC 4315 UIDPLUS) - that message only, never the others
+    // flagged \Deleted there, which another client may still undelete. A
+    // server without UIDPLUS refuses it and the message stays flagged. The
+    // default reports "not implemented" (test fakes, backends without it).
+    // Added last, like FetchAllFlags, so the existing vtable is undisturbed.
+    virtual UltraNetResult ExpungeMessage(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t uid,
+        const UltraNetMailOptions& options) {
+        (void)serverUrl; (void)folder; (void)uid; (void)options;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "ExpungeMessage not implemented");
+    }
 };
 
 // MQTT / AMQP.
@@ -501,28 +518,63 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 // ============================================================================
 // Plug-in DSO contract — entry points + the host vtable.
 //
-// Plug-in libraries must export exactly one of these C entry points:
+// Plug-in libraries export this C entry point:
 //
-//   v2 (preferred, works on all platforms):
+//   v2:
 //     extern "C" ULTRANET_PLUGIN_EXPORT void
 //     UltraNet_PluginInit(const UltraNetPluginHost* host);
 //
-//   v1 (POSIX-only, deprecated):
-//     extern "C" void UltraNet_PluginRegister(void);
+// The host passes a function table, and everything a plug-in needs from the
+// core goes through it: registering itself, and (ABI 2) the core functions a
+// plug-in calls — URL parsing, the CA bundle, MIME building, HTTP. So a
+// plug-in DSO has no undefined core symbols at all: it loads whatever the
+// host was linked against (a static core carries only the objects the app
+// itself uses) and a Windows DLL links without the core's import library,
+// which a static core does not have. A plug-in's sources call the ordinary
+// UltraNet_* functions; Plugins/UltraNet/common/UltraNetPluginHostShim.cpp,
+// compiled into every plug-in, defines them inside the DSO and forwards each
+// call to this table. A plug-in needing another core function adds it here
+// (appended - the order is ABI) and to the shim, and bumps the version.
 //
-// v1 requires the plug-in to resolve UltraNet_RegisterPlugin via the host
-// binary's symbol table at dlopen time — POSIX gives this for free
-// (RTLD_GLOBAL + -rdynamic) but Windows does not. v2 fixes that: the host
-// passes a function-pointer table; the plug-in calls host->RegisterPlugin
-// instead of looking up the symbol. Same plug-in source can expose both.
+// The v1 entry, `extern "C" void UltraNet_PluginRegister(void)`, is no
+// longer loaded: it resolved UltraNet_RegisterPlugin from the host binary's
+// symbol table at load time, which only POSIX allows (RTLD_GLOBAL +
+// -rdynamic) and which only worked when the host happened to carry every core
+// function the plug-in called. A library that exports only v1 is not loaded;
+// rebuild it with UltraNet_PluginInit and the shim.
 // ============================================================================
 
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 1;
+// ABI 1: abiVersion + RegisterPlugin.
+// ABI 2: + the core functions below. Fields are only ever appended, so an
+//        ABI-1 plug-in reads a newer host's table correctly.
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 2;
+
+struct UltraNetUrlComponents;
+struct UltraNetMimeBuildInput;
 
 struct UltraNetPluginHost {
-    int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION when loaded by a v2-capable host
+    int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION of the host
     void (*RegisterPlugin)(std::shared_ptr<IUltraNetPlugin>);
+
+    // ---- ABI 2 ----------------------------------------------------------
+    UltraNetResult (*ParseUrl)(const std::string& url, UltraNetUrlComponents& out);
+    std::string    (*UrlEncode)(const std::string& input);
+    std::string    (*UrlDecode)(const std::string& input);
+    std::string    (*ResolveCaBundlePath)();
+    std::string    (*DescribeTrustRoots)();
+    std::string    (*DescribePlatform)();
+    std::string    (*MimeBuild)(const UltraNetMimeBuildInput& input);
+    UltraNetResult (*HttpGet)(const std::string& url, UltraNetResponse& out,
+                              const UltraNetHttpOptions& options);
+    UltraNetResult (*HttpRequest)(const UltraNetHttpRequest& request,
+                                  UltraNetResponse& out);
+    void           (*HttpHeadersSet)(UltraNetHttpHeaders& headers,
+                                     const std::string& name, const std::string& value);
 };
+
+// The table this host hands to every plug-in it loads - for tests, and for a
+// host that loads a plug-in by other means.
+const UltraNetPluginHost* UltraNet_GetPluginHost();
 
 using UltraNet_PluginInitFn = void (*)(const UltraNetPluginHost* host);
 

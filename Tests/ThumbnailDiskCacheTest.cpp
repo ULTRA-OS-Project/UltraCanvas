@@ -176,6 +176,33 @@ void TestEditedSourceInvalidates() {
           "and the new thumbnail is what is served");
 }
 
+// ===== STALENESS IS ALSO THE RENDERER'S =====
+void TestOtherRendererGenerationInvalidates() {
+    std::cout << "\nA thumbnail drawn by an older renderer:\n";
+
+    // What a build from before a renderer fix left behind: the source is
+    // untouched, but the picture was drawn wrong (2026-09-26: vector
+    // previews as specks in a corner) and must not outlive the fix.
+    const fs::path drawing = g_root / "drawing.xar";
+    WriteFile(drawing, "a drawing");
+    const auto request = RequestFor(drawing);
+    ThumbnailDiskCache::SetRendererGenerationOverride(
+            ThumbnailDiskCache::kRendererGeneration - 1);
+    ThumbnailDiskCache::Store(request, Blob(256, 0x66));
+    Check(!ThumbnailDiskCache::Load(request).empty(),
+          "the older build serves its own thumbnail");
+
+    ThumbnailDiskCache::SetRendererGenerationOverride(0);
+    Check(ThumbnailDiskCache::RendererGeneration() ==
+                  ThumbnailDiskCache::kRendererGeneration,
+          "0 goes back to the built-in generation");
+    Check(ThumbnailDiskCache::Load(request).empty(),
+          "the fixed build does not: the tile is drawn again");
+    ThumbnailDiskCache::Store(request, Blob(256, 0x77));
+    Check(ThumbnailDiskCache::Load(request) == Blob(256, 0x77),
+          "and what it draws is served from then on");
+}
+
 // ===== RETENTION: TOUCH WHAT IS USED, SWEEP WHAT IS NOT =====
 void TestServingTouchesTheFile() {
     std::cout << "\nServing a thumbnail marks it as still wanted:\n";
@@ -356,6 +383,7 @@ int main() {
     TestGeometryIsPartOfTheIdentity();
     TestUnknownSourceIsAMiss();
     TestEditedSourceInvalidates();
+    TestOtherRendererGenerationInvalidates();
     TestServingTouchesTheFile();
     TestTouchIsThrottled();
     TestSweepExpiresWhatIsNotServed();

@@ -115,7 +115,7 @@ std::string Deobfuscate(const std::vector<uint8_t>& key, const std::string& enco
 fs::path LegacySecretFile(const std::string& dir, const std::string& accountId) {
     std::string safe;
     for (char c : accountId) safe.push_back(std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
-    return PathFromUtf8(dir) / (safe + ".secret");
+    return PathFromUtf8(dir) / PathFromUtf8(safe + ".secret");
 }
 
 bool ReadLegacySecret(const fs::path& file, const std::vector<uint8_t>& key, Credentials& out) {
@@ -135,7 +135,7 @@ bool ReadLegacySecret(const fs::path& file, const std::vector<uint8_t>& key, Cre
 
 bool AnyLegacySecretLeft(const std::string& dir) {
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(dir, ec))
+    for (const auto& entry : fs::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec))
         if (entry.path().extension() == ".secret") return true;
     return false;
 }
@@ -146,7 +146,7 @@ int MigrateLegacyFileSecrets(const std::string& directory,
                              const std::vector<Account>& accounts,
                              ISecretStore& into) {
     std::error_code ec;
-    if (directory.empty() || !fs::is_directory(directory, ec)) return 0;
+    if (directory.empty() || !fs::is_directory(UltraCanvas::PathFromUtf8(directory), ec)) return 0;
     const std::vector<uint8_t> key = ReadLegacyKey(directory);
     if (key.empty()) return 0;   // no key: the files cannot be read, leave them
 
@@ -165,7 +165,7 @@ int MigrateLegacyFileSecrets(const std::string& directory,
     }
     if (!AnyLegacySecretLeft(directory)) {
         fs::remove(PathFromUtf8(directory) / kLegacyKeyFile, ec);
-        fs::remove(directory, ec);   // only succeeds when nothing else is in it
+        fs::remove(UltraCanvas::PathFromUtf8(directory), ec);   // only succeeds when nothing else is in it
     }
     return carried;
 }

@@ -17,13 +17,14 @@
 // version this replaces was a FIXME that returned its input unchanged, so a
 // caller asking for 2880 dpi on plain paper got a silent substitution in the
 // output tray instead of an answer.
-// Version: 1.0.0
-// Last Modified: 2026-09-14
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterRaster.h"
 
 #include <iostream>
 #include <memory>
@@ -1065,6 +1066,138 @@ void TestMatchingAPrinterToAModel() {
 
 }  // namespace
 
+// A CUPS raster stream as the GutenPrint renderer builds one, read back the
+// way the filter reads it: the sync word once, then header and pixels per
+// page. Until this existed nothing tested the writer, and it put a sync word
+// before every page - which CUPS's reader takes as the start of the second
+// page's header, four bytes out of step, and stops at without an error. So
+// every multi-page GutenPrint job printed its first page only.
+void TestCupsRasterStream() {
+    std::cout << "\n=== CUPS raster: one sync word, then pages ===\n";
+
+    auto u32 = [](const std::vector<uint8_t>& b, size_t at) {
+        return (static_cast<uint32_t>(b[at]) << 24) | (static_cast<uint32_t>(b[at + 1]) << 16) |
+               (static_cast<uint32_t>(b[at + 2]) << 8) | static_cast<uint32_t>(b[at + 3]);
+    };
+
+    IOCupsRasterPage page;
+    page.widthPixels = 16;
+    page.heightPixels = 8;
+    page.dpiX = page.dpiY = 72;
+    page.pageWidthPoints = 16;
+    page.pageHeightPoints = 8;
+    page.pageSizeName = "Custom";
+    page.colorSpace = IOCupsColorSpace::Gray;
+
+    // Three pages, each a different shade, so a page read from the wrong
+    // offset shows up as the wrong shade rather than passing by luck.
+    std::vector<uint8_t> stream;
+    AppendCupsRasterSync(stream);
+    Check(stream.size() == kCupsRasterSyncBytes &&
+              std::string(stream.begin(), stream.end()) == "RaS3",
+          "the stream opens with RaS3");
+    for (int number = 1; number <= 3; ++number) {
+        const size_t before = stream.size();
+        const bool headerOk = AppendCupsRasterPageHeader(page, stream);
+        Check(headerOk && stream.size() - before == kCupsRasterHeaderBytes,
+              "page " + std::to_string(number) + "'s header is 1796 bytes, no sync word in it");
+        const uint8_t shade = static_cast<uint8_t>(number * 60);
+        const std::vector<uint8_t> rgba(static_cast<size_t>(page.widthPixels) * 4, shade);
+        std::vector<uint8_t> row;
+        for (int y = 0; y < page.heightPixels; ++y) {
+            // Opaque, so the grey out is the grey in.
+            std::vector<uint8_t> opaque = rgba;
+            for (size_t i = 3; i < opaque.size(); i += 4) opaque[i] = 255;
+            WriteCupsRasterRow(opaque.data(), page.widthPixels, page.colorSpace, stream);
+        }
+    }
+
+    // Read it the filter's way.
+    size_t at = kCupsRasterSyncBytes;
+    int pages = 0;
+    bool shadesRight = true;
+    bool geometryRight = true;
+    while (at + kCupsRasterHeaderBytes <= stream.size()) {
+        const uint32_t width = u32(stream, at + 372);        // cupsWidth
+        const uint32_t height = u32(stream, at + 376);       // cupsHeight
+        const uint32_t bytesPerLine = u32(stream, at + 392); // cupsBytesPerLine
+        if (width != 16 || height != 8 || bytesPerLine != 16) geometryRight = false;
+        at += kCupsRasterHeaderBytes;
+        const size_t pixels = static_cast<size_t>(bytesPerLine) * height;
+        if (!geometryRight || at + pixels > stream.size()) break;
+        ++pages;
+        if (stream[at] != static_cast<uint8_t>(pages * 60)) shadesRight = false;
+        at += pixels;
+    }
+    Check(geometryRight, "every page header is read at the right offset");
+    Check(pages == 3 && at == stream.size(), "all three pages are read, and nothing is left over");
+    Check(shadesRight, "  each with its own pixels");
+
+    IOCupsRasterPage invalid = page;
+    invalid.widthPixels = 0;
+    std::vector<uint8_t> untouched;
+    Check(!AppendCupsRasterPageHeader(invalid, untouched) && untouched.empty(),
+          "an invalid page appends nothing");
+}
+
+// What a Windows driver's bidi channel answers for \Printer.Consumables,
+// turned into supply levels. The COM call itself only runs on Windows; this
+// half decides what a user sees, so it is checked on every platform.
+IOBidiConsumableValue BidiNumberValue(const std::string& schema, int number) {
+    IOBidiConsumableValue value;
+    value.schema = schema;
+    value.number = number;
+    value.isNumber = true;
+    return value;
+}
+
+IOBidiConsumableValue BidiTextValue(const std::string& schema, const std::string& text) {
+    IOBidiConsumableValue value;
+    value.schema = schema;
+    value.text = text;
+    return value;
+}
+
+void TestSupplyLevelsFromBidi() {
+    std::cout << "\nSupply levels from a Windows bidi answer\n";
+
+    const std::vector<IOSupplyLevel> supplies = IOSupplyLevelsFromBidi({
+        BidiNumberValue("\\Printer.Consumables.BlackToner:Level", 72),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Color", "Black"),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Type", "Toner"),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Model", "HP 305A"),
+        BidiTextValue("\\printer.consumables.LightCyan:Color", "light-cyan"),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Type", "Ink"),
+        BidiNumberValue("\\Printer.Consumables.LightCyan:Level", 7),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Description", "Light cyan cartridge"),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Model", "XL 912"),
+        BidiNumberValue("\\Printer.Consumables.Waste:Level", -2),
+        BidiTextValue("\\Printer.Consumables.Waste:Type", "WasteToner"),
+        BidiTextValue("\\Printer.Status:Summary", "Ready"),
+    });
+
+    Check(supplies.size() == 3, "one supply per consumable, nothing from outside Consumables");
+    if (supplies.size() != 3) return;
+
+    Check(supplies[0].description == "HP 305A", "a Model names a supply that has no Description");
+    Check(supplies[0].type == IOSupplyType::Toner, "Type Toner is toner");
+    Check(supplies[0].color == IOSupplyColor::Black, "Color Black is black");
+    Check(supplies[0].percentRemaining == 72, "Level is the percentage left");
+    Check(!supplies[0].IsLow(), "72 % is not low");
+
+    Check(supplies[1].description == "Light cyan cartridge",
+          "a Description wins over a Model, whichever comes first");
+    Check(supplies[1].color == IOSupplyColor::LightCyan, "light-cyan is light cyan");
+    Check(supplies[1].type == IOSupplyType::Ink, "Type Ink is ink");
+    Check(supplies[1].IsLow(), "7 % is low");
+
+    Check(supplies[2].description == "Waste", "with neither, the consumable's name is shown");
+    Check(supplies[2].type == IOSupplyType::WasteTank, "WasteToner is a waste tank");
+    Check(!supplies[2].IsKnown(), "a Level outside 0-100 stays not reported");
+
+    Check(IOSupplyLevelsFromBidi({}).empty(), "a driver that answers nothing reports nothing");
+}
+
 int main() {
     std::cout << "IODeviceManager printer tests\n";
     std::cout << "=============================\n";
@@ -1092,6 +1225,8 @@ int main() {
     TestPageRangeReachesTheTransport();
     TestParsingTheModelListing();
     TestMatchingAPrinterToAModel();
+    TestCupsRasterStream();
+    TestSupplyLevelsFromBidi();
 
     std::cout << "\n";
     if (g_failures == 0) {

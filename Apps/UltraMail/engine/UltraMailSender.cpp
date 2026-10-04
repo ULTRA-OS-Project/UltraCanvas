@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSender.cpp
+// Version: 0.4.0 - sends the Message-ID the outbox gave the message
+// Version: 0.3.0 - sends a reply's In-Reply-To and References
 // Version: 0.2.0 - sends the text alternative and inline pictures of an HTML
 //                  draft
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +28,10 @@ UltraNetResult MailSender::Send(const Draft& draft, const std::string& serverUrl
     }
     for (const auto& a : draft.attachments)
         m.attachments.emplace_back(a.filename, a.data);
+    if (!draft.messageId.empty())  m.headers["Message-ID"] = draft.messageId;
+    // A reply stays in its thread at the recipient.
+    if (!draft.inReplyTo.empty())  m.headers["In-Reply-To"] = draft.inReplyTo;
+    if (!draft.references.empty()) m.headers["References"]  = draft.references;
 
     UltraNetMailOptions opts = options;
     opts.serverUrl = serverUrl;

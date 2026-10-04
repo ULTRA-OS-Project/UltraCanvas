@@ -1,3 +1,22 @@
+#### 2026-10-02 *0.6.4*
+- **The selection box fits the selected shape.** Selecting a part of an SVG
+  drawn with relative curves (`astronaut.svg`) drew a box much larger than
+  the shape and in the wrong place, near the top left of the page; it now
+  fits the shape. The fix is in the framework's path bounds (see the
+  UltraCanvas changelog), so moving, aligning and snapping use the right
+  box too.
+- **Display quality slider** in the main toolbar: *Outlines* (every shape as
+  a thin line, nothing filled - for finding and picking shapes), *Fills +
+  lines* (colours, no antialiasing) and *Antialiased* (full quality, the
+  default).
+
+#### 2026-09-29 *0.6.3*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
 #### 2026-09-28 *0.6.2*
 - **The version is in the window title** — `ArtCreator 0.6.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

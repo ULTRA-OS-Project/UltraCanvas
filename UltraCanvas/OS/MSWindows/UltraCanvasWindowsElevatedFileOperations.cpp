@@ -11,16 +11,17 @@
 // report file the caller creates in its temp folder and names on that
 // command line (out: what could not be deleted, and why). The helper reads
 // nothing else, so a tampered file cannot widen what the user consented to.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
 
-// TokenElevation needs the Vista-era declarations; the same guard as the
-// file-associations backend, and NTDDI_VERSION kept consistent with it.
-#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0600
+// TokenElevation needs the Vista-era declarations and SetThreadErrorMode
+// the Windows 7 ones; the same guard as the file-associations backend, and
+// NTDDI_VERSION kept consistent with it.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0601
 #  undef _WIN32_WINNT
-#  define _WIN32_WINNT 0x0600
+#  define _WIN32_WINNT 0x0601
 #endif
 #if !defined(NTDDI_VERSION) || (NTDDI_VERSION >> 16) < _WIN32_WINNT
 #  undef NTDDI_VERSION
@@ -130,6 +131,29 @@ namespace UltraCanvas {
             // separately, so this leaves room for a long one.
             constexpr size_t kMaxParametersLength = 30000;
 
+            // The loader's hard-error boxes ("The procedure entry point ...
+            // could not be located in ...") off on this thread while the
+            // shell works: the runas verb has it load system DLLs of its
+            // own (pcacli.dll, the Program Compatibility Assistant client),
+            // and one of those failing to resolve an import must come back
+            // as ShellExecuteEx's error code, for the caller's dialog, not
+            // as a modal box on a worker thread behind the progress window.
+            // The same scope as the file-associations backend's.
+            class QuietLoaderScope {
+            public:
+                QuietLoaderScope() {
+                    if (!SetThreadErrorMode(SEM_FAILCRITICALERRORS |
+                                            SEM_NOOPENFILEERRORBOX, &previous))
+                        restore = false;
+                }
+                ~QuietLoaderScope() { if (restore) SetThreadErrorMode(previous, nullptr); }
+                QuietLoaderScope(const QuietLoaderScope&) = delete;
+                QuietLoaderScope& operator=(const QuietLoaderScope&) = delete;
+            private:
+                DWORD previous = 0;
+                bool restore = true;
+            };
+
         } // namespace
 
         bool NativeProcessIsElevated() {
@@ -222,9 +246,17 @@ namespace UltraCanvas {
                 info.lpFile = exe.c_str();
                 info.lpParameters = parametersW.c_str();
                 info.nShow = SW_HIDE;   // the helper opens no window anyway
-                SetLastError(ERROR_SUCCESS);
-                if (!ShellExecuteExW(&info)) {
-                    const DWORD error = GetLastError();
+                // The error is read inside the scope: restoring the error
+                // mode on the way out is itself a call that may touch it.
+                bool started = false;
+                DWORD error = ERROR_SUCCESS;
+                {
+                    QuietLoaderScope quiet;
+                    SetLastError(ERROR_SUCCESS);
+                    started = ShellExecuteExW(&info) != FALSE;
+                    if (!started) error = GetLastError();
+                }
+                if (!started) {
                     if (error == ERROR_CANCELLED) {
                         out.outcome = ElevatedOutcome::Declined;
                     } else {

@@ -1,3 +1,112 @@
+#### 2026-10-01 *1.58*
+- **Typing in the search bar no longer hangs on a large file.** With a big
+  document open (the ~940 KB framework changelog, say), each keystroke in the
+  search bar made the editor find the matches to highlight one at a time, each
+  search starting again from the top of the file - and the app froze. All
+  matches are now found in a single pass. **Replace All** had the same problem
+  on a large file and is fixed the same way. See
+  `Docs/UltraCanvas/changelog.d/search-highlight-quadratic.md`.
+- **Search as you type starts at two characters.** A single letter matches
+  most of a document, so the search bar now waits for a second one before it
+  searches and highlights; deleting back below two clears the highlights and
+  the count. Enter, Find Next and Find Previous still search for a single
+  character.
+
+#### 2026-10-01 *1.57*
+- **A word-processing tab prints on Windows, and on printers that do not read
+  PDF.** Print sent the document only as a PDF, which a Windows printer, a
+  GutenPrint printer and an IPP printer without PDF cannot take - they refused
+  the job with "Print Failed". The same pages now go along, and those printers
+  draw them: fonts, pictures, tables, headers and page numbers, with the
+  printer, copies, paper and page range chosen in the dialog. A framework
+  change, see `Docs/UltraCanvas/changelog.d/print-pages-beside-pdf.md`.
+
+#### 2026-10-01 *1.56*
+- **Texter builds without MuPDF again.** Opening and saving PDFs needs the
+  PDF view, which the framework compiles only when MuPDF is found; Texter
+  called it regardless, so a build on a machine without MuPDF failed to link
+  (`UltraCanvasPDFView::LoadFromPath` / `SaveAs` undefined). Such a build now
+  links, and opening a PDF in it says that this build has no PDF support.
+
+#### 2026-09-30 *1.55*
+- **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
+  File > Print read the tab's text area, which a word-processing tab keeps
+  detached and empty. It now prints the document as it looks - its pages as a
+  PDF, with fonts, pictures, tables, headers and page numbers - and
+  **File > Export as PDF...** saves that PDF.
+- **The Checklist button works in a word-processing tab.** It used to be
+  greyed out there, because the document model had no check list; it now
+  turns the paragraphs into check list items, whose boxes tick on a click.
+  See `Docs/UltraCanvas/changelog.d/rich-text-edit-gaps.md`.
+- **Word-processing tabs: pictures, tables and typing.** A picture can be
+  clicked and resized by its handles, and its right-click menu has *Picture
+  Alt Text...* and *Picture Original Size*. Dragging across table cells
+  selects them, and *Table > Merge Selected Cells* merges them. Selected text
+  can be dragged to move it (Ctrl to copy), and picture files dropped on the
+  document are inserted there. Typing gets curly quotes, dashes and lists
+  from `1. ` / `- ` as in a word processor.
+- **Word-processing documents open on their pages** - headers, footers,
+  page numbers, paragraphs and tables continuing over page breaks with their
+  header rows repeated. *View > Page Layout (documents)* switches back to one
+  column (remembered). Double-click a header or footer (or the page's top or
+  bottom margin) to edit it; Escape returns to the body.
+- **Styles in word-processing tabs.** The right-click menu has *Paragraph
+  Style* and *Character Style* submenus with the document's styles, *New Style
+  from Paragraph...* and *Update Style to Match Paragraph*; changing a style
+  changes every paragraph that has it.
+- **Footnotes and endnotes in word-processing tabs.** The right-click menu has
+  *Insert Footnote* and *Insert Endnote*; the note opens for typing, and a
+  double-click on a note or its number opens it again. Footnotes sit at the
+  foot of their page, and notes in .docx and .odt files now open as notes
+  (ODT ones used to appear in brackets in the text) and save back as notes.
+- **Contents, captions and cross-references in word-processing tabs.** The
+  right-click menu's *References* submenu inserts and updates a table of
+  contents (its page numbers follow the pages), inserts a numbered Figure or
+  Table caption, adds a bookmark, and inserts a cross-reference to a caption or
+  bookmark - its text or its page. Ctrl+click on a contents entry goes to the
+  heading.
+- **Comments in word-processing tabs.** *New Comment...* in the right-click
+  menu comments on the selection; comments show in a pane beside the text,
+  signed with your login name, and can be edited (double-click), resolved or
+  deleted. Comments in .docx and .odt files now show and are saved back.
+- **Track changes in word-processing tabs.** The right-click menu's *Track
+  Changes* submenu turns tracking on, steps through the changes and accepts or
+  rejects them one at a time or all at once. Insertions show underlined,
+  deletions struck through, as in Word and Writer, and changes tracked in a
+  .docx or .odt file now show instead of being quietly accepted.
+- **Columns in word-processing tabs.** *Columns and Sections* in the right-click
+  menu sets the text in one, two or three columns and inserts section breaks;
+  newsletters and papers set in columns in .docx and .odt files now show their
+  columns in page layout.
+- **Formatted copy and paste with other programs.** Text copied from a
+  word-processing tab pastes into a word processor, browser or mail with its
+  formatting, tables and pictures, and text copied from a web page, Word or
+  Writer pastes into a word-processing tab formatted instead of as plain text.
+- **Input methods and right-to-left text in word-processing tabs.** Text being
+  composed with an input method (Japanese, Chinese, Korean) shows in the
+  document, underlined, until it is committed. Arabic and Hebrew paragraphs
+  start at the right, the arrow keys move the way they point through them, and
+  *Paragraph Right-to-Left* in the right-click menu sets a paragraph's
+  direction; .docx and .odt files keep it.
+- Ctrl+click on a link to a place inside the document (a "#bookmark" link)
+  now goes there instead of trying to open it in a browser.
+- **The zoom box zooms a word-processing tab** (and a page wider than the
+  window scrolls sideways). It used to change the font size of plain-text tabs
+  only.
+
+#### 2026-09-29 *1.54*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
+#### 2026-09-29 *1.53*
+- **A Prolog `.pl` file is coloured as Prolog, a Perl one as Perl.** Both
+  languages use `.pl`, and which highlighting a file got was left to chance.
+  Texter now reads the first lines, as it already does for `.cls` and `.m`.
+  A `#` line, `use`, `my` or POD means Perl; a `%` comment or a `:-` rule
+  means Prolog. A file that gives no clue opens as Perl.
 #### 2026-09-28 *1.52*
 - **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

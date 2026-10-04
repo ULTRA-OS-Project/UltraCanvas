@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <unordered_set>
 
 namespace UltraMail {
 
@@ -30,6 +31,7 @@ struct SyncStats {
     int bodies   = 0;   // full bodies fetched + cached
     int reconciled = 0; // existing messages whose flags were corrected from server
     int expunged   = 0; // local messages dropped because the server no longer has them
+    int bodiesRemoved = 0; // cached .eml files deleted with them, or left over from before
 };
 
 struct SyncOutcome {
@@ -39,11 +41,36 @@ struct SyncOutcome {
     // On a network failure, the connection chain the plug-in reported
     // (UltraNetResult::diagnostics): component, server, TLS, libraries, roots.
     std::string diagnostics;
+    // Why it failed, as UltraNet classified it (Success when ok, Unknown for
+    // a failure that did not come from UltraNet). The app reads it to tell
+    // "the network is not there" from "the server said no".
+    UltraNetResultCode code = UltraNetResultCode::Success;
 
     explicit operator bool() const { return ok; }
-    static SyncOutcome Fail(const std::string& m) { return SyncOutcome{false, m, {}, {}}; }
+    static SyncOutcome Fail(const std::string& m) {
+        return SyncOutcome{false, m, {}, {}, UltraNetResultCode::Unknown};
+    }
     static SyncOutcome Fail(const UltraNetResult& r) {
-        return SyncOutcome{false, r.message, {}, r.diagnostics};
+        return SyncOutcome{false, r.message, {}, r.diagnostics, r.code};
+    }
+
+    // True when the failure means the server could not be reached at all -
+    // no name resolution, no route, nobody listening, or the connection timed
+    // out - which right after boot, or on a laptop between two networks,
+    // usually means the network is not up yet rather than that anything is
+    // wrong with the account. A failure the server itself produced (a rejected
+    // password, an untrusted certificate, a refused mailbox) is never this.
+    bool NetworkUnreachable() const {
+        switch (code) {
+            case UltraNetResultCode::HostNotFound:
+            case UltraNetResultCode::ConnectionRefused:
+            case UltraNetResultCode::ConnectionReset:
+            case UltraNetResultCode::ConnectionTimeout:
+            case UltraNetResultCode::Timeout:
+                return !ok;
+            default:
+                return false;
+        }
     }
 };
 
@@ -110,9 +137,22 @@ public:
                                const std::string& serverUrl,
                                const UltraNetMailOptions& options);
 
+    // Drop a message from the local index AND its cached body - the two always
+    // go together, or the body cache only ever grows (and another reader of it,
+    // such as EmailCleaner, keeps finding mail that is gone). Local only.
+    UltraDbResult ForgetMessage(const std::string& accountId, const std::string& folder,
+                                int64_t uid);
+
+    // Delete the cached bodies of a folder the index no longer holds, with a
+    // UID no higher than `maxUid` - bodies left behind by versions that dropped
+    // only the index row. The bound keeps a body a concurrent sync is writing
+    // (always a newer, higher UID) safe. Returns how many were deleted.
+    int PruneBodies(const std::string& accountId, const std::string& folder,
+                    const std::unordered_set<int64_t>& keep, int64_t maxUid);
+
     // Move a message to another folder on the server (UID MOVE) and drop it from
     // the local index for the source folder — used by Delete (to Trash) and Junk
-    // (to the Junk mailbox).
+    // (to the Junk mailbox). Its cached body goes too.
     SyncOutcome MoveMessage(const std::string& accountId, const std::string& srcFolder,
                             int64_t uid, const std::string& dstFolder,
                             const std::string& serverUrl,

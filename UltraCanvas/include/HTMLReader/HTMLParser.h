@@ -3,8 +3,8 @@
 // Handles real-world eBook markup: unclosed <p>/<li>, void elements,
 // self-closing XHTML syntax, comments, CDATA, doctype, entities, and
 // raw-text elements (<style>, <script>). Framework-independent.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - records the doctype (Document::doctype / quirksMode)
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +29,9 @@ public:
 private:
     std::string input;
     size_t pos = 0;
+    // The doctype seen while parsing (text after "DOCTYPE"), and whether any.
+    std::string doctype;
+    bool sawDoctype = false;
     ParseOptions opts;
     std::vector<std::string> errors;
 

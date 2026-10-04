@@ -107,4 +107,19 @@ IOPrintJob MakeTextPrintJob(const IOPrintDialogChoice& chosen,
     return job;
 }
 
+IOPrintJob MakeDocumentPrintJob(const IOPrintDialogChoice& chosen,
+                                const std::string& documentName,
+                                const std::vector<uint8_t>& data,
+                                const std::string& mimeType,
+                                const IPrintPageSourcePtr& pages) {
+    IOPrintJob job;
+    job.jobName = documentName.empty() ? std::string("UltraCanvas document") : documentName;
+    job.data = data;
+    job.mimeType = mimeType;
+    job.pages = pages;
+    job.options = chosen.options;
+    job.pageRange = chosen.pageRange;
+    return job;
+}
+
 }  // namespace UltraCanvas

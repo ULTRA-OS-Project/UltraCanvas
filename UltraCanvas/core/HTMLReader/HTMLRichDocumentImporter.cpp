@@ -1,6 +1,7 @@
 // core/HTMLReader/HTMLRichDocumentImporter.cpp
 // HTML → UCRichDocument. See the header for what is mapped and what is not.
-// Version: 1.0.0
+// Version: 1.0.1 - a cell border is the widest of its four sides
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
@@ -695,9 +696,10 @@ private:
 
     RichBorder BorderOf(const ComputedStyle& style, int tableBorder) const {
         RichBorder border;
-        if (style.borderWidth > 0.0f) {
-            border.widthPt = style.borderWidth * kPxToPt;
-            border.color = HexColor(style.borderColor);
+        if (style.HasBorder()) {
+            const HTML::BorderSide& side = style.WidestBorder();   // one border per cell
+            border.widthPt = side.Width() * kPxToPt;
+            border.color = HexColor(side.color);
         } else if (tableBorder > 0) {
             border.widthPt = std::max(0.75f, static_cast<float>(tableBorder) * kPxToPt);
             border.color = "#808080";

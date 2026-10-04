@@ -1,8 +1,9 @@
 // core/CSSLayout/LayoutAlgorithms.h
 // Internal forward declarations for per-display-type algorithms.
 // (Header lives under core/ so it is private to the implementation.)
-// Version: 1.2.1 - declare ArrangeFixedChild (fixed-position CB in parent frame).
-// Last Modified: 2026-07-13
+// Version: 1.4.0 - declare MinContentWidth (block layout's floats use it).
+// Version: 1.3.0 - declare MeasureTable / ArrangeTable.
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +24,15 @@ namespace UltraCanvas {
         // Grid layout (display: grid). Implemented in GridLayout.cpp.
         void MeasureGrid  (Element& e, const MeasureConstraints& c, const LayoutContext& ctx);
         void ArrangeGrid  (Element& e, const Rect2Df& finalRect,  const LayoutContext& ctx);
+
+        // Table layout (display: table). Implemented in TableLayout.cpp.
+        void MeasureTable (Element& e, const MeasureConstraints& c, const LayoutContext& ctx);
+        void ArrangeTable (Element& e, const Rect2Df& finalRect,  const LayoutContext& ctx);
+
+        // The narrowest border-box width `e` can take without its content
+        // overflowing (its px width, a leaf's min-content, or its children's).
+        // Implemented in TableLayout.cpp.
+        float MinContentWidth(Element& e, const LayoutContext& ctx);
 
         // Absolute/Relative/Fixed positioning. Implemented in AbsoluteLayout.cpp.
         // Lays out a single positioned child against its containing-block rect (border-box of the CB).

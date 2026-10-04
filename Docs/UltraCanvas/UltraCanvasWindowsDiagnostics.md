@@ -182,6 +182,53 @@ Windows 11 (10.0 build 26100)
 A driver, a codec or a third-party DLL in that field means the framework was
 the victim, not the cause.
 
+**The crash dump.** The same filter writes a minidump before it shows the
+message box, and the box (and the log line after the crash line) names the
+file:
+
+```
+Crash dump: C:\Users\me\AppData\Local\UltraCanvas\CrashDumps\UltraFiler-20261001-143052-4120.dmp
+Attach it to the bug report.
+```
+
+That is `%LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp`
+— paste `%LOCALAPPDATA%\UltraCanvas\CrashDumps` into Explorer's address bar
+to get there. The dump holds every thread's stack, the module list with
+versions, the memory the stacks point at and the modules' globals, which is
+what a debugger needs to say *where* the crash was and *how it got there*,
+and it is written with `MiniDumpWriteDump` from the `dbghelp.dll` every
+Windows ships (resolved at startup, since a crash handler can load nothing).
+Expect a few to a few tens of megabytes; a full memory dump is deliberately
+not taken. To read one: open it in WinDbg (`File → Open Crash Dump`, then
+`!analyze -v`; `.ecxr` and `k` for the faulting stack), or in Visual Studio
+(`File → Open`, *Debug with Native Only*). With the matching `.pdb` or the
+unstripped build beside it the stack has names; without them it still has
+the module and the offset of every frame, which `objdump` or `llvm-symbolizer`
+on the shipped binary turns into source lines.
+
+Two variables adjust it:
+
+| Variable | Effect |
+|---|---|
+| `ULTRACANVAS_CRASH_DUMP_DIR` | Another folder for the dumps (created if missing). |
+| `ULTRACANVAS_NO_CRASH_DUMP=1` | Write none - a test runner, a process that must not leave files behind. |
+
+Windows' own dumps are a separate mechanism and off by default for a desktop
+program: Windows Error Reporting only keeps a `Report.wer` (the exception code
+and the faulting module, no stack) under `%LOCALAPPDATA%\Microsoft\Windows\WER\ReportArchive`,
+and **Event Viewer → Windows Logs → Application** records the same two facts
+as an *Application Error* event. A second dump from Windows itself, for a
+crash the filter could not reach (one in the loader, or before
+`InstallWindowsCrashReporter` ran), needs the LocalDumps registry key:
+
+```
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpFolder /t REG_EXPAND_SZ /d "%LOCALAPPDATA%\CrashDumps" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpType /t REG_DWORD /d 2 /f
+```
+
+(from an administrator prompt; `DumpType` 2 is a full dump, 1 a mini dump).
+Those land in `%LOCALAPPDATA%\CrashDumps\UltraFiler.exe.<pid>.dmp`.
+
 **No log at all.** The process died before any UltraCanvas code ran, so the
 problem is the loader, not the application. Go to the exit code and to
 **Event Viewer → Windows Logs → Application**, which records an entry naming
@@ -249,7 +296,8 @@ File size   : 21843456 bytes
       (UCDemo-Windows-<version>-x86_64.zip).
 ```
 
-`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check and exits
+`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check (and the
+[DLL-name check](#entry-point-not-found-in-a-windows-dll)) and exits
 0 or 1; `uc-diagnose.bat` runs it automatically before launching.
 
 **Why an older package "still works".** A report of the shape "0.3.109 starts,
@@ -414,6 +462,52 @@ certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
 passes `--no-sign`. The PowerShell signing scripts can create only a
 self-signed certificate, which does not help against AV or SmartScreen.
 
+## "Entry point not found" in a Windows DLL
+
+While the application is running - not at start - a box titled with the
+executable's name says *The procedure entry point `WNetGetConnectionW` could
+not be located in the dynamic link library `C:\WINDOWS\SYSTEM32\pcacli.dll`*
+(German: *Der Prozedureinsprungpunkt ... wurde in der DLL ... nicht
+gefunden*). In UltraFiler it appeared right after the UAC consent prompt of
+"Delete as administrator" (0.9.92), and earlier on a double-click that opened
+a picture in Photos, naming `daxexec.dll` (0.9.83). Both are the same bug.
+
+The DLL named is the *importer*: a Windows component that the shell loaded
+into our process and that imports `WNetGetConnectionW` from `MPR.dll`. That
+import failed because the process already held a module called `mpr.dll` -
+ImageMagick's coder for its `MPR:` pseudo-format, shipped as
+`lib\ImageMagick-*\modules-Q16HDRI\coders\mpr.dll`. ImageMagick loads every
+coder the first time libvips asks it whether it recognises a file, and the
+Windows loader keys the modules of a process by base name: a later import of
+`MPR.dll` by name is answered with the module already loaded under that name,
+wherever it came from, and the coder has no `WNetGetConnectionW` to offer.
+Explorer never shows the box because Explorer never loads that coder.
+
+`package-win.sh` lets no coder into the package under such a name. `mpr.dll`
+and `url.dll` are pseudo-formats of no use here and are dropped, with their
+`.la` files. A real format whose name collides - `dpx.dll` (SMPTE DPX) and
+`vid.dll` on Windows 10 and 11, plus whatever else the packaging machine's
+`System32` turns up - ships as `<name>-coder.dll`, and its `.la` is rewritten
+to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
+the file to load), so the rename costs it nothing, and the process holds a
+module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
+
+The general rule for anyone adding a DLL to the package: **no DLL may carry
+the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
+loaded by full path is affected exactly like one next to the executable - the
+name is what the loader matches on.
+
 ## Windows 11 differences worth checking first
 
 Nothing in `UltraCanvas/OS/MSWindows/` branches on the Windows version — the
@@ -499,7 +593,7 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
-void        InstallWindowsCrashReporter(const std::string& appName);
+void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
 ```

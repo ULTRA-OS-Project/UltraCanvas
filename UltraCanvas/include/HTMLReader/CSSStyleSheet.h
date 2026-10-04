@@ -4,8 +4,11 @@
 // descendant chains, the box-model / typography / color properties, and a
 // specificity-ordered cascade. Framework-independent: value types here are
 // plain structs; HTMLElementBuilder maps them onto CSSLayout/widget types.
+// Version: 1.2.0 - structural pseudo-classes (:first-child, :last-child,
+//                  :nth-child() and the -of-type forms, :only-child, :root, :empty)
+// Version: 1.1.0 - attribute selectors ([a], [a=v], ~= ^= $= *= |=)
 // Version: 1.0.0
-// Last Modified: 2026-07-02
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,10 +59,36 @@ struct Declaration {
 };
 
 // One compound selector: tag, classes and id that must all match one element.
+// [name], [name=value] and the ~= ^= $= *= |= forms; mail templates style by
+// them (Mailchimp: td[class=mcnTextContent], table[id=templateBody]).
+struct AttributeSelector {
+    std::string name;                 // lower-case
+    char op = 0;                      // 0 = present, '=', '~', '^', '$', '*', '|'
+    std::string value;
+    bool ignoreCase = false;          // [name=value i]
+};
+
+// Structural pseudo-classes, all as an+b positions: :first-child is
+// nth-child(1), :last-child nth-last-child(1), :only-child both. ofType
+// counts only siblings with the same tag; fromEnd counts from the last.
+struct PseudoClass {
+    enum class Kind { Nth, Root, Empty };
+    Kind kind = Kind::Nth;
+    int a = 0, b = 1;                 // matches positions a*n + b, n >= 0 (1-based)
+    bool fromEnd = false;
+    bool ofType = false;
+};
+
 struct SimpleSelector {
     std::string tag;                  // empty or "*" = any element
     std::vector<std::string> classes;
     std::string id;
+    std::vector<AttributeSelector> attributes;
+    std::vector<PseudoClass> pseudos;
+    // :link / :any-link - an <a href>. Links are all unvisited here, so a
+    // :visited rule never matches and :hover / :active / :focus rules are
+    // dropped (a static render is never hovered).
+    bool link = false;
 };
 
 // A descendant chain: "div.chapter p.first" — path.back() matches the element
@@ -82,19 +111,30 @@ public:
     std::vector<Rule> rules;
 
     // Parse css text and append its rules (cascade order is preserved across
-    // multiple calls). At-rules (@media, @font-face, ...) are skipped whole;
-    // selectors using unsupported syntax (pseudo-classes, attribute selectors,
-    // sibling combinators) are dropped individually so the rest of the rule
-    // still applies.
+    // multiple calls). An @media block's rules apply when its query matches
+    // the media width (below); other at-rules (@font-face, @import, ...) are
+    // skipped whole. Selectors using unsupported syntax (most pseudo-classes,
+    // attribute selectors, sibling combinators) are dropped individually so
+    // the rest of the rule still applies.
     void ParseAppend(const std::string& css);
 
     void Clear() { rules.clear(); nextOrder = 0; }
+
+    // The viewport width, in CSS px, that @media queries are answered for
+    // (min-width / max-width / width). Set it before ParseAppend.
+    void SetMediaWidth(float px) { mediaWidth = px; }
+    float GetMediaWidth() const { return mediaWidth; }
+
+    // Whether a media query list ("only screen and (min-width:480px), print")
+    // holds on a screen `widthPx` wide. Unknown media features do not match.
+    static bool MediaMatches(const std::string& query, float widthPx);
 
     // Parse a bare declaration list — the content of a style="" attribute.
     static std::vector<Declaration> ParseDeclarationList(const std::string& text);
 
 private:
     int nextOrder = 0;
+    float mediaWidth = 800.f;
 };
 
 // Lowercase-trim helper shared by parser and resolver.

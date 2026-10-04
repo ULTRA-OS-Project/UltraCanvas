@@ -1,0 +1,233 @@
+@PACKAGE_INIT@
+
+# UltraCanvasConfig.cmake — the CMake package an installed UltraCanvas provides.
+# Generated from UltraCanvas/cmake/UltraCanvasConfig.cmake.in by
+# UltraCanvas/CMakeLists.txt ("INSTALLATION AND THE CMAKE PACKAGE").
+#
+#     find_package(UltraCanvas CONFIG REQUIRED)
+#     target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+#
+# Imported targets:
+#   UltraCanvas::UltraCanvas     the framework: windows, elements, rendering,
+#                                FileLoader, UltraCanvasJSON; UltraDatabase and
+#                                UltraNet when the build enabled them
+#   UltraCanvas::UltraCrypt      cryptographic services, UI-free
+#   UltraCanvas::UltraVault      credential and secret storage, UI-free
+#   UltraCanvas::UltraDatabase   (when built) usable on its own, without the UI
+#   UltraCanvas::UltraNet        (when built against a system libcurl)
+#   UltraCanvas::UltraCanvas<X>Plugin
+#                                the file-format plug-ins this build produced
+#                                (CDR, XAR, EPS, Vector, Models, OCR,
+#                                Vectorizer); ULTRACANVAS_PLUGIN_TARGETS lists
+#                                the ones present
+#   UltraCanvas::UltraCanvasAllFormats
+#                                the registrar: link it and every plug-in above
+#                                is registered with FileLoader before main()
+#
+# Variables, for build systems that still want them:
+#   ULTRACANVAS_VERSION, ULTRACANVAS_INCLUDE_DIRS, ULTRACANVAS_LIBRARIES,
+#   ULTRACANVAS_PLUGIN_TARGETS, ULTRACANVAS_DEPS_DIR (the bundled
+#   development files of the Windows and macOS SDKs, else empty)
+#
+# Tests/PackageConsumer is the smallest application that uses this; CI builds
+# it against a fresh install on every pull request.
+
+include(CMakeFindDependencyMacro)
+
+set(ULTRACANVAS_VERSION "@ULTRACANVAS_PACKAGE_VERSION@")
+
+# Directories as the consumer's CMake can see them. Under MSYS2, pkg-config
+# reports its prefix in POSIX form ("/clang64/include/cairo"); the MSYS2
+# compiler and linker understand that, but the native CMake does not, and it
+# refuses an imported target whose include directory it cannot find. cygpath,
+# which every MSYS2 shell has, gives the native spelling. A directory that still
+# does not exist is dropped with a notice rather than passed on as an error.
+function(_ultracanvas_native_dirs out_var)
+    set(_result "")
+    foreach(_dir IN LISTS ARGN)
+        if(_dir MATCHES "\\$<")
+            list(APPEND _result "${_dir}")        # a generator expression: keep as is
+            continue()
+        endif()
+        if(NOT IS_DIRECTORY "${_dir}" AND WIN32 AND _dir MATCHES "^/")
+            find_program(_ultracanvas_cygpath cygpath)
+            if(_ultracanvas_cygpath)
+                execute_process(COMMAND "${_ultracanvas_cygpath}" -m "${_dir}"
+                    OUTPUT_VARIABLE _native OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+                if(_native AND IS_DIRECTORY "${_native}")
+                    set(_dir "${_native}")
+                endif()
+            endif()
+        endif()
+        if(IS_DIRECTORY "${_dir}")
+            list(APPEND _result "${_dir}")
+        else()
+            message(STATUS "UltraCanvas: dropping include/library directory that does not exist here: ${_dir}")
+        endif()
+    endforeach()
+    set(${out_var} "${_result}" PARENT_SCOPE)
+endfunction()
+
+# ---- The bundled development files (Windows and macOS SDKs) ----------------
+# scripts/sdk-bundle-deps.sh puts the headers, import libraries / dylibs and
+# .pc files of the libraries the framework uses under deps/, with .pc files
+# whose prefix is their own place. Putting deps/ first on CMAKE_PREFIX_PATH
+# is enough: find_dependency() looks there for fmt, CURL and ZLIB, and
+# FindPkgConfig adds deps/lib/pkgconfig and deps/share/pkgconfig to the
+# pkg-config search path. Where there is no deps/ (the Linux SDK, a plain
+# cmake --install) the consuming machine's own packages are used as before.
+set(ULTRACANVAS_DEPS_DIR "")
+if(IS_DIRECTORY "${PACKAGE_PREFIX_DIR}/deps/lib/pkgconfig")
+    set(ULTRACANVAS_DEPS_DIR "${PACKAGE_PREFIX_DIR}/deps")
+    list(PREPEND CMAKE_PREFIX_PATH "${ULTRACANVAS_DEPS_DIR}")
+    set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
+    message(STATUS "UltraCanvas: using the bundled development files in ${ULTRACANVAS_DEPS_DIR}")
+endif()
+
+# ---- Packages the link interface names as imported targets -----------------
+find_dependency(Threads)
+find_dependency(fmt CONFIG)
+if(@ULTRACANVAS_PACKAGE_HAS_VIRTUALFS@)
+    find_dependency(VirtualFS CONFIG)
+endif()
+if(@ULTRACANVAS_PACKAGE_HAS_EPS@)
+    find_dependency(ZLIB)
+endif()
+if(@ULTRACANVAS_PACKAGE_HAS_NET@)
+    find_dependency(CURL)
+    if(@ULTRACANVAS_PACKAGE_NET_OPENSSL@)
+        find_dependency(OpenSSL)
+    endif()
+    if(@ULTRACANVAS_PACKAGE_NET_ICONV@)
+        find_dependency(Iconv)
+    endif()
+endif()
+
+# ---- System libraries the link interface names by -l name ------------------
+# The build recorded them the way pkg-config reported them (-lcairo,
+# -lpango-1.0, -lvips-cpp, ...), and the public headers include <cairo/cairo.h>,
+# <glib.h> and <vips/vips8> themselves. Re-run pkg-config on the consumer's
+# machine for the include and library directories those need; a missing -dev
+# package fails here, by name, rather than at the first #include.
+find_dependency(PkgConfig)
+pkg_check_modules(_ultracanvas_deps REQUIRED
+    cairo pango pangocairo freetype2 glib-2.0 tinyxml2)
+set(_ultracanvas_dep_includes ${_ultracanvas_deps_INCLUDE_DIRS})
+set(_ultracanvas_dep_libdirs  ${_ultracanvas_deps_LIBRARY_DIRS})
+if(@ULTRACANVAS_PACKAGE_HAS_VIPS@)
+    pkg_check_modules(_ultracanvas_vips REQUIRED vips-cpp)
+    list(APPEND _ultracanvas_dep_includes ${_ultracanvas_vips_INCLUDE_DIRS})
+    list(APPEND _ultracanvas_dep_libdirs  ${_ultracanvas_vips_LIBRARY_DIRS})
+endif()
+
+# ---- The exported targets ---------------------------------------------------
+if(NOT TARGET UltraCanvas::UltraCanvas)
+    include("${CMAKE_CURRENT_LIST_DIR}/UltraCanvasTargets.cmake")
+endif()
+
+# The exported targets may carry the build machine's pkg-config directories in
+# the same POSIX form (a PUBLIC link directory for libvips, for instance); put
+# them through the same translation before CMake validates them.
+foreach(_ultracanvas_target
+        UltraCanvas::UltraCanvas UltraCanvas::UltraCanvasTextUtils
+        UltraCanvas::UltraCanvasBase32 UltraCanvas::UltraCrypt UltraCanvas::UltraVault
+        UltraCanvas::uc-yyjson UltraCanvas::UltraWin UltraCanvas::UltraDatabase
+        UltraCanvas::UltraNet UltraCanvas::UltraCanvasAllFormats
+        UltraCanvas::UltraCanvasVectorPlugin UltraCanvas::UltraCanvasModelsPlugin
+        UltraCanvas::UltraCanvasCDRPlugin UltraCanvas::ultracanvas_libcdr
+        UltraCanvas::UltraCanvasXARPlugin UltraCanvas::UltraCanvasEPSPlugin
+        UltraCanvas::UltraCanvasOCRPlugin UltraCanvas::UltraCanvasVectorizerPlugin)
+    if(NOT TARGET ${_ultracanvas_target})
+        continue()
+    endif()
+    foreach(_ultracanvas_prop INTERFACE_INCLUDE_DIRECTORIES INTERFACE_LINK_DIRECTORIES)
+        get_target_property(_ultracanvas_dirs ${_ultracanvas_target} ${_ultracanvas_prop})
+        if(_ultracanvas_dirs)
+            _ultracanvas_native_dirs(_ultracanvas_dirs ${_ultracanvas_dirs})
+            set_property(TARGET ${_ultracanvas_target} PROPERTY ${_ultracanvas_prop} ${_ultracanvas_dirs})
+        endif()
+    endforeach()
+endforeach()
+unset(_ultracanvas_target)
+unset(_ultracanvas_prop)
+unset(_ultracanvas_dirs)
+
+# With bundled development files, a library the build machine found by its
+# full path (/clang64/lib/libtinyxml2.dll.a, /opt/homebrew/opt/x/lib/libx.dylib)
+# is taken from deps/lib instead, where a copy of that file is; and on macOS
+# consumers get an rpath to deps/lib, where the bundled dylibs carry @rpath
+# install names, so the application runs on a Mac without Homebrew.
+if(ULTRACANVAS_DEPS_DIR)
+    foreach(_ultracanvas_target
+            UltraCanvas::UltraCanvas UltraCanvas::UltraCanvasTextUtils
+            UltraCanvas::UltraCanvasBase32 UltraCanvas::UltraCrypt UltraCanvas::UltraVault
+            UltraCanvas::uc-yyjson UltraCanvas::UltraWin UltraCanvas::UltraDatabase
+            UltraCanvas::UltraNet UltraCanvas::UltraCanvasAllFormats
+            UltraCanvas::UltraCanvasVectorPlugin UltraCanvas::UltraCanvasModelsPlugin
+            UltraCanvas::UltraCanvasCDRPlugin UltraCanvas::ultracanvas_libcdr
+            UltraCanvas::UltraCanvasXARPlugin UltraCanvas::UltraCanvasEPSPlugin
+            UltraCanvas::UltraCanvasOCRPlugin UltraCanvas::UltraCanvasVectorizerPlugin)
+        if(NOT TARGET ${_ultracanvas_target})
+            continue()
+        endif()
+        get_target_property(_ultracanvas_libs ${_ultracanvas_target} INTERFACE_LINK_LIBRARIES)
+        if(NOT _ultracanvas_libs)
+            continue()
+        endif()
+        set(_ultracanvas_mapped "")
+        foreach(_ultracanvas_lib IN LISTS _ultracanvas_libs)
+            if(NOT _ultracanvas_lib MATCHES "\\$<" AND IS_ABSOLUTE "${_ultracanvas_lib}")
+                get_filename_component(_ultracanvas_name "${_ultracanvas_lib}" NAME)
+                if(EXISTS "${ULTRACANVAS_DEPS_DIR}/lib/${_ultracanvas_name}")
+                    set(_ultracanvas_lib "${ULTRACANVAS_DEPS_DIR}/lib/${_ultracanvas_name}")
+                endif()
+            endif()
+            list(APPEND _ultracanvas_mapped "${_ultracanvas_lib}")
+        endforeach()
+        set_property(TARGET ${_ultracanvas_target} PROPERTY INTERFACE_LINK_LIBRARIES ${_ultracanvas_mapped})
+    endforeach()
+    unset(_ultracanvas_target)
+    unset(_ultracanvas_libs)
+    unset(_ultracanvas_lib)
+    unset(_ultracanvas_name)
+    unset(_ultracanvas_mapped)
+    if(APPLE)
+        set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
+            INTERFACE_LINK_OPTIONS "-Wl,-rpath,${ULTRACANVAS_DEPS_DIR}/lib")
+    endif()
+endif()
+
+_ultracanvas_native_dirs(_ultracanvas_dep_includes ${_ultracanvas_dep_includes})
+_ultracanvas_native_dirs(_ultracanvas_dep_libdirs  ${_ultracanvas_dep_libdirs})
+if(_ultracanvas_dep_includes)
+    set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
+        INTERFACE_INCLUDE_DIRECTORIES ${_ultracanvas_dep_includes})
+endif()
+if(_ultracanvas_dep_libdirs)
+    set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
+        INTERFACE_LINK_DIRECTORIES ${_ultracanvas_dep_libdirs})
+endif()
+
+set(ULTRACANVAS_INCLUDE_DIRS
+    "${PACKAGE_PREFIX_DIR}/include/ultracanvas/include"
+    "${PACKAGE_PREFIX_DIR}/include/ultracanvas/Plugins"
+    ${_ultracanvas_dep_includes})
+set(ULTRACANVAS_LIBRARIES UltraCanvas::UltraCanvas)
+
+# The plug-ins this install carries, as imported targets - the same list the
+# in-tree build hands applications in ULTRACANVAS_PLUGIN_TARGETS.
+set(ULTRACANVAS_PLUGIN_TARGETS "")
+foreach(_ultracanvas_plugin
+        UltraCanvasVectorPlugin UltraCanvasModelsPlugin UltraCanvasCDRPlugin
+        UltraCanvasXARPlugin UltraCanvasEPSPlugin UltraCanvasOCRPlugin
+        UltraCanvasVectorizerPlugin)
+    if(TARGET UltraCanvas::${_ultracanvas_plugin})
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS UltraCanvas::${_ultracanvas_plugin})
+    endif()
+endforeach()
+unset(_ultracanvas_plugin)
+
+unset(_ultracanvas_dep_includes)
+unset(_ultracanvas_dep_libdirs)
+
+check_required_components(UltraCanvas)

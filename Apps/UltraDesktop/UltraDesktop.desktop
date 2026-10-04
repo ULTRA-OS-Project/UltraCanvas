@@ -1,0 +1,24 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraDesktop, and the name every desktop-aware
+# program resolves the icon by: `Icon=UltraDesktop` is looked up through the
+# installed icon themes, and the project's install rules put
+# media/appicon/UltraDesktop.png into share/icons/hicolor/256x256/apps and
+# media/appicon/UltraDesktop.svg into share/icons/hicolor/scalable/apps.
+#
+# NoDisplay: the desktop is started by the session, not from the menu of the
+# desktop it is - listing it in its own app starter would only offer a second
+# copy of itself.
+Type=Application
+Version=1.5
+Name=UltraDesktop
+GenericName=Desktop
+Comment=The ULTRA OS desktop: taskbar, desktop organiser and info panel
+Exec=UltraDesktop
+TryExec=UltraDesktop
+Icon=UltraDesktop
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+StartupWMClass=UltraDesktop
+Categories=System;
+Keywords=desktop;shell;taskbar;panel;

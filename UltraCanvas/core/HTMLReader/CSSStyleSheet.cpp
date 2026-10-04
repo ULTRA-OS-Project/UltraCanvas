@@ -1,8 +1,17 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
+// Version: 1.5.0 - structural pseudo-classes: :first-child, :last-child,
+//                  :only-child, :nth-child(an+b) / -last- / -of-type, :root,
+//                  :empty (dynamic ones such as :hover still drop the rule)
+// Version: 1.4.0 - attribute selectors: [a], [a=v], ~= ^= $= *= |=, quoted
+//                  values, the i flag (Mailchimp: td[class=mcnTextContent])
+// Version: 1.3.0 - @media blocks apply when their query matches the media width;
+//                  <!-- --> around a style sheet is skipped.
+// Version: 1.2.0 - a:link / :any-link selectors match links (mail styles its
+//                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-03
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -11,6 +20,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -255,7 +265,9 @@ int Selector::Specificity() const {
     int ids = 0, classes = 0, tags = 0;
     for (const auto& part : path) {
         if (!part.id.empty()) ++ids;
-        classes += static_cast<int>(part.classes.size());
+        classes += static_cast<int>(part.classes.size() + part.attributes.size() +
+                                    part.pseudos.size()) +
+                   (part.link ? 1 : 0);
         if (!part.tag.empty() && part.tag != "*") ++tags;
     }
     return ids * 10000 + classes * 100 + tags;
@@ -263,14 +275,143 @@ int Selector::Specificity() const {
 
 namespace {
 
+// "odd", "even", "3", "n", "-n+3", "2n + 1" -> a, b. False when malformed.
+bool ParseNth(std::string text, int& a, int& b) {
+    std::string t;
+    for (char ch : text)
+        if (!std::isspace(static_cast<unsigned char>(ch)))
+            t += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (t == "odd")  { a = 2; b = 1; return true; }
+    if (t == "even") { a = 2; b = 0; return true; }
+    auto parseInt = [](const std::string& s, int& out) {
+        if (s.empty()) return false;
+        size_t i = (s[0] == '+' || s[0] == '-') ? 1 : 0;
+        if (i >= s.size()) return false;
+        long v = 0;
+        for (; i < s.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+            v = v * 10 + (s[i] - '0');
+            if (v > 100000) return false;
+        }
+        out = static_cast<int>(s[0] == '-' ? -v : v);
+        return true;
+    };
+    const size_t n = t.find('n');
+    if (n == std::string::npos) { a = 0; return parseInt(t, b); }
+    const std::string coef = t.substr(0, n);
+    if (coef.empty() || coef == "+") a = 1;
+    else if (coef == "-") a = -1;
+    else if (!parseInt(coef, a)) return false;
+    const std::string rest = t.substr(n + 1);
+    if (rest.empty()) { b = 0; return true; }
+    if (rest[0] != '+' && rest[0] != '-') return false;
+    return parseInt(rest, b);
+}
+
 // Returns nullopt when the selector uses unsupported syntax.
 std::optional<SimpleSelector> ParseCompound(const std::string& text) {
     SimpleSelector result;
     size_t i = 0;
     while (i < text.size()) {
         char c = text[i];
-        if (c == ':' || c == '[' || c == '(') {
-            return std::nullopt;   // pseudo-class / attribute / functional
+        if (c == ':' && i + 1 < text.size() && text[i + 1] != ':') {
+            // :link / :any-link match every link; any other pseudo-class
+            // (:hover, :visited, :nth-child(...)) drops the selector.
+            std::string name;
+            ++i;
+            while (i < text.size() && (std::isalnum(static_cast<unsigned char>(text[i])) ||
+                                       text[i] == '-')) {
+                name += static_cast<char>(std::tolower(static_cast<unsigned char>(text[i])));
+                ++i;
+            }
+            std::string arg;
+            bool hasArg = false;
+            if (i < text.size() && text[i] == '(') {
+                const size_t close = text.find(')', i);
+                if (close == std::string::npos) return std::nullopt;
+                arg = text.substr(i + 1, close - i - 1);
+                hasArg = true;
+                i = close + 1;
+            }
+            if (!hasArg && (name == "link" || name == "any-link")) {
+                result.link = true;
+                continue;
+            }
+            PseudoClass pc;
+            if (!hasArg && name == "first-child")        { pc.a = 0; pc.b = 1; }
+            else if (!hasArg && name == "last-child")    { pc.a = 0; pc.b = 1; pc.fromEnd = true; }
+            else if (!hasArg && name == "first-of-type") { pc.a = 0; pc.b = 1; pc.ofType = true; }
+            else if (!hasArg && name == "last-of-type")  { pc.a = 0; pc.b = 1; pc.ofType = true; pc.fromEnd = true; }
+            else if (!hasArg && (name == "only-child" || name == "only-of-type")) {
+                // First and last at once: two conditions.
+                pc.ofType = name == "only-of-type";
+                result.pseudos.push_back(pc);
+                pc.fromEnd = true;
+            }
+            else if (!hasArg && name == "root")  pc.kind = PseudoClass::Kind::Root;
+            else if (!hasArg && name == "empty") pc.kind = PseudoClass::Kind::Empty;
+            else if (hasArg && (name == "nth-child" || name == "nth-last-child" ||
+                                name == "nth-of-type" || name == "nth-last-of-type")) {
+                if (!ParseNth(arg, pc.a, pc.b)) return std::nullopt;
+                pc.fromEnd = name.find("last") != std::string::npos;
+                pc.ofType = name.find("of-type") != std::string::npos;
+            }
+            // :hover, :visited, :not(...) and the rest: a static render is
+            // never hovered, so the rule is dropped.
+            else return std::nullopt;
+            result.pseudos.push_back(pc);
+            continue;
+        }
+        if (c == '[') {
+            // [name], [name=value], [name~=value] ... with an optional
+            // quoted value and an " i" flag; anything else drops the rule.
+            size_t close = i + 1;
+            char quote = 0;
+            for (; close < text.size(); ++close) {
+                if (quote) { if (text[close] == quote) quote = 0; continue; }
+                if (text[close] == '"' || text[close] == '\'') quote = text[close];
+                else if (text[close] == ']') break;
+            }
+            if (close >= text.size()) return std::nullopt;
+            std::string inner = Trim(text.substr(i + 1, close - i - 1));
+            i = close + 1;
+            AttributeSelector attr;
+            size_t n = 0;
+            while (n < inner.size() && (std::isalnum(static_cast<unsigned char>(inner[n])) ||
+                                        inner[n] == '-' || inner[n] == '_' || inner[n] == ':')) {
+                attr.name += static_cast<char>(std::tolower(static_cast<unsigned char>(inner[n])));
+                ++n;
+            }
+            if (attr.name.empty()) return std::nullopt;
+            std::string rest = Trim(inner.substr(n));
+            if (!rest.empty()) {
+                size_t eq = 0;
+                if (rest[0] == '=') { attr.op = '='; eq = 1; }
+                else if (rest.size() > 1 && rest[1] == '=' &&
+                         std::string("~^$*|").find(rest[0]) != std::string::npos) {
+                    attr.op = rest[0]; eq = 2;
+                } else {
+                    return std::nullopt;
+                }
+                std::string value = Trim(rest.substr(eq));
+                if (!value.empty() && (value[0] == '"' || value[0] == '\'')) {
+                    const size_t end = value.find(value[0], 1);
+                    if (end == std::string::npos) return std::nullopt;
+                    attr.value = value.substr(1, end - 1);
+                    value = Trim(value.substr(end + 1));
+                } else {
+                    const size_t space = value.find_first_of(" \t");
+                    attr.value = value.substr(0, space);
+                    value = space == std::string::npos ? std::string() : Trim(value.substr(space));
+                }
+                if (value == "i" || value == "I") attr.ignoreCase = true;
+                else if (!value.empty() && value != "s" && value != "S") return std::nullopt;
+            }
+            result.attributes.push_back(std::move(attr));
+            continue;
+        }
+        if (c == ':' || c == '(') {
+            return std::nullopt;   // pseudo-element / functional
         }
         if (c == '*') {
             ++i;
@@ -320,6 +461,29 @@ std::optional<Selector> ParseSelector(const std::string& text) {
 
     while (i <= text.size()) {
         char c = (i < text.size()) ? text[i] : ' ';
+        // A pseudo-class argument is one piece: ":nth-child(2n + 1)".
+        if (c == '(') {
+            const size_t close = text.find(')', i);
+            if (close == std::string::npos) return std::nullopt;
+            token += text.substr(i, close - i + 1);
+            i = close + 1;
+            continue;
+        }
+        // An attribute selector is one piece: its spaces, '~' (~=) and
+        // quoted text are not combinators.
+        if (c == '[') {
+            char quote = 0;
+            size_t j = i;
+            for (; j < text.size(); ++j) {
+                if (quote) { if (text[j] == quote) quote = 0; continue; }
+                if (text[j] == '"' || text[j] == '\'') quote = text[j];
+                else if (text[j] == ']') break;
+            }
+            if (j >= text.size()) return std::nullopt;
+            token += text.substr(i, j - i + 1);
+            i = j + 1;
+            continue;
+        }
         if (std::isspace(static_cast<unsigned char>(c))) {
             if (!flush()) return std::nullopt;
             ++i;
@@ -389,6 +553,62 @@ std::vector<Declaration> StyleSheet::ParseDeclarationList(const std::string& tex
 // STYLESHEET
 // ============================================================================
 
+bool StyleSheet::MediaMatches(const std::string& query, float widthPx) {
+    // A comma-separated list matches when any of its queries does.
+    std::string list = TrimLower(query);
+    if (list.empty()) return true;
+    size_t start = 0;
+    while (start <= list.size()) {
+        size_t comma = list.find(',', start);
+        std::string one = Trim(list.substr(start, comma == std::string::npos
+                                                      ? std::string::npos : comma - start));
+        start = (comma == std::string::npos) ? list.size() + 1 : comma + 1;
+        if (one.empty()) continue;
+
+        bool negate = false, ok = true;
+        size_t i = 0;
+        while (i < one.size() && ok) {
+            while (i < one.size() && std::isspace(static_cast<unsigned char>(one[i]))) ++i;
+            if (i >= one.size()) break;
+            if (one[i] == '(') {
+                size_t close = one.find(')', i);
+                if (close == std::string::npos) { ok = false; break; }
+                std::string feature = one.substr(i + 1, close - i - 1);
+                i = close + 1;
+                size_t colon = feature.find(':');
+                std::string name = Trim(feature.substr(0, colon));
+                std::string value = colon == std::string::npos ? "" : Trim(feature.substr(colon + 1));
+                if (name == "min-width" || name == "max-width" || name == "width") {
+                    auto len = CssLength::Parse(value);
+                    if (!len || len->unit == CssUnit::Percent) { ok = false; break; }
+                    const float px = len->ToPx(16.f, 16.f);   // em in a query: the initial 16px
+                    if (name == "min-width") ok = widthPx >= px;
+                    else if (name == "max-width") ok = widthPx <= px;
+                    else ok = std::fabs(widthPx - px) < 0.5f;
+                } else if (name == "orientation") {
+                    ok = value == "landscape";
+                } else if (name == "prefers-color-scheme") {
+                    ok = value == "light";
+                } else if (name == "color" || name == "hover" || name == "pointer") {
+                    ok = true;
+                } else {
+                    ok = false;   // unknown feature: no match, as in a browser
+                }
+                continue;
+            }
+            size_t e = i;
+            while (e < one.size() && !std::isspace(static_cast<unsigned char>(one[e])) && one[e] != '(') ++e;
+            std::string word = one.substr(i, e - i);
+            i = e;
+            if (word == "not") negate = true;
+            else if (word == "only" || word == "and" || word == "screen" || word == "all") continue;
+            else ok = false;   // print, speech, tv, ...
+        }
+        if (ok != negate) return true;
+    }
+    return false;
+}
+
 void StyleSheet::ParseAppend(const std::string& css) {
     std::string text = StripComments(css);
 
@@ -397,13 +617,28 @@ void StyleSheet::ParseAppend(const std::string& css) {
         while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
         if (i >= text.size()) break;
 
+        // The HTML comment markers old mail wraps its style sheet in.
+        if (text.compare(i, 4, "<!--") == 0) { i += 4; continue; }
+        if (text.compare(i, 3, "-->") == 0)  { i += 3; continue; }
+
         if (text[i] == '@') {
-            // @import/@charset end at ';'; block at-rules skip the block.
+            // @import/@charset end at ';'; block at-rules skip the block,
+            // except a matching @media, whose rules apply.
             size_t semi = text.find(';', i);
             size_t brace = text.find('{', i);
             if (brace != std::string::npos &&
                 (semi == std::string::npos || brace < semi)) {
-                i = SkipBlock(text, brace);
+                const size_t end = SkipBlock(text, brace);
+                std::string keyword;
+                for (size_t k = i + 1; k < brace && (std::isalpha(static_cast<unsigned char>(text[k])) ||
+                                                     text[k] == '-'); ++k)
+                    keyword += static_cast<char>(std::tolower(static_cast<unsigned char>(text[k])));
+                if (keyword == "media" &&
+                    MediaMatches(text.substr(i + 6, brace - i - 6), mediaWidth)) {
+                    const size_t innerEnd = (end > brace + 1 && text[end - 1] == '}') ? end - 1 : end;
+                    ParseAppend(text.substr(brace + 1, innerEnd - brace - 1));
+                }
+                i = end;
             } else if (semi != std::string::npos) {
                 i = semi + 1;
             } else {

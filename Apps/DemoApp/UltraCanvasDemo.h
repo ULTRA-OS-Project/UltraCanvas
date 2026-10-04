@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
-// Version: 1.0.1
-// Last Modified: 2026-06-17
+// Version: 1.0.2
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -238,6 +238,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateChipExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMessageCenterExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBadgeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBusyIndicatorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpinnerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateColorPickerExamples();
@@ -273,14 +274,6 @@ namespace UltraCanvas {
 
         // Graphics Elements - BITMAP FORMATS
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
-        std::shared_ptr<UltraCanvasUIElement> CreatePNGExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateJPEGExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateAVIFExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateWEBPExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateHEIFExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateGIFExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateTIFFExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateBMPExamples();
 
 
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
@@ -302,6 +295,10 @@ namespace UltraCanvas {
         // WYSIWYG page: UltraCanvasRichTextEdit with toolbars built from real
         // elements and driven by GetFormatState(), plus .odt/.docx open & save.
         std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGExamples();
+        // The same editor on Chinese, Arabic and Myanmar text: line breaking
+        // without spaces, right-to-left paragraphs, complex-script shaping,
+        // mixed-direction lines.
+        std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGInternationalExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
@@ -401,6 +398,7 @@ namespace UltraCanvas {
         // FileLoader module page: Overview / Details / Examples tabs, the last one
         // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSystemDialogsExamples();
 #ifdef HAS_LIBVIPS
         // PixelFX module page: Overview / Details / Examples tabs, the last one an
         // interactive image-processing playground (sample image + function tree +
@@ -508,7 +506,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     std::unique_ptr<UltraCanvasDemoApplication> CreateDemoApplication();
 
-// ===== FULL-SIZE IMAGE VIEWER (Modal Window) =====
-    void ShowFullSizeImageViewer(const std::string& imagePath);
+// ===== MEDIA VIEWER (full-size bitmaps, vector drawings, 3D models) =====
+    void ShowInMediaViewer(const std::string& path);
 
 } // namespace UltraCanvas

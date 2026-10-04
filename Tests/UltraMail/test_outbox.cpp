@@ -13,7 +13,9 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraCanvasPathUtf8.h"
 
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -98,6 +100,36 @@ TEST(outbox_flush_success_removes_items) {
 
     int n = 0; store.PendingCount(n);
     REQUIRE_EQ(n, 0);   // sent item removed
+}
+
+TEST(outbox_flush_leaves_a_held_message_alone) {
+    OutboxStore store = FreshOutbox("held");
+    int64_t held = 0, other = 0;
+    store.Enqueue("erika", "smtps://x/", SampleDraft(), held);
+    store.Enqueue("erika", "smtps://x/", SampleDraft(), other);
+    store.SetHeld(held, true);
+    REQUIRE(store.IsHeld(held));
+    REQUIRE_EQ(store.HeldCount(), 1);
+
+    // Being corrected in a compose window: neither sent nor counted as failed.
+    FakeSmtp smtp; smtp.succeed = true;
+    Outbox outbox(store);
+    auto stats = outbox.Flush(smtp, [](const std::string&) { return "pw"; });
+    REQUIRE_EQ(stats.sent, 1);
+    REQUIRE_EQ(stats.failed, 0);
+    std::vector<OutboxItem> pending;
+    store.ListPending(pending);
+    REQUIRE_EQ(pending.size(), (size_t)1);
+    REQUIRE_EQ(pending[0].id, held);
+    REQUIRE_EQ(pending[0].attempts, 0);
+
+    // Let go (the compose window closed unsent): the next pass sends it.
+    store.SetHeld(held, false);
+    REQUIRE_EQ(store.HeldCount(), 0);
+    stats = outbox.Flush(smtp, [](const std::string&) { return "pw"; });
+    REQUIRE_EQ(stats.sent, 1);
+    int n = 0; store.PendingCount(n);
+    REQUIRE_EQ(n, 0);
 }
 
 TEST(outbox_flush_failure_retains_and_counts_attempts) {
@@ -187,7 +219,10 @@ TEST(syncservice_syncnow_populates_store) {
     store.UpsertAccount(a);
 
     FakeMailbox mailbox;
-    SyncService svc(store, mailbox, "/tmp/ultramail_syncsvc_test");
+    // The system temp folder, not "/tmp": the suite runs on Windows too.
+    const std::string cacheDir = UltraCanvas::PathToUtf8(
+        std::filesystem::temp_directory_path() / "ultramail_syncsvc_test");
+    SyncService svc(store, mailbox, cacheDir);
     UltraNetMailOptions opts;
 
     SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);

@@ -154,7 +154,7 @@ namespace Detail {
             std::error_code ec;
             if (!fs::exists(candidate, ec)) return candidate;
         }
-        return dir / (".ucsave" + PathToUtf8(target.extension()));
+        return dir / PathFromUtf8(".ucsave" + PathToUtf8(target.extension()));
     }
 
     // Removes the staged file unless the write was committed - including when
@@ -165,7 +165,7 @@ namespace Detail {
         ~AtomicWriteTemp() {
             if (committed) return;
             std::error_code ec;
-            std::filesystem::remove(path, ec);
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(path), ec);
         }
     };
 
@@ -225,11 +225,11 @@ inline std::string WriteFileAtomically(
 
     if (fs::exists(target, ec)) {
         const fs::perms mode = fs::status(target, ec).permissions();
-        if (!ec) fs::permissions(temp.path, mode, ec);
+        if (!ec) fs::permissions(UltraCanvas::PathFromUtf8(temp.path), mode, ec);
     }
     ec.clear();
 
-    fs::rename(temp.path, target, ec);
+    fs::rename(UltraCanvas::PathFromUtf8(temp.path), target, ec);
     if (ec) {
         // The content was written and the destination is what refused it: it
         // is held by another program, or on a volume that will not take the

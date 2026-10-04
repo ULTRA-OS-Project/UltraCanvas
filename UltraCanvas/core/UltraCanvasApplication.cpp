@@ -27,6 +27,7 @@
 #include <pango/pangofc-fontmap.h>
 #endif
 #include <pango/pangocairo.h>
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -198,7 +199,7 @@ namespace UltraCanvas {
         bool FontconfigFileExists(const std::string& path) {
             if (path.empty()) return false;
             std::error_code ec;
-            return std::filesystem::exists(path, ec);
+            return std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec);
         }
 
         std::vector<std::string> SplitSearchPath(const char* value) {
@@ -318,7 +319,7 @@ namespace UltraCanvas {
             {
                 const std::string dir = GetBundledFontsDir();
                 std::error_code ec;
-                if (std::filesystem::is_directory(dir, ec)) {
+                if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) {
                     bundledDir = XmlEscape(ToFontconfigPath(dir));
                 }
             }
@@ -409,7 +410,7 @@ namespace UltraCanvas {
         }
 
         std::error_code ec;
-        std::filesystem::create_directories(dir, ec);
+        std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir), ec);
         if (ec) {
             debugOutput << "UltraCanvas: cannot create " << dir << ": "
                         << ec.message() << std::endl;
@@ -424,7 +425,7 @@ namespace UltraCanvas {
         // fontconfig's cache for that config.
         bool needsWrite = true;
         {
-            std::ifstream existing(file, std::ios::binary);
+            std::ifstream existing(UltraCanvas::PathFromUtf8(file), std::ios::binary);
             if (existing) {
                 std::ostringstream current;
                 current << existing.rdbuf();
@@ -432,7 +433,7 @@ namespace UltraCanvas {
             }
         }
         if (needsWrite) {
-            std::ofstream out(file, std::ios::binary | std::ios::trunc);
+            std::ofstream out(UltraCanvas::PathFromUtf8(file), std::ios::binary | std::ios::trunc);
             if (!out) {
                 debugOutput << "UltraCanvas: cannot write runtime fonts.conf to "
                             << file << std::endl;
@@ -498,7 +499,7 @@ namespace UltraCanvas {
         if (fontFilePath.empty()) return false;
 
         std::error_code ec;
-        if (!std::filesystem::exists(fontFilePath, ec) || ec) {
+        if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(fontFilePath), ec) || ec) {
             debugOutput << "UltraCanvas: RegisterFontFile: no such file: "
                         << fontFilePath << std::endl;
             return false;
@@ -507,7 +508,7 @@ namespace UltraCanvas {
         // Resolved so that two spellings of one file - a relative path and an
         // absolute one, a symlink and its target - are recognised as the same
         // registration rather than handed to the platform twice.
-        std::string key = PathToUtf8(std::filesystem::weakly_canonical(fontFilePath, ec));
+        std::string key = PathToUtf8(std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(fontFilePath), ec));
         if (ec || key.empty()) key = fontFilePath;
 
         {
@@ -534,7 +535,7 @@ namespace UltraCanvas {
             const std::string& fontFilePath) const {
         if (fontFilePath.empty()) return false;
         std::error_code ec;
-        std::string key = PathToUtf8(std::filesystem::weakly_canonical(fontFilePath, ec));
+        std::string key = PathToUtf8(std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(fontFilePath), ec));
         if (ec || key.empty()) key = fontFilePath;
         std::lock_guard<std::mutex> lk(registeredFontsMutex_);
         return std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),
@@ -581,7 +582,7 @@ namespace UltraCanvas {
 
             // Auto-set default window icon if available
             std::string iconPath = GetDefaultIcon();
-            if (std::filesystem::exists(iconPath)) {
+            if (std::filesystem::exists(UltraCanvas::PathFromUtf8(iconPath))) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
             }
@@ -589,7 +590,7 @@ namespace UltraCanvas {
             else {
                 // Fallback to app-specific icon defined at build time
                 std::string appIconPath = NormalizePath(GetResourcesDir() + UCAPP_ICON_PATH);
-                if (std::filesystem::exists(appIconPath)) {
+                if (std::filesystem::exists(UltraCanvas::PathFromUtf8(appIconPath))) {
                     SetDefaultWindowIcon(appIconPath);
                     debugOutput << "UltraCanvas: App icon set to: " << appIconPath << std::endl;
                 } else {
@@ -893,6 +894,7 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
+            case UCEventType::TextComposition:
                 if (targetWindow != modalWindow) return true;
                 break;
             case UCEventType::WindowFocus:

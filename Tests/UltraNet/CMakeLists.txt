@@ -66,11 +66,32 @@ ultranet_link_module(UltraNetTests)
 target_include_directories(UltraNetTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-# The plug-in tests dlopen DSOs (linked with -undefined dynamic_lookup) whose v1
-# fallback references UltraNet_RegisterPlugin; the host must export its symbols so
-# that reference resolves at load time. ENABLE_EXPORTS does this portably
-# (-rdynamic on Linux, -export_dynamic on macOS), matching the demo/texter apps.
+# The plug-in tests dlopen the plug-in DSOs. Those reach the core only through
+# the UltraNetPluginHost table and need nothing from this executable's symbol
+# table; the exports are kept to match the apps (-rdynamic on Linux,
+# -export_dynamic on macOS).
 set_target_properties(UltraNetTests PROPERTIES ENABLE_EXPORTS ON)
+
+# A plug-in in the retired v1 shape (only UltraNet_PluginRegister), in a
+# directory of its own, so test_plugins.cpp can show the loader refuses it.
+# POSIX only: a v1 plug-in resolves the host's UltraNet_RegisterPlugin at load
+# time, which a Windows DLL cannot.
+if(NOT WIN32)
+    add_library(UltraNetV1OnlyTestPlugin MODULE v1only/V1OnlyPlugin.cpp)
+    set_target_properties(UltraNetV1OnlyTestPlugin PROPERTIES
+        PREFIX "" OUTPUT_NAME "ultranet_v1only"
+        POSITION_INDEPENDENT_CODE ON
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/v1only-plugins)
+    target_compile_features(UltraNetV1OnlyTestPlugin PRIVATE cxx_std_20)
+    target_include_directories(UltraNetV1OnlyTestPlugin PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    if(APPLE)
+        set_property(TARGET UltraNetV1OnlyTestPlugin APPEND_STRING
+            PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
+    endif()
+    add_dependencies(UltraNetTests UltraNetV1OnlyTestPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_V1ONLY_PLUGIN_DIR_DEFINE="${CMAKE_CURRENT_BINARY_DIR}/v1only-plugins")
+endif()
 
 # Point the SMTP plug-in test at the built DSO when the plug-in is in this
 # build (so it doesn't try to compile from source).
@@ -202,9 +223,9 @@ ultranet_link_module(UltraNetApiStatus)
 target_include_directories(UltraNetApiStatus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ApiStatus)
 
-# The plug-in probe dlopen()s DSOs whose v1 fallback resolves
-# UltraNet_RegisterPlugin from the host's symbol table — same requirement as
-# UltraNetTests above.
+# The plug-in probe dlopen()s the plug-in DSOs. They need nothing from the
+# host's symbol table any more (everything comes through the UltraNetPluginHost
+# table); the probe keeps its symbols exported as UltraNetTests does.
 set_target_properties(UltraNetApiStatus PROPERTIES ENABLE_EXPORTS ON)
 
 # Where this build dropped its plug-in DSOs, so UltraNet_RefreshPlugins can be
@@ -217,3 +238,27 @@ add_test(NAME UltraNet COMMAND UltraNetTests)
 # Fails only on BROKEN entries — IMPLEMENTED / NOT IMPLEMENTED are legitimate
 # states for this environment, not test failures.
 add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)
+
+# A plug-in DSO must need no core symbol from its host: everything reaches the
+# core through the UltraNetPluginHost table (Plugins/UltraNet/common/
+# UltraNetPluginHostShim.cpp). A shared-core build would resolve a stray one
+# anyway, so this reads the built plug-ins' undefined symbols instead of
+# trusting a load to fail. On Linux and macOS it reads the undefined symbols
+# (nm, c++filt); on Windows each DLL's import table (llvm-objdump / objdump),
+# where a plug-in must import nothing from the core DLLs. --require when this
+# build makes plug-ins, so an empty output folder fails instead of passing;
+# the parser's own self-test runs alongside.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND AND (UNIX OR WIN32))
+    set(_ultranet_plugin_require "")
+    if(TARGET UltraNetImapPlugin OR TARGET UltraNetSmtpPlugin)
+        set(_ultranet_plugin_require --require)
+    endif()
+    add_test(NAME UltraNetPluginHostImports
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py
+                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet ${_ultranet_plugin_require})
+    add_test(NAME UltraNetPluginHostImportsSelfTest
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py --self-test)
+endif()

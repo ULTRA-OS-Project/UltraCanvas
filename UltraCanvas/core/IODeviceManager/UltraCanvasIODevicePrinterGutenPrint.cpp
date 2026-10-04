@@ -11,6 +11,7 @@
 #include "IODeviceManager/UltraCanvasIODevicePrinterJobSource.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
@@ -159,7 +160,7 @@ std::string GutenPrintRenderer::PpdPathFor(const std::string& modelUri) const {
     // same printer reuses the file instead of filling the temp directory.
     std::string safeName = NormalizeName(modelUri);
     if (safeName.empty()) safeName = "model";
-    const std::filesystem::path path = directory / (safeName + ".ppd");
+    const std::filesystem::path path = directory / PathFromUtf8(safeName + ".ppd");
 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) return std::string();
@@ -273,13 +274,19 @@ IODeviceResult GutenPrintRenderer::Render(const IODeviceInfo& printer,
     // the limit to lift first if it is ever pointed at a book - by teaching
     // RunProcessCaptured to pull its input a block at a time, after which
     // only one page need exist at once.
+    //
+    // One sync word for the whole stream, then a header per page. A sync word
+    // per page - which is what this did - makes the filter read the second
+    // page's header four bytes out of step, and it stops there without an
+    // error: every multi-page job printed its first page only.
     std::vector<uint8_t> stream;
+    AppendCupsRasterSync(stream);
     for (int page : selected) {
         target.BeginPage();
         IODeviceResult drawn = pages->DrawPage(page, target);
         if (!drawn.success) return drawn;
 
-        if (!WriteCupsRasterPageHeader(raster, stream)) {
+        if (!AppendCupsRasterPageHeader(raster, stream)) {
             return IODeviceResult::Error(IODeviceResultCode::BackendError,
                                          "Could not describe the page to GutenPrint");
         }

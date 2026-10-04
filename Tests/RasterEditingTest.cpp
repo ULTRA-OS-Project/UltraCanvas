@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -356,7 +357,7 @@ static void TestPixelFXAndFiles() {
     CHECK(preview && doc.GetLayer(0)->GetPixel(2, 2).r == 100);
 
     const std::string dir = (std::filesystem::temp_directory_path() / "ultracanvas-raster-test").string();
-    std::filesystem::create_directories(dir);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
     std::string err;
     const std::string png = dir + "/a.png";
     CHECK(doc.SaveToFile(png, err));
@@ -376,7 +377,7 @@ static void TestPixelFXAndFiles() {
     CHECK(p2.GetLayerCount() == 2 && p2.GetLayer(1)->name == "Over");
     CHECK(p2.GetLayer(1)->GetPixel(3, 3) == RasterPixel(9, 8, 7, 200));
     CHECK(p2.GetLayer(1)->opacity == 0.25f && p2.GetLayer(1)->blendMode == RasterBlendMode::Screen);
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 
 // Saving back over the file the document was opened from - the commonest
@@ -389,8 +390,8 @@ static void TestPixelFXAndFiles() {
 static void TestSaveOverTheOpenFile() {
     const std::filesystem::path dir =
             std::filesystem::temp_directory_path() / "ultracanvas-raster-resave";
-    std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
     const std::string jpg = (dir / "photo.jpg").string();
     std::string err;
 
@@ -409,7 +410,7 @@ static void TestSaveOverTheOpenFile() {
 
     auto strays = [&dir]() {
         int n = 0;
-        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir))) {
             if (entry.path().filename().string().rfind(".ucsave", 0) == 0) ++n;
         }
         return n;
@@ -421,11 +422,11 @@ static void TestSaveOverTheOpenFile() {
     // can represent fails *inside* the encoder, after it has the destination
     // open - which is exactly when writing in place destroys it (libvips
     // truncates on open, so the file the user had becomes 0 bytes).
-    const auto sizeBefore = std::filesystem::file_size(jpg);
+    const auto sizeBefore = std::filesystem::file_size(UltraCanvas::PathFromUtf8(jpg));
     UCRasterDocument oversized(70000, 2, RasterPixel(1, 2, 3, 255));
     CHECK(!oversized.SaveToFile(jpg, err));
     CHECK(err.find(".ucsave") == std::string::npos);   // the message names the file the caller asked for
-    CHECK(std::filesystem::file_size(jpg) == sizeBefore);
+    CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(jpg)) == sizeBefore);
     CHECK(strays() == 0);
     UCRasterDocument survived;
     CHECK(survived.LoadFromFile(jpg, err));
@@ -434,14 +435,14 @@ static void TestSaveOverTheOpenFile() {
     // A format nothing in this build can write fails before the encoder opens
     // anything, and must be just as tidy.
     const std::string keep = (dir / "keep.zzz").string();
-    { std::FILE* f = std::fopen(keep.c_str(), "wb"); CHECK(f != nullptr); if (f) { std::fputs("not an image", f); std::fclose(f); } }
+    { std::FILE* f = UltraCanvas::OpenFileUtf8(keep, "wb"); CHECK(f != nullptr); if (f) { std::fputs("not an image", f); std::fclose(f); } }
     UCRasterDocument unsupported(8, 8, RasterPixel(1, 2, 3, 255));
     CHECK(!unsupported.SaveToFile(keep, err));
     CHECK(err.find(".ucsave") == std::string::npos);
-    CHECK(std::filesystem::file_size(keep) == 12);
+    CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(keep)) == 12);
     CHECK(strays() == 0);
 
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 
 // The export path - the one the image export dialog and every UCImageRaster
@@ -451,14 +452,14 @@ static void TestSaveOverTheOpenFile() {
 static void TestExportIsStaged() {
     const std::filesystem::path dir =
             std::filesystem::temp_directory_path() / "ultracanvas-raster-export";
-    std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
     const std::string png = (dir / "export.png").string();
     std::string err;
 
     auto strays = [&dir]() {
         int n = 0;
-        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir))) {
             if (entry.path().filename().string().rfind(".ucsave", 0) == 0) ++n;
         }
         return n;
@@ -478,13 +479,13 @@ static void TestExportIsStaged() {
     // written: an image wider than JPEG can represent, once the encoder
     // already has the destination open. Written in place that empties the
     // user's picture; staged, it cannot touch it.
-    const auto before = std::filesystem::file_size(png);
+    const auto before = std::filesystem::file_size(UltraCanvas::PathFromUtf8(png));
     UCImageSave::ImageExportOptions oversized;
     oversized.format = UCImageSaveFormat::JPEG;
     UCRasterDocument wide(70000, 2, RasterPixel(255, 0, 0, 255));
     CHECK(!wide.SaveToFile(png, err, &oversized));
     CHECK(err.find(".ucsave") == std::string::npos);
-    CHECK(std::filesystem::file_size(png) == before);
+    CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(png)) == before);
     CHECK(strays() == 0);
 
     UCRasterDocument intact;
@@ -497,10 +498,10 @@ static void TestExportIsStaged() {
     broken.format = static_cast<UCImageSaveFormat>(9999);
     UCRasterDocument other(4, 4, RasterPixel(255, 0, 0, 255));
     CHECK(!other.SaveToFile(png, err, &broken));
-    CHECK(std::filesystem::file_size(png) == before);
+    CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(png)) == before);
     CHECK(strays() == 0);
 
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 
 // PixelFX::Colour::ColourToAlpha - turning a colour into transparency, the
