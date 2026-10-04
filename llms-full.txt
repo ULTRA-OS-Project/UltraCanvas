@@ -54314,6 +54314,24 @@ std::function<bool(const UCEvent&)> onContextMenu;
 // Called with the exact text about to be spell checked, so content-dependent
 // options can be rebuilt. See Spell Checking below.
 std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
+
+// Every KeyDown, before the area handles it (any editing mode, read-only too).
+// Return true to consume the key; false lets the area edit as usual.
+std::function<bool(const UCEvent&)> onBeforeKeyDown;
+```
+
+`onBeforeKeyDown` gives a key a meaning of its own without reimplementing the
+editor. A chat box that sends on Enter and starts a new line on Shift+Enter:
+
+```cpp
+auto message = std::make_shared<UltraCanvasTextArea>("chat-message", 0, 0, 400, 72);
+message->SetWordWrap(true);
+message->onBeforeKeyDown = [](const UCEvent& e) {
+    const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
+    if (!enter || e.shift) return false;   // Shift+Enter: the area inserts the line break
+    SendChatText();                        // your own send function
+    return true;                           // consumed: no line break
+};
 ```
 
 `IsPositionInsideSelection(const Point2Di&)` answers whether an element-local

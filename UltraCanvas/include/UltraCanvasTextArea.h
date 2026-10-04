@@ -850,6 +850,14 @@ namespace UltraCanvas {
         // so HasSelection() is what the menu's Cut and Copy will see.
         std::function<bool(const UCEvent&)> onContextMenu;
 
+        // Called for every KeyDown before the area handles it, in every editing
+        // mode and also when the area is read-only. Return true to consume the
+        // key - the area then does nothing with it - or false to let it edit as
+        // usual. This is how a host gives a key a meaning of its own without
+        // reimplementing the editor: a chat box sends on Enter and keeps
+        // Shift+Enter for a new line. Runs on the UI thread.
+        std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
         // Called just before a check is queued, with the exact text about to be
         // checked. Lets the host rebuild content-dependent options: in
         // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have

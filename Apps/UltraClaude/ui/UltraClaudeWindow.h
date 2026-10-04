@@ -20,12 +20,16 @@
 //   field only pre-fills that page. Create account opens claude.ai.
 //   When the CLI is already signed in on this computer, the page says so and
 //   Log in becomes Continue.
+//   While the CLI waits, the page shows Open sign-in page (the URL the CLI
+//   printed, for when no browser opened) and a Login code box: a sign-in
+//   page that ends on a code to paste back has it written to the CLI's
+//   standard input. The code is a one-time exchange code, not a password.
 //
 // Chat view:
 //
 //   | Model [Default v]  Permissions [Ask v]  Folder [....] [...]  [New chat] [Log out] |
 //   | transcript (markdown, read-only, follows the reply)                                |
-//   | [ Message Claude...                                               ] [Send]         |
+//   | [ Message Claude... (several lines; Enter sends, Shift+Enter breaks) ] [Send]      |
 //   | status line                                                                        |
 //
 //   Each prompt runs the CLI through ClaudeChatSession. Its events arrive on
@@ -82,6 +86,11 @@ private:
     // ----- sign-in -----
     void LogInOrContinue();
     void CancelLogIn();
+    // The login-code box: shown when the CLI prints the sign-in URL, hidden
+    // when it exits. Submit writes the code to the CLI's standard input.
+    void ShowLoginCodeBox(const std::string& url);
+    void HideLoginCodeBox();
+    void SubmitLoginCode();
     void CreateAccount();
     void LogOut();
     // Runs `claude auth status` in the background; ApplyAuthStatus follows.
@@ -123,6 +132,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> logIn_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> createAccount_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> signInStatus_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> codeRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> loginCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> submitCode_;
+    std::string signInUrl_;            // the URL the CLI printed, while it waits
     bool loggedIn_ = false;
     bool loggingIn_ = false;
     bool demoSent_ = false;   // ULTRACLAUDE_DEMO_PROMPT, once
@@ -133,7 +146,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> permissions_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> folder_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> transcript_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> prompt_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> prompt_;   // several lines
     std::shared_ptr<UltraCanvas::UltraCanvasButton> send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
     bool busy_ = false;

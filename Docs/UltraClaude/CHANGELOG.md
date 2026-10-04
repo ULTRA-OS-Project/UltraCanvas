@@ -1,3 +1,20 @@
+#### 2026-10-04 *0.2.0*
+- **The message box takes several lines.** It is an `UltraCanvasTextArea`
+  now: Enter sends, Shift+Enter starts a new line, and a long message wraps
+  instead of scrolling sideways. The keys come through the text area's new
+  `onBeforeKeyDown` hook (framework, `changelog.d/textarea-before-keydown.md`).
+- **Login code box on the sign-in page.** While `claude auth login` waits,
+  the page shows *Open sign-in page* - the URL the CLI printed, for when no
+  browser opened - and a *Login code* field with Submit: when Anthropic's page
+  ends on a code to paste back, it goes to the CLI through its standard input,
+  which `ClaudeCliProcess` can now keep open (`InputMode::KeepOpen`,
+  `WriteInput`, `CloseInput`). The code is trimmed of the spaces and line
+  break it was copied with. A wrong code shows the CLI's answer ("Login
+  failed: ...") and Log in can be chosen again. The long sign-in URL no longer
+  replaces the status line.
+- The hidden code field no longer leaves its caret blinking on the page
+  (framework fix, `changelog.d/caret-left-by-hidden-input.md`).
+
 #### 2026-10-02 *0.1.0*
 - **UltraClaude, a desktop chat window for Claude on a Claude subscription.**
   `Apps/UltraClaude` does not call Anthropic's API and holds no API key: it

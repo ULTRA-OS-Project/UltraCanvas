@@ -109,7 +109,8 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
                              const std::string& standardInput,
                              LineCallback onLine,
                              ExitCallback onExit,
-                             std::string& outError) {
+                             std::string& outError,
+                             InputMode inputMode) {
     if (argv.empty()) { outError = "No program to run."; return false; }
     if (running_.load()) { outError = "Claude is still answering."; return false; }
     if (reader_.joinable()) reader_.join();   // the previous run has finished
@@ -182,15 +183,22 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
     SetNonBlocking(stdoutFd_);
     SetNonBlocking(stderrFd_);
 
+    keepInputOpen_ = inputMode == InputMode::KeepOpen;
     running_ = true;
-    reader_ = std::thread(&ClaudeCliProcess::Pump, this, standardInput,
+    // In KeepOpen mode the reader thread leaves standard input alone: the
+    // first text goes in here, the rest through WriteInput.
+    if (keepInputOpen_ && !standardInput.empty()) WriteInput(standardInput);
+    reader_ = std::thread(&ClaudeCliProcess::Pump, this,
+                          keepInputOpen_ ? std::string() : standardInput,
                           std::move(onLine), std::move(onExit));
     return true;
 }
 
 void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, ExitCallback onExit) {
     size_t written = 0;
-    if (standardInput.empty()) CloseFd(stdinFd_);
+    // The input this thread writes and closes; in KeepOpen mode none.
+    int inputFd = keepInputOpen_ ? -1 : stdinFd_;
+    if (!keepInputOpen_ && standardInput.empty()) { CloseFd(stdinFd_); inputFd = -1; }
     std::string lineBuffer;
     std::string standardError;
     char chunk[16384];
@@ -201,7 +209,7 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
         int outIndex = -1, errIndex = -1, inIndex = -1;
         if (stdoutFd_ >= 0) { outIndex = count; fds[count++] = {stdoutFd_, POLLIN, 0}; }
         if (stderrFd_ >= 0) { errIndex = count; fds[count++] = {stderrFd_, POLLIN, 0}; }
-        if (stdinFd_ >= 0)  { inIndex = count;  fds[count++] = {stdinFd_, POLLOUT, 0}; }
+        if (inputFd >= 0)   { inIndex = count;  fds[count++] = {inputFd, POLLOUT, 0}; }
 
         if (::poll(fds, static_cast<nfds_t>(count), -1) < 0) {
             if (errno == EINTR) continue;
@@ -218,6 +226,7 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
                 else if (n < 0 && errno != EAGAIN && errno != EINTR) CloseFd(stdinFd_);
                 if (written >= standardInput.size()) CloseFd(stdinFd_);
             }
+            inputFd = stdinFd_;
         }
         if (outIndex >= 0 && fds[outIndex].revents) {
             const ssize_t n = ::read(stdoutFd_, chunk, sizeof(chunk));
@@ -234,7 +243,10 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
             else if (n == 0 || (errno != EAGAIN && errno != EINTR)) CloseFd(stderrFd_);
         }
     }
-    CloseFd(stdinFd_);
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        CloseFd(stdinFd_);
+    }
     CloseFd(stdoutFd_);
     CloseFd(stderrFd_);
     if (!lineBuffer.empty() && onLine) onLine(lineBuffer);
@@ -254,6 +266,29 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
     const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     running_ = false;
     if (onExit) onExit(exitCode, standardError);
+}
+
+bool ClaudeCliProcess::WriteInput(const std::string& text) {
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    if (!keepInputOpen_ || stdinFd_ < 0) return false;
+    size_t written = 0;
+    while (written < text.size()) {
+        const ssize_t n = ::write(stdinFd_, text.data() + written, text.size() - written);
+        if (n > 0) { written += static_cast<size_t>(n); continue; }
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && errno == EAGAIN) {
+            // The pipe is full: wait (briefly) until the child reads.
+            pollfd p = {stdinFd_, POLLOUT, 0};
+            if (::poll(&p, 1, 2000) > 0 && !(p.revents & (POLLERR | POLLHUP))) continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+void ClaudeCliProcess::CloseInput() {
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    if (keepInputOpen_) CloseFd(stdinFd_);
 }
 
 void ClaudeCliProcess::Stop() {
@@ -323,7 +358,8 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
                              const std::string& standardInput,
                              LineCallback onLine,
                              ExitCallback onExit,
-                             std::string& outError) {
+                             std::string& outError,
+                             InputMode inputMode) {
     if (argv.empty()) { outError = "No program to run."; return false; }
     if (running_.load()) { outError = "Claude is still answering."; return false; }
     if (reader_.joinable()) reader_.join();
@@ -407,16 +443,21 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
     stdoutRead_ = outRead;
     stderrRead_ = errRead;
 
+    keepInputOpen_ = inputMode == InputMode::KeepOpen;
     running_ = true;
-    reader_ = std::thread(&ClaudeCliProcess::Pump, this, standardInput,
+    if (keepInputOpen_ && !standardInput.empty()) WriteInput(standardInput);
+    reader_ = std::thread(&ClaudeCliProcess::Pump, this,
+                          keepInputOpen_ ? std::string() : standardInput,
                           std::move(onLine), std::move(onExit));
     return true;
 }
 
 void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, ExitCallback onExit) {
     // Standard input and standard error on threads of their own, so a child
-    // that writes before it has read everything cannot deadlock us.
+    // that writes before it has read everything cannot deadlock us. In
+    // KeepOpen mode standard input belongs to WriteInput instead.
     std::thread writer([this, input = std::move(standardInput)]() {
+        if (keepInputOpen_) return;
         size_t written = 0;
         while (written < input.size()) {
             DWORD n = 0;
@@ -446,6 +487,10 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
 
     errorReader.join();
     writer.join();
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        CloseHandleSafe(stdinWrite_);
+    }
     CloseHandleSafe(stdoutRead_);
     CloseHandleSafe(stderrRead_);
 
@@ -464,6 +509,25 @@ void ClaudeCliProcess::Pump(std::string standardInput, LineCallback onLine, Exit
     }
     running_ = false;
     if (onExit) onExit(static_cast<int>(code), standardError);
+}
+
+bool ClaudeCliProcess::WriteInput(const std::string& text) {
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    if (!keepInputOpen_ || !stdinWrite_) return false;
+    size_t written = 0;
+    while (written < text.size()) {
+        DWORD n = 0;
+        const DWORD want = static_cast<DWORD>(std::min<size_t>(text.size() - written, 65536));
+        if (!WriteFile(static_cast<HANDLE>(stdinWrite_), text.data() + written, want, &n, nullptr) || n == 0)
+            return false;
+        written += n;
+    }
+    return true;
+}
+
+void ClaudeCliProcess::CloseInput() {
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    if (keepInputOpen_) CloseHandleSafe(stdinWrite_);
 }
 
 void ClaudeCliProcess::Stop() {
