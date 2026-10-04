@@ -2728,7 +2728,14 @@ component the libraries are listed per platform (Linux / macOS / Windows).
 
 Source of truth: every `CMakeLists.txt` (root, `UltraCanvas/`,
 `Plugins/Vector/{CDR,XAR}`) plus the third-party `#include`s across the source
-tree. Mirrors the in-app table at
+tree.
+
+**Where the macOS libraries come from.** A local macOS build uses Homebrew's.
+The macOS apps CI publishes bundle the same libraries built with vcpkg for the
+oldest supported macOS (14.0) instead, because Homebrew's carry the macOS of
+the machine that built them: the manifest, triplets and the ports vcpkg lacks
+(MuPDF, zbar, librevenge, and libvips' extra formats) are in `MacOS/deps/`,
+built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-app table at
 **Dependencies & Third Party → Dependencies & Third Party**
 (`Apps/DemoApp/UltraCanvasDependenciesExamples.cpp`).
 
@@ -3299,7 +3306,7 @@ is the only place the whole framework is compiled for everyone:
 | Leg | Platform | What it also does |
 |---|---|---|
 | ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-latest, macos-15-intel | Apple Silicon and Intel | packages the app bundle; signs and notarises on `main` |
+| macos-15, macos-15-intel | Apple Silicon and Intel | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
 | windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
 | Android backend check | syntax check against the NDK | — |
 
@@ -3513,8 +3520,10 @@ brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
 ```
 
 Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
-directory itself. The complete list is the *Install dependencies (macOS)* step
-in `.github/workflows/build.yml`.
+directory itself. Apps built this way run on the macOS you build on and newer.
+CI builds the same libraries with vcpkg instead, for macOS 14 and newer, from
+the list in `MacOS/deps/vcpkg.json`; `MacOS/deps/README.md` shows how to do
+that locally (`scripts/macos-deps.sh`).
 
 </details>
 
@@ -3979,6 +3988,18 @@ keychain and the notarisation credentials the script names. CI runs it only on
 pushes to `main`; pull requests get the unsigned bundle.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
+
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the libraries in the suite's shared `Frameworks/`: macOS refuses to
+load a library built for a newer version than its own. Homebrew builds its
+libraries for the macOS of the machine that built them, so a suite you package
+from Homebrew runs on the macOS you built it on and newer. The suite CI
+publishes runs on **macOS 14 and later**: CI builds the libraries with vcpkg
+for `MACOSX_DEPLOYMENT_TARGET=14.0` (`MacOS/deps/README.md`) and passes their
+prefix as `UC_MACOS_DEPS_PREFIX`. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
 
 </details>
 

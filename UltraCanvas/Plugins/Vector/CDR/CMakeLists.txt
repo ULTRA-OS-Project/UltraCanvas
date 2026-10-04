@@ -24,13 +24,9 @@ if(NOT LIBREVENGE_FOUND)
 endif()
 
 if(APPLE)
-    # ICU is keg-only on Homebrew, find it explicitly
-    execute_process(
-            COMMAND brew --prefix icu4c
-            OUTPUT_VARIABLE ICU_HOMEBREW_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-    )
+    # ICU is keg-only on Homebrew, find it explicitly (in CI's vcpkg prefix it
+    # is in the prefix itself; cmake/UltraCanvasMacOSDeps.cmake)
+    ultracanvas_macos_dep_prefix(icu4c ICU_HOMEBREW_PREFIX)
     if(ICU_HOMEBREW_PREFIX)
         set(ENV{PKG_CONFIG_PATH} "${ICU_HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
         link_directories(${ICU_HOMEBREW_PREFIX}/lib)
@@ -48,7 +44,7 @@ pkg_check_modules(CDR_ZLIB zlib)
 option(ULTRACANVAS_USE_VENDORED_LIBCDR "Build the patched libcdr in third_party/libcdr" ON)
 set(ULTRACANVAS_LIBCDR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/libcdr")
 find_path(ULTRACANVAS_BOOST_INCLUDE_DIR boost/optional.hpp
-          HINTS "$ENV{HOMEBREW_PREFIX}/include" /opt/homebrew/include /usr/local/include)
+          HINTS "${ULTRACANVAS_MACOS_DEPS_PREFIX}/include" "$ENV{HOMEBREW_PREFIX}/include" /opt/homebrew/include /usr/local/include)
 set(CDR_USE_VENDORED FALSE)
 if(ULTRACANVAS_USE_VENDORED_LIBCDR AND EXISTS "${ULTRACANVAS_LIBCDR_DIR}/src/CDRParser.cpp"
    AND LCMS2_FOUND AND ICU_FOUND AND CDR_ZLIB_FOUND AND ULTRACANVAS_BOOST_INCLUDE_DIR)

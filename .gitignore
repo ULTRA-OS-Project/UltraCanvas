@@ -19,6 +19,8 @@ CMakeFiles/
 # build-android, ...) is the usual way to keep several around at once.
 /build-*/
 /dist/
+# scripts/macos-deps.sh: the vcpkg checkout, its install root and CI's binary cache
+/.vcpkg/
 Apps/Texter/build/
 /1icons/
 /Tests/build/

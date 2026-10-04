@@ -12,6 +12,10 @@
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
 #
 # Environment variables:
+#   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the apps must run on (CI: 15.0).
+#                        Written as each app's LSMinimumSystemVersion; fails
+#                        if a binary in the suite needs a newer macOS. Unset,
+#                        each app gets the newest minimum its binaries declare
 #   APPLE_SIGN_ID        Override the default code-signing identity
 #   APPLE_ID             Apple ID email (for --notarize)
 #   APPLE_TEAM_ID        Apple Developer Team ID (for --notarize)
@@ -61,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,18p' "$0" | sed 's/^# \?//'
+            sed -n '2,22p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -81,17 +85,46 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-if ! command -v brew &>/dev/null; then
-    echo "Error: Homebrew is required"
+# Where the libraries the apps link live: the vcpkg prefix scripts/macos-deps.sh
+# builds for MACOSX_DEPLOYMENT_TARGET (CI exports it as UC_MACOS_DEPS_PREFIX),
+# or Homebrew's for a local build. Libraries from either are bundled.
+HOMEBREW_PREFIX=""
+if command -v brew &>/dev/null; then
+    HOMEBREW_PREFIX=$(brew --prefix)
+fi
+DEPS_PREFIX="${UC_MACOS_DEPS_PREFIX:-$HOMEBREW_PREFIX}"
+if [ -z "$DEPS_PREFIX" ]; then
+    echo "Error: set UC_MACOS_DEPS_PREFIX (scripts/macos-deps.sh) or install Homebrew"
     exit 1
 fi
-HOMEBREW_PREFIX=$(brew --prefix)
+
+# True when $1 is a library this script bundles: one under the dependency
+# prefix or Homebrew's. Spelled out rather than as `${HOMEBREW_PREFIX}/*` in a
+# case pattern, which an empty prefix would turn into `/*` - every file.
+is_bundled_source() {
+    local prefix
+    for prefix in "$DEPS_PREFIX" "$HOMEBREW_PREFIX" /opt/homebrew /usr/local; do
+        [ -n "$prefix" ] || continue
+        case "$1" in "$prefix"/*) return 0 ;; esac
+    done
+    return 1
+}
+
+# The oldest macOS the apps must run on - the same variable the compiler,
+# CMake and cargo read, so the code and this promise agree. See
+# check_min_macos for what is checked against it.
+MIN_MACOS="${MACOSX_DEPLOYMENT_TARGET:-}"
+if [ -n "$MIN_MACOS" ] && ! [[ "$MIN_MACOS" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "Error: MACOSX_DEPLOYMENT_TARGET='$MIN_MACOS' is not a macOS version (e.g. 15.0)"
+    exit 1
+fi
 
 echo "=== UltraCanvas macOS Packager ==="
 echo "  Version:         $VERSION"
 echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
-echo "  Homebrew prefix: $HOMEBREW_PREFIX"
+echo "  Dependencies:    $DEPS_PREFIX"
+echo "  Minimum macOS:   ${MIN_MACOS:-measured per app (MACOSX_DEPLOYMENT_TARGET unset)}"
 echo "  Code signing:    $DO_SIGN"
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
@@ -175,6 +208,9 @@ generate_plist() {
     local category="$6"
     local extra_plist_entries="$7"
 
+    # LSMinimumSystemVersion is not written here: finish_suite adds it once
+    # every app and the shared Frameworks/ are in place and their minimum macOS
+    # has been read (check_min_macos).
     cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -201,8 +237,6 @@ generate_plist() {
     <string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
@@ -303,12 +337,16 @@ bundle_dylibs() {
                             break
                         fi
                     done
-                    # Fall back to $HOMEBREW_PREFIX/lib (homebrew symlinks
-                    # all kegs here, so this catches libs like libIlmThread
-                    # that OpenEXR references via @rpath).
-                    if [ -z "$dep_source" ] && [ -f "$HOMEBREW_PREFIX/lib/$rel" ]; then
-                        dep_source="$HOMEBREW_PREFIX/lib/$rel"
-                    fi
+                    # Fall back to <prefix>/lib (Homebrew symlinks all
+                    # kegs there, so this catches libs like libIlmThread
+                    # that OpenEXR references via @rpath; a vcpkg prefix
+                    # keeps every library there).
+                    local fallback
+                    for fallback in "$DEPS_PREFIX" "$HOMEBREW_PREFIX"; do
+                        if [ -z "$dep_source" ] && [ -n "$fallback" ] && [ -f "$fallback/lib/$rel" ]; then
+                            dep_source="$fallback/lib/$rel"
+                        fi
+                    done
                     ;;
                 @loader_path/*)
                     local rel="${dep#@loader_path/}"
@@ -326,11 +364,8 @@ bundle_dylibs() {
                 continue
             fi
 
-            # Only bundle Homebrew libraries
-            case "$dep_source" in
-                ${HOMEBREW_PREFIX}/*|/opt/homebrew/*|/usr/local/*) ;;
-                *) continue ;;
-            esac
+            # Only bundle the dependency prefix's (or Homebrew's) libraries
+            is_bundled_source "$dep_source" || continue
 
             # Resolve symlinks and copy
             local resolved_dep
@@ -382,6 +417,14 @@ fix_install_names() {
     deps=$(otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
 
     for dep in $deps; do
+        # A system library stays the system's even when a bundled one has its
+        # file name: vcpkg's tesseract brings its own libcurl.4.dylib, and the
+        # apps' /usr/lib/libcurl.4.dylib (Apple's, with the system's TLS and
+        # certificates) must not be pointed at it.
+        case "$dep" in
+            /System/*|/usr/lib/*) continue ;;
+        esac
+
         local dep_basename
         dep_basename=$(basename "$dep")
 
@@ -402,6 +445,23 @@ fix_install_names() {
 # dlopen()ed LaTeX module binds to, so a plain `strip` (which drops globals
 # too) would break it. Runs after bundle_dylibs' install_name_tool rewrites
 # and before signing: both change the file, so the signature has to come last.
+#
+# It also deletes the run paths into the dependency prefix: the build tree
+# needs them to load vcpkg's @rpath libraries (cmake/UltraCanvasMacOSDeps.cmake),
+# but a shipped binary loads from Frameworks/ and must not look on the user's
+# disk for the build machine's.
+delete_build_rpaths() {
+    local f="$1" rp rpaths
+    rpaths=$({ otool -l "$f" 2>/dev/null || true; } | awk '
+        /cmd LC_RPATH/          { r = 1; next }
+        r && $1 == "path"       { print $2; r = 0 }')
+    for rp in $rpaths; do
+        if is_bundled_source "$rp"; then
+            install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true
+        fi
+    done
+}
+
 strip_binaries() {
     local f before after
     before=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
@@ -411,11 +471,89 @@ strip_binaries() {
             Mach-O*)
                 chmod u+w "$f"
                 strip -S -x "$f" 2>/dev/null || echo "  Warning: could not strip $(basename "$f")"
+                delete_build_rpaths "$f"
                 ;;
         esac
     done < <(find "$@" -type f -print0 2>/dev/null)
     after=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     echo "  Stripped binaries: $((before / 1024)) MB -> $((after / 1024)) MB"
+}
+
+# ── Helper: Minimum macOS ────────────────────────────────────────────────────
+#
+# Every Mach-O file records the oldest macOS it runs on (LC_BUILD_VERSION's
+# minos; LC_VERSION_MIN_MACOSX in old binaries), and dyld refuses to load one
+# built for a newer macOS than the running system - the executable or any
+# dylib it pulls in:
+#   Library not loaded: ... (built for macOS 26.0 which is newer than running OS)
+# LSMinimumSystemVersion does not change that; it only has Finder refuse the
+# app with a readable message instead. So an app runs on the newest minimum
+# among its own binaries and the shared Frameworks/ it loads, whatever its
+# Info.plist says - and the plist said 12.0 for months while the arm64 build,
+# on the macOS 26 runner behind macos-latest, made apps that started only on
+# macOS 26.
+#
+# Our own code follows MACOSX_DEPLOYMENT_TARGET, but the Homebrew dylibs carry
+# whatever their bottle was built for - usually the major version of the macOS
+# that built it, sometimes that machine's exact version (tesseract's arm64
+# Sequoia bottle declared 15.7.5 on 2026-10-04). So the minimum is read from
+# the binaries, not assumed.
+
+# macho_min_macos and version_newer
+. "$SCRIPT_DIR/scripts/macos-min-version.sh"
+
+# Where check_min_macos records each item's minimum, for the summary table.
+MIN_MACOS_LOG=$(mktemp)
+
+# check_min_macos NAME PLIST FLOOR DIR... - read the minimum macOS of every
+# Mach-O file under DIR..., fail when one needs a newer macOS than MIN_MACOS,
+# and write LSMinimumSystemVersion into PLIST ("" for an item without one):
+# MIN_MACOS when it is set, otherwise the newest minimum found, starting from
+# FLOOR - the shared Frameworks/' minimum for an app, "" otherwise. Leaves
+# that minimum in CHECKED_MIN_MACOS. Runs before signing, because editing
+# Info.plist afterwards breaks the bundle's seal.
+check_min_macos() {
+    local name="$1" plist="$2" floor="$3"
+    shift 3
+    local too_new="" f v
+    while IFS= read -r -d '' f; do
+        case "$(file -b "$f")" in
+            Mach-O*) ;;
+            *) continue ;;
+        esac
+        v=$(macho_min_macos "$f")
+        [ -n "$v" ] || continue
+        if [ -z "$floor" ] || version_newer "$v" "$floor"; then
+            floor="$v"
+        fi
+        if [ -n "$MIN_MACOS" ] && version_newer "$v" "$MIN_MACOS"; then
+            too_new+="    macOS $v  ${f#"$OUTPUT_DIR"/}"$'\n'
+        fi
+    done < <(find "$@" -type f -print0 2>/dev/null)
+
+    if [ -z "$floor" ]; then
+        echo "  ERROR: no Mach-O file with a minimum macOS found for $name"
+        exit 1
+    fi
+
+    if [ -n "$too_new" ]; then
+        local msg="$name needs macOS $floor, but MACOSX_DEPLOYMENT_TARGET promises $MIN_MACOS"
+        [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error::$msg"
+        echo "  ERROR: $msg. These binaries would not load on macOS $MIN_MACOS:"
+        printf '%s' "$too_new"
+        echo "  Every bundled library has to be built for $MIN_MACOS: scripts/macos-deps.sh builds"
+        echo "  them (a Homebrew library carries the macOS its bottle was built for). Or raise"
+        echo "  MACOSX_DEPLOYMENT_TARGET (.github/workflows/build.yml, MacOS/deps/triplets)."
+        exit 1
+    fi
+
+    local declared="${MIN_MACOS:-$floor}"
+    if [ -n "$plist" ]; then
+        /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $declared" "$plist"
+    fi
+    CHECKED_MIN_MACOS="$floor"
+    echo "$name $declared" >> "$MIN_MACOS_LOG"
+    echo "  $name: minimum macOS $declared (newest minimum among its binaries: $floor)"
 }
 
 # ── Helper: Code sign ────────────────────────────────────────────────────────
@@ -754,6 +892,7 @@ build_cli_tool() {
 
     bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks" "$TOOL_FW_REF"
     strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
+    check_min_macos "$exe_name" "" "" "$tool_dir/bin" "$tool_dir/Frameworks"
 
     if $DO_SIGN; then
         echo "  Signing tool..."
@@ -805,9 +944,11 @@ verify_suite() {
                         errors=$((errors + 1))
                     fi
                     ;;
-                "${HOMEBREW_PREFIX}"/*|/opt/homebrew/*|/usr/local/*)
-                    echo "  ERROR: $(basename "$bin") still loads $dep from Homebrew"
-                    errors=$((errors + 1))
+                /*)
+                    if is_bundled_source "$dep"; then
+                        echo "  ERROR: $(basename "$bin") still loads $dep from the build machine"
+                        errors=$((errors + 1))
+                    fi
                     ;;
             esac
         done < <(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -831,15 +972,27 @@ sign_shared_frameworks() {
     done
 }
 
-# After the last app: strip the shared Frameworks/ once, check the layout,
-# sign it and then each app, and notarize the whole suite folder in one
-# submission - the apps, their plug-ins, the shared dylibs and ultramsg -
-# instead of one round trip to Apple per app. Each app then gets its ticket
-# stapled; the folder itself cannot carry one.
+# After the last app: strip the shared Frameworks/ once, check the layout and
+# the minimum macOS, sign the shared Frameworks/ and then each app, and
+# notarize the whole suite folder in one submission - the apps, their plug-ins,
+# the shared dylibs and ultramsg - instead of one round trip to Apple per app.
+# Each app then gets its ticket stapled; the folder itself cannot carry one.
 finish_suite() {
     echo "── Finishing the $SUITE_NAME suite ──"
     strip_binaries "$SHARED_FW"
     verify_suite
+
+    # Before signing, which seals the Info.plist the minimum is written to.
+    # The shared Frameworks/ is read once, and each app's own executable and
+    # plug-ins on top of it: every app loads from the same folder.
+    echo "── Minimum macOS ──"
+    check_min_macos "Frameworks/" "" "" "$SHARED_FW"
+    local shared_min="$CHECKED_MIN_MACOS" app
+    for app in "${BUILT_APPS[@]}"; do
+        local own=("$app/Contents/MacOS")
+        [ -d "$app/Contents/PlugIns" ] && own+=("$app/Contents/PlugIns")
+        check_min_macos "$(basename "$app")" "$app/Contents/Info.plist" "$shared_min" "${own[@]}"
+    done
 
     if $DO_SIGN; then
         sign_shared_frameworks
@@ -1025,8 +1178,8 @@ if $CREATE_DMG; then
     # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
     # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
     # against 503 MB for the zip of the same .app folders, so only LZMA beats
-    # that. It needs macOS 10.15 to open, below the apps' own
-    # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
+    # that. It needs macOS 10.15 to open, below any macOS the apps inside
+    # run on (check_min_macos). hdiutil on CI runners now and then fails
     # with "Resource busy" while the system indexes the staging folder, so it
     # gets three tries.
     dmg_try=1
@@ -1077,26 +1230,30 @@ done
 
 # Size breakdown: each app on its own (executable, plug-ins, resources) and
 # the shared Frameworks/ they all use, which is where the bulk of the download
-# is. Written to the job summary too when run in GitHub Actions, so a change
-# to what the apps link shows up as a number on the run page.
+# is, with the oldest macOS each one runs on (check_min_macos). Written to the
+# job summary too when run in GitHub Actions, so a change to what the apps
+# link - or to the macOS they need - shows up on the run page.
 echo ""
 echo "  Suite contents:"
-SIZE_TABLE="| Item | Size | dylibs |"$'\n'"|---|---:|---:|"
+SIZE_TABLE="| Item | Size | dylibs | Needs macOS |"$'\n'"|---|---:|---:|---:|"
 for item in "$SUITE_DIR"/*.app "$SUITE_DIR/ultramsg"; do
     [ -d "$item" ] || continue
     total=$(du -sh "$item" | cut -f1)
-    echo "    $(basename "$item"): $total"
-    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | |"
+    min_macos=$(awk -v n="$(basename "$item")" '$1 == n {print $2}' "$MIN_MACOS_LOG")
+    echo "    $(basename "$item"): $total, needs macOS ${min_macos:-?}"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | | ${min_macos:-?} |"
 done
 fw_size=$(du -sh "$SHARED_FW" | cut -f1)
 fw_count=$(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ')
-echo "    Frameworks/ (shared by ${#BUILT_APPS[@]} apps): $fw_size in $fw_count dylibs"
-SIZE_TABLE+=$'\n'"| Frameworks/ (shared by ${#BUILT_APPS[@]} apps) | $fw_size | $fw_count |"
-SIZE_TABLE+=$'\n'"| **$SUITE_NAME/** (unpacked) | $(du -sh "$SUITE_DIR" | cut -f1) | |"
+fw_min_macos=$(awk '$1 == "Frameworks/" {print $2}' "$MIN_MACOS_LOG")
+echo "    Frameworks/ (shared by ${#BUILT_APPS[@]} apps): $fw_size in $fw_count dylibs, needs macOS ${fw_min_macos:-?}"
+SIZE_TABLE+=$'\n'"| Frameworks/ (shared by ${#BUILT_APPS[@]} apps) | $fw_size | $fw_count | ${fw_min_macos:-?} |"
+SIZE_TABLE+=$'\n'"| **$SUITE_NAME/** (unpacked) | $(du -sh "$SUITE_DIR" | cut -f1) | | |"
 for dmg in "$OUTPUT_DIR"/*.dmg; do
     [ -f "$dmg" ] || continue
-    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | |"
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
 done
+rm -f "$MIN_MACOS_LOG"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
         echo "### macOS suite sizes ($(uname -m))"
