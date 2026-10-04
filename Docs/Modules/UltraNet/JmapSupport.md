@@ -114,6 +114,7 @@ UltraCanvas/Plugins/UltraNet/jmap/
 | `ListFolders` | `Mailbox/get` — JMAP's native `role` property maps 1:1 onto `UltraNetMailFolder.role` (cleaner than IMAP SPECIAL-USE sniffing); `parentId` chains are flattened into `name` paths with `/` delimiter |
 | `GetMailboxStatus` | `Mailbox/get` (`totalEmails`, `unreadEmails`) — `uidValidity`/`uidNext` are synthesised from the mailbox `state` string (see id note below) |
 | `FetchEnvelopes` | `Email/query` (filter `inMailbox`, sort `receivedAt desc`, `limit = maxMessages`) **+** `Email/get` via result back-reference — envelope properties only, one round-trip |
+| `FetchEnvelopesByUid` | not overridden: the interface's default (`FetchEnvelopes` from the lowest UID asked for, keeping the ones asked for) |
 | `FetchMessage` | `Email/get` for `blobId` → GET on session `downloadUrl` → raw RFC 5322 |
 | `StoreFlags` | `Email/set` keyword patch (`keywords/$seen` etc.); `Deleted` flag maps to move-to-Trash (role lookup) since JMAP has no `\Deleted` |
 | `MoveMessage` | `Email/set` patch of `mailboxIds` |

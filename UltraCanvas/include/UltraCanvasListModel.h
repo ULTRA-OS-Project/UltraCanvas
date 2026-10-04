@@ -196,6 +196,11 @@ namespace UltraCanvas {
         void InsertItem(int row, const MultiColumnListItem& item);
         void RemoveItem(int row);
         void Clear();
+        // Replace every row at once, with ONE change notification. AddItem
+        // notifies the view per row (row geometry, scrollbar, redraw), which
+        // for a list of thousands - a mailbox - is most of the time it takes
+        // to fill; and a re-sort is a new order of the same rows.
+        void SetItems(std::vector<MultiColumnListItem> newItems);
 
         int GetItemCount() const;
         const MultiColumnListItem& GetItem(int row) const;

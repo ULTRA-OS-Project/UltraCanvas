@@ -16,6 +16,7 @@ endif()
 set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTypes.cpp
     engine/UltraMailLocalStore.cpp
+    engine/UltraMailFolderNames.cpp
     engine/UltraMailMimeCodec.cpp
     engine/UltraMailAttachmentCache.cpp
     engine/UltraMailContacts.cpp
@@ -29,6 +30,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailRecipientComplete.cpp
     engine/UltraMailInlineImages.cpp
     engine/UltraMailMessageFilter.cpp
+    engine/UltraMailMessageSort.cpp
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
     engine/UltraMailOAuth.cpp
