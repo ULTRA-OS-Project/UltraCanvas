@@ -6,6 +6,7 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
 // Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
 // Version: 0.3.0 - PlainLinkAt
@@ -400,4 +401,33 @@ TEST(plain_link_at_finds_the_url_under_a_position) {
     REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
     REQUIRE(PlainLinkAt(text, text.find("not")).empty());
     REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
+}
+
+TEST(plain_text_mail_addresses_are_mailto_links) {
+    const std::string text = "Write to support@shop.example, or mailto:sales@shop.example?subject=Hi."
+                             " Not an address: a@b, x@y.1, @handle. See https://user@site.example/p";
+    REQUIRE_EQ(PlainLinkAt(text, text.find("support")), std::string("mailto:support@shop.example"));
+    REQUIRE_EQ(PlainLinkAt(text, text.find("shop.example,")), std::string("mailto:support@shop.example"));
+    REQUIRE(PlainLinkAt(text, text.find(", or")).empty());   // the comma after it
+    REQUIRE_EQ(PlainLinkAt(text, text.find("mailto:") + 3),
+               std::string("mailto:sales@shop.example?subject=Hi"));
+    REQUIRE(PlainLinkAt(text, text.find("a@b")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("x@y.1")).empty());
+    REQUIRE(PlainLinkAt(text, text.find("@handle") + 1).empty());
+    // An address inside a web address is part of that web address.
+    REQUIRE_EQ(PlainLinkAt(text, text.find("site.example")), std::string("https://user@site.example/p"));
+
+    const auto links = ExtractLinks(text, false);
+    REQUIRE(links.size() == 3);
+    REQUIRE_EQ(links[0].href, std::string("mailto:support@shop.example"));
+    REQUIRE(links[0].host.empty());
+    REQUIRE_EQ(links[2].host, std::string("site.example"));
+}
+
+TEST(a_mail_address_in_plain_text_raises_no_link_finding) {
+    ScanInput in;
+    in.fromAddr = "news@gardenclub.example";
+    in.body = "Questions? Write to helpdesk@other-service.example any time.";
+    in.bodyIsHtml = false;
+    REQUIRE(ScanMessage(in).level == ThreatLevel::Clean);
 }

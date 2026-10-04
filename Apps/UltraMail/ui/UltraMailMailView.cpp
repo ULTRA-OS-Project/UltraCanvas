@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.10.0 - forwards onComposeTo
 // Version: 0.9.0 - SetLinkTooltips
 // Version: 0.8.0 - forwards the reading pane's links and hovered link
 // Version: 0.7.0 - SetFolderTreeWidth: the folder tree fitted to its rows
@@ -442,6 +443,10 @@ void MailView::BuildMessageBox() {
     };
     preview_.onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href);
+    };
+    preview_.onComposeTo = [this](const std::string& n, const std::string& a,
+                                  const std::string& href) {
+        if (onComposeTo) onComposeTo(n, a, href);
     };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.

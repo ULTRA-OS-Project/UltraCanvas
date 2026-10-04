@@ -539,15 +539,16 @@ pushes to `main`; pull requests get the unsigned bundle.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
 
-A bundle runs on the oldest macOS that *all* of its binaries allow, and that
-includes the Homebrew libraries it carries: Homebrew builds them for the macOS
-of the machine that built them, and macOS refuses to load a library built for a
-newer version than its own. So the bundles CI publishes run on macOS 15 and
-later, because they are built on macOS 15 runners with
-`MACOSX_DEPLOYMENT_TARGET=15.0`; a bundle you package yourself runs on the macOS
-you built it on and newer. `package-macos.sh` reads the minimum from every
-binary it bundles, writes it as `LSMinimumSystemVersion`, and fails when
-`MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer macOS.
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the Homebrew libraries in the suite's shared `Frameworks/`: Homebrew
+builds them for the macOS of the machine that built them, and macOS refuses to
+load a library built for a newer version than its own. So the suite CI
+publishes runs on macOS 15 and later, because it is built on macOS 15 runners
+with `MACOSX_DEPLOYMENT_TARGET=15.0`; a suite you package yourself runs on the
+macOS you built it on and newer. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
 
 </details>
 

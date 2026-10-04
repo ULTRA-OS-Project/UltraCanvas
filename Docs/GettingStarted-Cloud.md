@@ -53,7 +53,7 @@ is the only place the whole framework is compiled for everyone:
 | Leg | Platform | What it also does |
 |---|---|---|
 | ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-15, macos-15-intel | Apple Silicon and Intel | packages the app bundle for macOS 15 and later; signs and notarises on `main` |
+| macos-15, macos-15-intel | Apple Silicon and Intel | packages the app suite for macOS 15 and later; signs and notarises on `main` |
 | windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
 | Android backend check | syntax check against the NDK | — |
 
@@ -72,6 +72,9 @@ Three facts about CI decide how a cloud-only developer works:
   for seven days: `UCDemo-Windows-<version>-<arch>`,
   `UCDemo-MacOS-<version>-<arch>` and `UltraCanvas-Linux-<version>-<arch>`.
   That download is how you run and look at the app without compiling it.
+  The macOS one is a disk image holding an `UltraCanvas` folder: copy the
+  whole folder to Applications, because its apps share the `Frameworks/`
+  inside it and do not start when moved out on their own.
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is

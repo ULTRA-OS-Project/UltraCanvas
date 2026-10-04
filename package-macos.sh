@@ -1,22 +1,21 @@
 #!/bin/bash
-# package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor,
-# DeviceExplorer, UltraAuthenticator and UltraPassword as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
-# command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
+# package-macos.sh - Create the macOS UltraCanvas suite: every app in one
+# folder with one shared Frameworks/ (see "Suite layout" below), the
+# `ultramsg` command-line tool beside them, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
 #   --dmg              Also create a DMG disk image (signed, and notarized with --notarize)
 #   --no-sign          Skip code signing
-#   --notarize         Submit signed bundles to Apple notary service and staple
+#   --notarize         Notarize the suite folder (one submission) and staple each app
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
 #
 # Environment variables:
-#   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the bundles must run on (CI: 15.0).
-#                        Written as LSMinimumSystemVersion; packaging fails if
-#                        a binary in a bundle needs a newer macOS. Unset, the
-#                        bundles get the newest minimum their binaries declare
+#   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the apps must run on (CI: 15.0).
+#                        Written as each app's LSMinimumSystemVersion; fails
+#                        if a binary in the suite needs a newer macOS. Unset,
+#                        each app gets the newest minimum its binaries declare
 #   APPLE_SIGN_ID        Override the default code-signing identity
 #   APPLE_ID             Apple ID email (for --notarize)
 #   APPLE_TEAM_ID        Apple Developer Team ID (for --notarize)
@@ -35,6 +34,27 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: Cloverleaf RISCOS Computer UG (haftungsbeschrankt) (29638T25M9)}"
 
+# ── Suite layout ─────────────────────────────────────────────────────────────
+#
+#   <output>/UltraCanvas/
+#     Frameworks/                 every bundled dylib, once
+#     Texter.app, UltraFiler.app, ...   no Contents/Frameworks/ of their own
+#     ultramsg/bin/ultramsg       the command-line tool (own, empty Frameworks/)
+#
+# Each .app used to carry its own copy of the ~90 Homebrew dylibs (95-131 MB);
+# with eight apps that was ~830 MB of the same libraries, and every new app
+# added another ~95 MB to the download. Now the apps' load commands point at
+# @executable_path/../../../Frameworks/ - from <app>.app/Contents/MacOS/ up to
+# the suite folder - so they share one copy, and a new app costs only its own
+# executable and resources. verify_suite fails the run if an app ends up with
+# libraries of its own or a reference outside the shared folder.
+#
+# The price: an app works only inside the suite folder. Install by dragging
+# the whole UltraCanvas folder to /Applications, not a single app out of it.
+SUITE_NAME="UltraCanvas"
+APP_FW_REF="@executable_path/../../../Frameworks"
+TOOL_FW_REF="@executable_path/../Frameworks"
+
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
@@ -45,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,23p' "$0" | sed 's/^# \?//'
+            sed -n '2,22p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -71,7 +91,7 @@ if ! command -v brew &>/dev/null; then
 fi
 HOMEBREW_PREFIX=$(brew --prefix)
 
-# The oldest macOS the bundles must run on - the same variable the compiler,
+# The oldest macOS the apps must run on - the same variable the compiler,
 # CMake and cargo read, so the code and this promise agree. See
 # check_min_macos for what is checked against it.
 MIN_MACOS="${MACOSX_DEPLOYMENT_TARGET:-}"
@@ -85,7 +105,7 @@ echo "  Version:         $VERSION"
 echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Homebrew prefix: $HOMEBREW_PREFIX"
-echo "  Minimum macOS:   ${MIN_MACOS:-measured per bundle (MACOSX_DEPLOYMENT_TARGET unset)}"
+echo "  Minimum macOS:   ${MIN_MACOS:-measured per app (MACOSX_DEPLOYMENT_TARGET unset)}"
 echo "  Code signing:    $DO_SIGN"
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
@@ -169,9 +189,9 @@ generate_plist() {
     local category="$6"
     local extra_plist_entries="$7"
 
-    # LSMinimumSystemVersion is not written here: check_min_macos adds it once
-    # the executable and its dylibs are in the bundle and their minimum macOS
-    # has been read.
+    # LSMinimumSystemVersion is not written here: finish_suite adds it once
+    # every app and the shared Frameworks/ are in place and their minimum macOS
+    # has been read (check_min_macos).
     cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -213,9 +233,12 @@ PLIST
 
 # ── Helper: Bundle dylibs ───────────────────────────────────────────────────
 
+# $3 is the load-command prefix the references are rewritten to
+# ($APP_FW_REF for an app or its plug-in, $TOOL_FW_REF for a tool).
 bundle_dylibs() {
     local exe_path="$1"
     local frameworks_dir="$2"
+    local fw_ref="$3"
 
     echo "  Bundling dynamic libraries..."
 
@@ -228,8 +251,9 @@ bundle_dylibs() {
     #                  preserved byte-for-byte by cp -L, so otool reads are
     #                  identical to the original.
     # Use a file-based queue since macOS ships with Bash 3.2 (no associative arrays)
-    local queue_file
+    local queue_file copied_file
     queue_file=$(mktemp)
+    copied_file=$(mktemp)
     echo "$(dirname "$exe_path")|$exe_path" > "$queue_file"
     local count=0
 
@@ -331,6 +355,7 @@ bundle_dylibs() {
                 cp -L "$resolved_dep" "$frameworks_dir/$dep_basename"
                 chmod 644 "$frameworks_dir/$dep_basename"
                 count=$((count + 1))
+                echo "$frameworks_dir/$dep_basename" >> "$copied_file"
                 # Queue the copy for BFS. source_dir is the real host
                 # directory so @loader_path deps resolve against siblings
                 # on disk, not the (empty) Frameworks dir.
@@ -347,17 +372,18 @@ bundle_dylibs() {
     echo "  Fixing install names..."
 
     # Fix the executable
-    fix_install_names "$exe_path" "$frameworks_dir"
+    fix_install_names "$exe_path" "$frameworks_dir" "$fw_ref"
 
-    # Fix each bundled dylib
-    for dylib in "$frameworks_dir"/*.dylib; do
-        if [ -f "$dylib" ]; then
-            local dylib_name
-            dylib_name=$(basename "$dylib")
-            install_name_tool -id "@executable_path/../Frameworks/$dylib_name" "$dylib" 2>/dev/null || true
-            fix_install_names "$dylib" "$frameworks_dir"
-        fi
-    done
+    # Fix the dylibs this call copied. In the shared suite Frameworks/ the
+    # ones an earlier app brought are already rewritten, and a dylib's own
+    # references are the same whichever app pulled it in.
+    local dylib dylib_name
+    while IFS= read -r dylib; do
+        dylib_name=$(basename "$dylib")
+        install_name_tool -id "$fw_ref/$dylib_name" "$dylib" 2>/dev/null || true
+        fix_install_names "$dylib" "$frameworks_dir" "$fw_ref"
+    done < "$copied_file"
+    rm -f "$copied_file"
 
     echo "  Install names fixed"
 }
@@ -365,6 +391,7 @@ bundle_dylibs() {
 fix_install_names() {
     local binary="$1"
     local frameworks_dir="$2"
+    local fw_ref="$3"
 
     local deps
     deps=$(otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -375,7 +402,7 @@ fix_install_names() {
 
         if [ -f "$frameworks_dir/$dep_basename" ]; then
             install_name_tool -change "$dep" \
-                "@executable_path/../Frameworks/$dep_basename" \
+                "$fw_ref/$dep_basename" \
                 "$binary" 2>/dev/null || true
         fi
     done
@@ -414,10 +441,11 @@ strip_binaries() {
 # dylib it pulls in:
 #   Library not loaded: ... (built for macOS 26.0 which is newer than running OS)
 # LSMinimumSystemVersion does not change that; it only has Finder refuse the
-# app with a readable message instead. So a bundle runs on the newest minimum
-# among its binaries, whatever its Info.plist says - and the plist said 12.0
-# for months while the arm64 build, on the macOS 26 runner behind
-# macos-latest, made apps that started only on macOS 26.
+# app with a readable message instead. So an app runs on the newest minimum
+# among its own binaries and the shared Frameworks/ it loads, whatever its
+# Info.plist says - and the plist said 12.0 for months while the arm64 build,
+# on the macOS 26 runner behind macos-latest, made apps that started only on
+# macOS 26.
 #
 # Our own code follows MACOSX_DEPLOYMENT_TARGET, but the Homebrew dylibs carry
 # whatever their bottle was built for - usually the major version of the macOS
@@ -428,18 +456,20 @@ strip_binaries() {
 # macho_min_macos and version_newer
 . "$SCRIPT_DIR/scripts/macos-min-version.sh"
 
-# Where check_min_macos records each bundle's minimum, for the summary table.
+# Where check_min_macos records each item's minimum, for the summary table.
 MIN_MACOS_LOG=$(mktemp)
 
-# check_min_macos NAME PLIST DIR... - read the minimum macOS of every Mach-O
-# file under DIR..., fail when one needs a newer macOS than MIN_MACOS, and
-# write LSMinimumSystemVersion into PLIST ("" for a bundle without one):
-# MIN_MACOS when it is set, otherwise the newest minimum found. Runs before
-# signing, because editing Info.plist afterwards breaks the bundle's seal.
+# check_min_macos NAME PLIST FLOOR DIR... - read the minimum macOS of every
+# Mach-O file under DIR..., fail when one needs a newer macOS than MIN_MACOS,
+# and write LSMinimumSystemVersion into PLIST ("" for an item without one):
+# MIN_MACOS when it is set, otherwise the newest minimum found, starting from
+# FLOOR - the shared Frameworks/' minimum for an app, "" otherwise. Leaves
+# that minimum in CHECKED_MIN_MACOS. Runs before signing, because editing
+# Info.plist afterwards breaks the bundle's seal.
 check_min_macos() {
-    local name="$1" plist="$2"
-    shift 2
-    local floor="" too_new="" f v
+    local name="$1" plist="$2" floor="$3"
+    shift 3
+    local too_new="" f v
     while IFS= read -r -d '' f; do
         case "$(file -b "$f")" in
             Mach-O*) ;;
@@ -475,8 +505,9 @@ check_min_macos() {
     if [ -n "$plist" ]; then
         /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string $declared" "$plist"
     fi
+    CHECKED_MIN_MACOS="$floor"
     echo "$name $declared" >> "$MIN_MACOS_LOG"
-    echo "  Minimum macOS: $declared (newest minimum among its binaries: $floor)"
+    echo "  $name: minimum macOS $declared (newest minimum among its binaries: $floor)"
 }
 
 # ── Helper: Code sign ────────────────────────────────────────────────────────
@@ -486,13 +517,9 @@ codesign_bundle() {
 
     echo "  Signing bundle..."
 
-    # Sign frameworks first (inside-out), with hardened runtime + secure timestamp
-    for dylib in "$app_bundle/Contents/Frameworks/"*.dylib; do
-        if [ -f "$dylib" ]; then
-            codesign --force --timestamp --options runtime \
-                --sign "$IDENTITY" "$dylib"
-        fi
-    done
+    # The shared suite Frameworks/ is signed once, before any app
+    # (sign_shared_frameworks); the bundle holds only its plug-ins and
+    # executable.
 
     # Plug-in modules loaded at runtime (the LaTeX engine) are signed like
     # the frameworks: inside-out, before the executable and the bundle.
@@ -652,15 +679,15 @@ build_app_bundle() {
         return 1
     fi
 
-    local app_dir="$OUTPUT_DIR/${exe_name}.app"
+    local app_dir="$SUITE_DIR/${exe_name}.app"
     local contents_dir="$app_dir/Contents"
 
     echo "── Packaging $display_name ──"
 
-    # Create directory structure
+    # Create directory structure. No Contents/Frameworks/: the dylibs go to
+    # the suite's shared one (see "Suite layout").
     mkdir -p "$contents_dir/MacOS"
     mkdir -p "$contents_dir/Resources"
-    mkdir -p "$contents_dir/Frameworks"
 
     # PkgInfo
     echo -n "APPL????" > "$contents_dir/PkgInfo"
@@ -731,36 +758,28 @@ build_app_bundle() {
         fi
     fi
 
-    # Bundle Homebrew dylibs
-    bundle_dylibs "$contents_dir/MacOS/$exe_name" "$contents_dir/Frameworks"
+    # Bundle Homebrew dylibs into the shared suite Frameworks/
+    bundle_dylibs "$contents_dir/MacOS/$exe_name" "$SHARED_FW" "$APP_FW_REF"
 
     # The module's own Homebrew dependencies (cairo, pango, ...) are largely
     # the executable's, but collect and rewrite them from the module as well
     # so a dependency only it has is bundled and its load commands point into
-    # Frameworks/ (@executable_path resolves against the app, which is right
-    # for a plugin the app loads).
+    # the shared Frameworks/ (@executable_path resolves against the app,
+    # which is right for a plugin the app loads).
     if [ -f "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" ]; then
-        bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
+        bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$SHARED_FW" "$APP_FW_REF"
     fi
 
     # PlugIns/ is absent from a bundle without the LaTeX module, and a missing
     # path makes strip_binaries' du fail - fatal under set -e -o pipefail.
-    local strip_dirs=("$contents_dir/MacOS" "$contents_dir/Frameworks")
+    # The shared Frameworks/ is stripped once, after the last app.
+    local strip_dirs=("$contents_dir/MacOS")
     [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
     strip_binaries "${strip_dirs[@]}"
 
-    # Before signing: it writes LSMinimumSystemVersion into Info.plist.
-    check_min_macos "$(basename "$app_dir")" "$contents_dir/Info.plist" "${strip_dirs[@]}"
-
-    # Code sign
-    if $DO_SIGN; then
-        codesign_bundle "$app_dir"
-    fi
-
-    # Notarize and staple
-    if $NOTARIZE; then
-        notarize_bundle "$app_dir"
-    fi
+    # Signed and notarized after the last app (finish_suite): the shared
+    # Frameworks/ has to be complete and signed first.
+    BUILT_APPS+=("$app_dir")
 
     local bundle_size
     bundle_size=$(du -sh "$app_dir" | cut -f1)
@@ -783,7 +802,7 @@ build_cli_tool() {
         return 1
     fi
 
-    local tool_dir="$OUTPUT_DIR/$exe_name"
+    local tool_dir="$SUITE_DIR/$exe_name"
 
     echo "── Packaging $exe_name (command line) ──"
 
@@ -792,9 +811,9 @@ build_cli_tool() {
     chmod 755 "$tool_dir/bin/$exe_name"
     echo "  Copied executable"
 
-    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks"
+    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks" "$TOOL_FW_REF"
     strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
-    check_min_macos "$exe_name" "" "$tool_dir/bin" "$tool_dir/Frameworks"
+    check_min_macos "$exe_name" "" "" "$tool_dir/bin" "$tool_dir/Frameworks"
 
     if $DO_SIGN; then
         echo "  Signing tool..."
@@ -810,11 +829,108 @@ build_cli_tool() {
         echo "  Tool signed"
     fi
 
-    if $NOTARIZE; then
-        notarize_bundle "$tool_dir" false
-    fi
+    # Notarized with the rest of the suite folder (finish_suite).
 
     echo "  Tool size: $(du -sh "$tool_dir" | cut -f1)"
+    echo ""
+}
+
+# ── Suite checks, signing and notarization ──────────────────────────────────
+
+# Fails the run when the suite breaks its layout. Every reference in an app's
+# executable, its plug-ins and the shared dylibs must be a system library or
+# a dylib that is in the shared Frameworks/, and no app may carry
+# Contents/Frameworks/. That is the rule that keeps a new app from adding
+# another ~95 MB copy of the libraries: an app packaged any other way than
+# through build_app_bundle trips it.
+verify_suite() {
+    echo "── Verifying the suite layout ──"
+    local errors=0 app bin dep name
+    for app in "${BUILT_APPS[@]}"; do
+        if [ -d "$app/Contents/Frameworks" ] && \
+           [ -n "$(ls -A "$app/Contents/Frameworks" 2>/dev/null)" ]; then
+            echo "  ERROR: $(basename "$app") has its own Contents/Frameworks/ - apps share $SUITE_NAME/Frameworks/"
+            errors=$((errors + 1))
+        fi
+    done
+    while IFS= read -r -d '' bin; do
+        case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
+        while IFS= read -r dep; do
+            case "$dep" in
+                /System/*|/usr/lib/*) ;;
+                "$APP_FW_REF"/*)
+                    name="${dep#"$APP_FW_REF"/}"
+                    if [ ! -f "$SHARED_FW/$name" ]; then
+                        echo "  ERROR: $(basename "$bin") needs $name, which is not in $SUITE_NAME/Frameworks/"
+                        errors=$((errors + 1))
+                    fi
+                    ;;
+                "${HOMEBREW_PREFIX}"/*|/opt/homebrew/*|/usr/local/*)
+                    echo "  ERROR: $(basename "$bin") still loads $dep from Homebrew"
+                    errors=$((errors + 1))
+                    ;;
+            esac
+        done < <(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    done < <(find "$SHARED_FW" "${BUILT_APPS[@]/%//Contents/MacOS}" \
+                  "${BUILT_APPS[@]/%//Contents/PlugIns}" -type f -print0 2>/dev/null)
+    if [ "$errors" -gt 0 ]; then
+        echo "  $errors layout error(s) - see \"Suite layout\" at the top of this script"
+        exit 1
+    fi
+    echo "  ${#BUILT_APPS[@]} apps share $(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ') dylibs in $SUITE_NAME/Frameworks/"
+}
+
+sign_shared_frameworks() {
+    echo "  Signing the shared Frameworks/..."
+    local dylib
+    for dylib in "$SHARED_FW/"*.dylib; do
+        if [ -f "$dylib" ]; then
+            codesign --force --timestamp --options runtime \
+                --sign "$IDENTITY" "$dylib"
+        fi
+    done
+}
+
+# After the last app: strip the shared Frameworks/ once, check the layout and
+# the minimum macOS, sign the shared Frameworks/ and then each app, and
+# notarize the whole suite folder in one submission - the apps, their plug-ins,
+# the shared dylibs and ultramsg - instead of one round trip to Apple per app.
+# Each app then gets its ticket stapled; the folder itself cannot carry one.
+finish_suite() {
+    echo "── Finishing the $SUITE_NAME suite ──"
+    strip_binaries "$SHARED_FW"
+    verify_suite
+
+    # Before signing, which seals the Info.plist the minimum is written to.
+    # The shared Frameworks/ is read once, and each app's own executable and
+    # plug-ins on top of it: every app loads from the same folder.
+    echo "── Minimum macOS ──"
+    check_min_macos "Frameworks/" "" "" "$SHARED_FW"
+    local shared_min="$CHECKED_MIN_MACOS" app
+    for app in "${BUILT_APPS[@]}"; do
+        local own=("$app/Contents/MacOS")
+        [ -d "$app/Contents/PlugIns" ] && own+=("$app/Contents/PlugIns")
+        check_min_macos "$(basename "$app")" "$app/Contents/Info.plist" "$shared_min" "${own[@]}"
+    done
+
+    if $DO_SIGN; then
+        sign_shared_frameworks
+        local app
+        for app in "${BUILT_APPS[@]}"; do
+            echo "── Signing $(basename "$app") ──"
+            codesign_bundle "$app"
+        done
+    fi
+
+    if $NOTARIZE; then
+        notarize_bundle "$SUITE_DIR" false
+        local app
+        for app in "${BUILT_APPS[@]}"; do
+            echo "  Stapling $(basename "$app")..."
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+        done
+    fi
     echo ""
 }
 
@@ -823,6 +939,10 @@ build_cli_tool() {
 # Clean and create output directory
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
+SUITE_DIR="$OUTPUT_DIR/$SUITE_NAME"
+SHARED_FW="$SUITE_DIR/Frameworks"
+mkdir -p "$SHARED_FW"
+BUILT_APPS=()
 
 # Document types for Texter (text editor)
 TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
@@ -944,6 +1064,10 @@ build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 build_cli_tool "ultramsg"
 
+# A new app goes above this line, through build_app_bundle - never with its
+# own Frameworks/ (verify_suite rejects that). See "Suite layout".
+finish_suite
+
 # ── Optional DMG creation ───────────────────────────────────────────────────
 
 if $CREATE_DMG; then
@@ -953,17 +1077,9 @@ if $CREATE_DMG; then
 
     mkdir -p "$DMG_STAGING"
 
-    # Copy app bundles to staging
-    for app in "$OUTPUT_DIR"/*.app; do
-        if [ -d "$app" ]; then
-            cp -R "$app" "$DMG_STAGING/"
-        fi
-    done
-
-    # And the command-line tool folder beside them
-    if [ -d "$OUTPUT_DIR/ultramsg" ]; then
-        cp -R "$OUTPUT_DIR/ultramsg" "$DMG_STAGING/"
-    fi
+    # The suite folder as one item: dragging it to Applications installs the
+    # apps together with the Frameworks/ they share.
+    cp -R "$SUITE_DIR" "$DMG_STAGING/"
 
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
@@ -1021,33 +1137,35 @@ ls -1 "$OUTPUT_DIR/" | while read -r item; do
     fi
 done
 
-# Per-bundle breakdown: how much of each bundle is bundled libraries, and the
-# oldest macOS it runs on. Every .app carries its own Frameworks/, so this is
-# where the macOS download's size goes; written to the job summary too when run
-# in GitHub Actions, so a change to what the apps link - or to the macOS they
-# need - shows up on the run page.
+# Size breakdown: each app on its own (executable, plug-ins, resources) and
+# the shared Frameworks/ they all use, which is where the bulk of the download
+# is, with the oldest macOS each one runs on (check_min_macos). Written to the
+# job summary too when run in GitHub Actions, so a change to what the apps
+# link - or to the macOS they need - shows up on the run page.
 echo ""
-echo "  Bundled libraries per bundle:"
-SIZE_TABLE="| Bundle | Total | Frameworks | dylibs | Needs macOS |"$'\n'"|---|---:|---:|---:|---:|"
-for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
+echo "  Suite contents:"
+SIZE_TABLE="| Item | Size | dylibs | Needs macOS |"$'\n'"|---|---:|---:|---:|"
+for item in "$SUITE_DIR"/*.app "$SUITE_DIR/ultramsg"; do
     [ -d "$item" ] || continue
-    fw_dir="$item/Contents/Frameworks"
-    [ -d "$fw_dir" ] || fw_dir="$item/Frameworks"
     total=$(du -sh "$item" | cut -f1)
-    fw_size=$(du -sh "$fw_dir" 2>/dev/null | cut -f1)
-    fw_count=$(find "$fw_dir" -name '*.dylib' 2>/dev/null | wc -l | tr -d ' ')
     min_macos=$(awk -v n="$(basename "$item")" '$1 == n {print $2}' "$MIN_MACOS_LOG")
-    echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs, needs macOS ${min_macos:-?}"
-    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count | ${min_macos:-?} |"
+    echo "    $(basename "$item"): $total, needs macOS ${min_macos:-?}"
+    SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | | ${min_macos:-?} |"
 done
+fw_size=$(du -sh "$SHARED_FW" | cut -f1)
+fw_count=$(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ')
+fw_min_macos=$(awk '$1 == "Frameworks/" {print $2}' "$MIN_MACOS_LOG")
+echo "    Frameworks/ (shared by ${#BUILT_APPS[@]} apps): $fw_size in $fw_count dylibs, needs macOS ${fw_min_macos:-?}"
+SIZE_TABLE+=$'\n'"| Frameworks/ (shared by ${#BUILT_APPS[@]} apps) | $fw_size | $fw_count | ${fw_min_macos:-?} |"
+SIZE_TABLE+=$'\n'"| **$SUITE_NAME/** (unpacked) | $(du -sh "$SUITE_DIR" | cut -f1) | | |"
 for dmg in "$OUTPUT_DIR"/*.dmg; do
     [ -f "$dmg" ] || continue
-    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | | |"
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
 done
 rm -f "$MIN_MACOS_LOG"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
-        echo "### macOS bundle sizes ($(uname -m))"
+        echo "### macOS suite sizes ($(uname -m))"
         echo ""
         echo "$SIZE_TABLE"
     } >> "$GITHUB_STEP_SUMMARY"

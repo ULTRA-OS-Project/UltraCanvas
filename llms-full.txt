@@ -3299,7 +3299,7 @@ is the only place the whole framework is compiled for everyone:
 | Leg | Platform | What it also does |
 |---|---|---|
 | ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-15, macos-15-intel | Apple Silicon and Intel | packages the app bundle for macOS 15 and later; signs and notarises on `main` |
+| macos-15, macos-15-intel | Apple Silicon and Intel | packages the app suite for macOS 15 and later; signs and notarises on `main` |
 | windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
 | Android backend check | syntax check against the NDK | — |
 
@@ -3318,6 +3318,9 @@ Three facts about CI decide how a cloud-only developer works:
   for seven days: `UCDemo-Windows-<version>-<arch>`,
   `UCDemo-MacOS-<version>-<arch>` and `UltraCanvas-Linux-<version>-<arch>`.
   That download is how you run and look at the app without compiling it.
+  The macOS one is a disk image holding an `UltraCanvas` folder: copy the
+  whole folder to Applications, because its apps share the `Frameworks/`
+  inside it and do not start when moved out on their own.
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
@@ -3977,15 +3980,16 @@ pushes to `main`; pull requests get the unsigned bundle.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
 
-A bundle runs on the oldest macOS that *all* of its binaries allow, and that
-includes the Homebrew libraries it carries: Homebrew builds them for the macOS
-of the machine that built them, and macOS refuses to load a library built for a
-newer version than its own. So the bundles CI publishes run on macOS 15 and
-later, because they are built on macOS 15 runners with
-`MACOSX_DEPLOYMENT_TARGET=15.0`; a bundle you package yourself runs on the macOS
-you built it on and newer. `package-macos.sh` reads the minimum from every
-binary it bundles, writes it as `LSMinimumSystemVersion`, and fails when
-`MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer macOS.
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the Homebrew libraries in the suite's shared `Frameworks/`: Homebrew
+builds them for the macOS of the machine that built them, and macOS refuses to
+load a library built for a newer version than its own. So the suite CI
+publishes runs on macOS 15 and later, because it is built on macOS 15 runners
+with `MACOSX_DEPLOYMENT_TARGET=15.0`; a suite you package yourself runs on the
+macOS you built it on and newer. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
 
 </details>
 

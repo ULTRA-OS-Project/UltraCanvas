@@ -11,11 +11,13 @@
     cargo all read. The published apps run on macOS 15 and later, on both
     Apple Silicon and Intel.
   - `package-macos.sh` reads the minimum macOS from every executable, plug-in
-    and dylib it bundles, writes it as `LSMinimumSystemVersion` instead of a
-    fixed 12.0, and fails when `MACOSX_DEPLOYMENT_TARGET` is set and a binary
-    needs a newer macOS - naming each one. The job summary's bundle table
-    gains a *Needs macOS* column. Unset, as in a local build, the bundle gets
-    the newest minimum among its binaries.
+    and dylib it packages - the suite's shared `Frameworks/` once, then each
+    app's own binaries on top - writes it into each app as
+    `LSMinimumSystemVersion` instead of a fixed 12.0, and fails when
+    `MACOSX_DEPLOYMENT_TARGET` is set and a binary needs a newer macOS, naming
+    each one. The job summary's suite table gains a *Needs macOS* column.
+    Unset, as in a local build, each app gets the newest minimum among its
+    binaries and the shared ones.
   - Its first run caught a bottle that breaks the rule: Homebrew's arm64
     Sequoia bottle of tesseract declares macOS 15.7.5, the exact system it was
     built on, so every app with the OCR plug-in would have refused to start on

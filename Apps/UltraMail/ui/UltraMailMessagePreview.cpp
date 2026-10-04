@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.12.0 - mail addresses: a clicked mailto: (HTML) or address (plain text)
+//                 opens a new message to it in UltraMail
 // Version: 0.11.0 - a web address in plain-text mail opens when clicked
 // Version: 0.10.0 - the plain-text view reports the web address under the pointer
 //                 too (status line or tooltip, as Settings > Display > Links says)
@@ -92,8 +94,8 @@ void OpenMessageLink(const std::string& href) {
         UltraCanvas::OpenURL("https://" + href);
 }
 
-// The plain-text body: a read-only text area whose web addresses (bare URLs
-// in the text) work like the HTML view's links - the one under the pointer is
+// The plain-text body: a read-only text area whose links (web and mail
+// addresses written in the text) work like the HTML view's links - the one under the pointer is
 // reported (to the status line, or as a tooltip that follows the pointer
 // along it) and a click on it opens it. A drag still selects text.
 class PlainBodyArea : public UltraCanvasTextArea {
@@ -486,7 +488,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
         // file: or javascript: target a message could carry).
-        opts.onLinkActivated = OpenMessageLink;
+        opts.onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
         opts.onLinkHovered = [this](const std::string& href) {
             if (onLinkHovered) onLinkHovered(href);
         };
@@ -529,7 +531,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href);
     };
-    text->onLinkActivated = OpenMessageLink;
+    text->onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
     text->linkTooltips = linkTooltips;
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
@@ -538,6 +540,19 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
+void MessagePreview::ActivateLink(const std::string& href) {
+    std::string lower = href.substr(0, 7);
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "mailto:" && onComposeTo) {
+        std::string selfName, selfAddr;
+        for (const auto& a : accounts_)
+            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
+        onComposeTo(selfName, selfAddr, href);
+        return;
+    }
+    OpenMessageLink(href);
 }
 
 std::vector<uint8_t> MessagePreview::LoadBodyImage(const std::string& src) {

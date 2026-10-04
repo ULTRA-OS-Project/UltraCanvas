@@ -26,6 +26,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSenderTrust.cpp
     engine/UltraMailThreatScan.cpp
     engine/UltraMailUnsubscribe.cpp
+    engine/UltraMailRecipientComplete.cpp
     engine/UltraMailInlineImages.cpp
     engine/UltraMailMessageFilter.cpp
     engine/UltraMailSyncEngine.cpp
