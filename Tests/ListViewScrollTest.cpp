@@ -11,6 +11,9 @@
 //  - The selection follows rows inserted or removed above it. It stayed at
 //    the same index, so while new mail streamed in above the message being
 //    read, the highlight sat on whatever message slid into that row.
+//  - The arrow keys go on from a row selected in code. The keyboard focus
+//    stayed where it was, so after the application rebuilt or re-sorted the
+//    list and selected the message being read, Down jumped to the top.
 // No window and no display: the view is sized with SetBounds.
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
@@ -150,6 +153,38 @@ static void TestMultiSelectionShift() {
     CHECK_EQ(sel.IsSelected(7), true);
 }
 
+static UCEvent Key(UCKeys key) {
+    UCEvent e;
+    e.type = UCEventType::KeyDown;
+    e.virtualKey = key;
+    return e;
+}
+
+static void TestKeyboardFollowsSelectionSetInCode() {
+    auto view = MakeView(20);
+    view->SetBounds(Rect2Df(0, 0, 400, 300));
+    view->GetSelection()->Select(7);                 // the application selects row 7
+    view->OnEvent(Key(UCKeys::Down));
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 8);
+
+    // What a rebuild does: reset, then select the message being read.
+    view->ResetSelection();
+    view->GetSelection()->Select(12);
+    view->OnEvent(Key(UCKeys::Up));
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 11);
+
+    // Rows inserted above it move the keyboard focus with the selection.
+    auto* model = static_cast<UltraCanvasMultiColumnListModel*>(view->GetModel());
+    model->InsertItem(0, MultiColumnListItem({ "New", "mail" }));
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 12);
+    view->OnEvent(Key(UCKeys::Down));
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 13);
+
+    // Home still starts over.
+    view->OnEvent(Key(UCKeys::Home));
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 0);
+}
+
 int main() {
     TestFirstRowBeforeLayout();
     TestLaterRowBeforeLayout();
@@ -157,6 +192,7 @@ int main() {
     TestSetItemsNotifiesOnce();
     TestSelectionFollowsInsertedAndRemovedRows();
     TestMultiSelectionShift();
+    TestKeyboardFollowsSelectionSetInCode();
     if (failures) {
         std::cerr << "ListViewScrollTest: " << failures << " failure(s)\n";
         return 1;

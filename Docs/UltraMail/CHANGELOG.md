@@ -92,6 +92,10 @@
   in.** Rows inserted above it moved the message down but not the highlight,
   which sat on whatever message took its place until the sync finished
   (framework changelog, "ListView: the selection follows the rows").
+- **The arrow keys go on from the selected message** after the list was
+  rebuilt or re-sorted - a folder or account switch, a sync, a click on a
+  column header. They started again from the top (framework changelog,
+  "ListView: the arrow keys go on from a row selected in code").
 
 #### 2026-10-04 *0.10.29*
 - **The message text fits its pane.** An HTML message tall enough to scroll

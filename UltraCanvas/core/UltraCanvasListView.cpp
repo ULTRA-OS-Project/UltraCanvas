@@ -20,8 +20,7 @@ namespace UltraCanvas {
         delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
         selection = std::make_shared<UltraCanvasSingleSelection>();
         selection->onSelectionChanged = [this](const std::vector<int>& rows) {
-            if (onSelectionChanged) onSelectionChanged(rows);
-            RequestRedraw();
+            HandleSelectionChanged(rows);
         };
 
         // Scrolling defaults
@@ -109,10 +108,24 @@ namespace UltraCanvas {
         selection = newSelection;
         if (selection) {
             selection->onSelectionChanged = [this](const std::vector<int>& rows) {
-                if (onSelectionChanged) onSelectionChanged(rows);
-                RequestRedraw();
+                HandleSelectionChanged(rows);
             };
         }
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::HandleSelectionChanged(const std::vector<int>& rows) {
+        // The keyboard goes on from the selected row, whoever selected it: a
+        // click, the arrow keys - or the application, after it rebuilt or
+        // re-sorted the rows and selected the one being read. Before, a row
+        // selected in code left the focus where it was (or at "none"), and
+        // the next arrow key jumped from there instead of from the selection.
+        // Set before the handlers run, so one that selects again wins.
+        if (selection) {
+            const int current = selection->GetCurrentRow();
+            if (current >= 0) focusedRow = current;
+        }
+        if (onSelectionChanged) onSelectionChanged(rows);
         RequestRedraw();
     }
 

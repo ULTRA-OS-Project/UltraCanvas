@@ -54,3 +54,12 @@
   separator, so Courier's "INBOX.INBOX^Sent" is the Sent folder. Only the
   folder named INBOX is the inbox, not a sub-folder that happens to be called
   so. Tests: `test_imap_mailbox.cpp`.
+- **ListView: the arrow keys go on from a row selected in code.** The keyboard
+  focus moved only with clicks and keys; a row the application selected
+  through `GetSelection()->Select` left it where it was - or at "none" after
+  `ResetSelection` - so the next Down jumped to the top, or to a row long
+  gone. The focus now follows the selection's current row whatever set it.
+  UltraMail's message list (rebuilt on a folder or account switch, re-sorted
+  from a header) and `UltraCanvasDropdown`, which selects its current item in
+  code as it opens, now move on from the selected row. Tests:
+  `ListViewScrollTest.cpp`.

@@ -620,6 +620,12 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
 
+The keys go on from the selection's current row, whoever selected it: a click,
+a key, or the application through `GetSelection()->Select(row)` - after it
+rebuilt or re-sorted the rows and selected the one the user was on, Down moves
+to the row below that one. `ResetSelection()` clears the focus as well, so the
+first Down after it selects the first row.
+
 ## Best Practices
 
 1. **Keep the model alive for as long as the view uses it.** The view stores a raw pointer; if the model is destroyed first, the view will read freed memory.

@@ -277,6 +277,10 @@ namespace UltraCanvas {
         int  pendingVisibleRow = -1;
         void RevealPendingRow();
 
+        // The selection changed (any source): the keyboard focus follows its
+        // current row, then onSelectionChanged.
+        void HandleSelectionChanged(const std::vector<int>& rows);
+
         // Internal methods
         void CreateScrollbar();
         void UpdateScrollbar();
