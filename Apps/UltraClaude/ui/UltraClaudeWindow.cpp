@@ -601,11 +601,8 @@ void UltraClaudeWindow::ShowLoginCodeBox(const std::string& url) {
 
 void UltraClaudeWindow::HideLoginCodeBox() {
     signInUrl_.clear();
-    if (loginCode_) {
-        loginCode_->SetText("");
-        // A hidden field that keeps the focus keeps drawing its caret.
-        loginCode_->SetFocus(false);
-    }
+    if (loginCode_) loginCode_->SetText("");
+    // Hiding the row also takes the focus from the code field in it.
     if (codeRow_) codeRow_->SetVisible(false);
     if (window_) window_->RequestRedraw();
 }

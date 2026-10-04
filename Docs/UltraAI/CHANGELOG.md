@@ -1,3 +1,10 @@
+#### 2026-10-04 *0.1.8*
+- **The chat dialog sends on Enter.** Its message box only sent through the
+  Send button; now Enter sends and Shift+Enter starts a new line, through the
+  text area's `onBeforeKeyDown` hook (framework,
+  `Docs/UltraCanvas/changelog.d/textarea-before-keydown.md`). The placeholder
+  says so. While a reply is still on its way Enter does nothing, as Send.
+
 #### 2026-09-29 *0.1.7*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

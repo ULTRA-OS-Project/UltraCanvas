@@ -18,7 +18,8 @@
   click, with the address as a tooltip - through `UltraCanvasLabel`'s text
   links. The not-found message no longer ends in a doubled ".).".
 - The hidden code field no longer leaves its caret blinking on the page
-  (framework fix, `changelog.d/caret-left-by-hidden-input.md`).
+  (framework fixes, `changelog.d/caret-left-by-hidden-input.md` and
+  `changelog.d/hidden-container-keeps-focus.md`).
 
 #### 2026-10-02 *0.1.0*
 - **UltraClaude, a desktop chat window for Claude on a Claude subscription.**
