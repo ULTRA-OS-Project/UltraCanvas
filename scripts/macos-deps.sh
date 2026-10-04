@@ -81,18 +81,27 @@ args=(
 [ "${UC_VCPKG_KEEP_GOING:-}" = "1" ] && args+=(--keep-going)
 
 echo "macos-deps: building for $triplet (macOS $triplet_target and newer)" >&2
-# Build output to stderr, so the prefix is the only thing on stdout.
-if ! VCPKG_ROOT="$VCPKG_ROOT" "$VCPKG_ROOT/vcpkg" "${args[@]}" >&2; then
+# Build output to stderr, so the prefix is the only thing on stdout; a copy
+# is kept to find the ports that failed.
+vcpkg_log=$(mktemp "${TMPDIR:-/tmp}/macos-deps.XXXXXX")
+trap 'rm -f "$vcpkg_log"' EXIT
+if ! VCPKG_ROOT="$VCPKG_ROOT" "$VCPKG_ROOT/vcpkg" "${args[@]}" 2>&1 | tee "$vcpkg_log" >&2; then
     # vcpkg names a failed port's logs but does not show them, and in CI they
-    # go with the machine. --clean-after-build removes only the buildtrees of
-    # ports that succeeded, so what is left is what failed: print its logs.
-    for log in "$VCPKG_ROOT"/buildtrees/*/*.log; do
-        [ -f "$log" ] || continue
-        case "$log" in */detect_compiler/*) continue ;; esac
-        echo "::group::$(basename "$(dirname "$log")")/$(basename "$log") (last 80 lines)" >&2
-        tail -n 80 "$log" >&2
-        echo "::endgroup::" >&2
+    # go with the machine: print them. Every port leaves its logs in
+    # buildtrees, so pick the failed ones from vcpkg's "building <port>:<triplet>
+    # failed with: ..." lines and its end summary.
+    failed=$(grep -oE '[a-z0-9][a-z0-9-]*:[a-z0-9-]+( failed with)?: [A-Z_]+' "$vcpkg_log" \
+        | grep -vE ': (SUCCEEDED|CASCADED_[A-Z_]*)$' | cut -d: -f1 | sort -u | tr '\n' ' ' || true)
+    for port in $failed; do
+        for log in "$VCPKG_ROOT/buildtrees/$port"/*.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$port/$(basename "$log") (last 80 lines)" >&2
+            tail -n 80 "$log" >&2
+            echo "::endgroup::" >&2
+        done
     done
+    echo "macos-deps: vcpkg failed; ports that failed to build: ${failed:-none named - see the vcpkg output above}" >&2
+    grep -E 'failed with: |: (BUILD_FAILED|POST_BUILD_CHECKS_FAILED|FILE_CONFLICTS|CASCADED_)' "$vcpkg_log" >&2 || true
     exit 1
 fi
 

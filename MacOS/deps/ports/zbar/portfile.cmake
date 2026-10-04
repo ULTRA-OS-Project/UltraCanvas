@@ -16,10 +16,24 @@ vcpkg_from_git(
         fix-pointer-wraparound-ub.patch
 )
 
+# libzbar's QR text decoding calls iconv(), which on macOS is in libiconv,
+# not libc. autoreconf brings in gettext's iconv.m4, whose "working iconv"
+# test fails on macOS 14.4 and later: Apple's iconv transliterates a character
+# the target encoding lacks instead of reporting it. The macro then drops
+# -liconv from LTLIBICONV, but zbar calls iconv() regardless, so libzbar fails
+# to link ("Undefined symbols: _iconv"). The bug cannot affect zbar, which
+# only converts to UTF-8 - every character has one - so accept the system's
+# iconv, as Homebrew's zbar does.
+set(options "")
+if(VCPKG_TARGET_IS_OSX)
+    list(APPEND options am_cv_func_iconv_works=yes)
+endif()
+
 vcpkg_make_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     AUTORECONF
     OPTIONS
+        ${options}
         --disable-video
         --disable-doc
         --disable-nls

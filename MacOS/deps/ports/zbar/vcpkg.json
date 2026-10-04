@@ -1,6 +1,7 @@
 {
   "name": "zbar",
   "version": "0.23.93",
+  "port-version": 2,
   "description": "ZBar bar code reader library (QR codes, EAN, Code 128, ...): the library alone, no camera or GUI tools.",
   "homepage": "https://github.com/mchehab/zbar",
   "license": "LGPL-2.1-only",
@@ -14,6 +15,5 @@
       "name": "vcpkg-make",
       "host": true
     }
-  ],
-  "port-version": 1
+  ]
 }
