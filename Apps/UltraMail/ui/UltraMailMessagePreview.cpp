@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.13.0 - the HTML body is laid out beside the vertical scrollbar (no
+//                 text under the bar, no stray horizontal bar); thin, round
+//                 scrollbars as in the message list
 // Version: 0.12.0 - mail addresses: a clicked mailto: (HTML) or address (plain text)
 //                 opens a new message to it in UltraMail
 // Version: 0.11.0 - a web address in plain-text mail opens when clicked
@@ -93,6 +96,36 @@ void OpenMessageLink(const std::string& href) {
     else if (lower.rfind("www.", 0) == 0)
         UltraCanvas::OpenURL("https://" + href);
 }
+
+// The HTML body's scroll view. The body is laid out at the width the reader
+// can actually see: the pane's content width, less the vertical scrollbar's
+// track while that bar is shown. Laid out at the full width (width: 100%), a
+// tall message ran under the vertical bar - its right edge cut off - and the
+// few hidden pixels raised a horizontal scrollbar as well. The body is laid
+// out again only when the bar comes or goes, so that settles in one extra
+// pass. Content that cannot reflow (a fixed-width table, a large picture) is
+// still wider than that and still gets the horizontal bar.
+class BodyScrollView : public UltraCanvasContainer {
+public:
+    using UltraCanvasContainer::UltraCanvasContainer;
+
+    std::shared_ptr<UltraCanvasUIElement> body;
+
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        if (!body) return;
+        // calc(100% - track) while the vertical bar is shown, 100% otherwise.
+        const float gutter = verticalScrollbar->IsVisible()
+                                 ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
+        const CSSLayout::Dimension& cur = body->size.width;
+        if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
+            cur.offsetPx == -gutter)
+            return;
+        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        body->InvalidateSubtree();
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+    }
+};
 
 // The plain-text body: a read-only text area whose links (web and mail
 // addresses written in the text) work like the HTML view's links - the one under the pointer is
@@ -438,6 +471,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     if (auto s = bodyHost_->GetContainerStyle(); true) {
         s.autoShowScrollbars = true;
         s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
     root_->AddChild(bodyHost_);
@@ -503,7 +537,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // natural height — so the body sits below the header (no overlap)
             // and scrolls vertically when tall. The builder disables the tree's
             // own scrollbars precisely so the host scrolls instead.
-            auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
+            auto scroll = std::make_shared<BodyScrollView>("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             // A deliberate scroll view, so it opts in (containers do not
             // scroll unless asked): the vertical bar for a tall message, and a
@@ -513,11 +547,14 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             {
                 ContainerStyle scrollStyle = scroll->GetContainerStyle();
                 scrollStyle.autoShowScrollbars = true;
+                scrollStyle.scrollbarStyle = ScrollbarStyle::Modern();
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane).
+            // than laying out over-wide (responsive emails fill the pane). The
+            // scroll view narrows it by the vertical bar once that is shown.
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
+            scroll->body = r.root;
             bodyHost_->AddChild(scroll);
             scroll->AddChild(r.root);
             scroll->ScrollToVertical(0);
@@ -537,6 +574,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text, /*bordered=*/false);
+    {
+        // The message list's scrollbar (ScrollbarStyle::Modern), not the text
+        // area's classic 15px square one.
+        const ScrollbarStyle modern = ScrollbarStyle::Modern();
+        auto& ts = text->GetStyle();
+        ts.scrollbarWidth        = modern.trackSize;
+        ts.scrollbarCornerRadius = static_cast<float>(modern.thumbCornerRadius);
+        ts.scrollbarThumbInset   = 0;
+        ts.scrollbarTrackColor   = modern.trackColor;
+        ts.scrollbarColor        = modern.thumbColor;
+    }
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -767,8 +815,25 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetVisible(true);
 }
 
+void MessagePreview::ShowBodyNote(const std::string& note) {
+    if (!BodyMissing()) return;
+    RenderBody(note, false);
+}
+
+void MessagePreview::BodyArrived(const MessageEnvelope& env) {
+    if (!BodyMissing() || !Shows(env.accountId, env.folder, env.uid)) return;
+    std::error_code ec;
+    const fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
+                        / PathFromUtf8(SanitizeFolder(env.folder))
+                        / (std::to_string(env.uid) + ".eml");
+    if (!fs::exists(path, ec)) return;       // still not there: nothing new to show
+    const MessageEnvelope shown = curEnv_;   // Show replaces curEnv_
+    Show(shown);
+}
+
 void MessagePreview::Clear() {
     hasMessage_ = false;
+    bodyMissing_ = false;
     ++showToken_;
     curHtml_.clear();
     inlineImages_ = InlineImages{};
@@ -857,7 +922,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
     std::error_code ec;
-    if (!fs::exists(path, ec)) {
+    bodyMissing_ = !fs::exists(path, ec);
+    if (bodyMissing_) {
         RenderBody("(message body not downloaded yet)", false);
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
@@ -934,6 +1000,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     current_.to        = toList;
     current_.subject   = subject;
     current_.date      = FormatShortDate(env.date);
+
+    // Not downloaded (the sync has not got to it, or its download failed):
+    // the app fetches it now; BodyArrived shows it.
+    if (bodyMissing_ && onBodyMissing) onBodyMissing(env);
 }
 
 } // namespace UltraMail

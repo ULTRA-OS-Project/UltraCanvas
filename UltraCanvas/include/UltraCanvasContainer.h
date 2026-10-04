@@ -2,9 +2,10 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.5.0 - FinishArrange for subclasses that place their own children
 // Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
 // Version: 4.3.0
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -197,6 +198,11 @@ namespace UltraCanvas {
 
         void SetWindow(UltraCanvasWindowBase *win) override;
         bool SetFocus(bool on) override;
+
+    protected:
+        // Arrange()'s post-layout steps (z-order, scroll ranges) for a subclass
+        // that places its children itself after ArrangeOwnBox().
+        void FinishArrange();
 
     private:
         // ===== INTERNAL METHODS =====

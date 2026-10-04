@@ -2428,7 +2428,9 @@ paths itself carries the meaning — a most-recently-used history, a ranked
 result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
 over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
 for the file list: `SetSort()` and the Details column headers leave the order
-alone until the widget returns to a folder listing, which is always sorted.
+alone until the widget returns to a folder listing, which is always sorted —
+and the context menu's *Display > Sort* is greyed out, so the choice is not
+offered only to be ignored.
 
 ```cpp
 filer->SetFileListOrderPreserved(true);

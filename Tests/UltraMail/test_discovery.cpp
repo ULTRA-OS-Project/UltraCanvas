@@ -59,6 +59,29 @@ TEST(server_name_problem_accepts_real_server_names) {
     REQUIRE(ServerNameProblem("mail.b\xC3\xBC" "cher.de").empty());  // an international name
 }
 
+TEST(incoming_mailbox_changed_only_for_another_host_or_user) {
+    MailServerSettings before;
+    before.host = "mail.interkontakt.net"; before.port = 993; before.username = "info@ultraos.eu";
+
+    MailServerSettings same = before;
+    same.host = " Mail.Interkontakt.NET. ";             // case, spaces, a final dot
+    same.username = "INFO@ultraos.eu";
+    REQUIRE(!IncomingMailboxChanged(before, same));
+    same.port = 143;                                    // another port, same mailbox
+    same.security = MailSecurity::StartTls;
+    REQUIRE(!IncomingMailboxChanged(before, same));
+
+    MailServerSettings otherHost = before;
+    otherHost.host = "imap.ultraos.eu";
+    REQUIRE(IncomingMailboxChanged(before, otherHost));
+    MailServerSettings otherUser = before;
+    otherUser.username = "office@ultraos.eu";
+    REQUIRE(IncomingMailboxChanged(before, otherUser));
+
+    // No server before: no mail from another mailbox to drop.
+    REQUIRE(!IncomingMailboxChanged(MailServerSettings{}, otherHost));
+}
+
 TEST(server_name_problem_rejects_what_cannot_be_a_server) {
     // The address's @ typed for the name's dot: the dot is suggested.
     REQUIRE_EQ(ServerNameProblem("mail@interkontakt.net"),

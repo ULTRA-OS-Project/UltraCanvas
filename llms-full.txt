@@ -3323,6 +3323,9 @@ Three facts about CI decide how a cloud-only developer works:
   for seven days: `UCDemo-Windows-<version>-<arch>`,
   `UCDemo-MacOS-<version>-<arch>` and `UltraCanvas-Linux-<version>-<arch>`.
   That download is how you run and look at the app without compiling it.
+  The macOS one is a disk image holding an `UltraCanvas` folder: copy the
+  whole folder to Applications, because its apps share the `Frameworks/`
+  inside it and do not start when moved out on their own.
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
@@ -24160,7 +24163,9 @@ paths itself carries the meaning — a most-recently-used history, a ranked
 result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
 over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
 for the file list: `SetSort()` and the Details column headers leave the order
-alone until the widget returns to a folder listing, which is always sorted.
+alone until the widget returns to a folder listing, which is always sorted —
+and the context menu's *Display > Sort* is greyed out, so the choice is not
+offered only to be ignored.
 
 ```cpp
 filer->SetFileListOrderPreserved(true);
@@ -34012,6 +34017,9 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+Called before the view has been laid out (no height yet), `EnsureRowVisible`
+remembers the row and reveals it once the view has its size, so a list filled
+and selected while its window is still being built opens with that row in view.
 
 ```cpp
 ScrollMetrics GetScrollMetrics() const;
@@ -34145,6 +34153,8 @@ public:
     void InsertItem(int row, const MultiColumnListItem& item);
     void RemoveItem(int row);
     void Clear();
+    // Every row at once, one change notification (AddItem notifies per row).
+    void SetItems(std::vector<MultiColumnListItem> newItems);
 
     int GetItemCount() const;
     const MultiColumnListItem& GetItem(int row) const;
@@ -34233,6 +34243,9 @@ public:
     virtual std::vector<int> GetSelectedRows() const = 0;
     virtual int GetCurrentRow() const = 0;
     virtual bool HasSelection() const = 0;
+    // Rows inserted (count > 0) or removed (count < 0) at `row`: the same items
+    // stay selected at their new rows (the view calls it from the model).
+    virtual void ShiftRows(int row, int count);
 };
 
 class UltraCanvasSingleSelection : public IListSelection { /* ... */ };
@@ -34240,6 +34253,14 @@ class UltraCanvasMultiSelection  : public IListSelection { /* ... */ };
 ```
 
 If `SetSelection()` is never called, the view installs a single-selection by default.
+
+The selection follows the items, not the row numbers: when the model inserts
+or removes rows (`InsertItem`, `RemoveItem`), the view moves the selection,
+the keyboard focus and the hover with them, so a row inserted above the
+selected one leaves the same item selected. That moves no item in or out of
+the selection, so it raises no `onSelectionChanged`; a selected row that is
+removed leaves the selection, and that is reported. `SetItems` / `Clear`
+replace every row, and the caller selects again.
 
 ## Events / Callbacks
 
@@ -34465,6 +34486,12 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
+
+The keys go on from the selection's current row, whoever selected it: a click,
+a key, or the application through `GetSelection()->Select(row)` - after it
+rebuilt or re-sorted the rows and selected the one the user was on, Down moves
+to the row below that one. `ResetSelection()` clears the focus as well, so the
+first Down after it selects the first row.
 
 ## Best Practices
 
@@ -36500,6 +36527,9 @@ CloseActiveSubmenu()
 CloseAllSubmenus()
 CloseMenutree()
 ```
+
+A submenu entry with `enabled = false` is drawn greyed out and does not open
+its submenu — not on hover, not on click, not from the keyboard.
 
 ### Event Callbacks
 
@@ -54782,6 +54812,9 @@ struct TextAreaStyle {
     // Scrollbars
     Color scrollbarTrackColor;
     Color scrollbarColor;
+    int   scrollbarWidth = 15;          // track thickness in px
+    float scrollbarCornerRadius = 0.0f; // 0 = square; 6 with width 12 matches ScrollbarStyle::Modern()
+    int   scrollbarThumbInset = 2;      // gap between track edge and thumb (0 = thumb fills the track)
     
     // Token styles for syntax highlighting
     struct TokenStyles {
@@ -71237,6 +71270,7 @@ UltraCanvas/Plugins/UltraNet/jmap/
 | `ListFolders` | `Mailbox/get` — JMAP's native `role` property maps 1:1 onto `UltraNetMailFolder.role` (cleaner than IMAP SPECIAL-USE sniffing); `parentId` chains are flattened into `name` paths with `/` delimiter |
 | `GetMailboxStatus` | `Mailbox/get` (`totalEmails`, `unreadEmails`) — `uidValidity`/`uidNext` are synthesised from the mailbox `state` string (see id note below) |
 | `FetchEnvelopes` | `Email/query` (filter `inMailbox`, sort `receivedAt desc`, `limit = maxMessages`) **+** `Email/get` via result back-reference — envelope properties only, one round-trip |
+| `FetchEnvelopesByUid` | not overridden: the interface's default (`FetchEnvelopes` from the lowest UID asked for, keeping the ones asked for) |
 | `FetchMessage` | `Email/get` for `blobId` → GET on session `downloadUrl` → raw RFC 5322 |
 | `StoreFlags` | `Email/set` keyword patch (`keywords/$seen` etc.); `Deleted` flag maps to move-to-Trash (role lookup) since JMAP has no `\Deleted` |
 | `MoveMessage` | `Email/set` patch of `mailboxIds` |

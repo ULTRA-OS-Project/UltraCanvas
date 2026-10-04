@@ -1,3 +1,149 @@
+#### 2026-10-04 *0.9.156*
+- **macOS packaging no longer fails every run with "no app bundle was
+  produced".** The check that ends `package-macos.sh`, added to fail a run
+  that packaged nothing, looked for `*.app` directly in `dist-macos/`, but
+  since the apps became one suite folder they are built in
+  `dist-macos/UltraCanvas/`. It never found one, so both macOS builds of every
+  pull request and of `main` failed after packaging every app correctly. It
+  now looks in the suite folder.
+
+#### 2026-10-04 *0.9.155*
+- **IMAP: numbers above 2147483647 are read right on Windows.** The IMAP
+  parsers read UIDs, UIDVALIDITY and UIDNEXT with `strtol`, whose `long` is 32
+  bits on Windows: every value above 2147483647 read as 2147483647 there. A
+  mailbox's UIDVALIDITY is how a client notices that the server renumbered it,
+  so a renumbering went unnoticed on Windows only, and new mail numbered below
+  the old highest UID was never fetched. They are read as unsigned 32-bit
+  values on every platform now (`ParseImapNumber`, `ImapParse.h`), a STATUS
+  reply is read after its item list's `(` so a mailbox named "Recent messages"
+  cannot hide the counts, and a SEARCH value too large for a UID is no longer
+  taken for another one. Tests: `test_imap_mailbox.cpp`.
+- **IMAP: `IMailboxProtocolPlugin::FetchEnvelopesByUid`** - the envelopes of
+  the messages named, for mail an incremental fetch ("UID > the highest held")
+  can no longer reach: one an interrupted sync skipped, one whose header could
+  not be read the first time. Added last with a default (FetchEnvelopes from
+  the lowest UID asked for, keeping the ones asked for), so the existing vtable
+  is undisturbed and the JMAP plug-in and test fakes serve it unchanged; the
+  IMAP plug-in fetches exactly those UIDs over one connection.
+- **IMAP plug-in: no empty envelopes.** A message whose header fetch failed
+  (or came back empty) was still handed to the caller - with no sender,
+  subject, date or Message-ID - and UltraMail stored it as a blank row it never
+  asked for again. Such a message is now left out; the caller asks again.
+  `FetchEnvelopes` also drops the server's echo of the highest UID: "UID n:*"
+  always matches it, even below n (RFC 3501 6.4.8), so the newest message was
+  fetched again - body and all - on every sync.
+- **`UltraCanvasMultiColumnListModel::SetItems`**: every row at once, with one
+  change notification. `AddItem` notifies the view per row (row geometry,
+  scrollbar, redraw), which for a list of thousands - a mailbox - was most of
+  the time it took to fill; and a re-sort is a new order of the same rows.
+  Documented in `UltraCanvasListViewExamples.md`.
+- **ListView: EnsureRowVisible before the first layout.** Called while the
+  view had no height yet, it measured against a zero - less the header,
+  negative - viewport and scrolled the row below the top: a list filled and
+  selected while its window was being built opened two rows down, the selected
+  row hidden above it (UltraMail's message list did, at every start). The row
+  is now remembered and revealed once the view has its size. Tests (with
+  `SetItems`): `ListViewScrollTest.cpp`.
+- **ListView: the selection follows the rows.** A row inserted into the model
+  above the selected one left the selection at the same row number, so the
+  highlight sat on whatever item slid into its place; a row removed above it
+  did the same the other way. The view now moves the selection - and the
+  keyboard focus and the hover - with the rows: `IListSelection::ShiftRows`,
+  called from the model's row notifications, keeps the same items selected
+  without an `onSelectionChanged` (nothing went in or out of the selection);
+  a selected row that is removed still leaves it, reported as before. The
+  default implementation (through `Clear` / `Select`) serves other selection
+  classes. Tests: `ListViewScrollTest.cpp`. Documented in
+  `UltraCanvasListViewExamples.md`.
+- **IMAP: folder roles by the server's own separator.** `DetectFolderRole`
+  reads the last level of a folder's name after the separator the LIST line
+  gives (it took the last `/` or `.` of any name, so "Mr. Sent" on a `/`
+  server was a Sent folder), knows the German names servers use ("Gesendete
+  Objekte", "Papierkorb", "Entwürfe", "Gelöschte Objekte", …) and leaves out a
+  leading `INBOX^` - how a folder came across from a server with another
+  separator, so Courier's "INBOX.INBOX^Sent" is the Sent folder. Only the
+  folder named INBOX is the inbox, not a sub-folder that happens to be called
+  so. Tests: `test_imap_mailbox.cpp`.
+- **ListView: the arrow keys go on from a row selected in code.** The keyboard
+  focus moved only with clicks and keys; a row the application selected
+  through `GetSelection()->Select` left it where it was - or at "none" after
+  `ResetSelection` - so the next Down jumped to the top, or to a row long
+  gone. The focus now follows the selection's current row whatever set it.
+  UltraMail's message list (rebuilt on a folder or account switch, re-sorted
+  from a header) and `UltraCanvasDropdown`, which selects its current item in
+  code as it opens, now move on from the selected row. Tests:
+  `ListViewScrollTest.cpp`.
+
+#### 2026-10-04 *0.9.154*
+- **A scrolled view no longer leaves glyph fringes beside and below it.**
+  Text drawn at the edge of a scrolling container marks the pixel just
+  outside it with its anti-aliased fringe, and a scroll repainted exactly the
+  container's box, so that pixel was never painted over: scrolling built up a
+  faint dotted column beside the text (yellow, from sub-pixel anti-aliasing)
+  and slivers of the line scrolled past the bottom edge. A scroll now repaints
+  2px past the container's box.
+- **Resizing a window keeps the scroll position of everything in a split
+  pane.** `UltraCanvasSplitPane::Arrange` first ran the ordinary block layout,
+  which stacked the panes one under the other at their full content height,
+  and only then placed them side by side. That throwaway pass clamped every
+  scroll view inside a pane to the top, so a resize sent a scrolled message,
+  list or document back to its start. The split pane now takes its box with
+  the new `UltraCanvasUIElement::ArrangeOwnBox` and places its panes once,
+  then runs the container's post-layout steps through the new protected
+  `UltraCanvasContainer::FinishArrange`.
+- **TextArea: the scrollbar's thickness and rounding are styleable.** The
+  text area drew its own scrollbars as fixed 15px square bars, so an app could
+  not match them to the thin, rounded `ScrollbarStyle::Modern()` bars of the
+  list views beside it. `TextAreaStyle` now has `scrollbarWidth` (default 15),
+  `scrollbarCornerRadius` (default 0, square) and `scrollbarThumbInset`
+  (default 2); drawing, hit-testing, thumb dragging, the text's reserved
+  width and the hex view's row width all use them. The defaults draw exactly
+  what was drawn before. UltraMail's plain-text reading pane is the first user.
+
+#### 2026-10-04 *0.9.153*
+- **The Filer's Display > Sort is greyed out for a list that keeps its own
+  order.** With `SetFileListOrderPreserved(true)` on a file list, sorting
+  does nothing, yet the context menu still offered every sort field and
+  direction. The submenu entry is now disabled there.
+- **A disabled submenu entry no longer opens its submenu.**
+  `UltraCanvasMenu` drew a submenu entry with `enabled = false` greyed out
+  but still opened it on hover, so its items stayed reachable. It now opens
+  on neither hover, click nor keyboard.
+
+#### 2026-10-04 *0.9.152*
+- **`package-macos.sh` skips an app that was not built, without hiding real
+  failures.** Every `build_app_bundle` call, and `build_cli_tool "ultramsg"`,
+  now goes through `package_if_built`, which checks for the executable (in the
+  build root or `bin/`) before calling. Before, a missing Texter, UltraFiler or
+  any other app stopped the whole run under `set -e`, although the function
+  said it was "skipping". The UltraAuthenticator and UltraPassword calls used
+  `build_app_bundle … || echo …` instead, and that was worse: bash turns
+  `set -e` off for a function's entire body when it is called on the left of
+  `||`, so a failed signing, `iconutil` or dylib-copy step would have been
+  carried past and an unsigned or half-built bundle shipped. Those calls now
+  go through the same helper. The run ends by listing what was not built, and
+  fails when it produced no bundle at all.
+
+#### 2026-10-04 *0.9.151*
+- **macOS: the apps share one copy of their libraries.** `package-macos.sh`
+  gave every `.app` its own `Contents/Frameworks/` with the ~90 Homebrew
+  dylibs (95-131 MB each). With eight apps that was ~830 MB of the same
+  libraries, and adding UltraAuthenticator and UltraPassword took the macOS
+  DMG from 431 MB to 556 MB (arm64). The apps are now packaged as one suite
+  folder, `UltraCanvas/`, with a single shared `Frameworks/` that every app
+  loads from (`@executable_path/../../../Frameworks/`); `ultramsg` sits in
+  the same folder. The suite is notarized in one submission and each app's
+  ticket stapled, instead of one round trip to Apple per app.
+  - Install by copying the whole `UltraCanvas` folder to Applications: an app
+    moved out of it on its own does not start.
+  - `verify_suite` fails the packaging run when an app carries its own
+    `Contents/Frameworks/`, when a binary needs a dylib missing from the
+    shared folder, or when one still loads from Homebrew - so a new app can
+    no longer bring its own copy of the libraries. The rule is written down
+    in `AGENTS.md` ("Packaging a new app for macOS").
+  - `package_and_notarize-macos.sh` zips the suite folder instead of the
+    separate `.app` folders.
+
 #### 2026-10-04 *0.9.150*
 - **The Windows and macOS SDKs carry the development files of the libraries
   the framework uses.** `scripts/sdk-bundle-deps.sh` adds a `deps/` tree

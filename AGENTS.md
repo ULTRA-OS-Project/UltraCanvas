@@ -284,6 +284,33 @@ screenshot of the Xvfb display instead (`import -window root shot.png`).
 BROKEN per function — run it before assuming a networking API is usable in a
 given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
 
+### Packaging a new app for macOS
+
+`package-macos.sh` ships the apps as one suite folder, `UltraCanvas/`, with a
+single shared `Frameworks/` that every `.app` loads its dylibs from
+(`@executable_path/../../../Frameworks/`). Linux (`lib/`) and Windows (one
+`dist/` folder) already shared their libraries; macOS gave each `.app` its own
+copy of the ~90 Homebrew dylibs, so every new app added ~95 MB to the
+download - two apps added in October 2026 took the macOS DMG from 431 MB back
+to 556 MB. The rules:
+
+- **Add an app with a `build_app_bundle` call** in `package-macos.sh`, above
+  `finish_suite`. That is the whole job: its libraries go to the shared
+  `Frameworks/`, and it is signed and notarized with the suite.
+- **Never give an app its own `Contents/Frameworks/`**, copy dylibs into a
+  bundle by hand, or point a load command anywhere but the shared folder.
+  `verify_suite` fails the packaging run (and CI) when an app carries
+  `Contents/Frameworks/`, when a binary needs a dylib missing from the shared
+  folder, or when one still loads from Homebrew.
+- **A command-line tool** goes through `build_cli_tool` (it lands in the suite
+  folder with its own `bin/` and `Frameworks/`).
+- **Check the size** in the macOS job summary ("macOS suite sizes"): a new
+  app should add roughly its executable and resources, a few MB - not a
+  second copy of the libraries.
+- The apps only run inside the suite folder; users install by dragging the
+  whole `UltraCanvas` folder to Applications. Say so wherever the macOS
+  install is described.
+
 ## Versioning
 
 The **first line of a changelog is the single source of truth** for a version,

@@ -1,4 +1,6 @@
 // Apps/EmailCleaner/engine/EmailCleanerAccounts.cpp
+// Version: 0.2.0 - Validate catches a server name that cannot be one (UltraMail's
+//                  ServerNameProblem: an @, a scheme, a port after a colon, ...)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAccounts.h"
@@ -110,6 +112,11 @@ std::string OwnAccounts::Validate(const NewAccountRequest& request,
                "app password).";
     if (!request.settings.imap.Valid())
         return "The incoming (IMAP) server and port are needed.";
+    // Before a sign-in spends its timeout on a name that cannot be a server -
+    // "mail@example.com", the address typed where the name has a dot.
+    const std::string host = Trimmed(request.settings.imap.host);
+    if (const std::string problem = UltraMail::ServerNameProblem(host); !problem.empty())
+        return "Incoming (IMAP) server \"" + host + "\": " + problem;
 
     for (const StoredAccount& account : known) {
         if (Lower(account.email) != email) continue;
@@ -130,6 +137,8 @@ UltraMail::Account OwnAccounts::MakeAccount(const NewAccountRequest& request) {
     account.displayName = name.empty() ? account.shortName : name;
 
     UltraMail::AutoDiscovery::ApplyTo(account, request.settings);
+    // Validate let spaces around the server name through; the record drops them.
+    account.imap.host = Trimmed(account.imap.host);
     if (account.imap.username.empty()) account.imap.username = account.email;
     if (account.smtp.username.empty()) account.smtp.username = account.email;
 

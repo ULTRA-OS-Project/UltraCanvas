@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.6.0 - list_sort (the message list's order)
 // Version: 0.5.0 - needs_answer_max_age_days, needs_answer_only_written_to
 // Version: 0.4.0 - link_display (status-bar / tooltip)
 // Version: 0.3.0 - folder_tree_width_mode (auto / fixed) and folder_tree_width (px)
@@ -82,6 +83,7 @@ bool Preferences::Load(const std::string& path) {
             catch (...) { /* keeps the default */ }
         }
         if (key == "needs_answer_only_written_to") needsAnswerOnlyWrittenTo = ParseBool(value);
+        if (key == "list_sort") listSort = MessageSort::FromString(value);
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -140,6 +142,7 @@ bool Preferences::Save(const std::string& path) const {
          << (linkDisplay == LinkDisplay::Tooltip ? "tooltip" : "status-bar") << "\n";
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
+    file << "list_sort = " << listSort.ToString() << "\n";
     return static_cast<bool>(file);
 }
 
