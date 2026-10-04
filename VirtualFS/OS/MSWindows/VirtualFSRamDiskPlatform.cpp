@@ -47,8 +47,12 @@ namespace {
 
 int RunCommand(const std::string& command) {
     // _popen keeps this free of CreateProcess plumbing; output is discarded
-    // because the exit code is all that matters here.
-    std::FILE* pipe = ::_popen((command + " >NUL 2>&1").c_str(), "r");
+    // because the exit code is all that matters here. The wide one, because
+    // the command carries UTF-8 paths (icacls on a folder under %TEMP%), and
+    // the narrow one reads its command line in the ANSI code page.
+    const std::wstring wide =
+            UltraCanvas::PathUtf8Detail::Utf8ToUtf16<std::wstring>(command + " >NUL 2>&1");
+    std::FILE* pipe = ::_wpopen(wide.c_str(), L"r");
     if (!pipe) {
         return -1;
     }
@@ -71,13 +75,17 @@ char FindFreeDriveLetter() {
     return '\0';
 }
 
+// UTF-8, like every path the module hands out: the fallback discs live here
+// and their mount paths are opened with PathFromUtf8. GetTempPathA answered in
+// the ANSI code page, which cannot spell a profile folder named in Thai under
+// code page 1252, and its bytes were then read as UTF-8.
 std::string TempRoot() {
-    char buffer[MAX_PATH + 1] = {};
-    const DWORD length = ::GetTempPathA(MAX_PATH, buffer);
+    wchar_t buffer[MAX_PATH + 1] = {};
+    const DWORD length = ::GetTempPathW(MAX_PATH, buffer);
     if (length == 0 || length > MAX_PATH) {
         return ".";
     }
-    return std::string(buffer, length);
+    return PathToUtf8(std::filesystem::path(std::wstring(buffer, length)));   // path-string-ok: wide
 }
 
 std::string FallbackPathFor(const std::string& name) {
@@ -248,7 +256,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
 
     // Fallback directories, which can also outlive a crash.
     std::error_code ec;
-    for (auto it = std::filesystem::directory_iterator(TempRoot(), ec);
+    for (auto it = std::filesystem::directory_iterator(PathFromUtf8(TempRoot()), ec);
          !ec && it != std::filesystem::directory_iterator(); ++it) {
         if (!it->is_directory(ec)) {
             continue;

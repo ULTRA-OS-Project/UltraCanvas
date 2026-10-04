@@ -54,6 +54,15 @@
   or a vault made with a master password (framework changelog:
   `DeviceKeyVault::GetLastUnlockStatus`). A profile folder named in Thai or
   Cyrillic now opens its vault on Windows too (same entry).
+- **Settings, History, Favorites, folder icons and views, and the drive list
+  are kept in a Windows profile named in any script.** UltraFiler took its
+  configuration folder from the narrow `getenv("APPDATA")`, which answers in
+  the ANSI code page: for a user name the code page cannot spell (Thai under
+  code page 1252) the folder came back with '?' in it, nothing was saved and
+  nothing read back, and the drive list and the vault - which read the
+  folder as UTF-8 - could not open it even where the code page could spell
+  it. The folder is read wide and every file in it opened as UTF-8
+  (framework changelog: `check_path_string` sees what a header declares).
 
 #### 2026-10-04 *1.65.1*
 - **Display > Sort is greyed out in the History and Favorites views.** Their

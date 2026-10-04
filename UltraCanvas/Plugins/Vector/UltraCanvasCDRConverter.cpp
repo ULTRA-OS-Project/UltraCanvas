@@ -723,8 +723,8 @@ namespace UltraCanvas {
                 auto dir = std::filesystem::temp_directory_path(ec);
                 if (ec) dir = ".";
                 const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-                return dir / ("uc-cdr-" + std::to_string(stamp) + "-" +
-                              std::to_string(counter++) + ext);
+                return dir / UltraCanvas::PathFromUtf8("uc-cdr-" + std::to_string(stamp) + "-" +
+                                                       std::to_string(counter++) + ext);
             }
         }
 #endif

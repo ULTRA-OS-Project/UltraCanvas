@@ -122,8 +122,15 @@ before adding cross-module code.
   `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
   `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
   through), so wrapping is never wrong. The check reads the file's own
-  declarations to tell a string from a path, so a string it cannot see the
-  type of (an `auto`, a getter's result) is still review's to catch.
+  declarations and those of the repository headers it includes directly to
+  tell a string from a path - so a class member declared in its header and a
+  call to a function declared as returning `std::string`
+  (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
+  whole. A string it still cannot see the type of (an `auto`, a member of a
+  class declared further away) is review's to catch, and so is one that is
+  not UTF-8 to begin with: a narrow `getenv("APPDATA")` or an `...A` Win32
+  call answers in the ANSI code page, so read those wide (`_wgetenv`,
+  `GetTempPathW`) and convert with `PathToUtf8`.
   `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
   folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`

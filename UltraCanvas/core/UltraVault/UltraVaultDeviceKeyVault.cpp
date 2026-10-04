@@ -144,12 +144,12 @@ std::string DeviceKeyVault::KeyFor(const std::string& account) const {
 }
 
 std::string DeviceKeyVault::VaultPath() const {
-    return PathToUtf8(PathFromUtf8(dir_) / profile_.vaultFileName);
+    return PathToUtf8(PathFromUtf8(dir_) / PathFromUtf8(profile_.vaultFileName));
 }
 
 bool DeviceKeyVault::Exists() const {
     std::error_code ec;
-    return fs::exists(PathFromUtf8(dir_) / profile_.vaultFileName, ec);
+    return fs::exists(PathFromUtf8(dir_) / PathFromUtf8(profile_.vaultFileName), ec);
 }
 
 UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {

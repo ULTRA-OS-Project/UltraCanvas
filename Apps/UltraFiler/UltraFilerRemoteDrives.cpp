@@ -973,7 +973,7 @@ void UltraFilerRemoteDrives::LoadDiskCacheLocked() {
     if (diskCacheLoaded_) return;
     diskCacheLoaded_ = true;
 
-    std::ifstream in(DiskCachePath(), std::ios::binary);
+    std::ifstream in(PathFromUtf8(DiskCachePath()), std::ios::binary);
     if (!in) return;   // the first run, or the cache was deleted: nothing kept
     std::ostringstream text;
     text << in.rdbuf();

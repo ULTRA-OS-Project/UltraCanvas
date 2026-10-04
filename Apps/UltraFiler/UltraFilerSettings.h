@@ -10,6 +10,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge,
                                      // FilerFileIconStyle
 
@@ -288,8 +289,14 @@ public:
 
     static std::string GetConfigDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-        const char* appdata = std::getenv("APPDATA");
-        return appdata ? std::string(appdata) + "\\UltraFiler" : std::string("UltraFiler");
+        // Read wide and handed on as UTF-8, like every path in UltraFiler. The
+        // narrow getenv answers in the ANSI code page, which cannot spell a
+        // profile folder named in Thai under code page 1252 (it came back
+        // with '?' in it) and which SQLite and the vault, given these bytes,
+        // read as UTF-8 even where it could.
+        if (const wchar_t* appdata = _wgetenv(L"APPDATA"))
+            return PathToUtf8(std::filesystem::path(appdata) / L"UltraFiler");   // path-string-ok: wide
+        return std::string("UltraFiler");
 #elif defined(__APPLE__)
         const char* home = std::getenv("HOME");
         return home ? std::string(home) + "/Library/Application Support/UltraFiler"
@@ -305,7 +312,7 @@ public:
     static std::string GetConfigPath() { return GetConfigDirectory() + "/config.ini"; }
 
     bool Load() {
-        std::ifstream file(GetConfigPath());
+        std::ifstream file(PathFromUtf8(GetConfigPath()));
         if (!file.is_open()) return false;
 
         std::map<std::string, std::string> kv;
@@ -429,10 +436,10 @@ public:
 
     bool Save() const {
         std::error_code ec;
-        std::filesystem::create_directories(GetConfigDirectory(), ec);
+        std::filesystem::create_directories(PathFromUtf8(GetConfigDirectory()), ec);
         if (ec) return false;
 
-        std::ofstream file(GetConfigPath());
+        std::ofstream file(PathFromUtf8(GetConfigPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Configuration\n\n";

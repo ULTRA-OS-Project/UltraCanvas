@@ -2997,7 +2997,7 @@ namespace UltraCanvas {
             const bool directory =
                     link.targetIsDirectory ||
                     (!link.hostTargetPath.empty() &&
-                     fs::is_directory(link.hostTargetPath, ec) && !ec);
+                     fs::is_directory(PathFromUtf8(link.hostTargetPath), ec) && !ec);
             if (directory) {
                 cached.category = FilerFileCategory::Folder;
             } else {
@@ -7672,7 +7672,7 @@ namespace UltraCanvas {
         // produce different files.
         std::error_code pec;
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
-        if (!pec) fs::permissions(to, st.permissions(),
+        if (!pec) fs::permissions(UltraCanvas::PathFromUtf8(to), st.permissions(),
                                   fs::perm_options::replace, pec);
         return true;
     }

@@ -950,6 +950,16 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== VAULT TESTS WITHOUT THE FULL SUITE =====
+# UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
+# row): the device-key vault in a Thai-and-emoji folder is only a test where a
+# folder name goes through UTF-16 and a code page.
+option(ULTRACANVAS_BUILD_VAULT_TESTS "Build UltraVaultTests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VAULT_TESTS AND NOT BUILD_TESTS AND TARGET UltraVault)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
+endif()
+
 # ===== ULTRANET TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraNet is built.
@@ -1895,17 +1905,9 @@ if (BUILD_TESTS)
              COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
-    # persistence, and the no-oracle property (wrong passphrase and a tampered
-    # file are indistinguishable). Compiles only UltraVault + UltraCrypt.
-    add_executable(UltraVaultTests Tests/UltraVaultTests.cpp)
-    target_link_libraries(UltraVaultTests PRIVATE UltraVault)
-    target_compile_features(UltraVaultTests PRIVATE cxx_std_20)
-    set_target_properties(UltraVaultTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraVaultTests COMMAND UltraVaultTests
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # UltraVault unit tests (Tests/VaultTests.cmake, shared with
+    # ULTRACANVAS_BUILD_VAULT_TESTS below).
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 
     # Cross-module: UltraAI's ResolveApiKey resolving apiKeyVaultRef through
     # UltraVault (the path enabled by ULTRAAI_USE_ULTRAVAULT).

@@ -39,7 +39,7 @@ static std::string ManifestPath(const std::string& prefixPath) {
 
 static std::vector<UltraWinFolderMapping> LoadManifest(
     const std::string& prefixPath) {
-    std::ifstream in(ManifestPath(prefixPath));
+    std::ifstream in(PathFromUtf8(ManifestPath(prefixPath)));
     if (!in) return {};
     std::stringstream buf;
     buf << in.rdbuf();
@@ -48,7 +48,7 @@ static std::vector<UltraWinFolderMapping> LoadManifest(
 
 static bool SaveManifest(const std::string& prefixPath,
                          const std::vector<UltraWinFolderMapping>& mappings) {
-    std::ofstream out(ManifestPath(prefixPath), std::ios::trunc);
+    std::ofstream out(PathFromUtf8(ManifestPath(prefixPath)), std::ios::trunc);
     if (!out) return false;
     out << SerializeMappingManifest(mappings);
     return static_cast<bool>(out);
@@ -384,9 +384,9 @@ UltraWinResult UltraWin_UnmapFolder(const std::string& environment,
                                      "cannot write mapping manifest");
     std::error_code ec;
     fs::remove(PathFromUtf8(prefix) / "dosdevices" /
-                   (std::string(1, static_cast<char>(std::tolower(
-                                       static_cast<unsigned char>(letter)))) +
-                    ":"),
+                   PathFromUtf8(std::string(1, static_cast<char>(std::tolower(
+                                                static_cast<unsigned char>(letter)))) +
+                                ":"),
                ec);
     return UltraWinResult::Ok();
 }
