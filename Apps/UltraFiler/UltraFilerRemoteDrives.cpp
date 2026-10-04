@@ -1,5 +1,5 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.4.0
+// Version: 1.5.0
 // Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
@@ -46,7 +46,6 @@ struct UltraFilerRemoteDrives::Impl {
     std::unique_ptr<UltraCloud::ISecretStore> secrets;
     std::unique_ptr<UltraCloud::CloudService> service;
     bool opened = false;
-    std::string openError;
 
     // Opens the account store, the vault and the secret store once. The
     // accounts are an UltraDatabase file beside UltraFiler's settings; the
@@ -54,30 +53,46 @@ struct UltraFilerRemoteDrives::Impl {
     // obfuscated files under remote-drive-secrets/ - or, once UltraVault was
     // built, in a VaultSecretStore that nothing had ever opened, so they were
     // never saved at all; the files are carried into the vault here.
+    //
+    // A failure is not remembered: the next Reload - "+ Drive" makes one
+    // before it opens the add dialog - tries again, so a folder that could
+    // not be written at start-up does not cost the drives for the rest of
+    // the session. Trying again is safe: re-registering the database
+    // connection replaces the earlier one, and the vault is made afresh.
     bool Open(std::string& error) {
         if (opened) return true;
-        if (!openError.empty()) { error = openError; return false; }
 
         UltraCloud::RegisterBuiltInProviders();
 
         const std::string dir = UltraFilerSettings::GetConfigDirectory();
         if (dir.empty()) {
-            openError = "no configuration directory to keep the drive list in";
-            error = openError;
+            error = "no configuration directory to keep the drive list in";
+            return false;
+        }
+        // On a fresh profile nothing has written UltraFiler's folder yet at
+        // start-up - the settings, History and Favorites files appear only
+        // once something is saved - and SQLite does not create the folders
+        // above a database file. Without this the drive list could not be
+        // opened on a first run, and the failure being kept made the remote
+        // drives - "+ Drive" included - unavailable until a restart. The
+        // vault makes its own folder (DeviceKeyVault creates `vault/` when
+        // it first writes).
+        std::error_code ec;
+        fs::create_directories(PathFromUtf8(dir), ec);
+        if (ec) {
+            error = "cannot create the configuration folder " + dir + ": " + ec.message();
             return false;
         }
         const UltraCloud::Result r =
                 accounts.Open("ultrafiler-cloud", dir + "/remote-drives.db");
         if (!r.IsOk()) {
-            openError = "cannot open the drive list: " + r.message;
-            error = openError;
+            error = "cannot open the drive list: " + r.message;
             return false;
         }
         vault = UltraVault::DeviceKeyVault(dir + "/vault",
                                            {"ultrafiler.vault", "files.ultrafiler."});
         if (!vault.TryAutoUnlock()) {
-            openError = "cannot open the credential vault in " + dir + "/vault";
-            error = openError;
+            error = "cannot open the credential vault in " + dir + "/vault";
             return false;
         }
         secrets = std::make_unique<UltraCloud::VaultSecretStore>();

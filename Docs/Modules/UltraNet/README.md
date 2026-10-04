@@ -246,26 +246,33 @@ CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 An account that will not send or fetch is rarely diagnosable from the
 `UltraNetResultCode` alone — the server says why in its reply text, and
 libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
-`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+`ULTRANET_CURL_VERBOSE` to anything but empty or `0` to put the conversation
+on stderr:
 
 ```
-ULTRANET_CURL_DEBUG=1 ./UltraMail
+ULTRANET_CURL_VERBOSE=1 ./UltraMail
 ```
 
 | Line | Meaning |
 |---|---|
 | `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
 | `[ultranet] > …` | what we sent |
-| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error`, `-ERR invalid password` |
 
-It is off unless asked for, message bodies are never printed, and the SASL
-exchange is replaced with `<redacted>` — including the bare base64
-continuation lines of `AUTH LOGIN`, which carry the password with no keyword
-on them — so a trace can be pasted into a bug report as it stands. The
-mechanism name is kept, because which step failed is the useful part.
+It is off unless asked for, and message bodies are never printed. Every line
+we send that can carry a secret is printed as `<redacted auth line>`: the
+SASL exchange — including the bare base64 continuation lines of `AUTH LOGIN`,
+which carry the password with no keyword on them — POP3's `PASS`, and IMAP's
+`LOGIN`, which libcurl sends when a server offers no SASL. So a trace can be
+pasted into a bug report as it stands. The server's side is kept whole, its
+list of mechanisms and its answer to the sign-in included, because which step
+failed is the useful part.
 
-Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+Applies to every mail plug-in that goes through libcurl (SMTP, IMAP, POP3);
 `ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
+On Windows a GUI build has no stderr to print to: run it from a console, or
+read `UltraNetResult::diagnostics`, which carries the connection chain of a
+failure either way. FTP calls have their own log, below.
 
 ---
 

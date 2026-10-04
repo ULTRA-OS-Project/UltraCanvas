@@ -167,7 +167,10 @@ public:
 
     // Reads the configured accounts into the drive list. Safe to call again -
     // that is how the list picks up an account the add dialog just created.
-    // False with a reason when the accounts could not be read.
+    // False with a reason when the accounts could not be read; the first call
+    // creates UltraFiler's configuration folder if it is not there yet, and a
+    // call that failed is tried afresh by the next one rather than
+    // remembered.
     bool Reload(std::string& error);
 
     // The drives, in the order they are shown.

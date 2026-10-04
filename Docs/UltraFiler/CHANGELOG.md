@@ -37,6 +37,16 @@
     log).
   - FTP and SFTP drives log every step; cloud drives log each job and its
     outcome.
+- **Remote drives work on the very first start.** On a fresh profile
+  UltraFiler's configuration folder does not exist until something is saved
+  (a setting, the History), and the drive list - a database file in that
+  folder - could not be created without it: the log said "remote drives
+  unavailable: ... unable to open database file", the Remote Drives section
+  stayed empty, and *+ Drive* answered "cannot open the drive list" until
+  UltraFiler was restarted, because the failure was kept for the whole
+  session. The folder is now created before the drive list is opened, and a
+  failed open is tried again by the next *+ Drive* instead of being
+  remembered.
 
 #### 2026-10-03 *1.65.0*
 - **Favorites carry a heart in every folder.** A file, folder or app added
