@@ -17,6 +17,7 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -57,18 +58,29 @@ public:
     }
 
     // IMailboxProtocolPlugin
+    bool listFoldersFails = false;
     UltraNetResult ListFolders(const std::string&, std::vector<UltraNetMailFolder>& out,
                                const UltraNetMailOptions&) override {
+        if (listFoldersFails)
+            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed, "list failed");
         out = folders;
         return UltraNetResult::Ok();
     }
     uint32_t uidValidity = 0;   // 0 = "STATUS unsupported" (skips the renumber check)
-    UltraNetResult GetMailboxStatus(const std::string&, const std::string&,
+    uint32_t uidNext = 0;       // 0 = not reported (skips the "cache ahead" check)
+    UltraNetResult GetMailboxStatus(const std::string&, const std::string& folder,
                                     UltraNetMailboxStatus& out, const UltraNetMailOptions&) override {
         out = UltraNetMailboxStatus{};
         out.uidValidity = uidValidity;
+        out.uidNext = uidNext;
+        auto it = envelopes.find(folder);
+        out.messages = it == envelopes.end() ? 0 : static_cast<uint32_t>(it->second.size());
         return UltraNetResult::Ok();
     }
+    // A real server answers "UID SEARCH UID n:*" with the highest UID even when
+    // it is below n (RFC 3501): set to serve that echo.
+    bool echoHighest = false;
+    int  fetchEnvelopesCalls = 0;
     // Set to fail every envelope fetch with this UltraNet code — the way the
     // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
     // refuses the sign-in (AuthenticationFailed).
@@ -77,6 +89,7 @@ public:
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
+        ++fetchEnvelopesCalls;
         if (fetchEnvelopesFail != UltraNetResultCode::Success) {
             UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
             r.diagnostics = "Server: imaps://x/";
@@ -86,6 +99,12 @@ public:
         if (it != envelopes.end())
             for (const auto& e : it->second)
                 if (e.uid > sinceUid) out.push_back(e);
+        if (echoHighest && out.empty() && sinceUid > 0 && it != envelopes.end() &&
+            !it->second.empty()) {
+            const UltraNetMailEnvelope* top = &it->second.front();
+            for (const auto& e : it->second) if (e.uid > top->uid) top = &e;
+            out.push_back(*top);
+        }
         return UltraNetResult::Ok();
     }
     int fetchMessageCalls = 0;          // per-message fetches (slow path)
@@ -649,4 +668,300 @@ TEST(a_uidvalidity_reset_deletes_the_folders_old_bodies) {
     REQUIRE(!BodyCached(engine, 1));         // the old numbering's files are gone
     REQUIRE(!BodyCached(engine, 3));
     REQUIRE(BodyCached(engine, 10));         // the new one is cached
+}
+
+// ---- Mail an incremental fetch cannot reach --------------------------------
+// "UID > the highest held" never looks below the highest UID again. These
+// cover the ways mail ended up there and stayed out of the list for good.
+
+namespace {
+std::string SubjectOf(LocalStore& s, int64_t uid) {
+    std::vector<MessageEnvelope> msgs;
+    s.ListMessages("erika", "INBOX", 0, msgs);
+    for (const auto& m : msgs) if (m.uid == uid) return m.subject;
+    return "<none>";
+}
+// The server lists exactly the fake's INBOX envelopes, with their flags.
+void ServerListsInbox(FakeMailbox& fake) {
+    fake.serverFlags["INBOX"].clear();
+    for (const auto& e : fake.envelopes["INBOX"])
+        fake.serverFlags["INBOX"].push_back({e.uid, e.flags});
+}
+} // namespace
+
+TEST(refresh_folder_fetches_mail_an_earlier_sync_skipped) {
+    Fixture fx("refresh-missed");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    // An interrupted sync stored uid 3 (newest first) but never uid 2: the
+    // highest UID is 3, so every later incremental fetch starts above it.
+    REQUIRE(fx.store.RemoveMessage("erika", "INBOX", 2).success);
+    REQUIRE(!HasUid(fx.store, 2));
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(!HasUid(fx.store, 2));            // the incremental fetch cannot reach it
+
+    ServerListsInbox(fx.fake);
+    SyncOutcome r = engine.RefreshFolder("erika", "INBOX", "imaps://x/", opts,
+                                         /*fetchBodies=*/true);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.repaired, 1);
+    REQUIRE(HasUid(fx.store, 2));
+    REQUIRE_EQ(SubjectOf(fx.store, 2), std::string("Re: thanks"));
+    REQUIRE(fs::exists(engine.BodyPath("erika", "INBOX", 2)));   // and its body
+
+    // Nothing is missing now: a second refresh repairs nothing.
+    r = engine.RefreshFolder("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.repaired, 0);
+}
+
+TEST(refresh_folder_fetches_rows_stored_blank_again) {
+    Fixture fx("refresh-blank");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    // How an earlier version stored uid 2 when its header could not be read.
+    MessageEnvelope blank;
+    blank.accountId = "erika"; blank.folder = "INBOX"; blank.uid = 2;
+    REQUIRE(fx.store.UpsertMessage(blank).success);
+    std::vector<int64_t> blanks;
+    REQUIRE(fx.store.ListBlankUids("erika", "INBOX", blanks).success);
+    REQUIRE_EQ(blanks.size(), (size_t)1);
+    REQUIRE_EQ(blanks[0], (int64_t)2);
+
+    ServerListsInbox(fx.fake);
+    SyncOutcome r = engine.RefreshFolder("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(SubjectOf(fx.store, 2), std::string("Re: thanks"));
+    REQUIRE(fx.store.ListBlankUids("erika", "INBOX", blanks).success);
+    REQUIRE(blanks.empty());
+}
+
+TEST(sync_messages_drops_a_cache_ahead_of_the_servers_uidnext) {
+    Fixture fx("uidnext");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    // UIDVALIDITY never known (an older server, or one read wrongly): the
+    // renumber check alone cannot tell the cache is stale.
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(HasUid(fx.store, 3));
+
+    // The mailbox now numbers its mail 1 and 2, and will hand out 3 next.
+    // Holding UID 3 already, the incremental fetch would ask for "4:*" and
+    // never see the new mail - nor would the stale subject of uid 1 change.
+    fx.fake.uidValidity = 7;
+    fx.fake.uidNext = 3;
+    fx.fake.envelopes["INBOX"] = {
+        Env(1, "Reddit <noreply@redditmail.com>", {"erika@example.com"}, "gpt6.1 sol",
+            UltraNetMailFlags::None),
+        Env(2, "Hetzner <noreply@hetzner.com>",   {"erika@example.com"}, "Verification code",
+            UltraNetMailFlags::None),
+    };
+    SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE(r.stats.cacheReset);
+    REQUIRE_EQ(r.stats.serverMessages, 2);
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE_EQ(SubjectOf(fx.store, 1), std::string("gpt6.1 sol"));
+    REQUIRE_EQ(SubjectOf(fx.store, 2), std::string("Verification code"));
+
+    // Consistent now: the next sync keeps the cache.
+    fx.fake.uidNext = 3;
+    r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(!r.stats.cacheReset);
+    REQUIRE(HasUid(fx.store, 1));
+}
+
+TEST(sync_messages_ignores_the_servers_echo_of_the_highest_uid) {
+    Fixture fx("echo");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    const int bodiesBefore = fx.fake.fetchBodiesCalls;
+
+    // No new mail; the server still answers "UID 4:*" with uid 3.
+    fx.fake.echoHighest = true;
+    SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts,
+                                        /*fetchBodies=*/true);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.messages, 0);          // not stored again
+    REQUIRE_EQ(fx.fake.fetchBodiesCalls, bodiesBefore);   // nor its body downloaded again
+}
+
+TEST(sync_now_follows_mail_deleted_and_read_elsewhere) {
+    Fixture fx("syncnow-reconcile");
+    SyncService svc(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(svc.SyncNow("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasUid(fx.store, 3));
+    REQUIRE(!(FlagsFor(fx.store, 1) & Flag_Seen));
+
+    // On another computer: uid 1 read, uid 3 moved to a folder.
+    fx.fake.serverFlags["INBOX"] = {
+        { 1u, UltraNetMailFlags::Seen },
+        { 2u, UltraNetMailFlags::Answered },
+    };
+    SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.expunged, 1);
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE(FlagsFor(fx.store, 1) & Flag_Seen);
+}
+
+TEST(fetch_envelopes_by_uid_default_serves_only_the_uids_asked_for) {
+    FakeMailbox fake;
+    fake.envelopes["INBOX"] = {
+        Env(5, "a <a@x.com>", {"erika@example.com"}, "five",  UltraNetMailFlags::None),
+        Env(7, "b <b@x.com>", {"erika@example.com"}, "seven", UltraNetMailFlags::None),
+        Env(9, "c <c@x.com>", {"erika@example.com"}, "nine",  UltraNetMailFlags::None),
+    };
+    std::vector<uint32_t> got;
+    UltraNetMailOptions opts;
+    REQUIRE(fake.FetchEnvelopesByUid("imaps://x/", "INBOX", {9, 5, 6},
+            [&got](const UltraNetMailEnvelope& e) { got.push_back(e.uid); }, opts).success);
+    REQUIRE_EQ(got.size(), (size_t)2);         // 6 is not on the server
+    REQUIRE(std::find(got.begin(), got.end(), 5u) != got.end());
+    REQUIRE(std::find(got.begin(), got.end(), 9u) != got.end());
+}
+
+TEST(refresh_folder_downloads_a_body_an_earlier_download_missed) {
+    Fixture fx("refresh-body");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    // uid 2's body fails to download the first time.
+    const std::string body2 = fx.fake.bodies["INBOX/2"];
+    fx.fake.bodies.erase("INBOX/2");
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(!fs::exists(engine.BodyPath("erika", "INBOX", 2)));
+    REQUIRE(fs::exists(engine.BodyPath("erika", "INBOX", 1)));
+
+    // The next sync gets it; the bodies it already has are not asked for.
+    fx.fake.bodies["INBOX/2"] = body2;
+    ServerListsInbox(fx.fake);
+    SyncOutcome r = engine.RefreshFolder("erika", "INBOX", "imaps://x/", opts,
+                                         /*fetchBodies=*/true);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.bodies, 1);
+    REQUIRE(fs::exists(engine.BodyPath("erika", "INBOX", 2)));
+    REQUIRE_EQ(fx.fake.lastBodyUids.size(), (size_t)1);
+    REQUIRE_EQ(fx.fake.lastBodyUids[0], 2u);
+}
+
+// ---- The folder list follows the server -------------------------------------
+
+namespace {
+bool HasFolder(LocalStore& s, const std::string& name) {
+    std::vector<Folder> folders;
+    s.ListFolders("erika", folders);
+    for (const auto& f : folders) if (f.name == name) return true;
+    return false;
+}
+size_t CountIn(LocalStore& s, const std::string& folder) {
+    std::vector<MessageEnvelope> msgs;
+    s.ListMessages("erika", folder, 0, msgs);
+    return msgs.size();
+}
+} // namespace
+
+TEST(sync_folders_drops_folders_the_server_no_longer_lists) {
+    Fixture fx("folders-gone");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    fx.fake.folders.push_back(MakeFolder("Projects", ""));
+    fx.fake.envelopes["Projects"] = {
+        Env(1, "Ann <ann@x.com>", {"erika@example.com"}, "Plan", UltraNetMailFlags::Seen) };
+    fx.fake.bodies["Projects/1"] = BuildRaw("Ann <ann@x.com>", "Plan", "the plan");
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    engine.SyncMessages("erika", "Projects", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)1);
+    REQUIRE(fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    // A list that fails, or one that names nothing, removes nothing.
+    fx.fake.listFoldersFails = true;
+    REQUIRE(!engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "Projects"));
+    fx.fake.listFoldersFails = false;
+    fx.fake.folders.clear();
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "Projects"));
+
+    // Renamed on the server: the old name goes with its mail and bodies.
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent"),
+                        MakeFolder("Projects 2026", "") };
+    SyncOutcome r = engine.SyncFolders("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.foldersRemoved, 1);
+    REQUIRE(!HasFolder(fx.store, "Projects"));
+    REQUIRE(HasFolder(fx.store, "Projects 2026"));
+    REQUIRE_EQ(CountIn(fx.store, "Projects"), (size_t)0);
+    REQUIRE(!fs::exists(engine.BodyPath("erika", "Projects", 1)));
+
+    // The inbox stays, and its mail with it, whatever a list says.
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE_EQ(CountIn(fx.store, "INBOX"), (size_t)3);
+    fx.fake.folders = { MakeFolder("Sent", "sent") };
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(HasFolder(fx.store, "INBOX"));
+    REQUIRE_EQ(CountIn(fx.store, "INBOX"), (size_t)3);
+}
+
+TEST(sync_folders_keeps_the_separator_and_the_numbering) {
+    Fixture fx("folders-delim");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    UltraNetMailFolder drafts = MakeFolder("INBOX.Drafts", "drafts");
+    drafts.delimiter = ".";
+    fx.fake.folders.push_back(drafts);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    std::vector<Folder> folders;
+    fx.store.ListFolders("erika", folders);
+    for (const auto& f : folders)
+        if (f.name == "INBOX.Drafts") REQUIRE_EQ(f.delimiter, std::string("."));
+
+    // The folder list used to write UIDVALIDITY 0 over the stored one before
+    // every inbox sync, so a renumbered inbox was never noticed in the
+    // account sync (folders, then the inbox).
+    fx.fake.uidValidity = 100;
+    SyncService svc(fx.store, fx.fake, fx.emlDir);
+    REQUIRE(svc.SyncNow("erika", "imaps://x/", opts).ok);
+    int64_t stored = 0;
+    fx.store.GetFolderUidValidity("erika", "INBOX", stored);
+    REQUIRE_EQ(stored, (int64_t)100);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    fx.store.GetFolderUidValidity("erika", "INBOX", stored);
+    REQUIRE_EQ(stored, (int64_t)100);
+
+    fx.fake.uidValidity = 200;   // renumbered: the same mail under new UIDs
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None) };
+    SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE(r.stats.cacheReset);
+    REQUIRE(!HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 10));
+}
+
+// A folder opened after it was deleted on the server: the failure to open it
+// is answered by the folder list, which drops it - not by an error alert.
+TEST(folder_still_listed_drops_a_folder_deleted_on_the_server) {
+    Fixture fx("folder-gone");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    fx.fake.folders.push_back(MakeFolder("Investor", ""));
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+    REQUIRE(engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+
+    fx.fake.folders.pop_back();                     // deleted on the server
+    REQUIRE(!engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+    REQUIRE(!HasFolder(fx.store, "Investor"));
+    // A list that cannot be read says nothing is gone; the inbox never is.
+    fx.fake.listFoldersFails = true;
+    REQUIRE(engine.FolderStillListed("erika", "Investor", "imaps://x/", opts));
+    REQUIRE(engine.FolderStillListed("erika", "INBOX", "imaps://x/", opts));
 }

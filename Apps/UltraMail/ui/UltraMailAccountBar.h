@@ -4,8 +4,11 @@
 // (new today · unread before · waiting for reply). With several accounts it is
 // a row of card tiles carrying the same information, one per account; the
 // selected tile drives the mail view below.
+// Version: 0.4.0 - SetSelected: the highlight moves without rebuilding the tiles
+//                  (a rebuild from a tile's own click destroyed that tile, and
+//                  the account id its handler was holding, mid-click)
 // Version: 0.3.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -14,6 +17,7 @@
 #include "UltraMailTypes.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +41,11 @@ public:
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Container() const { return root_; }
 
+    // Move the highlight to `accountId`'s tile, in place: no tile is rebuilt
+    // and the counts stay as they are. For a click on a tile, which must not
+    // destroy the tile it came from.
+    void SetSelected(const std::string& accountId);
+
     // Fired when a tile is clicked (multi-account mode).
     std::function<void(const std::string& accountId)> onSelectAccount;
 
@@ -49,6 +58,8 @@ private:
                     const std::string& selectedAccountId);
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
+    // The tiles by account (multi-account mode), for SetSelected.
+    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> tiles_;
 };
 
 } // namespace UltraMail

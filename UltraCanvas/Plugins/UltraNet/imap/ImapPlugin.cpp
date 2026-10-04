@@ -1,6 +1,10 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
-// Version: 0.5.1 - FetchMessages searches with UID SEARCH: it fetched sequence
+// Version: 0.6.1 - FetchMessages searches with UID SEARCH: it fetched sequence
 //                  numbers as UIDs, so it got the wrong mail or none at all
+// Version: 0.6.0 - FetchEnvelopesByUid (the envelopes of named messages); a
+//                  message whose header could not be read is no longer handed
+//                  on as an empty envelope, which the caller stored as a blank
+//                  row and never asked for again
 // Version: 0.5.0 - reading a message no longer marks it read: libcurl fetches
 //                  with BODY[...], which sets \Seen, so an unread message's
 //                  \Seen is taken off again (FetchKeepingUnread)
@@ -342,26 +346,46 @@ public:
         UltraNetResult sr = PerformOn(h.get(), mbUrl, search.str(), searchBody);
         if (!sr) return sr;
         std::vector<uint32_t> uids = ParseSearchUids(searchBody);
+        // "UID n:*" always matches the highest UID, even one below n (RFC 3501
+        // 6.4.8): that message is held already.
+        if (sinceUid > 0)
+            uids.erase(std::remove_if(uids.begin(), uids.end(),
+                                      [sinceUid](uint32_t u) { return u <= sinceUid; }),
+                       uids.end());
         // Newest first, bounded by maxMessages.
         std::sort(uids.begin(), uids.end(), std::greater<uint32_t>());
         if (options.maxMessages > 0 &&
             static_cast<std::size_t>(options.maxMessages) < uids.size())
             uids.resize(static_cast<std::size_t>(options.maxMessages));
 
-        for (uint32_t uid : uids) {
-            UltraNetMailEnvelope env;
-            env.uid = uid;
+        FetchHeaders(h.get(), base, folder, uids, onEnvelope);
+        return UltraNetResult::Ok();
+    }
 
-            // Flags, then the header fields - read before the header, whose
-            // fetch would otherwise have made every message \Seen already.
-            std::string headerRaw;
-            std::ostringstream hurl;
-            hurl << base << EncodeMailboxPath(folder) << "/;UID=" << uid << ";SECTION=HEADER";
-            if (FetchKeepingUnread(h.get(), mbUrl, hurl.str(), uid, headerRaw, &env.flags))
-                ParseEnvelopeHeaders(headerRaw, env);
+    UltraNetResult FetchEnvelopesByUid(const std::string& serverUrl,
+                                       const std::string& folder,
+                                       const std::vector<uint32_t>& uids,
+                                       const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope,
+                                       const UltraNetMailOptions& options) override {
+        if (uids.empty()) return UltraNetResult::Ok();
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
 
-            if (onEnvelope) onEnvelope(env);
-        }
+        std::vector<uint32_t> newestFirst(uids);
+        std::sort(newestFirst.begin(), newestFirst.end(), std::greater<uint32_t>());
+        newestFirst.erase(std::unique(newestFirst.begin(), newestFirst.end()), newestFirst.end());
+        // The mailbox is selected by the first fetch; a connection that fails
+        // already there fails the call, so the caller can tell it from a
+        // message that is simply gone.
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
+        std::string probe;
+        if (UltraNetResult r = PerformOn(h.get(), mbUrl, "NOOP", probe); !r) return r;
+        FetchHeaders(h.get(), base, folder, newestFirst, onEnvelope);
         return UltraNetResult::Ok();
     }
 
@@ -577,6 +601,32 @@ private:
         if (!mailbox.empty() && mailbox.front() == '/') mailbox.erase(0, 1);
         if (mailbox.empty()) mailbox = "INBOX";
         return true;
+    }
+
+    // The flags and header fields of each of `uids`, in that order, over the
+    // one connection on `h`. A message whose header cannot be read - gone
+    // since the search, or a fetch that failed - is not handed on: an empty
+    // envelope would be stored as a blank row (no sender, no subject, no date)
+    // that an incremental sync never asks for again.
+    void FetchHeaders(CURL* h, const std::string& base, const std::string& folder,
+                      const std::vector<uint32_t>& uids,
+                      const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope) {
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
+        for (uint32_t uid : uids) {
+            UltraNetMailEnvelope env;
+            env.uid = uid;
+
+            // Flags, then the header fields - read before the header, whose
+            // fetch would otherwise have made every message \Seen already.
+            std::string headerRaw;
+            std::ostringstream hurl;
+            hurl << mbUrl << "/;UID=" << uid << ";SECTION=HEADER";
+            if (!FetchKeepingUnread(h, mbUrl, hurl.str(), uid, headerRaw, &env.flags) ||
+                TrimWs(headerRaw).empty())
+                continue;
+            ParseEnvelopeHeaders(headerRaw, env);
+            if (onEnvelope) onEnvelope(env);
+        }
     }
 
     // Fetch `sectionUrl` (a message, or one section of it) on `h` without
