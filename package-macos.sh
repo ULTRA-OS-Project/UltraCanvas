@@ -996,7 +996,8 @@ package_if_built "ultramsg" build_cli_tool "ultramsg"
 if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then
     echo "Not built, so not packaged: ${SKIPPED_APPS[*]}"
 fi
-if ! compgen -G "$OUTPUT_DIR/*.app" >/dev/null; then
+# The bundles are in the suite folder, not directly in $OUTPUT_DIR.
+if ! compgen -G "$SUITE_DIR/*.app" >/dev/null; then
     echo "Error: no app bundle was produced - is $BUILD_DIR the right build directory?" >&2
     exit 1
 fi
