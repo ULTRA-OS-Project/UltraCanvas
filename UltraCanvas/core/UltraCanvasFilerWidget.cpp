@@ -2997,7 +2997,7 @@ namespace UltraCanvas {
             const bool directory =
                     link.targetIsDirectory ||
                     (!link.hostTargetPath.empty() &&
-                     fs::is_directory(link.hostTargetPath, ec) && !ec);
+                     fs::is_directory(PathFromUtf8(link.hostTargetPath), ec) && !ec);
             if (directory) {
                 cached.category = FilerFileCategory::Folder;
             } else {
@@ -3394,7 +3394,7 @@ namespace UltraCanvas {
         const bool isRemoteDir = !fileListMode && !currentPath.empty() &&
                                  isRemotePath && isRemotePath(currentPath);
         bool isRealDir = !isRemoteDir && !currentPath.empty() &&
-                         fs::is_directory(currentPath, ec);
+                         fs::is_directory(PathFromUtf8(currentPath), ec);
         // Stays false for a remote listing: what it gates - the folder
         // previews, the lock column - reads the local filesystem per entry,
         // which is exactly what a remote drive cannot serve.
@@ -5057,7 +5057,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) return;
+        if (!fs::is_directory(PathFromUtf8(currentPath), ec)) return;
 
         // The reverse of the upload above: entries dropped here that live
         // on a drive come DOWN into this folder, and the local paste below
@@ -6123,7 +6123,7 @@ namespace UltraCanvas {
         if (!cb) return false;
 
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(PathFromUtf8(currentPath), ec)) {
             ReportError("Paste target is not a writable folder: " + currentPath);
             return false;
         }
@@ -8896,13 +8896,13 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(PathFromUtf8(currentPath), ec)) {
             ReportError("Cannot create a document here: " + currentPath);
             return;
         }
         std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
-        if (!type.templatePath.empty() && fs::exists(type.templatePath, ec)) {
-            fs::copy_file(type.templatePath, UltraCanvas::PathFromUtf8(dest), ec);
+        if (!type.templatePath.empty() && fs::exists(PathFromUtf8(type.templatePath), ec)) {
+            fs::copy_file(PathFromUtf8(type.templatePath), UltraCanvas::PathFromUtf8(dest), ec);
             if (ec) { ReportError("New document failed: " + ec.message()); return; }
         } else {
             std::ofstream out(UltraCanvas::PathFromUtf8(dest), std::ios::binary);
@@ -8942,7 +8942,7 @@ namespace UltraCanvas {
         if (fileListMode) SetPath(currentPath);
         else SetNameFilter("");
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(PathFromUtf8(currentPath), ec)) {
             ReportError("Cannot create a folder here: " + currentPath);
             return;
         }

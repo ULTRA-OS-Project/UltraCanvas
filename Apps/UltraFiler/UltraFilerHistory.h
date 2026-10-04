@@ -145,7 +145,7 @@ public:
     bool Load() {
         for (std::vector<FilerHistoryItem>& list : lists) list.clear();
 
-        std::ifstream file(GetHistoryPath());
+        std::ifstream file(PathFromUtf8(GetHistoryPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -204,7 +204,7 @@ public:
                 UltraFilerSettings::GetConfigDirectory(), ec);
         if (ec) return false;
 
-        std::ofstream file(GetHistoryPath());
+        std::ofstream file(PathFromUtf8(GetHistoryPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler History\n";

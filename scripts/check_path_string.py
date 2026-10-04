@@ -64,11 +64,17 @@ What is reported:
       `fopen(name, mode)` with anything but a literal: the narrow fopen reads
       the name in the Windows code page. Use OpenFileUtf8(name, mode).
 
-What is still NOT reported: a string whose type the file does not spell out
-(an `auto`, a getter's return value, a member declared in another file such
-as `env.accountId`) handed to a path parameter or joined onto a path, and
-the declaration form `fs::path p(str);` with such a string. Review catches
-those.
+Types declared elsewhere are read from the headers: a bare name the file
+does not declare from its own header (Foo.cpp -> Foo.h, the class's
+members), and a member access (`env.accountId`) or a call (`x.GetPath()`,
+`ConfigDir()`) from every in-repo header the file includes, transitively. A
+name those headers declare as two different things is left alone.
+
+What is still NOT reported: a string whose type no declaration spells out
+(an `auto`, a member or getter of a type declared outside the repository, a
+name declared as a string in one header and something else in another)
+handed to a path parameter or joined onto a path, and the declaration form
+`fs::path p(str);` with such a string. Review catches those.
 The two implicit kinds skip the Linux, macOS, Android, WASM and ULTRA OS
 platform folders, where a path's native string is the UTF-8 bytes.
 
@@ -238,32 +244,155 @@ def _top_level_index(text: str, ch: str) -> int:
     return -1
 
 
+def _scan_decls(text: str) -> dict[str, list[tuple[int, object]]]:
+    """name -> [(line, kind)] for every declaration the rules recognise.
+    Kinds: True = std::string, False = path, None = something else. Order
+    matters only within a line: a later rule on the same line (an
+    `auto p = PathFromUtf8(...)` is also an `auto`) wins."""
+    import bisect
+    starts = [0]
+    for m in re.finditer("\n", text):
+        starts.append(m.end())
+    rules = [(rx, None) for rx in OTHER_DECL_RES] + [
+        (STRING_DECL_RE, True), (RANGE_FOR_STRING_RE, True),
+        (PATH_DECL_RE, False), (AUTO_PATH_DECL_RE, False)]
+    decls: dict[str, list] = {}
+    for order, (rx, kind) in enumerate(rules):
+        for m in rx.finditer(text):
+            line = bisect.bisect_right(starts, m.start(1))
+            decls.setdefault(m.group(1), []).append((line, order, kind))
+    out = {}
+    for name, v in decls.items():
+        v.sort()
+        out[name] = [(line, kind) for line, _, kind in v]
+    return out
+
+
+# ---- headers: the types a file cannot see in itself --------------------------
+INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', re.MULTILINE)
+HEADER_SUFFIXES = (".h", ".hpp", ".hh", ".hxx")
+MAX_HEADERS = 400      # per file: the closure of a deep include chain is cut here
+
+
+class Headers:
+    """The repository's headers, what each declares, and what each includes."""
+
+    def __init__(self):
+        self._by_name: dict[str, list[Path]] | None = None
+        self._kinds: dict[Path, dict[str, set]] = {}
+        self._includes: dict[Path, list[Path]] = {}
+
+    def _index(self) -> dict[str, list[Path]]:
+        if self._by_name is None:
+            self._by_name = {}
+            for root in SEARCH_ROOTS:
+                base = REPO_ROOT / root
+                if not base.exists():
+                    continue
+                for f in base.rglob("*"):
+                    if f.suffix in HEADER_SUFFIXES and f.is_file() and \
+                            not any(part.startswith("build") for part in f.parts):
+                        self._by_name.setdefault(f.name, []).append(f)
+        return self._by_name
+
+    def resolve(self, source: Path, include: str) -> Path | None:
+        """The header an `#include` names, as seen from `source`."""
+        direct = (source.parent / include)
+        if direct.suffix in HEADER_SUFFIXES and direct.is_file():
+            return direct.resolve()
+        want = "/" + include.replace("\\", "/").lstrip("./")
+        candidates = [c for c in self._index().get(Path(include).name, ())
+                      if ("/" + c.as_posix()).endswith(want)]
+        if not candidates:
+            return None
+        src = source.resolve().parts
+
+        def shared(c: Path) -> int:
+            n = 0
+            for a, b in zip(src, c.resolve().parts):
+                if a != b:
+                    break
+                n += 1
+            return n
+        return max(candidates, key=shared).resolve()
+
+    def paired(self, source: Path) -> Path | None:
+        """`Foo.cpp`'s own header: Foo.h beside it, or the best-placed Foo.h."""
+        for suffix in HEADER_SUFFIXES:
+            side = source.with_suffix(suffix)
+            if side.is_file():
+                return side.resolve()
+        for suffix in HEADER_SUFFIXES:
+            found = self.resolve(source, source.stem + suffix)
+            if found:
+                return found
+        return None
+
+    def kinds(self, header: Path) -> dict[str, set]:
+        if header not in self._kinds:
+            try:
+                text = header.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            self._kinds[header] = {n: {k for _, k in v} for n, v in _scan_decls(text).items()}
+            self._includes[header] = [h for h in (self.resolve(header, i)
+                                                  for i in INCLUDE_RE.findall(text)) if h]
+        return self._kinds[header]
+
+    def closure(self, source: Path, text: str) -> list[Path]:
+        """Every in-repo header `source` includes, directly or not."""
+        queue = [h for h in (self.resolve(source, i) for i in INCLUDE_RE.findall(text)) if h]
+        seen: list[Path] = []
+        done: set[Path] = set()
+        while queue and len(seen) < MAX_HEADERS:
+            h = queue.pop(0)
+            if h in done:
+                continue
+            done.add(h)
+            seen.append(h)
+            self.kinds(h)
+            queue.extend(self._includes.get(h, ()))
+        return seen
+
+
+HEADERS = Headers()
+
+
 class DeclaredTypes:
     """Which names the file declares as std::string and which as a path, by
     line. A name means whatever its nearest declaration above the use says:
     `path` can be a std::string parameter in one function and an fs::path
-    member or local in the next, and only the nearer one is in scope."""
+    member or local in the next, and only the nearer one is in scope.
 
-    def __init__(self, text: str):
-        self.decls: dict[str, list[tuple[int, bool]]] = {}
-        starts = [0]
-        for m in re.finditer("\n", text):
-            starts.append(m.end())
-        import bisect
-        # Kinds: True = std::string, False = path, None = something else.
-        # Order matters only within a line: a later kind on the same line
-        # (an `auto p = PathFromUtf8(...)` is also an `auto`) wins.
-        rules = [(rx, None) for rx in OTHER_DECL_RES] + [
-            (STRING_DECL_RE, True), (RANGE_FOR_STRING_RE, True),
-            (PATH_DECL_RE, False), (AUTO_PATH_DECL_RE, False)]
-        for order, (rx, kind) in enumerate(rules):
-            for m in rx.finditer(text):
-                line = bisect.bisect_right(starts, m.start(1))
-                self.decls.setdefault(m.group(1), []).append((line, order, kind))
+    A bare name the file does not declare is looked up in its own header
+    (Foo.cpp -> Foo.h: the class's members). A member access (`env.accountId`,
+    `msg->folder`) and a call (`x.GetPath()`, `GetPath()`) are looked up in
+    every in-repo header the file includes, transitively - the struct or the
+    getter is declared there. A name those headers declare as two different
+    things is not taken for either."""
+
+    def __init__(self, text: str, path: Path | None = None):
+        self.decls = _scan_decls(text)
+        self.members: dict[str, set] = {}
+        if path is not None:
+            own = HEADERS.paired(path)
+            if own is not None:
+                for name, kinds in HEADERS.kinds(own).items():
+                    # Before the first line, so the file's own declarations win
+                    self.decls.setdefault(name, [])
+                    self.decls[name] = [(0, k) for k in sorted(kinds, key=str)] + self.decls[name]
+            for header in HEADERS.closure(path, text) + ([own] if own else []):
+                for name, kinds in HEADERS.kinds(header).items():
+                    self.members.setdefault(name, set()).update(kinds)
         for name, v in self.decls.items():
-            v.sort()
-            self.decls[name] = [(line, kind) for line, _, kind in v]
+            self.members.setdefault(name, set()).update(k for _, k in v)
         self.line = 0
+
+    def member_is_string(self, name: str) -> bool:
+        return self.members.get(name) == {True}
+
+    def member_is_path(self, name: str) -> bool:
+        return self.members.get(name) == {False}
 
     def is_path(self, name: str) -> bool:
         """Whether `name`'s nearest declaration above the use is a path."""
@@ -304,9 +433,16 @@ def _is_utf8_string(arg: str, strings, raw: str) -> bool:
             return any(_is_utf8_string(b, strings, b)
                        for b in (a[q + 1:q + 1 + c], a[q + 2 + c:]))
     if ID_CHAIN_RE.match(a):
-        return re.split(r"\.|->", a)[-1] in strings
+        last = re.split(r"\.|->", a)[-1]
+        if "." in a or "->" in a:
+            return strings.member_is_string(last)
+        return last in strings
     if a.startswith(("std::string(", "PathToUtf8(")):
         return True
+    m = CALL_RE.match(a)
+    if m:   # a getter or helper the file or its headers declare as std::string
+        name = re.split(r"::|\.|->", m.group("name"))[-1]
+        return name not in PATH_CALLS and strings.member_is_string(name)
     if _top_level(a, "+") and not _top_level(a, "/"):
         for op in (o.strip() for o in a.split("+")):
             if op.startswith('"'):
@@ -370,10 +506,14 @@ def _operand_after(code: str, i: int) -> int:
 def _is_path_operand(op: str, strings) -> bool:
     op = op.strip()
     if ID_CHAIN_RE.match(op):
-        return strings.is_path(re.split(r"\.|->", op)[-1])
+        last = re.split(r"\.|->", op)[-1]
+        if "." in op or "->" in op:
+            return strings.member_is_path(last)
+        return strings.is_path(last)
     m = CALL_RE.match(op)
     if m:
-        return re.split(r"::|\.|->", m.group("name"))[-1] in PATH_CALLS
+        name = re.split(r"::|\.|->", m.group("name"))[-1]
+        return name in PATH_CALLS or strings.member_is_path(name)
     return False
 
 
@@ -392,10 +532,6 @@ def _is_string_operand(op: str, strings) -> bool:
         return False   # a literal is ASCII here
     if _is_utf8_string(op, strings, op):
         return True
-    m = CALL_RE.match(op)
-    if m:
-        name = re.split(r"::|\.|->", m.group("name"))[-1]
-        return name not in PATH_CALLS and name in strings
     return False
 
 
@@ -597,7 +733,7 @@ def check_file(path: Path) -> list[Finding]:
 
     findings: list[Finding] = []
     implicit = not (UTF8_NATIVE_OS & set(path.parts))
-    strings = DeclaredTypes(text) if implicit else set()
+    strings = DeclaredTypes(text, path) if implicit else set()
     streams = set(STREAM_DECL_RE.findall(text)) if implicit else set()
     in_block_comment = False
     for number, line in enumerate(text.splitlines(), start=1):

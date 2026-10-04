@@ -147,7 +147,7 @@ public:
     bool Load() {
         for (std::vector<FilerFavoriteItem>& list : lists) list.clear();
 
-        std::ifstream file(GetFavoritesPath());
+        std::ifstream file(PathFromUtf8(GetFavoritesPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -184,7 +184,7 @@ public:
                 UltraFilerSettings::GetConfigDirectory(), ec);
         if (ec) return false;
 
-        std::ofstream file(GetFavoritesPath());
+        std::ofstream file(PathFromUtf8(GetFavoritesPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Favorites\n";

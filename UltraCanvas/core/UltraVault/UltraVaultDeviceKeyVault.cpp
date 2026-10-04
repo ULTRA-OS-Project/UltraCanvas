@@ -137,12 +137,12 @@ std::string DeviceKeyVault::KeyFor(const std::string& account) const {
 }
 
 std::string DeviceKeyVault::VaultPath() const {
-    return PathToUtf8(PathFromUtf8(dir_) / profile_.vaultFileName);
+    return PathToUtf8(PathFromUtf8(dir_) / PathFromUtf8(profile_.vaultFileName));
 }
 
 bool DeviceKeyVault::Exists() const {
     std::error_code ec;
-    return fs::exists(PathFromUtf8(dir_) / profile_.vaultFileName, ec);
+    return fs::exists(PathFromUtf8(dir_) / PathFromUtf8(profile_.vaultFileName), ec);
 }
 
 UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
@@ -153,7 +153,7 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
     if (dir_.empty() || profile_.vaultFileName.empty()) return UnlockStatus::IoError;
 
     std::error_code ec;
-    fs::create_directories(dir_, ec);
+    fs::create_directories(PathFromUtf8(dir_), ec);
     if (ec) return UnlockStatus::IoError;
 
     // Initialize() is idempotent per process and will not reconfigure an open
@@ -192,8 +192,8 @@ bool DeviceKeyVault::TryAutoUnlock() {
 
     // A stored device key: unlock silently with it.
     std::error_code ec;
-    if (fs::exists(DeviceKeyPath(), ec)) {
-        std::ifstream in(DeviceKeyPath(), std::ios::binary);
+    if (fs::exists(PathFromUtf8(DeviceKeyPath()), ec)) {
+        std::ifstream in(PathFromUtf8(DeviceKeyPath()), std::ios::binary);
         std::string pass((std::istreambuf_iterator<char>(in)),
                          std::istreambuf_iterator<char>());
         while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
@@ -210,15 +210,15 @@ bool DeviceKeyVault::TryAutoUnlock() {
     if (!PersistDeviceKey(pass)) return false;      // could not write the key file
     if (Unlock(pass) == UnlockStatus::Ok) return true;
     // Creating the vault failed: drop the key file so a retry is not blocked.
-    fs::remove(DeviceKeyPath(), ec);
+    fs::remove(PathFromUtf8(DeviceKeyPath()), ec);
     return false;
 }
 
 bool DeviceKeyVault::PersistDeviceKey(const std::string& passphrase) {
     if (passphrase.empty() || dir_.empty()) return false;
     std::error_code ec;
-    fs::create_directories(dir_, ec);
-    { std::ofstream out(DeviceKeyPath(), std::ios::binary | std::ios::trunc);
+    fs::create_directories(PathFromUtf8(dir_), ec);
+    { std::ofstream out(PathFromUtf8(DeviceKeyPath()), std::ios::binary | std::ios::trunc);
       if (!out) return false;
       out << passphrase;
       if (!out) return false; }

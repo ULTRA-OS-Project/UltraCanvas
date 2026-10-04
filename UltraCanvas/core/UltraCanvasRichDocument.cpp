@@ -809,7 +809,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
     std::vector<std::string> mediaPaths(media.size());
     if (!options.imageDirectory.empty()) {
         std::error_code ec;
-        std::filesystem::create_directories(options.imageDirectory, ec);
+        std::filesystem::create_directories(PathFromUtf8(options.imageDirectory), ec);
         for (size_t i = 0; i < media.size(); ++i) {
             std::string name = media[i].name.empty()
                 ? "image" + std::to_string(i + 1) + "." + FileExtensionForMimeType(media[i].mimeType)

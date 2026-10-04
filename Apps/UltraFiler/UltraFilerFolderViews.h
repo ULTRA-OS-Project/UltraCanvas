@@ -85,7 +85,7 @@ public:
 
     bool Load() {
         entries.clear();
-        std::ifstream file(GetFolderViewsPath());
+        std::ifstream file(PathFromUtf8(GetFolderViewsPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -126,7 +126,7 @@ public:
                 UltraFilerSettings::GetConfigDirectory(), ec);
         if (ec) return false;
 
-        std::ofstream file(GetFolderViewsPath());
+        std::ofstream file(PathFromUtf8(GetFolderViewsPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler folder display state\n";

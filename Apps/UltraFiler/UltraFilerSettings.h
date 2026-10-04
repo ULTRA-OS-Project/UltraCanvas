@@ -305,7 +305,7 @@ public:
     static std::string GetConfigPath() { return GetConfigDirectory() + "/config.ini"; }
 
     bool Load() {
-        std::ifstream file(GetConfigPath());
+        std::ifstream file(PathFromUtf8(GetConfigPath()));
         if (!file.is_open()) return false;
 
         std::map<std::string, std::string> kv;
@@ -429,10 +429,10 @@ public:
 
     bool Save() const {
         std::error_code ec;
-        std::filesystem::create_directories(GetConfigDirectory(), ec);
+        std::filesystem::create_directories(PathFromUtf8(GetConfigDirectory()), ec);
         if (ec) return false;
 
-        std::ofstream file(GetConfigPath());
+        std::ofstream file(PathFromUtf8(GetConfigPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Configuration\n\n";

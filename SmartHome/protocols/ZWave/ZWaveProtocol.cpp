@@ -2145,7 +2145,7 @@ bool ZWaveProtocol::IsHardwareAvailable() const {
     // Z-Wave needs a physical controller on a serial port. Unlike KNX there is
     // no networked fallback, so absence of the device node is a real answer
     // rather than something to discover later.
-    return !controllerPath.empty() && std::filesystem::exists(controllerPath);
+    return !controllerPath.empty() && std::filesystem::exists(PathFromUtf8(controllerPath));
 }
 
 std::string ZWaveProtocol::GetHardwareInfo() const {

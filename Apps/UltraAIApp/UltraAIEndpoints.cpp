@@ -2,6 +2,7 @@
 // Version: 0.1.0
 
 #include "UltraAIEndpoints.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include "DataFormats/UltraCanvasJSON.h"
 
@@ -132,7 +133,7 @@ bool EndpointStore::Load() {
     endpoints_.clear();
 
     std::error_code ec;
-    if (!std::filesystem::exists(ConfigPath(), ec)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(ConfigPath()), ec)) {
         return true;  // no file yet — an empty store is valid
     }
 
@@ -168,7 +169,7 @@ bool EndpointStore::Load() {
 
 bool EndpointStore::Save() const {
     std::error_code ec;
-    std::filesystem::create_directories(ConfigDir(), ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(ConfigDir()), ec);
 
     JSONValue arr = JSONValue::MakeArray();
     for (const auto& e : endpoints_) {

@@ -1,3 +1,10 @@
+#### 2026-10-04 *0.1.8*
+- **Settings and endpoints load and save under a profile folder outside the
+  Windows code page.** The config path and folder, `std::string`s from
+  `ConfigPath()` / `ConfigDir()`, were handed straight to `fs::` calls and
+  streams, which Windows converts in its ANSI code page. They go through
+  `PathFromUtf8` now (found by the path check, framework changelog).
+
 #### 2026-09-29 *0.1.7*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

@@ -1266,7 +1266,7 @@ void VirtualFSManager::CloseCachedArchive(OpenArchive& cached) {
     }
     if (!cached.tempFilePath.empty()) {
         std::error_code ec;
-        std::filesystem::remove(cached.tempFilePath, ec);
+        std::filesystem::remove(PathFromUtf8(cached.tempFilePath), ec);
         cached.tempFilePath.clear();
     }
 }

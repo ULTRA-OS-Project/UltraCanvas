@@ -1,3 +1,9 @@
+#### 2026-10-04 *0.1.4*
+- **An attachment in a folder outside the Windows code page is found.** The
+  composer checked each attachment's file with its `std::string` path handed
+  straight to `fs::`, which Windows converts in its ANSI code page; it goes
+  through `PathFromUtf8` now (found by the path check, framework changelog).
+
 #### 2026-09-28 *0.1.3*
 - **The version is in the window title** — `UltraSocial 0.1.3` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

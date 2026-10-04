@@ -66,7 +66,7 @@ public:
             return false;
         }
         std::error_code ec;
-        std::filesystem::create_directories(GetIconsDirectory(), ec);
+        std::filesystem::create_directories(PathFromUtf8(GetIconsDirectory()), ec);
         if (ec) {
             error = "Cannot create " + GetIconsDirectory() + ": " + ec.message();
             return false;
@@ -119,7 +119,7 @@ public:
     bool Load() {
         icons.clear();
 
-        std::ifstream file(GetIconsPath());
+        std::ifstream file(PathFromUtf8(GetIconsPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -152,7 +152,7 @@ public:
                 UltraFilerSettings::GetConfigDirectory(), ec);
         if (ec) return false;
 
-        std::ofstream file(GetIconsPath());
+        std::ofstream file(PathFromUtf8(GetIconsPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler folder icons\n";

@@ -248,7 +248,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
 
     // Fallback directories, which can also outlive a crash.
     std::error_code ec;
-    for (auto it = std::filesystem::directory_iterator(TempRoot(), ec);
+    for (auto it = std::filesystem::directory_iterator(PathFromUtf8(TempRoot()), ec);
          !ec && it != std::filesystem::directory_iterator(); ++it) {
         if (!it->is_directory(ec)) {
             continue;

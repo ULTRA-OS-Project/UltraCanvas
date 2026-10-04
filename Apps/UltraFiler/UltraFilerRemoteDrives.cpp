@@ -877,7 +877,7 @@ void UltraFilerRemoteDrives::LoadDiskCacheLocked() {
     if (diskCacheLoaded_) return;
     diskCacheLoaded_ = true;
 
-    std::ifstream in(DiskCachePath(), std::ios::binary);
+    std::ifstream in(PathFromUtf8(DiskCachePath()), std::ios::binary);
     if (!in) return;   // the first run, or the cache was deleted: nothing kept
     std::ostringstream text;
     text << in.rdbuf();
@@ -1163,7 +1163,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
             std::error_code ec;
             if (previewError.empty()) {
-                fs::rename(UltraCanvas::PathFromUtf8(job.argument), job.previewTarget, ec);
+                fs::rename(UltraCanvas::PathFromUtf8(job.argument), UltraCanvas::PathFromUtf8(job.previewTarget), ec);
                 if (ec) previewError = "cannot store the preview: " + ec.message();
                 // Stamped now, whatever time the transfer gave the file, so
                 // the sweep counts its age from this look.

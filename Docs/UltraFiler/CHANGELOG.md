@@ -1,3 +1,13 @@
+#### 2026-10-04 *1.65.1*
+- **Settings, favourites, history, folder views, folder icons and remote
+  previews work under a profile folder outside the Windows code page.** Each
+  read or wrote its file through a getter's `std::string` path handed
+  straight to `fs::` or a stream - converted in the ANSI code page on
+  Windows, so a user name in Thai, Cyrillic or with an emoji left the
+  settings unread and unsaved. They go through `PathFromUtf8` now, found by
+  the path check, which reads the headers' getter and member types since
+  this release (framework changelog).
+
 #### 2026-10-03 *1.65.0*
 - **Favorites carry a heart in every folder.** A file, folder or app added
   to the Favorites view (*Pin > To Favorites*) now shows the Favorites
