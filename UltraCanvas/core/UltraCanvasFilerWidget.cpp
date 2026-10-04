@@ -50,8 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.35.0
-// Last Modified: 2026-10-03
+// Version: 1.35.1
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -14854,7 +14854,12 @@ namespace UltraCanvas {
             }
 
             std::vector<MenuItemData> displayItems;
-            displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
+            // A list shown in the order it was handed over (a history, a
+            // pin order - SetFileListOrderPreserved) cannot be sorted, so
+            // the choice is greyed out rather than offered and ignored.
+            MenuItemData sortSub = MenuItemData::Submenu("Sort", sortItems);
+            sortSub.enabled = !(fileListMode && preserveFileListOrder);
+            displayItems.push_back(std::move(sortSub));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
             displayItems.push_back(MenuItemData::Submenu("File extensions",
                                                          extensionItems));
