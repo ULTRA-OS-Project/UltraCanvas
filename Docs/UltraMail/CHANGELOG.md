@@ -1,3 +1,24 @@
+#### 2026-10-04 *0.10.29*
+- **The message text fits its pane.** An HTML message tall enough to scroll
+  was laid out for the pane's full width, and the vertical scrollbar then took
+  its strip on top: the end of every line ran under the bar and the few
+  hidden pixels raised a horizontal scrollbar across the bottom as well. The
+  body is now laid out at the width beside the bar, so lines wrap before it and
+  a horizontal bar appears only for content that really cannot wrap (a
+  fixed-width table, a large picture).
+- **No dotted line or slivers after scrolling.** Scrolling a message left a
+  faint dotted yellow line just left of the text and slivers of glyphs below
+  it: the edges of the letters, which scrolling never painted over. Fixed in
+  the framework (framework changelog, "A scrolled view no longer leaves glyph
+  fringes beside and below it").
+- **Resizing the window keeps your place in the message.** It sent the
+  message back to its top (framework changelog, "Resizing a window keeps the
+  scroll position of everything in a split pane").
+- **Thin, round scrollbars in the reading pane.** The message text (HTML and
+  plain text) scrolls with the same thin, rounded scrollbar as the message
+  list instead of the wide square one. Plain-text mail needs the framework's
+  new text-area scrollbar style (framework changelog, "TextArea: the
+  scrollbar's thickness and rounding are styleable").
 #### 2026-10-04 *0.10.28*
 - **Mail addresses in a message open a new message.** A `mailto:` link in
   formatted mail, and a `mailto:` or plain address ("support@shop.example")

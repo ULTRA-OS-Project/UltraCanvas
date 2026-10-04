@@ -1,3 +1,11 @@
+#### 2026-10-04 *1.65.1*
+- **Display > Sort is greyed out in the History and Favorites views.** Their
+  lists keep their own order (most recently used first, pin order), so the
+  right-click menu's Sort choices did nothing there; they are now shown
+  greyed out and the submenu no longer opens - matching the toolbar's Sort
+  dropdown, which these views already grey out. The Computer page's folder
+  list gets the same. Built on two framework changes (framework changelog).
+
 #### 2026-10-03 *1.65.0*
 - **Favorites carry a heart in every folder.** A file, folder or app added
   to the Favorites view (*Pin > To Favorites*) now shows the Favorites

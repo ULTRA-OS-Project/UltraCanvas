@@ -3,6 +3,7 @@
 // "Add account" validation, the account record a request becomes, the account
 // source in the analysis database, and the mailbox fetch — driven against a
 // fake IMAP plug-in, so no server and no network.
+// Version: 0.2.0 - a server name that cannot be one is refused
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -190,6 +191,29 @@ TEST(Accounts_ValidateNamesWhatIsMissing) {
     NewAccountRequest noServer = Request();
     noServer.settings.imap.host.clear();
     REQUIRE(OwnAccounts::Validate(noServer, {}).find("server") != std::string::npos);
+}
+
+TEST(Accounts_ValidateCatchesAServerNameThatCannotBeOne) {
+    // The address's @ typed where the server name has a dot.
+    NewAccountRequest at = Request();
+    at.settings.imap.host = "mail@example.com";
+    const std::string error = OwnAccounts::Validate(at, {});
+    REQUIRE(error.find("mail@example.com") != std::string::npos);
+    REQUIRE(error.find("did you mean mail.example.com?") != std::string::npos);
+
+    NewAccountRequest scheme = Request();
+    scheme.settings.imap.host = "imaps://imap.example.com";
+    REQUIRE(!OwnAccounts::Validate(scheme, {}).empty());
+
+    NewAccountRequest withPort = Request();
+    withPort.settings.imap.host = "imap.example.com:993";
+    REQUIRE(OwnAccounts::Validate(withPort, {}).find("port") != std::string::npos);
+
+    // Spaces around a good name are not a fault.
+    NewAccountRequest spaced = Request();
+    spaced.settings.imap.host = " imap.example.com ";
+    REQUIRE(OwnAccounts::Validate(spaced, {}).empty());
+    REQUIRE_EQ(OwnAccounts::MakeAccount(spaced).imap.host, std::string("imap.example.com"));
 }
 
 TEST(Accounts_ValidateRefusesAnAddressUltraMailAlreadyShares) {

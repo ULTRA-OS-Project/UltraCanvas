@@ -1,13 +1,14 @@
 // UltraCanvasUIElement.cpp
 // UI base class implementation; geometry and box model live on
 // UltraCanvas::CSSLayout::Element (the new base).
+// Version: 4.3.0 - ArrangeOwnBox (a box without a layout of the children)
 // Version: 4.2.0 - a borderless background is drawn with the element's corner radius
 //                 (SetBorderRadius), so a rounded box needs no border.
 // Version: 4.1.2 - MapFromLocal/MapToLocal: with an explicit target parent, stop
 //                 the ancestor walk BEFORE folding in the target's own placement
 //                 offset (it was added one level too many). nullptr/window-frame
 //                 callers are byte-for-byte unchanged.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 #include <algorithm>
 #include "UltraCanvasUIElement.h"
@@ -351,7 +352,17 @@ namespace UltraCanvas {
     void UltraCanvasUIElement::Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) {
         Rect2Df oldBounds = finalBounds;
         CSSLayout::Element::Arrange(newFinalRect, ctx);
+        InvalidateArrangeDamage(oldBounds);
+    }
 
+    void UltraCanvasUIElement::ArrangeOwnBox(const Rect2Df& newFinalRect) {
+        Rect2Df oldBounds = finalBounds;
+        finalBounds = newFinalRect;
+        arrangeValid = true;
+        InvalidateArrangeDamage(oldBounds);
+    }
+
+    void UltraCanvasUIElement::InvalidateArrangeDamage(const Rect2Df& oldBounds) {
         Rect2Df damage = oldBounds.Union(finalBounds);
 
         if (auto* parentCont = GetParentContainer()) {

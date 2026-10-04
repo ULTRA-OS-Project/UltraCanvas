@@ -24169,7 +24169,9 @@ paths itself carries the meaning — a most-recently-used history, a ranked
 result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
 over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
 for the file list: `SetSort()` and the Details column headers leave the order
-alone until the widget returns to a folder listing, which is always sorted.
+alone until the widget returns to a folder listing, which is always sorted —
+and the context menu's *Display > Sort* is greyed out, so the choice is not
+offered only to be ignored.
 
 ```cpp
 filer->SetFileListOrderPreserved(true);
@@ -36509,6 +36511,9 @@ CloseActiveSubmenu()
 CloseAllSubmenus()
 CloseMenutree()
 ```
+
+A submenu entry with `enabled = false` is drawn greyed out and does not open
+its submenu — not on hover, not on click, not from the keyboard.
 
 ### Event Callbacks
 
@@ -54791,6 +54796,9 @@ struct TextAreaStyle {
     // Scrollbars
     Color scrollbarTrackColor;
     Color scrollbarColor;
+    int   scrollbarWidth = 15;          // track thickness in px
+    float scrollbarCornerRadius = 0.0f; // 0 = square; 6 with width 12 matches ScrollbarStyle::Modern()
+    int   scrollbarThumbInset = 2;      // gap between track edge and thumb (0 = thumb fills the track)
     
     // Token styles for syntax highlighting
     struct TokenStyles {

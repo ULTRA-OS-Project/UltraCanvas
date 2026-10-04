@@ -278,6 +278,9 @@ CloseAllSubmenus()
 CloseMenutree()
 ```
 
+A submenu entry with `enabled = false` is drawn greyed out and does not open
+its submenu — not on hover, not on click, not from the keyboard.
+
 ### Event Callbacks
 
 ```cpp
