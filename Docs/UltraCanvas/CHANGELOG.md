@@ -1,3 +1,29 @@
+#### 2026-10-04 *0.9.154*
+- **A scrolled view no longer leaves glyph fringes beside and below it.**
+  Text drawn at the edge of a scrolling container marks the pixel just
+  outside it with its anti-aliased fringe, and a scroll repainted exactly the
+  container's box, so that pixel was never painted over: scrolling built up a
+  faint dotted column beside the text (yellow, from sub-pixel anti-aliasing)
+  and slivers of the line scrolled past the bottom edge. A scroll now repaints
+  2px past the container's box.
+- **Resizing a window keeps the scroll position of everything in a split
+  pane.** `UltraCanvasSplitPane::Arrange` first ran the ordinary block layout,
+  which stacked the panes one under the other at their full content height,
+  and only then placed them side by side. That throwaway pass clamped every
+  scroll view inside a pane to the top, so a resize sent a scrolled message,
+  list or document back to its start. The split pane now takes its box with
+  the new `UltraCanvasUIElement::ArrangeOwnBox` and places its panes once,
+  then runs the container's post-layout steps through the new protected
+  `UltraCanvasContainer::FinishArrange`.
+- **TextArea: the scrollbar's thickness and rounding are styleable.** The
+  text area drew its own scrollbars as fixed 15px square bars, so an app could
+  not match them to the thin, rounded `ScrollbarStyle::Modern()` bars of the
+  list views beside it. `TextAreaStyle` now has `scrollbarWidth` (default 15),
+  `scrollbarCornerRadius` (default 0, square) and `scrollbarThumbInset`
+  (default 2); drawing, hit-testing, thumb dragging, the text's reserved
+  width and the hex view's row width all use them. The defaults draw exactly
+  what was drawn before. UltraMail's plain-text reading pane is the first user.
+
 #### 2026-10-04 *0.9.153*
 - **The Filer's Display > Sort is greyed out for a list that keeps its own
   order.** With `SetFileListOrderPreserved(true)` on a file list, sorting
