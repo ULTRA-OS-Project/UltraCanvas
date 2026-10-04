@@ -1,7 +1,8 @@
 // core/UltraCanvasSplitPane.cpp
 // Split pane container that divides content into N draggable panes along one axis
-// Version: 1.2.0
-// Last Modified: 2026-08-28
+// Version: 1.3.0 - Arrange places the panes once (no block-layout pass first, which
+//                 reset the scroll position of everything in them on a resize)
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplitPane.h"
@@ -919,8 +920,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSplitPane::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
-        UltraCanvasContainer::Arrange(finalRect, ctx);
+        // The panes are placed by PerformLayout alone. Container::Arrange would
+        // first lay them out as ordinary blocks - stacked, each as tall as its
+        // content - and that throwaway pass clamped every scroll view inside a
+        // pane to the top: resizing the window sent a scrolled message, list or
+        // document back to its start.
+        ArrangeOwnBox(finalRect);
         PerformLayout(ctx);
+        FinishArrange();
     }
 
     void UltraCanvasSplitPane::BeginSplitterDrag(size_t splitterIndex) {

@@ -5,8 +5,15 @@
   hidden pixels raised a horizontal scrollbar across the bottom as well. The
   body is now laid out at the width beside the bar, so lines wrap before it and
   a horizontal bar appears only for content that really cannot wrap (a
-  fixed-width table, a large picture). A sliver of the line scrolled past the
-  bottom edge is no longer left behind below the text.
+  fixed-width table, a large picture).
+- **No dotted line or slivers after scrolling.** Scrolling a message left a
+  faint dotted yellow line just left of the text and slivers of glyphs below
+  it: the edges of the letters, which scrolling never painted over. Fixed in
+  the framework (framework changelog, "A scrolled view no longer leaves glyph
+  fringes beside and below it").
+- **Resizing the window keeps your place in the message.** It sent the
+  message back to its top (framework changelog, "Resizing a window keeps the
+  scroll position of everything in a split pane").
 - **Thin, round scrollbars in the reading pane.** The message text (HTML and
   plain text) scrolls with the same thin, rounded scrollbar as the message
   list instead of the wide square one. Plain-text mail needs the framework's

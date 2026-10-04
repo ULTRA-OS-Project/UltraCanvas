@@ -539,11 +539,6 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // own scrollbars precisely so the host scrolls instead.
             auto scroll = std::make_shared<BodyScrollView>("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            // A container draws its children 1px past its content box, and a
-            // scroll repaints only the container itself: without a little
-            // padding the line scrolled past the bottom edge left slivers of
-            // glyphs below the body that were never painted over.
-            scroll->SetPadding(2.0f, 0.0f);
             // A deliberate scroll view, so it opts in (containers do not
             // scroll unless asked): the vertical bar for a tall message, and a
             // horizontal one too, so content that genuinely cannot reflow
