@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iterator>
+#include <regex>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -138,6 +139,52 @@ namespace {
         return ec ? std::string() : PathToUtf8(p);
     }
 
+    // Escapes text for label markup.
+    std::string EscapeMarkup(const std::string& text) {
+        std::string out;
+        for (char c : text) {
+            switch (c) {
+                case '&': out += "&amp;"; break;
+                case '<': out += "&lt;"; break;
+                case '>': out += "&gt;"; break;
+                default: out += c;
+            }
+        }
+        return out;
+    }
+
+    // Turns the Anthropic addresses in a status message (claude.ai,
+    // claude.com/claude-code, with or without https://) into links: returns
+    // the label markup and fills `links` with their byte ranges in the
+    // rendered text - which is the plain text, so the offsets are its own.
+    std::string LinkifyClaudeAddresses(const std::string& text,
+                                       std::vector<LabelTextLink>& links) {
+        static const std::regex kAddress(
+                R"((https?://)?(claude\.ai|claude\.com)(/[A-Za-z0-9_\-./?=&%#]*)?)");
+        std::string markup;
+        size_t done = 0;
+        for (auto it = std::sregex_iterator(text.begin(), text.end(), kAddress);
+             it != std::sregex_iterator(); ++it) {
+            size_t start = static_cast<size_t>(it->position());
+            std::string address = it->str();
+            // A sentence's full stop or comma after the address is not part of it.
+            while (!address.empty() && (address.back() == '.' || address.back() == ','))
+                address.pop_back();
+            const size_t end = start + address.size();
+            markup += EscapeMarkup(text.substr(done, start - done));
+            markup += "<span foreground=\"#C9643F\" underline=\"single\">" +
+                      EscapeMarkup(address) + "</span>";
+            LabelTextLink link;
+            link.startByte = static_cast<int>(start);
+            link.endByte = static_cast<int>(end);
+            link.href = address.rfind("http", 0) == 0 ? address : "https://" + address;
+            links.push_back(std::move(link));
+            done = end;
+        }
+        markup += EscapeMarkup(text.substr(done));
+        return markup;
+    }
+
     // Puts text in a markdown blockquote line by line, so a multi-line tool
     // summary or error stays inside the quote.
     std::string Quote(const std::string& text) {
@@ -249,12 +296,14 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildSignInPage() {
     createAccount_->SetOnClick([this]() { CreateAccount(); });
     signInPage_->AddChild(createAccount_);
 
-    signInStatus_ = MakeLabel("uc-signin-status", "Checking Claude Code\xE2\x80\xA6",
-                              kTextFontSize, kMutedTextColor);
+    signInStatus_ = MakeLabel("uc-signin-status", "", kTextFontSize, kMutedTextColor);
     signInStatus_->SetWrap(TextWrap::WrapWord);
     signInStatus_->SetAlignment(TextAlignment::Center);
     signInStatus_->size.width = CSSLayout::Dimension::Px(460);
+    signInStatus_->SetShowLinkTooltips(true);
+    signInStatus_->onLinkActivated = [](const std::string& url) { OpenURL(url); };
     signInPage_->AddChild(signInStatus_);
+    SetSignInStatus("Checking Claude Code\xE2\x80\xA6");
 
     // Shown while `claude auth login` waits: when the browser could not be
     // opened, or the sign-in page ends on a code to paste, the URL opens from
@@ -408,7 +457,14 @@ void UltraClaudeWindow::ShowChatView() {
 // =================================================================== sign-in
 
 void UltraClaudeWindow::SetSignInStatus(const std::string& text) {
-    if (signInStatus_) signInStatus_->SetText(text);
+    if (!signInStatus_) return;
+    // Anthropic addresses in the message (claude.ai, claude.com/claude-code)
+    // are links: coloured, underlined, and opened in the browser on a click.
+    std::vector<LabelTextLink> links;
+    const std::string markup = LinkifyClaudeAddresses(text, links);
+    signInStatus_->SetTextIsMarkup(true);
+    signInStatus_->SetText(markup);
+    signInStatus_->SetTextLinks(std::move(links));
 }
 
 void UltraClaudeWindow::CheckAuthStatus() {
@@ -442,7 +498,11 @@ void UltraClaudeWindow::CheckAuthStatus() {
 void UltraClaudeWindow::ApplyAuthStatus(bool cliFound, bool loggedIn, const std::string& detail) {
     loggedIn_ = loggedIn;
     if (!cliFound) {
-        SetSignInStatus("Claude Code was not found (" + detail + "). Install it from "
+        // The reason is a sentence of its own; its full stop would double up
+        // with the bracket's.
+        std::string reason = detail;
+        while (!reason.empty() && (reason.back() == '.' || reason.back() == ' ')) reason.pop_back();
+        SetSignInStatus("Claude Code was not found (" + reason + "). Install it from "
                         "claude.com/claude-code, then reopen UltraClaude.");
         logIn_->SetText("Log in");
         logIn_->SetDisabled(true);

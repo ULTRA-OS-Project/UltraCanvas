@@ -12,6 +12,11 @@
   break it was copied with. A wrong code shows the CLI's answer ("Login
   failed: ...") and Log in can be chosen again. The long sign-in URL no longer
   replaces the status line.
+- **Links in the sign-in messages open the browser.** claude.ai (after
+  Create account) and claude.com/claude-code (when Claude Code is not
+  installed) are underlined in the accent colour and open in the browser on a
+  click, with the address as a tooltip - through `UltraCanvasLabel`'s text
+  links. The not-found message no longer ends in a doubled ".).".
 - The hidden code field no longer leaves its caret blinking on the page
   (framework fix, `changelog.d/caret-left-by-hidden-input.md`).
 
