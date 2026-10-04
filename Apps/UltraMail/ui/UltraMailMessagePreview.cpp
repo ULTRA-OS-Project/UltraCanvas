@@ -815,8 +815,25 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetVisible(true);
 }
 
+void MessagePreview::ShowBodyNote(const std::string& note) {
+    if (!BodyMissing()) return;
+    RenderBody(note, false);
+}
+
+void MessagePreview::BodyArrived(const MessageEnvelope& env) {
+    if (!BodyMissing() || !Shows(env.accountId, env.folder, env.uid)) return;
+    std::error_code ec;
+    const fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
+                        / PathFromUtf8(SanitizeFolder(env.folder))
+                        / (std::to_string(env.uid) + ".eml");
+    if (!fs::exists(path, ec)) return;       // still not there: nothing new to show
+    const MessageEnvelope shown = curEnv_;   // Show replaces curEnv_
+    Show(shown);
+}
+
 void MessagePreview::Clear() {
     hasMessage_ = false;
+    bodyMissing_ = false;
     ++showToken_;
     curHtml_.clear();
     inlineImages_ = InlineImages{};
@@ -905,7 +922,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
     std::error_code ec;
-    if (!fs::exists(path, ec)) {
+    bodyMissing_ = !fs::exists(path, ec);
+    if (bodyMissing_) {
         RenderBody("(message body not downloaded yet)", false);
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
@@ -982,6 +1000,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     current_.to        = toList;
     current_.subject   = subject;
     current_.date      = FormatShortDate(env.date);
+
+    // Not downloaded (the sync has not got to it, or its download failed):
+    // the app fetches it now; BodyArrived shows it.
+    if (bodyMissing_ && onBodyMissing) onBodyMissing(env);
 }
 
 } // namespace UltraMail

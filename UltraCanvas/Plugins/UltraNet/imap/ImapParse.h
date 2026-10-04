@@ -4,6 +4,13 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.5.0 - DetectFolderRole: by the last level after the server's own
+//                  separator, German names, a migrated "INBOX^" prefix; only
+//                  INBOX itself is the inbox
+// Version: 0.4.0 - numbers are read as unsigned 32-bit values on every platform
+//                  (ParseImapNumber): strtol's `long` is 32 bits on Windows, so
+//                  a UIDVALIDITY, UIDNEXT or UID above 2147483647 read there as
+//                  2147483647
 // Version: 0.3.0 - UidExpungeCommand
 // Version: 0.2.0 - RawHeaderValue, SearchByMessageIdCommand (APPEND's flags)
 // Version: 0.1.0
@@ -15,6 +22,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -37,6 +45,27 @@ inline std::string Lower(const std::string& s) {
     return r;
 }
 
+// A protocol number (UID, UIDVALIDITY, UIDNEXT, a count) at `p`: an IMAP
+// nz-number is unsigned 32-bit (RFC 3501), up to 4294967295. Read as
+// unsigned long long, never `long`, which is 32 bits on Windows and stops at
+// 2147483647 there - one value for every larger UIDVALIDITY, so a renumbered
+// mailbox looked unchanged on Windows only. False when no digit is at `p` or
+// the value does not fit; `end` receives the position after the digits.
+inline bool ParseImapNumber(const std::string& s, std::size_t p, uint32_t& out,
+                            std::size_t* end = nullptr) {
+    if (p >= s.size() || s[p] < '0' || s[p] > '9') return false;
+    unsigned long long v = 0;
+    std::size_t i = p;
+    while (i < s.size() && s[i] >= '0' && s[i] <= '9') {
+        v = v * 10 + static_cast<unsigned long long>(s[i] - '0');
+        if (v > 0xFFFFFFFFull) return false;
+        ++i;
+    }
+    if (end) *end = i;
+    out = static_cast<uint32_t>(v);
+    return true;
+}
+
 // ---- SEARCH ----------------------------------------------------------------
 
 // Parse "* SEARCH 1 2 3 4 5" -> {1,2,3,4,5}. Tolerates multi-line responses.
@@ -48,11 +77,11 @@ inline std::vector<uint32_t> ParseSearchUids(const std::string& body) {
     while (pos < body.size()) {
         while (pos < body.size() && (body[pos] == ' ' || body[pos] == '\t')) ++pos;
         if (pos >= body.size() || body[pos] == '\r' || body[pos] == '\n') break;
-        char* end = nullptr;
-        long v = std::strtol(body.c_str() + pos, &end, 10);
-        if (end == body.c_str() + pos) break;
-        if (v > 0) uids.push_back(static_cast<uint32_t>(v));
-        pos = static_cast<std::size_t>(end - body.c_str());
+        uint32_t v = 0;
+        std::size_t end = pos;
+        if (!ParseImapNumber(body, pos, v, &end)) break;
+        if (v > 0) uids.push_back(v);
+        pos = end;
     }
     return uids;
 }
@@ -186,10 +215,9 @@ ParseAllFlags(const std::string& body) {
         if (up == std::string::npos) continue;
         std::size_t np = up + 3;
         while (np < line.size() && (line[np] == ' ' || line[np] == '\t')) ++np;
-        char* end = nullptr;
-        long uid = std::strtol(line.c_str() + np, &end, 10);
-        if (end == line.c_str() + np || uid <= 0) continue;
-        out.emplace_back(static_cast<uint32_t>(uid), ParseFetchFlags(line));
+        uint32_t uid = 0;
+        if (!ParseImapNumber(line, np, uid) || uid == 0) continue;
+        out.emplace_back(uid, ParseFetchFlags(line));
     }
     return out;
 }
@@ -205,9 +233,17 @@ inline std::vector<std::string> SplitAttributes(const std::string& parenGroup) {
     return attrs;
 }
 
-// SPECIAL-USE (RFC 6154) role from attributes, with an English name fallback.
+// SPECIAL-USE (RFC 6154) role from attributes, else from the folder's name.
+// The name is matched by its last level (after `delimiter`, the separator the
+// server listed; '/' or '.' when not given), in the English and German names
+// mail servers use ("Sent Items", "Gesendete Objekte", "Papierkorb", …) - names
+// outside ASCII as their modified UTF-7 wire form. A leading "INBOX^" in that
+// level is left out: it is how a folder came across from a server with another
+// separator (Courier's "INBOX.Sent" became "INBOX.INBOX^Sent"). Only the folder
+// named INBOX itself is the inbox - not a sub-folder that happens to be called so.
 inline std::string DetectFolderRole(const std::vector<std::string>& attributes,
-                                    const std::string& name) {
+                                    const std::string& name,
+                                    const std::string& delimiter = "") {
     for (const auto& a : attributes) {
         std::string la = Lower(a);
         if (la == "\\sent")    return "sent";
@@ -217,16 +253,31 @@ inline std::string DetectFolderRole(const std::vector<std::string>& attributes,
         if (la == "\\archive") return "archive";
         if (la == "\\all")     return "all";
     }
-    std::string ln = Lower(name);
-    // Strip a leading path so "INBOX/Sent" matches "sent".
-    std::size_t slash = ln.find_last_of("/.");
-    std::string leaf = slash == std::string::npos ? ln : ln.substr(slash + 1);
-    if (leaf == "inbox")   return "inbox";
-    if (leaf == "sent" || leaf == "sent items" || leaf == "sent messages") return "sent";
-    if (leaf == "drafts")  return "drafts";
-    if (leaf == "junk" || leaf == "spam") return "junk";
-    if (leaf == "trash" || leaf == "deleted" || leaf == "deleted items") return "trash";
-    if (leaf == "archive") return "archive";
+    const std::string ln = Lower(name);
+    if (ln == "inbox") return "inbox";
+    const std::size_t cut = delimiter.empty() ? ln.find_last_of("/.")
+                                              : ln.rfind(Lower(delimiter));
+    std::string leaf = cut == std::string::npos
+        ? ln : ln.substr(cut + (delimiter.empty() ? 1 : delimiter.size()));
+    if (leaf.rfind("inbox^", 0) == 0) leaf = leaf.substr(6);
+    auto any = [&leaf](std::initializer_list<const char*> names) {
+        for (const char* n : names) if (leaf == n) return true;
+        return false;
+    };
+    if (any({"sent", "sent items", "sent messages", "sent mail", "sent-mail",
+             "gesendet", "gesendete objekte", "gesendete elemente",
+             "gesendete nachrichten"}))
+        return "sent";
+    if (any({"drafts", "draft", "entw&apw-rfe", "entwurf"}))
+        return "drafts";
+    if (any({"junk", "spam", "junk e-mail", "junk email", "junk-e-mail", "bulk mail",
+             "spamverdacht"}))
+        return "junk";
+    if (any({"trash", "deleted", "deleted items", "deleted messages", "bin",
+             "papierkorb", "gel&apy-schte objekte", "gel&apy-schte elemente"}))
+        return "trash";
+    if (any({"archive", "archives", "archiv"}))
+        return "archive";
     return "";
 }
 
@@ -276,7 +327,7 @@ inline bool ParseListLine(const std::string& line, UltraNetMailFolder& out) {
     out.selectable = true;
     for (const auto& a : out.attributes)
         if (Lower(a) == "\\noselect") out.selectable = false;
-    out.role = DetectFolderRole(out.attributes, out.name);
+    out.role = DetectFolderRole(out.attributes, out.name, out.delimiter);
     return true;
 }
 
@@ -298,17 +349,19 @@ inline std::vector<UltraNetMailFolder> ParseListResponse(const std::string& body
 // ---- STATUS ----------------------------------------------------------------
 
 // Parse '* STATUS "INBOX" (MESSAGES 3 RECENT 1 UIDNEXT 12 UIDVALIDITY 7 UNSEEN 2)'.
+// The items are looked for after the last '(' only, so a mailbox whose name
+// holds one of the words ("Recent messages") cannot hide the real value.
 inline UltraNetMailboxStatus ParseStatusResponse(const std::string& body) {
     UltraNetMailboxStatus st;
     std::string low = Lower(body);
+    const std::size_t items = low.rfind('(');
     auto readNum = [&](const char* key, uint32_t& dst) {
-        std::size_t p = low.find(key);
+        std::size_t p = low.find(key, items == std::string::npos ? 0 : items);
         if (p == std::string::npos) return;
         p += std::string(key).size();
         while (p < body.size() && (body[p] == ' ' || body[p] == '\t')) ++p;
-        char* end = nullptr;
-        long v = std::strtol(body.c_str() + p, &end, 10);
-        if (end != body.c_str() + p && v >= 0) dst = static_cast<uint32_t>(v);
+        uint32_t v = 0;
+        if (ParseImapNumber(body, p, v)) dst = v;
     };
     readNum("messages",    st.messages);
     readNum("recent",      st.recent);

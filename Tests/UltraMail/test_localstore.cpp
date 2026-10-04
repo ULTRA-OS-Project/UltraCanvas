@@ -304,6 +304,42 @@ TEST(needs_answer_rules_only_people_written_to) {
     REQUIRE_EQ(na[0].uid, (int64_t)1);
 }
 
+// Mail is addressed "Name <address>" far more often than bare - by the
+// composer's completion and by every other mail program. Such a recipient is
+// written to as much as a bare one; and the set follows new Sent mail.
+TEST(needs_answer_rules_written_to_reads_named_recipients) {
+    LocalStore s = FreshStore("narules-named");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "maya@gmail.com", {"erika@example.com"})).success);
+    REQUIRE(s.UpsertMessage(Incoming("erika", 2, "ravi@x.com", {"erika@example.com"})).success);
+    REQUIRE(s.UpsertMessage(Incoming("erika", 3, "noreply@shop.com", {"erika@example.com"})).success);
+    NeedsAnswerRules rules; rules.onlyWrittenTo = true;
+    s.SetNeedsAnswerRules(rules);
+
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    REQUIRE(s.UpsertFolder(sent).success);
+    MessageEnvelope mine; mine.accountId = "erika"; mine.folder = "Sent"; mine.uid = 1;
+    mine.fromAddr = "erika@example.com"; mine.to = {"Maya Bennett <Maya@Gmail.com>"};
+    mine.date = 900;
+    REQUIRE(s.UpsertMessage(mine).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);                      // Maya only
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+
+    // A reply to Ravi lands in Sent: he counts from then on.
+    mine.uid = 2; mine.to = {"\"Singh, Ravi\" <ravi@x.com>", "team@x.com"};
+    REQUIRE(s.UpsertMessage(mine).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 2);
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)2);
+
+    // The user's own mark counts whoever sent it.
+    REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 3, true).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 3);
+}
+
 TEST(unread_counts_inbox_unseen) {
     LocalStore s = FreshStore("unread");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");

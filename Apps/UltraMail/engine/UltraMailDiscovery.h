@@ -4,6 +4,7 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
+// Version: 0.5.0 - IncomingMailboxChanged: new settings that reach another mailbox
 // Version: 0.4.0 - ServerNameProblem: a typed server name checked before it is tried
 // Version: 0.3.0 - settings resolved per account (stored, else presets);
 //                  a starting point for the manual settings page
@@ -76,5 +77,14 @@ bool LooksLikeEmailAddress(const std::string& email);
 // bracketed IPv6 literals and international (UTF-8) names pass, and whether the
 // name exists is for the sign-in check to find out.
 std::string ServerNameProblem(const std::string& host);
+
+// Whether new incoming-server settings reach a different mailbox than `before`
+// did: another host or another user name (both compared without regard to
+// case or surrounding spaces). A change of port or security on the same host
+// and user is the same mailbox. False when `before` names no host - there was
+// no mailbox to differ from. The mail held for an account came from `before`,
+// so when this is true it is dropped and fetched anew. Pure.
+bool IncomingMailboxChanged(const MailServerSettings& before,
+                            const MailServerSettings& after);
 
 } // namespace UltraMail

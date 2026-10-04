@@ -12,6 +12,7 @@
 #include "UltraNetFtp.h"      // UltraNetFtpEntry reused by IFileShareProtocolPlugin
 #include "UltraNetHttp.h"     // UltraNetHttpHeaders used by IRpcProtocolPlugin
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -360,6 +361,32 @@ public:
         (void)serverUrl; (void)folder; (void)uid; (void)options;
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      "ExpungeMessage not implemented");
+    }
+
+    // Envelope-only fetch of exactly the messages `uids` names, newest first,
+    // streamed like FetchEnvelopes. For mail an incremental fetch ("UID > the
+    // highest one held") can never reach again: a message skipped by an
+    // interrupted sync, or one whose header could not be read the first time.
+    // A UID the server no longer has is skipped, and so is a message whose
+    // header could not be read (the caller asks again next time). The default
+    // fetches from the lowest UID asked for with FetchEnvelopes and keeps the
+    // ones asked for, so plug-ins that do not override it (and test fakes)
+    // still serve it. Added last, like FetchAllFlags, so the existing vtable is
+    // undisturbed.
+    virtual UltraNetResult FetchEnvelopesByUid(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const std::vector<uint32_t>& uids,
+        const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope,
+        const UltraNetMailOptions& options) {
+        if (uids.empty()) return UltraNetResult::Ok();
+        std::vector<uint32_t> wanted(uids);
+        std::sort(wanted.begin(), wanted.end());
+        return FetchEnvelopes(serverUrl, folder, wanted.front() > 0 ? wanted.front() - 1 : 0,
+            [&wanted, &onEnvelope](const UltraNetMailEnvelope& e) {
+                if (std::binary_search(wanted.begin(), wanted.end(), e.uid)) onEnvelope(e);
+            },
+            options);
     }
 };
 

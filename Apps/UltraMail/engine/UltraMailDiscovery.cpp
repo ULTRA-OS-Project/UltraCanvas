@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.4.0 - IncomingMailboxChanged
 // Version: 0.3.0 - ServerNameProblem
 // Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -43,6 +44,27 @@ bool LooksLikeEmailAddress(const std::string& email) {
     for (unsigned char c : email)
         if (std::isspace(c)) return false;
     return true;
+}
+
+bool IncomingMailboxChanged(const MailServerSettings& before,
+                            const MailServerSettings& after) {
+    auto norm = [](const std::string& s) {
+        std::size_t a = 0, b = s.size();
+        while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+        while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+        std::string out = s.substr(a, b - a);
+        for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return out;
+    };
+    // "mail.example.com." is the same host as "mail.example.com".
+    auto hostOf = [&norm](const std::string& s) {
+        std::string h = norm(s);
+        while (!h.empty() && h.back() == '.') h.pop_back();
+        return h;
+    };
+    const std::string host = hostOf(before.host);
+    if (host.empty()) return false;
+    return host != hostOf(after.host) || norm(before.username) != norm(after.username);
 }
 
 std::string ServerNameProblem(const std::string& host) {

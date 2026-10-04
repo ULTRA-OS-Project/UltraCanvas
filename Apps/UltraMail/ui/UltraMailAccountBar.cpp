@@ -87,6 +87,7 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
                          const std::string& selectedAccountId) {
     if (!root_) Build();
     root_->ClearChildren();
+    tiles_.clear();
     if (accounts.empty()) return;
     if (accounts.size() == 1)
         BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
@@ -145,7 +146,10 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         // baseline is a minimum width (a flex row honours boxConstraints on
         // its main axis).
         auto tile = std::make_shared<Theme::ClickSurface>("acctTile_" + acc, [this, acc]() {
-            if (onSelectAccount) onSelectAccount(acc);
+            // A copy: whatever the handler does to the bar, the id it was
+            // given stays valid (the captured one lives in this tile).
+            const std::string id = acc;
+            if (onSelectAccount) onSelectAccount(id);
         });
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
@@ -194,6 +198,17 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         tile->AddChild(counters);
 
         root_->AddChild(tile);
+        tiles_[acc] = tile;
+    }
+}
+
+void AccountBar::SetSelected(const std::string& accountId) {
+    for (const auto& [acc, tile] : tiles_) {
+        const bool selected = (acc == accountId);
+        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBorders(selected ? 2.0f : 1.0f,
+                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+        tile->RequestRedraw();
     }
 }
 

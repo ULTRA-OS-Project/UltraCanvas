@@ -9,6 +9,13 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
+//                  longer lists dropped
+// Version: 0.2.0 - RefreshFolder: new mail, the reconcile with the server's
+//                  list, and the mail an incremental fetch can no longer reach
+//                  (skipped by an interrupted sync, stored blank, or below a
+//                  stale highest UID); a cache whose UIDs the mailbox has not
+//                  handed out yet (UIDNEXT) is dropped like a UIDVALIDITY change
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -22,16 +29,27 @@
 #include <functional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace UltraMail {
 
 struct SyncStats {
     int folders  = 0;   // folders upserted
+    int foldersRemoved = 0;   // folders the server no longer lists, dropped with their mail
+    // The folder asked for could not be opened because the server no longer
+    // has it (deleted or renamed there); it was dropped. Not a failure.
+    bool folderGone = false;
     int messages = 0;   // envelopes upserted
     int bodies   = 0;   // full bodies fetched + cached
     int reconciled = 0; // existing messages whose flags were corrected from server
     int expunged   = 0; // local messages dropped because the server no longer has them
     int bodiesRemoved = 0; // cached .eml files deleted with them, or left over from before
+    int repaired   = 0; // messages the server lists that the store lacked (or held blank)
+    // What the server's STATUS said the folder holds; -1 when it was not read.
+    int serverMessages = -1;
+    // The folder's cache was dropped and fetched again: the server renumbered
+    // the mailbox, or the cache held UIDs the mailbox has not handed out.
+    bool cacheReset = false;
 };
 
 struct SyncOutcome {
@@ -82,10 +100,20 @@ public:
         : store_(store), mailbox_(mailbox), emlDir_(std::move(emlDir)) {}
 
     // LIST folders on the server and upsert them for the account (with role
-    // detection carried through from the plug-in).
+    // detection and the hierarchy separator carried through from the
+    // plug-in). A folder stored before that the list no longer names - deleted
+    // or renamed on the server - is dropped with its messages and cached
+    // bodies; never on an empty list, and never INBOX.
     SyncOutcome SyncFolders(const std::string& accountId,
                             const std::string& serverUrl,
                             const UltraNetMailOptions& options);
+
+    // After `folder` could not be opened: read the folder list again (which
+    // drops a folder the server no longer names) and say whether the folder is
+    // still there. True when the list cannot be read - only a list that no
+    // longer names it says it is gone.
+    bool FolderStillListed(const std::string& accountId, const std::string& folder,
+                           const std::string& serverUrl, const UltraNetMailOptions& options);
 
     // Fetch envelopes with UID greater than the highest already stored, upsert
     // them, and — when fetchBodies is true — cache each new message's raw body.
@@ -99,6 +127,40 @@ public:
                              const UltraNetMailOptions& options,
                              bool fetchBodies = false,
                              const std::function<void(const MessageEnvelope&)>& onMessageStored = {});
+
+    // The whole refresh of one folder, what a sync runs for it: new mail
+    // (SyncMessages), then the reconcile with the server's full list
+    // (ReconcileFlags: read state, mail gone from the server), then the
+    // envelopes (and, with fetchBodies, bodies) of every message the server
+    // lists that the store does not hold or holds blank (FetchMissing) - mail
+    // an incremental fetch by the highest UID can never reach again. Fails
+    // only when the new-mail step fails; the reconcile and the repair are
+    // best-effort.
+    SyncOutcome RefreshFolder(const std::string& accountId,
+                              const std::string& folder,
+                              const std::string& serverUrl,
+                              const UltraNetMailOptions& options,
+                              bool fetchBodies = false,
+                              const std::function<void(const MessageEnvelope&)>& onMessageStored = {});
+
+    // Fetch and store the envelopes of the named messages (newest first), and
+    // with fetchBodies their bodies; `onMessageStored` as for SyncMessages.
+    // A UID the server no longer has is skipped.
+    SyncOutcome FetchMissing(const std::string& accountId,
+                             const std::string& folder,
+                             const std::vector<uint32_t>& uids,
+                             const std::string& serverUrl,
+                             const UltraNetMailOptions& options,
+                             bool fetchBodies = false,
+                             const std::function<void(const MessageEnvelope&)>& onMessageStored = {});
+
+    // Download the bodies the cache lacks for the folder's newest `limit`
+    // messages: a body whose download failed (FetchMessageBodies is best-
+    // effort) was otherwise never fetched again, and the reading pane said
+    // "not downloaded yet" for good. Returns how many were cached.
+    int FetchMissingBodies(const std::string& accountId, const std::string& folder,
+                           const std::string& serverUrl, const UltraNetMailOptions& options,
+                           int limit = 100);
 
     // Fetch and cache one message body; returns the .eml path (empty on failure).
     std::string FetchBody(const std::string& accountId, const std::string& folder,
@@ -132,10 +194,13 @@ public:
     // another client and expunge locally-held messages the server no longer
     // lists. New UIDs are left to SyncMessages. Non-fatal: if the server flag
     // list cannot be fetched (unsupported backend or a transient error), nothing
-    // is expunged and the call still reports success.
+    // is expunged and the call still reports success. `missing`, when given,
+    // receives the UIDs the server listed that the store does not hold (empty
+    // when the server's list could not be read).
     SyncOutcome ReconcileFlags(const std::string& accountId, const std::string& folder,
                                const std::string& serverUrl,
-                               const UltraNetMailOptions& options);
+                               const UltraNetMailOptions& options,
+                               std::vector<uint32_t>* missing = nullptr);
 
     // Drop a message from the local index AND its cached body - the two always
     // go together, or the body cache only ever grows (and another reader of it,
@@ -159,6 +224,11 @@ public:
                             const UltraNetMailOptions& options);
 
 private:
+    // An envelope from the server as the store keeps it (decoded headers,
+    // parsed date, local flags).
+    MessageEnvelope ToStored(const std::string& accountId, const std::string& folder,
+                             const UltraNetMailEnvelope& e) const;
+
     LocalStore&             store_;
     IMailboxProtocolPlugin& mailbox_;
     std::string             emlDir_;

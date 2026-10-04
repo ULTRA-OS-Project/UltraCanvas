@@ -14,6 +14,8 @@ set(ULTRAMAIL_TEST_SOURCES
     test_recipientcomplete.cpp
     test_inlineimages.cpp
     test_messagefilter.cpp
+    test_messagesort.cpp
+    test_foldernames.cpp
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp
