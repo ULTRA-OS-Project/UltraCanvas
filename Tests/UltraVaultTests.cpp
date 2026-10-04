@@ -19,6 +19,7 @@
 #include "UltraVault/UltraVault.h"
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -245,7 +246,10 @@ static void TestDeviceKeyVault(const fs::path& dir) {
     // A default-constructed vault has nowhere to go.
     {
         DeviceKeyVault none;
+        Check(none.GetLastUnlockStatus() == UnlockStatus::Locked, "status is Locked before any unlock");
         Check(!none.TryAutoUnlock(), "no directory: auto-unlock fails");
+        Check(none.GetLastUnlockStatus() == UnlockStatus::IoError,
+              "no directory: auto-unlock says IoError");
         Check(none.Unlock("x") == UnlockStatus::IoError, "no directory: Unlock is IoError");
         Check(!none.PersistDeviceKey("x"), "no directory: no device key");
     }
@@ -256,6 +260,7 @@ static void TestDeviceKeyVault(const fs::path& dir) {
         DeviceKeyVault vault(dir.string(), kTestProfile);
         Check(vault.TryAutoUnlock(), "fresh directory auto-unlocks");
         Check(vault.IsUnlocked(), "unlocked after auto-unlock");
+        Check(vault.GetLastUnlockStatus() == UnlockStatus::Ok, "status is Ok after auto-unlock");
         Check(fs::exists(dir / "device.key", ec), "device.key written");
         Check(ReadFileBytes(dir / "device.key").size() == 64, "device key is 32 random bytes as hex");
         Check(vault.TryAutoUnlock(), "auto-unlock is idempotent while open");
@@ -317,6 +322,8 @@ static void TestDeviceKeyVault(const fs::path& dir) {
         DeviceKeyVault vault(dir.string(), kTestProfile);
         Check(vault.Unlock("not the passphrase") == UnlockStatus::WrongPassphrase,
               "wrong passphrase is WrongPassphrase");
+        Check(vault.GetLastUnlockStatus() == UnlockStatus::WrongPassphrase,
+              "and the status remembers it");
         Check(!vault.IsUnlocked(), "stays locked on wrong passphrase");
         vault.Lock();
     }
@@ -328,6 +335,8 @@ static void TestDeviceKeyVault(const fs::path& dir) {
         fs::remove(dir / "device.key", ec);
         DeviceKeyVault vault(dir.string(), kTestProfile);
         Check(!vault.TryAutoUnlock(), "existing vault without a device key asks for a prompt");
+        Check(vault.GetLastUnlockStatus() == UnlockStatus::Locked,
+              "and says Locked: a password is needed, not a repair");
         Check(vault.Exists(), "the vault was not replaced");
         const std::string devicePass = ReadFileBytes(dir / "device.key");
         Check(devicePass.empty(), "no device key was invented");
@@ -380,6 +389,38 @@ static void TestDeviceKeyVault(const fs::path& dir) {
     fs::remove_all(dir, ec);
 }
 
+// A profile folder named in a script the Windows code page cannot spell - a
+// Thai user name, here with an emoji. The device key's path used to reach the
+// filesystem as a std::string, which Windows reads in the ANSI code page, so
+// the key could not be found, written or protected and the vault never
+// opened. Every path now goes through PathFromUtf8; on Linux and macOS this
+// passes either way, and it is the case the Windows build has to get right.
+static void TestDeviceKeyVaultInUtf8Folder(const fs::path& base) {
+    using UltraVault::DeviceKeyVault;
+    using UltraVault::UnlockStatus;
+    std::printf("device-key vault in a Thai-and-emoji folder\n");
+    const fs::path dir = base / UltraCanvas::PathFromUtf8(
+            "\xE0\xB8\x97\xE0\xB8\x94\xE0\xB8\xAA\xE0\xB8\xAD\xE0\xB8\x9A "
+            "\xF0\x9F\x94\x91 vault");   // "ทดสอบ 🔑 vault"
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir), kTestProfile);
+        Check(vault.TryAutoUnlock(), "a Thai-and-emoji folder auto-unlocks");
+        Check(fs::exists(dir / "device.key", ec), "its device key is written there");
+        Check(vault.Store("erika", "pw-utf8"), "and a secret stored there");
+        vault.Lock();
+    }
+    {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir), kTestProfile);
+        Check(vault.TryAutoUnlock(), "the device key there reopens it");
+        std::string got;
+        Check(vault.Retrieve("erika", got) && got == "pw-utf8", "the secret survives reopen");
+        vault.Lock();
+    }
+    fs::remove_all(base, ec);
+}
+
 int main() {
     std::printf("UltraVault tests\n");
 
@@ -389,6 +430,7 @@ int main() {
     if (UltraCrypt_IsAvailable()) {
         TestFileBackend("ultravault_test.vault");
         TestDeviceKeyVault(fs::temp_directory_path() / "ultravault_devicekey_test");
+        TestDeviceKeyVaultInUtf8Folder(fs::temp_directory_path() / "ultravault_utf8_test");
     } else {
         std::printf("file backend: SKIPPED (UltraCrypt backend "
                     "unavailable — built without libsodium)\n");
@@ -407,8 +449,25 @@ int main() {
               "device-key vault reports Unavailable without crypto");
         Check(!vault.TryAutoUnlock() && !fs::exists(dir / "device.key"),
               "no device key is left behind when the vault cannot be created");
+        // And it says why, so an application can tell the user this build
+        // cannot keep passwords - not just that the vault did not open.
+        Check(vault.GetLastUnlockStatus() == UltraVault::UnlockStatus::Unavailable,
+              "auto-unlock without crypto says Unavailable");
+        Check(UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault.GetLastUnlockStatus())
+                      .find("libsodium") != std::string::npos,
+              "and its description names the missing library");
         std::error_code ec;
         fs::remove_all(dir, ec);
+    }
+
+    for (UltraVault::UnlockStatus st : {UltraVault::UnlockStatus::Ok,
+                                         UltraVault::UnlockStatus::WrongPassphrase,
+                                         UltraVault::UnlockStatus::Unavailable,
+                                         UltraVault::UnlockStatus::IoError,
+                                         UltraVault::UnlockStatus::Locked}) {
+        Check(!UltraVault::DeviceKeyVault::DescribeUnlockStatus(st).empty() &&
+                  UltraVault::DeviceKeyVault::DescribeUnlockStatus(st) != "unknown reason",
+              "every unlock status has words");
     }
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

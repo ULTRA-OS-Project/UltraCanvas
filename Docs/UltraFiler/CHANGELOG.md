@@ -47,6 +47,13 @@
   session. The folder is now created before the drive list is opened, and a
   failed open is tried again by the next *+ Drive* instead of being
   remembered.
+- **When the credential vault cannot open, the message says why.** It said
+  only "cannot open the credential vault in ..."; it now adds the reason -
+  "this build has no encryption library (UltraCrypt was built without
+  libsodium), so it cannot keep passwords", a folder that cannot be written,
+  or a vault made with a master password (framework changelog:
+  `DeviceKeyVault::GetLastUnlockStatus`). A profile folder named in Thai or
+  Cyrillic now opens its vault on Windows too (same entry).
 
 #### 2026-10-03 *1.65.0*
 - **Favorites carry a heart in every folder.** A file, folder or app added

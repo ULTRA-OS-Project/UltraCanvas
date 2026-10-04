@@ -1344,8 +1344,9 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
 the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
-`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
--> `UnlockStatus`, `PersistDeviceKey`), per-account
+`device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
+`DescribeUnlockStatus` saying why it stayed closed) or by a master password
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`

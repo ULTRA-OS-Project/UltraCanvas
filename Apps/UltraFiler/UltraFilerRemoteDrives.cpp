@@ -92,7 +92,11 @@ struct UltraFilerRemoteDrives::Impl {
         vault = UltraVault::DeviceKeyVault(dir + "/vault",
                                            {"ultrafiler.vault", "files.ultrafiler."});
         if (!vault.TryAutoUnlock()) {
-            error = "cannot open the credential vault in " + dir + "/vault";
+            // Why, not only that: "this build has no encryption library" is
+            // a different fix from a folder that cannot be written.
+            error = "cannot open the credential vault in " + dir + "/vault: " +
+                    UltraVault::DeviceKeyVault::DescribeUnlockStatus(
+                            vault.GetLastUnlockStatus());
             return false;
         }
         secrets = std::make_unique<UltraCloud::VaultSecretStore>();
