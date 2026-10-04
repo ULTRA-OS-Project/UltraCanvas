@@ -33,12 +33,19 @@
 // vector drawing or a 3D model into a disk cache first and the copy is what
 // is shown. The copy is kept, keyed by the file's path, size and date, so a
 // second look costs nothing and a changed file is fetched again.
-// Version: 1.5.0
-// Last Modified: 2026-09-27
+//
+// Every job is also a session in the connection log (ConnectionLog(),
+// UltraFilerConnectionLog.h): on an FTP or SFTP drive each step UltraNet
+// takes - resolving, connecting, every command and reply - is recorded there
+// and reported to the status line as it happens (RemoteActivity::step), and
+// a failure keeps its codes and diagnostics for the log window.
+// Version: 1.6.0
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraFilerRemotePath.h"
+#include "UltraFilerConnectionLog.h"
 
 #include "UltraCanvasFilerWidget.h"   // FilerEntry
 
@@ -126,6 +133,11 @@ struct RemoteActivity {
     // a percentage. An FTP server does not always say.
     uint64_t bytesDone = 0;
     uint64_t bytesTotal = 0;
+    // The latest step of the connection, as the connection log has it:
+    // "Connecting to 203.0.113.7:21...", "Command: PASV", "Response: 227
+    // Entering Passive Mode (...)". Empty until the first one, and for a
+    // drive whose provider logs no steps (only FTP and SFTP do).
+    std::string step;
 
     bool IsBusy() const { return kind != Kind::Idle; }
     // The two kinds that move bytes, and so the two that have a length to
@@ -184,6 +196,11 @@ public:
     // worker is on it it names the server and the folder, with how long the
     // server has been keeping it waiting. Never blocks: a lock and a lookup.
     std::string ListingStatus(const std::string& path) const;
+
+    // Why the listing of `path` failed, as the folder display shows it; empty
+    // when it did not fail (or was never asked for). For the status line,
+    // which otherwise goes back to "0 items" once the drive falls idle.
+    std::string ListingError(const std::string& path) const;
 
     // Fires on the UI THREAD when a queued listing has arrived (or failed),
     // naming the path that changed. The window refreshes the display from it.
@@ -276,6 +293,17 @@ public:
     std::function<void(const std::string& folderPath,
                        const std::string& message)> onOperationFinished;
 
+    // ---- The connection log ------------------------------------------------
+    // Every job the worker has run in this session, with its steps and its
+    // outcome. Thread-safe; read it from the UI thread at will.
+    RemoteConnectionLog& ConnectionLog() { return log_; }
+    const RemoteConnectionLog& ConnectionLog() const { return log_; }
+
+    // Fires on the UI THREAD when the connection log has changed: a session
+    // started, a line came in, a session ended. Coalesced - many lines in a
+    // burst are one call - so a handler can afford to read the whole log.
+    std::function<void()> onConnectionLogChanged;
+
     // How many subfolder listings are waiting to be fetched ahead. Tests and
     // diagnostics; the UI does not show it - prefetching is meant to be
     // invisible.
@@ -339,8 +367,23 @@ private:
         std::string previewTarget;
     };
 
+    // How one job ended, for the connection log: the message the window is
+    // given, the error class in words, and the transport's diagnostics.
+    struct JobOutcome {
+        bool failed = false;
+        std::string message;
+        std::string category;
+        std::string diagnostics;
+    };
+
     void EnsureWorker();
     void WorkerMain();
+    // Starts the connection-log session of `job`, named the way the user
+    // knows it (the drive, the operation, the folder or file).
+    uint64_t BeginLogSession(const Job& job);
+    // Tells the UI thread the log changed, unless a notice is already on its
+    // way.
+    void NotifyLogChanged();
     // Posts one activity report to the UI thread. `force` sends it even when
     // the thinning interval has not elapsed - used for the first and last
     // report of a job, which are the two nobody may miss.
@@ -351,12 +394,12 @@ private:
     // FetchListing answers whether the window should hear about the path
     // (onListingArrived): false for a prefetch that failed with nobody
     // waiting on it.
-    bool FetchListing(const std::string& path, bool isPrefetch);
+    bool FetchListing(const std::string& path, bool isPrefetch, JobOutcome& outcome);
     // Records a listing that could not be fetched, with the lock held, and
     // answers the same question.
     bool RecordListingFailureLocked(const std::string& path, bool isPrefetch,
                                     const std::string& error);
-    void RunOperation(const Job& job);
+    void RunOperation(const Job& job, JobOutcome& outcome);
     // Called with the lock held, after a listing the user asked for arrived:
     // puts its subfolders at the front of the prefetch queue.
     void QueuePrefetchLocked(const std::string& folderPath,
@@ -407,6 +450,9 @@ private:
     // Written by the worker under the lock.
     std::string activeJobPath_;
     std::chrono::steady_clock::time_point activeJobSince_{};
+    // ... and the step its connection is at (RemoteActivity::step), for the
+    // same notice.
+    std::string activeJobStep_;
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
@@ -424,6 +470,10 @@ private:
     // Where RunOperation leaves a provider's refusal for the worker loop to
     // report. Written and read on the worker thread only, under the lock.
     std::string lastOperationError_;
+
+    RemoteConnectionLog log_;
+    // Set while a "log changed" notice is queued for the UI thread.
+    std::atomic<bool> logChangePosted_{false};
 
     // Neutralises a queued UI-thread callback when this object is gone, the
     // way UltraFilerWindow's probeAlive does for its own posted tasks.

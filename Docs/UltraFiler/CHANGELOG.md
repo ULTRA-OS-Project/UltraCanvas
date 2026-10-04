@@ -1,3 +1,43 @@
+#### 2026-10-04 *1.66.0*
+- **Every step of a remote-drive connection is on screen, and a failure can
+  be read with its codes.** When an FTP connection failed, the status bar
+  said "cannot list this folder" and nothing about where it stopped or what
+  the server answered. Now:
+  - While a drive is busy, the status bar shows the step its connection is
+    at, as it happens - *Opening "pub" - Connecting to 203.0.113.7:21...*,
+    *- Response: 230 Logged in*, *- Command: MLSD* - and the folder view's
+    *Loading folder* notice names the same step with how long it has
+    waited, so a stalled connection shows where it stalls. Uploads,
+    downloads, deletes and renames show their steps until the bytes start
+    moving.
+  - A new **connection log** button sits at the right of the status bar
+    once there is a remote drive. It counts in red the failures not looked
+    at yet and opens the connection log window: an *Errors* tab with a
+    Markdown report of each failed connection - the message, the error
+    class with its UltraCloud code, libcurl's error number and the server's
+    last reply, the likely cause (a firewall blocking the passive data
+    connection, a refused password, an unknown host, a closed port, a 550,
+    ...), the last steps and the diagnostics chain - and a *Message log*
+    tab listing every step of every connection the way FileZilla does
+    (`12:03:04  Response: 227 Entering Passive Mode (...)`), following the
+    newest line. *Copy* takes the tab on show to the clipboard; passwords
+    never appear (`PASS ********`). *Clear* empties it. The log is in memory
+    only and keeps the last 200 connections; folders fetched ahead are
+    logged too, marked as background work, and are not counted as errors.
+  - A folder that could not be listed keeps its error on the status line
+    ("Error: cannot list this folder: ... - every step and the error codes
+    are in the connection log") instead of giving way to "0 items".
+  - The *Remote drive* alert for a failed upload, delete or rename points at
+    the connection log.
+  - A server that goes quiet now fails after 30 seconds of inactivity, once,
+    instead of being asked up to three times (or, for a data connection
+    that opened and carried nothing, waited on indefinitely); a refused
+    password is no longer sent three times; and an empty folder costs one
+    request instead of three (framework changelog: UltraNet's FTP session
+    log).
+  - FTP and SFTP drives log every step; cloud drives log each job and its
+    outcome.
+
 #### 2026-10-03 *1.65.0*
 - **Favorites carry a heart in every folder.** A file, folder or app added
   to the Favorites view (*Pin > To Favorites*) now shows the Favorites

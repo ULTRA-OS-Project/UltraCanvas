@@ -3063,6 +3063,26 @@ add_test(NAME FilerRemoteCacheTest COMMAND FilerRemoteCacheTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerRemoteCacheTest")
 
+# ===== FILER CONNECTION LOG TEST =====
+# UltraFiler's connection log (Apps/UltraFiler/UltraFilerConnectionLog.h): the
+# sessions the drive worker records, their bounds, and the message log and
+# Markdown error report the log window shows. Header-only and free of
+# UltraCloud, like the cache above.
+message(STATUS "  Building FilerConnectionLogTest...")
+add_executable(FilerConnectionLogTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerConnectionLogTest.cpp
+)
+target_include_directories(FilerConnectionLogTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerConnectionLogTest PRIVATE cxx_std_20)
+set_target_properties(FilerConnectionLogTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerConnectionLogTest COMMAND FilerConnectionLogTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerConnectionLogTest")
+
 # ===== ULTRANET FTP QUOTE TEST =====
 # The commands UltraNet sends to rename, delete and create on an FTP or SFTP
 # server (UltraCanvas/core/UltraNet/UltraNetFtpQuote.h): decoded names, paths

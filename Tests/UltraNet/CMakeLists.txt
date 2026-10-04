@@ -45,6 +45,7 @@ set(ULTRANET_TEST_SOURCES
     test_dns_timeout.cpp
     test_dns_servers.cpp
     test_ftp_parser.cpp
+    test_ftp_log.cpp
     test_loopback.cpp
     test_oauth2.cpp
     test_oauth2_apps.cpp

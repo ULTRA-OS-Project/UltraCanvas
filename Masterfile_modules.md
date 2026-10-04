@@ -1068,7 +1068,11 @@ future.
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
-  `UltraNet_FtpDelete`, `UltraNet_FtpRename`
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`,
+  `UltraNet_FtpRemoveDirectory`; the session log of every call
+  (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
+  `UltraNetFtpLogLine` steps, commands with the password masked, replies with
+  their codes, the error with libcurl's number)
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,

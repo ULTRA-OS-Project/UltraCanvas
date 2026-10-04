@@ -58,8 +58,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.24.0
-// Last Modified: 2026-10-03
+// Version: 1.25.0
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -818,7 +818,18 @@ UltraFilerWindow::~UltraFilerWindow() {
         remoteDrives->onListingArrived = nullptr;
         remoteDrives->onActivityChanged = nullptr;
         remoteDrives->onPreviewCopyReady = nullptr;
+        remoteDrives->onConnectionLogChanged = nullptr;
         remoteDrives->Stop();
+    }
+    // The log window lives on its own, but its Clear button calls back here.
+    if (connectionLogRefreshTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(connectionLogRefreshTimer);
+        connectionLogRefreshTimer = InvalidTimerId;
+    }
+    if (auto logWindow = connectionLogWindow.lock()) {
+        logWindow->onClear = nullptr;
+        logWindow->Close();
     }
     StopVolumeSpaceQuery();
 }
@@ -1088,7 +1099,19 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
 
+    // The connection log: every step of every remote-drive connection, and
+    // the failed ones with their codes. The button names how many failures
+    // the log window has not shown yet, in red, so a failure that scrolled
+    // past on the status line is not lost.
+    statusLogButton = MakeToolButton("ufl-status-log", "", "clipboard-list.svg", 0,
+                                     [this]() { OpenConnectionLog(); });
+    statusLogButton->size.height = CSSLayout::Dimension::Px(20);
+    statusLogButton->SetIconSize(13, 13);
+    statusLogButton->SetVisible(false);
+    statusRow->AddChild(statusLogButton);
+
     window->AddChild(statusRow);
+    UpdateConnectionLogButton();
 
     std::string start = startFolder;
     std::error_code ec;
@@ -2436,6 +2459,8 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     if (any) folderTree->ExpandNode(section);
     ApplyTreeColors();
     folderTree->RequestRedraw();
+    // The log button comes with the first drive.
+    UpdateConnectionLogButton();
 }
 
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
@@ -3351,6 +3376,12 @@ void UltraFilerWindow::BuildFolderTree() {
         remoteActivity = activity;
         UpdateStatusBar();
     };
+    // The connection log grew: the button's count, and the log window if it
+    // is open.
+    remoteDrives->onConnectionLogChanged = [this]() {
+        UpdateConnectionLogButton();
+        ScheduleConnectionLogRefresh();
+    };
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
@@ -3399,7 +3430,15 @@ void UltraFilerWindow::BuildFolderTree() {
         // repeated once per entry is one dialog's worth of information.
         if (message == lastRemoteOperationError) return;
         lastRemoteOperationError = message;
-        UltraCanvasAlert::Error(message, "Remote drive", nullptr, window.get());
+        AlertOptions alert;
+        alert.severity = AlertSeverity::Error;
+        alert.title = "Remote drive";
+        alert.message = message;
+        // The message says what failed; the log says how far it got.
+        alert.details = "Every step of the connection, with the error codes, is in "
+                        "the connection log - the button at the right of the status bar.";
+        alert.parent = window.get();
+        UltraCanvasAlert::Show(alert);
     };
     if (std::string driveError; !remoteDrives->Reload(driveError)) {
         debugOutput << "UltraFiler: remote drives unavailable: "
@@ -5801,10 +5840,13 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
     std::string text;
     switch (remoteActivity.kind) {
         case RemoteActivity::Kind::Listing:
-            // Both halves of the wait in one line: the request went out, and
-            // what comes back is the folder's contents.
-            text = "Opening " + (quoted.empty() ? "the drive" : quoted) +
-                   " - receiving folder data...";
+            // The step the connection is at, as the connection log has it -
+            // "Connecting to 203.0.113.7:21...", "Response: 230 Logged in",
+            // "Retrieving directory listing..." - so a wait shows where it
+            // waits. A drive whose provider logs no steps says what it can.
+            text = "Opening " + (quoted.empty() ? "the drive" : quoted) + " - " +
+                   (remoteActivity.step.empty() ? std::string("receiving folder data...")
+                                                : remoteActivity.step);
             break;
         case RemoteActivity::Kind::Uploading: {
             text = "Uploading " + (quoted.empty() ? "a file" : quoted);
@@ -5820,7 +5862,9 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " sent";
             } else {
-                text += "...";
+                // Not a byte yet: connecting, signing in, opening the data
+                // connection - the step says which.
+                text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
             }
             break;
         }
@@ -5838,25 +5882,29 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " received";
             } else {
-                text += "...";
+                text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
             }
             break;
         }
         case RemoteActivity::Kind::Deleting:
             text = "Deleting " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive...";
+                   " on the drive";
             break;
         case RemoteActivity::Kind::Renaming:
             text = "Renaming " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive...";
+                   " on the drive";
             break;
         case RemoteActivity::Kind::MakingDirectory:
             text = "Creating folder " + (quoted.empty() ? "" : quoted + " ") +
-                   "on the drive...";
+                   "on the drive";
             break;
         case RemoteActivity::Kind::Idle:
             return {};
     }
+    if (remoteActivity.kind == RemoteActivity::Kind::Deleting ||
+        remoteActivity.kind == RemoteActivity::Kind::Renaming ||
+        remoteActivity.kind == RemoteActivity::Kind::MakingDirectory)
+        text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
     // What is still behind it, so a drop of five files does not look like one.
     if (remoteActivity.queued > 0) {
         text += "  (" + std::to_string(remoteActivity.queued) + " more queued)";
@@ -5889,6 +5937,101 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
             static_cast<double>(remoteActivity.bytesDone) /
             static_cast<double>(remoteActivity.bytesTotal);
     statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
+}
+
+void UltraFilerWindow::UpdateConnectionLogButton() {
+    if (!statusLogButton) return;
+    if (!remoteDrives) {
+        statusLogButton->SetVisible(false);
+        return;
+    }
+    const RemoteConnectionLog& log = remoteDrives->ConnectionLog();
+    const std::size_t sessions = log.SessionCount();
+    const std::size_t errors = log.ErrorCount();
+    // Failures can also leave: the oldest sessions are dropped, and Clear
+    // empties the log.
+    if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
+    const std::size_t unseen = errors - connectionLogSeenErrors;
+
+    const bool show = sessions > 0 || !remoteDrives->Drives().empty();
+    if (statusLogButton->IsVisible() != show) statusLogButton->SetVisible(show);
+    if (!show) return;
+
+    // Called for every line a running connection logs, so the button is
+    // only restyled when what it says changes.
+    const std::string label = unseen > 0 ? std::to_string(unseen) : std::string();
+    if (statusLogButton->GetText() != label) {
+        const Color quiet(55, 55, 60, 255);
+        const Color alarm(200, 30, 30, 255);
+        statusLogButton->SetText(label);
+        statusLogButton->SetIconSpacing(unseen > 0 ? 4 : 0);
+        statusLogButton->SetIconMaskColor(unseen > 0 ? alarm : quiet);
+        statusLogButton->SetTextColors(unseen > 0 ? alarm : quiet);
+    }
+
+    std::string tip = "Connection log - every step of the remote drive connections";
+    if (sessions > 0) {
+        tip += " (" + std::to_string(sessions) +
+               (sessions == 1 ? " connection" : " connections");
+        if (errors > 0) tip += ", " + std::to_string(errors) + " failed";
+        tip += ")";
+    }
+    if (unseen > 0)
+        tip += ". " + std::to_string(unseen) +
+               (unseen == 1 ? " failure not looked at yet" : " failures not looked at yet") +
+               " - click for the error codes.";
+    statusLogButton->SetTooltip(tip);
+}
+
+void UltraFilerWindow::OpenConnectionLog() {
+    if (!remoteDrives) return;
+    const std::vector<RemoteLogSession> sessions = remoteDrives->ConnectionLog().Snapshot();
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (logWindow && logWindow->GetState() != WindowState::Closed) {
+        logWindow->Update(sessions);
+        logWindow->RaiseAndFocus();
+    } else {
+        logWindow = ShowConnectionLogWindow(sessions, window.get());
+        // Raw `this`: the main window outlives the log window's callback -
+        // its destructor clears it before going.
+        logWindow->onClear = [this]() {
+            if (!remoteDrives) return;
+            remoteDrives->ConnectionLog().Clear();
+            connectionLogSeenErrors = 0;
+            UpdateConnectionLogButton();
+            RefreshConnectionLogWindow();
+        };
+        connectionLogWindow = logWindow;
+    }
+    // Shown now, so no longer news.
+    connectionLogSeenErrors = remoteDrives->ConnectionLog().ErrorCount();
+    UpdateConnectionLogButton();
+}
+
+void UltraFilerWindow::ScheduleConnectionLogRefresh() {
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (!logWindow || logWindow->GetState() == WindowState::Closed) return;
+    if (connectionLogRefreshTimer != InvalidTimerId) return;   // one is on its way
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        RefreshConnectionLogWindow();
+        return;
+    }
+    // A connection logs its steps in bursts; a fifth of a second gathers a
+    // burst into one refresh of the window, which renders the whole log.
+    connectionLogRefreshTimer = app->StartTimer(200, false, [this](TimerId) {
+        connectionLogRefreshTimer = InvalidTimerId;
+        RefreshConnectionLogWindow();
+    });
+}
+
+void UltraFilerWindow::RefreshConnectionLogWindow() {
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (!logWindow || logWindow->GetState() == WindowState::Closed || !remoteDrives) return;
+    logWindow->Update(remoteDrives->ConnectionLog().Snapshot());
+    // A failure that turns up while the window is open is on screen there.
+    connectionLogSeenErrors = remoteDrives->ConnectionLog().ErrorCount();
+    UpdateConnectionLogButton();
 }
 
 void UltraFilerWindow::UpdateStatusBar() {
@@ -5954,6 +6097,18 @@ void UltraFilerWindow::UpdateStatusBar() {
         return;
     }
     if (!filer) return;
+    // A folder on a drive that could not be listed: the reason stays on the
+    // status line, with where to read the rest, rather than giving way to
+    // "0 items" the moment the drive falls idle.
+    if (remoteDrives && IsRemoteFilerPath(filer->GetPath())) {
+        if (const std::string error = remoteDrives->ListingError(filer->GetPath());
+            !error.empty()) {
+            statusLabel->SetText("Error: " + error +
+                                 "  -  every step and the error codes are in the "
+                                 "connection log (button on the right)");
+            return;
+        }
+    }
     std::string text = DescribeFilerContent(filer.get());
     // A live filter changes what the counts describe — say so.
     if (!filer->GetNameFilter().empty())
