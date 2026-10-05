@@ -18,6 +18,7 @@
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.h"
+#include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasImage.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetPlugins.h"
@@ -45,6 +46,20 @@ UltraNetHttpOptions MetadataOptions() {
     options.timeoutMs = kMetadataTimeoutMs;
     options.connectTimeoutMs = 5000;
     return options;
+}
+
+// Every call to the scanner goes through here, so one reached over https://
+// is trusted on first use (UltraCanvasIODeviceTlsTrust.h) whichever call
+// reaches it first.
+UltraNetResult Send(UltraNetHttpMethod method, const std::string& url,
+                    UltraNetResponse& response, const UltraNetHttpOptions& options,
+                    const std::vector<uint8_t>& body = {}) {
+    UltraNetHttpRequest request;
+    request.url = url;
+    request.method = method;
+    request.body = body;
+    request.options = options;
+    return Internal::DeviceHttpRequest(request, response);
 }
 
 // ============================================================================
@@ -182,8 +197,8 @@ protected:
 
     IODeviceResult DoGetCapabilities(ScanCapabilities& outCapabilities) override {
         UltraNetResponse response;
-        const UltraNetResult result = UltraNet_HttpGet(
-            base + "/ScannerCapabilities", response, MetadataOptions());
+        const UltraNetResult result = Send(
+            UltraNetHttpMethod::Get, base + "/ScannerCapabilities", response, MetadataOptions());
 
         if (!result.success) {
             return IODeviceResult::BackendError(
@@ -265,7 +280,7 @@ private:
         UltraNetResponse response;
         const std::vector<uint8_t> body(settings.begin(), settings.end());
         const UltraNetResult result =
-            UltraNet_HttpPost(base + "/ScanJobs", body, response, options);
+            Send(UltraNetHttpMethod::Post, base + "/ScanJobs", response, options, body);
 
         if (!result.success) {
             return IODeviceResult::BackendError(
@@ -309,7 +324,7 @@ private:
         UltraNetResponse response;
         // Best effort: the run is over either way, and a scanner that has
         // already finished the job answers 404 here, which is not a problem.
-        UltraNet_HttpDelete(url, response, MetadataOptions());
+        Send(UltraNetHttpMethod::Delete, url, response, MetadataOptions());
     }
 
     std::string base;
@@ -339,7 +354,7 @@ IODeviceResult EsclScannerDevice::DoScanPage(ScannedImage& image) {
 
     UltraNetResponse response;
     const UltraNetResult result =
-        UltraNet_HttpGet(jobUrl + "/NextDocument", response, options);
+        Send(UltraNetHttpMethod::Get, jobUrl + "/NextDocument", response, options);
 
     if (cancelled.load() || !ShouldContinueScanning()) {
         AbandonJob();
@@ -554,6 +569,9 @@ std::vector<IODevicePtr> EnumerateEsclScanners() {
     std::vector<IODevicePtr> devices;
     devices.reserve(infos.size());
     for (const IODeviceInfo& info : infos) {
+        // So a scanner reached over https:// is listed under its name among
+        // the trusted certificates, not only its address.
+        Internal::NoteDeviceTlsName(info.connectionPath, info.name);
         devices.push_back(std::make_shared<EsclScannerDevice>(info, info.connectionPath));
     }
     return devices;

@@ -6,6 +6,7 @@
 
 #include "UltraNetHttpEasy.h"
 #include "UltraNet/UltraNetCurlTls.h"
+#include "UltraNet/UltraNetTls.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -349,6 +350,7 @@ UltraNetResultCode MapCurlError(CURLcode rc, long httpStatus) {
         case CURLE_SSL_CONNECT_ERROR:       return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION:return UltraNetResultCode::TlsCertificateInvalid;
         case CURLE_SSL_CACERT_BADFILE:      return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SSL_PINNEDPUBKEYNOTMATCH:return UltraNetResultCode::TlsPublicKeyMismatch;
         case CURLE_LOGIN_DENIED:            return UltraNetResultCode::AuthenticationFailed;
         case CURLE_ABORTED_BY_CALLBACK:     return UltraNetResultCode::Cancelled;
         case CURLE_OUT_OF_MEMORY:           return UltraNetResultCode::InsufficientMemory;
@@ -411,6 +413,16 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST,
                      (verify && cfg.verifyTlsHostname) ? 2L : 0L);
     curl_easy_setopt(easy, CURLOPT_SSLVERSION, CurlTlsVersionMask(cfg.minTlsVersion));
+    if (!opt.pinnedPublicKey.empty() &&
+        curl_easy_setopt(easy, CURLOPT_PINNEDPUBLICKEY, opt.pinnedPublicKey.c_str()) != CURLE_OK) {
+        // This TLS backend cannot check a pin. A pin usually comes with
+        // acceptInvalidCert - it is the only thing vouching for the server -
+        // so dropping it would accept any certificate at all. Verify the
+        // ordinary way instead: a self-signed device then fails, loudly.
+        curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 2L);
+    }
+    if (opt.capturePeerCertificate) curl_easy_setopt(easy, CURLOPT_CERTINFO, 1L);
     if (!cfg.caBundlePath.empty()) {
         curl_easy_setopt(easy, CURLOPT_CAINFO, cfg.caBundlePath.c_str());
     } else {
@@ -532,6 +544,28 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
     double elapsed = 0;
     curl_easy_getinfo(easy, CURLINFO_TOTAL_TIME, &elapsed);
     response.elapsedTime = elapsed;
+
+    // The server's certificate, when the request asked for it (CERTINFO is
+    // empty otherwise). The first certificate of the chain is the server's.
+    struct curl_certinfo* certs = nullptr;
+    if (curl_easy_getinfo(easy, CURLINFO_CERTINFO, &certs) == CURLE_OK && certs &&
+        certs->num_of_certs > 0) {
+        for (curl_slist* field = certs->certinfo[0]; field; field = field->next) {
+            const std::string entry = field->data ? field->data : "";
+            const size_t colon = entry.find(':');
+            if (colon == std::string::npos) continue;
+            const std::string name = entry.substr(0, colon);
+            const std::string value = entry.substr(colon + 1);
+            if (name == "Subject") {
+                response.tlsInfo.peerCertificateSubject = value;
+            } else if (name == "Issuer") {
+                response.tlsInfo.peerCertificateIssuer = value;
+            } else if (name == "Cert") {
+                response.tlsInfo.peerPublicKeyPin = UltraNet_PublicKeyPinOf(
+                    std::vector<uint8_t>(value.begin(), value.end()));
+            }
+        }
+    }
 
     if (exceededLimit) {
         return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,

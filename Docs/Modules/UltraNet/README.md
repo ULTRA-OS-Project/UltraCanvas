@@ -373,6 +373,14 @@ architecture.
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.
+* **Public-key pinning:** `UltraNetHttpOptions::pinnedPublicKey`
+  (`"sha256//<base64>"`, from `UltraNet_PublicKeyPinOf`) is checked on every
+  handshake, with `acceptInvalidCert` too - so a self-signed server can be
+  trusted by its key and nothing else. A mismatch is `TlsPublicKeyMismatch`;
+  a TLS backend that cannot pin gets verification switched back on rather
+  than the pin dropped. `capturePeerCertificate` fills
+  `UltraNetResponse::tlsInfo`, the pin included. IODeviceManager's trust on
+  first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
