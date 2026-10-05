@@ -34,6 +34,7 @@
 #include "IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.h"
+#include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetPlugins.h"
@@ -144,19 +145,20 @@ IODeviceResult SendIpp(const std::string& printerUri, IppMessage request,
         options.timeoutMs = timeoutMs;
         options.connectTimeoutMs = 5000;
 
+        // Through the device trust, so a printer reached over ipps:// with
+        // the self-signed certificate nearly every printer has is trusted on
+        // first use (UltraCanvasIODeviceTlsTrust.h).
+        UltraNetHttpRequest post;
+        post.url = url;
+        post.method = UltraNetHttpMethod::Post;
+        post.body = std::move(body);
+        post.options = options;
         UltraNetResponse http;
-        const UltraNetResult sent = UltraNet_HttpPost(url, body, http, options);
+        const UltraNetResult sent = Internal::DeviceHttpRequest(post, http);
 
         if (!sent.success && http.statusCode == 0) {
             std::string message = "Could not reach the printer at " + url;
             if (!sent.message.empty()) message += ": " + sent.message;
-            if (url.rfind("https://", 0) == 0) {
-                // Nearly every printer's certificate is self-signed, and TLS
-                // verification stays on; say so, because the failure reads
-                // like a network fault otherwise.
-                message += ". If the printer uses a self-signed certificate, "
-                           "reach it through its ipp:// address instead";
-            }
             return IODeviceResult::BackendError(IODeviceResultCode::ConnectionFailed, message,
                                                 0, deviceId);
         }

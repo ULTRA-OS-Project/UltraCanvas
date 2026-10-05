@@ -64,6 +64,18 @@ struct UltraNetHttpOptions {
     int64_t maxReceiveSize = 0;     // 0 = use config default
     std::string outputFilePath;     // if set, body streamed to disk
 
+    // Accept the server only when its certificate carries this public key:
+    // "sha256//<base64>" (UltraNet_PublicKeyPinOf; several may be joined with
+    // ';'). Checked on every handshake - with acceptInvalidCert too, which is
+    // what lets a device with a self-signed certificate be trusted by its key
+    // alone and by nothing else. A mismatch fails with TlsPublicKeyMismatch.
+    // When the TLS library cannot check a pin, certificate verification is
+    // switched back on for the request rather than the pin being dropped.
+    std::string pinnedPublicKey;
+    // Fill UltraNetResponse::tlsInfo from the server's certificate, its
+    // public-key pin included - also when the request itself fails.
+    bool capturePeerCertificate = false;
+
     static UltraNetHttpOptions Default() { return {}; }
 };
 

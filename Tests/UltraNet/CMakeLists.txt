@@ -56,6 +56,7 @@ set(ULTRANET_TEST_SOURCES
     test_extra_plugins.cpp
     test_sse.cpp
     test_websocket.cpp
+    test_tls_pin.cpp
 )
 
 add_executable(UltraNetTests ${ULTRANET_TEST_SOURCES})

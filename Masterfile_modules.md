@@ -824,7 +824,9 @@ the backing implementation can be replaced without affecting callers.
     as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
     page format (`...PrinterPwgRaster.h`) are pure and unit-tested. Both
     backends take a device's display name out of its DNS-SD service name
-    through `...DnsSd.h`.
+    through `...DnsSd.h`, and trust a device's self-signed HTTPS certificate
+    on first use - its public key remembered, every later connection pinned
+    to it - through `...TlsTrust.h`.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform

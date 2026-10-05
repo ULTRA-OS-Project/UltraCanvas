@@ -3840,6 +3840,29 @@ add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: IODeviceScannerESCLTest")
 
+# ===== DEVICE CERTIFICATE TRUST TEST =====
+# Trusting a network scanner's or printer's self-signed certificate on first
+# use: the address a key is kept under, the file it is kept in, forgetting
+# one. Built without UltraNet - the connection side needs a TLS server.
+message(STATUS "  Building IODeviceTlsTrustTest...")
+add_executable(IODeviceTlsTrustTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceTlsTrustTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceTlsTrust.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSettingsFolder.cpp
+)
+target_include_directories(IODeviceTlsTrustTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceTlsTrustTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceTlsTrustTest PROPERTIES
+    OUTPUT_NAME "IODeviceTlsTrustTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODeviceTlsTrustTest COMMAND IODeviceTlsTrustTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODeviceTlsTrustTest")
+
 # ===== IPP DRIVERLESS PRINTING TEST =====
 # The IPP encoding, reading a printer's description, a job's attributes, the
 # pass-through-or-draw decision and the PWG raster writer - everything the IPP
