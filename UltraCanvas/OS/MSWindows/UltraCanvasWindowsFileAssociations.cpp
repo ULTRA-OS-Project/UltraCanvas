@@ -277,16 +277,15 @@ namespace {
     // %LOCALAPPDATA%\UltraCanvas\openwith-icons — created on demand. TEMP
     // covers the (rare) account without a local app-data directory.
     // Never destroyed: the association worker reads it and can outlive a
-    // static torn down at exit.
+    // static torn down at exit. The roots are read as UTF-8 (GetEnvUtf8),
+    // like every path written below; getenv would answer in the ANSI code
+    // page and miss a profile folder named outside it.
     std::string IconCacheDir() {
         static const std::string* dir = new std::string([]() -> std::string {
-            const char* roots[] = { std::getenv("LOCALAPPDATA"),
-                                    std::getenv("TEMP"),
-                                    std::getenv("TMP") };
-            for (const char* root : roots) {
-                if (!root || !*root) continue;
-                const std::string candidate =
-                        std::string(root) + "\\UltraCanvas\\openwith-icons";
+            for (const char* name : { "LOCALAPPDATA", "TEMP", "TMP" }) {
+                const std::string root = GetEnvUtf8(name);
+                if (root.empty()) continue;
+                const std::string candidate = root + "\\UltraCanvas\\openwith-icons";
                 std::error_code ec;
                 fs::create_directories(PathFromUtf8(candidate), ec);
                 if (!ec) return candidate;
@@ -747,9 +746,9 @@ FileAssociations::ApplicationFilter GetApplicationFilter() {
 }
 
 std::string GetApplicationsDirectory() {
-    const char* programFiles = std::getenv("ProgramFiles");
+    const std::string programFiles = GetEnvUtf8("ProgramFiles");
     std::error_code ec;
-    if (programFiles && fs::is_directory(PathFromUtf8(programFiles), ec) && !ec)
+    if (!programFiles.empty() && fs::is_directory(PathFromUtf8(programFiles), ec) && !ec)
         return programFiles;
     return {};
 }

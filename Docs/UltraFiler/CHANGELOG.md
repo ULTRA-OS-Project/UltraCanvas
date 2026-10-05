@@ -61,8 +61,17 @@
   code page 1252) the folder came back with '?' in it, nothing was saved and
   nothing read back, and the drive list and the vault - which read the
   folder as UTF-8 - could not open it even where the code page could spell
-  it. The folder is read wide and every file in it opened as UTF-8
-  (framework changelog: `check_path_string` sees what a header declares).
+  it. The folder is read with the framework's `GetEnvUtf8` and every file in
+  it opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`). So are the home folder the tree marks
+  (`USERPROFILE`) and the System32 folder the *Open with* dialog starts in
+  (`SystemRoot`).
+- **A remote file named in any script can be previewed.** A preview is
+  downloaded under a temporary name and then moved into the preview cache;
+  that move handed the cache name to `fs::rename` as a plain string, which
+  Windows reads in the ANSI code page, so for a file name outside it the
+  preview failed with "cannot store the preview". It goes through
+  `PathFromUtf8` now.
 
 #### 2026-10-04 *1.65.1*
 - **Display > Sort is greyed out in the History and Favorites views.** Their

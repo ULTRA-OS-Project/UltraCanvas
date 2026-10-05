@@ -19,8 +19,8 @@
   - UltraFiler's and the UltraAI dashboard's configuration folders were read
     with the narrow `getenv("APPDATA")`, which answers in the ANSI code page,
     and handed on as UTF-8 to code that opens them as UTF-8 (SQLite, the
-    vault, the JSON file helpers). They are read wide now (`_wgetenv`) and
-    converted with `PathToUtf8`, and every file in them is opened through
+    vault, the JSON file helpers). They are read as UTF-8 now (`GetEnvUtf8`,
+    see the `env-narrow` entry), and every file in them is opened through
     `PathFromUtf8`.
   - VirtualFS's Windows RAM-disc fallback took its folder from
     `GetTempPathA`; it uses `GetTempPathW` now, and runs `icacls` through

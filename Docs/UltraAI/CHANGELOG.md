@@ -1,11 +1,12 @@
-#### 2026-10-04 *0.1.8*
+#### 2026-10-05 *0.1.9*
 - **The dashboard keeps its settings and endpoints in a Windows profile
   named in any script.** Its configuration folder was read with the narrow
   `getenv("APPDATA")`, which answers in the ANSI code page, and handed to the
   JSON file helpers, which open it as UTF-8; for a user name outside the code
   page `endpoints.json` and `config.ini` were neither saved nor read back. The
-  folder is read wide now and every file in it opened as UTF-8 (framework
-  changelog: `check_path_string` sees what a header declares).
+  folder is read with the framework's `GetEnvUtf8` now and every file in it
+  opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`).
 
 #### 2026-09-29 *0.1.7*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called

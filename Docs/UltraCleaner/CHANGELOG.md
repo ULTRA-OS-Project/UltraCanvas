@@ -1,3 +1,13 @@
+#### 2026-10-05 *0.59*
+- **The profile's cache, temporary and app-data folders are found under any
+  user name.** Every location the cleaner scans - and the Windows folder it
+  must never touch - came from the narrow `getenv` (`USERPROFILE`, `TEMP`,
+  `LOCALAPPDATA`, `APPDATA`, `SystemRoot` ...), which answers in the ANSI
+  code page. For a user name outside it those folders came back with `?` in
+  them, so their junk was never found. They are read with the framework's
+  `GetEnvUtf8` now, the same UTF-8 the scanner and the remover take
+  (framework changelog: `env-narrow`).
+
 #### 2026-10-02 *0.58*
 - **Moving to the trash works for names outside the Windows code page.**
   Picking a free name in the trash and moving the item there joined the

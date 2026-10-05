@@ -1,3 +1,14 @@
+#### 2026-10-05 *1.59*
+- **Settings, autosave and comments work in a Windows profile named in any
+  script.** The configuration folder (`config.ini`, the recent files, the
+  session) and the autosave folder were found through the narrow
+  `getenv("APPDATA")`, which answers in the ANSI code page: for a user name
+  outside it - Thai or Cyrillic under code page 1252 - the folder came back
+  with `?` in it and nothing was saved or restored. A comment's author,
+  taken from `USERNAME`, was stored in those code-page bytes too. All three
+  are read with the framework's `GetEnvUtf8` now (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-01 *1.58*
 - **Typing in the search bar no longer hangs on a large file.** With a big
   document open (the ~940 KB framework changelog, say), each keystroke in the

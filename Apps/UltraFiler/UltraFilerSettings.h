@@ -10,7 +10,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 #include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge,
                                      // FilerFileIconStyle
 
@@ -289,13 +289,14 @@ public:
 
     static std::string GetConfigDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-        // Read wide and handed on as UTF-8, like every path in UltraFiler. The
-        // narrow getenv answers in the ANSI code page, which cannot spell a
-        // profile folder named in Thai under code page 1252 (it came back
-        // with '?' in it) and which SQLite and the vault, given these bytes,
-        // read as UTF-8 even where it could.
-        if (const wchar_t* appdata = _wgetenv(L"APPDATA"))
-            return PathToUtf8(std::filesystem::path(appdata) / L"UltraFiler");   // path-string-ok: wide
+        // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8),
+        // like every path in UltraFiler. The narrow getenv answers in the
+        // ANSI code page, which cannot spell a profile folder named in Thai
+        // under code page 1252 (it came back with '?' in it) and which SQLite
+        // and the vault, given these bytes, read as UTF-8 even where it
+        // could.
+        if (const std::string appdata = GetEnvUtf8("APPDATA"); !appdata.empty())
+            return PathToUtf8(PathFromUtf8(appdata) / "UltraFiler");
         return std::string("UltraFiler");
 #elif defined(__APPLE__)
         const char* home = std::getenv("HOME");

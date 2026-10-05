@@ -283,11 +283,12 @@ namespace UltraCanvas {
         // or a read-only mount.
         std::string RuntimeFontconfigDir() {
 #if defined(_WIN32) || defined(_WIN64)
-            const char* roots[] = { std::getenv("LOCALAPPDATA"),
-                                    std::getenv("TEMP"),
-                                    std::getenv("TMP") };
-            for (const char* root : roots) {
-                if (root && *root) return std::string(root) + "/UltraCanvas/fontconfig";
+            // UTF-8 from the wide environment: the directory is created and
+            // the file written through PathFromUtf8. (fontconfig is then given
+            // the file's name as described where FONTCONFIG_FILE is set.)
+            for (const char* name : { "LOCALAPPDATA", "TEMP", "TMP" }) {
+                const std::string root = GetEnvUtf8(name);
+                if (!root.empty()) return root + "/UltraCanvas/fontconfig";
             }
             return {};
 #else

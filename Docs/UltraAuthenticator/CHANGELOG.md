@@ -6,6 +6,11 @@
   on no file at all. It goes through `PathFromUtf8` now, like the rename
   beside it (framework changelog: `check_path_string` sees what a header
   declares).
+- **The vault is found in a Windows profile named in any script.** Its
+  folder came from the narrow `getenv("APPDATA")`, which answers in the ANSI
+  code page, so for a user name outside it the vault was looked for in a
+  folder that does not exist. It is read with the framework's `GetEnvUtf8`
+  now (framework changelog: `env-narrow`).
 
 #### 2026-09-30 *0.2.5*
 - **A QR code can be read from an image file or from the screen.** The scan

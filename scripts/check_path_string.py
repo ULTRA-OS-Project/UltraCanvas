@@ -53,8 +53,8 @@ What is reported:
       sum with such a term (`/ (baseName + " (2)")`). A bare literal
       (`/ "mail"`) and a sum of literals and std::to_string are ASCII and
       fine. Assigning a string to a path declared earlier (`dir =
-      currentPath;`) and a `cond ? s1 : s2` with a string branch count too. The argument counts as a string when it is
-      `.c_str()`, a `+` concatenation with a literal or a string, or a name
+      currentPath;`) and a `cond ? s1 : s2` with a string branch count too.
+      The argument counts as a string when it is `.c_str()`, a `+` concatenation with a literal or a string, or a name
       whose nearest declaration above the use, in the same file, is a
       std::string - the check has no types, so it reads the declarations;
       for a call, the declaration of the function: a call to a function
@@ -71,14 +71,27 @@ What is reported:
       `fopen(name, mode)` with anything but a literal: the narrow fopen reads
       the name in the Windows code page. Use OpenFileUtf8(name, mode).
 
+  env-narrow
+      A narrow read of the environment where Windows answers in the ANSI code
+      page: `getenv` / `secure_getenv` / `_dupenv_s` of a variable Windows
+      keeps a path or the user's name in (APPDATA, LOCALAPPDATA, USERPROFILE,
+      TEMP, ProgramFiles, SystemRoot, USERNAME ...), any `_dupenv_s` or
+      `getenv(name)` in Windows-only code, and a call with such a name to a
+      helper of the same file whose body reads narrowly
+      (`EnvOrEmpty("LOCALAPPDATA")`). The value is not UTF-8 to begin with,
+      so wrapping it in PathFromUtf8 afterwards is no fix - the rules above
+      see a correct-looking call. Use GetEnvUtf8(name), which asks
+      GetEnvironmentVariableW and converts. `_wgetenv` is wide and not
+      reported.
+
 What is still NOT reported: a string whose type neither the file nor a
 header it includes directly spells out (an `auto`, a member or getter of a
 class declared further away, such as `env.accountId`) handed to a path
 parameter or joined onto a path, and the declaration form `fs::path p(str);`
-with such a string. Nor is a string that is not UTF-8 to begin with - a
-narrow `getenv("APPDATA")` or an ...A Win32 call answers in the ANSI code
-page, and wrapping its bytes in PathFromUtf8 does not make them UTF-8; read
-those wide. Review catches those.
+with such a string. Nor is any other string that is not UTF-8 to begin with
+- an ...A Win32 call (GetVolumeInformationA, GetModuleFileNameA) answers in
+the ANSI code page; call the ...W one and convert with PathToUtf8 or
+Utf16ToUtf8. Review catches those.
 
 `--self-test` runs the header-aware rules against built-in examples; CI runs
 it before the scan.
@@ -200,6 +213,132 @@ JOIN_RE = re.compile(r"(?<![/*])/(?![/*=])")
 JOIN_ASSIGN_RE = re.compile(r"(?P<lhs>[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*)\s*/=(?P<rhs>[^;]+);")
 
 
+# ---- env-narrow ------------------------------------------------------------
+# Environment variables Windows keeps paths (and the user's name) in. Read
+# with the narrow getenv / _dupenv_s they come back in the ANSI code page, so
+# the characters it lacks are '?' - and wrapping those bytes in PathFromUtf8
+# afterwards does not bring them back, which is why the path rules above
+# cannot see this. GetEnvUtf8 (UltraCanvasPathUtf8.h) asks the process for
+# the UTF-16 value (GetEnvironmentVariableW) and returns it as UTF-8, the
+# form every consumer here takes. _wgetenv is wide and not reported; the
+# codebase still prefers GetEnvUtf8, which reads the live environment rather
+# than the C runtime's copy and needs no conversion at the call.
+WIN_ENV_NAMES = {
+    "APPDATA", "LOCALAPPDATA", "USERPROFILE", "PROGRAMDATA", "ProgramData",
+    "ALLUSERSPROFILE", "PUBLIC", "HOMEDRIVE", "HOMEPATH", "TEMP", "TMP",
+    "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles",
+    "SystemRoot", "SYSTEMROOT", "WINDIR", "windir", "ComSpec", "USERNAME",
+    "OneDrive", "OneDriveConsumer", "OneDriveCommercial"}
+NARROW_ENV_RE = re.compile(
+    r"(?<![\w.>])(?:std::|::)?(?P<fn>getenv|secure_getenv|_dupenv_s)\s*\(")
+# A literal argument, in the line with its literals kept
+LITERAL_ARG_RE = re.compile(r'\s*(?:L|u8|u)?"(?P<name>[^"]*)"')
+WIN_COND_RE = re.compile(r"\b(?:_WIN32|_WIN64|_MSC_VER|__MINGW32__|__MINGW64__|_WINDOWS)\b")
+WINDOWS_ONLY_PARTS = {"MSWindows", "Windows", "Win32"}
+
+
+def clean_lines(lines: list[str]) -> list[str]:
+    """Each line with its literals blanked and its comments removed. One line
+    at a time, comments out after the literals: run over a whole file at once,
+    an apostrophe in a comment ("don't") pairs with one many lines further on
+    and the code between them vanishes."""
+    out, in_block = [], False
+    for line in lines:
+        code = line
+        if in_block:
+            end = code.find("*/")
+            if end < 0:
+                out.append("")
+                continue
+            code = code[end + 2:]
+            in_block = False
+        code = strip_strings(code)
+        code = re.sub(r"/\*.*?\*/", "", code)
+        if "/*" in code:
+            code = code[:code.index("/*")]
+            in_block = True
+        out.append(code.split("//", 1)[0])
+    return out
+
+
+def windows_regions(lines: list[str], windows_file: bool) -> list[bool]:
+    """For each line, whether it is compiled only on Windows: inside the
+    Windows branch of an #if on _WIN32 / _WIN64 / _MSC_VER, or anywhere in a
+    file of a Windows platform folder."""
+    stack: list[str] = []   # per #if level: "win", "notwin" or "other"
+    out = []
+    for line in lines:
+        t = line.strip()
+        m = re.match(r"#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", t)
+        if m:
+            kind, cond = m.group(1), m.group(2)
+            win = bool(WIN_COND_RE.search(cond))
+            negated = kind == "ifndef" or re.search(r"!\s*defined\s*\(?\s*_WIN", cond)
+            if kind in ("if", "ifdef", "ifndef"):
+                stack.append(("notwin" if negated else "win") if win else "other")
+            elif kind == "elif" and stack:
+                stack[-1] = ("notwin" if negated else "win") if win else (
+                    "notwin" if stack[-1] == "win" else stack[-1])
+            elif kind == "else" and stack:
+                stack[-1] = {"win": "notwin", "notwin": "win"}.get(stack[-1], "other")
+            elif kind == "endif" and stack:
+                stack.pop()
+            out.append(False)
+            continue
+        out.append(windows_file and "notwin" not in stack or
+                   ("win" in stack and "notwin" not in stack))
+    return out
+
+
+def narrow_env_helpers(text: str) -> set[str]:
+    """Names of the functions this file defines whose body reads the
+    environment narrowly: a call to one of them with a Windows variable's
+    name is the same mistake one step removed."""
+    helpers = set()
+    clean = "\n".join(clean_lines(text.splitlines()))
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*"
+                         r"(?:const\s*)?(?:noexcept\s*)?\{", clean):
+        close = _close_of(clean, m.end() - 1)
+        if close > 0 and NARROW_ENV_RE.search(clean[m.end():close]):
+            helpers.add(m.group(1))
+    return helpers - {"if", "for", "while", "switch", "catch", "return"}
+
+
+def env_findings(path: Path, number: int, code: str, raw: str, in_windows: bool,
+                 helpers: set[str]) -> list["Finding"]:
+    found = []
+    for m in NARROW_ENV_RE.finditer(code):
+        fn = m.group("fn")
+        lit = LITERAL_ARG_RE.match(raw, m.end()) if len(raw) == len(code) else None
+        name = lit.group("name") if lit else None
+        if name in WIN_ENV_NAMES:
+            why = f"{fn}(\"{name}\") answers in the Windows ANSI code page"
+        elif fn == "_dupenv_s" and in_windows:
+            why = f"{fn} answers in the Windows ANSI code page"
+        elif in_windows and not lit:
+            why = f"{fn} in Windows code answers in the ANSI code page"
+        else:
+            continue
+        found.append(Finding(
+            path, number, "env-narrow",
+            f"{why}, so a profile folder or user name outside it comes back "
+            f"with '?' in it - use GetEnvUtf8({name and repr(name).replace(chr(39), chr(34)) or 'name'}) "
+            f"(UltraCanvasPathUtf8.h), which asks GetEnvironmentVariableW",
+            symbol=fn))
+    if helpers:
+        for m in re.finditer(r"(?<![\w:.>])([A-Za-z_]\w*)\s*\(", code):
+            if m.group(1) not in helpers or len(raw) != len(code):
+                continue
+            lit = LITERAL_ARG_RE.match(raw, m.end())
+            if lit and lit.group("name") in WIN_ENV_NAMES:
+                found.append(Finding(
+                    path, number, "env-narrow",
+                    f"{m.group(1)}(\"{lit.group('name')}\") reads the environment "
+                    f"through a narrow getenv - make {m.group(1)} use GetEnvUtf8 "
+                    f"(UltraCanvasPathUtf8.h)", symbol=m.group(1)))
+    return found
+
+
 def _close_of(code: str, i: int) -> int:
     """Index of the bracket closing the one at code[i], or -1."""
     depth = 0
@@ -309,9 +448,8 @@ def included_headers(path: Path, text: str) -> tuple[str, ...]:
             except OSError:
                 raw = ""
             # Comments and literals out first, so neither opens a brace.
-            raw = re.sub(r"/\*.*?\*/", " ", strip_strings(raw), flags=re.S)
-            raw = re.sub(r"//[^\n]*", "", raw)
-            _header_cache[target] = _strip_function_bodies(raw)
+            _header_cache[target] = _strip_function_bodies(
+                    "\n".join(clean_lines(raw.splitlines())))
         found.append(_header_cache[target])
     return tuple(found)
 
@@ -700,29 +838,22 @@ def check_file(path: Path) -> list[Finding]:
     # Each line with its literals blanked and its comments removed, first, so
     # a call that runs on over several lines can be read whole below.
     lines = text.splitlines()
-    cleaned: list[str | None] = []   # None: an exempt line
-    in_block_comment = False
-    for line in lines:
-        code = line
-        if in_block_comment:
-            end = code.find("*/")
-            if end < 0:
-                cleaned.append("")
-                continue
-            code = code[end + 2:]
-            in_block_comment = False
-        code = strip_strings(code)
-        code = re.sub(r"/\*.*?\*/", "", code)
-        if "/*" in code:
-            code = code[:code.index("/*")]
-            in_block_comment = True
-        code = code.split("//", 1)[0]
-        cleaned.append(None if EXEMPT_RE.search(line) else code)
+    cleaned: list[str | None] = [None if EXEMPT_RE.search(line) else code
+                                 for line, code in zip(lines, clean_lines(lines))]
+
+    windows_file = bool(WINDOWS_ONLY_PARTS & set(path.parts)) or "Windows" in path.stem
+    regions = windows_regions(lines, windows_file)
+    helpers = narrow_env_helpers(text)
 
     for number, line in enumerate(lines, start=1):
         code = cleaned[number - 1]
         if code is None:
             continue
+
+        raw_full = line.split("//", 1)[0]
+        findings.extend(env_findings(path, number, code,
+                                     raw_full if len(raw_full) == len(code) else code,
+                                     regions[number - 1], helpers))
 
         for m in TO_STRING_RE.finditer(code):
             fn = m.group("fn")
@@ -779,7 +910,8 @@ def iter_sources(paths: list[Path]):
             yield path
 
 
-# --self-test: what the header-aware rules must and must not report. A line
+# --self-test: what the header-aware and env-narrow rules must and must not
+# report. A line
 # ending in "// expect" has to be flagged; every other line must not be. The
 # header's inline function keeps a std::string local that must not leak into
 # the .cpp (`fs::exists(local, ec)`), and a path member stays a path.
@@ -815,7 +947,26 @@ void Store::Run() {
     fs::exists(local, ec);
     const fs::path p = PathFromUtf8(dir_) / "mail";
     std::ofstream out(PathFromUtf8(KeyPath()));
+    const char* appData = std::getenv("APPDATA");         // expect
+    const wchar_t* temp = _wgetenv(L"TEMP");               // wide: not this rule
+    const char* home = std::getenv("HOME");
+    const std::string profile = GetEnvUtf8("USERPROFILE");
+    const std::string localAppData = EnvOr("LOCALAPPDATA"); // expect
+    const std::string xdg = EnvOr("XDG_CONFIG_HOME");
 }
+std::string EnvOr(const char* name) {
+    const char* value = std::getenv(name);
+    return value ? value : "";
+}
+#ifdef _WIN32
+std::string WindowsOnly(const char* name) {
+    char* value = nullptr; size_t n = 0;
+    _dupenv_s(&value, &n, name);                          // expect
+    return std::getenv(name) ? "" : "";                   // expect
+}
+#else
+std::string PosixOnly(const char* name) { return std::getenv(name); }
+#endif
 """
 # The call that opens on the `fs::create_directories(` line and closes on the
 # next is reported on the line it starts on.

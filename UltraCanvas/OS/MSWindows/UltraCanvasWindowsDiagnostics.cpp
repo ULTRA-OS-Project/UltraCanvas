@@ -78,8 +78,11 @@ namespace UltraCanvas {
                 MiniDumpWithDataSegs | MiniDumpWithHandleData |
                 MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
+        // Narrow on purpose: the value is an ASCII 0/1 switch, never a path
+        // or a name, and this is read on the way to a crash report, where
+        // nothing should allocate.
         bool EnvFlagSet(const char* name) {
-            const char* value = std::getenv(name);
+            const char* value = std::getenv(name);   // path-string-ok: ASCII 0/1 flag, no allocation on the crash path
             if (!value || !*value) return false;
             return !(value[0] == '0' && value[1] == '\0');
         }

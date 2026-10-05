@@ -16,8 +16,8 @@
 //
 // The fallback exists so that calling code has one code path on all
 // platforms; it is not a security equivalent.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - volume labels read wide, foreign labels not listed
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -100,22 +100,31 @@ std::string VolumeLabelFor(const std::string& name) {
     return std::string(MountPrefix()) + name;
 }
 
+// The label as UTF-8. Read wide: our own labels are ASCII (IsValidName), but
+// every drive's label is read to find them, and GetVolumeInformationA hands a
+// stick labelled "ultravfs-Ελένη" back as "ultravfs-?????" under code page
+// 1252 - a name that then looked like one of ours.
 std::string ReadVolumeLabel(const std::string& driveRoot) {
-    char label[MAX_PATH + 1] = {};
-    if (!::GetVolumeInformationA(driveRoot.c_str(), label, MAX_PATH,
+    const std::wstring root = UltraCanvas::PathUtf8Detail::Utf8ToUtf16<std::wstring>(driveRoot);
+    wchar_t label[MAX_PATH + 1] = {};
+    if (!::GetVolumeInformationW(root.c_str(), label, MAX_PATH,
                                  nullptr, nullptr, nullptr, nullptr, 0)) {
         return {};
     }
-    return std::string(label);
+    return UltraCanvas::PathUtf8Detail::Utf16ToUtf8(std::wstring(label));
 }
 
+// The disc name a label carries, or empty when the label is not one this
+// module wrote: the prefix, then a name IsValidName accepts. Anything else
+// is somebody else's volume that happens to start the same way.
 std::string NameFromVolumeLabel(const std::string& label) {
     const std::string prefix = MountPrefix();
     if (label.size() <= prefix.size() ||
         label.compare(0, prefix.size(), prefix) != 0) {
         return {};
     }
-    return label.substr(prefix.size());
+    std::string name = label.substr(prefix.size());
+    return IsValidName(name) ? name : std::string();
 }
 
 // Finds the drive letter hosting the ImDisk disc with this name, or '\0'.

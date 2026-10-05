@@ -284,13 +284,14 @@ namespace {
         return folderPath + kPlaceholderSuffix;
     }
 
+    // UTF-8, like every folder the tree compares it with; on Windows from
+    // the wide environment, where getenv answers in the ANSI code page.
     std::string UserHomeDir() {
 #ifdef _WIN32
-        const char* home = std::getenv("USERPROFILE");
+        return GetEnvUtf8("USERPROFILE");
 #else
-        const char* home = std::getenv("HOME");
+        return GetEnvUtf8("HOME");
 #endif
-        return home ? std::string(home) : std::string();
     }
 
     // Is `path` the user's home folder? Compared through FolderIdentityKey, so

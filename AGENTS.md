@@ -127,10 +127,20 @@ before adding cross-module code.
   call to a function declared as returning `std::string`
   (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
   whole. A string it still cannot see the type of (an `auto`, a member of a
-  class declared further away) is review's to catch, and so is one that is
-  not UTF-8 to begin with: a narrow `getenv("APPDATA")` or an `...A` Win32
-  call answers in the ANSI code page, so read those wide (`_wgetenv`,
-  `GetTempPathW`) and convert with `PathToUtf8`.
+  class declared further away) is review's to catch.
+  A string that is not UTF-8 to begin with is not fixed by wrapping it in
+  `PathFromUtf8`. The environment is the common case: Windows keeps the
+  profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
+  `USERPROFILE`, `TEMP`, `USERNAME` ...), and the narrow `getenv` /
+  `_dupenv_s` answers in the ANSI code page. Read every variable with
+  `GetEnvUtf8(name)` (`UltraCanvasPathUtf8.h`): UTF-8 on every platform, from
+  `GetEnvironmentVariableW` on Windows. The check reports a narrow read
+  (`env-narrow`) - of one of those names, anywhere in Windows-only code, or
+  through a helper of the same file that reads narrowly - except for a
+  deliberate one that says why (`// path-string-ok: ASCII 0/1 flag`). An
+  `...A` Win32 call (`GetVolumeInformationA`, `GetTempPathA`) has the same
+  problem and is review's to catch: call the `...W` one and convert with
+  `PathToUtf8` or `PathUtf8Detail::Utf16ToUtf8`.
   `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
   folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`

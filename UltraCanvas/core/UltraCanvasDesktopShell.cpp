@@ -33,9 +33,10 @@ namespace UltraCanvas {
 
 namespace {
 
+    // UTF-8, like every path here - on Windows from the wide environment,
+    // where getenv would answer in the ANSI code page.
     std::string EnvString(const char* name) {
-        const char* value = std::getenv(name);
-        return value ? std::string(value) : std::string();
+        return GetEnvUtf8(name);
     }
 
     std::vector<std::string> SplitPathList(const std::string& list, char separator) {

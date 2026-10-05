@@ -1190,13 +1190,14 @@ namespace UltraCanvas {
             return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
 
+        // UTF-8, as the dialog's paths are - on Windows from the wide
+        // environment, where getenv would answer in the ANSI code page.
         std::string UserHomeDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-            const char* home = std::getenv("USERPROFILE");
+            return GetEnvUtf8("USERPROFILE");
 #else
-            const char* home = std::getenv("HOME");
+            return GetEnvUtf8("HOME");
 #endif
-            return home ? std::string(home) : std::string();
         }
 
         bool IsHiddenName(const std::string& name) {

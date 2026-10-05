@@ -55,11 +55,12 @@ EndpointStore& EndpointStore::Instance() {
 
 std::string EndpointStore::ConfigDir() {
 #if defined(_WIN32)
-    // Read wide and handed on as UTF-8: the JSON file helpers open it with
-    // OpenFileUtf8, and the narrow getenv answers in the ANSI code page,
-    // which cannot spell a profile folder named in Thai under code page 1252.
-    if (const wchar_t* appdata = _wgetenv(L"APPDATA"); appdata && *appdata)
-        return UltraCanvas::PathToUtf8(std::filesystem::path(appdata) / L"UltraAI");   // path-string-ok: wide
+    // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8): the
+    // JSON file helpers open it with OpenFileUtf8, and the narrow getenv
+    // answers in the ANSI code page, which cannot spell a profile folder
+    // named in Thai under code page 1252.
+    if (const std::string appdata = UltraCanvas::GetEnvUtf8("APPDATA"); !appdata.empty())
+        return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(appdata) / "UltraAI");
     return "UltraAI";
 #elif defined(__APPLE__)
     if (const char* home = std::getenv("HOME"); home && *home)

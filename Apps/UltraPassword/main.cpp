@@ -56,11 +56,14 @@ void PrintUsage(const char* prog) {
 std::string DefaultVaultPath() {
     namespace fs = std::filesystem;
     fs::path base;
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) {
+    // UTF-8 (GetEnvUtf8), as PathFromUtf8 expects: on Windows a narrow
+    // getenv answers in the ANSI code page and would miss a profile folder
+    // named outside it.
+    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty()) {
         base = PathFromUtf8(xdg);
-    } else if (const char* appData = std::getenv("APPDATA"); appData && *appData) {
+    } else if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) {
         base = PathFromUtf8(appData);
-    } else if (const char* home = std::getenv("HOME"); home && *home) {
+    } else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
         base = PathFromUtf8(home) / ".local" / "share";
     } else {
         base = fs::current_path();
