@@ -4295,3 +4295,28 @@ set_target_properties(AudioStreamingTest PROPERTIES
 add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# ===== MEDIA VIEWER TOOLS TEST =====
+# The viewer's second toolbar row offers only what the shown file takes: no
+# colour sliders or Curves for a drawing, a document, a 3D model, video or
+# audio, and a photo's adjustments never tint the drawing browsed to next.
+# Headless - the viewer and its toolbars are built without a window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerToolsTest...")
+    add_executable(MediaViewerToolsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerToolsTest.cpp
+    )
+    target_include_directories(MediaViewerToolsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerToolsTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerToolsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerToolsTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerToolsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerToolsTest COMMAND MediaViewerToolsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerToolsTest")
+else()
+    message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
