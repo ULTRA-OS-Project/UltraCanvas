@@ -1,4 +1,10 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.7.0 - headers and bodies are fetched in batches - fifty headers or ten
+//                  bodies to a FETCH, with BODY.PEEK - on a session of the
+//                  plug-in's own (ImapSession, on a connection libcurl signs
+//                  in): per message, the URL-based fetch took four to six
+//                  round trips, a second a message on a slow link. It stays
+//                  as the fallback.
 // Version: 0.6.1 - FetchMessages searches with UID SEARCH: it fetched sequence
 //                  numbers as UIDs, so it got the wrong mail or none at all
 // Version: 0.6.0 - FetchEnvelopesByUid (the envelopes of named messages); a
@@ -43,8 +49,15 @@
 
 #include <curl/curl.h>
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <winsock2.h>   // select() on a session's socket
+#else
+#include <poll.h>
+#endif
+
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -196,6 +209,157 @@ UltraNetResult RunCommand(const std::string& url, const std::string& customReq,
     return PerformOn(h.get(), url, customReq, outBody);
 }
 
+// A conversation in commands of the plug-in's own, on a connection libcurl
+// opened and signed in (CURLOPT_CONNECT_ONLY: TLS or STARTTLS, the password or
+// XOAUTH2, exactly as for every other call here). libcurl's IMAP takes one
+// message per URL, fetches with BODY[] (which marks it read), and for a command
+// of the caller's own hands on only the lines that begin with '*' - a message's
+// text, which comes as a literal, is lost. Read here whole, literals and all,
+// one FETCH carries the headers of fifty messages, and BODY.PEEK leaves them
+// unread without their flags being read before and restored after each fetch.
+class ImapSession {
+public:
+    // Connect to `base` and sign in. `curlCode` (optional) receives libcurl's
+    // own code, so a caller can tell a server it cannot reach from a session
+    // libcurl would not open.
+    UltraNetResult Open(const std::string& base, const UltraNetMailOptions& opt, bool tls,
+                        CURLcode* curlCode = nullptr) {
+        h_ = NewHandle();
+        if (!h_)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                         "curl_easy_init failed");
+        if (UltraNetResult a = ApplyCommonOptions(h_.get(), opt, tls); !a) return a;
+        curl_easy_setopt(h_.get(), CURLOPT_URL, base.c_str());
+        curl_easy_setopt(h_.get(), CURLOPT_CONNECT_ONLY, 1L);
+        idleMs_ = opt.operationTimeoutMs > 0 ? opt.operationTimeoutMs : 60000;
+        std::string why, diagnostics;
+        const CURLcode rc = ultranet_curlerror::Perform(h_.get(), why, &diagnostics);
+        if (curlCode) *curlCode = rc;
+        if (rc != CURLE_OK) {
+            h_.reset();
+            return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+        }
+        return UltraNetResult::Ok();
+    }
+
+    // Send `command` and read up to its tagged completion. Each untagged
+    // response on the way goes to `onUntagged` as soon as it is complete. Ok
+    // when the server answered OK, its own words when it did not.
+    UltraNetResult Run(const std::string& command,
+                       const std::function<void(const ImapResponse&)>& onUntagged = {}) {
+        if (!h_)
+            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                         "the IMAP session is not open");
+        const std::string tag = "U" + std::to_string(++tag_);
+        if (UltraNetResult s = SendAll(tag + " " + command + "\r\n"); !s) return s;
+        ImapResponse r;
+        for (;;) {
+            while (reader_.Next(r)) {
+                if (r.IsTagged(tag)) {
+                    if (r.Status() == "OK") return UltraNetResult::Ok();
+                    const std::string verb = command.substr(0, command.find(' ', 4));
+                    return UltraNetResult::Error(UltraNetResultCode::Unknown,
+                        "The mail server refused " + verb + ": " + r.Text());
+                }
+                if (onUntagged && !r.segments.empty() &&
+                    r.segments.front().compare(0, 2, "* ") == 0)
+                    onUntagged(r);
+            }
+            if (UltraNetResult more = ReadMore(); !more) return more;
+        }
+    }
+
+private:
+    UltraNetResult SendAll(const std::string& data) {
+        std::size_t done = 0;
+        while (done < data.size()) {
+            std::size_t n = 0;
+            const CURLcode rc = curl_easy_send(h_.get(), data.data() + done,
+                                               data.size() - done, &n);
+            if (rc == CURLE_OK) { done += n; continue; }
+            if (rc != CURLE_AGAIN) return Failed(rc);
+            if (!WaitForSocket(/*forReading=*/false)) return TimedOut();
+        }
+        return UltraNetResult::Ok();
+    }
+
+    UltraNetResult ReadMore() {
+        char buf[64 * 1024];
+        for (;;) {
+            std::size_t n = 0;
+            const CURLcode rc = curl_easy_recv(h_.get(), buf, sizeof buf, &n);
+            if (rc == CURLE_OK) {
+                if (n == 0)
+                    return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                                 "The mail server closed the connection.");
+                reader_.Feed(buf, n);
+                return UltraNetResult::Ok();
+            }
+            if (rc != CURLE_AGAIN) return Failed(rc);
+            if (!WaitForSocket(/*forReading=*/true)) return TimedOut();
+        }
+    }
+
+    // Wait until the connection can be read (or written), at most idleMs_.
+    bool WaitForSocket(bool forReading) {
+        curl_socket_t sock = CURL_SOCKET_BAD;
+        if (curl_easy_getinfo(h_.get(), CURLINFO_ACTIVESOCKET, &sock) != CURLE_OK ||
+            sock == CURL_SOCKET_BAD)
+            return false;
+#if defined(_WIN32) || defined(_WIN64)
+        fd_set set;
+        FD_ZERO(&set);
+        FD_SET(sock, &set);
+        timeval tv;
+        tv.tv_sec  = static_cast<long>(idleMs_ / 1000);
+        tv.tv_usec = static_cast<long>((idleMs_ % 1000) * 1000);
+        return select(0, forReading ? &set : nullptr, forReading ? nullptr : &set,
+                      nullptr, &tv) > 0;
+#else
+        pollfd pfd{};
+        pfd.fd = sock;
+        pfd.events = forReading ? POLLIN : POLLOUT;
+        return poll(&pfd, 1, static_cast<int>(idleMs_)) > 0;
+#endif
+    }
+
+    UltraNetResult Failed(CURLcode rc) {
+        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+    }
+    UltraNetResult TimedOut() {
+        return UltraNetResult::Error(UltraNetResultCode::Timeout,
+            "The mail server did not answer for " + std::to_string(idleMs_ / 1000) +
+            " seconds.");
+    }
+
+    CurlHandle          h_{nullptr, curl_easy_cleanup};
+    ImapResponseReader  reader_;
+    int                 tag_ = 0;
+    long                idleMs_ = 60000;
+};
+
+// Whether a session that would not open is worth the old, per-message way:
+// not when the server cannot be reached or refuses the sign-in - that fails
+// the same way again - but when libcurl would not open a session as such.
+bool SessionUnavailable(CURLcode rc) {
+    switch (rc) {
+        case CURLE_COULDNT_RESOLVE_HOST:
+        case CURLE_COULDNT_RESOLVE_PROXY:
+        case CURLE_COULDNT_CONNECT:
+        case CURLE_OPERATION_TIMEDOUT:
+        case CURLE_LOGIN_DENIED:
+        case CURLE_SSL_CONNECT_ERROR:
+        case CURLE_PEER_FAILED_VERIFICATION:
+        case CURLE_SSL_CACERT_BADFILE:
+        case CURLE_SEND_ERROR:
+        case CURLE_RECV_ERROR:
+        case CURLE_USE_SSL_FAILED:
+            return false;
+        default:
+            return true;
+    }
+}
+
 // Parse a full RFC 822 message into UltraNetMailMessage (for bulk FetchMessages).
 void ParseFullMessage(const std::string& raw, UltraNetMailMessage& m) {
     std::size_t headerEnd = raw.find("\r\n\r\n");
@@ -330,6 +494,49 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        std::ostringstream search;
+        if (sinceUid > 0) search << "UID SEARCH UID " << (sinceUid + 1) << ":*";
+        else              search << "UID SEARCH ALL";
+        // Which messages, newest first, bounded by maxMessages.
+        auto choose = [&](std::vector<uint32_t> uids) {
+            // "UID n:*" always matches the highest UID, even one below n (RFC
+            // 3501 6.4.8): that message is held already.
+            if (sinceUid > 0)
+                uids.erase(std::remove_if(uids.begin(), uids.end(),
+                                          [sinceUid](uint32_t u) { return u <= sinceUid; }),
+                           uids.end());
+            std::sort(uids.begin(), uids.end(), std::greater<uint32_t>());
+            if (options.maxMessages > 0 &&
+                static_cast<std::size_t>(options.maxMessages) < uids.size())
+                uids.resize(static_cast<std::size_t>(options.maxMessages));
+            return uids;
+        };
+
+        // Batched: one session, one SEARCH, fifty headers to a FETCH.
+        {
+            ImapSession session;
+            CURLcode openCode = CURLE_OK;
+            UltraNetResult opened = OpenFolder(session, base, tls, folder, options, &openCode);
+            if (opened) {
+                std::string searchText;
+                UltraNetResult sr = session.Run(search.str(), [&](const ImapResponse& r) {
+                    searchText += r.Text() + "\r\n";
+                });
+                if (!sr) return sr;
+                const std::vector<uint32_t> rest =
+                    FetchHeadersBatched(session, choose(ParseSearchUids(searchText)), onEnvelope);
+                if (rest.empty()) return UltraNetResult::Ok();
+                // What the batches did not bring (a FETCH refused, a header
+                // not sent as a literal): one by one.
+                CurlHandle h = NewHandle();
+                if (!h || !ApplyCommonOptions(h.get(), options, tls)) return UltraNetResult::Ok();
+                FetchHeaders(h.get(), base, folder, rest, onEnvelope);
+                return UltraNetResult::Ok();
+            }
+            if (openCode == CURLE_OK || !SessionUnavailable(openCode)) return opened;
+        }
+
+        // Per message: when libcurl would not open a session of the plug-in's own.
         const std::string mbUrl = base + EncodeMailboxPath(folder);
 
         // One handle for the whole pass: the SEARCH and every per-UID header/flags
@@ -338,27 +545,10 @@ public:
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
         if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
-
-        std::ostringstream search;
-        if (sinceUid > 0) search << "UID SEARCH UID " << (sinceUid + 1) << ":*";
-        else              search << "UID SEARCH ALL";
         std::string searchBody;
         UltraNetResult sr = PerformOn(h.get(), mbUrl, search.str(), searchBody);
         if (!sr) return sr;
-        std::vector<uint32_t> uids = ParseSearchUids(searchBody);
-        // "UID n:*" always matches the highest UID, even one below n (RFC 3501
-        // 6.4.8): that message is held already.
-        if (sinceUid > 0)
-            uids.erase(std::remove_if(uids.begin(), uids.end(),
-                                      [sinceUid](uint32_t u) { return u <= sinceUid; }),
-                       uids.end());
-        // Newest first, bounded by maxMessages.
-        std::sort(uids.begin(), uids.end(), std::greater<uint32_t>());
-        if (options.maxMessages > 0 &&
-            static_cast<std::size_t>(options.maxMessages) < uids.size())
-            uids.resize(static_cast<std::size_t>(options.maxMessages));
-
-        FetchHeaders(h.get(), base, folder, uids, onEnvelope);
+        FetchHeaders(h.get(), base, folder, choose(ParseSearchUids(searchBody)), onEnvelope);
         return UltraNetResult::Ok();
     }
 
@@ -371,21 +561,35 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
-        CurlHandle h = NewHandle();
-        if (!h)
-            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
 
         std::vector<uint32_t> newestFirst(uids);
         std::sort(newestFirst.begin(), newestFirst.end(), std::greater<uint32_t>());
         newestFirst.erase(std::unique(newestFirst.begin(), newestFirst.end()), newestFirst.end());
+
+        std::vector<uint32_t> rest = newestFirst;
+        {
+            ImapSession session;
+            CURLcode openCode = CURLE_OK;
+            UltraNetResult opened = OpenFolder(session, base, tls, folder, options, &openCode);
+            if (opened) {
+                rest = FetchHeadersBatched(session, newestFirst, onEnvelope);
+                if (rest.empty()) return UltraNetResult::Ok();
+            } else if (openCode == CURLE_OK || !SessionUnavailable(openCode)) {
+                return opened;
+            }
+        }
+
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
         // The mailbox is selected by the first fetch; a connection that fails
         // already there fails the call, so the caller can tell it from a
         // message that is simply gone.
         const std::string mbUrl = base + EncodeMailboxPath(folder);
         std::string probe;
         if (UltraNetResult r = PerformOn(h.get(), mbUrl, "NOOP", probe); !r) return r;
-        FetchHeaders(h.get(), base, folder, newestFirst, onEnvelope);
+        FetchHeaders(h.get(), base, folder, rest, onEnvelope);
         return UltraNetResult::Ok();
     }
 
@@ -424,13 +628,27 @@ public:
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
 
+        // Batched: ten bodies to a FETCH, BODY.PEEK so they stay unread.
+        std::vector<uint32_t> rest = uids;
+        {
+            ImapSession session;
+            CURLcode openCode = CURLE_OK;
+            UltraNetResult opened = OpenFolder(session, base, tls, folder, options, &openCode);
+            if (opened) {
+                rest = FetchBodiesBatched(session, uids, onMessage);
+                if (rest.empty()) return UltraNetResult::Ok();
+            } else if (openCode == CURLE_OK || !SessionUnavailable(openCode)) {
+                return opened;
+            }
+        }
+
         CurlHandle h = NewHandle();
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
         if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;   // authenticate once; reuse below
 
         const std::string mbUrl = base + EncodeMailboxPath(folder);  // constant across UIDs
-        for (uint32_t uid : uids) {
+        for (uint32_t uid : rest) {
             std::ostringstream u; u << mbUrl << "/;UID=" << uid;
             std::string raw;
             // Bodies fetched ahead for the cache stay unread on the server.
@@ -601,6 +819,106 @@ private:
         if (!mailbox.empty() && mailbox.front() == '/') mailbox.erase(0, 1);
         if (mailbox.empty()) mailbox = "INBOX";
         return true;
+    }
+
+    // Headers to a FETCH, and bodies: a header is a few kilobytes, a body
+    // can be megabytes, and every FETCH costs one round trip.
+    static constexpr std::size_t kHeaderBatch = 50;
+    static constexpr std::size_t kBodyBatch   = 10;
+
+    // Open `session` and EXAMINE `folder` (read-only: nothing fetched here
+    // changes the mailbox).
+    UltraNetResult OpenFolder(ImapSession& session, const std::string& base, bool tls,
+                              const std::string& folder, const UltraNetMailOptions& options,
+                              CURLcode* openCode) {
+        if (UltraNetResult o = session.Open(base, options, tls, openCode); !o) return o;
+        return session.Run("EXAMINE \"" + QuoteImapMailbox(folder) + "\"");
+    }
+
+    // The flags and header of each of `uids` (newest first), kHeaderBatch to a
+    // FETCH, handed on newest first. A message the server no longer has is
+    // left out, as is one whose header came back empty. Returns the UIDs for
+    // the caller to fetch one by one (empty when all went): those of a FETCH
+    // the server refused and every one after it, and any whose header did not
+    // come as a literal - a server may send a short one as a quoted string,
+    // which the per-message fetch reads.
+    std::vector<uint32_t> FetchHeadersBatched(
+            ImapSession& session, const std::vector<uint32_t>& uids,
+            const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope) {
+        std::vector<uint32_t> rest;
+        for (std::size_t i = 0; i < uids.size(); i += kHeaderBatch) {
+            const std::vector<uint32_t> batch(
+                uids.begin() + static_cast<std::ptrdiff_t>(i),
+                uids.begin() + static_cast<std::ptrdiff_t>(std::min(i + kHeaderBatch, uids.size())));
+            std::vector<UltraNetMailEnvelope> got;
+            std::vector<uint32_t> oneByOne;
+            const UltraNetResult r = session.Run(
+                "UID FETCH " + UidSetString(batch) + " (UID FLAGS BODY.PEEK[HEADER])",
+                [&](const ImapResponse& response) {
+                    ImapFetchItem item;
+                    if (!ParseFetchResponse(response, item)) return;
+                    if (std::find(batch.begin(), batch.end(), item.uid) == batch.end()) return;
+                    const auto header = item.sections.find("BODY[HEADER]");
+                    if (header == item.sections.end()) { oneByOne.push_back(item.uid); return; }
+                    if (TrimWs(header->second).empty()) return;
+                    UltraNetMailEnvelope env;
+                    env.uid = item.uid;
+                    env.flags = item.flags;
+                    ParseEnvelopeHeaders(header->second, env);
+                    got.push_back(std::move(env));
+                });
+            // Handed on only once the FETCH has completed, so a refused one
+            // leaves nothing half-delivered for the fallback to repeat.
+            if (!r) {
+                rest.insert(rest.end(), uids.begin() + static_cast<std::ptrdiff_t>(i), uids.end());
+                return rest;
+            }
+            std::sort(got.begin(), got.end(), [](const UltraNetMailEnvelope& a,
+                                                 const UltraNetMailEnvelope& b) {
+                return a.uid > b.uid;
+            });
+            if (onEnvelope) for (const auto& env : got) onEnvelope(env);
+            rest.insert(rest.end(), oneByOne.begin(), oneByOne.end());
+        }
+        std::sort(rest.begin(), rest.end(), std::greater<uint32_t>());
+        return rest;
+    }
+
+    // The whole text of each of `uids`, kBodyBatch to a FETCH, each handed on
+    // as it arrives. Returns the UIDs for the caller to fetch one by one
+    // (empty when all went): those not yet handed on when the server refused
+    // a FETCH or the connection broke, and any whose text did not come as a
+    // literal.
+    std::vector<uint32_t> FetchBodiesBatched(
+            ImapSession& session, const std::vector<uint32_t>& uids,
+            const std::function<void(uint32_t uid, const std::string& raw)>& onMessage) {
+        std::vector<uint32_t> oneByOne;
+        for (std::size_t i = 0; i < uids.size(); i += kBodyBatch) {
+            const std::vector<uint32_t> batch(
+                uids.begin() + static_cast<std::ptrdiff_t>(i),
+                uids.begin() + static_cast<std::ptrdiff_t>(std::min(i + kBodyBatch, uids.size())));
+            std::vector<uint32_t> delivered;
+            const UltraNetResult r = session.Run(
+                "UID FETCH " + UidSetString(batch) + " (UID BODY.PEEK[])",
+                [&](const ImapResponse& response) {
+                    ImapFetchItem item;
+                    if (!ParseFetchResponse(response, item)) return;
+                    if (std::find(batch.begin(), batch.end(), item.uid) == batch.end()) return;
+                    const auto body = item.sections.find("BODY[]");
+                    if (body == item.sections.end()) { oneByOne.push_back(item.uid); return; }
+                    if (body->second.empty()) return;
+                    if (onMessage) onMessage(item.uid, body->second);
+                    delivered.push_back(item.uid);
+                });
+            if (!r) {
+                for (std::size_t k = i; k < uids.size(); ++k)
+                    if (std::find(delivered.begin(), delivered.end(), uids[k]) == delivered.end() &&
+                        std::find(oneByOne.begin(), oneByOne.end(), uids[k]) == oneByOne.end())
+                        oneByOne.push_back(uids[k]);
+                return oneByOne;
+            }
+        }
+        return oneByOne;
     }
 
     // The flags and header fields of each of `uids`, in that order, over the

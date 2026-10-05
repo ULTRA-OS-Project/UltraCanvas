@@ -18,6 +18,10 @@
 - **The address book is in WAL mode**, as the mail index has been since
   0.10.21: a saved contact no longer creates, flushes and deletes a journal
   file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+- **A new account's mail arrives fifteen times faster**: the IMAP plug-in
+  now fetches headers and bodies in batches instead of one message at a time
+  (about a second a message on Windows before). See the framework changelog,
+  "IMAP: headers and bodies are fetched in batches".
 
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its

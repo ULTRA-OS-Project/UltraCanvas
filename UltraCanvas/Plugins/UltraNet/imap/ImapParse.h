@@ -4,6 +4,9 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.6.0 - ImapResponseReader (responses with their literals, read as they
+//                  arrive), ParseFetchResponse, UidSetString: what the batched
+//                  header and body fetches read
 // Version: 0.5.0 - DetectFolderRole: by the last level after the server's own
 //                  separator, German names, a migrated "INBOX^" prefix; only
 //                  INBOX itself is the inbox
@@ -19,10 +22,12 @@
 
 #include <UltraNet/UltraNetPlugins.h>   // UltraNetMailFlags, folder/envelope/status structs
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
+#include <map>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -419,6 +424,190 @@ inline void ParseEnvelopeHeaders(const std::string& headerBlock,
         else if (name == "message-id") env.messageId = value;
         else if (name == "in-reply-to") env.inReplyTo = value;
     }
+}
+
+// ---- responses with literals ------------------------------------------------
+
+// One response from the server as it came off the wire. A string the server
+// sends as a literal - "{123}" at the end of a line, then exactly that many
+// bytes - is kept apart: `literals[i]` is the i-th literal, `segments[i]` the
+// text before it (ending in its "{123}"), and the last segment the text after
+// the last literal. A response without literals is one segment, its line.
+struct ImapResponse {
+    std::vector<std::string> segments;
+    std::vector<std::string> literals;
+
+    // The response's text with its literals left out.
+    std::string Text() const {
+        std::string out;
+        for (const auto& s : segments) out += s;
+        return out;
+    }
+    // Whether this is the tagged completion of command `tag` ("U3 OK ...").
+    bool IsTagged(const std::string& tag) const {
+        return !segments.empty() && segments.front().compare(0, tag.size() + 1, tag + " ") == 0;
+    }
+    // "OK" / "NO" / "BAD" of a tagged response (upper-cased), "" otherwise.
+    std::string Status() const {
+        if (segments.empty()) return {};
+        const std::string& line = segments.front();
+        const std::size_t sp = line.find(' ');
+        if (sp == std::string::npos) return {};
+        std::size_t end = line.find(' ', sp + 1);
+        if (end == std::string::npos) end = line.size();
+        std::string st = line.substr(sp + 1, end - sp - 1);
+        for (auto& c : st) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return st;
+    }
+};
+
+// The size of the literal a line announces at its end - "{123}", "{123+}" or a
+// literal8's "~{123}" - or false when the line ends without one.
+inline bool LiteralAtLineEnd(const std::string& line, std::size_t& size) {
+    if (line.size() < 3 || line.back() != '}') return false;
+    std::size_t open = line.rfind('{');
+    if (open == std::string::npos) return false;
+    std::size_t endDigits = line.size() - 1;
+    if (endDigits > open + 1 && line[endDigits - 1] == '+') --endDigits;
+    if (endDigits == open + 1) return false;
+    unsigned long long v = 0;
+    for (std::size_t i = open + 1; i < endDigits; ++i) {
+        if (line[i] < '0' || line[i] > '9') return false;
+        v = v * 10 + static_cast<unsigned long long>(line[i] - '0');
+        if (v > 0xFFFFFFFFull) return false;
+    }
+    size = static_cast<std::size_t>(v);
+    return true;
+}
+
+// Cuts the byte stream of a connection into responses: Feed what was read,
+// then take each complete response with Next. A literal's bytes may contain
+// anything, line breaks included, and may arrive in any number of pieces.
+class ImapResponseReader {
+public:
+    void Feed(const char* data, std::size_t n) { buf_.append(data, n); }
+
+    bool Next(ImapResponse& out) {
+        for (;;) {
+            if (literalLeft_ > 0 || inLiteral_) {
+                if (buf_.size() - pos_ < literalLeft_) return false;
+                partial_.literals.push_back(buf_.substr(pos_, literalLeft_));
+                pos_ += literalLeft_;
+                literalLeft_ = 0;
+                inLiteral_ = false;
+                continue;
+            }
+            const std::size_t eol = buf_.find("\r\n", pos_);
+            if (eol == std::string::npos) { Compact(); return false; }
+            std::string line = buf_.substr(pos_, eol - pos_);
+            pos_ = eol + 2;
+            std::size_t size = 0;
+            const bool literal = LiteralAtLineEnd(line, size);
+            partial_.segments.push_back(std::move(line));
+            if (literal) {
+                literalLeft_ = size;
+                inLiteral_ = true;   // a {0} literal still has to be taken
+                continue;
+            }
+            out = std::move(partial_);
+            partial_ = ImapResponse{};
+            Compact();
+            return true;
+        }
+    }
+
+    // Bytes held that no complete response has used yet.
+    std::size_t Pending() const { return buf_.size() - pos_; }
+
+private:
+    void Compact() {
+        if (pos_ > 0 && (pos_ >= buf_.size() || pos_ > (1u << 16))) {
+            buf_.erase(0, pos_);
+            pos_ = 0;
+        }
+    }
+    std::string  buf_;
+    std::size_t  pos_ = 0;
+    std::size_t  literalLeft_ = 0;
+    bool         inLiteral_ = false;
+    ImapResponse partial_;
+};
+
+// ---- FETCH -------------------------------------------------------------------
+
+// What one "* n FETCH (...)" response says about a message: its UID, its flags
+// when they were asked for, and the sections that came as literals, keyed by
+// name without any "<origin>" ("BODY[HEADER]", "BODY[]").
+struct ImapFetchItem {
+    uint32_t uid = 0;
+    bool hasFlags = false;
+    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    std::map<std::string, std::string> sections;
+};
+
+// Read a FETCH response. False for any other response, and for a FETCH
+// without a UID (an unsolicited flag change has nothing to file it under).
+inline bool ParseFetchResponse(const ImapResponse& r, ImapFetchItem& out) {
+    out = ImapFetchItem{};
+    if (r.segments.empty()) return false;
+    // "* <n> FETCH (" at the start.
+    const std::string& first = r.segments.front();
+    if (first.size() < 2 || first[0] != '*' || first[1] != ' ') return false;
+    std::size_t p = 2, afterNum = 0;
+    uint32_t seq = 0;
+    if (!ParseImapNumber(first, p, seq, &afterNum)) return false;
+    if (Lower(first.substr(afterNum, 7)) != " fetch ") return false;
+
+    // The items outside the literals; a placeholder keeps a literal's place so
+    // nothing reads across it.
+    std::string text;
+    for (std::size_t i = 0; i < r.segments.size(); ++i) {
+        text += r.segments[i];
+        if (i < r.literals.size()) text += " \x01 ";
+    }
+    const std::string low = Lower(text);
+    // "UID <n>" as an item of its own (not the tail of another word).
+    for (std::size_t at = low.find("uid"); at != std::string::npos; at = low.find("uid", at + 3)) {
+        if (at > 0 && low[at - 1] != ' ' && low[at - 1] != '(') continue;
+        std::size_t np = at + 3;
+        if (np >= low.size() || low[np] != ' ') continue;
+        while (np < low.size() && low[np] == ' ') ++np;
+        if (ParseImapNumber(text, np, out.uid)) break;
+    }
+    if (out.uid == 0) return false;
+    if (low.find("flags (") != std::string::npos) {
+        out.hasFlags = true;
+        out.flags = ParseFetchFlags(text.substr(low.find("flags (")));
+    }
+    // Each literal is the value of the section named just before it.
+    for (std::size_t i = 0; i < r.literals.size() && i < r.segments.size(); ++i) {
+        const std::string& seg = r.segments[i];
+        const std::size_t name = Lower(seg).rfind("body[");
+        if (name == std::string::npos) continue;
+        const std::size_t close = seg.find(']', name);
+        if (close == std::string::npos) continue;
+        std::string key = seg.substr(name, close - name + 1);
+        for (auto& c : key) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        out.sections[key] = r.literals[i];
+    }
+    return true;
+}
+
+// A UID set for a command: runs of consecutive UIDs as "first:last", the rest
+// one by one - "3:7,9,12:13". Order and repeats in `uids` do not matter.
+inline std::string UidSetString(std::vector<uint32_t> uids) {
+    std::sort(uids.begin(), uids.end());
+    uids.erase(std::unique(uids.begin(), uids.end()), uids.end());
+    std::string out;
+    for (std::size_t i = 0; i < uids.size();) {
+        std::size_t j = i;
+        while (j + 1 < uids.size() && uids[j + 1] == uids[j] + 1) ++j;
+        if (!out.empty()) out += ',';
+        out += std::to_string(uids[i]);
+        if (j > i) out += ':' + std::to_string(uids[j]);
+        i = j + 1;
+    }
+    return out;
 }
 
 } // namespace ultranet_imap

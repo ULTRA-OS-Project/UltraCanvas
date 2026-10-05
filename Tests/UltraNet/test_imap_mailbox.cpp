@@ -275,6 +275,113 @@ fs::path ImapPluginPath() {
 }
 } // namespace
 
+// ---- batched fetches: responses with literals ----------------------------
+
+TEST(imap_literal_at_line_end) {
+    std::size_t n = 0;
+    REQUIRE(LiteralAtLineEnd("* 1 FETCH (UID 7 BODY[HEADER] {342}", n));
+    REQUIRE_EQ(n, (std::size_t)342);
+    REQUIRE(LiteralAtLineEnd("A1 APPEND x {12+}", n));
+    REQUIRE_EQ(n, (std::size_t)12);
+    REQUIRE(LiteralAtLineEnd("* 2 FETCH (BINARY[] ~{0}", n));
+    REQUIRE_EQ(n, (std::size_t)0);
+    REQUIRE(!LiteralAtLineEnd("* OK [UIDNEXT 161] Predicted next UID", n));
+    REQUIRE(!LiteralAtLineEnd("* 3 FETCH (UID 9 FLAGS (\\Seen))", n));
+    REQUIRE(!LiteralAtLineEnd("a {} b {1a}", n));
+    REQUIRE(!LiteralAtLineEnd("}", n));
+}
+
+TEST(imap_reader_takes_literals_whole_however_they_arrive) {
+    // Two FETCH responses, the first with a header that holds line breaks and
+    // text that looks like a literal of its own, then the tagged completion.
+    const std::string header1 = "From: A <a@x.example>\r\nSubject: costs {5}\r\n\r\n";
+    const std::string header2 = "From: B <b@x.example>\r\n\r\n";
+    const std::string wire =
+        "* 1 FETCH (UID 7 FLAGS (\\Seen) BODY[HEADER] {" + std::to_string(header1.size()) + "}\r\n" +
+        header1 + ")\r\n" +
+        "* 2 FETCH (UID 9 FLAGS () BODY[HEADER] {" + std::to_string(header2.size()) + "}\r\n" +
+        header2 + ")\r\n" +
+        "U3 OK Fetch completed.\r\n";
+    // Fed a byte at a time, as a slow connection might hand it over.
+    ImapResponseReader reader;
+    std::vector<ImapResponse> got;
+    ImapResponse r;
+    for (char c : wire) {
+        reader.Feed(&c, 1);
+        while (reader.Next(r)) got.push_back(r);
+    }
+    REQUIRE_EQ(got.size(), (std::size_t)3);
+    REQUIRE_EQ(got[0].literals.size(), (std::size_t)1);
+    REQUIRE_EQ(got[0].literals[0], header1);
+    REQUIRE_EQ(got[0].segments.size(), (std::size_t)2);
+    REQUIRE_EQ(got[0].segments[1], std::string(")"));
+    REQUIRE_EQ(got[1].literals[0], header2);
+    REQUIRE(got[2].IsTagged("U3"));
+    REQUIRE(!got[2].IsTagged("U30"));
+    REQUIRE_EQ(got[2].Status(), std::string("OK"));
+    REQUIRE_EQ(reader.Pending(), (std::size_t)0);
+
+    // All at once, and an empty literal.
+    ImapResponseReader whole;
+    whole.Feed(wire.data(), wire.size());
+    int count = 0;
+    while (whole.Next(r)) ++count;
+    REQUIRE_EQ(count, 3);
+    ImapResponseReader empty;
+    const std::string e = "* 4 FETCH (UID 11 BODY[] {0}\r\n)\r\nU4 NO gone\r\n";
+    empty.Feed(e.data(), e.size());
+    REQUIRE(empty.Next(r));
+    REQUIRE_EQ(r.literals.size(), (std::size_t)1);
+    REQUIRE(r.literals[0].empty());
+    REQUIRE(empty.Next(r));
+    REQUIRE_EQ(r.Status(), std::string("NO"));
+}
+
+TEST(imap_parse_fetch_response) {
+    ImapResponse r;
+    r.segments = { "* 12 FETCH (UID 4711 FLAGS (\\Seen \\Answered) BODY[HEADER] {9}", ")" };
+    r.literals = { "Subject: x" };
+    ImapFetchItem item;
+    REQUIRE(ParseFetchResponse(r, item));
+    REQUIRE_EQ(item.uid, (uint32_t)4711);
+    REQUIRE(item.hasFlags);
+    REQUIRE(UltraNetHasFlag(item.flags, UltraNetMailFlags::Seen));
+    REQUIRE(UltraNetHasFlag(item.flags, UltraNetMailFlags::Answered));
+    REQUIRE_EQ(item.sections["BODY[HEADER]"], std::string("Subject: x"));
+
+    // The UID after the literal, the section in lower case with an origin, no
+    // flags asked for.
+    r.segments = { "* 3 fetch (body[]<0> {5}", " UID 99)" };
+    r.literals = { "Hello" };
+    REQUIRE(ParseFetchResponse(r, item));
+    REQUIRE_EQ(item.uid, (uint32_t)99);
+    REQUIRE(!item.hasFlags);
+    REQUIRE_EQ(item.sections.count("BODY[]"), (std::size_t)1);
+    REQUIRE_EQ(item.sections["BODY[]"], std::string("Hello"));
+
+    // A flag change the server sends on its own has no UID: nothing to file.
+    r.segments = { "* 5 FETCH (FLAGS (\\Seen))" };
+    r.literals.clear();
+    REQUIRE(!ParseFetchResponse(r, item));
+    // A section the server sent as NIL is simply not there.
+    r.segments = { "* 6 FETCH (UID 8 BODY[HEADER] NIL)" };
+    REQUIRE(ParseFetchResponse(r, item));
+    REQUIRE(item.sections.empty());
+    // Not a FETCH at all.
+    r.segments = { "* 160 EXISTS" };
+    REQUIRE(!ParseFetchResponse(r, item));
+    r.segments = { "* SEARCH 1 2 3" };
+    REQUIRE(!ParseFetchResponse(r, item));
+}
+
+TEST(imap_uid_set_string) {
+    REQUIRE_EQ(UidSetString({ 5, 3, 4, 9, 7, 8, 1 }), std::string("1,3:5,7:9"));
+    REQUIRE_EQ(UidSetString({ 42 }), std::string("42"));
+    REQUIRE_EQ(UidSetString({ 2, 2, 3 }), std::string("2:3"));
+    REQUIRE_EQ(UidSetString({ 4294967295u, 4294967294u }), std::string("4294967294:4294967295"));
+    REQUIRE_EQ(UidSetString({}), std::string(""));
+}
+
 TEST(imap_plugin_exposes_mailbox_interface) {
     const fs::path p = ImapPluginPath();
     if (p.empty()) SKIP("IMAP plug-in DSO not available in this env");
