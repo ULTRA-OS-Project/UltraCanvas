@@ -42,8 +42,18 @@ vcpkg_replace_string("${SOURCE_PATH}/Makefile"
 
 # On macOS MuPDF's Makerules does not ask pkg-config for the system
 # libraries, so their flags are passed in, as Homebrew does.
+#
+# It does ask pkg-config for one: libcrypto, for PDF digital signatures. With
+# only PKG_CONFIG_PATH set, pkg-config still searched its default path, where
+# the build machine's Homebrew keeps OpenSSL - so on the Intel runner libmupdf
+# linked /usr/local/opt/openssl@3/lib/libcrypto.3.dylib, and package-macos.sh
+# refused the suite ("still loads ... from the build machine"). The apps do
+# not use MuPDF's signature support, so it is off (HAVE_LIBCRYPTO=no below),
+# and PKG_CONFIG_LIBDIR confines every pkg-config query here to vcpkg's
+# libraries, so no other probe can reach the build machine either.
 vcpkg_find_acquire_program(PKGCONFIG)
 set(ENV{PKG_CONFIG_PATH} "${CURRENT_INSTALLED_DIR}/lib/pkgconfig:${CURRENT_INSTALLED_DIR}/share/pkgconfig")
+set(ENV{PKG_CONFIG_LIBDIR} "${CURRENT_INSTALLED_DIR}/lib/pkgconfig:${CURRENT_INSTALLED_DIR}/share/pkgconfig")
 set(sys_args "")
 foreach(lib IN ITEMS
         "FREETYPE|freetype2" "GUMBO|gumbo" "HARFBUZZ|harfbuzz" "LIBJPEG|libjpeg"
@@ -87,6 +97,7 @@ vcpkg_execute_required_process(
         HAVE_X11=no
         HAVE_GLUT=no
         HAVE_CURL=no
+        HAVE_LIBCRYPTO=no
         "XCFLAGS=${target_flags}"
         "XLDFLAGS=${target_flags}"
         "XLIB_LDFLAGS=${lib_ldflags}"
