@@ -7,7 +7,9 @@
   connection that sends nothing but `HEAD /` and remembered, and every later
   connection is pinned to it. A device that presents a different key is
   refused - never relearned - with a message saying how to forget the old
-  one (`IODeviceForgetCertificate()`). Keys are kept in
+  one: UOS-Settings' *Devices > Trusted certificates* page lists every
+  trusted device with a *Forget* button (`IODeviceForgetCertificate()` in
+  code). Keys are kept in
   `DeviceCertificates.conf` in the UltraCanvas settings folder;
   `ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new ones being learned.
 - **UltraNet: public-key pinning.** `UltraNetHttpOptions::pinnedPublicKey`

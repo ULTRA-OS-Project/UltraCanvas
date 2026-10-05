@@ -14,6 +14,11 @@
 //       One folder for every application (Global) or one per application
 //       (Individual); under Individual a table lists the applications, each
 //       with its own Global | Individual switch and the folder it opens in.
+//   Devices > Trusted certificates
+//       The network scanners and printers whose self-signed certificate was
+//       trusted on first use (UltraCanvasIODeviceTlsTrust.h), each with a
+//       Forget button for a device that was reset or replaced and now
+//       presents a new certificate.
 //
 // Version: 0.1.0
 // Last Modified: 2026-10-01
@@ -63,6 +68,10 @@ private:
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildCertificatesPage();
+    // Re-reads DeviceCertificates.conf and shows a row per device in it.
+    void RefreshCertificatesPage();
+    void ForgetCertificate(const std::string& address);
 
     std::string version_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
@@ -91,6 +100,20 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> tableRows_;   // scrolls
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> tableNote_;
     std::map<std::string, AppRow> rows_;
+
+    // ----- Trusted certificates -----
+    // One row per device, made once and hidden when its key is forgotten: the
+    // row's Forget button must not be destroyed by its own callback.
+    struct CertificateRow {
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> row;
+        std::shared_ptr<UltraCanvas::UltraCanvasLabel> key;
+    };
+    void AddCertificateRow(const std::string& address);
+
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> certificateRows_;   // scrolls
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> certificateNote_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> certificateStatus_;
+    std::map<std::string, CertificateRow> certificates_;
     bool refreshing_ = false;   // filling the controls, not the user changing them
 };
 

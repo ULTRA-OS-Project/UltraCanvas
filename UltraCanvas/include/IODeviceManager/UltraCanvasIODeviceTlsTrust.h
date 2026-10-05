@@ -17,8 +17,9 @@
 //      key (UltraNetHttpOptions::pinnedPublicKey). A different key fails the
 //      request with TlsPublicKeyMismatch and is never learned over the old
 //      one: the device was reset or replaced, or something else is answering,
-//      and only the user can tell which. IODeviceForgetCertificate() is how
-//      they say it was the first.
+//      and only the user can tell which. UOS-Settings' Devices > Trusted
+//      certificates page (IODeviceForgetCertificate() underneath) is how they
+//      say it was the first.
 //
 // The first contact is the one moment the key is taken on trust - the same
 // bargain SSH makes, and a far better one than the plain HTTP these devices

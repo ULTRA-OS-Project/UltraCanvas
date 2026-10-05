@@ -66208,9 +66208,10 @@ what both backends do instead is what SSH does with host keys
    `UltraNetHttpOptions::pinnedPublicKey`), checked on every handshake even
    though ordinary verification is off for the request. A different key fails
    with `TlsPublicKeyMismatch` and is never learned over the old one: the
-   message names the device and says how to forget its key -
-   `IODeviceForgetCertificate()`, or deleting its line - for a device that was
-   reset or replaced.
+   message names the device and says how to forget its key - UOS-Settings'
+   *Devices > Trusted certificates* page, deleting its line, or
+   `IODeviceForgetCertificate()` in code - for a device that was reset or
+   replaced.
 
 The keys are kept in `DeviceCertificates.conf` in the UltraCanvas settings
 folder (`UltraCanvasSettingsFolder.h`), shared by every application.

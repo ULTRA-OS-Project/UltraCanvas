@@ -264,10 +264,11 @@ std::string FetchPin(const std::string& url, const UltraNetHttpOptions& original
 
 std::string ForgetHint(const std::string& address) {
     const std::filesystem::path file = IODeviceTrustedCertificatesFile();
-    return " If the device was reset or replaced, forget its old key - "
-           "IODeviceForgetCertificate(\"" + address + "\"), or delete its line from " +
+    return " If the device was reset or replaced, forget its old key - in UOS-Settings "
+           "under Devices > Trusted certificates, or by deleting its line from " +
            (file.empty() ? std::string("DeviceCertificates.conf") : PathToUtf8(file)) +
-           " - and it is learned again on the next connection.";
+           " (IODeviceForgetCertificate(\"" + address + "\") in code) - and it is learned "
+           "again on the next connection.";
 }
 
 }  // namespace
