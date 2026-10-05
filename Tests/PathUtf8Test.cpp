@@ -33,6 +33,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
+#include <cstdlib>   // setenv / unsetenv
 #include <filesystem>
 #include <fstream>
 #include <iostream>
