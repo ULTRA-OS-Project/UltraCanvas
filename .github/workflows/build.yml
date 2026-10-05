@@ -602,6 +602,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -967,6 +968,18 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(EmailCleanerEngine|UltraMailEngine|UltraNetPluginHostImports|UltraNetPluginHostImportsSelfTest)$"
+
+      # The credential vault every app keeps its passwords in (UltraVault's
+      # DeviceKeyVault): its device key's path reached the filesystem through
+      # the ANSI code page until 2026-10, so a profile folder named in Thai or
+      # Cyrillic never opened its vault. The suite creates and reopens a vault
+      # in a Thai-and-emoji folder - a test only on this code page 1252
+      # runner - and checks the unlock status on every path. Headless, temp
+      # folders only; libsodium is installed above.
+      - name: Run UltraVaultTests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraVaultTests$"
 
       # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
       # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"

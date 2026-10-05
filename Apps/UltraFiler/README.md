@@ -239,6 +239,24 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **Every connection step is shown, and kept.** While a drive is busy the
+    status bar shows the step its connection is at — *Connecting to
+    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
+    folder view's *Loading folder* notice names the same step with how long
+    it has waited. Every job (opening a folder, an upload, a delete, a
+    folder fetched ahead) is recorded in the **connection log**: the button
+    with the clipboard icon at the right of the status bar opens it, and
+    counts in red the failures not looked at yet. Its *Errors* tab is a
+    Markdown report of each failure — the message, the error class, the
+    codes (libcurl's error number, the server's last reply), the likely
+    cause, the last steps and the diagnostics chain; its *Message log* tab
+    lists every step of every connection the way an FTP client does
+    (`12:03:04  Response: 227 Entering Passive Mode (...)`). *Copy* takes
+    the tab on show for a mail to whoever runs the server; passwords never
+    appear (`PASS ********`). A folder that could not be listed keeps its
+    error on the status line. The log is in memory only (the last 200
+    connections). FTP and SFTP drives log every step; cloud drives log the
+    job and its outcome.
   - **Remote files preview too.** A picture, a vector drawing (SVG, DXF,
     CorelDRAW, EPS, ...) or a 3D model (STL, OBJ, ...) selected on an FTP or
     cloud drive is downloaded into `remote-previews` under UltraCanvas's

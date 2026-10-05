@@ -13,7 +13,8 @@
 //   u32-length-prefixed byte strings, readerCount u32 + readers,
 //   requiresUserPresence u8.
 //
-// Version: 0.1.1 - the vault file is replaced with std::filesystem::rename (works on Windows)
+// Version: 0.1.2 - a failed write removes its .tmp through PathFromUtf8 (UTF-8 paths on Windows)
+// Previous: 0.1.1 - the vault file is replaced with std::filesystem::rename (works on Windows)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraVault/UltraVault.h"
@@ -219,7 +220,11 @@ Result SaveFileLocked(VaultState& s) {
     std::error_code ec;
     if (wrote) std::filesystem::rename(UltraCanvas::PathFromUtf8(tmpPath), UltraCanvas::PathFromUtf8(s.filePath), ec);
     if (!wrote || ec) {
-        std::remove(tmpPath.c_str());
+        // Through PathFromUtf8 like the rename above: C's remove() reads the
+        // name in the ANSI code page on Windows, and would leave the .tmp
+        // behind in a folder the code page cannot spell.
+        std::error_code removeError;
+        std::filesystem::remove(UltraCanvas::PathFromUtf8(tmpPath), removeError);
         return Result::Error(ResultCode::IoError,
                              "cannot update vault file: " + s.filePath
                              + (ec ? " (" + ec.message() + ")" : ""));

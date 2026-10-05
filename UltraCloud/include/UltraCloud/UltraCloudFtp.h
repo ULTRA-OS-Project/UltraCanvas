@@ -69,7 +69,8 @@ std::string FtpUrl(const Account& account, const std::string& path, bool directo
 // spend it.
 bool FtpEntryToEntry(const UltraNetFtpEntry& in, const std::string& folderPath, Entry& out);
 
-// UltraNet's outcome as a Result. `what` names the operation for the message.
+// UltraNet's outcome as a Result. `what` names the operation for the message;
+// a failure keeps UltraNet's diagnostics (Result::diagnostics).
 Result FromFtp(const UltraNetResult& net, const std::string& what);
 
 // ---- The FTP seam -----------------------------------------------------------

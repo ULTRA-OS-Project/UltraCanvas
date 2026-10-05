@@ -55,11 +55,12 @@ std::string StemOf(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).stem());
 }
 
-// Where save and open dialogs start: the user's home folder.
+// Where save and open dialogs start: the user's home folder, in UTF-8 like
+// every path the dialogs take (on Windows a narrow getenv would answer in
+// the ANSI code page).
 std::string HomeDirectory() {
-    if (const char* home = std::getenv("HOME"); home && *home) return home;
-    if (const char* profile = std::getenv("USERPROFILE"); profile && *profile) return profile;
-    return {};
+    if (std::string home = GetEnvUtf8("HOME"); !home.empty()) return home;
+    return GetEnvUtf8("USERPROFILE");
 }
 
 std::string Plural(size_t n, const char* one, const char* many) {

@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.21.0
-// Last Modified: 2026-10-03
+// Version: 1.22.0
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,6 +106,7 @@
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerFindTextDialog.h"
+#include "UltraFilerConnectionLogWindow.h"
 #include "UltraFilerFolderExport.h"
 #include "UltraFilerVolumeSpace.h"
 
@@ -342,6 +343,17 @@ private:
     // Empty while the drives are idle, which is when the status line goes back
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
+    // The connection log button at the right of the status bar: shown once
+    // there is a remote drive (or anything logged), and red with the number
+    // of failed connections the log window has not shown yet.
+    void UpdateConnectionLogButton();
+    // Opens the connection log window, or brings it to the front with the
+    // log as it is now.
+    void OpenConnectionLog();
+    // Hands the open log window the log as it is now; called a moment after
+    // a change, so a burst of steps is one refresh.
+    void ScheduleConnectionLogRefresh();
+    void RefreshConnectionLogWindow();
     // Puts the progress bar in step with `remoteActivity`: a percentage during
     // a transfer whose size the server gave, the gauge's indeterminate slide
     // during one it did not, and hidden the rest of the time.
@@ -905,6 +917,14 @@ private:
     // which is the framework's progress bar. Short enough that the gauge
     // drops its caption and value line and is simply the bar.
     std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
+    // Opens the connection log window; see UpdateConnectionLogButton.
+    std::shared_ptr<UltraCanvasButton>          statusLogButton;
+    // The log window while it is open; it owns itself (deleteOnClose).
+    std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
+    TimerId connectionLogRefreshTimer = InvalidTimerId;
+    // How many failed connections the log window has shown: the button
+    // counts the ones beyond this.
+    std::size_t connectionLogSeenErrors = 0;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;

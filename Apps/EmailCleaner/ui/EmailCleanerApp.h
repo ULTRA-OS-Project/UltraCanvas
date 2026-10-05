@@ -65,7 +65,9 @@ private:
     // says in `problem` why none were, when that is the vault's fault.
     int  RegisterUltraMailAccounts(std::string& problem);
     // The own half: every own account with a saved password.
-    int  RegisterOwnAccounts();
+    // `problem` says why, when there are accounts of our own but the vault
+    // holding their passwords cannot be opened.
+    int  RegisterOwnAccounts(std::string& problem);
     void RegisterOwnAccount(const UltraMail::Account& account, const std::string& password);
 
     // ---- Own accounts ------------------------------------------------------

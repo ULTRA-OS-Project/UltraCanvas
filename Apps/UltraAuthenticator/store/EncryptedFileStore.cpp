@@ -124,7 +124,7 @@ bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& da
 
     std::error_code ec;
     std::filesystem::permissions(
-        temporary,
+        UltraCanvas::PathFromUtf8(temporary),
         std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
         std::filesystem::perm_options::replace, ec);
     // A filesystem without POSIX permissions is not a reason to fail the save;

@@ -123,10 +123,17 @@ UltraVault::DeviceKeyVault vault(dataDir + "/vault",
                                  {"ultramail.vault", "mail.ultramail."});
 
 // First run: a device key is generated and the vault created. Later runs:
-// the key unlocks it. False only when a vault exists that was made with a
-// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
-// this build has no crypto backend.
-if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+// the key unlocks it. False when a vault exists that was made with a master
+// password (Locked: prompt once, Unlock(), then PersistDeviceKey()), when
+// this build has no crypto backend (Unavailable) or when the folder cannot be
+// written (IoError) - GetLastUnlockStatus() says which.
+if (!vault.TryAutoUnlock()) {
+    // "cannot open the credential vault: this build has no encryption
+    // library (UltraCrypt was built without libsodium), so it cannot keep
+    // passwords". Store() will refuse, not drop.
+    Report("cannot open the credential vault: " +
+           UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault.GetLastUnlockStatus()));
+}
 
 vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
 std::string got;
@@ -141,14 +148,19 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
 `UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
 tampered file reports) from a build that cannot open a vault at all
 (`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
-written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+written (`IoError`); after `TryAutoUnlock()`, `Locked` means a vault made with
+a master password and no device key. An empty passphrase is refused. The
+directory is a UTF-8 path on every platform: a profile folder named in Thai or
+Cyrillic opens like an ASCII one on Windows too (before 0.2.0 the device
+key's path reached the filesystem through the ANSI code page, and such a
+folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
