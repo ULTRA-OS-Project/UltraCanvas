@@ -10,8 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.4.0
-// Last Modified: 2026-09-29
+// Version: 1.5.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,6 +63,18 @@ namespace UltraCanvas {
         // Two sliders: a hue ("colour") bar, and an intensity bar running from
         // white through the pure colour to black. Full saturation, as above.
         HueLightnessSliders
+    };
+
+// ===== SATURATION / VALUE AREA SHAPE (Bar wheel style) =====
+// The Ring style's SV area is always the square inscribed in the ring; the Bar
+// style's area can stretch over all the space above the controls or keep 1:1.
+    enum class ColorPickerSVAreaShape {
+        Fill,       // stretch to all the space above the controls (default)
+        Square,     // 1:1, as large as fits
+        // 1:1 at 256 x 256 pixels - one pixel per 8-bit step of saturation
+        // and of value, so every pixel is a different colour and none is
+        // skipped. Smaller only when the widget has no room for it.
+        PixelExact
     };
 
 // ===== STYLING =====
@@ -243,6 +255,24 @@ namespace UltraCanvas {
         ColorPickerWheelStyle GetWheelStyle() const { return wheelStyle; }
         void SetWheelStyle(ColorPickerWheelStyle s);
 
+        // Shape of the Bar style's saturation/value area: stretched over the
+        // space above the controls (default), square, or square at
+        // PixelExactSVSide pixels. A square area is centred, the hue
+        // bar takes its width, and the controls follow straight under it;
+        // height the area does not use stays free at the bottom. That free
+        // space is where collapsible sliders expand into, so a PixelExact
+        // picker sized for its expanded sliders (PreferredHeightForWidth
+        // answers that) keeps the area exact in both states.
+        ColorPickerSVAreaShape GetSVAreaShape() const { return svAreaShape; }
+        void SetSVAreaShape(ColorPickerSVAreaShape s);
+
+        // 8-bit channels have 256 levels (0..255), so a 256-pixel side gives
+        // each pixel exactly one step of saturation (across) and of value
+        // (down): fewer pixels skip values, more pixels repeat them. These are
+        // the framework's logical pixels - the unit the pointer reports - so
+        // on a 2x display a step is a 2 x 2 block, still one pointer position.
+        static constexpr int PixelExactSVSide = 256;
+
         // Show < and > step arrows inside each numeric value field.
         bool GetShowValueSpinners() const { return showValueSpinners; }
         void SetShowValueSpinners(bool show);
@@ -272,7 +302,10 @@ namespace UltraCanvas {
         // it the wheel shrinks to whatever vertical space is left over, so a
         // host that wants the largest wheel sizes the picker from this.
         // Answers for the picker as configured: call it after the UI scale,
-        // the wheel style and the alpha / slider options are set.
+        // the wheel style and the alpha / slider options are set. A
+        // PixelExact SV area is answered for at PixelExactSVSide pixels and,
+        // when the sliders are collapsible, with the sliders expanded, so
+        // opening them does not shrink the area below exact.
         float PreferredHeightForWidth(float width) const;
 
         const ColorPickerStyle& GetStyle() const { return style; }
@@ -332,6 +365,7 @@ namespace UltraCanvas {
         ColorPickerModeSelector modeSelector = ColorPickerModeSelector::TabBar;
         ColorPickerSliderStyle sliderStyle = ColorPickerSliderStyle::Thin;
         ColorPickerWheelStyle wheelStyle = ColorPickerWheelStyle::Ring;
+        ColorPickerSVAreaShape svAreaShape = ColorPickerSVAreaShape::Fill;
         ColorPickerStyle style;
         bool showColorWheel = true;
         bool showAlpha = true;
@@ -426,6 +460,8 @@ namespace UltraCanvas {
         // Height of everything below the wheel: swatches / hex, the mode tabs
         // and the channel sliders.
         float ControlsHeight() const;
+        // Side of a Square / PixelExact SV area in the room given (whole pixels).
+        float SquareSVSide(float roomW, float roomH) const;
 
         // ----- Rendering helpers -----
         void RenderHueRing(IRenderContext* ctx);
