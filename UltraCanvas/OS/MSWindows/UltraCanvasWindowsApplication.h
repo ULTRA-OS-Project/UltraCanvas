@@ -181,7 +181,11 @@ namespace UltraCanvas {
         UCMouseButton ConvertWin32ButtonToUCButton(UINT msg, WPARAM wParam);
 
         // ===== CURSOR LOADING =====
-        HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY);
+        // .cur / .ani / .ico through Win32; any other image the framework can
+        // read (PNG, SVG, ...) is decoded with UCImage and drawn at `scale`
+        // (the window's DPI scale), hotspot scaled with it.
+        HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY,
+                                        float scale = 1.0f);
 
         // ===== HOST FD-WATCHES =====
         // Non-blocking Winsock select() over the fds registered via AddFdWatch(), firing the

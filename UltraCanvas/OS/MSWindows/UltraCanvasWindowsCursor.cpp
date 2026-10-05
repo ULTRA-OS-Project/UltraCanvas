@@ -1,9 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsCursor.cpp
 // Win32 cursor management implementation
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.1.0 - image cursors (PNG, SVG) decoded through UCImage, DPI-scaled
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
+// The image header goes before windows.h, as in UltraCanvasWindowsWindow.cpp.
+#include "../../include/UltraCanvasImage.h"
+#include "../../include/UltraCanvasUtils.h"
 #include "UltraCanvasWindowsApplication.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -13,10 +16,98 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <cairo/cairo.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+    namespace {
+        // Win32 reads only .cur / .ani / .ico from a file, so a PNG or SVG
+        // cursor has to be decoded by us. UCImage does that (SVG straight from
+        // the vector, so it is sharp at every DPI) and the pixels become the
+        // 32-bit colour bitmap of an alpha cursor.
+        HCURSOR CursorFromDecodedImage(const std::string& path, int hotspotX, int hotspotY,
+                                       float scale) {
+            auto img = UCImage::Get(path);
+            if (!img || !img->IsValid()) return nullptr;
+            if (!(scale > 0.0f)) scale = 1.0f;
+            const int w = std::max(1, static_cast<int>(std::lround(img->GetWidth() * scale)));
+            const int h = std::max(1, static_cast<int>(std::lround(img->GetHeight() * scale)));
+            auto pixmap = img->GetPixmap(w, h, ImageFitMode::Fill);
+            if (!pixmap || !pixmap->IsValid()) return nullptr;
+            pixmap->Flush();
+
+            cairo_surface_t* surface = pixmap->GetSurface();
+            const int pw = cairo_image_surface_get_width(surface);
+            const int ph = cairo_image_surface_get_height(surface);
+            const int stride = cairo_image_surface_get_stride(surface);
+            const unsigned char* src = cairo_image_surface_get_data(surface);
+            if (!src || pw <= 0 || ph <= 0) return nullptr;
+
+            BITMAPV5HEADER bi = {};
+            bi.bV5Size = sizeof(BITMAPV5HEADER);
+            bi.bV5Width = pw;
+            bi.bV5Height = -ph;   // top-down, like the cairo surface
+            bi.bV5Planes = 1;
+            bi.bV5BitCount = 32;
+            bi.bV5Compression = BI_BITFIELDS;
+            bi.bV5RedMask   = 0x00FF0000;
+            bi.bV5GreenMask = 0x0000FF00;
+            bi.bV5BlueMask  = 0x000000FF;
+            bi.bV5AlphaMask = 0xFF000000;
+
+            void* bits = nullptr;
+            HDC screenDC = GetDC(nullptr);
+            HBITMAP color = CreateDIBSection(screenDC, reinterpret_cast<BITMAPINFO*>(&bi),
+                                             DIB_RGB_COLORS, &bits, nullptr, 0);
+            ReleaseDC(nullptr, screenDC);
+            if (!color || !bits) {
+                if (color) DeleteObject(color);
+                return nullptr;
+            }
+
+            // Same byte order (BGRA in memory), but cairo premultiplies and a
+            // cursor's colour bitmap carries straight alpha - Windows
+            // premultiplies it itself when drawing. Undo it on the edge pixels.
+            auto* dst = static_cast<uint32_t*>(bits);
+            for (int y = 0; y < ph; ++y) {
+                const auto* row = reinterpret_cast<const uint32_t*>(src + static_cast<size_t>(y) * stride);
+                for (int x = 0; x < pw; ++x) {
+                    uint32_t p = row[x];
+                    const uint32_t a = p >> 24;
+                    if (a != 0 && a != 255) {
+                        auto unmul = [a](uint32_t c) {
+                            return std::min<uint32_t>(255, (c * 255 + a / 2) / a);
+                        };
+                        p = (a << 24) | (unmul((p >> 16) & 0xFF) << 16)
+                            | (unmul((p >> 8) & 0xFF) << 8) | unmul(p & 0xFF);
+                    }
+                    *dst++ = p;
+                }
+            }
+
+            // Monochrome mask, all zero: the alpha channel decides.
+            HBITMAP mask = CreateBitmap(pw, ph, 1, 1, nullptr);
+
+            ICONINFO info = {};
+            info.fIcon = FALSE;
+            info.xHotspot = static_cast<DWORD>(std::clamp(
+                    static_cast<int>(std::lround(hotspotX * scale)), 0, pw - 1));
+            info.yHotspot = static_cast<DWORD>(std::clamp(
+                    static_cast<int>(std::lround(hotspotY * scale)), 0, ph - 1));
+            info.hbmMask = mask;
+            info.hbmColor = color;
+            HCURSOR cursor = mask ? CreateIconIndirect(&info) : nullptr;
+
+            DeleteObject(color);
+            if (mask) DeleteObject(mask);
+            return cursor;
+        }
+    } // namespace
 
     bool UltraCanvasWindowsApplication::SelectMouseCursorNative(
             UltraCanvasWindowBase* win, UCMouseCursor cursor) {
@@ -80,12 +171,19 @@ namespace UltraCanvas {
                 cursorId = IDC_SIZENESW;
                 break;
             case UCMouseCursor::ContextMenu: {
-                HCURSOR hCtx = LoadCursorFromImageFile(
-                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
-                if (hCtx) {
-                    cursors[cursor] = hCtx;
-                    SetCursor(hCtx);
-                    return true;
+                // Drawn from the SVG at the window's DPI so it is sharp at
+                // 125 % / 150 % / 200 %; the PNG is the same picture at 32 px,
+                // for a build that cannot render SVG.
+                const float scale = win ? win->GetDeviceScale() : 1.0f;
+                for (const char* file : {"media/lib/cursor/context-menu.svg",
+                                         "media/lib/cursor/context-menu.png"}) {
+                    HCURSOR hCtx = LoadCursorFromImageFile(
+                        NormalizePath(GetResourcesDir() + file).c_str(), 0, 0, scale);
+                    if (hCtx) {
+                        cursors[cursor] = hCtx;
+                        SetCursor(hCtx);
+                        return true;
+                    }
                 }
                 cursorId = IDC_ARROW;  // Fallback if image missing
                 break;
@@ -120,7 +218,8 @@ namespace UltraCanvas {
             return SelectMouseCursorNative(win, cursor);
         }
 
-        HCURSOR hCursor = LoadCursorFromImageFile(filename, hotspotX, hotspotY);
+        HCURSOR hCursor = LoadCursorFromImageFile(filename, hotspotX, hotspotY,
+                                                  win ? win->GetDeviceScale() : 1.0f);
         if (hCursor) {
             auto it = cursors.find(cursor);
             if (it != cursors.end() && it->second) {
@@ -137,8 +236,9 @@ namespace UltraCanvas {
     }
 
     HCURSOR UltraCanvasWindowsApplication::LoadCursorFromImageFile(
-            const char* filename, int hotspotX, int hotspotY) {
+            const char* filename, int hotspotX, int hotspotY, float scale) {
 
+        if (!filename || filename[0] == '\0') return nullptr;
         std::wstring wpath = Utf8ToUtf16(filename);
 
         // Try loading as .cur or .ani file first
@@ -165,7 +265,9 @@ namespace UltraCanvas {
             return hCursor;
         }
 
-        return nullptr;
+        // PNG, SVG and the rest: neither call above reads them, which left the
+        // context-menu and colour-picker cursors as the plain arrow.
+        return CursorFromDecodedImage(filename, hotspotX, hotspotY, scale);
     }
 
 } // namespace UltraCanvas

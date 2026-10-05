@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraCanvas "context menu" pointer (UCMouseCursor::ContextMenu).
+     A pointer arrow with a small menu beside it: shown over a control that
+     opens a menu instead of acting - a breadcrumb item's dropdown, a dropdown
+     button, the "..." overflow item.
+     32 x 32 design grid, hotspot at the arrow tip (0, 0). Every straight edge
+     sits on the pixel grid, so it stays crisp at 1x and at any whole scale.
+     context-menu.png next to it is this file rendered at 32 x 32. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Arrow: white outline (drawn as a wide stroke under the fill), black body. -->
+  <path d="M1,1 L1,17 L4.5,13.5 L7.5,20 L10,19 L6.8,12 L12,12 Z"
+        fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M1,1 L1,17 L4.5,13.5 L7.5,20 L10,19 L6.8,12 L12,12 Z"
+        fill="#000000"/>
+  <!-- Menu: white card, dark frame, three entries. -->
+  <rect x="13.5" y="13.5" width="13" height="14" fill="#ffffff" stroke="#1e1e1e" stroke-width="1"/>
+  <rect x="16" y="17" width="8" height="1" fill="#0078d7"/>
+  <rect x="16" y="20" width="8" height="1" fill="#0078d7"/>
+  <rect x="16" y="23" width="8" height="1" fill="#0078d7"/>
+</svg>
