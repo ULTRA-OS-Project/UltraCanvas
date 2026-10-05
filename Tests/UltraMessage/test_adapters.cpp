@@ -120,6 +120,31 @@ TEST(windows_listener_adapter_is_listed_with_an_actionable_state) {
 }
 #endif
 
+#if defined(_WIN32)
+// Every Windows build has the presenter: listed, started on its own thread
+// with its hidden window, and switchable. Nothing is posted, so no balloon
+// appears.
+TEST(windows_presenter_adapter_is_listed_and_starts) {
+    Scoped ep{Connect("org.test.adapters.windows.presenter")};
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, "windows-presenter");
+    REQUIRE(info != nullptr);
+    REQUIRE_EQ(info->platform, std::string("windows"));
+    REQUIRE(info->enabled);
+    UltraMsgAdapterState state;
+    REQUIRE(WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state);
+        return r && state.status != UltraMsgAdapterStatus::Starting;
+    }, 8000ms));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Running || state.status == UltraMsgAdapterStatus::Error);
+    REQUIRE(!state.message.empty());
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", false));
+    REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", true));
+}
+#endif
+
 #if defined(ULTRAMESSAGE_HAVE_GIO) && defined(__linux__)
 
 #include <gio/gio.h>

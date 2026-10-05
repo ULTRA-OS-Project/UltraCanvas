@@ -302,8 +302,11 @@ TEST(message_center_on_the_bus_receives_reads_and_answers) {
     chatOptions.conversation = "telegram:Ada";
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MessagingMessage, Chat("telegram", "Ada", "Ada", "live one"), chatOptions, &chatId));
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MailMessage, Mail("erika@example.org", "Konrad", "live two"), {}, &mailId));
+    UltraMsgSendOptions silent;   // listed, not shown on the screen of whoever runs the tests
+    silent.flags = UltraMsgFlag_Silent;
     REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::SystemNotification,
-                          Toast("Downloads", "org.ultraos.filer", "live three", "", {{"open", "Open"}}), {}, &toastId));
+                          Toast("Downloads", "org.ultraos.filer", "live three", "", {{"open", "Open"}}), silent,
+                          &toastId));
     REQUIRE(WaitFor([&] { return center->GetEntries().size() == 3; }));
     REQUIRE_EQ(center->GetUnreadCount(), 3);
 

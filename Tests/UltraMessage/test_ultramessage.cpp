@@ -3,6 +3,7 @@
 // private bus driven over the real transport by several endpoints —
 // subscriptions, recorded delivery with bounce, request/reply, the journal
 // and its queries, replay, lifecycle notices, the typed topic helpers.
+// Version: 0.1.1 - the notification it posts is Silent: tests show nothing on screen
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -223,7 +224,11 @@ TEST(post_reaches_matching_subscribers_only) {
     JSONValue notification = JSONValue::MakeObject();
     notification.Set("appName", "Test");
     notification.Set("summary", "Hello");
-    REQUIRE(UltraMsg_Post(b.handle, "system.notification", notification).ok);
+    // Silent: the broker's presenter would otherwise show it on the screen of
+    // whoever runs the tests (a Windows balloon; Linux has a private bus).
+    UltraMsgSendOptions silent;
+    silent.flags = UltraMsgFlag_Silent;
+    REQUIRE(UltraMsg_Post(b.handle, "system.notification", notification, silent).ok);
 
     REQUIRE(WaitFor([&] { return gotMail.size() == 1 && gotAll.size() >= 2; }));
     REQUIRE_EQ(gotMail[0].envelope.id, id);
