@@ -374,6 +374,44 @@ TEST(imap_parse_fetch_response) {
     REQUIRE(!ParseFetchResponse(r, item));
 }
 
+// A folder name with characters a quoted string cannot hold comes as a
+// literal; read through the session, the LIST and STATUS parsers get it back as
+// one line with the name quoted in.
+TEST(imap_response_as_line_feeds_the_line_parsers) {
+    const std::string wire =
+        "* LIST (\\HasNoChildren) \".\" {14}\r\nINBOX.Rechnung\r\n"
+        "* LIST (\\HasNoChildren) \".\" {10}\r\nSay \"hi\"\\x\r\n"
+        "* STATUS {5}\r\nINBOX (MESSAGES 59 UIDNEXT 701 UIDVALIDITY 3)\r\n"
+        "U1 OK done\r\n";
+    ImapResponseReader reader;
+    reader.Feed(wire.data(), wire.size());
+    std::string lines;
+    ImapResponse r;
+    while (reader.Next(r)) if (!r.IsTagged("U1")) lines += r.AsLine() + "\r\n";
+    const auto folders = ParseListResponse(lines);
+    REQUIRE_EQ(folders.size(), (std::size_t)2);
+    REQUIRE_EQ(folders[0].name, std::string("INBOX.Rechnung"));
+    REQUIRE_EQ(folders[0].delimiter, std::string("."));
+    REQUIRE_EQ(folders[1].name, std::string("Say \"hi\"\\x"));
+    const UltraNetMailboxStatus st = ParseStatusResponse(lines);
+    REQUIRE_EQ(st.messages, (uint32_t)59);
+    REQUIRE_EQ(st.uidNext, (uint32_t)701);
+    REQUIRE_EQ(st.uidValidity, (uint32_t)3);
+}
+
+TEST(imap_parse_fetch_response_size) {
+    ImapResponse r;
+    r.segments = { "* 4 FETCH (UID 812 RFC822.SIZE 48213)" };
+    ImapFetchItem item;
+    REQUIRE(ParseFetchResponse(r, item));
+    REQUIRE_EQ(item.uid, (uint32_t)812);
+    REQUIRE(item.hasSize);
+    REQUIRE_EQ(item.size, (uint32_t)48213);
+    r.segments = { "* 5 FETCH (UID 813 FLAGS ())" };
+    REQUIRE(ParseFetchResponse(r, item));
+    REQUIRE(!item.hasSize);
+}
+
 TEST(imap_uid_set_string) {
     REQUIRE_EQ(UidSetString({ 5, 3, 4, 9, 7, 8, 1 }), std::string("1,3:5,7:9"));
     REQUIRE_EQ(UidSetString({ 42 }), std::string("42"));

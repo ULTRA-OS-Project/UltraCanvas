@@ -4,6 +4,9 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.7.0 - a quoted LIST name or delimiter is unescaped (\" and \\);
+//                  ImapResponse::AsLine (a response with its literals as quoted strings, for
+//                  the LIST / STATUS parsers); RFC822.SIZE in ParseFetchResponse
 // Version: 0.6.0 - ImapResponseReader (responses with their literals, read as they
 //                  arrive), ParseFetchResponse, UidSetString: what the batched
 //                  header and body fetches read
@@ -311,10 +314,14 @@ inline bool ParseListLine(const std::string& line, UltraNetMailFolder& out) {
         while (i < s.size() && s[i] == ' ') ++i;
         if (i >= s.size()) return "";
         if (s[i] == '"') {
-            std::size_t end = s.find('"', i + 1);
-            if (end == std::string::npos) { std::string t = s.substr(i + 1); i = s.size(); return t; }
-            std::string t = s.substr(i + 1, end - i - 1);
-            i = end + 1;
+            // A quoted string: \" and \\ stand for " and \ (RFC 3501 4.3) -
+            // a folder named Say "hi", or the delimiter \ sent as "\\".
+            std::string t;
+            for (++i; i < s.size() && s[i] != '"'; ++i) {
+                if (s[i] == '\\' && i + 1 < s.size()) ++i;
+                t += s[i];
+            }
+            if (i < s.size()) ++i;   // the closing quote
             return t;
         }
         std::size_t start = i;
@@ -443,6 +450,31 @@ struct ImapResponse {
         for (const auto& s : segments) out += s;
         return out;
     }
+    // The response as one line, each literal written in as a quoted string -
+    // what the line-based parsers (LIST, STATUS) read. Line breaks inside a
+    // literal become spaces; a folder name or a count never holds one.
+    std::string AsLine() const {
+        std::string out;
+        for (std::size_t i = 0; i < segments.size(); ++i) {
+            std::string seg = segments[i];
+            if (i < literals.size()) {
+                const std::size_t open = seg.rfind('{');
+                if (open != std::string::npos) seg.erase(open);
+                if (open != std::string::npos && open > 0 && seg.back() == '~') seg.pop_back();
+                out += seg;
+                out += '"';
+                for (char c : literals[i]) {
+                    if (c == '\r' || c == '\n') { out += ' '; continue; }
+                    if (c == '\\' || c == '"') out += '\\';
+                    out += c;
+                }
+                out += '"';
+            } else {
+                out += seg;
+            }
+        }
+        return out;
+    }
     // Whether this is the tagged completion of command `tag` ("U3 OK ...").
     bool IsTagged(const std::string& tag) const {
         return !segments.empty() && segments.front().compare(0, tag.size() + 1, tag + " ") == 0;
@@ -542,6 +574,8 @@ struct ImapFetchItem {
     uint32_t uid = 0;
     bool hasFlags = false;
     UltraNetMailFlags flags = UltraNetMailFlags::None;
+    bool hasSize = false;
+    uint32_t size = 0;          // RFC822.SIZE, when asked for
     std::map<std::string, std::string> sections;
 };
 
@@ -575,6 +609,11 @@ inline bool ParseFetchResponse(const ImapResponse& r, ImapFetchItem& out) {
         if (ParseImapNumber(text, np, out.uid)) break;
     }
     if (out.uid == 0) return false;
+    if (const std::size_t at = low.find("rfc822.size "); at != std::string::npos) {
+        std::size_t np = at + 12;
+        while (np < low.size() && low[np] == ' ') ++np;
+        out.hasSize = ParseImapNumber(text, np, out.size);
+    }
     if (low.find("flags (") != std::string::npos) {
         out.hasFlags = true;
         out.flags = ParseFetchFlags(text.substr(low.find("flags (")));

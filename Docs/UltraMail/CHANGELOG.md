@@ -29,10 +29,18 @@
   `check_mail_every_sec` in `preferences.ini`; a number edited in by hand is
   read as the nearest choice. Tests: `test_preferences.cpp`,
   `test_scheduler.cpp`.
-- **A new account's mail arrives fifteen times faster**: the IMAP plug-in
+- **A new account's mail arrives forty times faster**: the IMAP plug-in
   now fetches headers and bodies in batches instead of one message at a time
-  (about a second a message on Windows before). See the framework changelog,
+  (about a second a message on Windows before): two hundred headers to a
+  request, and bodies in blocks of up to 4 MB. See the framework changelog,
   "IMAP: headers and bodies are fetched in batches".
+- **A mail check no longer signs in four times.** The status, the new
+  messages, the read flags and the bodies each signed in to the server on a
+  connection of their own; now the plug-in keeps a signed-in connection and
+  every check, and every flag change, move or delete between them, runs on
+  it. At a check every twenty seconds that is no sign-in at all after the
+  first, instead of twelve a minute per account - which some providers limit.
+  See the framework changelog, "IMAP: one sign-in serves many checks".
 
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its
