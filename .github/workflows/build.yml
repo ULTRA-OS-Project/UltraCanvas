@@ -1106,8 +1106,14 @@ jobs:
 
           rm $RUNNER_TEMP/certificate.p12
 
-      # A pull request packages the same bundle, unsigned - which is exactly
-      # what the Windows row above has always done with --no-sign.
+      # A pull request packages the same bundle without the Developer ID -
+      # which is what the Windows row above has always done with --no-sign.
+      # On macOS --no-sign signs ad hoc (no certificate, no network), so the
+      # bundles are still sealed and `codesign --verify --strict` still checks
+      # them here rather than first on main. A browser-downloaded ad-hoc app
+      # is refused by Gatekeeper ("is damaged" on Apple silicon), so the image
+      # and the artifact are named *-unsigned and the image says how to open
+      # it - see "Unsigned builds" in package-macos.sh.
       #
       # Signing and notarization are network calls to Apple: `codesign`
       # contacts the timestamp service, and `notarytool submit --wait` uploads
@@ -1158,12 +1164,15 @@ jobs:
       # .app folders has lost its executable bit and does not start. The DMG
       # keeps it, is already LZMA-compressed (hence compression-level 0 -
       # zipping it again only costs time) and is signed, and on main
-      # notarized and stapled, as one file.
+      # notarized and stapled, as one file. Anywhere but main it is not, and
+      # the name says so: a pull request's image used to carry the release's
+      # exact name, so UCDemo-MacOS-0.9.147-arm64 was both a notarized build
+      # and one macOS calls "damaged".
       - name: Upload build artifacts (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
-          name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
+          name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}${{ env.RELEASE_BUILD != 'true' && '-unsigned' || '' }}
           path: dist-macos/*.dmg
           if-no-files-found: error
           compression-level: 0
