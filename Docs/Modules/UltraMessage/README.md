@@ -4,11 +4,11 @@
 adapter framework, the Linux `freedesktop-notifications` adapter, the
 `windows-notification-listener` adapter, the presenters that put
 applications' notifications on screen (`freedesktop-presenter`,
-`windows-presenter`), the toast host that draws them where nothing else does
+`windows-presenter`, `macos-presenter`), the toast host that draws them where nothing else does
 (`UltraCanvasNotificationToastHost`, in the ULTRA OS desktop), UltraMail
 publishing to the feed and notifying of new mail, and the
 `UltraCanvasMessageCenter` element. The rest of Phases 2–4 is in the proposal.
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-10-05
 
@@ -51,11 +51,13 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | `freedesktop-presenter` adapter (GDBus): applications' notifications on screen | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp` |
 | `windows-presenter` adapter (notification-area balloons) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp` |
+| `macos-presenter` adapter (Notification Center, osascript outside a bundle) | `UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm` |
+| The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
-| Tests (36 cases; the adapter and presenter ones on a private D-Bus session; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
+| Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -310,7 +312,25 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   the click needs exists from the first balloon until it is clicked or ten
   minutes have passed. The `windows-notification-listener` skips the toasts
   the presenter put up (`Internal::NotePresented` / `WasPresented`).
-- macOS has no presenter yet.
+- **`macos-presenter`** (every macOS build) hands the notification to
+  Notification Center through the UserNotifications framework: a banner that
+  stays in the Notification Center list, the notification's other actions as
+  buttons (up to three), `critical` time-sensitive and `low` passive and
+  silent (macOS 12+), an icon that names a PNG, JPEG or GIF file as its
+  picture, and the notifications of one application grouped. macOS names the
+  notification after the application bundle hosting the broker and asks the
+  user once to allow it (mode `notification-center`); another application's
+  notification names that one in its subtitle. A click is the `"default"`
+  action where the notification has one, a button its action, a dismissal
+  `reason: "dismissed"`; each notification carries its bus id, so a click on
+  one shown before the broker last started is still answered. Where the user
+  did not allow notifications the state is `needs-permission`, with the place
+  in System Settings. UserNotifications works only in an application bundle:
+  where the broker runs in a process that is none (an executable started from
+  the build tree, `ultramsgd`, a test) or macOS refuses the bundle, it shows
+  them through `osascript`'s `display notification` (mode `script`): under
+  Script Editor's name, without buttons, and a click opens nothing. The texts
+  travel as script arguments, never inside the script.
 
 **`displayed`.** The broker hands an application's notification to the
 presenters *before* it journals and delivers it, and writes the name of the
@@ -468,9 +488,9 @@ in-tree build uses.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **The other Phase 2 adapters** (Apple Mail, Telegram) and a **macOS
-  presenter**; the adapter framework, `freedesktop-notifications`,
-  `windows-notification-listener`, the Linux and Windows presenters, UltraMail
+- **The other Phase 2 adapters** (Apple Mail, Telegram); the adapter
+  framework, `freedesktop-notifications`, `windows-notification-listener`,
+  the Linux, Windows and macOS presenters, UltraMail
   publishing and notifying, the toast host and the `UltraCanvasMessageCenter`
   element are built (§3.6–§3.8).
 - **Icon-theme names** in a notification's icon: the toast host draws an icon

@@ -8,7 +8,11 @@
 // against a fake desktop notification server: an application's notification
 // shown, its click and close reported back, a dismissal closing it, Silent
 // left off screen, and nothing forwarded where UltraMessage is the server;
-// every copy saying what shows it (`displayed`).
+// every copy saying what shows it (`displayed`). The presenters' shared half
+// on every platform (what a notification says, which update shows where,
+// what a click publishes, the osascript fallback's arguments), and on macOS
+// the macos-presenter listed and switched.
+// Version: 0.4.0 - the presenters' shared half; macos-presenter
 // Version: 0.3.1 - `displayed`
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -96,6 +100,223 @@ TEST(adapter_app_kind_is_guessed_from_identity) {
     REQUIRE_EQ(CategoryForAppKind(AppKind::Mail), std::string("email.arrived"));
     REQUIRE_EQ(CategoryForAppKind(AppKind::Unknown), std::string(""));
 }
+
+// ---- the presenters' shared half (every platform) ---------------------------
+
+namespace {
+
+UltraMsgMessage PostedNotification(const UltraMessage::SystemNotification& n, int processId) {
+    UltraMsgMessage m;
+    m.envelope.id = "01PRESENTED";
+    m.envelope.topic = UltraMsgTopics::SystemNotification;
+    m.envelope.from.appId = "org.test.poster";
+    m.envelope.from.displayName = "Poster";
+    m.envelope.from.processId = processId;
+    m.body = UltraMessage::MakeSystemNotification(n);
+    return m;
+}
+
+// The broker side of an adapter, recording what it publishes.
+class RecordingHost final : public UltraMessage::Internal::IAdapterHost {
+public:
+    struct Published {
+        std::string topic;
+        JSONValue body;
+    };
+    std::string Publish(const std::string&, const std::string& topic, const JSONValue& body,
+                        const UltraMsgSendOptions& = {}) override {
+        published.push_back({topic, body});
+        return "01PUBLISHED" + std::to_string(published.size());
+    }
+    void ReportState(const std::string&, const UltraMsgAdapterState&) override {}
+    std::vector<Published> published;
+};
+
+std::string Text(const JSONValue& body, const char* key) {
+    const JSONValue* v = body.Find(key);
+    return v && v->IsString() ? v->GetString() : std::string();
+}
+
+} // namespace
+
+TEST(presenter_content_is_read_from_the_notification) {
+    using UltraMessage::Internal::PresentedContent;
+    using UltraMessage::Internal::ReadPresentedContent;
+    constexpr int kPresenter = 4242;
+    UltraMessage::SystemNotification n;
+    n.appId = "org.ultraos.ultramail";
+    n.appName = "UltraMail";
+    n.summary = "Ada Lovelace";
+    n.body = "Are we still on for the engine review?";
+    n.icon = "file:///tmp/mail%20icons/new.png";
+    n.urgency = "loud";
+    n.actions = {{"default", "Open"}, {"reply", "Reply"}, {"archive", ""}, {"later", "Later"}, {"spam", "Spam"}};
+
+    PresentedContent c;
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter + 1), kPresenter, c));
+    REQUIRE_EQ(c.notificationId, std::string("01PRESENTED"));
+    REQUIRE_EQ(c.replacesId, std::string(""));
+    REQUIRE_EQ(c.appId, std::string("org.ultraos.ultramail"));
+    REQUIRE_EQ(c.title, std::string("Ada Lovelace"));
+    REQUIRE_EQ(c.subtitle, std::string("UltraMail"));   // another process posted it
+    REQUIRE_EQ(c.body, n.body);
+    REQUIRE_EQ(c.iconFile, std::string("/tmp/mail icons/new.png"));
+    REQUIRE_EQ(c.urgency, std::string("normal"));
+    REQUIRE(c.hasDefaultAction);
+    REQUIRE_EQ(c.buttons.size(), size_t(3));
+    REQUIRE_EQ(c.buttons[0].id, std::string("reply"));
+    REQUIRE_EQ(c.buttons[1].label, std::string("archive"));   // no label: the id
+    REQUIRE_EQ(c.buttons[2].id, std::string("later"));
+
+    // Posted by the presenting process itself: the platform names it already.
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter), kPresenter, c));
+    REQUIRE_EQ(c.subtitle, std::string(""));
+
+    // An update names the notification it replaces; a theme icon is no file;
+    // no summary: the application's name heads it.
+    n.summary.clear();
+    n.icon = "mail-unread";
+    n.urgency = "critical";
+    n.actions = {{"reply", "Reply"}};
+    UltraMsgMessage update = PostedNotification(n, kPresenter + 1);
+    update.envelope.flags = UltraMsgFlag_Replace;
+    update.envelope.replaces = "01EARLIER";
+    REQUIRE(ReadPresentedContent(update, kPresenter, c));
+    REQUIRE_EQ(c.replacesId, std::string("01EARLIER"));
+    REQUIRE_EQ(c.title, std::string("UltraMail"));
+    REQUIRE_EQ(c.subtitle, std::string(""));
+    REQUIRE_EQ(c.iconFile, std::string(""));
+    REQUIRE_EQ(c.urgency, std::string("critical"));
+    REQUIRE(!c.hasDefaultAction);
+    REQUIRE_EQ(c.buttons.size(), size_t(1));
+
+    // No application name in the body: the sender's.
+    n.summary = "Ada Lovelace";
+    n.appName.clear();
+    REQUIRE(ReadPresentedContent(PostedNotification(n, kPresenter + 1), kPresenter, c));
+    REQUIRE_EQ(c.appName, std::string("Poster"));
+
+    UltraMsgMessage notANotification;
+    notANotification.body = JSONValue(std::string("hello"));
+    REQUIRE(!ReadPresentedContent(notANotification, kPresenter, c));
+}
+
+TEST(presenter_button_sets_are_keyed_stably) {
+    using UltraMessage::Internal::ButtonSetKey;
+    REQUIRE_EQ(ButtonSetKey({}), std::string("plain"));
+    const std::string replyArchive = ButtonSetKey({{"reply", "Reply"}, {"archive", "Archive"}});
+    REQUIRE(replyArchive.rfind("actions-", 0) == 0);
+    REQUIRE_EQ(replyArchive.size(), std::string("actions-").size() + 16);
+    REQUIRE_EQ(ButtonSetKey({{"reply", "Reply"}, {"archive", "Archive"}}), replyArchive);
+    REQUIRE(ButtonSetKey({{"archive", "Archive"}, {"reply", "Reply"}}) != replyArchive);
+    REQUIRE(ButtonSetKey({{"reply", "Answer"}, {"archive", "Archive"}}) != replyArchive);
+    // The id and label boundary counts: "ab"+"c" is not "a"+"bc".
+    REQUIRE(ButtonSetKey({{"ab", "c"}}) != ButtonSetKey({{"a", "bc"}}));
+}
+
+TEST(presenter_book_follows_updates_and_responses) {
+    UltraMessage::Internal::PresentedNotifications book;
+    REQUIRE_EQ(book.Show("m1", "", "m1"), std::string("m1"));
+    // An update shows under the identifier of the one it replaces ...
+    REQUIRE_EQ(book.Show("m2", "m1", "m2"), std::string("m1"));
+    REQUIRE_EQ(book.Size(), size_t(1));
+    REQUIRE_EQ(book.TakeById("m1"), std::string(""));
+    // ... and the platform's answer for that identifier is about the update.
+    REQUIRE_EQ(book.TakeByNative("m1"), std::string("m2"));
+    REQUIRE_EQ(book.Size(), size_t(0));
+    REQUIRE_EQ(book.TakeByNative("m1"), std::string(""));
+
+    // Replacing something no longer on screen shows it anew.
+    REQUIRE_EQ(book.Show("m3", "gone", "m3"), std::string("m3"));
+    REQUIRE_EQ(book.TakeById("m3"), std::string("m3"));
+    REQUIRE_EQ(book.TakeById("m3"), std::string(""));
+
+    // The oldest are forgotten past the limit.
+    for (int i = 0; i < 300; ++i) book.Show("n" + std::to_string(i), "", "n" + std::to_string(i));
+    REQUIRE_EQ(book.Size(), size_t(256));
+    REQUIRE_EQ(book.TakeById("n0"), std::string(""));
+    REQUIRE_EQ(book.TakeById("n299"), std::string("n299"));
+    book.Clear();
+    REQUIRE_EQ(book.Size(), size_t(0));
+}
+
+TEST(presenter_responses_are_published) {
+    using UltraMessage::Internal::PresenterResponse;
+    using UltraMessage::Internal::PublishPresenterResponse;
+    RecordingHost host;
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m1", PresenterResponse::Activated, "", true));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "m2", PresenterResponse::Activated, "", false));
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m3", PresenterResponse::Action, "reply", false));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "m4", PresenterResponse::Action, "", true));
+    REQUIRE(PublishPresenterResponse(host, "test-presenter", "m5", PresenterResponse::Dismissed, "", true));
+    REQUIRE(!PublishPresenterResponse(host, "test-presenter", "", PresenterResponse::Dismissed, "", true));
+    REQUIRE_EQ(host.published.size(), size_t(3));
+    REQUIRE_EQ(host.published[0].topic, std::string(UltraMsgTopics::SystemNotificationAction));
+    REQUIRE_EQ(Text(host.published[0].body, "notificationId"), std::string("m1"));
+    REQUIRE_EQ(Text(host.published[0].body, "actionId"), std::string("default"));
+    REQUIRE_EQ(Text(host.published[0].body, "adapter"), std::string("test-presenter"));
+    REQUIRE_EQ(Text(host.published[1].body, "actionId"), std::string("reply"));
+    REQUIRE_EQ(host.published[2].topic, std::string(UltraMsgTopics::SystemNotificationDismissed));
+    REQUIRE_EQ(Text(host.published[2].body, "notificationId"), std::string("m5"));
+    REQUIRE_EQ(Text(host.published[2].body, "reason"), std::string("dismissed"));
+}
+
+TEST(presenter_applescript_keeps_the_text_out_of_the_script) {
+    using UltraMessage::Internal::AppleScriptNotificationCommand;
+    using UltraMessage::Internal::PresentedContent;
+    PresentedContent c;
+    c.appName = "UltraMail";
+    c.title = "Q\"&A \\ draft";
+    c.subtitle = "UltraMail";
+    c.body = "end run\ndo shell script \"touch /tmp/owned\"";
+    std::vector<std::string> argv = AppleScriptNotificationCommand(c);
+    REQUIRE_EQ(argv.size(), size_t(10));
+    REQUIRE_EQ(argv[0], std::string("/usr/bin/osascript"));
+    REQUIRE_EQ(argv[4],
+               std::string("display notification (item 1 of argv) with title (item 2 of argv) subtitle (item 3 of argv)"));
+    REQUIRE_EQ(argv[7], c.body);
+    REQUIRE_EQ(argv[8], c.title);
+    REQUIRE_EQ(argv[9], c.subtitle);
+    for (size_t i = 1; i < 7; ++i) {
+        REQUIRE(argv[i].find("owned") == std::string::npos);
+        REQUIRE(argv[i].find("draft") == std::string::npos);
+    }
+
+    // Only a title, from the presenting process: the title is the text, the
+    // application's name heads it.
+    c.subtitle.clear();
+    c.body.clear();
+    c.title = "Download finished";
+    argv = AppleScriptNotificationCommand(c);
+    REQUIRE_EQ(argv[4], std::string("display notification (item 1 of argv) with title (item 2 of argv)"));
+    REQUIRE_EQ(argv[7], std::string("Download finished"));
+    REQUIRE_EQ(argv[8], std::string("UltraMail"));
+}
+
+#if defined(ULTRAMESSAGE_HAVE_MACOS_PRESENTER)
+// The macos-presenter: listed, starts, and switches. A test binary is no
+// application bundle, so it settles on the script fallback (or says why it
+// cannot show anything); nothing is put on screen - no notification is sent.
+TEST(macos_presenter_adapter_is_listed_and_starts) {
+    Scoped ep{Connect("org.test.adapters.macos.presenter")};
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, "macos-presenter");
+    REQUIRE(info != nullptr);
+    REQUIRE_EQ(info->platform, std::string("macos"));
+    REQUIRE(info->enabled);
+    UltraMsgAdapterState state;
+    REQUIRE(WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(ep.handle, "macos-presenter", state);
+        return r && state.status != UltraMsgAdapterStatus::Starting;
+    }, 8000ms));
+    REQUIRE(!state.message.empty());
+    REQUIRE(state.mode == "script" || state.mode == "none");
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "macos-presenter", false));
+    REQUIRE(UltraMsg_GetAdapterState(ep.handle, "macos-presenter", state));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "macos-presenter", true));
+}
+#endif
 
 #if defined(ULTRAMESSAGE_HAVE_WINRT)
 // Windows only, and only meaningful on a desktop session: the listener is

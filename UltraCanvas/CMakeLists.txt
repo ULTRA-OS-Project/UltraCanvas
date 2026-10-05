@@ -2867,6 +2867,18 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
     endif()
+    # The macOS presenter puts applications' notifications in Notification
+    # Center (UserNotifications), or shows them through osascript where the
+    # broker runs outside an application bundle; every macOS build has it.
+    set(_um_macos_presenter FALSE)
+    if(APPLE AND NOT IOS)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND ULTRAMESSAGE_SOURCES ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
@@ -2896,6 +2908,10 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     if(WIN32)
         target_link_libraries(UltraMessage PUBLIC shell32 user32)
     endif()
+    if(_um_macos_presenter)
+        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+    endif()
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
         # itself and takes gio and the switch from this target.
@@ -2917,6 +2933,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
         message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+    elseif(_um_macos_presenter)
+        message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()

@@ -62,6 +62,16 @@ if(NOT TARGET UltraMessage)
                 ${_um_root}/UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
     endif()
+    set(_um_macos_presenter FALSE)
+    if(APPLE)
+        enable_language(OBJCXX)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${_um_root}/UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND _um_sources ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
     add_library(UltraMessage STATIC
         ${_um_sources}
         ${_um_root}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp)
@@ -69,6 +79,10 @@ if(NOT TARGET UltraMessage)
     target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads PRIVATE uc-yyjson)
     if(WIN32)
         target_link_libraries(UltraMessage PUBLIC shell32 user32)
+    endif()
+    if(_um_macos_presenter)
+        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
     endif()
     if(_um_gio_found)
         target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
@@ -92,8 +106,9 @@ else()
     set(_um_output_dir ${CMAKE_BINARY_DIR}/bin)
 endif()
 
-# test_adapters.cpp compiles to nothing without ULTRAMESSAGE_HAVE_GIO, which
-# the UltraMessage target exports wherever the notification adapter is built.
+# test_adapters.cpp checks the registry and the presenters' shared half
+# everywhere; its platform cases follow what the UltraMessage target exports
+# (ULTRAMESSAGE_HAVE_GIO, ULTRAMESSAGE_HAVE_WINRT, ULTRAMESSAGE_HAVE_MACOS_PRESENTER).
 set(ULTRAMESSAGE_TEST_SOURCES
     test_main.cpp
     test_ultramessage.cpp

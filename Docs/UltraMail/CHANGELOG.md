@@ -3,7 +3,8 @@
   mail into an inbox, UltraMail posts one notification through UltraMessage,
   the desktop's message channel, and the desktop's own notification service
   draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
-  Action Center on Windows - with its look, its sound and do-not-disturb. One
+  Action Center on Windows, Notification Center on macOS - with its look, its
+  sound and do-not-disturb. One
   message names its sender and subject ("New mail from Ada Lovelace" / "The
   engine notes"); several are counted, with the newest three listed ("3 new
   messages": "Grace: Moth" ...). With more than one account it says which.
@@ -18,9 +19,11 @@
   - The notification is not added to the desktop's message centre: each
     message is listed there already.
   - Settings > Display > Notifications switches it off.
-  - Needs the framework's UltraMessage presenters (the change pending in
-    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md`); macOS has no
-    presenter yet, so there the notification reaches the feed only.
+  - Needs the framework's UltraMessage presenters (the changes pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md` and
+    `ultramessage-macos-presenter.md`). On macOS the notification carries
+    UltraMail's name and icon when UltraMail hosts the message channel and
+    runs from its bundle; macOS asks once to allow it.
 
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its

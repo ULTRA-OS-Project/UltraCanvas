@@ -61,7 +61,7 @@ each other action is a button (at most three); × dismisses.
 `ShouldShow(message)` is the whole rule: a live `system.notification` that is
 not `Silent` and has no `displayed` field. The broker writes `displayed` when a
 presenter handed the notification to the desktop's own notification service
-(`freedesktop-presenter`, `windows-presenter`), and the notification adapters
+(`freedesktop-presenter`, `windows-presenter`, `macos-presenter`), and the notification adapters
 when they read it from a service that drew it (`freedesktop-notifications` in
 monitor mode, `windows-notification-listener`). So on GNOME, Plasma, dunst or
 Windows the host draws nothing and nothing is shown twice; where UltraMessage
