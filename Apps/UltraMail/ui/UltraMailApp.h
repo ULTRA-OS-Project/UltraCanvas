@@ -621,7 +621,8 @@ private:
     FeedPublisher   feed_;
     // Which of the stored messages are news, per account, until its sync ends.
     NewMailTracker  newMail_;
-    // What a click on a notification opens, by the notification's bus id.
+    // What a click on a notification opens, by the notification's bus id
+    // (UI thread only).
     struct NotificationTarget {
         std::string accountId;
         std::string folder;     // empty: the account's inbox

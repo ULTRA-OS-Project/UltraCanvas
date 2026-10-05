@@ -2810,18 +2810,26 @@ void UltraMailApp::AnnounceNewMail(const std::string& accountId, const SyncOutco
     notification.body      = text.body;
     notification.iconPath  =
         UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraMail.png");
-    const std::string id = feed_.Notify(notification);
-    if (id.empty()) return;   // no bus: the account bar's counts still say it
-
     NotificationTarget target;
     target.accountId = accountId;
     if (summary.count == 1 && !summary.latest.empty()) {
         target.folder = summary.latest.front().folder;
         target.uid    = summary.latest.front().uid;
     }
-    notificationTargets_[id] = target;
-    // Bus ids sort by time: the oldest go once enough have piled up.
-    while (notificationTargets_.size() > 50) notificationTargets_.erase(notificationTargets_.begin());
+    // Posted from a worker: the publisher may be connecting to the bus (or
+    // hosting its broker) for a sync worker right now, and the window must
+    // not wait for that.
+    std::thread([this, notification, target]() {
+        const std::string id = feed_.Notify(notification);
+        if (id.empty()) return;   // no bus: the account bar's counts still say it
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, id, target]() {
+            notificationTargets_[id] = target;
+            // Bus ids sort by time: the oldest go once enough have piled up.
+            while (notificationTargets_.size() > 50) notificationTargets_.erase(notificationTargets_.begin());
+        });
+    }).detach();
 }
 
 void UltraMailApp::OpenFromNotification(const std::string& notificationId) {
