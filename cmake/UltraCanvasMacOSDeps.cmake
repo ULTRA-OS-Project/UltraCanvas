@@ -30,6 +30,29 @@ endif()
 set(ULTRACANVAS_MACOS_DEPS_PREFIX "${_uc_default_macos_deps_prefix}" CACHE PATH
     "Prefix holding the macOS dependency libraries (default: Homebrew's; scripts/macos-deps.sh builds one with vcpkg)")
 
+# The core exports the prefix's lib directory with the UltraCanvas package
+# (install(EXPORT) in UltraCanvas/CMakeLists.txt), and CMake refuses to
+# generate an export whose link directories lie inside the source or build
+# tree - with one "INTERFACE_LINK_DIRECTORIES property contains path ...
+# which is prefixed in the source directory" error per library, after the
+# whole configure. Say it once, up front. scripts/macos-deps.sh installs
+# outside the checkout by default (~/.cache/ultracanvas/vcpkg-installed).
+if(ULTRACANVAS_MACOS_DEPS_PREFIX)
+    get_filename_component(_uc_deps_real "${ULTRACANVAS_MACOS_DEPS_PREFIX}" REALPATH)
+    foreach(_uc_tree "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+        get_filename_component(_uc_tree_real "${_uc_tree}" REALPATH)
+        string(FIND "${_uc_deps_real}/" "${_uc_tree_real}/" _uc_at)
+        if(_uc_at EQUAL 0)
+            message(FATAL_ERROR
+                "ULTRACANVAS_MACOS_DEPS_PREFIX (${ULTRACANVAS_MACOS_DEPS_PREFIX}) is inside "
+                "${_uc_tree}. The UltraCanvas package exports the prefix's link directories, "
+                "and CMake refuses to export one from the source or build tree. Install the "
+                "libraries outside it: scripts/macos-deps.sh does by default, or set "
+                "UC_DEPS_INSTALL_ROOT to a directory elsewhere.")
+        endif()
+    endforeach()
+endif()
+
 if(EXISTS "${ULTRACANVAS_MACOS_DEPS_PREFIX}/Cellar")
     set(ULTRACANVAS_MACOS_DEPS_HOMEBREW TRUE)
 else()
