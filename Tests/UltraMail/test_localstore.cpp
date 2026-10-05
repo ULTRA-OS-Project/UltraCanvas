@@ -3,6 +3,7 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.4.0 - the verified sender domain with the verdict; ListStaleVerdicts
 // Version: 0.3.0 - WeighSentRecipients
 // Version: 0.2.0 - the needs-answer rules (age, people written to)
 // Version: 0.1.0
@@ -501,6 +502,47 @@ TEST(attachment_count_kept_beside_the_scan_verdict) {
     REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
     REQUIRE_EQ(all[1].attachments, 0);
     REQUIRE_EQ(all[2].attachments, 4);
+}
+
+TEST(verified_sender_and_stale_verdicts) {
+    LocalStore s = FreshStore("verified");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    for (int64_t uid : {1, 2, 3}) {
+        MessageEnvelope m = Incoming("erika", uid, "a@x.com", {"erika@example.com"});
+        m.date = 100 + uid;
+        REQUIRE(s.UpsertMessage(m).success);
+    }
+    MessageSecurity verdict;
+    verdict.level = ThreatLevel::Clean;
+    verdict.verifiedDomain = "shop.example";
+    verdict.verifiedBy = "DKIM signature and DMARC";
+    verdict.scannedAt = 1000;                         // older rules
+    REQUIRE(s.SetSecurity("erika", "INBOX", 1, verdict).success);
+    verdict.scannedAt = 1000;
+    REQUIRE(s.SetSecurity("erika", "INBOX", 3, verdict).success);
+    verdict.verifiedDomain.clear();
+    verdict.verifiedBy.clear();
+    verdict.scannedAt = 5000;                         // current rules
+    REQUIRE(s.SetSecurity("erika", "INBOX", 2, verdict).success);
+
+    MessageSecurity got;
+    REQUIRE(s.GetSecurity("erika", "INBOX", 1, got).success);
+    REQUIRE_EQ(got.verifiedDomain, std::string("shop.example"));
+    REQUIRE_EQ(got.verifiedBy, std::string("DKIM signature and DMARC"));
+    std::map<int64_t, MessageSecurity> all;
+    REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
+    REQUIRE(all[2].verifiedDomain.empty());
+
+    // Scanned before revision 2000: 1 and 3, newest first; not 2.
+    std::vector<int64_t> stale;
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE_EQ(stale.size(), (size_t)2);
+    REQUIRE_EQ(stale[0], (int64_t)3);
+    REQUIRE_EQ(stale[1], (int64_t)1);
+    // A row holding only an attachment count was never scanned: not stale.
+    REQUIRE(s.SetAttachmentCount("erika", "INBOX", 4, 1).success);
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE_EQ(stale.size(), (size_t)2);
 }
 
 // UltraMail opens mail.db twice: the UI thread's connection and the sync

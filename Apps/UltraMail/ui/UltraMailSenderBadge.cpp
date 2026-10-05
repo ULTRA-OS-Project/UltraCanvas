@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
-// Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge
+// Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge; the
+//                  verified sender domain in the tooltip
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBadge.h"
@@ -127,6 +128,11 @@ SenderBadge SenderBadgeResolver::Resolve(const MessageEnvelope& message,
         tip += " \xC2\xB7 " + status.brandName + " (" +
                DisplayName(status.brandCategory) + ")";   // " · Kickstarter (…)"
     if (!status.reason.empty())    tip += "\n" + status.reason;
+    // The receiving server proved the From domain (DKIM / DMARC): the
+    // address is genuine - which is not to say the mail is harmless.
+    if (!security.verifiedDomain.empty())
+        tip += "\n\xE2\x9C\x93 Verified sender: " + security.verifiedDomain + " (" +
+               security.verifiedBy + ")";
     if (!security.reason.empty())  tip += "\n" + security.reason;
     badge.tooltip = tip;
     return badge;

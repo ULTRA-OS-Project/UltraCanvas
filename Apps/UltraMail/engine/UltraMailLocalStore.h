@@ -3,6 +3,9 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.11.0 - schema 10: the verified sender domain with each verdict
+//                   (MessageSecurity::verifiedDomain / verifiedBy);
+//                   ListStaleVerdicts (verdicts of older rules, to re-scan)
 // Version: 0.10.0 - schema 9: the folder's hierarchy separator; RemoveFolder;
 //                   UpsertFolder keeps the stored UIDVALIDITY / UIDNEXT
 // Version: 0.9.0 - the written-to rule counts "Name <address>" recipients and is
@@ -63,6 +66,10 @@ struct MessageSecurity {
     // Attachments the message carries (what the reading pane lists as
     // chips), counted from the body; -1 while no body has been counted.
     int         attachments = -1;
+    // The From domain the receiving server proved genuine (DKIM / DMARC), and
+    // how; "" when nothing proved it (ThreatReport::verifiedDomain).
+    std::string verifiedDomain;
+    std::string verifiedBy;
 
     bool Scanned() const { return level != ThreatLevel::Unscanned; }
 };
@@ -223,6 +230,11 @@ public:
     UltraDbResult ListUncountedAttachments(const std::string& accountId,
                                            const std::string& folder, int limit,
                                            std::vector<int64_t>& uids) const;
+    // Messages of a folder scanned before `rulesRevision` (an epoch second:
+    // their verdict came from older rules), newest first, at most `limit`.
+    UltraDbResult ListStaleVerdicts(const std::string& accountId, const std::string& folder,
+                                    int64_t rulesRevision, int limit,
+                                    std::vector<int64_t>& uids) const;
 
     // ---- Rollups (account bar) --------------------------------------------
     // One row per account: short name, email, unread (total / today / older)

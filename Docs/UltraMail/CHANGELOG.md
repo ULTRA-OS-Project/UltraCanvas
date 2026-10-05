@@ -58,6 +58,34 @@
   drawn without the badge's frame, so a phishing mail from a forged
   `paypal.com` address showed PayPal's logo and not the red frame. A
   dangerous message's badge now always shows its frame.
+- **Genuine mail is no longer marked as a scam for its tracking links.** A
+  newsletter whose link reads "www.shop.example/sale" but goes through its
+  mail service's click tracker looked like a link lying about where it goes -
+  the strongest scam rule - and a bank asking to update payment details, a
+  help-desk Reply-To or links to many sites added to it. UltraMail now reads
+  the checks the receiving server made of the sending domain (the
+  `Authentication-Results` header: DKIM, SPF, DMARC). A sender is **verified**
+  when DMARC passed for its From domain or a DKIM signature of that domain
+  verified; for it those rules no longer count, and for a verified known
+  service (PayPal from `paypal.com`, proven) neither does asking to update
+  account details. Every rule that catches a lie stays: a look-alike domain
+  that signs its own mail is still a scam. Only the topmost header is read -
+  the user's own server's; one further down may be the sender's own forgery
+  (the scan read the bottom one before). A failure counts when DMARC fails,
+  or nothing passed: forwarded mail fails SPF, and a mail service's second
+  signature may fail while the sender's passes - both were "possibly forged"
+  before. Stored verdicts of older rules are scanned again by the sync, 300
+  per folder and check, so the list's badges follow without each message
+  being opened (`SyncEngine::RescanStaleVerdicts`, schema 10). Tests:
+  `test_threatscan.cpp`, `test_localstore.cpp`.
+- **[DMARC] [DKIM] [SPF] beside the sender.** The reading pane shows the
+  sender checks as small bordered labels - green passed, red failed, grey
+  no verdict - each with a tooltip saying what was checked, for which domain,
+  what that proves and which server checked it; **[Not checked]** when the
+  server recorded none (not a warning). A message signed with S/MIME or
+  OpenPGP shows **[S/MIME]** / **[OpenPGP]** in grey: detected, not yet
+  verified. The badge's and the sender's tooltips name a verified sender:
+  "✓ Verified sender: paypal.com (DKIM signature and DMARC)".
 - **Tooltips no longer cover what they explain.** A tooltip - a message
   row's, the sender badge's, a link's address - opened below and to the right
   of the pointer, over the line being read. It now opens above and to the

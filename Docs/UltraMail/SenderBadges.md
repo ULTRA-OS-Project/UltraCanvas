@@ -214,8 +214,10 @@ score and the reasons, in the words the tooltip and the warning strip show.
 It runs **once per message, where the body is cached during sync**, and the
 verdict is stored in the `message_security` table — its own table, so that an
 envelope upsert (which happens on every header sync, long before a body
-exists) can never reset a scan that has already run. A message whose body was
-cached by an older build is scanned the first time it is opened.
+exists) can never reset a scan that has already run. A verdict made by older
+rules (`kThreatRulesRevision`) is made again: by the sync, a batch of up to
+300 cached bodies per folder sync (`SyncEngine::RescanStaleVerdicts`), and
+when the message is opened.
 
 Links are pulled out of both HTML (`<a href>`, `<area href>`, `<form action>`,
 with their anchor text) and plain-text bodies (bare URLs). The rules, with
@@ -230,7 +232,7 @@ their weights:
 | `link-brand-lookalike` | 40 | `apple-id-verify.delivery-update.example` |
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
-| `auth-failure` | 30 | `Authentication-Results` reports `spf=fail` / `dkim=fail` / `dmarc=fail` |
+| `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate, taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential") — 50 when two of those appear |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
@@ -241,10 +243,54 @@ their weights:
 | `link-shortener` | 12 | The destination cannot be seen |
 | `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
 | `spam-flag` | 40 | The receiving server already said so |
-| *(`dmarc=pass`)* | −10 | The From address is at least genuinely theirs |
+| *(verified sender)* | −10 | DMARC passed for the From domain, or a DKIM signature of it verified: the From address is genuinely theirs |
 
 45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
 with bulk markers is an **Advertisement** and everything else is **Clean**.
+
+### Mail authentication
+
+The receiving server checks the sending domain's own records when a message
+arrives and writes what it found into an `Authentication-Results` header
+(RFC 8601): **DKIM** (a signature by the domain over the message), **SPF**
+(whether the delivering server is one the envelope sender's domain allows) and
+**DMARC** (whether the From domain's own policy was met by an aligned DKIM or
+SPF pass). The scan reads the **topmost** such header only — the one the
+user's own server prepended; one further down may have been written by anyone,
+the sender included (`TopHeaderValue`, `ParseAuthenticationResults`).
+
+A sender is **verified** when DMARC passed for the From domain, or a DKIM
+signature by the From address's registrable domain verified — a mail
+service's own signature (`sendgrid.net`) proves nothing about the From
+address (`VerifiedSenderDomain`). Verified is not the same as harmless: a
+fraudster can sign for a domain of their own. So a verified sender keeps
+every rule that catches a lie, and loses only the ones that misfire on
+genuine mail:
+
+* `link-target-mismatch` when the text names the sender's own, verified site
+  and the link goes through its mail service's click tracker;
+* `reply-to-mismatch` (replies to a help desk on another domain) and
+  `many-foreign-domains`;
+* for a verified **registry brand** (the From domain is the brand's own, e.g.
+  `paypal.com` proven by DKIM), also `credential-request` and
+  `link-brand-mismatch` — the bank asking to update account details is the
+  bank.
+
+A look-alike domain that signs its own mail (`paypa1-alerts.example`) still
+trips `link-target-mismatch`, `brand-impersonation` and `credential-request`.
+The verified domain and how it was proven are stored with the verdict
+(`message_security.verified_domain` / `verified_by`, schema 10) and named in
+the badge's and the sender's tooltips ("✓ Verified sender: paypal.com (DKIM
+signature and DMARC)").
+
+The reading pane shows the checks beside the sender as small bordered labels
+— **[DMARC] [DKIM] [SPF]**, green when passed, red when failed, grey with no
+verdict — each with a tooltip saying what was checked, for which domain, what
+that proves and which server checked it (`DescribeAuthentication`). A message
+the server recorded no checks for shows a grey **[Not checked]**; that is not
+a warning. A message signed by its author shows **[S/MIME]** or **[OpenPGP]**
+in grey: the signature is detected (`MessageSignatureKind`) but not yet
+verified, so it counts for nothing.
 
 The scan is deliberately asymmetric — a false "suspicious" costs the reader a
 second look, a missed phishing mail can cost them their account — but it is
@@ -262,7 +308,7 @@ clean, and each of those is a test in
 | Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
 | Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
 | Collecting a sender into the address book | `Apps/UltraMail/engine/UltraMailContactCollector.{h,cpp}` |
-| Stored verdicts (`message_security`, schema 4) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
+| Stored verdicts (`message_security`, schema 4; verified sender, schema 10) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
 | Scan at download time | `Apps/UltraMail/engine/UltraMailSyncEngine.cpp` (`WriteBody`) |
 | The badge itself (painting + element) | `Apps/UltraMail/ui/UltraMailSenderBadge.{h,cpp}` |
 | Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |
