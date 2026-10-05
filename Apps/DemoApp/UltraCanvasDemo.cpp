@@ -2364,7 +2364,14 @@ namespace UltraCanvas {
             for (TreeNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent) {
                 categoryTreeView->ExpandNode(ancestor);
             }
+            // SelectNode() fires onNodeSelected, which is OnTreeNodeSelected:
+            // calling both built every --component page twice, the first copy
+            // thrown away at once - the Ultra Message page then showed its
+            // seeded messages twice. Select silently, then display once.
+            auto onSelected = std::move(categoryTreeView->onNodeSelected);
+            categoryTreeView->onNodeSelected = nullptr;
             categoryTreeView->SelectNode(node);
+            categoryTreeView->onNodeSelected = std::move(onSelected);
             OnTreeNodeSelected(node);
         } else {
             DisplayDemoItem(itemId);
