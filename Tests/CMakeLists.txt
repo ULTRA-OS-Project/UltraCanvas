@@ -3314,6 +3314,27 @@ else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== DIALOG CLOSE-ALL TEST =====
+# CloseAllDialogs() cancels every open dialog; it used to erase from the list
+# it was walking and read past its end. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DialogCloseAllTest...")
+    add_executable(DialogCloseAllTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogCloseAllTest.cpp
+    )
+    target_include_directories(DialogCloseAllTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogCloseAllTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogCloseAllTest PRIVATE UltraCanvas)
+    set_target_properties(DialogCloseAllTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogCloseAllTest COMMAND DialogCloseAllTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogCloseAllTest")
+else()
+    message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UNDECODABLE IMAGE TEST =====
 # An image whose header reads but whose pixels do not (a truncated PNG, a HEIC
 # without an HEVC decoder): asking for its pixmap must fail cleanly, not copy
