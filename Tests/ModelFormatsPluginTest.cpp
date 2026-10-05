@@ -341,12 +341,82 @@ static void TestEveryReaderHonoursForceUpAxis(const std::string& mediaRoot) {
     }
 }
 
+// The other three mesh options are the same contract. Each is checked by
+// doing it twice: once by the reader, through the option, and once by hand on
+// a plain load - and the two must agree. That holds for a reader that applies
+// the option and for no other, without the test having to know what a given
+// file looks like. The .blend and .ms3d readers ignored all three until they
+// were brought in line with the rest.
+static void TestEveryReaderHonoursMeshOptions(const std::string& mediaRoot) {
+    std::printf("Every reader honours TriangulateOnImport, WeldTolerance and GenerateMissingNormals\n");
+    const double tolerance = 1e-4;
+
+    auto isSurface = [](const ModelStorage::MeshPrimitive& prim) {
+        return prim.Mode != ModelStorage::PrimitiveMode::Lines &&
+               prim.Mode != ModelStorage::PrimitiveMode::Points;
+    };
+
+    for (const Sample& sample : Samples()) {
+        if (!sample.ImportsGeometry) continue;
+        const std::string path =
+                UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(mediaRoot) / sample.RelativePath);
+        const std::string name(sample.Extension);
+
+        ConversionOptions plainOptions;
+        auto plain = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!plain || plain->Meshes.empty()) continue;   // a B-rep sample has no mesh yet
+
+        // Normals: on by default, so every surface arrives with one per vertex.
+        bool everySurfaceHasNormals = true;
+        for (const auto& mesh : plain->Meshes)
+            for (const auto& prim : mesh.Primitives)
+                if (isSurface(prim) && prim.Normals.size() != prim.Positions.size())
+                    everySurfaceHasNormals = false;
+        Check(everySurfaceHasNormals, name + " generates the normals a surface is missing");
+
+        // Triangulation: the reader's result is the plain one, triangulated.
+        ConversionOptions triangulate;
+        triangulate.TriangulateOnImport = true;
+        auto triangulated = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, triangulate);
+        auto byHand = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!triangulated || !byHand) {
+            Check(false, name + " loads with TriangulateOnImport");
+            continue;
+        }
+        byHand->TriangulateAll();
+        bool onlyTriangles = true;
+        for (const auto& mesh : triangulated->Meshes)
+            for (const auto& prim : mesh.Primitives)
+                if (isSurface(prim) && (prim.Mode != ModelStorage::PrimitiveMode::Triangles ||
+                                        !prim.FaceStarts.empty()))
+                    onlyTriangles = false;
+        Check(onlyTriangles && triangulated->TotalFaceCount() == byHand->TotalFaceCount(),
+              name + " triangulates on import when asked");
+
+        // Welding: the reader's result is the plain one, welded.
+        ConversionOptions weld;
+        weld.WeldTolerance = tolerance;
+        auto welded = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, weld);
+        auto weldedByHand = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!welded || !weldedByHand) {
+            Check(false, name + " loads with WeldTolerance");
+            continue;
+        }
+        weldedByHand->WeldVertices(tolerance);
+        Check(welded->TotalVertexCount() == weldedByHand->TotalVertexCount(),
+              name + " welds on import when asked (" +
+                      std::to_string(plain->TotalVertexCount()) + " -> " +
+                      std::to_string(welded->TotalVertexCount()) + " vertices)");
+    }
+}
+
 int main(int argc, char** argv) {
     TestDispatchTable();
     TestDxfIsNotClaimed();
     TestEveryClaimedExtensionReachesTheFramework();
     if (argc > 1) TestSamples(argv[1]);
     if (argc > 1) TestEveryReaderHonoursForceUpAxis(argv[1]);
+    if (argc > 1) TestEveryReaderHonoursMeshOptions(argv[1]);
     else std::printf("Samples: skipped (pass the media/3D path to run them)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

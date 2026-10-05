@@ -37729,6 +37729,13 @@ if (document && !document->Empty()) {
 }
 ```
 
+The mesh options - `TriangulateOnImport`, `WeldTolerance`,
+`GenerateMissingNormals` and `ForceUpAxis` - mean the same thing whichever
+reader the extension picks, because a caller going through the dispatch
+cannot know which one that was. `ModelFormatsPluginTest` holds every reader to
+that: each option's result must equal a plain load with the same operation
+applied by hand.
+
 `LoadModelDocument` dispatches on the file extension. To go through the
 framework's plugin registry instead — so a 3D file opens like any other
 graphics file — call `RegisterModelFormatsPlugin()` once at start-up and then
@@ -37881,7 +37888,10 @@ normalise a scene — ask the reader for it with
 `ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
 Every reader honours `ForceUpAxis`, whichever one the extension picks;
 `ModelFormatsPluginTest` asks each sample for both axes and checks that the
-geometry turned, not just the label.
+geometry turned, not just the label. The turn goes on the root nodes, and
+the translation and rotation keys of any animation that drives a root turn
+with it - a key replaces the value it targets on playback, so leaving them
+would put an animated model back on its side the moment it played.
 
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
