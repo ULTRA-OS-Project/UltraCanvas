@@ -3,7 +3,7 @@
 // is and which of its decisions this reader had to make.
 //
 // Version: 1.0.0
-// Last Modified: 2026-09-11
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/MS3D/UltraCanvasMS3DConverter.h"
@@ -487,6 +487,10 @@ public:
             options_.Warn("MS3D: the file holds no geometry and no joints");
             return nullptr;
         }
+        // MilkShape is Y-up; a caller that asked for Z-up gets it, as from
+        // every other reader. Root joints and mesh nodes turn together, so a
+        // skinned mesh and its skeleton stay in register.
+        if (options_.ForceUpAxis.has_value()) document_->ConvertUpAxis(*options_.ForceUpAxis);
         return document_;
     }
 

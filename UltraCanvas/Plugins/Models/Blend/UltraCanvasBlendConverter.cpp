@@ -5,7 +5,7 @@
 // what it does not.
 //
 // Version: 2.0.0
-// Last Modified: 2026-09-11
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/Blend/UltraCanvasBlendConverter.h"
@@ -777,6 +777,10 @@ private:
         if (sawNodeMaterial_)
             options_.Warn("Blender: a material's surface is a node tree, which is not evaluated; "
                           "its colour is the viewport approximation Blender stores beside it");
+        // Blender is Z-up; a caller that asked for Y-up gets it, as from every
+        // other reader. The rotation goes on the root objects, so the meshes
+        // themselves stay as Blender stored them.
+        if (options_.ForceUpAxis.has_value()) document_->ConvertUpAxis(*options_.ForceUpAxis);
     }
 
     void WarnOnce(const std::string& key, const std::string& message) {

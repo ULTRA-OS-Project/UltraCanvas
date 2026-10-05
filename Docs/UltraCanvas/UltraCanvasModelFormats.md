@@ -189,6 +189,9 @@ geometry.
 To move the geometry itself rather than the view — for a writer, or to
 normalise a scene — ask the reader for it with
 `ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
+Every reader honours `ForceUpAxis`, whichever one the extension picks;
+`ModelFormatsPluginTest` asks each sample for both axes and checks that the
+geometry turned, not just the label.
 
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
