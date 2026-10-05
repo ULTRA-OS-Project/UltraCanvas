@@ -185,7 +185,10 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   subdomains): mail from them shows its pictures, and a picture hosted there
   loads in any mail. Trusted senders are the "Always from <sender>" list. Junk
   and suspicious mail never load pictures by themselves.
-- *Privacy > Sender icons* — whether the known senders' icons are downloaded.
+- *Privacy > Sender icons* — whether the known senders' icons are downloaded,
+  and whether other senders get their website's icon (the home page of the
+  domain they write from is read for its icon, only for mail that passed the
+  scam check). Icons are fetched in the background for the rows on screen.
 
 An account's servers and sign-in stay in its own *Account Settings*.
 

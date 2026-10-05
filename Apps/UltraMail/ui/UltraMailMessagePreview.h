@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.10.0 - the sender badge asks for its icon when it has none
+//                   (SetIconRequester) and shows it on arrival (IconCached)
 // Version: 0.9.0 - onBodyMissing / BodyArrived: a message shown before its body
 //                  was downloaded fetches it now and shows it when it arrives
 // Version: 0.8.0 - onComposeTo: a clicked mail address (mailto:) is written to in
@@ -57,7 +59,13 @@ public:
     void SetStore(LocalStore* store) { store_ = store; }
     // The address book and the icon cache behind the sender badge.
     void SetContacts(ContactIndex contacts) { badges_.SetContacts(std::move(contacts)); }
-    void SetIconCache(const SenderIconCache* cache) { badges_.SetIconCache(cache); }
+    void SetIconCache(const SenderIconCache* cache) { icons_ = cache; badges_.SetIconCache(cache); }
+    // Asked for the icon the shown sender's badge lacks; IconCached shows it
+    // once it has arrived.
+    void SetIconRequester(std::function<void(const std::string& key)> request) {
+        requestIcon_ = std::move(request);
+    }
+    void IconCached(const std::string& key);
     // Whether the folder being read is the account's junk mailbox.
     void SetJunkFolder(bool junk) { junkFolder_ = junk; }
 
@@ -184,6 +192,9 @@ private:
     bool                 junkFolder_ = false;
     LocalStore*          store_ = nullptr;
     SenderBadgeResolver  badges_;
+    const SenderIconCache* icons_ = nullptr;
+    std::function<void(const std::string& key)> requestIcon_;
+    SenderBadge          shownBadge_;   // the badge beside the shown message
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> actions_;      // Reply · Forward · Junk · Delete · More

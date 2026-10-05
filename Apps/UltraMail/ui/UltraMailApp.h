@@ -470,9 +470,10 @@ private:
     // Under WAL (LocalStore::Open) the UI's reads never wait for these writes.
     LocalStore workerStore_;
     ContactStore contacts_;
-    // Icons of the known services in the sender registry, under
-    // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
-    // the sync worker; the class is internally locked for exactly that.
+    // Sender icons (the registry's services, and other senders' websites),
+    // under <cacheDir>/sender-icons. Read by the badge on the UI thread,
+    // filled by the cache's own loader threads when the list asks for a row
+    // it paints; the class is internally locked for exactly that.
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's

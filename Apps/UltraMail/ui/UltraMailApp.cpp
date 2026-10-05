@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.25 - sender icons are fetched by the icon cache's loader when the list
+//                   paints a row that lacks one (no longer on the sync worker);
+//                   website icons (Settings > Privacy > Sender icons)
 // Version: 0.9.24 - how often new mail is checked comes from Settings > Mail > New
 //                   mail (20 seconds to 10 minutes); an account still syncing is
 //                   not synced a second time beside it
@@ -2287,10 +2290,9 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                               // one worker touches progressBuf, so no lock is
                               // needed; each flush hands a fresh batch to the UI.
                               [this, aid, progressBuf, arrived](const MessageEnvelope& m) {
-            // On the worker thread, so this is where a known service's icon is
-            // fetched: once per brand, never for an address that is not in the
-            // registry, and not at all when the user turned downloads off.
-            senderIcons_.EnsureIconForAddress(m.fromAddr);
+            // Sender icons are not fetched here: a download held the sync
+            // for its whole round trip. The list asks for the icons of the
+            // rows it paints, and the icon cache's own threads fetch them.
             if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             progressBuf->push_back(m);
@@ -2311,25 +2313,57 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
     }
 }
 
+namespace {
+
+// Icon and page requests look like a browser's: some sites answer anything
+// else with an error page.
+UltraNetHttpOptions SenderIconHttpOptions(int64_t maxBytes) {
+    UltraNetHttpOptions options = UltraNetHttpOptions::Default();
+    options.timeoutMs        = 10000;
+    options.connectTimeoutMs = 5000;
+    options.followRedirects  = true;
+    options.maxReceiveSize   = maxBytes;
+    options.headers.Set("User-Agent", "Mozilla/5.0 (compatible; UltraMail)");
+    return options;
+}
+
+} // namespace
+
 void UltraMailApp::ConfigureSenderIcons() {
     senderIcons_.SetRoot(cacheDir_ + "/sender-icons");
     senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
-    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout:
-    // an icon is never worth holding a sync open for. Only the URLs in the
-    // known-sender registry are ever passed here.
+    senderIcons_.SetSiteIconsEnabled(prefs_.fetchSiteIcons);
+    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout,
+    // on the icon cache's own loader threads - never the sync's or the UI's.
     senderIcons_.SetFetcher([](const std::string& url, std::vector<uint8_t>& out) {
-        UltraNetHttpOptions options = UltraNetHttpOptions::Default();
-        options.timeoutMs        = 10000;
-        options.connectTimeoutMs = 5000;
-        options.followRedirects  = true;
-        options.maxReceiveSize   = 512 * 1024;   // an icon, not a page
         UltraNetResponse response;
-        if (!UltraNet_HttpGet(url, response, options)) return false;
+        if (!UltraNet_HttpGet(url, response, SenderIconHttpOptions(512 * 1024)))   // an icon
+            return false;
         if (!response.IsSuccess() || response.body.empty()) return false;
         out = response.body;
         return true;
     });
+    // A website's home page, for its <link rel="icon">: the head is at the
+    // start, so a page cut off at 256 KB still names its icon - what arrived
+    // is used.
+    senderIcons_.SetPageFetcher([](const std::string& url, std::string& html,
+                                   std::string& finalUrl) {
+        UltraNetResponse response;
+        UltraNet_HttpGet(url, response, SenderIconHttpOptions(256 * 1024));
+        if (!response.IsSuccess() || response.body.empty()) return false;
+        html.assign(response.body.begin(), response.body.end());
+        finalUrl = response.finalUrl;
+        return true;
+    });
+    // An icon arrived (on a loader thread): the rows and the reading pane
+    // waiting for it show it.
+    senderIcons_.SetReadyHandler([this](const std::string& key) {
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, key]() { mailView_.IconCached(key); });
+    });
     mailView_.SetIconCache(&senderIcons_);
+    mailView_.SetIconRequester([this](const std::string& key) { senderIcons_.Request(key); });
 }
 
 void UltraMailApp::RefreshContactIndex() {
@@ -3035,7 +3069,12 @@ void UltraMailApp::OpenSettings() {
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
-        senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+        if (senderIcons_.NetworkEnabled() != prefs_.fetchSenderIcons ||
+            senderIcons_.SiteIconsEnabled() != prefs_.fetchSiteIcons) {
+            senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+            senderIcons_.SetSiteIconsEnabled(prefs_.fetchSiteIcons);
+            mailView_.RefreshBadges();   // which badges may ask for an icon
+        }
         ApplyLinkDisplay();
         ApplyCheckMailInterval();
         // New waiting-for-reply rules: the account bar's count and the list's

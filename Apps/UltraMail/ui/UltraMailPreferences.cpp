@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.8.0 - fetch_site_icons (website icons of other senders)
 // Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
 // Version: 0.6.0 - list_sort (the message list's order)
 // Version: 0.5.0 - needs_answer_max_age_days, needs_answer_only_written_to
@@ -54,6 +55,7 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "fetch_site_icons")   fetchSiteIcons   = ParseBool(value);
         if (key == "remote_images") {
             const std::string v = Trim(value);
             remoteImages = v == "always" ? RemoteImagePolicy::LoadAlways
@@ -122,6 +124,7 @@ bool Preferences::Save(const std::string& path) const {
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";
     file << "fetch_sender_icons = " << (fetchSenderIcons ? "true" : "false") << "\n";
+    file << "fetch_site_icons = " << (fetchSiteIcons ? "true" : "false") << "\n";
     file << "remote_images_from = ";
     bool first = true;
     for (const auto& addr : remoteImageSenders) {

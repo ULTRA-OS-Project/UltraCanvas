@@ -34,6 +34,30 @@
   (about a second a message on Windows before): two hundred headers to a
   request, and bodies in blocks of up to 4 MB. See the framework changelog,
   "IMAP: headers and bodies are fetched in batches".
+- **Sender icons are fetched in the background, for the rows on screen.**
+  The sync fetched a known service's icon as each new message's header
+  arrived, and waited for the download (up to ten seconds when a site did
+  not answer) before taking the next message. Now the message list asks for
+  an icon when it paints a row whose sender has none yet - so only the
+  senders actually shown are fetched - and the icon cache's own threads (up to
+  three) download it; the row, and the reading pane, show it as it arrives.
+  Neither the sync nor the window waits for a download
+  (`SenderIconCache::Request`, `SetReadyHandler`).
+- **Other senders show their website's icon.** A sender that is not on
+  UltraMail's list of known services now gets the icon of the website it
+  writes from: the home page of its domain (`mail.shop.example` ->
+  `shop.example`) is read for its `<link rel="icon">`, the size that suits
+  the badge first, with `/favicon.ico` as the fallback; the icon is kept in
+  `cache/sender-icons/sites`, and a site without one is asked again after a
+  week. Only for mail that passed the scam check - never for spam, a scam,
+  the junk folder or a mailbox provider such as gmail.com - because reading
+  the site tells its server that someone looked. A second switch in
+  *Settings > Privacy > Sender icons*, "Show other senders' website icons"
+  (on; `fetch_site_icons`). Tests: `test_senderidentity.cpp`.
+- **A spam or scam badge no longer wears the brand's logo.** An icon is
+  drawn without the badge's frame, so a phishing mail from a forged
+  `paypal.com` address showed PayPal's logo and not the red frame. A
+  dangerous message's badge now always shows its frame.
 - **A mail check no longer signs in four times.** The status, the new
   messages, the read flags and the bodies each signed in to the server on a
   connection of their own; now the plug-in keeps a signed-in connection and

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.14.0 - the sender badge's icon is asked for, and shown when it
+//                   arrives (IconCached)
 // Version: 0.13.0 - the HTML body is laid out beside the vertical scrollbar (no
 //                 text under the bar, no stray horizontal bar); thin, round
 //                 scrollbars as in the message list
@@ -859,8 +861,18 @@ void MessagePreview::Clear() {
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");
     if (avatarHost_) avatarHost_->ClearChildren();
+    shownBadge_ = SenderBadge{};
     if (bodyHost_) bodyHost_->ClearChildren();
     attachmentStrip_.SetAttachments({});
+}
+
+void MessagePreview::IconCached(const std::string& key) {
+    if (!hasMessage_ || !avatarHost_ || !icons_ || key.empty() || shownBadge_.iconKey != key)
+        return;
+    shownBadge_.iconPath = icons_->IconForKey(key);
+    shownBadge_.iconKey.clear();
+    avatarHost_->ClearChildren();
+    avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
 }
 
 void MessagePreview::Show(const MessageEnvelope& env) {
@@ -958,9 +970,11 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     const MessageSecurity security = SecurityFor(env, raw);
     const SenderStatus    status   = badges_.Classify(env, security, junkFolder_);
     if (avatarHost_) {
+        shownBadge_ = badges_.Resolve(env, security, junkFolder_);
         avatarHost_->ClearChildren();
-        avatarHost_->AddChild(MakeSenderBadgeElement(
-            "prevBadge", badges_.Resolve(env, security, junkFolder_), kAvatarSide));
+        avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
+        if (shownBadge_.iconPath.empty() && !shownBadge_.iconKey.empty() && requestIcon_)
+            requestIcon_(shownBadge_.iconKey);
     }
     if (from_) {
         // The sender line carries the verdict in words, so the badge's colour

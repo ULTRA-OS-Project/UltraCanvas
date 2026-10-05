@@ -130,30 +130,58 @@ phishing scan reasons about:
 ## 3. The sender-icon cache
 
 `UltraMailSenderIconCache` owns one folder — `<dataDir>/cache/sender-icons` —
-holding the icon of each registry entry, named after the brand id with the
-extension sniffed from the downloaded bytes (`facebook.png`, `apple.ico`, …).
+holding two kinds of icon, each under a key:
 
-* **Only the curated registry is ever fetched.** UltraMail does not ask the
-  internet about a stranger's domain; that would tell a third party who writes
-  to the user. The set of possible requests is the brand table, and each is
-  made at most once.
+* **A registry service's icon**, from the URL in the brand table, named after
+  the brand id with the extension sniffed from the downloaded bytes
+  (`facebook.png`, `apple.ico`, …). Key: the brand id.
+* **A website's icon**, for a sender that is no known service: the home page
+  of the registrable domain it writes from (`https://example.com/`, then
+  `https://www.example.com/`) is read for its `<link rel="icon">` — a size a
+  badge can use first, then the home-screen icon, an icon of no stated size,
+  SVG, tiny ones — and `/favicon.ico` is the fallback (`FindSiteIconUrls`).
+  Filed under `sites/example.com.png`. Key: `site:example.com` (`SiteIconKey`).
+
+How it is filled:
+
+* **Lazily, in the background.** The message list's item delegate asks for an
+  icon (`SenderBadge::iconKey`, `SenderIconCache::Request`) when it paints a
+  row whose badge has none cached, and the reading pane when it shows such a
+  sender; up to three loader threads of the cache's own fetch them and the
+  app is told of each icon stored (`SetReadyHandler`), whereupon the waiting
+  rows and the pane show it. Neither the sync nor the window waits for a
+  download, and only senders actually on screen are fetched. (Until 0.10.31
+  the sync worker fetched a registry icon as each new header arrived, holding
+  the sync for the round trip.)
+* **Website icons only for mail that passed the scan.** A website icon is
+  asked for only when the message has been scanned and is clean or an
+  advertisement, is not in the junk folder, and its domain is not a mailbox
+  provider (a friend's Gmail address is not Google's mail). Reading a site's
+  home page tells the sender's web server that someone looked — not which
+  message — which is why it is a setting of its own and never done for spam,
+  scams or the junk folder.
+* **No icon on a spam or scam badge.** An icon is drawn without the badge's
+  frame, and on a dangerous message the frame is the warning: a forged
+  `paypal.com` address must not wear PayPal's logo.
 * **The fetch is injected.** The engine has no network dependency of its own:
-  `SetFetcher()` takes the HTTPS GET (the app supplies one built on
-  `UltraNet_HttpGet`, TLS verified, 10 s timeout, 512 KB cap), the test suite
-  supplies a fake, and a build that sets none downloads nothing.
-* **Fetching happens on the sync worker**, as each new message's header
-  arrives — never on the UI thread, which only ever reads the folder.
-* **A miss is remembered** in a `<brand>.missing` marker and not retried for a
-  week, so an offline machine does not spend every sync on the same failures.
+  `SetFetcher()` takes the HTTPS GET for an icon (the app supplies one built
+  on `UltraNet_HttpGet`, TLS verified, 10 s timeout, 512 KB cap),
+  `SetPageFetcher()` the one for a home page (256 KB, and a page cut off there
+  is still read: its head comes first); the test suite supplies fakes, and a
+  build that sets none downloads nothing.
+* **A miss is remembered** in a `.missing` marker and not retried for a week,
+  nor a second time in one session, so an offline machine does not spend its
+  time on the same failures.
 * **Bytes that are not an image are rejected** (a captive portal's HTML login
   page, an error page), and a file the image loader cannot decode falls back to
   the monogram rather than leaving an empty square.
 
 No icon is a normal state, not an error: the badge then shows the sender's
-initial in the brand's own colour. The whole feature can be turned off in
-**Settings → Download icons of known senders** (stored as
-`fetch_sender_icons` in `preferences.ini`); icons already in the folder keep
-being shown.
+initial in the brand's own colour. **Settings → Privacy → Sender icons** has
+both switches: *Download the icons of known senders* (`fetch_sender_icons` in
+`preferences.ini`; off, nothing at all is downloaded) and *Show other senders'
+website icons* (`fetch_site_icons`); icons already in the folder keep being
+shown.
 
 ## 4. The registry as a source of business contacts
 

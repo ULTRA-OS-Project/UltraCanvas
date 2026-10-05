@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.9.0 - fetchSiteIcons (the website icon of a sender that is no
+//                  known service)
 // Version: 0.8.0 - how often new mail is checked (check_mail_every_sec, Settings >
 //                  Mail > New mail)
 // Version: 0.7.0 - the message list's order (list_sort), chosen in its column headers
@@ -55,10 +57,16 @@ struct Preferences {
     bool showReadingPane = true;
 
     // Whether UltraMail may download the icons of the services in its known-
-    // sender registry into the sender-icon cache. Only those (a fixed list),
-    // and only once each — never a lookup of a stranger's domain. Off means
-    // the badge shows the sender's monogram in the brand's colour instead.
+    // sender registry into the sender-icon cache, once each. Off means the
+    // badge shows the sender's monogram in the brand's colour instead - and
+    // nothing at all is downloaded, website icons included.
     bool fetchSenderIcons = true;
+    // Whether a sender that is no known service gets its website's icon:
+    // the home page of the domain it writes from is read for its icon, once
+    // a week at most, and only for mail that passed the content scan. That
+    // tells the sender's web server that someone looked; off, only the
+    // registry's icons are fetched.
+    bool fetchSiteIcons = true;
 
     // Senders whose remote (web) images load without asking ("Always from
     // <sender>" in the reading pane), lower-cased addresses.

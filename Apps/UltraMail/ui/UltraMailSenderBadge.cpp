@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+// Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderBadge.h"
@@ -92,9 +93,31 @@ SenderBadge SenderBadgeResolver::Resolve(const MessageEnvelope& message,
     SenderBadge badge;
     badge.cls     = status.cls;
     badge.initial = InitialOf(DisplayHeader(message.fromName), message.fromAddr);
-    if (!status.brandId.empty()) {
-        badge.brandColor = FromRgb(status.brandAccentRgb);
-        if (icons_) badge.iconPath = icons_->IconForBrand(status.brandId);
+    if (!status.brandId.empty()) badge.brandColor = FromRgb(status.brandAccentRgb);
+
+    // The icon: a known service's own, or the website's of a sender whose
+    // mail passed the scan. Never on a spam or scam badge - an icon is drawn
+    // without the frame, and the frame is the warning (a forged PayPal
+    // address must not wear PayPal's logo).
+    if (icons_ && !status.Dangerous()) {
+        std::string key;
+        bool fetchable = false;
+        if (!status.brandId.empty()) {
+            key = status.brandId;
+            const SenderBrand* brand = BrandById(status.brandId);
+            fetchable = brand && !brand->iconUrl.empty();
+        } else if (!junkFolder && security.Scanned() &&
+                   security.level <= ThreatLevel::Advertisement) {
+            const std::string domain = DomainOfAddress(message.fromAddr);
+            // A friend's Gmail address is not Google's mail.
+            if (!IsPersonalMailboxDomain(domain)) key = SiteIconKey(domain);
+            fetchable = !key.empty() && icons_->SiteIconsEnabled();
+        }
+        if (!key.empty()) {
+            badge.iconPath = icons_->IconForKey(key);
+            if (badge.iconPath.empty() && fetchable && icons_->NetworkEnabled())
+                badge.iconKey = key;
+        }
     }
 
     // The tooltip is the whole story: what the sender is, then — when the scan

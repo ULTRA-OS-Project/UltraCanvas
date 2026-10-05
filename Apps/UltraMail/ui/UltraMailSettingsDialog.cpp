@@ -19,6 +19,7 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.6.0 - Privacy > Sender icons: the website icons of other senders
 // Version: 1.5.0 - Mail > New mail: how often new mail is checked (a dropdown,
 //                  20 seconds to 10 minutes)
 // Version: 1.4.0 - Reading > Waiting for reply: which unanswered mail counts
@@ -157,6 +158,7 @@ namespace {
 
         // Privacy > Sender icons
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
+        std::shared_ptr<UltraCanvasCheckbox> siteIconsBox;
 
         // Display > Links
         std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
@@ -366,6 +368,7 @@ namespace {
         if (d->domainsInput) d->domainsInput->SetTags(DomainTags(p));
         if (d->sendersInput) d->sendersInput->SetTags(SenderTags(p));
         if (d->senderIconsBox) d->senderIconsBox->SetChecked(p.fetchSenderIcons);
+        if (d->siteIconsBox)   d->siteIconsBox->SetChecked(p.fetchSiteIcons);
         if (d->linksStatusRadio)
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
@@ -735,21 +738,39 @@ namespace {
         });
         parts.body->AddChild(d->senderIconsBox);
 
+        d->siteIconsBox = MakeCheckbox("um-set-site-icons",
+                "Show other senders' website icons", d->prefs->fetchSiteIcons,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->fetchSiteIcons = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->siteIconsBox);
+
         d->resets[kPageSenderIcons] = PageReset{ "Restore default", 140, [d]() {
             if (!d->prefs) return;
             d->prefs->fetchSenderIcons = true;
+            d->prefs->fetchSiteIcons   = true;
             SyncControls(d);
             ApplyAndSave(d);
         } };
 
         AddNote(parts, "um-set-senders-note1",
-                "Only the services on UltraMail's own list of known senders "
-                "(banks, shops, social networks, ...) are asked for an icon, once "
-                "each, into the icon cache. No other sender's domain is ever "
-                "looked up, so this tells nobody which mail you read.");
+                "Known senders: the services on UltraMail's own list (banks, "
+                "shops, social networks, ...) are asked for their icon once each, "
+                "from the address on that list.");
         AddNote(parts, "um-set-senders-note2",
-                "Switched off, the badge shows the sender's initial in the "
-                "service's colour instead.");
+                "Website icons: for any other sender whose mail passed the scam "
+                "check, the home page of the domain it writes from is read for "
+                "its icon - once, and again after a week if there was none. "
+                "That tells the sender's web server that someone looked, though "
+                "not which message; never asked for spam, scams, the junk folder "
+                "or a mailbox provider such as gmail.com.");
+        AddNote(parts, "um-set-senders-note3",
+                "Icons are fetched in the background, only for the senders shown "
+                "in the list, so they never slow down getting mail. Switched "
+                "off, the badge shows the sender's initial instead; icons "
+                "already fetched stay. Downloading off turns both off.");
         return parts.page;
     }
 
