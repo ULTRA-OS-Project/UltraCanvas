@@ -108,6 +108,7 @@ namespace UltraCanvas {
         for (auto cursor : cursors) {
             XFreeCursor(display, cursor.second);
         }
+        imageCursors.Clear();
 
         if (display) {
             debugOutput << "UltraCanvas: Closing X11 display..." << std::endl;
@@ -629,6 +630,10 @@ namespace UltraCanvas {
                 // surface/context at the new scale before the resize propagates.
                 if (targetWindow && targetWindow->RefreshDeviceScale()) {
                     targetWindow->HandleDeviceScaleChange();
+                    // The window keeps the cursor defined on it, and a cursor
+                    // drawn from a picture was drawn for the old scaling: put
+                    // up the one for this screen.
+                    SelectMouseCursorNative(targetWindow, targetWindow->GetCurrentMouseCursor());
                 }
                 break;
             }
