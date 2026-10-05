@@ -170,8 +170,8 @@ The following features are planned for future releases:
 
 ## License
 
-MIT License - Copyright 2025 Cloverleaf UG (contributions welcome)
+MIT License - Copyright 2025 ULTRA OS Development GmbH (contributions welcome)
 
 ----------
 
-_Developed by Cloverleaf UG_
+_Developed by ULTRA OS Development GmbH_

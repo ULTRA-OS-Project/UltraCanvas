@@ -30,7 +30,7 @@ on the macOS they were built on and newer.
 | `vcpkg-configuration.json` | Points vcpkg at the overlays below; no registry, so the ports are those of the pinned vcpkg commit |
 | `triplets/` | `arm64-osx-ultracanvas` and `x64-osx-ultracanvas`: shared libraries, release only, `VCPKG_OSX_DEPLOYMENT_TARGET 14.0` |
 | `ports/libvips` | vcpkg's port with the features it lacks (FITS, MAT, OpenEXR, JPEG 2000, RAW, FFTW, highway, dzsave archives, and the built-in GIF/PPM/Radiance/Analyze loaders, which vcpkg's portfile turns off unless named) |
-| `ports/mupdf` | MuPDF, not in vcpkg: a shared libmupdf against vcpkg's freetype, harfbuzz and friends, as Homebrew built it, with its lcms2mt fork's `cms*` symbols kept out of the library's exports |
+| `ports/mupdf` | MuPDF, not in vcpkg: a shared libmupdf against vcpkg's freetype, harfbuzz and friends, as Homebrew built it, with its lcms2mt fork's `cms*` symbols kept out of the library's exports. Without libcrypto (PDF signatures, which the apps do not use), and with pkg-config confined to vcpkg's prefix, so it never links a library of the build machine's Homebrew |
 | `ports/zbar` | zbar, not in vcpkg: the library only |
 | `ports/librevenge` | librevenge, not in vcpkg: needed by the vendored libcdr (CorelDRAW plug-in) |
 
@@ -46,6 +46,13 @@ cmake -B build -DULTRACANVAS_MACOS_DEPS_PREFIX="$prefix" ...
 cmake --build build
 UC_MACOS_DEPS_PREFIX="$prefix" MACOSX_DEPLOYMENT_TARGET=14.0 ./package-macos.sh --no-sign
 ```
+
+The libraries install into `~/.cache/ultracanvas/vcpkg-installed/<triplet>`
+(`UC_DEPS_INSTALL_ROOT` moves it), and the script prints that prefix. It must
+lie outside the checkout and the build directory: the UltraCanvas package
+exports the prefix's `lib` directory, and CMake refuses to export a link
+directory from the source or build tree. The script refuses such a root, and so
+does `cmake/UltraCanvasMacOSDeps.cmake`.
 
 The first build compiles every library and takes an hour or more; vcpkg's
 binary cache (`~/.cache/vcpkg/archives` locally, `.vcpkg/binary-cache` in CI,
