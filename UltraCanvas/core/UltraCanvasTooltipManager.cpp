@@ -1,7 +1,10 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.4.0 - the tooltip sits above and to the right of the pointer,
+//                  clear of the line under it (below the pointer's arrow only
+//                  when there is no room above)
 // Version: 2.3.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTooltipManager.h"
@@ -716,23 +719,31 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::UpdateTooltipPosition(const Point2Di &cursorPosition) {
-        // Basic positioning relative to cursor
         int windowWidth = targetWindow->GetWidth();
         int windowHeight = targetWindow->GetHeight();
 
+        // Above and to the right of the pointer, with a gap: the line the
+        // pointer is on - the text being read - stays in view, and so does
+        // the pointer's arrow, which hangs down and right from its tip. Below
+        // the pointer the tooltip covered the lower half of that line, and
+        // its shadow the rest. The gap is measured from the tooltip's body;
+        // its soft shadow, mostly below it, fades out inside the gap.
         tooltipRect.x = cursorPosition.x + style.offsetX;
-        tooltipRect.y = cursorPosition.y + style.offsetY;
+        tooltipRect.y = cursorPosition.y - style.offsetY - tooltipRect.height;
 
-        // Keep tooltip on screen
         if (windowWidth > 0 && windowHeight > 0) {
-            // Adjust horizontal position
+            // No room on the right: to the left of the pointer instead.
             if (tooltipRect.x + tooltipRect.width > windowWidth) {
                 tooltipRect.x = cursorPosition.x - style.offsetX - tooltipRect.width;
             }
-
-            // Adjust vertical position
-            if (tooltipRect.y + tooltipRect.height > windowHeight) {
-                tooltipRect.y = cursorPosition.y - style.offsetY - tooltipRect.height;
+            // No room above (near the top of the window): below the pointer,
+            // under its arrow rather than over it.
+            if (tooltipRect.y < 0) {
+                constexpr int kPointerArrowHeight = 22;
+                tooltipRect.y = cursorPosition.y + kPointerArrowHeight;
+                if (tooltipRect.y + tooltipRect.height > windowHeight) {
+                    tooltipRect.y = windowHeight - tooltipRect.height;
+                }
             }
 
             // Ensure tooltip is not off-screen

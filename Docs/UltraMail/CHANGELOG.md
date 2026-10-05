@@ -58,6 +58,12 @@
   drawn without the badge's frame, so a phishing mail from a forged
   `paypal.com` address showed PayPal's logo and not the red frame. A
   dangerous message's badge now always shows its frame.
+- **Tooltips no longer cover what they explain.** A tooltip - a message
+  row's, the sender badge's, a link's address - opened below and to the right
+  of the pointer, over the line being read. It now opens above and to the
+  right, with a gap, so the line under the pointer stays readable (below the
+  pointer only at the top of the window). See the framework changelog,
+  "Tooltips sit above and to the right of the pointer".
 - **A mail check no longer signs in four times.** The status, the new
   messages, the read flags and the bodies each signed in to the server on a
   connection of their own; now the plug-in keeps a signed-in connection and
