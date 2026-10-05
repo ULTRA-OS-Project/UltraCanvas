@@ -3,7 +3,7 @@
 // is and which of its decisions this reader had to make.
 //
 // Version: 1.0.0
-// Last Modified: 2026-09-11
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/MS3D/UltraCanvasMS3DConverter.h"
@@ -487,6 +487,23 @@ public:
             options_.Warn("MS3D: the file holds no geometry and no joints");
             return nullptr;
         }
+        // The same post-processing every other reader applies, in the same
+        // order. A group's triangles all carry their per-corner normals, so
+        // generating is a safeguard rather than the rule, and welding keeps a
+        // vertex apart wherever its normal, UV or joint weights differ.
+        // MilkShape is Y-up; a caller that asked for Z-up gets it. Root joints
+        // and mesh nodes turn together, so a skinned mesh and its skeleton
+        // stay in register, and ConvertUpAxis turns the root joints' keys too.
+        if (options_.GenerateMissingNormals) {
+            for (ModelMesh& mesh : document_->Meshes)
+                for (MeshPrimitive& prim : mesh.Primitives)
+                    if (prim.Normals.empty() && prim.Mode != PrimitiveMode::Lines &&
+                        prim.Mode != PrimitiveMode::Points)
+                        prim.RecomputeNormals();
+        }
+        if (options_.WeldTolerance > 0.0) document_->WeldVertices(options_.WeldTolerance);
+        if (options_.TriangulateOnImport) document_->TriangulateAll();
+        if (options_.ForceUpAxis.has_value()) document_->ConvertUpAxis(*options_.ForceUpAxis);
         return document_;
     }
 

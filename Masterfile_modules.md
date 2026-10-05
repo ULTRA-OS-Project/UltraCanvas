@@ -247,10 +247,13 @@ the backing implementation can be replaced without affecting callers.
     (`UltraCanvasXFileConverter.h`) - Frame, Mesh, MeshNormals,
     MeshTextureCoords, MeshVertexColors, MeshMaterialList and Material.
     Read-only and geometry only. It is the framework's one **left-handed**
-    format: the reflection that converts it back sits in the root frame's
-    matrix and the reversed winding cancels against it, so the reader alters
-    neither and instead *checks* the winding against the file's own normals.
-    Consult that header before assuming anything about its handedness.
+    format, and the reader converts it: Z is negated in every position and
+    normal, each frame matrix is conjugated by the same reflection, and every
+    face's corners are reversed, so the document is right-handed and a model
+    is not delivered as its mirror image. An exporter's own root-frame
+    reflection and reversed winding survive that and still cancel, which the
+    reader *checks* against the file's own normals. Consult that header before
+    assuming anything about its handedness.
     **MilkShape 3D** (`Plugins/Models/MS3D/UltraCanvasMS3DConverter.h`) is the
     one reader with no container layer, because an `.ms3d` has no container to
     speak of: a fixed sequence of packed little-endian structs, a count then

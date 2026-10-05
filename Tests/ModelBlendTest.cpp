@@ -25,8 +25,8 @@
 //
 // argv[1] is the .blend. Without it only the synthetic cases run.
 //
-// Version: 2.0.0
-// Last Modified: 2026-09-11
+// Version: 2.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/Blend/UltraCanvasBlendConverter.h"
@@ -535,6 +535,37 @@ static void TestQuad() {
     Check(warnings.empty(), "a file with no modifiers warns about nothing");
 }
 
+// The import options every reader takes, which this one ignored until
+// 2026-10. Blender's own normals are a cache the reader never reads, so every
+// normal here is generated - and a caller that asked for none gets none.
+static void TestImportOptions() {
+    std::printf("Import options\n");
+    BlendConverter converter;
+
+    ConversionOptions noNormals;
+    noNormals.GenerateMissingNormals = false;
+    auto bare = converter.ImportFromMemory(QuadScene(), noNormals);
+    Check(bare && bare->Meshes[0].Primitives[0].Normals.empty(),
+          "GenerateMissingNormals off: no normals, since none are read from the file");
+
+    ConversionOptions triangulate;
+    triangulate.TriangulateOnImport = true;
+    auto triangles = converter.ImportFromMemory(QuadScene(), triangulate);
+    Check(triangles && triangles->TotalFaceCount() == 2 &&
+          triangles->Meshes[0].Primitives[0].Mode == PrimitiveMode::Triangles,
+          "TriangulateOnImport: the quad arrives as two triangles");
+
+    ConversionOptions yUp;
+    yUp.ForceUpAxis = UpAxis::YUp;
+    auto turned = converter.ImportFromMemory(QuadScene(), yUp);
+    // The object sits at (10, 20, 30) in Blender's Z-up space; turned to Y-up,
+    // its height of 30 is along Y and its depth of 20 along -Z.
+    Check(turned && turned->Up == UpAxis::YUp &&
+          Near(turned->Nodes[0].Translation.y, 30.0, 1e-5) &&
+          Near(turned->Nodes[0].Translation.z, -20.0, 1e-5),
+          "ForceUpAxis: Y-up, with the object's Z-up placement turned to match");
+}
+
 static void TestSdnaDrivesEverything() {
     std::printf("The SDNA is the authority, not a remembered layout\n");
 
@@ -738,6 +769,7 @@ static void TestSample(const char* path) {
 int main(int argc, char** argv) {
     TestRecognition();
     TestQuad();
+    TestImportOptions();
     TestSdnaDrivesEverything();
     TestAttributeLayout();
     TestRefusals();

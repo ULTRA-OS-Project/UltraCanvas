@@ -72,10 +72,10 @@ namespace {
     // Ordered smallest file first, which also happens to run from the most
     // compact binary format to the most verbose. Everything here is under a
     // megabyte, bar the 2.6 MB DXF whose 8110 flat triangles cost less to read
-    // than their size suggests, so the page stays responsive even though each
-    // sample is parsed on demand - the larger samples in media/3D (the 18 MB .blend, the
-    // 6.9 MB VRML, the 3.9 MB PLY) are read by the same dispatch and are
-    // deliberately not listed; see kOmittedNote.
+    // than their size suggests, and the 1.1 MB .x, so the page stays responsive
+    // even though each sample is parsed on demand - the larger samples in
+    // media/3D (the 18 MB .blend, the 6.9 MB VRML, the 3.9 MB PLY) are read by
+    // the same dispatch and are deliberately not listed; see kOmittedNote.
     //
     // Five of the aircraft exports used to be incomplete, which looked like a
     // reader dropping geometry and was not: both meshes in the source
@@ -87,6 +87,13 @@ namespace {
     // .abc by rewriting its Ogawa archive around the evaluated hull, the rest
     // by mirroring the file's own geometry), so every sample now carries the
     // whole model.
+    //
+    // The .x needed two more repairs, made 2026-10-05. Its mesh frames were
+    // relative to the armature bones both meshes hang from, which Blender's
+    // exporter did not write, so the hull stood on its head with the canopy
+    // buried inside it; the frames now hold the placements the .blend gives
+    // the objects. And the mirroring had doubled the vertices and faces but
+    // not the UVs or the per-face material indices; both are now complete.
     const std::vector<SampleSpec>& Samples() {
         static const std::vector<SampleSpec> kSamples = {
                 {"STEP/Pin.step", "step",
