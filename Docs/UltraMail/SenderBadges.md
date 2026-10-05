@@ -150,7 +150,7 @@ How it is filled:
   sender; up to three loader threads of the cache's own fetch them and the
   app is told of each icon stored (`SetReadyHandler`), whereupon the waiting
   rows and the pane show it. Neither the sync nor the window waits for a
-  download, and only senders actually on screen are fetched. (Until 0.10.31
+  download, and only senders actually on screen are fetched. (Until 0.10.32
   the sync worker fetched a registry icon as each new header arrived, holding
   the sync for the round trip.)
 * **Website icons only for mail that passed the scan.** A website icon is

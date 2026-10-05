@@ -1,4 +1,4 @@
-#### 2026-10-05 *0.10.31*
+#### 2026-10-05 *0.10.32*
 - **The window no longer freezes after a sync that brought much mail.**
   At the end of every sync the senders of the new mail go into the address
   book, and that ran on the window's own thread one sender at a time: a
@@ -106,6 +106,8 @@
   it. At a check every twenty seconds that is no sign-in at all after the
   first, instead of twelve a minute per account - which some providers limit.
   See the framework changelog, "IMAP: one sign-in serves many checks".
+
+#### 2026-10-05 *0.10.31*
 - **The mailbox opens in a Windows profile named in any script.** The data
   folder (`%APPDATA%\UltraMail`: the mail database, the credential vault,
   the preferences) was found through the narrow `getenv("APPDATA")`, which
