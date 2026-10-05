@@ -917,7 +917,13 @@ what both backends do instead is what SSH does with host keys
    replaced.
 
 The keys are kept in `DeviceCertificates.conf` in the UltraCanvas settings
-folder (`UltraCanvasSettingsFolder.h`), shared by every application.
+folder (`UltraCanvasSettingsFolder.h`), shared by every application, each
+with the name its device was discovered under
+(`host:port=sha256//... Office Printer`) so the settings page can show it.
+The backends hand that name over as they list their devices
+(`Internal::NoteDeviceTlsName`); a printer named only by its address in
+configuration hands it over once it has described itself, and a key learned
+before then takes it on at that point.
 `ULTRACANVAS_DEVICE_CERTIFICATES` names another file and
 `ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new keys being learned.
 

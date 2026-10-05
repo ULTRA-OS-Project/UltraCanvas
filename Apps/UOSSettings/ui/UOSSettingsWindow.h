@@ -106,6 +106,7 @@ private:
     // row's Forget button must not be destroyed by its own callback.
     struct CertificateRow {
         std::shared_ptr<UltraCanvas::UltraCanvasContainer> row;
+        std::shared_ptr<UltraCanvas::UltraCanvasLabel> name;
         std::shared_ptr<UltraCanvas::UltraCanvasLabel> key;
     };
     void AddCertificateRow(const std::string& address);

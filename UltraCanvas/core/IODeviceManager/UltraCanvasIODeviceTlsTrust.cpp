@@ -50,7 +50,9 @@ std::mutex& FileMutex() {
     return mutex;
 }
 
-std::map<std::string, std::string> LoadPins() {
+using Certificates = std::map<std::string, IODeviceTrustedCertificate>;
+
+Certificates LoadPins() {
     const std::filesystem::path path = IODeviceTrustedCertificatesFile();
     if (path.empty()) return {};
     std::ifstream in(path, std::ios::binary);
@@ -60,7 +62,7 @@ std::map<std::string, std::string> LoadPins() {
     return ParseIODeviceTrustedCertificates(text.str());
 }
 
-bool SavePins(const std::map<std::string, std::string>& pins) {
+bool SavePins(const Certificates& pins) {
     const std::filesystem::path path = IODeviceTrustedCertificatesFile();
     if (path.empty()) return false;
     std::error_code ec;
@@ -83,6 +85,21 @@ bool SavePins(const std::map<std::string, std::string>& pins) {
         std::filesystem::rename(temporary, path, ec);
     }
     return !ec;
+}
+
+// A name as it goes into the file: on one line, trimmed, of a sane length.
+std::string CleanName(const std::string& name) {
+    std::string clean;
+    for (char c : name) clean += (c == '\r' || c == '\n' || c == '\t') ? ' ' : c;
+    clean = Trim(clean);
+    if (clean.size() > 200) clean.resize(200);
+    return clean;
+}
+
+// The names the backends discovered, by address, for keys not learned yet.
+std::map<std::string, std::string>& NotedNames() {
+    static std::map<std::string, std::string> names;
+    return names;
 }
 
 }  // namespace
@@ -140,8 +157,9 @@ std::string IODeviceTlsAddress(const std::string& urlOrAddress) {
     return Lower(host) + ":" + std::to_string(number);
 }
 
-std::map<std::string, std::string> ParseIODeviceTrustedCertificates(const std::string& text) {
-    std::map<std::string, std::string> pins;
+std::map<std::string, IODeviceTrustedCertificate> ParseIODeviceTrustedCertificates(
+    const std::string& text) {
+    std::map<std::string, IODeviceTrustedCertificate> certificates;
     std::istringstream lines(text);
     std::string line;
     while (std::getline(lines, line)) {
@@ -151,24 +169,35 @@ std::map<std::string, std::string> ParseIODeviceTrustedCertificates(const std::s
         // '=', so the first '=' ends it.
         const size_t equals = line.find('=');
         if (equals == std::string::npos) continue;
-        const std::string address = IODeviceTlsAddress(Trim(line.substr(0, equals)));
-        const std::string pin = Trim(line.substr(equals + 1));
-        if (address.empty() || pin.rfind(kPinPrefix, 0) != 0 ||
-            pin.size() == std::string(kPinPrefix).size()) {
+        IODeviceTrustedCertificate certificate;
+        certificate.address = IODeviceTlsAddress(Trim(line.substr(0, equals)));
+        const std::string value = Trim(line.substr(equals + 1));
+        const size_t space = value.find_first_of(" \t");
+        certificate.pin = value.substr(0, space);
+        if (space != std::string::npos) certificate.name = CleanName(value.substr(space + 1));
+        if (certificate.address.empty() || certificate.pin.rfind(kPinPrefix, 0) != 0 ||
+            certificate.pin.size() == std::string(kPinPrefix).size()) {
             continue;
         }
-        pins[address] = pin;
+        certificates[certificate.address] = certificate;
     }
-    return pins;
+    return certificates;
 }
 
-std::string FormatIODeviceTrustedCertificates(const std::map<std::string, std::string>& pins) {
+std::string FormatIODeviceTrustedCertificates(
+    const std::map<std::string, IODeviceTrustedCertificate>& certificates) {
     std::ostringstream out;
     out << "# Network devices whose self-signed certificate UltraCanvas trusts,\n"
-           "# learned the first time each was reached: host:port=sha256//<key hash>.\n"
+           "# learned the first time each was reached:\n"
+           "#   host:port=sha256//<key hash> <the name it was discovered under>\n"
            "# Delete a device's line when it was reset or replaced and now presents\n"
            "# a new certificate; its new key is learned on the next connection.\n";
-    for (const auto& [address, pin] : pins) out << address << '=' << pin << '\n';
+    for (const auto& [address, certificate] : certificates) {
+        out << address << '=' << certificate.pin;
+        const std::string name = CleanName(certificate.name);
+        if (!name.empty()) out << ' ' << name;
+        out << '\n';
+    }
     return out.str();
 }
 
@@ -192,7 +221,7 @@ std::filesystem::path IODeviceTrustedCertificatesFile() {
 std::vector<IODeviceTrustedCertificate> IODeviceTrustedCertificates() {
     std::lock_guard<std::mutex> lock(FileMutex());
     std::vector<IODeviceTrustedCertificate> list;
-    for (const auto& [address, pin] : LoadPins()) list.push_back({address, pin});
+    for (const auto& [address, certificate] : LoadPins()) list.push_back(certificate);
     return list;
 }
 
@@ -200,10 +229,31 @@ bool IODeviceForgetCertificate(const std::string& address) {
     const std::string key = IODeviceTlsAddress(address);
     if (key.empty()) return false;
     std::lock_guard<std::mutex> lock(FileMutex());
-    std::map<std::string, std::string> pins = LoadPins();
+    Certificates pins = LoadPins();
     if (pins.erase(key) == 0) return false;
     return SavePins(pins);
 }
+
+namespace Internal {
+
+void NoteDeviceTlsName(const std::string& url, const std::string& name) {
+    const std::string address = IODeviceTlsAddress(url);
+    const std::string clean = CleanName(name);
+    // A device listed under its own URL (one named in configuration, before
+    // it has described itself) has no name worth keeping yet.
+    if (address.empty() || clean.empty() || clean.find("://") != std::string::npos) return;
+
+    std::lock_guard<std::mutex> lock(FileMutex());
+    NotedNames()[address] = clean;
+    Certificates pins = LoadPins();
+    auto found = pins.find(address);
+    if (found != pins.end() && found->second.name != clean) {
+        found->second.name = clean;
+        SavePins(pins);
+    }
+}
+
+}  // namespace Internal
 
 }  // namespace UltraCanvas
 
@@ -224,9 +274,9 @@ bool LearningAllowed() {
 
 std::string PinFor(const std::string& address) {
     std::lock_guard<std::mutex> lock(FileMutex());
-    const std::map<std::string, std::string> pins = LoadPins();
+    const Certificates pins = LoadPins();
     auto found = pins.find(address);
-    return found == pins.end() ? std::string() : found->second;
+    return found == pins.end() ? std::string() : found->second.pin;
 }
 
 // Keeps `pin` for `address` unless one is kept already - learned meanwhile by
@@ -234,10 +284,15 @@ std::string PinFor(const std::string& address) {
 // here: that is IODeviceForgetCertificate's to do.
 std::string Remember(const std::string& address, const std::string& pin) {
     std::lock_guard<std::mutex> lock(FileMutex());
-    std::map<std::string, std::string> pins = LoadPins();
+    Certificates pins = LoadPins();
     auto found = pins.find(address);
-    if (found != pins.end()) return found->second;
-    pins[address] = pin;
+    if (found != pins.end()) return found->second.pin;
+    IODeviceTrustedCertificate certificate;
+    certificate.address = address;
+    certificate.pin = pin;
+    auto noted = NotedNames().find(address);
+    if (noted != NotedNames().end()) certificate.name = noted->second;
+    pins[address] = certificate;
     SavePins(pins);   // unsaved, it is learned again next time - no harm
     return pin;
 }

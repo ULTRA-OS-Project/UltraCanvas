@@ -569,6 +569,9 @@ std::vector<IODevicePtr> EnumerateEsclScanners() {
     std::vector<IODevicePtr> devices;
     devices.reserve(infos.size());
     for (const IODeviceInfo& info : infos) {
+        // So a scanner reached over https:// is listed under its name among
+        // the trusted certificates, not only its address.
+        Internal::NoteDeviceTlsName(info.connectionPath, info.name);
         devices.push_back(std::make_shared<EsclScannerDevice>(info, info.connectionPath));
     }
     return devices;

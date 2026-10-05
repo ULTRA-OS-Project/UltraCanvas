@@ -747,7 +747,12 @@ private:
                 }
             }
         }
-        if (changed) UpdateDeviceInfo(info);
+        if (changed) {
+            UpdateDeviceInfo(info);
+            // A printer named only by its address in configuration has a
+            // name now; a trusted certificate kept for it takes it on.
+            Internal::NoteDeviceTlsName(IppHttpUrlFor(info.connectionPath), info.name);
+        }
     }
 
     std::shared_ptr<IppPrinterFacts> facts;
@@ -922,6 +927,9 @@ std::vector<IODevicePtr> EnumerateIppPrinters() {
     std::vector<IODevicePtr> devices;
     devices.reserve(infos.size());
     for (const IODeviceInfo& info : infos) {
+        // So a printer reached over ipps:// is listed under its name among
+        // the trusted certificates, not only its address.
+        Internal::NoteDeviceTlsName(IppHttpUrlFor(info.connectionPath), info.name);
         devices.push_back(std::make_shared<IppPrinterDevice>(info));
     }
     return devices;
