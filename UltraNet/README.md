@@ -233,4 +233,4 @@ cmake --build build --target UltraNetApiStatus
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

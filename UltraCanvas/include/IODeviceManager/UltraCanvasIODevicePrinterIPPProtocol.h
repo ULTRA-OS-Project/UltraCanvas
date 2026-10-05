@@ -306,8 +306,8 @@ std::string IppTxtValue(const std::vector<std::string>& txt,
 // differ in escaping: Avahi and Win32 hand it back readable, Bonjour in DNS
 // presentation form ("Office\032Printer._ipp._tcp.local."). So the service
 // type and domain are cut at the last "._ipp._tcp" or "._ipps._tcp", and DNS
-// escapes are undone. A name with no service type in it is taken to be the
-// instance already.
+// escapes are undone (DnsSdInstanceName() does the work, shared with eSCL).
+// A name with no service type in it is taken to be the instance already.
 std::string IppInstanceFromServiceName(const std::string& serviceName);
 
 // The device id a printer is registered under: "urn:uuid:<uuid>" when its

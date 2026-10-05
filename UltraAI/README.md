@@ -203,4 +203,4 @@ cmake -S UltraAI -B build \
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

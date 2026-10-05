@@ -405,7 +405,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
-        if (IsDisabled() || !IsVisible()) return false;;
+        // FocusLost always gets through: it releases the shared caret, and an
+        // input loses the focus precisely when it is hidden (SetVisible(false)
+        // hides first, then drops the focus) or disabled - swallowing it left
+        // the caret blinking where the field had been.
+        if ((IsDisabled() || !IsVisible()) && event.type != UCEventType::FocusLost) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:

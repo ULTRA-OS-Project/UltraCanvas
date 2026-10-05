@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iterator>
+#include <regex>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -48,6 +49,7 @@ namespace {
     constexpr float kTextFontSize  = 10.0f;
     constexpr float kTranscriptFontSize = 11.0f;
     constexpr int   kControlHeight = 28;
+    constexpr int   kPromptHeight  = 72;   // about three lines of the message box
 
     const Color kPageBackground  = Color(250, 249, 246, 255);
     const Color kTextColor       = Color(40, 40, 44, 255);
@@ -135,6 +137,52 @@ namespace {
         std::error_code ec;
         const std::filesystem::path p = std::filesystem::current_path(ec);
         return ec ? std::string() : PathToUtf8(p);
+    }
+
+    // Escapes text for label markup.
+    std::string EscapeMarkup(const std::string& text) {
+        std::string out;
+        for (char c : text) {
+            switch (c) {
+                case '&': out += "&amp;"; break;
+                case '<': out += "&lt;"; break;
+                case '>': out += "&gt;"; break;
+                default: out += c;
+            }
+        }
+        return out;
+    }
+
+    // Turns the Anthropic addresses in a status message (claude.ai,
+    // claude.com/claude-code, with or without https://) into links: returns
+    // the label markup and fills `links` with their byte ranges in the
+    // rendered text - which is the plain text, so the offsets are its own.
+    std::string LinkifyClaudeAddresses(const std::string& text,
+                                       std::vector<LabelTextLink>& links) {
+        static const std::regex kAddress(
+                R"((https?://)?(claude\.ai|claude\.com)(/[A-Za-z0-9_\-./?=&%#]*)?)");
+        std::string markup;
+        size_t done = 0;
+        for (auto it = std::sregex_iterator(text.begin(), text.end(), kAddress);
+             it != std::sregex_iterator(); ++it) {
+            size_t start = static_cast<size_t>(it->position());
+            std::string address = it->str();
+            // A sentence's full stop or comma after the address is not part of it.
+            while (!address.empty() && (address.back() == '.' || address.back() == ','))
+                address.pop_back();
+            const size_t end = start + address.size();
+            markup += EscapeMarkup(text.substr(done, start - done));
+            markup += "<span foreground=\"#C9643F\" underline=\"single\">" +
+                      EscapeMarkup(address) + "</span>";
+            LabelTextLink link;
+            link.startByte = static_cast<int>(start);
+            link.endByte = static_cast<int>(end);
+            link.href = address.rfind("http", 0) == 0 ? address : "https://" + address;
+            links.push_back(std::move(link));
+            done = end;
+        }
+        markup += EscapeMarkup(text.substr(done));
+        return markup;
     }
 
     // Puts text in a markdown blockquote line by line, so a multi-line tool
@@ -248,12 +296,56 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildSignInPage() {
     createAccount_->SetOnClick([this]() { CreateAccount(); });
     signInPage_->AddChild(createAccount_);
 
-    signInStatus_ = MakeLabel("uc-signin-status", "Checking Claude Code\xE2\x80\xA6",
-                              kTextFontSize, kMutedTextColor);
+    signInStatus_ = MakeLabel("uc-signin-status", "", kTextFontSize, kMutedTextColor);
     signInStatus_->SetWrap(TextWrap::WrapWord);
     signInStatus_->SetAlignment(TextAlignment::Center);
     signInStatus_->size.width = CSSLayout::Dimension::Px(460);
+    signInStatus_->SetShowLinkTooltips(true);
+    signInStatus_->onLinkActivated = [](const std::string& url) { OpenURL(url); };
     signInPage_->AddChild(signInStatus_);
+    SetSignInStatus("Checking Claude Code\xE2\x80\xA6");
+
+    // Shown while `claude auth login` waits: when the browser could not be
+    // opened, or the sign-in page ends on a code to paste, the URL opens from
+    // here and the code goes back to the CLI through its standard input.
+    codeRow_ = std::make_shared<UltraCanvasContainer>("uc-signin-code-row");
+    codeRow_->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    codeRow_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto openPage = std::make_shared<UltraCanvasButton>("uc-signin-open-page", 0, 0,
+                                                        kFormWidth, kButtonHeight,
+                                                        "Open sign-in page");
+    openPage->SetFontSize(kButtonFont);
+    openPage->SetCornerRadius(kButtonRadius);
+    openPage->SetColors(kSecondary, kSecondaryHover);
+    openPage->SetTextColors(kTextColor);
+    openPage->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    openPage->SetOnClick([this]() { if (!signInUrl_.empty()) OpenURL(signInUrl_); });
+    codeRow_->AddChild(openPage);
+    codeRow_->AddChild(MakeLabel("uc-signin-code-hint",
+            "If the page shows a code, paste it here:", kTextFontSize, kMutedTextColor));
+    auto codeLine = std::make_shared<UltraCanvasContainer>("uc-signin-code-line");
+    codeLine->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    codeLine->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    loginCode_ = std::make_shared<UltraCanvasTextInput>("uc-signin-code", 0, 0,
+                                                        kFormWidth - 88, kButtonHeight);
+    loginCode_->SetPlaceholder("Login code");
+    loginCode_->SetFontSize(kButtonFont);
+    loginCode_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    loginCode_->onEnterPressed = [this](const std::string&) { SubmitLoginCode(); return true; };
+    codeLine->AddChild(loginCode_);
+    submitCode_ = std::make_shared<UltraCanvasButton>("uc-signin-code-submit", 0, 0,
+                                                      80, kButtonHeight, "Submit");
+    submitCode_->SetFontSize(kButtonFont);
+    submitCode_->SetCornerRadius(kButtonRadius);
+    submitCode_->SetColors(kAccent, kAccentHover);
+    submitCode_->SetTextColors(Color(255, 255, 255, 255));
+    submitCode_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    submitCode_->SetOnClick([this]() { SubmitLoginCode(); });
+    codeLine->AddChild(submitCode_);
+    codeRow_->AddChild(codeLine);
+    codeRow_->SetVisible(false);
+    signInPage_->AddChild(codeRow_);
 
     signInPage_->AddChild(MakeLabel("uc-signin-note",
             "You sign in on Anthropic's page in your browser. UltraClaude never sees your password.",
@@ -314,16 +406,28 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatView() {
 
     // ----- prompt -----
     auto inputRow = std::make_shared<UltraCanvasContainer>("uc-input-row");
-    inputRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    inputRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::End);
     inputRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     inputRow->SetPadding(8, 12, 4, 12);
     inputRow->SetBorderTop(1, kRuleColor);
 
-    prompt_ = std::make_shared<UltraCanvasTextInput>("uc-prompt", 0, 0, 300, 34);
-    prompt_->SetPlaceholder("Message Claude\xE2\x80\xA6  (Enter sends)");
+    // Several lines: Enter sends, Shift+Enter starts a new line (the text
+    // area's onBeforeKeyDown sees the key before it would insert a break).
+    prompt_ = std::make_shared<UltraCanvasTextArea>("uc-prompt", 0, 0, 300, kPromptHeight);
+    prompt_->SetEditingMode(TextAreaEditingMode::PlainText);
+    prompt_->SetWordWrap(true);
+    prompt_->SetShowLineNumbers(false);
     prompt_->SetFontSize(kTranscriptFontSize);
+    prompt_->SetPlaceholder("Message Claude\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
     prompt_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    prompt_->onEnterPressed = [this](const std::string&) { SendCurrentPrompt(); return true; };
+    prompt_->onBeforeKeyDown = [this](const UCEvent& e) {
+        const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
+        if (!enter || e.shift) return false;   // Shift+Enter: the area inserts the break
+        // Enter never inserts a break here; while Claude answers it waits,
+        // and the text stays for the next turn.
+        if (!busy_) SendCurrentPrompt();
+        return true;
+    };
     inputRow->AddChild(prompt_);
 
     send_ = MakeButton("uc-send", "Send", 80, /*primary=*/true);
@@ -353,7 +457,14 @@ void UltraClaudeWindow::ShowChatView() {
 // =================================================================== sign-in
 
 void UltraClaudeWindow::SetSignInStatus(const std::string& text) {
-    if (signInStatus_) signInStatus_->SetText(text);
+    if (!signInStatus_) return;
+    // Anthropic addresses in the message (claude.ai, claude.com/claude-code)
+    // are links: coloured, underlined, and opened in the browser on a click.
+    std::vector<LabelTextLink> links;
+    const std::string markup = LinkifyClaudeAddresses(text, links);
+    signInStatus_->SetTextIsMarkup(true);
+    signInStatus_->SetText(markup);
+    signInStatus_->SetTextLinks(std::move(links));
 }
 
 void UltraClaudeWindow::CheckAuthStatus() {
@@ -387,7 +498,11 @@ void UltraClaudeWindow::CheckAuthStatus() {
 void UltraClaudeWindow::ApplyAuthStatus(bool cliFound, bool loggedIn, const std::string& detail) {
     loggedIn_ = loggedIn;
     if (!cliFound) {
-        SetSignInStatus("Claude Code was not found (" + detail + "). Install it from "
+        // The reason is a sentence of its own; its full stop would double up
+        // with the bracket's.
+        std::string reason = detail;
+        while (!reason.empty() && (reason.back() == '.' || reason.back() == ' ')) reason.pop_back();
+        SetSignInStatus("Claude Code was not found (" + reason + "). Install it from "
                         "claude.com/claude-code, then reopen UltraClaude.");
         logIn_->SetText("Log in");
         logIn_->SetDisabled(true);
@@ -420,7 +535,19 @@ void UltraClaudeWindow::LogInOrContinue() {
     const std::string email = email_ ? email_->GetText() : std::string();
     if (!email.empty()) { argv.push_back("--email"); argv.push_back(email); }
 
+    // The CLI prints "Opening browser to sign in…", then "If the browser
+    // didn't open, visit: <url>", then waits at "Paste code here if
+    // prompted > " (no line end, so it never arrives as a line). The URL line
+    // is the cue for the code box.
     auto onLine = [this](const std::string& line) {
+        const size_t url = line.find("https://");
+        if (url != std::string::npos) {
+            std::string address = line.substr(url);
+            while (!address.empty() && (address.back() == ' ' || address.back() == '\r'))
+                address.pop_back();
+            Post([this, address]() { ShowLoginCodeBox(address); });
+            return;
+        }
         const std::string shown = FirstLineShortened(line, 300);
         if (!shown.empty()) Post([this, shown]() { SetSignInStatus(shown); });
     };
@@ -429,6 +556,7 @@ void UltraClaudeWindow::LogInOrContinue() {
         Post([this, exitCode, error]() {
             --activeWork_;
             loggingIn_ = false;
+            HideLoginCodeBox();
             createAccount_->SetDisabled(false);
             email_->SetDisabled(false);
             if (exitCode == 0) {
@@ -446,7 +574,8 @@ void UltraClaudeWindow::LogInOrContinue() {
 
     std::string error;
     EnsureTimer();
-    if (!loginProcess_.Start(argv, std::string(), std::string(), onLine, onExit, error)) {
+    if (!loginProcess_.Start(argv, std::string(), std::string(), onLine, onExit, error,
+                             ClaudeCliProcess::InputMode::KeepOpen)) {
         SetSignInStatus(error);
         return;
     }
@@ -456,6 +585,44 @@ void UltraClaudeWindow::LogInOrContinue() {
     createAccount_->SetDisabled(true);
     email_->SetDisabled(true);
     SetSignInStatus("Finish signing in on the page that opened in your browser\xE2\x80\xA6");
+}
+
+void UltraClaudeWindow::ShowLoginCodeBox(const std::string& url) {
+    if (!loggingIn_) return;
+    signInUrl_ = url;
+    loginCode_->SetText("");
+    loginCode_->SetDisabled(false);
+    submitCode_->SetDisabled(false);
+    codeRow_->SetVisible(true);
+    SetSignInStatus("Sign in on the page in your browser. If it did not open, use "
+                    "Open sign-in page.");
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraClaudeWindow::HideLoginCodeBox() {
+    signInUrl_.clear();
+    if (loginCode_) loginCode_->SetText("");
+    // Hiding the row also takes the focus from the code field in it.
+    if (codeRow_) codeRow_->SetVisible(false);
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraClaudeWindow::SubmitLoginCode() {
+    if (!loggingIn_ || !loginCode_) return;
+    std::string code = loginCode_->GetText();
+    // A pasted code often carries the line break or spaces it was copied with.
+    while (!code.empty() && (code.back() == '\n' || code.back() == '\r' || code.back() == ' '))
+        code.pop_back();
+    const size_t start = code.find_first_not_of(" \t");
+    code = start == std::string::npos ? std::string() : code.substr(start);
+    if (code.empty()) { SetSignInStatus("Paste the code the sign-in page showed."); return; }
+    if (!loginProcess_.WriteInput(code + "\n")) {
+        SetSignInStatus("Claude Code is no longer waiting for a code. Choose Log in again.");
+        return;
+    }
+    loginCode_->SetDisabled(true);
+    submitCode_->SetDisabled(true);
+    SetSignInStatus("Checking the code\xE2\x80\xA6");
 }
 
 void UltraClaudeWindow::CancelLogIn() {
