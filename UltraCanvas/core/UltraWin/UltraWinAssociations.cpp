@@ -80,7 +80,7 @@ struct AssociationEntry {
 // two-field ENV \t PATH form still read for older stores.
 std::map<std::string, AssociationEntry> LoadAssociations() {
     std::map<std::string, AssociationEntry> out;
-    std::ifstream in(AssociationsPath());
+    std::ifstream in(PathFromUtf8(AssociationsPath()));
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -109,7 +109,7 @@ bool SaveAssociations(const std::map<std::string, AssociationEntry>& assoc) {
     std::error_code ec;
     fs::create_directories(
         PathFromUtf8(AssociationsPath()).parent_path(), ec);
-    std::ofstream out(AssociationsPath(), std::ios::trunc);
+    std::ofstream out(PathFromUtf8(AssociationsPath()), std::ios::trunc);
     if (!out) return false;
     out << "# UltraWin program associations — "
            "ENVIRONMENT<TAB>SIZE:HASH<TAB>/absolute/program/path per "

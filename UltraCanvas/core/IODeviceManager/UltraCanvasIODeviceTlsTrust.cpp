@@ -206,13 +206,8 @@ std::string FormatIODeviceTrustedCertificates(
 // ============================================================================
 
 std::filesystem::path IODeviceTrustedCertificatesFile() {
-#if defined(_WIN32) || defined(_WIN64)
-    if (const wchar_t* named = _wgetenv(L"ULTRACANVAS_DEVICE_CERTIFICATES"); named && *named)
-        return std::filesystem::path(named);   // path-string-ok: wide
-#else
-    if (const char* named = std::getenv("ULTRACANVAS_DEVICE_CERTIFICATES"); named && *named)
+    if (const std::string named = GetEnvUtf8("ULTRACANVAS_DEVICE_CERTIFICATES"); !named.empty())
         return PathFromUtf8(named);
-#endif
     const std::filesystem::path folder = UltraCanvasSettingsFolder();
     if (folder.empty()) return {};
     return folder / "DeviceCertificates.conf";
@@ -268,8 +263,7 @@ namespace UltraCanvas {
 namespace {
 
 bool LearningAllowed() {
-    const char* setting = std::getenv("ULTRACANVAS_DEVICE_TLS_TOFU");
-    return !(setting && std::string(setting) == "0");
+    return GetEnvUtf8("ULTRACANVAS_DEVICE_TLS_TOFU") != "0";
 }
 
 std::string PinFor(const std::string& address) {

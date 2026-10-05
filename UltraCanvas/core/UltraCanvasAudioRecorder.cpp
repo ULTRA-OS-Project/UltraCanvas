@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioRecorder.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
 #include <atomic>
@@ -131,7 +132,7 @@ struct UltraCanvasAudioRecorder::Impl {
             // Nothing is kept.
         } else if (config.streamToFile && !config.streamFilePath.empty()) {
             // Append (or stream-to-file) raw bytes
-            std::ofstream f(config.streamFilePath,
+            std::ofstream f(UltraCanvas::PathFromUtf8(config.streamFilePath),
                             std::ios::binary | std::ios::app);
             if (f) {
                 if (isMuted) {

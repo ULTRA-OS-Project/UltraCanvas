@@ -15,6 +15,7 @@
 #pragma once
 
 #include "UltraFilerSettings.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -145,7 +146,7 @@ public:
     bool Load() {
         for (std::vector<FilerHistoryItem>& list : lists) list.clear();
 
-        std::ifstream file(GetHistoryPath());
+        std::ifstream file(UltraCanvas::PathFromUtf8(GetHistoryPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -201,10 +202,10 @@ public:
     bool Save() const {
         std::error_code ec;
         std::filesystem::create_directories(
-                UltraFilerSettings::GetConfigDirectory(), ec);
+                UltraCanvas::PathFromUtf8(UltraFilerSettings::GetConfigDirectory()), ec);
         if (ec) return false;
 
-        std::ofstream file(GetHistoryPath());
+        std::ofstream file(UltraCanvas::PathFromUtf8(GetHistoryPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler History\n";

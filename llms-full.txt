@@ -1251,7 +1251,11 @@ future.
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
-  `UltraNet_FtpDelete`, `UltraNet_FtpRename`
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`,
+  `UltraNet_FtpRemoveDirectory`; the session log of every call
+  (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
+  `UltraNetFtpLogLine` steps, commands with the password masked, replies with
+  their codes, the error with libcurl's number)
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1523,8 +1527,9 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
 the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
-`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
--> `UnlockStatus`, `PersistDeviceKey`), per-account
+`device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
+`DescribeUnlockStatus` saying why it stayed closed) or by a master password
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -1627,8 +1632,10 @@ attach ram://` on macOS, the ImDisk driver on Windows when installed, an
 overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
 `VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
 `VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
-`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
-user and do not survive a reboot.
+`VirtualFS_GetPreferredRamDiskBacking`, `VirtualFS_GetMaxRamDiskNameLength`
+(names are at most 23 characters on Windows, where they live in the NTFS
+volume label; 64 elsewhere). Discs are private to the calling user and do
+not survive a reboot.
 
 **Provider interface** (`IVirtualFSProvider`) — one implementation per
 format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
@@ -3331,7 +3338,12 @@ Three facts about CI decide how a cloud-only developer works:
   That download is how you run and look at the app without compiling it.
   The macOS one is a disk image holding an `UltraCanvas` folder: copy the
   whole folder to Applications, because its apps share the `Frameworks/`
-  inside it and do not start when moved out on their own.
+  inside it and do not start when moved out on their own. Only a build on
+  `main` is signed and notarized; a pull request's is named
+  `UCDemo-MacOS-<version>-<arch>-unsigned`, and macOS calls its apps
+  *damaged* until you run
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` (the read-me in
+  the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
@@ -3989,7 +4001,13 @@ builds a single-application AppImage.
 unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
 notarised bundle a release ships; it needs a Developer ID certificate in the
 keychain and the notarisation credentials the script names. CI runs it only on
-pushes to `main`; pull requests get the unsigned bundle.
+pushes to `main`; pull requests get the unsigned bundle. `--no-sign` signs ad
+hoc, so the bundles still carry a valid signature, and names the disk image
+`UCDemo-MacOS-<version>-<arch>-unsigned.dmg`. Once a browser has downloaded
+such an image, macOS refuses its apps - on Apple silicon with *"… is damaged
+and can't be opened"*. Nothing is damaged: copy the `UltraCanvas` folder to
+Applications and run `xattr -dr com.apple.quarantine /Applications/UltraCanvas`,
+as the read-me inside the image says.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
 
@@ -15556,8 +15574,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.4.0
-**Last Modified**: 2026-09-29
+**Version**: 1.5.0
+**Last Modified**: 2026-10-05
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -15566,6 +15584,14 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Hue bar** — alternative `Bar` wheel style: the SV rectangle grows to the
   maximum available area (with margin) and the full hue range is shown as a
   thick bar underneath it, without the ring.
+- ✅ **Square / pixel-exact SV area** — `SetSVAreaShape` keeps the Bar style's
+  SV area 1:1 instead of stretching it: `Square` takes the largest square that
+  fits, `PixelExact` a square of `PixelExactSVSide` = **256 × 256 pixels**.
+  8-bit channels have 256 steps (0..255), so at 256 pixels each column is one
+  step of saturation and each row one step of value — every pixel is a
+  different colour and none is skipped (a smaller area skips values, a larger
+  one repeats them). The square is centred, the hue bar takes its width, and
+  any height it does not need stays free under the controls.
 - ✅ **Hue × lightness field** — `HueLightnessField` wheel style: one
   rectangle with the hue running top (red) to bottom through the spectrum and
   the lightness left (black) through the pure colour to right (white). A
@@ -15578,7 +15604,8 @@ natively with the framework's `IRenderContext` primitives.
   hue is kept at black and white so the markers stay on the chosen colour,
   and the channel sliders below still edit any colour.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
-  maximised rectangle (Bar).
+  maximised rectangle (Bar). The first pixel column/row is 0 and the last is
+  100 %, and each pixel is drawn in exactly the colour a click on it picks.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -15628,7 +15655,11 @@ natively with the framework's `IRenderContext` primitives.
   expanding the sliders shrinks the shading area by exactly the space they
   occupy (and collapsing gives it straight back) instead of resizing the
   widget. The shading area absorbs the change best in **Bar** wheel style,
-  where the SV rectangle fills the full available height.
+  where the SV rectangle fills the full available height. A `PixelExact` area
+  does not grow past 256 pixels, so it is the other way round there:
+  `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
+  **expanded** sliders, which then open into the free space under the
+  controls and leave the area exact in both states.
 - ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
   checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
@@ -15644,8 +15675,12 @@ namespace UltraCanvas {
     enum class ColorPickerModeSelector { TabBar, Dropdown };  // mutually exclusive
     enum class ColorPickerSliderStyle  { Thin, Thick };
     enum class ColorPickerWheelStyle   { Ring, Bar, HueLightnessField, HueLightnessSliders };
+    enum class ColorPickerSVAreaShape  { Fill, Square, PixelExact };  // Bar style's SV area
 
-    class UltraCanvasColorPicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the hex and value fields are typed
+    // into through a real UltraCanvasTextInput child that moves to whichever
+    // field is being edited.
+    class UltraCanvasColorPicker : public UltraCanvasContainer {
     public:
         UltraCanvasColorPicker(const std::string& id, float x, float y, float w, float h);
 
@@ -15662,8 +15697,10 @@ namespace UltraCanvas {
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
         void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
+        void SetSVAreaShape(ColorPickerSVAreaShape s);   // Bar: fill / 1:1 / 1:1 at 256 px
+        static constexpr int PixelExactSVSide = 256;     // one pixel per 8-bit step
         void SetShowValueSpinners(bool show);            // < > arrows in value box
-        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
 
@@ -15718,6 +15755,12 @@ picker->SetSliderStyle(UltraCanvas::ColorPickerSliderStyle::Thick);
 
 // Replace the hue ring with a maximised SV rectangle + hue bar underneath:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::Bar);
+
+// Keep the Bar style's SV area square at 256 x 256 - one pixel per 8-bit
+// step of saturation and value - and size the widget for it (with
+// collapsible sliders, for the sliders expanded):
+picker->SetSVAreaShape(UltraCanvas::ColorPickerSVAreaShape::PixelExact);
+picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
 // Hue x lightness field (hue top -> bottom, black -> colour -> white):
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
@@ -69350,7 +69393,7 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
@@ -71743,26 +71786,102 @@ CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 An account that will not send or fetch is rarely diagnosable from the
 `UltraNetResultCode` alone — the server says why in its reply text, and
 libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
-`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+`ULTRANET_CURL_VERBOSE` to anything but empty or `0` to put the conversation
+on stderr:
 
 ```
-ULTRANET_CURL_DEBUG=1 ./UltraMail
+ULTRANET_CURL_VERBOSE=1 ./UltraMail
 ```
 
 | Line | Meaning |
 |---|---|
 | `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
 | `[ultranet] > …` | what we sent |
-| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error`, `-ERR invalid password` |
 
-It is off unless asked for, message bodies are never printed, and the SASL
-exchange is replaced with `<redacted>` — including the bare base64
-continuation lines of `AUTH LOGIN`, which carry the password with no keyword
-on them — so a trace can be pasted into a bug report as it stands. The
-mechanism name is kept, because which step failed is the useful part.
+It is off unless asked for, and message bodies are never printed. Every line
+we send that can carry a secret is printed as `<redacted auth line>`: the
+SASL exchange — including the bare base64 continuation lines of `AUTH LOGIN`,
+which carry the password with no keyword on them — POP3's `PASS`, and IMAP's
+`LOGIN`, which libcurl sends when a server offers no SASL. So a trace can be
+pasted into a bug report as it stands. The server's side is kept whole, its
+list of mechanisms and its answer to the sign-in included, because which step
+failed is the useful part.
 
-Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+Applies to every mail plug-in that goes through libcurl (SMTP, IMAP, POP3);
 `ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
+On Windows a GUI build has no stderr to print to: run it from a console, or
+read `UltraNetResult::diagnostics`, which carries the connection chain of a
+failure either way. FTP calls have their own log, below.
+
+---
+
+## The FTP session log
+
+Every FTP / FTPS / SFTP call (`UltraNetFtp.h`) can report its session as it
+runs — the lines an FTP client shows in its message log:
+
+```
+Step:     Resolving address of ftp.example.com
+Step:     Connecting to 203.0.113.7:21...
+Step:     Connection established, waiting for welcome message...
+Response: 220 Welcome                          (replyCode 220)
+Command:  USER erika
+Command:  PASS ********                        (the password is never logged)
+Response: 230 Logged in
+Step:     Logged in
+Command:  PASV
+Response: 227 Entering Passive Mode (203,0,113,7,246,253)
+Step:     Retrieving directory listing...
+Command:  MLSD
+Error:    Connection timed out after 30 seconds of inactivity   (transportCode 28)
+```
+
+```cpp
+UltraNetFtpOptions opt;
+opt.credentials.username = "erika";
+opt.credentials.password = secret;
+opt.onLog = [](const UltraNetFtpLogLine& line) {   // on the calling thread, while it runs
+    Show(line.kind, line.text, line.replyCode, line.transportCode);
+};
+std::vector<UltraNetFtpEntry> entries;
+UltraNetResult r = UltraNet_FtpListDirectory("ftp://ftp.example.com/pub/", entries, opt);
+// r.message:     "RETR response: 550 - the server said \"550 Permission denied\""
+// r.diagnostics: "Error: ... (libcurl error 19: ...)\nConnected to: 203.0.113.7:21\n..."
+```
+
+| Kind | Holds |
+|---|---|
+| `Step` | what the client is doing: libcurl's own notes, plus the steps an FTP client names — *Logged in*, *Retrieving directory listing...*, *Directory listing successful*, *Insecure server, it does not support FTP over TLS* (an `ftpes://` server that refused AUTH TLS) |
+| `Command` | a command sent, `PASS` / `ACCT` masked as `********` |
+| `Response` | a reply line, with its three-digit `replyCode` (0 inside a multi-line reply) |
+| `Error` | the call's last line on a failure: the message, `resultCode`, and libcurl's error number in `transportCode` |
+
+(The kind is `Step`, not `Status`: Xlib `#define`s `Status`.)
+
+A caller that reaches these functions through a layer that builds the options
+itself — UltraFiler's drive worker calls UltraCloud's FTP provider — sets a
+sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
+previous sink to put back afterwards, and only calls without an `onLog` of
+their own go to it.
+
+What a failure says, whether or not anyone reads the log:
+
+- `message` is libcurl's specific reason (its error buffer, not just the error
+  class), with the server's refusal added when the last reply was a 4xx / 5xx.
+- `diagnostics` is the connection chain (`UltraNetCurlError.h`) plus the last
+  server reply.
+- `UltraNetFtpOptions::inactivityTimeoutMs` (default 30 s) ends a call whose
+  server has gone quiet — no reply to a command, no bytes of a listing or file
+  — as *Connection timed out after N seconds of inactivity*. Before it, a data
+  connection that opened and sent nothing held the call indefinitely.
+- A listing tries MLSD, then LIST, then NLST only when the server refused the
+  command; a failure to connect, sign in, set up TLS or the data connection, or
+  a timeout, is reported once rather than three times, and an empty folder is
+  listed with one request.
+
+`Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
+server on loopback.
 
 ---
 
@@ -71990,10 +72109,17 @@ UltraVault::DeviceKeyVault vault(dataDir + "/vault",
                                  {"ultramail.vault", "mail.ultramail."});
 
 // First run: a device key is generated and the vault created. Later runs:
-// the key unlocks it. False only when a vault exists that was made with a
-// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
-// this build has no crypto backend.
-if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+// the key unlocks it. False when a vault exists that was made with a master
+// password (Locked: prompt once, Unlock(), then PersistDeviceKey()), when
+// this build has no crypto backend (Unavailable) or when the folder cannot be
+// written (IoError) - GetLastUnlockStatus() says which.
+if (!vault.TryAutoUnlock()) {
+    // "cannot open the credential vault: this build has no encryption
+    // library (UltraCrypt was built without libsodium), so it cannot keep
+    // passwords". Store() will refuse, not drop.
+    Report("cannot open the credential vault: " +
+           UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault.GetLastUnlockStatus()));
+}
 
 vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
 std::string got;
@@ -72008,14 +72134,19 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
 `UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
 tampered file reports) from a build that cannot open a vault at all
 (`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
-written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+written (`IoError`); after `TryAutoUnlock()`, `Locked` means a vault made with
+a master password and no device key. An empty passphrase is refused. The
+directory is a UTF-8 path on every platform: a profile folder named in Thai or
+Cyrillic opens like an ASCII one on Windows too (before 0.2.0 the device
+key's path reached the filesystem through the ANSI code page, and such a
+folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
@@ -73846,6 +73977,14 @@ if (!disk.IsTrueRam()) {
 
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
+
+A disc's name is at most **23 characters on Windows** (64 elsewhere;
+`VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
+name, so an ImDisk disc keeps it in its NTFS volume label - that is how
+`VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
+nine of them the `ultravfs-` prefix. The fallback directory takes the same
+limit, so a name does not work on one machine and fail on the next only
+because ImDisk is installed there.
 
 ### Privacy and lifetime
 

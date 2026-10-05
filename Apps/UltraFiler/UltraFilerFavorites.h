@@ -13,6 +13,7 @@
 #pragma once
 
 #include "UltraFilerSettings.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -147,7 +148,7 @@ public:
     bool Load() {
         for (std::vector<FilerFavoriteItem>& list : lists) list.clear();
 
-        std::ifstream file(GetFavoritesPath());
+        std::ifstream file(UltraCanvas::PathFromUtf8(GetFavoritesPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -181,10 +182,10 @@ public:
     bool Save() const {
         std::error_code ec;
         std::filesystem::create_directories(
-                UltraFilerSettings::GetConfigDirectory(), ec);
+                UltraCanvas::PathFromUtf8(UltraFilerSettings::GetConfigDirectory()), ec);
         if (ec) return false;
 
-        std::ofstream file(GetFavoritesPath());
+        std::ofstream file(UltraCanvas::PathFromUtf8(GetFavoritesPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Favorites\n";

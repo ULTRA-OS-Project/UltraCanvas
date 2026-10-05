@@ -47,8 +47,10 @@ bool UltraSocialApp::Initialize(const std::string& dataDir) {
     // across. Nothing reads or writes a secret while this fails — Store()
     // reports it, so a sign-in says so instead of losing the token.
     if (!vault_.TryAutoUnlock())
-        std::fprintf(stderr, "UltraSocial: cannot open the credential vault in %s/vault; "
-                             "account credentials are unavailable\n", dataDir.c_str());
+        std::fprintf(stderr, "UltraSocial: cannot open the credential vault in %s/vault: "
+                             "%s; account credentials are unavailable\n", dataDir.c_str(),
+                     UltraVault::DeviceKeyVault::DescribeUnlockStatus(
+                             vault_.GetLastUnlockStatus()).c_str());
     dataDir_ = dataDir;
 
     store_.ListAccounts(accounts_);

@@ -1,3 +1,12 @@
+#### 2026-10-05 *0.10.31*
+- **The mailbox opens in a Windows profile named in any script.** The data
+  folder (`%APPDATA%\UltraMail`: the mail database, the credential vault,
+  the preferences) was found through the narrow `getenv("APPDATA")`, which
+  answers in the ANSI code page; for a user name outside it the folder came
+  back with `?` in it and the store did not open. It is read with the
+  framework's `GetEnvUtf8` now, as UTF-8 (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its
   mail as stored at once - the list first, the message beside it a moment

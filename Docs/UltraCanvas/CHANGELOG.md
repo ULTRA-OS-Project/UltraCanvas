@@ -1,3 +1,265 @@
+#### 2026-10-05 *0.9.167*
+- **`UltraVault::DeviceKeyVault` opens in a profile folder of any name, and
+  says why when it does not open.**
+  - The device key's path was handed to `fs::exists`, `std::ifstream`,
+    `std::ofstream`, `fs::remove` and `fs::permissions` as a `std::string`,
+    and the directory to `fs::create_directories` the same way. On Windows
+    that is read in the ANSI code page, so a profile folder the code page
+    cannot spell - a Thai or Cyrillic user name under code page 1252 - could
+    not find, write or protect its `device.key`, and the vault of UltraMail,
+    UltraFiler, UltraSocial or EmailCleaner did not open. Every path now goes
+    through `PathFromUtf8`. `scripts/check_path_string.py` could not see
+    these: the path came from a function's result and a member declared in
+    the header. The vault core's clean-up of a failed write
+    (`std::remove(tmpPath.c_str())`) goes through `std::filesystem` too.
+  - `TryAutoUnlock()` returned a bare `false` whatever the reason. The new
+    `GetLastUnlockStatus()` says why the last `Unlock()` / `TryAutoUnlock()`
+    left the vault closed - `Unavailable` (no crypto backend: UltraCrypt
+    built without libsodium), `IoError` (the folder or the key cannot be
+    written or read), `Locked` (a vault made with a master password, no
+    device key), or what `Unlock()` reported - and
+    `DescribeUnlockStatus(status)` puts it in words for an error message.
+    `DeviceKeyVault` 0.2.0, `UltraVaultCore` 0.1.2.
+  - `Tests/UltraVaultTests.cpp` checks the status on each path, including a
+    build without libsodium, and a vault in a Thai-and-emoji folder.
+- **Environment variables are read as UTF-8 on Windows, and the path check
+  reports a narrow read.** Windows keeps the profile folders and the user's
+  name in the environment (`APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, `TEMP`,
+  `USERNAME` ...), and the narrow `getenv` / `_dupenv_s` answer in the ANSI
+  code page. A profile named in Thai or Cyrillic under code page 1252 came
+  back with `?` in it, so a settings folder, a cache or a dictionary was
+  looked for in a folder that does not exist. Wrapping those bytes in
+  `PathFromUtf8` does not make them UTF-8, which is why `check_path_string`
+  never saw it.
+  - **`GetEnvUtf8(name)`** in `UltraCanvasPathUtf8.h` (1.2.0): the value as
+    UTF-8, from `GetEnvironmentVariableW` on Windows and `getenv` elsewhere,
+    empty when unset. It reads the live environment block, not the C
+    runtime's copy, so it also sees a variable set later with
+    `SetEnvironmentVariableW`. Still header-only: it declares
+    `GetEnvironmentVariableW` itself rather than including `<windows.h>`.
+    `Tests/PathUtf8Test.cpp` checks a Thai-and-emoji value, one longer than
+    the first 260-character buffer, an empty and an unset one; Windows CI
+    runs it under code page 1252.
+  - **`env-narrow`** in `scripts/check_path_string.py` reports a narrow read
+    of one of those names, any narrow read in Windows-only code, and a call
+    with one of those names to a helper of the same file that reads narrowly
+    (`EnvOrEmpty("LOCALAPPDATA")`). `--self-test` covers it.
+  - **The 46 sites it found are fixed**, and the baseline stays empty: the
+    framework's spell checker (the user dictionary and the Hunspell
+    dictionary folders), the generated fontconfig folder, the cloud-storage
+    folder detection, the file dialogs' remembered folder and home folder,
+    Windows shortcut targets (`%VAR%` expansion), the desktop shell's home
+    and `PATH` search, the UltraMessage journal, the "Open with" icon cache
+    and Applications folder, and the DemoApp image benchmark's temporary
+    folder; and the apps listed in their own changelogs (Texter, UltraMail,
+    UltraPassword, UltraAuthenticator, UltraDesktop, UltraNetMonitor,
+    UltraCanvasStart, UltraCleaner, UltraFiler and the UltraAI dashboard). Each consumer was checked first: every one opens the folder
+    through `PathFromUtf8` or `OpenFileUtf8` (or hands it to SQLite, which
+    takes UTF-8), so the code-page bytes never worked there for a name
+    beyond ASCII. The one consumer further down that reads names narrowly,
+    Hunspell, is handled next.
+  - **A dictionary Hunspell cannot open is no longer listed.** Hunspell
+    opens its files with the narrow CRT, so on Windows a path beyond ASCII
+    only reaches it where the process code page is UTF-8 (the manifest's
+    `activeCodePage`, honoured from Windows 10 1903). With `%APPDATA%` now
+    read correctly, a dictionary there would otherwise have been found ahead
+    of the bundled copy of the same language and then failed to open; it is
+    passed over instead, and the next one in the search order is used.
+  - The crash-report switches (`ULTRACANVAS_NO_ERROR_DIALOG`,
+    `ULTRACANVAS_NO_CRASH_DUMP`) stay a narrow read: they hold an ASCII
+    `0`/`1`, and are read on the way to a crash report, where nothing should
+    allocate. The site says so.
+- **`check_path_string` reads one line at a time when it strips literals.**
+  Stripping the whole file at once let an apostrophe in a comment ("don't")
+  pair with one many lines further down, and every declaration in between
+  disappeared - so the header-aware rules missed strings declared there. Ten
+  sites came to light and are fixed: five `fs::is_directory(currentPath)`
+  calls and a template path in the Filer widget, the audio recorder's stream
+  file, the rich document's image folder, and UltraFiler's rename of a
+  remote preview.
+- **VirtualFS's Windows RAM disc reads volume labels wide.** Every drive's
+  label is read to find the discs this module made, and
+  `GetVolumeInformationA` handed a stick labelled `ultravfs-Ελένη` back as
+  `ultravfs-?????` - which then counted as one of ours. It uses
+  `GetVolumeInformationW` now, and a label only counts when what follows the
+  prefix is a name the module accepts. The `imdisk` and `icacls` command
+  lines already went through `_wpopen` as UTF-16.
+- **UltraNet's FTP calls report their session as it happens, and a failure
+  says what actually went wrong.** A listing that hung after PASV used to fail
+  with "Timeout was reached" and nothing else - no address, no reply, no word
+  on the step it got to. Every `UltraNet_Ftp*` call now logs the lines an FTP
+  client shows in its message log (`UltraNetFtp.h`): the steps (*Resolving
+  address of ...*, *Connecting to 203.0.113.7:21...*, *Logged in*,
+  *Retrieving directory listing...*), every command sent - with the password
+  masked, `PASS ********` - every reply with its three-digit code, and an
+  error line carrying UltraNet's result code and libcurl's error number. A
+  caller passes `UltraNetFtpOptions::onLog`; one that reaches UltraNet
+  through a layer building the options itself sets a per-thread sink with the
+  new `UltraNet_SetThreadFtpLog`. The kind is `UltraNetFtpLogKind::Step`, not
+  `Status`, which Xlib `#define`s. The transcript logic is curl-free in
+  `core/UltraNet/UltraNetFtpLog.h`.
+  - A failure's `message` is libcurl's specific reason (its error buffer)
+    rather than the error class, with the server's refusal added when the
+    last reply was a 4xx / 5xx ("RETR response: 550 - the server said
+    \"550 Permission denied\""); `diagnostics` now carries the connection
+    chain (`UltraNetCurlError.h`) and the last server reply for FTP too.
+  - `UltraNetFtpOptions::inactivityTimeoutMs` (default 30 s) ends a call
+    whose server has gone quiet - no reply to a command, no bytes of a
+    listing or file - as "Connection timed out after N seconds of
+    inactivity". Before it, a data connection that opened and then carried
+    nothing held the call indefinitely.
+  - A listing tries LIST and NLST after MLSD only when the server refused the
+    command. A failure to connect, sign in, set up TLS or the data
+    connection, or a timeout, is reported once instead of three times (a
+    refused password was sent three times, and one timeout became three),
+    and an empty folder is listed with one request instead of three.
+  - `CURLE_REMOTE_FILE_NOT_FOUND` maps to `NotFound`, `CURLE_USE_SSL_FAILED`
+    to `TlsHandshakeFailed`. `UltraNetResult::url` of an FTP call no longer
+    carries credentials written into the URL.
+  - `Tests/UltraNet/test_ftp_log.cpp` checks the transcript and drives real
+    calls against a scripted FTP server on loopback (a refused sign-in, an
+    empty folder, MLSD refused, a stalled data connection, a server that
+    never answers the listing); `UltraNetApiStatus` probes
+    `UltraNet_SetThreadFtpLog`.
+  - The connection steps read every libcurl's wording: "Connected to" (7.x),
+    "Connected 2nd connection to" (8.x) and, from 8.21, "Established
+    connection to" / "Established 2nd connection to". The last is all the
+    vendored `third_party/curl` (8.21, used where the system libcurl lacks
+    WebSockets, as on Ubuntu 22.04) says, so there neither "Connection
+    established" nor "Data connection established" ever appeared.
+- **UltraCloud: a failed `Result` carries the transport's diagnostics.**
+  `Result::diagnostics` holds the connection chain the provider's transport
+  put together; the FTP provider fills it from `UltraNetResult::diagnostics`
+  (`FromFtp`). UltraFiler's connection log shows it under each failure.
+- **The mail-connection trace: the documented variable, no passwords in it,
+  and POP3 too.** `Docs/Modules/UltraNet/README.md` told readers to set
+  `ULTRANET_CURL_DEBUG`, but the plug-ins read `ULTRANET_CURL_VERBOSE`, so
+  the documented trace never turned on; the README now names the variable
+  the code reads, and says what is redacted as it is printed
+  (`<redacted auth line>`).
+  - The trace masked only lines with "AUTH" in them, so the plain sign-ins
+    libcurl falls back to when a server offers no SASL went out as they
+    were: POP3's `PASS password` and IMAP's `A001 LOGIN user password`.
+    Both are redacted now (`UltraNetCurlDebug.h` 0.2.0,
+    `ultranet_curldebug::IsPlainLogin`); the server's replies are still
+    kept whole.
+  - The POP3 plug-in (0.1.2) honours `ULTRANET_CURL_VERBOSE` like the SMTP
+    and IMAP ones; the README listed it, but it never asked.
+  - `Tests/UltraNet/test_curl_debug.cpp` checks the redaction rule.
+- **`check_path_string` sees what a header declares, a call that returns a
+  string, and a call over several lines.** The device-key vault's path
+  conversions went through the Windows code page unseen, because the check
+  read only the file's own declarations and never treated a call as a string:
+  `fs::exists(DeviceKeyPath(), ec)` (a function declared in the header as
+  returning `std::string`), `fs::create_directories(dir_, ec)` (a member
+  declared there) and a three-line `fs::permissions(DeviceKeyPath(), ...)`
+  all passed. The check now also reads the repository headers a file includes
+  directly - their declarations, with inline function bodies left out so a
+  header's locals lend their types to nothing - counts a call to a function
+  declared as returning `std::string` as a string wherever it is handed to a
+  path, and reads a call that is left open at the end of a line together with
+  the lines that close it. `--self-test` checks those rules against examples
+  of their own (and fails when either is switched off); `path-strings.yml`
+  runs it before the scan. Run on the pre-fix vault source, the check now
+  reports every one of its sites; the old one reported it clean.
+- **The 37 sites it found are fixed, and the baseline stays empty.** Among
+  them, real failures on a Windows profile named outside the code page:
+  - UltraFiler's and the UltraAI dashboard's configuration folders were read
+    with the narrow `getenv("APPDATA")`, which answers in the ANSI code page,
+    and handed on as UTF-8 to code that opens them as UTF-8 (SQLite, the
+    vault, the JSON file helpers). They are read as UTF-8 now (`GetEnvUtf8`,
+    see the `env-narrow` entry), and every file in them is opened through
+    `PathFromUtf8`.
+  - VirtualFS's Windows RAM-disc fallback took its folder from
+    `GetTempPathA`; it uses `GetTempPathW` now, and runs `icacls` through
+    `_wpopen`, so a UTF-8 path on the command line is not read in the code
+    page.
+  - UltraWin's associations file and environment manifests, the Filer
+    widget's shortcut-target check and its chunked copy's `fs::permissions`,
+    a `.git` file's `gitdir:` pointer, the LaTeX reader's `\graphicspath`,
+    the safe-save temporary name (`UltraCanvasFileError.h`, whose extension
+    is the target's own) and the CorelDRAW converter's temporary name, the
+    UltraCloud plug-in folder, a RAM disc's mount check, the Z-Wave
+    controller path, the DemoApp's Up button, UltraAuthenticator's
+    `fs::permissions` on its temporary files, and the vault's file name join.
+- **`UltraVaultTests` runs on Windows.** The new `ULTRACANVAS_BUILD_VAULT_TESTS`
+  builds it without the full suite (the target lives in
+  `Tests/VaultTests.cmake`, shared with `BUILD_TESTS`), and the Windows CI row
+  runs it - the one platform, on its code page 1252 runner, where the
+  vault-in-a-Thai-and-emoji-folder test can fail. The test file itself goes
+  through `PathToUtf8` / `PathFromUtf8` now and is scanned by the check.
+
+#### 2026-10-05 *0.9.166*
+- **macOS: a pull request's disk image no longer passes for the release.**
+  On macOS 27 the apps of `UCDemo-MacOS-0.9.147-arm64.dmg` were refused with
+  *"UltraFiler.app is damaged and can't be opened"*. Two images of that name
+  existed: the one built on `main`, signed with the Developer ID, notarized
+  and stapled, and one built for a pull request with `--no-sign`, which
+  Gatekeeper refuses with exactly that message once a browser has downloaded
+  it. Nothing in the file, the volume or the CI artifact said which was
+  which. `package-macos.sh --no-sign` now names the image
+  `UCDemo-MacOS-<version>-<arch>-unsigned.dmg` and its volume
+  "UltraCanvas <version> (unsigned)", and CI names the artifact the same way
+  on every run that is not a release. The image carries
+  `Unsigned build - read me.txt`: why macOS calls the apps damaged, and that
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` after copying the
+  folder lets them run.
+- **`--no-sign` signs ad hoc instead of not at all.** An unsigned arm64 app
+  had only the linker's signature on its executable - no sealed `Info.plist`
+  or resources - and its dylibs kept whatever `install_name_tool` and `strip`
+  had left of theirs, while Apple silicon runs no code without a valid
+  signature. Every dylib, plug-in, executable and bundle is now signed with
+  `codesign --sign -`, with the same hardened-runtime options and
+  entitlements as the release and in the same order, and verified with
+  `codesign --verify --strict`, so a bundle that cannot be signed fails the
+  pull request instead of the release build on `main`. Ad hoc needs no
+  certificate and no `--timestamp`, so it asks Apple nothing and brings back
+  none of the network failures that took signing out of pull requests in
+  0.8.31.
+
+#### 2026-10-05 *0.9.165*
+- **A RAM disc's name fits its volume label on Windows.** A drive letter
+  carries no name, so an ImDisk disc keeps "ultravfs-<name>" in its NTFS
+  volume label - the only way `VirtualFS_ListRamDisks()` and the duplicate
+  check find it again. A label holds 32 characters, but names of up to 64
+  were accepted: a name over 23 characters could not be stamped on the
+  volume, and the disc was then neither found by its name nor listed, so
+  nothing in VirtualFS could eject it again. Names are now limited to 23 characters on Windows
+  (still 64 elsewhere), for the `%TEMP%` fallback too, so a name works
+  whichever backing a machine has. The limit is computed from the prefix,
+  and `VirtualFS_GetMaxRamDiskNameLength()` reports it. Each back end now
+  states its own limit (`PlatformMaxNameLength`), and `IsValidName` applies
+  it. `VirtualFSRamDiskTest` checks the limit, rejects a name one character
+  longer, and makes and lists a disc with a name of exactly that length -
+  also built for Windows and run under Wine, through the fallback.
+
+#### 2026-10-05 *0.9.164*
+- **Colour picker: a square, pixel-exact saturation/value area for the Bar
+  style.** `UltraCanvasColorPicker::SetSVAreaShape` takes
+  `ColorPickerSVAreaShape::Fill` (the stretched rectangle, still the default),
+  `Square` (1:1, as large as fits) or `PixelExact` (1:1 at
+  `PixelExactSVSide` = 256 x 256 pixels). 8-bit channels have 256 steps, so
+  at 256 pixels each column is one step of saturation and each row one step of
+  value: a smaller area skips values, a larger one repeats them. A square area
+  is centred with the hue bar at its width, and `PreferredHeightForWidth`
+  sizes a collapsible PixelExact picker for its expanded sliders, so opening
+  them does not shrink the area below exact.
+- **Colour picker: the SV area's first and last pixels now are 0 and 100 %.**
+  The pointer mapped column `i` to `i / width`, so the last column inside the
+  area gave 99.6 % and the extremes were reachable only by dragging past the
+  edge, while the gradient was drawn half a pixel off what a click picked.
+  Column `i` now maps to `i / (width - 1)`, the gradients run from the centre
+  of the first pixel to the centre of the last, and the marker sits on the
+  centre of the picked pixel.
+- **DemoApp colour picker page rearranged.** The first row now holds the full
+  picker, the collapsible-sliders picker with a 256 x 256 pixel-exact SV
+  square, and the hue x lightness field with collapsible sliders; the 60 %
+  scaled picker moved to the last row.
+- **Colour picker: value boxes with `< >` steppers cut their value to
+  "17...".** The arrows take 14 px each inside the box, but the box was only
+  12 px wider than a plain one, so "178.0" and "100.0" did not fit. A box
+  with steppers is now the plain width plus both arrows.
+
 #### 2026-10-05 *0.9.163*
 - **IMAP plug-in: the bulk `FetchMessages` fetches the messages it found.** It
   listed the mailbox with `SEARCH ALL`, which answers with sequence numbers,

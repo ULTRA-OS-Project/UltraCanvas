@@ -1,3 +1,11 @@
+#### 2026-10-05 *0.13*
+- **The activity store opens in a Windows profile named in any script.**
+  `%LOCALAPPDATA%\UltraNetMonitor\activity.db` was found through the narrow
+  `getenv("LOCALAPPDATA")`, which answers in the ANSI code page, so a user
+  name outside it turned into `?` and the store could not be created. It is
+  read with the framework's `GetEnvUtf8` now (framework changelog:
+  `env-narrow`).
+
 #### 2026-09-29 *0.12*
 - **`--debug-layout` logs the Live tab's lists.** After every snapshot the
   window writes each list's bounds, row count, row height, content and

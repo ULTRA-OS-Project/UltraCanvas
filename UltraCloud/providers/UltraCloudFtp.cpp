@@ -1,6 +1,6 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
-// Version: 0.1.0
-// Last Modified: 2026-09-17
+// Version: 0.2.0 - a failure carries UltraNet's diagnostics
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -93,7 +93,10 @@ bool FtpEntryToEntry(const UltraNetFtpEntry& in, const std::string& folderPath,
     return true;
 }
 
-Result FromFtp(const UltraNetResult& net, const std::string& what) {
+namespace {
+
+// UltraNet's classification of a failure as UltraCloud's.
+Result ClassifyFtpOutcome(const UltraNetResult& net, const std::string& what) {
     if (net.success) return Result::Ok();
 
     const std::string message = net.message.empty() ? what : what + ": " + net.message;
@@ -123,6 +126,16 @@ Result FromFtp(const UltraNetResult& net, const std::string& what) {
             // server, a quote command refused): the server spoke, and said no.
             return Result::Error(ResultCode::Server, message, net.httpStatus);
     }
+}
+
+} // namespace
+
+Result FromFtp(const UltraNetResult& net, const std::string& what) {
+    Result r = ClassifyFtpOutcome(net, what);
+    // The connection chain UltraNet put together, so whoever shows the
+    // failure can show how far it got.
+    r.diagnostics = net.diagnostics;
+    return r;
 }
 
 // ---- The seam ---------------------------------------------------------------

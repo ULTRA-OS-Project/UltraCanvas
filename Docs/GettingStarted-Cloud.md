@@ -74,7 +74,12 @@ Three facts about CI decide how a cloud-only developer works:
   That download is how you run and look at the app without compiling it.
   The macOS one is a disk image holding an `UltraCanvas` folder: copy the
   whole folder to Applications, because its apps share the `Frameworks/`
-  inside it and do not start when moved out on their own.
+  inside it and do not start when moved out on their own. Only a build on
+  `main` is signed and notarized; a pull request's is named
+  `UCDemo-MacOS-<version>-<arch>-unsigned`, and macOS calls its apps
+  *damaged* until you run
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` (the read-me in
+  the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is

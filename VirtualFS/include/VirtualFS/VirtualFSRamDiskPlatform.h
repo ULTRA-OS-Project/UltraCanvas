@@ -3,13 +3,14 @@
 //
 // Not part of the public API - applications include VirtualFSRamDisk.h.
 // Exactly one OS/<Platform>/VirtualFSRamDiskPlatform.cpp implements these.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - PlatformMaxNameLength
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 #pragma once
 
 #include "VirtualFSRamDisk.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -20,8 +21,20 @@ namespace RamDiskDetail {
 // discs left behind by a process that died before destroying them.
 inline const char* MountPrefix() { return "ultravfs-"; }
 
+// The longest name a disc can have where nothing narrower applies: the name
+// is part of a path, and this keeps it a short one.
+constexpr std::size_t kMaxNameLength = 64;
+
 /**
- * @brief Rejects names that could escape a directory or confuse a shell.
+ * @brief The longest name this back end can keep, at most kMaxNameLength.
+ *        Narrower where the name has to fit somewhere smaller - on Windows
+ *        an ImDisk disc's name lives in its NTFS volume label.
+ */
+std::size_t PlatformMaxNameLength();
+
+/**
+ * @brief Rejects names that could escape a directory or confuse a shell,
+ *        and names longer than PlatformMaxNameLength().
  *        Implemented once in core/VirtualFSRamDisk.cpp.
  */
 bool IsValidName(const std::string& name);

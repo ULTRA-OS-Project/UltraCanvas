@@ -1,3 +1,87 @@
+#### 2026-10-04 *1.66.0*
+- **Every step of a remote-drive connection is on screen, and a failure can
+  be read with its codes.** When an FTP connection failed, the status bar
+  said "cannot list this folder" and nothing about where it stopped or what
+  the server answered. Now:
+  - While a drive is busy, the status bar shows the step its connection is
+    at, as it happens - *Opening "pub" - Connecting to 203.0.113.7:21...*,
+    *- Response: 230 Logged in*, *- Command: MLSD* - and the folder view's
+    *Loading folder* notice names the same step with how long it has
+    waited, so a stalled connection shows where it stalls. Uploads,
+    downloads, deletes and renames show their steps until the bytes start
+    moving.
+  - A new **connection log** button sits at the right of the status bar
+    once there is a remote drive. It counts in red the failures not looked
+    at yet and opens the connection log window: an *Errors* tab with a
+    Markdown report of each failed connection - the message, the error
+    class with its UltraCloud code, libcurl's error number and the server's
+    last reply, the likely cause (a firewall blocking the passive data
+    connection, a refused password, an unknown host, a closed port, a 550,
+    ...), the last steps and the diagnostics chain - and a *Message log*
+    tab listing every step of every connection the way FileZilla does
+    (`12:03:04  Response: 227 Entering Passive Mode (...)`), following the
+    newest line. *Copy* takes the tab on show to the clipboard; passwords
+    never appear (`PASS ********`). *Clear* empties it. The log is in memory
+    only and keeps the last 200 connections; folders fetched ahead are
+    logged too, marked as background work, and are not counted as errors.
+  - A folder that could not be listed keeps its error on the status line
+    ("Error: cannot list this folder: ... - every step and the error codes
+    are in the connection log") instead of giving way to "0 items".
+  - The *Remote drive* alert for a failed upload, delete or rename points at
+    the connection log.
+  - A server that goes quiet now fails after 30 seconds of inactivity, once,
+    instead of being asked up to three times (or, for a data connection
+    that opened and carried nothing, waited on indefinitely); a refused
+    password is no longer sent three times; and an empty folder costs one
+    request instead of three (framework changelog: UltraNet's FTP session
+    log).
+  - FTP and SFTP drives log every step; cloud drives log each job and its
+    outcome.
+- **Remote drives work on the very first start.** On a fresh profile
+  UltraFiler's configuration folder does not exist until something is saved
+  (a setting, the History), and the drive list - a database file in that
+  folder - could not be created without it: the log said "remote drives
+  unavailable: ... unable to open database file", the Remote Drives section
+  stayed empty, and *+ Drive* answered "cannot open the drive list" until
+  UltraFiler was restarted, because the failure was kept for the whole
+  session. The folder is now created before the drive list is opened, and a
+  failed open is tried again by the next *+ Drive* instead of being
+  remembered.
+- **When the credential vault cannot open, the message says why.** It said
+  only "cannot open the credential vault in ..."; it now adds the reason -
+  "this build has no encryption library (UltraCrypt was built without
+  libsodium), so it cannot keep passwords", a folder that cannot be written,
+  or a vault made with a master password (framework changelog:
+  `DeviceKeyVault::GetLastUnlockStatus`). A profile folder named in Thai or
+  Cyrillic now opens its vault on Windows too (same entry).
+- **Settings, History, Favorites, folder icons and views, and the drive list
+  are kept in a Windows profile named in any script.** UltraFiler took its
+  configuration folder from the narrow `getenv("APPDATA")`, which answers in
+  the ANSI code page: for a user name the code page cannot spell (Thai under
+  code page 1252) the folder came back with '?' in it, nothing was saved and
+  nothing read back, and the drive list and the vault - which read the
+  folder as UTF-8 - could not open it even where the code page could spell
+  it. The folder is read with the framework's `GetEnvUtf8` and every file in
+  it opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`). So are the home folder the tree marks
+  (`USERPROFILE`) and the System32 folder the *Open with* dialog starts in
+  (`SystemRoot`).
+- **A remote file named in any script can be previewed.** A preview is
+  downloaded under a temporary name and then moved into the preview cache;
+  that move handed the cache name to `fs::rename` as a plain string, which
+  Windows reads in the ANSI code page, so for a file name outside it the
+  preview failed with "cannot store the preview". It goes through
+  `PathFromUtf8` now.
+
+#### 2026-10-05 *1.65.3*
+- **A RAM disc made on Windows can always be found and ejected again.** The
+  name field took up to 64 characters, but on Windows a RAM disc's name has
+  to fit its volume label: a longer name made a disc that was neither listed
+  nor ejectable. The field now holds what the system can keep - 23
+  characters on Windows, 64 elsewhere - and a name past that is refused with
+  "At most 23 characters." rather than the letters-and-digits hint (framework
+  changelog: a RAM disc's name fits its volume label).
+
 #### 2026-10-05 *1.65.2*
 - **Published by ULTRA OS Development GmbH.** The Windows file properties
   of `UltraFiler.exe` (Company and Copyright) and its application manifest

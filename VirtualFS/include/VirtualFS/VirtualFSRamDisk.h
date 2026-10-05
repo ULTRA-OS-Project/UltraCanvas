@@ -1,12 +1,13 @@
 // VirtualFS/include/VirtualFS/VirtualFSRamDisk.h
 // OS-visible RAM disc provisioning for VirtualFS
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - VirtualFS_GetMaxRamDiskNameLength
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 #pragma once
 
 #include "VirtualFSTypes.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -113,6 +114,18 @@ struct VirtualFSRamDisk {
 bool VirtualFS_IsTrueRamDiskAvailable();
 
 /**
+ * @brief The longest name VirtualFS_CreateRamDisk() accepts on this platform.
+ *
+ * 64 on Linux and macOS. 23 on Windows: an ImDisk disc carries its name in
+ * its NTFS volume label - the only place a drive letter keeps one, and how
+ * VirtualFS_ListRamDisks() finds the disc again - and a label holds 32
+ * characters, nine of them the "ultravfs-" prefix that marks the disc as
+ * VirtualFS's. The DiskFallback directory has the same limit there, so a
+ * name works whichever backing the machine has.
+ */
+std::size_t VirtualFS_GetMaxRamDiskNameLength();
+
+/**
  * @brief The backing VirtualFS_CreateRamDisk() would choose right now.
  *
  * Lets callers warn before creating anything (e.g. "no RAM disc driver
@@ -136,7 +149,8 @@ VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking();
  * that tmpfs. macOS and ImDisk discs are sized exactly.
  *
  * @param name       Label; also part of the mount path, so keep it to
- *                   [A-Za-z0-9._-]. Must be unique per user.
+ *                   [A-Za-z0-9._-], 1 to VirtualFS_GetMaxRamDiskNameLength()
+ *                   characters (23 on Windows). Must be unique per user.
  * @param sizeBytes  Requested capacity. Must be > 0.
  * @param outDisk    Receives the disc on success; untouched on failure.
  * @return Success, InvalidArgument for a bad name or size, AlreadyExists if

@@ -24,7 +24,12 @@
 // one DeviceKeyVault at a time (a second instance on the same directory is
 // fine — it re-opens the same file).
 //
-// Version: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
+// The directory is a UTF-8 path on every platform (UltraCanvasPathUtf8.h): a
+// profile folder named in Thai or Cyrillic opens the same as an ASCII one.
+//
+// Version: 0.2.0 - GetLastUnlockStatus / DescribeUnlockStatus: why the vault
+//                  stayed closed; UTF-8 paths throughout
+// Previous: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef ULTRAVAULT_DEVICE_KEY_VAULT_H
@@ -120,6 +125,23 @@ public:
     // True once Unlock() has succeeded.
     bool IsUnlocked() const { return unlocked_; }
 
+    // Why the last Unlock() or TryAutoUnlock() left the vault closed; Ok
+    // after one that opened it, Locked before any. TryAutoUnlock() reports
+    //  - Unavailable when this build has no crypto backend (UltraCrypt
+    //    without libsodium): it cannot even make a device key;
+    //  - IoError when the directory or the device key cannot be written or
+    //    read;
+    //  - Locked when a vault exists without a device key (made with a master
+    //    password): the caller asks for it once, then PersistDeviceKey();
+    //  - whatever Unlock() reported for the device key otherwise.
+    // A bool alone told an application only "cannot open the credential
+    // vault", whatever the reason.
+    UnlockStatus GetLastUnlockStatus() const { return lastStatus_; }
+
+    // `status` in words, for the end of an error message: "this build has no
+    // encryption library (UltraCrypt was built without libsodium) ...".
+    static std::string DescribeUnlockStatus(UnlockStatus status);
+
     // Close the vault and wipe the derived key from memory.
     void Lock();
 
@@ -160,6 +182,7 @@ private:
     std::string           dir_;
     DeviceKeyVaultProfile profile_;
     bool                  unlocked_ = false;
+    UnlockStatus          lastStatus_ = UnlockStatus::Locked;
 };
 
 } // namespace UltraVault

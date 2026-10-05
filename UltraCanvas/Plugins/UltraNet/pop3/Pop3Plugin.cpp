@@ -16,11 +16,15 @@
 //      UltraNetMailMessage::body.
 //
 // We never DELE — apps that want to delete must do it explicitly.
-// Version: 0.1.1
-// Last Modified: 2026-07-05
+//
+// ULTRANET_CURL_VERBOSE traces a session on stderr like the SMTP and IMAP
+// plug-ins (UltraNet/UltraNetCurlDebug.h); the PASS line is redacted.
+// Version: 0.1.2
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
 #include <UltraNet/UltraNetCurlTls.h>
@@ -174,9 +178,12 @@ bool ParsePop3Url(const std::string& url,
     return true;
 }
 
-constexpr const char* kPluginVersion = "0.1.0";
+constexpr const char* kPluginVersion = "0.1.2";
 
 UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    // The documented mail trace: README "Debugging a mail connection" names
+    // POP3 with SMTP and IMAP, and until now this plug-in never asked.
+    ultranet_curldebug::EnableIfRequested(h);
     // STARTTLS here is CURLUSESSL_TRY (below): an upgrade if the server offers one.
     ultranet_curlmailauth::RecordContext(std::string("UltraNet POP3 plug-in ") + kPluginVersion,
                                          opt, ultranet_curlmailauth::Protocol::Pop3,

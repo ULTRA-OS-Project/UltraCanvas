@@ -2,8 +2,8 @@
 // Core data types of the UltraCloud module: results, accounts, credentials,
 // remote entries and share links. Provider-independent; every provider and
 // every app-facing call speaks in these.
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - Result::diagnostics
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -29,13 +29,19 @@ struct Result {
     ResultCode  code = ResultCode::Ok;
     std::string message;
     int         httpStatus = 0;   // when a server was involved
+    // On a failure, what the transport knew about the connection, one
+    // "Name: value" line each - the error with the library's own code, the
+    // server and the address it reached, TLS, sign-in, library versions
+    // (UltraNetResult::diagnostics). For a "Details" view and bug reports;
+    // empty when the provider had nothing to add.
+    std::string diagnostics;
 
     bool IsOk() const { return code == ResultCode::Ok; }
     explicit operator bool() const { return IsOk(); }
 
     static Result Ok() { return Result{}; }
     static Result Error(ResultCode code, const std::string& message, int httpStatus = 0) {
-        return Result{code, message, httpStatus};
+        return Result{code, message, httpStatus, {}};
     }
 };
 

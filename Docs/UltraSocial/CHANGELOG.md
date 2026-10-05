@@ -1,3 +1,10 @@
+#### 2026-10-04 *0.1.4*
+- **The credential-vault warning says why the vault did not open** - "this
+  build has no encryption library (UltraCrypt was built without libsodium)",
+  a folder that cannot be written, or a vault made with a master password -
+  instead of only that it did not (framework changelog:
+  `DeviceKeyVault::DescribeUnlockStatus`).
+
 #### 2026-09-28 *0.1.3*
 - **The version is in the window title** — `UltraSocial 0.1.3` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

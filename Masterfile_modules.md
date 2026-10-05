@@ -1072,7 +1072,11 @@ future.
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
-  `UltraNet_FtpDelete`, `UltraNet_FtpRename`
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`,
+  `UltraNet_FtpRemoveDirectory`; the session log of every call
+  (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
+  `UltraNetFtpLogLine` steps, commands with the password masked, replies with
+  their codes, the error with libcurl's number)
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1344,8 +1348,9 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
 the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
-`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
--> `UnlockStatus`, `PersistDeviceKey`), per-account
+`device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
+`DescribeUnlockStatus` saying why it stayed closed) or by a master password
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -1448,8 +1453,10 @@ attach ram://` on macOS, the ImDisk driver on Windows when installed, an
 overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
 `VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
 `VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
-`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
-user and do not survive a reboot.
+`VirtualFS_GetPreferredRamDiskBacking`, `VirtualFS_GetMaxRamDiskNameLength`
+(names are at most 23 characters on Windows, where they live in the NTFS
+volume label; 64 elsewhere). Discs are private to the calling user and do
+not survive a reboot.
 
 **Provider interface** (`IVirtualFSProvider`) — one implementation per
 format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR

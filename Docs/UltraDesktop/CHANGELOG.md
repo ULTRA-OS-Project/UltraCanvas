@@ -1,3 +1,11 @@
+#### 2026-10-05 *0.1.3*
+- **The desktop keeps its settings in a Windows profile named in any
+  script.** `desktop.json` lives under `%APPDATA%\ultraos`, and `APPDATA`
+  was read through the narrow `getenv`, which answers in the ANSI code page;
+  for a user name outside it the settings were neither saved nor read. It is
+  read with the framework's `GetEnvUtf8` now (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-01 *0.1.2*
 - **The desktop's settings moved to UOS-Settings.** The system's settings now
   have an application of their own, UOS-Settings, and the taskbar's *ULTRA OS
