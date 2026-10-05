@@ -1,7 +1,8 @@
 // Tests/UltraMessage/test_helpers.h
 // Helpers shared by the UltraMessage test files: the private bus path of
-// this test process, a Connect that throws on failure, a callback pump.
-// Version: 0.2.0
+// this test process, a Connect that throws on failure, a callback pump, and
+// a UI dispatcher that holds deliveries until the test runs them.
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -12,8 +13,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #  include <process.h>
@@ -70,6 +74,45 @@ inline bool WaitFor(const std::function<bool()>& done,
 struct Scoped {
     UltraMsgHandle handle;
     ~Scoped() { UltraMsg_Disconnect(handle); }
+};
+
+// Stands in for an application's UI thread: installed as the UI dispatcher,
+// it keeps every callback it is handed until RunAll(), so a test can do
+// something between a delivery being queued and it running - unsubscribe,
+// disconnect, destroy the subscriber. Declare it before the endpoints, so
+// they disconnect (and their reader threads stop handing it work) before it
+// uninstalls itself.
+struct HeldDispatcher {
+    std::mutex mutex;
+    std::vector<std::function<void()>> tasks;
+
+    HeldDispatcher() {
+        UltraMsg_SetUIDispatcher([this](std::function<void()> task) {
+            std::lock_guard<std::mutex> lock(mutex);
+            tasks.push_back(std::move(task));
+        });
+    }
+    ~HeldDispatcher() { UltraMsg_SetUIDispatcher(nullptr); }
+
+    size_t Count() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return tasks.size();
+    }
+    // Waits, without running anything, until `count` callbacks are held.
+    bool WaitForCount(size_t count, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (Count() < count && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return Count() >= count;
+    }
+    void RunAll() {
+        std::vector<std::function<void()>> run;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            run.swap(tasks);
+        }
+        for (auto& task : run) task();
+    }
 };
 
 } // namespace ultramsg_test
