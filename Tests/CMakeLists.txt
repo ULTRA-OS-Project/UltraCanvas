@@ -1456,7 +1456,9 @@ endif()
 # ===== DIRECTX .X MODEL READER TEST =====
 # The .x reader, and the only suite whose subject is a left-handed format: the
 # winding cases below are what stop a model loading inside out. Needs nothing
-# beyond the standard library, so it is always built.
+# beyond the standard library, so it is always built. The untouched export in
+# Tests/data/3D comes first; the demo copy under media/3D second, so the same
+# run asserts that the copy the demo shows is whole and the right way up.
 message(STATUS "  Building ModelXFileTest...")
 add_executable(ModelXFileTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelXFileTest.cpp
@@ -1480,6 +1482,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 add_test(
     NAME ModelXFileTest
     COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
+                           "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")

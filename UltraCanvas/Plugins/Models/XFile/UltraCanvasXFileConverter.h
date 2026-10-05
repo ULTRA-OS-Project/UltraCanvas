@@ -27,6 +27,15 @@
 // compared against them *through the node's world transform*, and a file whose
 // faces really are inside out is reported instead of being quietly loaded.
 //
+// **A frame is only as right as the exporter's hierarchy.** When a mesh is
+// parented to an armature *bone*, Blender's exporter writes the mesh frame
+// relative to that bone but does not write the bone, so the frame chain
+// misplaces the mesh and nothing in the file says so. The E-45 export in
+// Tests/data/3D is exactly this: walked as written, the hull is rolled 180
+// degrees about X and the canopy sits inside it. The reader reproduces that,
+// as it must - the bones are not there to recover - and the demo copy under
+// media/3D has its frames corrected instead.
+//
 // **Its data has no field names.** The `template` blocks at the top of a file
 // declare layouts, but every real reader ignores them in favour of the known
 // ones, because an exporter that wrote a template disagreeing with the spec
@@ -41,7 +50,7 @@
 // that says it is missing. The capability report says so too.
 //
 // Version: 1.0.0
-// Last Modified: 2026-09-11
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 

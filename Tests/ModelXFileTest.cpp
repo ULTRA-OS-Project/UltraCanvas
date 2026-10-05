@@ -15,10 +15,11 @@
 //
 // argv[1] is the .x - Tests/data/3D/XFile, not the demo copy under media/3D,
 // which was completed from the .blend and no longer has the half-hull this
-// suite pins. Without it only the synthetic cases run.
+// suite pins. argv[2] is that demo copy, which TestTheDemoCopy() holds to the
+// whole aircraft, the right way up. Without them only the synthetic cases run.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-11
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/XFile/UltraCanvasXFileConverter.h"
@@ -543,6 +544,14 @@ static void TestSample(const char* path) {
 
     // World bounds, checked against an independent walk of the same frame
     // chain. This is the assertion that the straight matrix copy is right.
+    //
+    // They are not where the aircraft belongs, and that is the file's doing:
+    // both meshes are parented to armature bones in the .blend, and Blender's
+    // exporter wrote each mesh frame relative to its bone without writing the
+    // bones. The walk therefore rolls the hull 180 degrees about X - it
+    // stands on its head - and leaves the canopy inside it. A reader cannot
+    // recover bones that are not in the file, so it must reproduce exactly
+    // this; the demo copy has the frames corrected instead (TestTheDemoCopy).
     const Bounds3D bounds = doc->ComputeBounds();
     Check(Near(bounds.Min.x, -0.9732, 1e-3) && Near(bounds.Max.x, 0.0, 1e-3) &&
           Near(bounds.Min.y, -2.5754, 1e-3) && Near(bounds.Max.y, 1.6357, 1e-3) &&
@@ -556,6 +565,65 @@ static void TestSample(const char* path) {
           "the .x holds only half the hull in X - its mirror modifier was not applied");
 }
 
+// One node's mesh in world space.
+static Bounds3D WorldBoundsOf(const ModelDocument& doc, const std::string& nodeName) {
+    Bounds3D bounds;
+    for (size_t n = 0; n < doc.Nodes.size(); ++n) {
+        const ModelNode& node = doc.Nodes[n];
+        if (node.Name != nodeName || node.Mesh < 0) continue;
+        const Matrix4x4 world = doc.GlobalTransform(static_cast<int>(n));
+        for (const MeshPrimitive& prim : doc.Meshes[static_cast<size_t>(node.Mesh)].Primitives)
+            for (const Vec3d& position : prim.Positions) bounds.Expand(world.TransformPoint(position));
+    }
+    return bounds;
+}
+
+// media/3D/XFile/E-45-Aircraft.x is the copy the demo shows, and it is not the
+// file above. Its geometry was mirrored to the whole aeroplane, and its two
+// mesh frames hold the placements the .blend gives the objects - the hull at
+// the armature's origin, the canopy translated onto the nose - in place of the
+// bone-relative ones Blender wrote. The numbers are the X3D export's, which
+// Blender wrote from the same scene with world matrices: in this document's
+// Y-up space the hull spans Y -1.356..2.855 and the canopy sits on it at
+// 0.060..1.533.
+static void TestTheDemoCopy(const char* path) {
+    std::printf("Demo copy: %s\n", path);
+    XFileConverter converter;
+    std::vector<std::string> warnings;
+    ConversionOptions options;
+    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+
+    auto doc = converter.Import(path, options);
+    if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
+    for (const std::string& warning : warnings) std::printf("      warn: %s\n", warning.c_str());
+    // The mirroring once doubled the vertices and faces but not the UVs or the
+    // per-face material indices; the UV shortfall is what this reader warns
+    // about, and fills with zeros.
+    Check(warnings.empty(), "read without a warning - every vertex has its UV, every face its material");
+
+    Check(doc->Nodes.size() == 4 && doc->Meshes.size() == 2,
+          "the same Root / Armature / Cube frame chain as the export");
+    Check(doc->TotalVertexCount() == 8110 && doc->TotalFaceCount() == 2060,
+          "8110 vertices in 2060 faces - the export's, doubled by the mirror");
+
+    const Bounds3D hull = WorldBoundsOf(*doc, "Cube_021");
+    const Bounds3D canopy = WorldBoundsOf(*doc, "Cube_004");
+    std::printf("      hull   Y [%.3f, %.3f]  Z [%.3f, %.3f]\n", hull.Min.y, hull.Max.y,
+                hull.Min.z, hull.Max.z);
+    std::printf("      canopy Y [%.3f, %.3f]  Z [%.3f, %.3f]\n", canopy.Min.y, canopy.Max.y,
+                canopy.Min.z, canopy.Max.z);
+
+    Check(Near(hull.Min.x, -0.9732, 1e-3) && Near(hull.Max.x, 0.9732, 1e-3),
+          "the hull runs to both sides of zero - the mirror modifier is applied");
+    // Upside down, the same hull spans Y -2.575..1.636.
+    Check(Near(hull.Min.y, -1.356, 1e-3) && Near(hull.Max.y, 2.855, 1e-3) &&
+          Near(hull.Min.z, -3.211, 1e-3) && Near(hull.Max.z, 2.946, 1e-3),
+          "the hull stands the right way up, where the X3D export puts it");
+    Check(Near(canopy.Min.y, 0.060, 1e-3) && Near(canopy.Max.y, 1.533, 1e-3) &&
+          Near(canopy.Min.z, -0.102, 1e-3) && Near(canopy.Max.z, 2.958, 1e-3),
+          "and the canopy sits on its nose rather than inside it");
+}
+
 int main(int argc, char** argv) {
     TestValidation();
     TestHandednessAndWinding();
@@ -565,6 +633,8 @@ int main(int argc, char** argv) {
     TestBinaryEncoding();
     if (argc > 1) TestSample(argv[1]);
     else std::printf("Sample: skipped (pass an .x path to run it)\n");
+    if (argc > 2) TestTheDemoCopy(argv[2]);
+    else std::printf("Demo copy: skipped (pass media/3D/XFile/E-45-Aircraft.x second)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");
