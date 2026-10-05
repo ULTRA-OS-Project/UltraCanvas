@@ -505,8 +505,14 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
 
             IODeviceInfo info;
             info.deviceId = "escl:" + url;
-            info.name = EsclTxtValue(txt, "ty");
-            if (info.name.empty()) info.name = entry.dn;
+            // The instance name, which is unique on the network and is what a
+            // scan dialog should show - two scanners of one model share a
+            // "ty" and would be indistinguishable by it. The mDNS plugin's
+            // `dn` is the full service name, escaped on Bonjour, so the
+            // instance is cut out of it. The model stays in `model`.
+            info.name = EsclInstanceFromServiceName(entry.dn);
+            if (info.name.empty()) info.name = EsclTxtValue(txt, "ty");
+            if (info.name.empty()) info.name = url;
             info.model = EsclTxtValue(txt, "ty");
             info.serialNumber = EsclTxtValue(txt, "uuid");
             info.category = IODeviceCategory::Scanner;
@@ -515,6 +521,7 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             info.connectionPath = url;
             info.location = host->second[0];
             info.attributes["discovery"] = "mdns";
+            info.attributes["mdns-name"] = entry.dn;
             if (service.tls) info.attributes["escl-tls-url"] = url;
             found.push_back(std::move(info));
         }

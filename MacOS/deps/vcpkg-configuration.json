@@ -1,0 +1,5 @@
+{
+  "$comment": "No registry or baseline: the ports are those of the vcpkg commit scripts/macos-deps.sh checks out, plus the overlays here.",
+  "overlay-ports": [ "./ports" ],
+  "overlay-triplets": [ "./triplets" ]
+}

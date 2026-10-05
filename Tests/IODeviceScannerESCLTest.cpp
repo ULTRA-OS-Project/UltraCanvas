@@ -369,6 +369,27 @@ void TestTheAddressFromDiscovery() {
     Check(EsclScannerIdentity({}, "").empty(), "with neither, it has no identity");
 }
 
+void TestTheNameFromDiscovery() {
+    std::cout << "\n=== The name, when the scanner gives no model ===\n";
+    // The mDNS plugin reports the full service name on every platform; only
+    // Bonjour escapes it. A scanner whose TXT record has no `ty` is shown by
+    // its instance name, so it must not arrive as "Office._uscan._tcp.local".
+    Check(EsclInstanceFromServiceName("Office Scanner._uscan._tcp.local") == "Office Scanner",
+          "Avahi's form: readable, type and domain cut");
+    Check(EsclInstanceFromServiceName("Office\\032Scanner._uscans._tcp.local.") ==
+              "Office Scanner",
+          "Bonjour's form: escaped, root dot and all, over TLS");
+    Check(EsclInstanceFromServiceName("Lab\\.Scanner._uscan._tcp.local.") == "Lab.Scanner",
+          "  an escaped dot in the instance is a dot");
+    Check(EsclInstanceFromServiceName("Front Desk._USCAN._TCP.local") == "Front Desk",
+          "the service type in capitals");
+    Check(EsclInstanceFromServiceName("a._uscan._tcp b._uscan._tcp.local") == "a._uscan._tcp b",
+          "  the last service type is the real one, whatever the instance contains");
+    Check(EsclInstanceFromServiceName("Just A Name") == "Just A Name",
+          "a name with no service type is already the instance");
+    Check(EsclInstanceFromServiceName("").empty(), "nothing gives nothing");
+}
+
 }  // namespace
 
 int main() {
@@ -383,6 +404,7 @@ int main() {
     TestBuildingTheScanSettings();
     TestFindingTheJob();
     TestTheAddressFromDiscovery();
+    TestTheNameFromDiscovery();
 
     std::cout << "\n";
     if (g_failures == 0) {

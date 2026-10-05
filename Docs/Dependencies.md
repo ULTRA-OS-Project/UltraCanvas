@@ -16,7 +16,14 @@ component the libraries are listed per platform (Linux / macOS / Windows).
 
 Source of truth: every `CMakeLists.txt` (root, `UltraCanvas/`,
 `Plugins/Vector/{CDR,XAR}`) plus the third-party `#include`s across the source
-tree. Mirrors the in-app table at
+tree.
+
+**Where the macOS libraries come from.** A local macOS build uses Homebrew's.
+The macOS apps CI publishes bundle the same libraries built with vcpkg for the
+oldest supported macOS (14.0) instead, because Homebrew's carry the macOS of
+the machine that built them: the manifest, triplets and the ports vcpkg lacks
+(MuPDF, zbar, librevenge, and libvips' extra formats) are in `MacOS/deps/`,
+built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-app table at
 **Dependencies & Third Party → Dependencies & Third Party**
 (`Apps/DemoApp/UltraCanvasDependenciesExamples.cpp`).
 

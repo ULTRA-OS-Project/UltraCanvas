@@ -324,6 +324,15 @@ to 556 MB. The rules:
 - **Check the size** in the macOS job summary ("macOS suite sizes"): a new
   app should add roughly its executable and resources, a few MB - not a
   second copy of the libraries.
+- **Do not write `LSMinimumSystemVersion` yourself.** `finish_suite` reads the
+  minimum macOS from the app's binaries and the shared `Frameworks/`, writes
+  it into the app's `Info.plist`, and fails when something needs a newer
+  macOS than `MACOSX_DEPLOYMENT_TARGET` (CI: 14.0) - dyld refuses such a
+  binary whatever the plist says.
+- **A library a new app needs goes into `MacOS/deps/vcpkg.json`**, not into
+  a `brew install` in CI: the libraries CI bundles are built with vcpkg for
+  that macOS (`MacOS/deps/README.md`), and one taken from Homebrew carries the
+  runner's macOS and fails the check above.
 - The apps only run inside the suite folder; users install by dragging the
   whole `UltraCanvas` folder to Applications. Say so wherever the macOS
   install is described.

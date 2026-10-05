@@ -822,7 +822,9 @@ the backing implementation can be replaced without affecting callers.
     `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
     sends a document the printer renders as it is and draws text and images
     as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
-    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested. Both
+    backends take a device's display name out of its DNS-SD service name
+    through `...DnsSd.h`.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform

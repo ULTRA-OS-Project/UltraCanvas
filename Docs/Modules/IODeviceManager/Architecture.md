@@ -564,7 +564,8 @@ instance name, which is unique on the network, rather than `ty`, which two
 printers of one model share. The mDNS plugin reports the *full* service name
 ("Office Printer._ipp._tcp.local"), readable from Avahi and Win32 and escaped
 from Bonjour, so the instance is cut out of it and unescaped
-(`IppInstanceFromServiceName`) before it is shown or compared.
+(`IppInstanceFromServiceName`, over the shared `DnsSdInstanceName` in
+`UltraCanvasIODeviceDnsSd.h`) before it is shown or compared.
 
 **A printer offering both is reached over plain IPP.** Printers' certificates
 are self-signed in all but a few cases, and UltraNet's rule is that TLS
@@ -877,6 +878,16 @@ in both advertisements - or by its host when it gives none
 TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
 it does for IPP printers: the certificate is self-signed in all but a few
 cases, and TLS verification stays on.
+
+A scanner is shown by its DNS-SD instance name, as an IPP printer is: it is
+unique on the network, where the model (`ty`) is shared by every scanner of
+that model, so two of them used to look identical. The model stays in
+`model`, and is the name only when the instance name is empty. The mDNS
+plugin reports the full service name, so the instance is cut out of it
+(`EsclInstanceFromServiceName`); used whole, it read
+"Office Scanner._uscan._tcp.local" - and on macOS, where Bonjour leaves the
+name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
+the `mdns-name` attribute.
 
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.

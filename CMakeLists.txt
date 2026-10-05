@@ -187,6 +187,10 @@ if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
 
+# Where the macOS dependency libraries are: Homebrew's, or the vcpkg prefix CI
+# builds for the oldest supported macOS (ULTRACANVAS_MACOS_DEPS_PREFIX).
+include(cmake/UltraCanvasMacOSDeps.cmake)
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -785,12 +789,10 @@ if(BUILD_DEMO_APP)
                 ${LIBVIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
-        # Set Homebrew prefix
-        execute_process(
-            COMMAND brew --prefix
-            OUTPUT_VARIABLE HOMEBREW_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+        # The dependency prefix (cmake/UltraCanvasMacOSDeps.cmake): Homebrew's,
+        # or the vcpkg one CI builds.
+        set(HOMEBREW_PREFIX "${ULTRACANVAS_MACOS_DEPS_PREFIX}")
+        ultracanvas_macos_dep_prefix(vips _uc_vips_prefix)
         include_directories(
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
@@ -818,7 +820,7 @@ if(BUILD_DEMO_APP)
                 ${GLIB_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
-                ${HOMEBREW_PREFIX}/opt/vips/lib
+                ${_uc_vips_prefix}/lib
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         link_directories(
