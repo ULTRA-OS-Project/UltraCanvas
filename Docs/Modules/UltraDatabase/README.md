@@ -366,4 +366,4 @@ headless data module usable from any ULTRA OS process.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

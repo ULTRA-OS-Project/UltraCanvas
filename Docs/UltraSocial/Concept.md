@@ -55,9 +55,10 @@ churns.
 Tier 1 (Mastodon, Bluesky, Telegram) needs **no operator approval of any
 kind** and no distributed secrets — a build-it-this-week target. Tier 2 works
 today but with per-user app registration or tight free-tier write caps.
-Tier 3 requires developer-portal review processes the *user* (or Cloverleaf,
-as app publisher) must go through, and is where auto-posting to personal
-profiles is partly impossible by policy, not by engineering.
+Tier 3 requires developer-portal review processes the *user* (or ULTRA OS
+Development GmbH, as app publisher) must go through, and is where
+auto-posting to personal profiles is partly impossible by policy, not by
+engineering.
 
 ### Per-network content constraints the composer must know
 
@@ -194,4 +195,4 @@ scraping fallbacks where an API is refused).
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

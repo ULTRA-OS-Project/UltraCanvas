@@ -221,7 +221,7 @@ designed as such rather than smuggled in under the adapter.
 
 ## 7. Licensing and dependency policy
 
-ComfyUI is **GPL-3.0**. This repository is MIT (`LICENSE`, Cloverleaf UG).
+ComfyUI is **GPL-3.0**. This repository is MIT (`LICENSE`, ULTRA OS Development GmbH).
 The distinction that governs the decision:
 
 - **Talking to a separately installed ComfyUI over HTTP** is arm's-length
