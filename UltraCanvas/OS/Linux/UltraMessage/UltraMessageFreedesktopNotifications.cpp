@@ -8,10 +8,18 @@
 // Where a desktop already runs a notification server (GNOME, KDE) the name
 // cannot be taken; the adapter then falls back to monitor mode
 // (org.freedesktop.DBus.Monitoring.BecomeMonitor on a private connection)
-// and reads Notify() calls passively — no actions, no replies.
+// and reads Notify() calls passively — no actions, no replies. The same
+// happens where a notification server is installed but not yet running
+// (dunst, mako, xfce4-notifyd start by D-Bus activation on the first
+// Notify): the adapter starts it instead of taking its name, so the desktop
+// keeps drawing notifications. A Notify carrying the hint
+// `x-ultramessage-id` came from the freedesktop-presenter adapter and is on
+// the bus already; it is not published again.
 //
 // GDBus (GIO), on a private GMainContext in the adapter's own thread, so an
 // application's own GLib main loop is never touched.
+// Version: 0.3.0 - an installed server is started rather than replaced; the
+//                  presenter's own notifications are not read back
 // Version: 0.2.1 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -100,6 +108,7 @@ struct Toast {
     std::string category;
     std::string desktopEntry;
     std::string imagePath;
+    std::string ultramessageId;   // x-ultramessage-id: put on screen by the presenter
     int urgency = 1;
     int senderPid = 0;
     gint32 expireTimeout = -1;
@@ -136,6 +145,8 @@ bool DecodeToast(GVariant* parameters, Toast& out) {
             out.desktopEntry = g_variant_get_string(value, nullptr);
         else if (name == "image-path" && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
             out.imagePath = g_variant_get_string(value, nullptr);
+        else if (name == "x-ultramessage-id" && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            out.ultramessageId = g_variant_get_string(value, nullptr);
         else if (name == "urgency" && g_variant_is_of_type(value, G_VARIANT_TYPE_BYTE))
             out.urgency = static_cast<int>(g_variant_get_byte(value));
         else if (name == "sender-pid") {
@@ -273,10 +284,52 @@ private:
             return;
         }
 
+        // A server the desktop installs but starts on demand is the one that
+        // draws notifications here: start it, and only watch (below, when the
+        // name turns out to be taken). Taking the name from it would leave
+        // every application's notifications undrawn.
+        StartActivatableServer();
         ownerId_ = g_bus_own_name_on_connection(connection_, kBusName, G_BUS_NAME_OWNER_FLAGS_NONE,
                                                 &OnNameAcquired, &OnNameLost, this, nullptr);
         g_main_loop_run(loop_);
         Cleanup();
+    }
+
+    // When nobody owns org.freedesktop.Notifications but the bus can activate
+    // a server for it, asks the bus to start that server. Adapter thread.
+    void StartActivatableServer() {
+        GVariant* owned = g_dbus_connection_call_sync(connection_, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                      "org.freedesktop.DBus", "NameHasOwner",
+                                                      g_variant_new("(s)", kBusName), G_VARIANT_TYPE("(b)"),
+                                                      G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, nullptr);
+        if (!owned) return;
+        gboolean hasOwner = FALSE;
+        g_variant_get(owned, "(b)", &hasOwner);
+        g_variant_unref(owned);
+        if (hasOwner) return;
+
+        GVariant* names = g_dbus_connection_call_sync(connection_, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                      "org.freedesktop.DBus", "ListActivatableNames", nullptr,
+                                                      G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr,
+                                                      nullptr);
+        if (!names) return;
+        bool activatable = false;
+        GVariantIter* iter = nullptr;
+        g_variant_get(names, "(as)", &iter);
+        const gchar* name = nullptr;
+        while (g_variant_iter_next(iter, "&s", &name))
+            if (g_strcmp0(name, kBusName) == 0) activatable = true;
+        g_variant_iter_free(iter);
+        g_variant_unref(names);
+        if (!activatable) return;
+
+        // A server that fails to start (no display, a broken install) leaves
+        // the name free, and the adapter serves it as before.
+        GVariant* started = g_dbus_connection_call_sync(connection_, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                        "org.freedesktop.DBus", "StartServiceByName",
+                                                        g_variant_new("(su)", kBusName, 0u), G_VARIANT_TYPE("(u)"),
+                                                        G_DBUS_CALL_FLAGS_NONE, 4000, nullptr, nullptr);
+        if (started) g_variant_unref(started);
     }
 
     void Cleanup() {
@@ -463,6 +516,9 @@ private:
 
     void PublishToast(const Toast& toast, guint32 assignedId) {
         if (!host_) return;
+        // Put on screen by the freedesktop-presenter adapter: the application
+        // posted it on the bus, where it is already.
+        if (!toast.ultramessageId.empty()) return;
         SystemNotification n;
         n.appName = toast.appName;
         n.appId = StripDesktopSuffix(toast.desktopEntry);

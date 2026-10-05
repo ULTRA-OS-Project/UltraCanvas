@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.7.0 - notify_new_mail (a notification on screen when new mail arrives)
 // Version: 0.6.0 - list_sort (the message list's order)
 // Version: 0.5.0 - needs_answer_max_age_days, needs_answer_only_written_to
 // Version: 0.4.0 - link_display (status-bar / tooltip)
@@ -52,6 +53,7 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "notify_new_mail")    notifyNewMail    = ParseBool(value);
         if (key == "remote_images") {
             const std::string v = Trim(value);
             remoteImages = v == "always" ? RemoteImagePolicy::LoadAlways
@@ -143,6 +145,7 @@ bool Preferences::Save(const std::string& path) const {
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
     file << "list_sort = " << listSort.ToString() << "\n";
+    file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
     return static_cast<bool>(file);
 }
 

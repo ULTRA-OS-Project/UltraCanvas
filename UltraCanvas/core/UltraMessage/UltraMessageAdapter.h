@@ -5,7 +5,10 @@
 // notifications it produced, back out (the feed invoking one of its actions).
 // Adapters live under UltraCanvas/OS/<Platform>/UltraMessage/ (platform code)
 // or UltraCanvas/Plugins/UltraMessage/<name>/ (portable ones on UltraNet) and
-// are registered by RegisterBuiltinAdapters below.
+// are registered by RegisterBuiltinAdapters below. A *presenter* adapter works
+// the other way round: it puts the `system.notification`s applications post
+// on screen through the platform's own notification service (Present).
+// Version: 0.3.0 - Present: applications' notifications shown on screen
 // Version: 0.2.1 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -59,6 +62,19 @@ public:
     // message this adapter may have published. Return false when it is not
     // one of this adapter's.
     virtual bool HandleAction(const UltraMsgMessage& action) { (void)action; return false; }
+
+    // An application on the bus posted a `system.notification` (not Silent):
+    // put it on screen through the platform's notification service, and
+    // report what the user does with it as `system.notification.action` /
+    // `system.notification.dismissed` naming `notification.envelope.id`. A
+    // notification that replaces an earlier one (UltraMsgFlag_Replace) updates
+    // it where the platform can. Called on a broker thread, outside the
+    // routing lock; must not block on the screen. Return true when this
+    // adapter shows it (the broker then asks no other), false when it does
+    // not present or nothing on this desktop can display it. Notifications
+    // adapters publish themselves are never presented: they came from the
+    // screen already.
+    virtual bool Present(const UltraMsgMessage& notification) { (void)notification; return false; }
 };
 
 // Every adapter compiled into this build, in registration order. Defined in
@@ -90,6 +106,15 @@ std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,
 
 std::string Lowercase(std::string text);
 std::string FirstLine(const std::string& text);
+
+// ---- shared by the presenters ----------------------------------------------
+
+// A notification a presenter put on screen reappears in the platform's own
+// notification list, where a listening adapter would read it back as a
+// second `system.notification`. The presenter notes what it showed; the
+// listener skips a toast with the same text for a few minutes. Thread-safe.
+void NotePresented(const std::string& title, const std::string& text);
+bool WasPresented(const std::string& title, const std::string& text);
 
 } // namespace Internal
 } // namespace UltraMessage

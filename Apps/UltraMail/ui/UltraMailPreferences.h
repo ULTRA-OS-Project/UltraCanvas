@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.8.0 - notifyNewMail: a notification on screen when new mail arrives
+//                  (Settings > Display > Notifications)
 // Version: 0.7.0 - the message list's order (list_sort), chosen in its column headers
 // Version: 0.6.0 - waiting-for-reply rules (its age, only people written to)
 // Version: 0.5.0 - link display: the status bar or a tooltip (Settings > Display > Links)
@@ -94,6 +96,12 @@ struct Preferences {
     // The message list's order: the column header last clicked, and which
     // way round. Newest first until one is clicked.
     MessageSort listSort;
+
+    // Settings > Display > Notifications: when a sync brings new mail into an
+    // inbox, a notification on screen - posted through UltraMessage, drawn by
+    // the desktop's notification server - names the sender and subject (or
+    // counts the messages), and a click on it opens the mail.
+    bool notifyNewMail = true;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

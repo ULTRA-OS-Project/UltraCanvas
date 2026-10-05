@@ -14,7 +14,9 @@
 // Notifications; until then the state is `needs-permission` and the adapter
 // re-checks every few seconds, so granting it needs no restart. On a
 // process without package identity the listener may be unavailable
-// altogether; the state says so.
+// altogether; the state says so. A toast the windows-presenter adapter put
+// up for an application on the bus is skipped: it is on the bus already.
+// Version: 0.2.0 - the presenter's own notifications are not read back
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -31,6 +33,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <set>
@@ -253,7 +256,7 @@ private:
             bool known = false;
             {
                 std::lock_guard<std::mutex> lock(idsMutex_);
-                known = byId_.count(id) != 0;
+                known = byId_.count(id) != 0 || presented_.count(id) != 0;
             }
             if (!known) Publish(toast);
         }
@@ -262,6 +265,8 @@ private:
             std::lock_guard<std::mutex> lock(idsMutex_);
             for (const auto& [id, ulid] : byId_)
                 if (!present.count(id)) gone.push_back({id, ulid});
+            for (auto it = presented_.begin(); it != presented_.end();)
+                it = present.count(*it) ? std::next(it) : presented_.erase(it);
         }
         for (const auto& [id, ulid] : gone) {
             Forget(id);
@@ -309,6 +314,13 @@ private:
             }
         }
         if (n.summary.empty()) n.summary = n.appName.empty() ? "Notification" : n.appName;
+        // Put up by the windows-presenter adapter for an application on the
+        // bus: the notification is there already.
+        if (WasPresented(n.summary, n.body)) {
+            std::lock_guard<std::mutex> lock(idsMutex_);
+            presented_.insert(toast.Id());
+            return;
+        }
         n.category = CategoryForAppKind(GuessAppKind(n.appId, n.appName));
 
         JSONValue body = MakeSystemNotification(n);
@@ -358,6 +370,7 @@ private:
     std::mutex idsMutex_;
     std::map<uint32_t, std::string> byId_;     // Action Center id -> journal / bus id
     std::map<std::string, uint32_t> byUlid_;
+    std::set<uint32_t> presented_;              // toasts the windows-presenter adapter put up
 };
 
 } // namespace

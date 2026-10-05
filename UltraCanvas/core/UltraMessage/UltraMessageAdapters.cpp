@@ -2,6 +2,7 @@
 // The registry of the adapters compiled into this build (§9), and the
 // translation helpers the notification adapters share. Each platform or
 // plugin file contributes a factory; the build defines which exist.
+// Version: 0.3.0 - the presenters, and the registry of what they showed
 // Version: 0.2.1 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -10,6 +11,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <deque>
+#include <mutex>
 
 namespace UltraMessage {
 namespace Internal {
@@ -18,18 +22,30 @@ namespace Internal {
 // OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
 std::unique_ptr<IAdapter> CreateFreedesktopNotificationsAdapter();
 #endif
+#ifdef ULTRAMESSAGE_HAVE_GIO
+// OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp
+std::unique_ptr<IAdapter> CreateFreedesktopPresenterAdapter();
+#endif
 #ifdef ULTRAMESSAGE_HAVE_WINRT
 // OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp
 std::unique_ptr<IAdapter> CreateWindowsNotificationListenerAdapter();
+#endif
+#ifdef _WIN32
+// OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp
+std::unique_ptr<IAdapter> CreateWindowsPresenterAdapter();
 #endif
 
 std::vector<std::unique_ptr<IAdapter>> CreateBuiltinAdapters() {
     std::vector<std::unique_ptr<IAdapter>> adapters;
 #ifdef ULTRAMESSAGE_HAVE_GIO
     adapters.push_back(CreateFreedesktopNotificationsAdapter());
+    adapters.push_back(CreateFreedesktopPresenterAdapter());
 #endif
 #ifdef ULTRAMESSAGE_HAVE_WINRT
     adapters.push_back(CreateWindowsNotificationListenerAdapter());
+#endif
+#ifdef _WIN32
+    adapters.push_back(CreateWindowsPresenterAdapter());
 #endif
     return adapters;
 }
@@ -97,6 +113,55 @@ std::string CategoryForAppKind(AppKind kind) {
         case AppKind::Unknown: break;
     }
     return "";
+}
+
+// ---------------------------------------------------------------------------
+// What the presenters showed
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct PresentedEntry {
+    std::string title;
+    std::string text;
+    std::chrono::steady_clock::time_point at;
+};
+
+constexpr auto kPresentedMemory = std::chrono::minutes(5);
+constexpr size_t kPresentedMax = 64;
+
+std::mutex& PresentedMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::deque<PresentedEntry>& PresentedEntries() {
+    static std::deque<PresentedEntry> entries;
+    return entries;
+}
+
+void ForgetOldPresentedLocked(std::chrono::steady_clock::time_point now) {
+    auto& entries = PresentedEntries();
+    while (!entries.empty() && (now - entries.front().at > kPresentedMemory || entries.size() > kPresentedMax))
+        entries.pop_front();
+}
+
+} // namespace
+
+void NotePresented(const std::string& title, const std::string& text) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(PresentedMutex());
+    PresentedEntries().push_back({title, text, now});
+    ForgetOldPresentedLocked(now);
+}
+
+bool WasPresented(const std::string& title, const std::string& text) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(PresentedMutex());
+    ForgetOldPresentedLocked(now);
+    for (const auto& entry : PresentedEntries())
+        if (entry.title == title && entry.text == text) return true;
+    return false;
 }
 
 std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,

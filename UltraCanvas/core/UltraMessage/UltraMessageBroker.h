@@ -73,6 +73,7 @@ private:
     void StartAdapters();
     void StopAdapters();
     void DispatchAction(const UltraMsgMessage& message);
+    void DispatchPresent(const UltraMsgMessage& message);
     AdapterSlot* FindAdapterLocked(const std::string& name);
 
     struct Subscription {

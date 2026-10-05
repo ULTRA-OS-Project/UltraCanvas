@@ -10,21 +10,23 @@
 // counts: how old it may be, and whether only people written to), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
-// Privacy > Sender icons (whether the known senders' icons are downloaded)
-// and Display > Links (a link's address in the status bar or in a tooltip).
+// Privacy > Sender icons (whether the known senders' icons are downloaded),
+// Display > Links (a link's address in the status bar or in a tooltip) and
+// Display > Notifications (a notification on screen when new mail arrives).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.5.0 - Display > Notifications: new mail on screen, or not
 // Version: 1.4.0 - Reading > Waiting for reply: which unanswered mail counts
 //                  (its age, only people written to)
 // Version: 1.3.0 - Display > Links: a link's address in the status bar or a tooltip
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -85,6 +87,7 @@ namespace {
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
+    constexpr const char* kPageNotify      = "display/notifications";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
@@ -153,6 +156,9 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
         std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
         UltraCanvasRadioGroup             linksGroup;
+
+        // Display > Notifications
+        std::shared_ptr<UltraCanvasCheckbox> notifyBox;
 
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
@@ -353,6 +359,7 @@ namespace {
         if (d->linksStatusRadio)
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
+        if (d->notifyBox) d->notifyBox->SetChecked(p.notifyNewMail);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
@@ -727,6 +734,42 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > NOTIFICATIONS =====
+    std::shared_ptr<UltraCanvasContainer> BuildNotificationsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-notify", "Notifications",
+                "When new mail arrives while UltraMail runs:");
+
+        d->notifyBox = MakeCheckbox("um-set-notify-new-mail",
+                "Show a notification on the screen", d->prefs->notifyNewMail,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->notifyNewMail = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->notifyBox);
+
+        d->resets[kPageNotify] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->notifyNewMail = true;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-notify-note1",
+                "The notification names the sender and the subject - or counts "
+                "the messages when several came at once - and a click on it "
+                "brings UltraMail to the front with the mail open.");
+        AddNote(parts, "um-set-notify-note2",
+                "It goes out through UltraMessage, the desktop's message "
+                "channel, and the desktop's own notification service shows it "
+                "like any other program's: its look, its sound and do-not-disturb "
+                "are set there.");
+        AddNote(parts, "um-set-notify-note3",
+                "Mail you have already read elsewhere, and the first download of "
+                "a new account, raise no notification.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
@@ -741,7 +784,8 @@ namespace {
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
-                "as a tooltip.");
+                "as a tooltip, and whether new mail shows a notification on the "
+                "screen.");
         AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
@@ -834,6 +878,7 @@ namespace {
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
+        AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -851,6 +896,7 @@ namespace {
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
+        AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 

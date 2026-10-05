@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.13.0 - OpenMessage: one message on screen (a click on the new-mail notification)
 // Version: 0.12.0 - folder names by the server's separator (UltraMailFolderNames)
 // Version: 0.11.0 - the list sorts by the column header clicked (SetSort,
 //                   onSortChanged); a list fills in one go and paints before
@@ -83,6 +84,11 @@ public:
     void ShowFolder(const std::string& accountId, const std::string& folder);
     // Re-query the current account/folder (after a sync or a flag change).
     void Reload();
+    // One message on screen as a click on its row would put it: its account
+    // and folder shown, the row selected and scrolled to, the message opened
+    // (and so read). False when the list does not hold it - gone from the
+    // server, or hidden by the search or a filter; the folder is shown anyway.
+    bool OpenMessage(const std::string& accountId, const std::string& folder, int64_t uid);
 
     // Append freshly-synced messages to the list as their headers arrive, so a
     // large mailbox fills in instead of looking hung. No-op unless the batch is

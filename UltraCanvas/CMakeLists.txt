@@ -2839,7 +2839,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_GIO_FOUND)
             set(_um_gio_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp)
         endif()
     endif()
     # The Windows notification listener adapter reads the Action Center
@@ -2847,6 +2848,10 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     # package or the Windows SDK). Skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
+        # The presenter puts applications' notifications on screen as tray
+        # balloons (Shell_NotifyIconW), which every Windows build has.
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
         set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
         if(MSVC)
@@ -2888,6 +2893,9 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PRIVATE uc-yyjson)
     endif()
     target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    if(WIN32)
+        target_link_libraries(UltraMessage PUBLIC shell32 user32)
+    endif()
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
         # itself and takes gio and the switch from this target.
@@ -2895,7 +2903,7 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
         target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
-        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter and presenter via gio ${UM_GIO_VERSION})")
     elseif(_um_winrt_found)
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
         if(MSVC)
@@ -2906,9 +2914,9 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             # ole32, BSTRs in oleaut32.
             target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()

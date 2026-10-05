@@ -4,6 +4,7 @@
 // replace rules; and, on a private bus, the element receiving live messages,
 // reading the journal, and posting feed.read / feed.dismissed /
 // system.notification.action back for the sources.
+// Version: 0.1.1 - a NoJournal notice makes no row
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -246,6 +247,14 @@ TEST(message_center_mirrors_and_replacements_keep_one_row) {
     // The same id again replaces in place.
     center->Ingest(Message("p2", UltraMsgTopics::SystemNotification,
                            Toast("Downloads", "org.ultraos.filer", "Download done", ""), now - 100));
+    REQUIRE_EQ(center->GetEntries().size(), size_t(2));
+
+    // A passing alert the journal never holds (UltraMail's "new mail",
+    // whose messages are rows already) is no row: the feed lists only what
+    // it can find again.
+    center->Ingest(Message("a1", UltraMsgTopics::SystemNotification,
+                           Toast("UltraMail", "org.ultraos.ultramail", "2 new messages", ""), now - 50, false, "",
+                           UltraMsgFlag_NoJournal));
     REQUIRE_EQ(center->GetEntries().size(), size_t(2));
 }
 
