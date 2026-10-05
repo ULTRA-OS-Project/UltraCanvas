@@ -1382,11 +1382,17 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::OnEvent(const UCEvent& event) {
-        if (IsDisabled() || !IsVisible()) return false;
+        // FocusLost always gets through, so a hidden or disabled area releases
+        // the shared caret (see UltraCanvasTextInput::OnEvent).
+        if ((IsDisabled() || !IsVisible()) && event.type != UCEventType::FocusLost) return false;
 
         // A display-only area never consumes keys: it cannot hold the focus, and
         // returning false leaves them to the hosting widget.
         if (displayOnly && event.IsKeyboardEvent()) return false;
+
+        // The host sees the key first (onBeforeKeyDown in the header).
+        if (event.type == UCEventType::KeyDown && onBeforeKeyDown && onBeforeKeyDown(event))
+            return true;
 
         // Hex mode delegates to its own handlers
         if (editingMode == TextAreaEditingMode::Hex) {

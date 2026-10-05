@@ -1,0 +1,49 @@
+{
+  "$comment": "The libraries the macOS apps link and package-macos.sh bundles, built for the triplets in ./triplets (MacOS/deps/README.md).",
+  "name": "ultracanvas-macos-deps",
+  "version": "1",
+  "dependencies": [
+    { "$comment": "Headers the vendored libcdr (UltraCanvas/third_party/libcdr) includes.", "name": "boost-algorithm" },
+    "boost-optional",
+    "boost-property-tree",
+    "boost-spirit",
+    "c-ares",
+    "cairo",
+    "fmt",
+    "fontconfig",
+    "freetype",
+    "glib",
+    { "name": "harfbuzz", "features": [ "coretext", "glib" ] },
+    "icu",
+    "lcms",
+    "leptonica",
+    "libarchive",
+    "libflac",
+    "libogg",
+    "libopusenc",
+    "librevenge",
+    "libsodium",
+    {
+      "$comment": "The formats Homebrew's vips linked in (its loadable modules never reached the bundles), less cgif, libimagequant and libultrahdr, which vcpkg does not have; the apps write GIF themselves when gifsave is missing.",
+      "name": "libvips",
+      "features": [
+        "analyze", "archive", "cfitsio", "cplusplus", "deprecated", "exif", "fftw", "fontconfig",
+        "highway", "jpeg", "lcms", "matio", "nsgif", "openexr", "openjpeg", "pangocairo", "png",
+        "ppm", "radiance", "raw", "rsvg", "tiff", "webp", "zlib"
+      ]
+    },
+    "libvorbis",
+    "lz4",
+    "mp3lame",
+    "mupdf",
+    "opus",
+    "opusfile",
+    "pango",
+    "sqlite3",
+    "tesseract",
+    "tinyxml2",
+    "zbar",
+    "zlib",
+    "zstd"
+  ]
+}

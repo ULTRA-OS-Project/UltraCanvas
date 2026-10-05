@@ -133,9 +133,17 @@ void UltraAIChatDialog::CreateChatDialog() {
     input_ = std::make_shared<UltraCanvasTextArea>("chat-input", 0, 0, 0, 90);
     input_->SetEditingMode(TextAreaEditingMode::PlainText);   // plain text, not markdown
     input_->SetWordWrap(true);
-    input_->SetPlaceholder("Type a message...");
+    input_->SetPlaceholder("Type a message...  (Enter sends, Shift+Enter for a new line)");
     input_->size.height = Dimension::Px(90);
     input_->layoutItem.SetFlexShrink(0);
+    // Enter sends, Shift+Enter starts a new line - the text area hands the key
+    // to onBeforeKeyDown before it would insert the line break.
+    input_->onBeforeKeyDown = [this](const UCEvent& e) {
+        const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
+        if (!enter || e.shift) return false;
+        OnSend();   // ignores the key while a reply is still on its way
+        return true;
+    };
     AddChild(input_);
 
     // ===== Pinned action row =====

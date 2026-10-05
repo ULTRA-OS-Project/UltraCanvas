@@ -30,6 +30,9 @@ endif()
 # second include a no-op); the include here keeps a standalone library configure
 # working.
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasVersion.cmake")
+# Where the macOS dependency libraries are (Homebrew's, or CI's vcpkg prefix);
+# a no-op include when the root CMakeLists.txt already did it.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasMacOSDeps.cmake")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -636,6 +639,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceDnsSd.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCL.cpp
         # IPP driverless printing: the encoding and the page format are pure
@@ -1892,8 +1896,8 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # add_subdirectory(Apps/...), so apps like UltraMail never saw it (linker:
     # "library 'cairo' not found"). Attach the dirs to the TARGET (PUBLIC) so
     # they propagate through usage requirements exactly like the -l flags do.
-    execute_process(COMMAND brew --prefix
-        OUTPUT_VARIABLE _uc_hb_prefix OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(_uc_hb_prefix "${ULTRACANVAS_MACOS_DEPS_PREFIX}")
+    ultracanvas_macos_dep_prefix(vips _uc_vips_prefix)
     target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}
@@ -1905,7 +1909,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${LIBRSVG_LIBRARY_DIRS}
             ${ZBAR_LIBRARY_DIRS}
             ${_uc_hb_prefix}/lib
-            ${_uc_hb_prefix}/opt/vips/lib
+            ${_uc_vips_prefix}/lib
     )
 endif()
 
@@ -2948,10 +2952,9 @@ if(ULTRACANVAS_PLUGIN_CDR)
     if(APPLE)
         # Homebrew's ICU is keg-only: without its pkgconfig dir, libcdr's .pc
         # (which requires icu-i18n) and the ICU check below both fail, and the
-        # plugin was silently disabled on every macOS build.
-        execute_process(COMMAND brew --prefix icu4c
-                        OUTPUT_VARIABLE CDR_ICU_HOMEBREW_PREFIX
-                        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        # plugin was silently disabled on every macOS build. (In CI's vcpkg
+        # prefix ICU is in the prefix itself, which is already searched.)
+        ultracanvas_macos_dep_prefix(icu4c CDR_ICU_HOMEBREW_PREFIX)
         if(CDR_ICU_HOMEBREW_PREFIX AND EXISTS "${CDR_ICU_HOMEBREW_PREFIX}/lib/pkgconfig")
             set(ENV{PKG_CONFIG_PATH} "${CDR_ICU_HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
         endif()
@@ -2964,7 +2967,7 @@ if(ULTRACANVAS_PLUGIN_CDR)
         pkg_check_modules(CDR_DEP_LCMS2 lcms2)
         pkg_check_modules(CDR_DEP_ICU icu-uc icu-i18n)
         find_path(CDR_DEP_BOOST boost/optional.hpp
-                  HINTS "$ENV{HOMEBREW_PREFIX}/include" /opt/homebrew/include /usr/local/include)
+                  HINTS "${ULTRACANVAS_MACOS_DEPS_PREFIX}/include" "$ENV{HOMEBREW_PREFIX}/include" /opt/homebrew/include /usr/local/include)
         if(CDR_DEP_LCMS2_FOUND AND CDR_DEP_ICU_FOUND AND CDR_DEP_BOOST)
             set(ULTRACANVAS_CDR_VENDORABLE TRUE)
         endif()
@@ -3296,10 +3299,7 @@ if(ULTRACANVAS_PLUGIN_LATEX)
     # on the path. The core lib gets this incidentally from libvips' include dirs;
     # this MODULE doesn't link the (static) core on macOS, so add it explicitly.
     if(APPLE)
-        execute_process(COMMAND brew --prefix
-            OUTPUT_VARIABLE _uc_brew_prefix
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
-        target_include_directories(UltraCanvasLaTeX PRIVATE ${_uc_brew_prefix}/include)
+        target_include_directories(UltraCanvasLaTeX PRIVATE ${ULTRACANVAS_MACOS_DEPS_PREFIX}/include)
     endif()
     target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
     if(ULTRACANVAS_LATEX_ENGINE STREQUAL "microtex")

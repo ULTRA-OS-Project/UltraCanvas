@@ -1001,7 +1001,9 @@ the backing implementation can be replaced without affecting callers.
     `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
     sends a document the printer renders as it is and draws text and images
     as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
-    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested. Both
+    backends take a device's display name out of its DNS-SD service name
+    through `...DnsSd.h`.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
@@ -2728,7 +2730,14 @@ component the libraries are listed per platform (Linux / macOS / Windows).
 
 Source of truth: every `CMakeLists.txt` (root, `UltraCanvas/`,
 `Plugins/Vector/{CDR,XAR}`) plus the third-party `#include`s across the source
-tree. Mirrors the in-app table at
+tree.
+
+**Where the macOS libraries come from.** A local macOS build uses Homebrew's.
+The macOS apps CI publishes bundle the same libraries built with vcpkg for the
+oldest supported macOS (14.0) instead, because Homebrew's carry the macOS of
+the machine that built them: the manifest, triplets and the ports vcpkg lacks
+(MuPDF, zbar, librevenge, and libvips' extra formats) are in `MacOS/deps/`,
+built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-app table at
 **Dependencies & Third Party → Dependencies & Third Party**
 (`Apps/DemoApp/UltraCanvasDependenciesExamples.cpp`).
 
@@ -3299,7 +3308,7 @@ is the only place the whole framework is compiled for everyone:
 | Leg | Platform | What it also does |
 |---|---|---|
 | ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-latest, macos-15-intel | Apple Silicon and Intel | packages the app bundle; signs and notarises on `main` |
+| macos-15, macos-15-intel | Apple Silicon and Intel | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
 | windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
 | Android backend check | syntax check against the NDK | — |
 
@@ -3513,8 +3522,10 @@ brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
 ```
 
 Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
-directory itself. The complete list is the *Install dependencies (macOS)* step
-in `.github/workflows/build.yml`.
+directory itself. Apps built this way run on the macOS you build on and newer.
+CI builds the same libraries with vcpkg instead, for macOS 14 and newer, from
+the list in `MacOS/deps/vcpkg.json`; `MacOS/deps/README.md` shows how to do
+that locally (`scripts/macos-deps.sh`).
 
 </details>
 
@@ -3979,6 +3990,18 @@ keychain and the notarisation credentials the script names. CI runs it only on
 pushes to `main`; pull requests get the unsigned bundle.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
+
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the libraries in the suite's shared `Frameworks/`: macOS refuses to
+load a library built for a newer version than its own. Homebrew builds its
+libraries for the macOS of the machine that built them, so a suite you package
+from Homebrew runs on the macOS you built it on and newer. The suite CI
+publishes runs on **macOS 14 and later**: CI builds the libraries with vcpkg
+for `MACOSX_DEPLOYMENT_TARGET=14.0` (`MacOS/deps/README.md`) and passes their
+prefix as `UC_MACOS_DEPS_PREFIX`. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
 
 </details>
 
@@ -55255,6 +55278,24 @@ std::function<bool(const UCEvent&)> onContextMenu;
 // Called with the exact text about to be spell checked, so content-dependent
 // options can be rebuilt. See Spell Checking below.
 std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
+
+// Every KeyDown, before the area handles it (any editing mode, read-only too).
+// Return true to consume the key; false lets the area edit as usual.
+std::function<bool(const UCEvent&)> onBeforeKeyDown;
+```
+
+`onBeforeKeyDown` gives a key a meaning of its own without reimplementing the
+editor. A chat box that sends on Enter and starts a new line on Shift+Enter:
+
+```cpp
+auto message = std::make_shared<UltraCanvasTextArea>("chat-message", 0, 0, 400, 72);
+message->SetWordWrap(true);
+message->onBeforeKeyDown = [](const UCEvent& e) {
+    const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
+    if (!enter || e.shift) return false;   // Shift+Enter: the area inserts the line break
+    SendChatText();                        // your own send function
+    return true;                           // consumed: no line break
+};
 ```
 
 `IsPositionInsideSelection(const Point2Di&)` answers whether an element-local
@@ -65818,7 +65859,8 @@ instance name, which is unique on the network, rather than `ty`, which two
 printers of one model share. The mDNS plugin reports the *full* service name
 ("Office Printer._ipp._tcp.local"), readable from Avahi and Win32 and escaped
 from Bonjour, so the instance is cut out of it and unescaped
-(`IppInstanceFromServiceName`) before it is shown or compared.
+(`IppInstanceFromServiceName`, over the shared `DnsSdInstanceName` in
+`UltraCanvasIODeviceDnsSd.h`) before it is shown or compared.
 
 **A printer offering both is reached over plain IPP.** Printers' certificates
 are self-signed in all but a few cases, and UltraNet's rule is that TLS
@@ -66132,6 +66174,16 @@ TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
 it does for IPP printers: the certificate is self-signed in all but a few
 cases, and TLS verification stays on.
 
+A scanner is shown by its DNS-SD instance name, as an IPP printer is: it is
+unique on the network, where the model (`ty`) is shared by every scanner of
+that model, so two of them used to look identical. The model stays in
+`model`, and is the name only when the instance name is empty. The mDNS
+plugin reports the full service name, so the instance is cut out of it
+(`EsclInstanceFromServiceName`); used whole, it read
+"Office Scanner._uscan._tcp.local" - and on macOS, where Bonjour leaves the
+name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
+the `mdns-name` attribute.
+
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
 
@@ -66278,7 +66330,7 @@ backend now exist; the other four protocols do not.
 | ICA (macOS) | ❌ |
 | **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
 | eSCL: discovery on Windows | ✅ `Plugins/UltraNet/mdns` browses with `DnsServiceBrowse` and resolves each instance with `DnsServiceResolve`, so a Windows browse now yields host, port and TXT like the Avahi and Bonjour backends. The entry points are bound at run time, so on Windows older than 10 1703 the module still loads and falls back to the PTR-only query — names without addresses, which a caller skips. **Not yet run on Windows**: the name arithmetic is tested (`Tests/MdnsNamesTest`) and the translation unit compiles and links against `dnsapi`, but nobody has browsed a real network with it. Naming a scanner in `ULTRACANVAS_ESCL_SCANNERS` remains the way to reach one on another subnet. |
-| mDNS: `dn` differs between backends | ❌ every backend puts the *full* service name in `dn` ("Office Printer._ipp._tcp.local"), not the instance alone - checked on Avahi against a live advertisement - but Avahi and the Windows backend give it readable while Bonjour passes through the escaped `fullname` it is given. The IPP backend copes with both (`IppInstanceFromServiceName`); eSCL still shows `dn` whole as its fallback name. `Mdns::SplitInstanceName` is what a backend-neutral fix would use. |
+| mDNS: `dn` differs between backends | ❌ every backend puts the *full* service name in `dn` ("Office Printer._ipp._tcp.local"), not the instance alone - checked on Avahi against a live advertisement - but Avahi and the Windows backend give it readable while Bonjour passes through the escaped `fullname` it is given. Both consumers now cope with both forms through one helper, `DnsSdInstanceName` (`UltraCanvasIODeviceDnsSd.h`): the IPP backend for every printer's name, eSCL for every scanner's name, ahead of its model (`ty`), which two scanners of one model share. A scanner with no `ty` used to be shown as "Office Scanner._uscan._tcp.local" and is now "Office Scanner" (checked on Avahi against a live advertisement). The plugin's own `dn` is unchanged; making it backend-neutral would mean the plugin reporting the instance itself, through `Mdns::SplitInstanceName`, which lives in the plugin and not in the core library. |
 | eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
 | eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. A scanner offering both is reached over `http://`; one offering only `https://` is not reachable yet. |
 | eSCL: one scanner, one entry | ✅ fixed. A scanner advertising both `_uscan._tcp` and `_uscans._tcp` was listed twice, because the device id is its URL and the two differ. It is now recognised by the TXT record's `uuid` (or its host when it has none) and listed once, over plain HTTP, with the TLS address in the `escl-tls-url` attribute. Checked against a scanner advertised both ways over Avahi: two entries before, one after. |
