@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
 // Version: 0.6.0 - list_sort (the message list's order)
 // Version: 0.5.0 - needs_answer_max_age_days, needs_answer_only_written_to
 // Version: 0.4.0 - link_display (status-bar / tooltip)
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -84,6 +86,10 @@ bool Preferences::Load(const std::string& path) {
         }
         if (key == "needs_answer_only_written_to") needsAnswerOnlyWrittenTo = ParseBool(value);
         if (key == "list_sort") listSort = MessageSort::FromString(value);
+        if (key == "check_mail_every_sec") {
+            try { checkMailEverySec = NearestCheckMailChoice(std::stoi(Trim(value))); }
+            catch (...) { /* keeps the default */ }
+        }
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -143,7 +149,33 @@ bool Preferences::Save(const std::string& path) const {
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
     file << "list_sort = " << listSort.ToString() << "\n";
+    file << "check_mail_every_sec = " << checkMailEverySec << "\n";
     return static_cast<bool>(file);
+}
+
+const std::vector<int>& Preferences::CheckMailChoices() {
+    static const std::vector<int> choices = { 20, 30, 40, 50, 60, 120, 180, 240, 300, 600 };
+    return choices;
+}
+
+int Preferences::NearestCheckMailChoice(int seconds) {
+    int best = kDefaultCheckMailSec;
+    long long bestDistance = -1;
+    for (int choice : CheckMailChoices()) {
+        const long long distance = std::llabs(static_cast<long long>(seconds) - choice);
+        if (bestDistance < 0 || distance < bestDistance) {   // the shorter on a tie
+            best = choice;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+std::string Preferences::CheckMailLabel(int seconds) {
+    if (seconds < 60) return std::to_string(seconds) + " seconds";
+    const int minutes = seconds / 60;
+    if (seconds % 60 == 0) return minutes == 1 ? "1 minute" : std::to_string(minutes) + " minutes";
+    return std::to_string(seconds) + " seconds";
 }
 
 std::string Preferences::NormalizeDomain(const std::string& text) {

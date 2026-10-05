@@ -1,9 +1,10 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Reading, Privacy, Display)
+// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display)
 // closed when the window opens, so it opens on the start page that says what
 // they hold.
-// Pages: Reading > Layout (the message beside the list or in its place, and
+// Pages: Mail > New mail (how often every account is checked for new mail),
+// Reading > Layout (the message beside the list or in its place, and
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
 // the message text), Reading > Waiting for reply (which unanswered mail
@@ -18,6 +19,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.5.0 - Mail > New mail: how often new mail is checked (a dropdown,
+//                  20 seconds to 10 minutes)
 // Version: 1.4.0 - Reading > Waiting for reply: which unanswered mail counts
 //                  (its age, only people written to)
 // Version: 1.3.0 - Display > Links: a link's address in the status bar or a tooltip
@@ -33,6 +36,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasChip.h"   // UltraCanvasTagInput
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSpinner.h"
@@ -76,6 +80,8 @@ namespace {
     constexpr int kControlHeight = 22;
 
     // Page ids double as tree node ids.
+    constexpr const char* kPageMail        = "mail";
+    constexpr const char* kPageNewMail     = "mail/new-mail";
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
@@ -116,6 +122,9 @@ namespace {
         std::map<std::string, PageReset>      resets;
         std::shared_ptr<UltraCanvasButton>    restoreButton;
         std::string                           shownPage;
+
+        // Mail > New mail
+        std::shared_ptr<UltraCanvasDropdown> checkMailDropdown;
 
         // Reading > Layout
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
@@ -328,6 +337,13 @@ namespace {
         if (!d || !d->prefs) return;
         const Preferences& p = *d->prefs;
         d->syncing = true;
+        if (d->checkMailDropdown) {
+            const auto& choices = Preferences::CheckMailChoices();
+            for (std::size_t i = 0; i < choices.size(); ++i)
+                if (choices[i] == p.checkMailEverySec)
+                    d->checkMailDropdown->SetSelectedIndex(static_cast<int>(i),
+                                                           /*runNotifications=*/false);
+        }
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
         if (d->treeFitRadio)
@@ -355,6 +371,59 @@ namespace {
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
+    }
+
+    // ===== MAIL > NEW MAIL =====
+    std::shared_ptr<UltraCanvasContainer> BuildNewMailPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-new-mail", "New mail",
+                "How often every account is checked for new mail:");
+
+        auto dropdown = CreateDropdown("um-set-check-mail", 0, 0, 160, kControlHeight + 4);
+        const auto& choices = Preferences::CheckMailChoices();
+        for (int seconds : choices)
+            dropdown->AddItem("Every " + Preferences::CheckMailLabel(seconds),
+                              std::to_string(seconds));
+        {
+            DropdownStyle style = dropdown->GetStyle();
+            style.fontSize = kTextFontSize;
+            // All ten choices at once: the shortest and the longest are the
+            // ones a scrolled list would hide.
+            style.maxVisibleItems = static_cast<int>(choices.size());
+            dropdown->SetStyle(style);
+        }
+        for (std::size_t i = 0; i < choices.size(); ++i)
+            if (choices[i] == d->prefs->checkMailEverySec)
+                dropdown->SetSelectedIndex(static_cast<int>(i), /*runNotifications=*/false);
+        dropdown->onSelectionChanged = [d](int index, const DropdownItem&) {
+            const auto& offered = Preferences::CheckMailChoices();
+            if (!d->prefs || index < 0 || index >= static_cast<int>(offered.size())) return;
+            d->prefs->checkMailEverySec = offered[static_cast<std::size_t>(index)];
+            ApplyAndSave(d);
+        };
+        dropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->checkMailDropdown = dropdown;
+        parts.body->AddChild(dropdown);
+
+        d->resets[kPageNewMail] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->checkMailEverySec = Preferences::kDefaultCheckMailSec;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-new-mail-note1",
+                "Every account is checked in the background at this interval, and "
+                "right after UltraMail starts and the computer wakes up. Update in "
+                "the toolbar checks the account on screen straight away, whatever "
+                "is set here.");
+        AddNote(parts, "um-set-new-mail-note2",
+                "A check that is still running when the next one is due is left "
+                "to finish - an account is never checked twice at once.");
+        AddNote(parts, "um-set-new-mail-note3",
+                "A short interval signs in to the server more often. Some "
+                "providers limit how often that may happen; if an account starts "
+                "to report sign-in errors, choose a longer interval.");
+        return parts.page;
     }
 
     // ===== READING > LAYOUT =====
@@ -731,6 +800,8 @@ namespace {
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
+        AddNote(parts, "um-set-start-note0",
+                "Mail - how often every account is checked for new mail.");
         AddNote(parts, "um-set-start-note1",
                 "Reading - where a message opens, how wide the folder list is, "
                 "whether HTML mail is shown formatted or as plain text, the size "
@@ -825,6 +896,8 @@ namespace {
         rootData.nodeId = "settings";
         rootData.text = "Settings";
         d->tree->SetRootNode(rootData);
+        AddTreeNode(d, "settings", kPageMail, "Mail");
+        AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, "settings", kPageReading, "Reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
@@ -845,6 +918,7 @@ namespace {
         d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
         content->AddChild(d->pageArea);
 
+        AddPage(d, kPageNewMail, BuildNewMailPage(d));
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));

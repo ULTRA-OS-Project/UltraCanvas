@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.24 - how often new mail is checked comes from Settings > Mail > New
+//                   mail (20 seconds to 10 minutes); an account still syncing is
+//                   not synced a second time beside it
 // Version: 0.9.23 - the senders of a sync's new mail go into the address book in one
 //                   transaction (CollectSenders), not a search and a commit each
 // Version: 0.9.22 - recipient suggestions ranked by how often - and how lately - each
@@ -108,6 +111,10 @@ constexpr int   kActionIcon    = 12;
 // The first fetch after start waits this long, so the main window is painted
 // (with the cached mail) before the network work begins.
 constexpr unsigned int kStartupSyncDelayMs = 400;
+// How often the background sync asks the scheduler which accounts are due:
+// the shortest interval offered is 20 seconds, so a tick of a few seconds
+// keeps every choice on time without a timer per account.
+constexpr unsigned int kSyncTickMs = 5000;
 // After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
 // seconds to reconnect, and a check before that would only report "offline".
 constexpr unsigned int kWakeSyncDelayMs = 5000;
@@ -737,7 +744,9 @@ void UltraMailApp::UpdateConnectionIndicator() {
             tip.AddText("Update contacts the server now.");
             break;
         default:
-            tip.AddText("Mail is checked every five minutes; Update checks now.");
+            tip.AddText("Mail is checked every " +
+                        Preferences::CheckMailLabel(prefs_.checkMailEverySec) +
+                        "; Update checks now.");
             break;
     }
     connectionBadge_->SetTooltipContent(tip);
@@ -1873,17 +1882,19 @@ void UltraMailApp::StartBackgroundSync() {
     for (const auto& a : accounts_) {
         DiscoveryResult d = SettingsFor(a);
         std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
-        scheduler_.SetAccount(a.accountId, url, /*intervalSec=*/300);
+        scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
     }
     // Only run the live loop when the IMAP plug-in is present (otherwise a timer
-    // would just fire against nothing), and only one of it.
+    // would just fire against nothing), and only one of it. It ticks every few
+    // seconds; the scheduler says which accounts are due at the interval
+    // chosen in Settings, so a new choice applies at the next tick.
     if (syncTimerStarted_ || !ImapPlugin()) return;
     if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
-        app->StartTimer(300000, /*periodic=*/true,
+        app->StartTimer(kSyncTickMs, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
         syncTimerStarted_ = true;
-        // The five-minute timer cannot tell a wake from sleep: after one it may
-        // be minutes before it fires. This short one can (see WakeDetector).
+        // The sync timer cannot tell a wake from sleep: due accounts look the
+        // same either way. This one can (see WakeDetector).
         wake_.Tick(static_cast<int64_t>(std::time(nullptr)));   // start its clock
         app->StartTimer(static_cast<unsigned int>(wake_.TickSec() * 1000), /*periodic=*/true,
                         [this](UltraCanvas::TimerId) {
@@ -1891,6 +1902,17 @@ void UltraMailApp::StartBackgroundSync() {
                                 OnWokeFromSleep();
                         });
     }
+}
+
+void UltraMailApp::ApplyCheckMailInterval() {
+    // SetAccount keeps each account's last-sync time: a shorter interval makes
+    // an account due at once if it has waited that long already.
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = SettingsFor(a);
+        std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
+    }
+    UpdateConnectionIndicator();   // its tooltip says how often
 }
 
 void UltraMailApp::OnWokeFromSleep() {
@@ -2120,6 +2142,8 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
 
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     for (const auto& acc : targets) {
+        // Still syncing from the last check: it brings what this one would.
+        if (accountSyncsInFlight_.count(acc.accountId)) continue;
         const Account* account = nullptr;
         for (const auto& a : accounts_) if (a.accountId == acc.accountId) account = &a;
         const std::string email = account ? account->email : "";
@@ -2155,6 +2179,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
 
         auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
         const std::string aid = acc.accountId;
+        accountSyncsInFlight_.insert(aid);
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
         SetStatus("Checking " + who + "…");
         NoteConnection(aid, ConnectionState::Checking);
@@ -2192,6 +2217,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             if (!app) return;
             app->PostToUIThread([this, aid, who, provider, userInitiated, outcome, credCode,
                                  arrived]() {
+                accountSyncsInFlight_.erase(aid);
                 const bool last = (--syncsInFlight_ <= 0);
                 if (last) {
                     syncsInFlight_ = 0;
@@ -3011,6 +3037,7 @@ void UltraMailApp::OpenSettings() {
                                      prefs_.folderTreeWidth);
         senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
         ApplyLinkDisplay();
+        ApplyCheckMailInterval();
         // New waiting-for-reply rules: the account bar's count and the list's
         // reply marks are worked out again.
         if (ApplyNeedsAnswerRules()) Refresh();

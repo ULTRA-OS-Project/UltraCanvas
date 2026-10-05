@@ -157,8 +157,9 @@ Apps/UltraMail/
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
-                                  UltraFiler): Reading > Layout / Messages,
-                                  Privacy > Images / Sender icons
+                                  UltraFiler): Mail > New mail, Reading >
+                                  Layout / Messages, Privacy > Images /
+                                  Sender icons
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -169,6 +170,12 @@ its top-right corner) opens the Settings window, built like UltraFiler's (page t
 each page, *Restore default* in the bottom bar). Changes apply and are saved
 (`preferences.ini` in the data folder) at once:
 
+- *Mail > New mail* — how often every account is checked for new mail: a
+  dropdown from every 20 seconds to every 10 minutes (20, 30, 40, 50 seconds,
+  1-5 minutes, 10 minutes; the default is 5 minutes). The sync timer ticks
+  every few seconds and the scheduler starts the accounts that are due, so a
+  new choice applies at once; an account still syncing from the last check is
+  not synced a second time beside it.
 - *Reading > Layout* — a message opens beside the list or in its place.
 - *Reading > Messages* — HTML mail formatted or as plain text (nothing
   fetched); the message text size (11 / 12 / 14 / 16 px).

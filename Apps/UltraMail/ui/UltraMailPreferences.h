@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.8.0 - how often new mail is checked (check_mail_every_sec, Settings >
+//                  Mail > New mail)
 // Version: 0.7.0 - the message list's order (list_sort), chosen in its column headers
 // Version: 0.6.0 - waiting-for-reply rules (its age, only people written to)
 // Version: 0.5.0 - link display: the status bar or a tooltip (Settings > Display > Links)
@@ -18,6 +20,7 @@
 
 #include <set>
 #include <string>
+#include <vector>
 
 namespace UltraMail {
 
@@ -94,6 +97,19 @@ struct Preferences {
     // The message list's order: the column header last clicked, and which
     // way round. Newest first until one is clicked.
     MessageSort listSort;
+
+    // Settings > Mail > New mail: how often every account is checked for new
+    // mail, in seconds - one of CheckMailChoices().
+    static constexpr int kDefaultCheckMailSec = 300;
+    int checkMailEverySec = kDefaultCheckMailSec;
+    // The intervals offered: 20, 30, 40 and 50 seconds, 1 to 5 minutes, 10
+    // minutes - shortest first.
+    static const std::vector<int>& CheckMailChoices();
+    // The offered interval nearest to `seconds`: a file edited by hand may
+    // hold any number, and the dropdown shows only the choices.
+    static int NearestCheckMailChoice(int seconds);
+    // "20 seconds", "1 minute", "10 minutes".
+    static std::string CheckMailLabel(int seconds);
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

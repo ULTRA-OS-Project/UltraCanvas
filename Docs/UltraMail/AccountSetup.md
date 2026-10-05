@@ -28,7 +28,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page; come
    back to UltraMail when it says you are done.
 6. The inbox is fetched right away. Later, every account is synced every
-   five minutes, and **Update** (the download icon) fetches the account on screen now.
+   five minutes - or as often as *Settings > Mail > New mail* says, from every
+   20 seconds to every 10 minutes - and **Update** (the download icon) fetches
+   the account on screen now.
 
 The three ways in:
 

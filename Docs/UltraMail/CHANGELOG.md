@@ -18,6 +18,17 @@
 - **The address book is in WAL mode**, as the mail index has been since
   0.10.21: a saved contact no longer creates, flushes and deletes a journal
   file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+- **How often new mail is checked is a setting**: *Settings > Mail > New
+  mail* offers every 20, 30, 40 or 50 seconds, every 1, 2, 3, 4 or 5 minutes
+  and every 10 minutes (the default stays 5 minutes). It applies as soon as it
+  is chosen - the sync timer now ticks every five seconds and the scheduler
+  starts the accounts that are due - and the connection's tooltip says the
+  interval. An account whose last check is still running when the next falls
+  due is not checked a second time beside it, which a short interval and a
+  slow server or a first download would otherwise do. Stored as
+  `check_mail_every_sec` in `preferences.ini`; a number edited in by hand is
+  read as the nearest choice. Tests: `test_preferences.cpp`,
+  `test_scheduler.cpp`.
 - **A new account's mail arrives fifteen times faster**: the IMAP plug-in
   now fetches headers and bodies in batches instead of one message at a time
   (about a second a message on Windows before). See the framework changelog,
