@@ -116,6 +116,12 @@ Apps/UltraMail/
                                   OfflineGrace holds back a not-yet-online failure
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
+    UltraMailFeedPublisher.{h,cpp} UltraMail on UltraMessage: new mail to the
+                                  desktop feed (mail.message), and Notify - the
+                                  new-mail notification on screen, its click
+    UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
+                                  highest UID before the sync) and the
+                                  notification's words
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
@@ -158,7 +164,8 @@ Apps/UltraMail/
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
                                   UltraFiler): Reading > Layout / Messages,
-                                  Privacy > Images / Sender icons
+                                  Privacy > Images / Sender icons, Display >
+                                  Links / Notifications
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -179,6 +186,8 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   loads in any mail. Trusted senders are the "Always from <sender>" list. Junk
   and suspicious mail never load pictures by themselves.
 - *Privacy > Sender icons* — whether the known senders' icons are downloaded.
+- *Display > Notifications* — whether new mail puts a notification on the
+  screen (on by default).
 
 An account's servers and sign-in stay in its own *Account Settings*.
 

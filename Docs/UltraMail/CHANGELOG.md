@@ -1,3 +1,27 @@
+#### 2026-10-05 *0.10.31*
+- **New mail shows a notification on the screen.** When a sync brings new
+  mail into an inbox, UltraMail posts one notification through UltraMessage,
+  the desktop's message channel, and the desktop's own notification service
+  draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
+  Action Center on Windows - with its look, its sound and do-not-disturb. One
+  message names its sender and subject ("New mail from Ada Lovelace" / "The
+  engine notes"); several are counted, with the newest three listed ("3 new
+  messages": "Grace: Moth" ...). With more than one account it says which.
+  A click on it brings UltraMail to the front with the message open - or the
+  account's inbox, for several. Until now new mail only reached the desktop's
+  message feed, where nothing showed it on screen.
+  - Only news counts: unread mail the sync stored above the highest UID the
+    inbox held before it. An account's first download, mail already read on
+    another computer, a gap repaired in an old part of the mailbox and an inbox
+    fetched again from scratch raise no notification, and overlapping syncs
+    of one account (a timer sync while the inbox is opened) announce once.
+  - The notification is not added to the desktop's message centre: each
+    message is listed there already.
+  - Settings > Display > Notifications switches it off.
+  - Needs the framework's UltraMessage presenters (the change pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md`); macOS has no
+    presenter yet, so there the notification reaches the feed only.
+
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its
   mail as stored at once - the list first, the message beside it a moment
