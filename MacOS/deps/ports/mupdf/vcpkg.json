@@ -1,6 +1,7 @@
 {
   "name": "mupdf",
   "version": "1.28.5",
+  "port-version": 1,
   "description": "MuPDF document rendering library (PDF, XPS, EPUB, CBZ, ...), as a shared library built against vcpkg's libraries.",
   "homepage": "https://mupdf.com",
   "license": "AGPL-3.0-or-later",
