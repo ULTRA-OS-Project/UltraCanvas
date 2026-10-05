@@ -485,6 +485,28 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT ACCESSIBILITY TEST =====
+# A text field tells assistive technology it is one, and a password field that
+# its content is a secret (UI Automation IsPassword, AT-SPI password text).
+# Headless - no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputAccessibilityTest...")
+    add_executable(TextInputAccessibilityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputAccessibilityTest.cpp
+    )
+    target_include_directories(TextInputAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputAccessibilityTest COMMAND TextInputAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputAccessibilityTest")
+else()
+    message(STATUS "  TextInputAccessibilityTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.

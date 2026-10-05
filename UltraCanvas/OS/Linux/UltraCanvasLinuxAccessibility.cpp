@@ -53,7 +53,8 @@ constexpr const char* kObjectPrefix = "/org/a11y/atspi/accessible";
 
 enum Role : uint32_t {
     RoleCheckBox = 7, RoleFiller = 20, RoleFrame = 23, RoleImage = 27, RoleLabel = 29, RoleList = 31,
-    RoleListItem = 32, RoleMenu = 33, RoleMenuItem = 35, RolePanel = 39, RolePushButton = 43,
+    RoleListItem = 32, RoleMenu = 33, RoleMenuItem = 35, RolePanel = 39, RolePasswordText = 40,
+    RolePushButton = 43,
     RoleTable = 55, RoleText = 61, RoleUnknown = 67, RoleApplication = 75, RoleEntry = 79,
     RoleLink = 88, RoleDocumentText = 94
 };
@@ -257,7 +258,10 @@ uint32_t RoleOf(const Node& node) {
         case AccessibleRole::Button:    return RolePushButton;
         case AccessibleRole::CheckBox:  return RoleCheckBox;
         case AccessibleRole::Label:     return RoleLabel;
-        case AccessibleRole::TextField: return RoleEntry;
+        // AT-SPI has no password state, only a role: Orca then says
+        // "password text" and speaks no character typed into it.
+        case AccessibleRole::TextField:
+            return node.element->IsAccessiblePassword() ? RolePasswordText : RoleEntry;
         case AccessibleRole::TextArea:  return RoleText;
         case AccessibleRole::Document:  return RoleDocumentText;
         case AccessibleRole::List:      return RoleList;
@@ -282,6 +286,7 @@ const char* RoleName(uint32_t role) {
         case RoleCheckBox:     return "check box";
         case RoleLabel:        return "label";
         case RoleEntry:        return "entry";
+        case RolePasswordText: return "password text";
         case RoleText:         return "text";
         case RoleDocumentText: return "document text";
         case RoleList:         return "list";

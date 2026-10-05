@@ -1,16 +1,17 @@
 // Tests/AtspiBridgeTest/AtspiBridgeTestApp.cpp
 // The application side of AtspiBridgeTest: a window holding a rich text
-// editor, published to AT-SPI by the Linux bridge. When an assistive
-// technology moves the caret to offset 8 it types "XY" there, and shortly
-// after deletes it again, so the client can watch both events arrive. Quits
-// after 20 s if nobody stops it.
-// Version: 1.0.0
-// Last Modified: 2026-10-01
+// editor and a password field, published to AT-SPI by the Linux bridge. When
+// an assistive technology moves the caret to offset 8 it types "XY" there, and
+// shortly after deletes it again, so the client can watch both events arrive.
+// Quits after 20 s if nobody stops it.
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextInput.h"
 
 #include <iostream>
 
@@ -22,7 +23,7 @@ int main() {
     WindowConfig config;
     config.title = "Accessibility Test";
     config.width = 600;
-    config.height = 400;
+    config.height = 450;
     auto window = CreateWindow(config);
     window->Show();
 
@@ -30,6 +31,11 @@ int main() {
     window->AddChild(edit);
     edit->SetMarkdown("# Report\n\nHello **bold** world. Second sentence here.\n");
     edit->GetDocument()->metadata.title = "Quarterly Report";
+    // Below the editor: the bridge must call it password text and keep its
+    // content to itself.
+    auto password = CreatePasswordInput("masterPassword", 10, 400, 300, 30);
+    password->SetText("hunter2");
+    window->AddChild(password);
     edit->SetFocus(true);
 
     bool typed = false;

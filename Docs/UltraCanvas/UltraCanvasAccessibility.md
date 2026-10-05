@@ -19,12 +19,22 @@ Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
 std::string name = element->GetAccessibleName();
 IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+bool secret = element->IsAccessiblePassword();        // false by default
 ```
 
-An element describes itself by overriding these three virtuals of
-`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
-`Document`, name the document's title (else the element's identifier), and a
-text interface over the whole document.
+An element describes itself by overriding these virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` does: role `Document`, name
+the document's title (else the element's identifier), and a text interface
+over the whole document. `UltraCanvasTextInput` (and what is built on it) is a
+`TextField`, without a text interface yet.
+
+**Password fields.** `IsAccessiblePassword()` is true for a field whose content
+is a secret - `UltraCanvasTextInput` in password mode, whether or not its text
+is revealed. The bridges report it as a password field (UI Automation's
+`IsPassword`, AT-SPI's *password text* role), so a screen reader says
+"password" and echoes stars instead of the characters typed, and other
+assistive tools leave the content alone. An element that answers true must not
+hand out its text through `GetAccessibleTextInterface()`.
 
 ## Text
 
@@ -94,7 +104,7 @@ registers on the accessibility bus with the registry (`Socket.Embed`) and
 answers there for the application (`Accessible`, `Application`), its windows
 (frames) and its elements (`Accessible`, `Component`, and `Text` for elements
 with text). Roles map to AT-SPI roles (`Document` → document text, `TextField`
-→ entry, `Button` → push button, ...); states include enabled, visible,
+→ entry, or password text for a password field, `Button` → push button, ...); states include enabled, visible,
 showing, focusable, focused, editable or read-only, single/multi-line and, for
 a window, active. Text attributes use the names ATK and Orca read: `weight`,
 `style`, `underline`, `strikethrough`, `text-position`, `family-name`, `size`,
@@ -115,7 +125,7 @@ no thread of its own.
 **UI Automation (Windows)** - `OS/MSWindows/UltraCanvasWindowsAccessibility`.
 Each window answers `WM_GETOBJECT` with a fragment root; every element is a
 fragment (control type, name, automation id = identifier, framework
-"UltraCanvas", enabled, focusable, focused, offscreen, bounds, navigation,
+"UltraCanvas", enabled, focusable, focused, offscreen, is-password, bounds, navigation,
 `SetFocus`, hit testing). An element with text offers the **Text pattern**:
 document, selection and point ranges that move and expand by character,
 format run, word, line, paragraph and document, find text, select, report one
