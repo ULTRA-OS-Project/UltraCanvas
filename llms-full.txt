@@ -62406,12 +62406,44 @@ address belongs to:
 
 ```
 Ladybird crashed: exception 0xC0000005 (ACCESS_VIOLATION) at
-0x00007FFB1C2E4A10 in C:\Windows\System32\ig9icd64.dll.
+0x00007FFB1C2E4A10 (ig9icd64.dll+0x2E4A10) in C:\Windows\System32\ig9icd64.dll.
 Windows 11 (10.0 build 26100)
 ```
 
 A driver, a codec or a third-party DLL in that field means the framework was
 the victim, not the cause.
+
+**Where in our code, and how it got there.** The address alone cannot be
+traced back to a function: a DLL loads at a different address on every start.
+So the line also gives the offset into the module, which is the same on every
+start, and the function — the nearest name in the module's export table.
+`libUltraCanvas.dll` is linked with `WINDOWS_EXPORT_ALL_SYMBOLS`, so every
+function of the framework with external linkage is in that table; for code
+with internal linkage (a lambda, a helper in an anonymous namespace) the name
+is that of the function compiled just before it, which is still the right
+file. On x64 the box and the log then list the call stack, one caller per
+line, walked with the same unwind tables Windows' own exception dispatch uses.
+The shape of it (the names and numbers are made up):
+
+```
+MyApp crashed: exception 0xC0000005 (ACCESS_VIOLATION) at
+0x00007FFB1212C86D (libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D)
+in C:\Apps\MyApp\libUltraCanvas.dll. Windows 11 (10.0 build 26200)
+Call stack:
+  #0 libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D
+  #1 libUltraCanvas.dll+0x12F0A2 UltraCanvas::UltraCanvasExample::OnEvent+0x5B2
+  #2 MyApp.exe+0x1C40
+  #3 kernel32.dll+0x17374 BaseThreadInitThunk+0x14
+  #4 ntdll.dll+0x4CC91 RtlUserThreadStart+0x21
+```
+
+The names are demangled to the qualified name only, without the parameters.
+A frame in a module that exports nothing (an application's `.exe`) has the
+offset alone. A first frame that is a bare address in no module — the
+program called through a freed object — is followed by the caller that made
+that call. The walk stops at a frame it cannot unwind, and is skipped for a
+stack overflow, whose filter runs on what is left of the exhausted stack;
+ARM64 builds name the faulting function without the call stack.
 
 **The crash dump.** The same filter writes a minidump before it shows the
 message box, and the box (and the log line after the crash line) names the
