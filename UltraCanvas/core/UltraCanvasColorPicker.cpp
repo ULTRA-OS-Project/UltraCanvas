@@ -412,7 +412,10 @@ namespace UltraCanvas {
 
         // --- Channel rows ---
         const float labelW = Scaled(18.0f);
-        const float valueW = Scaled(showValueSpinners ? 68.0f : 56.0f);
+        // The < > arrows take 14 px each inside the box (RenderValueBox), so a
+        // box with them is that much wider: the text keeps the 56 px a plain
+        // box gives it and "178.0" / "100.0" are not cut to "17...".
+        const float valueW = Scaled(56.0f) + (showValueSpinners ? 2.0f * Scaled(14.0f) : 0.0f);
         for (int i = 0; i < nRows; ++i) {
             if (!SlidersVisible()) {
                 rowLabelRects[i] = Rect2Df();

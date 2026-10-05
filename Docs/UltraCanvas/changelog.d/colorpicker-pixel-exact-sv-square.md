@@ -19,3 +19,7 @@
   picker, the collapsible-sliders picker with a 256 x 256 pixel-exact SV
   square, and the hue x lightness field with collapsible sliders; the 60 %
   scaled picker moved to the last row.
+- **Colour picker: value boxes with `< >` steppers cut their value to
+  "17...".** The arrows take 14 px each inside the box, but the box was only
+  12 px wider than a plain one, so "178.0" and "100.0" did not fit. A box
+  with steppers is now the plain width plus both arrows.

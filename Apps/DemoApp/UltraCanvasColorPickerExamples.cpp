@@ -31,7 +31,7 @@ namespace UltraCanvas {
 
         // --- Full picker: wheel + swatches + hex + tabs + channel sliders ---
         auto fullLabel = CreateLabel("FullPickerLabel", col1X, row1Y - 25, 300, 20);
-        fullLabel->SetText("Full picker (HSV wheel, hex, HSV/HSL/RGB, alpha)");
+        fullLabel->SetText("Full picker (wheel, hex, HSV/HSL/RGB)");
         fullLabel->SetFontSize(12);
         container->AddChild(fullLabel);
 
@@ -51,7 +51,7 @@ namespace UltraCanvas {
         //     each pixel down one step of value - none skipped, none repeated.
         //     Sized for the expanded sliders, so opening them keeps it exact. ---
         auto collLabel = CreateLabel("CollapsibleVariantLabel", col2X, row1Y - 25, 300, 20);
-        collLabel->SetText("1:1 square, 256 px = 1 px per step • collapsible");
+        collLabel->SetText("256 x 256 square • collapsible sliders");
         collLabel->SetFontSize(12);
         container->AddChild(collLabel);
 
