@@ -485,6 +485,28 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT ACCESSIBILITY TEST =====
+# A text field tells assistive technology it is one, and a password field that
+# its content is a secret (UI Automation IsPassword, AT-SPI password text).
+# Headless - no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputAccessibilityTest...")
+    add_executable(TextInputAccessibilityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputAccessibilityTest.cpp
+    )
+    target_include_directories(TextInputAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputAccessibilityTest COMMAND TextInputAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputAccessibilityTest")
+else()
+    message(STATUS "  TextInputAccessibilityTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.
@@ -1456,7 +1478,9 @@ endif()
 # ===== DIRECTX .X MODEL READER TEST =====
 # The .x reader, and the only suite whose subject is a left-handed format: the
 # winding cases below are what stop a model loading inside out. Needs nothing
-# beyond the standard library, so it is always built.
+# beyond the standard library, so it is always built. The untouched export in
+# Tests/data/3D comes first; the demo copy under media/3D second, so the same
+# run asserts that the copy the demo shows is whole and the right way up.
 message(STATUS "  Building ModelXFileTest...")
 add_executable(ModelXFileTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelXFileTest.cpp
@@ -1480,6 +1504,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 add_test(
     NAME ModelXFileTest
     COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
+                           "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -3086,6 +3111,26 @@ add_test(NAME FilerRemoteCacheTest COMMAND FilerRemoteCacheTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerRemoteCacheTest")
 
+# ===== FILER CONNECTION LOG TEST =====
+# UltraFiler's connection log (Apps/UltraFiler/UltraFilerConnectionLog.h): the
+# sessions the drive worker records, their bounds, and the message log and
+# Markdown error report the log window shows. Header-only and free of
+# UltraCloud, like the cache above.
+message(STATUS "  Building FilerConnectionLogTest...")
+add_executable(FilerConnectionLogTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerConnectionLogTest.cpp
+)
+target_include_directories(FilerConnectionLogTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerConnectionLogTest PRIVATE cxx_std_20)
+set_target_properties(FilerConnectionLogTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerConnectionLogTest COMMAND FilerConnectionLogTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerConnectionLogTest")
+
 # ===== ULTRANET FTP QUOTE TEST =====
 # The commands UltraNet sends to rename, delete and create on an FTP or SFTP
 # server (UltraCanvas/core/UltraNet/UltraNetFtpQuote.h): decoded names, paths
@@ -3312,6 +3357,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DialogEscapeTest")
 else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIALOG CLOSE-ALL TEST =====
+# CloseAllDialogs() cancels every open dialog; it used to erase from the list
+# it was walking and read past its end. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DialogCloseAllTest...")
+    add_executable(DialogCloseAllTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogCloseAllTest.cpp
+    )
+    target_include_directories(DialogCloseAllTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogCloseAllTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogCloseAllTest PRIVATE UltraCanvas)
+    set_target_properties(DialogCloseAllTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogCloseAllTest COMMAND DialogCloseAllTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogCloseAllTest")
+else()
+    message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== UNDECODABLE IMAGE TEST =====
@@ -3840,6 +3906,29 @@ add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: IODeviceScannerESCLTest")
 
+# ===== DEVICE CERTIFICATE TRUST TEST =====
+# Trusting a network scanner's or printer's self-signed certificate on first
+# use: the address a key is kept under, the file it is kept in, forgetting
+# one. Built without UltraNet - the connection side needs a TLS server.
+message(STATUS "  Building IODeviceTlsTrustTest...")
+add_executable(IODeviceTlsTrustTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceTlsTrustTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceTlsTrust.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSettingsFolder.cpp
+)
+target_include_directories(IODeviceTlsTrustTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceTlsTrustTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceTlsTrustTest PROPERTIES
+    OUTPUT_NAME "IODeviceTlsTrustTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODeviceTlsTrustTest COMMAND IODeviceTlsTrustTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODeviceTlsTrustTest")
+
 # ===== IPP DRIVERLESS PRINTING TEST =====
 # The IPP encoding, reading a printer's description, a job's attributes, the
 # pass-through-or-draw decision and the PWG raster writer - everything the IPP
@@ -4249,3 +4338,28 @@ set_target_properties(AudioStreamingTest PROPERTIES
 add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# ===== MEDIA VIEWER TOOLS TEST =====
+# The viewer's second toolbar row offers only what the shown file takes: no
+# colour sliders or Curves for a drawing, a document, a 3D model, video or
+# audio, and a photo's adjustments never tint the drawing browsed to next.
+# Headless - the viewer and its toolbars are built without a window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerToolsTest...")
+    add_executable(MediaViewerToolsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerToolsTest.cpp
+    )
+    target_include_directories(MediaViewerToolsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerToolsTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerToolsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerToolsTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerToolsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerToolsTest COMMAND MediaViewerToolsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerToolsTest")
+else()
+    message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()

@@ -628,7 +628,9 @@ public:
             case UIA_HasKeyboardFocusPropertyId: SetBool(out, element->IsFocused()); break;
             case UIA_IsOffscreenPropertyId: SetBool(out, !element->IsVisible()); break;
             case UIA_IsTextPatternAvailablePropertyId: SetBool(out, text != nullptr); break;
-            case UIA_IsPasswordPropertyId: SetBool(out, false); break;
+            // A client that sees false treats the field as ordinary text: a
+            // screen reader speaks every character typed into it.
+            case UIA_IsPasswordPropertyId: SetBool(out, element->IsAccessiblePassword()); break;
             case UIA_IsControlElementPropertyId:
             case UIA_IsContentElementPropertyId:
                 // Elements that never described themselves and hold nothing

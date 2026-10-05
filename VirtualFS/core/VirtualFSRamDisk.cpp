@@ -170,7 +170,7 @@ VirtualFSResult VirtualFS_UseRamDiskForTemp(const VirtualFSRamDisk& disk) {
         return VirtualFSResult::InvalidArgument;
     }
     std::error_code ec;
-    if (!std::filesystem::is_directory(disk.mountPath, ec)) {
+    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(disk.mountPath), ec)) {
         return VirtualFSResult::NotFound;
     }
     VirtualFS_SetTempDirectory(disk.mountPath);

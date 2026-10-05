@@ -20,18 +20,31 @@
 //     filesystem queries, create / rename / copy / remove, directory
 //     iteration, ifstream / ofstream and open(), OpenFileUtf8) works on a
 //     Thai-and-emoji folder and file. Windows CI runs this under code page
-//     1252, where the unwrapped forms of those calls miss the file.
-// Version: 1.1.0
-// Last Modified: 2026-10-01
+//     1252, where the unwrapped forms of those calls miss the file;
+//   * GetEnvUtf8 gives a variable back as UTF-8 - a Thai-and-emoji profile
+//     path, one longer than its first buffer, an empty and an unset one. On
+//     Windows it is set with SetEnvironmentVariableW, so this also compiles
+//     the header's own declaration of GetEnvironmentVariableW against the
+//     one windows.h makes.
+// Version: 1.2.0 - GetEnvUtf8
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
+#include <cstdlib>   // setenv / unsetenv
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+
+#if defined(_WIN32) || defined(_WIN64)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>   // after UltraCanvasPathUtf8.h on purpose - see above
+#endif
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::PathUtf8Detail;
@@ -64,6 +77,23 @@ void RoundTrip(const std::string& utf8, const std::string& label) {
 }
 
 const std::string kReplacement = "\xEF\xBF\xBD";   // U+FFFD
+
+// Sets (or, given nullptr, removes) a variable of this process - through the
+// wide API on Windows, which is where GetEnvUtf8 reads it.
+void SetEnv(const char* name, const char* utf8Value) {
+#if defined(_WIN32) || defined(_WIN64)
+    const std::wstring wideName = Utf8ToUtf16<std::wstring>(name);
+    if (utf8Value) {
+        const std::wstring wideValue = Utf8ToUtf16<std::wstring>(utf8Value);
+        ::SetEnvironmentVariableW(wideName.c_str(), wideValue.c_str());
+    } else {
+        ::SetEnvironmentVariableW(wideName.c_str(), nullptr);
+    }
+#else
+    if (utf8Value) ::setenv(name, utf8Value, 1);
+    else ::unsetenv(name);
+#endif
+}
 
 } // namespace
 
@@ -185,6 +215,38 @@ int main() {
         Check(!fs::exists(PathFromUtf8(folder), ec), "remove_all");
 
         fs::remove_all(dir, ec);
+    }
+
+    // --- GetEnvUtf8 -------------------------------------------------------
+    {
+        const char* kName = "ULTRACANVAS_PATHUTF8_TEST";
+        SetEnv(kName, nullptr);
+        Check(GetEnvUtf8(kName).empty(), "GetEnvUtf8: an unset variable is empty");
+
+        SetEnv(kName, "C:\\Users\\plain");
+        Check(GetEnvUtf8(kName) == "C:\\Users\\plain", "GetEnvUtf8: ASCII");
+
+        // A profile folder outside code page 1252: the narrow getenv gives
+        // this back with '?' for every Thai letter and the emoji.
+        const std::string profile =
+            "C:\\Users\\\xE0\xB8\xA3\xE0\xB8\xB9\xE0\xB8\x9B \xF0\x9F\x8C\xB4\\AppData\\Roaming";
+        SetEnv(kName, profile.c_str());
+        const std::string got = GetEnvUtf8(kName);
+        Check(got == profile, "GetEnvUtf8: Thai and emoji come back as UTF-8: " + Hex(got));
+
+        // Longer than the 260 characters asked for first, so the value is
+        // fetched again into a buffer of the size Windows reports.
+        std::string longValue = "C:\\";
+        while (longValue.size() < 1500) longValue += "\xE0\xB8\xA3\xE0\xB8\xB9\xE0\xB8\x9B\\";
+        SetEnv(kName, longValue.c_str());
+        Check(GetEnvUtf8(kName) == longValue, "GetEnvUtf8: a value longer than the first buffer");
+
+        SetEnv(kName, "");
+        Check(GetEnvUtf8(kName).empty(), "GetEnvUtf8: an empty variable is empty");
+
+        Check(GetEnvUtf8("").empty() && GetEnvUtf8(nullptr).empty(),
+              "GetEnvUtf8: no name, no value");
+        SetEnv(kName, nullptr);
     }
 
     if (failures) {

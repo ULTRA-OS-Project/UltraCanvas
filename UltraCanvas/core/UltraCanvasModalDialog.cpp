@@ -1190,13 +1190,14 @@ namespace UltraCanvas {
             return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
 
+        // UTF-8, as the dialog's paths are - on Windows from the wide
+        // environment, where getenv would answer in the ANSI code page.
         std::string UserHomeDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-            const char* home = std::getenv("USERPROFILE");
+            return GetEnvUtf8("USERPROFILE");
 #else
-            const char* home = std::getenv("HOME");
+            return GetEnvUtf8("HOME");
 #endif
-            return home ? std::string(home) : std::string();
         }
 
         bool IsHiddenName(const std::string& name) {
@@ -2279,12 +2280,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
-        for (auto& dialog : activeDialogs) {
+        // Close from a copy. Closing a dialog unregisters it - erases it from
+        // activeDialogs - and runs its result callback, which may open or close
+        // dialogs itself. Walking activeDialogs itself skipped every second
+        // dialog (each erase moved the next one under the loop's iterator) and
+        // went on to read the vacated slots past its end; and the clear()
+        // after it unregistered a dialog a callback had just opened, which
+        // stayed on screen out of the manager's reach.
+        const std::vector<std::shared_ptr<UltraCanvasModalDialog>> closing = activeDialogs;
+        for (const auto& dialog : closing) {
             if (dialog) {
                 dialog->CloseDialog(DialogResult::Cancel);
             }
         }
-        activeDialogs.clear();
+        // Drop whatever of those is still registered (a dialog that was never
+        // shown cannot close), but keep a dialog a result callback opened.
+        std::erase_if(activeDialogs, [&closing](const std::shared_ptr<UltraCanvasModalDialog>& dialog) {
+            return std::find(closing.begin(), closing.end(), dialog) != closing.end();
+        });
     }
 
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::GetCurrentModalDialog() {

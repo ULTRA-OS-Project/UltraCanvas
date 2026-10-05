@@ -189,6 +189,21 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.security->SetSelectedIndex(SecurityIndex(s.security), /*runNotifications=*/false);
         row->AddChild(r.security);
 
+        // Keep the security choice consistent with a well-known port, so the
+        // user cannot save 587 + SSL/TLS (implicit TLS on a STARTTLS port) -
+        // that sends a TLS ClientHello before the greeting and gets the IP
+        // fail2ban-banned (see EffectiveSecurity). Only nudge between the two
+        // TLS modes; a deliberate "None" is left alone.
+        r.port->onTextChanged = [sec = r.security](const std::string& text) {
+            const int port = std::atoi(text.c_str());
+            if (port <= 0) return;
+            const MailSecurity cur = SecurityAt(sec->GetSelectedIndex());
+            if (cur == MailSecurity::Plain) return;
+            const MailSecurity want = EffectiveSecurity(port, cur);
+            if (want != cur)
+                sec->SetSelectedIndex(SecurityIndex(want), /*runNotifications=*/false);
+        };
+
         content->AddChild(row);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return r;

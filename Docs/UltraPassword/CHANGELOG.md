@@ -1,3 +1,11 @@
+#### 2026-10-05 *0.1.1*
+- **The vault is found in a Windows profile named in any script.** The
+  default vault folder and the folder the open and save dialogs start in
+  were read through the narrow `getenv` (`APPDATA`, `USERPROFILE`), which
+  answers in the ANSI code page; for a user name outside it the vault was
+  looked for in a folder that does not exist. Both are read with the
+  framework's `GetEnvUtf8` now (framework changelog: `env-narrow`).
+
 #### 2026-10-03 *0.1.0*
 - **First release of UltraPassword, the password vault.** Passwords live in
   one encrypted file (`vault.upwvault`): Argon2id key derivation from the

@@ -319,6 +319,44 @@ TEST(server_url_construction) {
     REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(o.smtp), std::string("smtp://smtp.office365.com:587/"));
 }
 
+// A security choice that contradicts a well-known port must follow the port, so
+// implicit TLS never reaches a STARTTLS port (which sends a ClientHello before
+// the greeting - postfix "improper command pipelining" - and gets the IP
+// fail2ban-banned). See EffectiveSecurity / ApplyConnection / Smtp/ImapServerUrl.
+TEST(security_reconciled_against_port) {
+    // The raw helper.
+    REQUIRE(EffectiveSecurity(587, MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(25,  MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(465, MailSecurity::StartTls) == MailSecurity::SslTls);
+    REQUIRE(EffectiveSecurity(143, MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(993, MailSecurity::StartTls) == MailSecurity::SslTls);
+    // Non-standard port: trust the user. Explicit plaintext stays plaintext.
+    REQUIRE(EffectiveSecurity(2525, MailSecurity::SslTls)  == MailSecurity::SslTls);
+    REQUIRE(EffectiveSecurity(587,  MailSecurity::Plain)   == MailSecurity::Plain);
+
+    // The reported bug: 587 + SSL/TLS must build smtp:// (STARTTLS), not smtps://.
+    MailServerSettings smtp; smtp.host = "mail.example.com"; smtp.port = 587;
+    smtp.security = MailSecurity::SslTls;
+    REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(smtp), std::string("smtp://mail.example.com:587/"));
+    UltraNetMailOptions opt;
+    ApplyConnection(smtp, opt);
+    REQUIRE(opt.useTls);
+    REQUIRE(!opt.implicitTls);   // STARTTLS upgrade, no premature ClientHello
+
+    // 465 + STARTTLS must build smtps:// (implicit).
+    MailServerSettings s465; s465.host = "mail.example.com"; s465.port = 465;
+    s465.security = MailSecurity::StartTls;
+    REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(s465), std::string("smtps://mail.example.com:465/"));
+
+    // IMAP symmetry: 143 + SSL/TLS -> imap:// (STARTTLS); 993 keeps imaps://.
+    MailServerSettings i143; i143.host = "mail.example.com"; i143.port = 143;
+    i143.security = MailSecurity::SslTls;
+    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i143), std::string("imap://mail.example.com:143/"));
+    MailServerSettings i993; i993.host = "mail.example.com"; i993.port = 993;
+    i993.security = MailSecurity::StartTls;
+    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i993), std::string("imaps://mail.example.com:993/"));
+}
+
 // ---- credential vault ------------------------------------------------------
 // The vault is UltraVault-backed and stays locked until the master password is
 // supplied, so every test unlocks first. UltraVault is a per-process singleton:

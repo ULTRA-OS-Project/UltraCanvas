@@ -1,3 +1,14 @@
+#### 2026-10-05 *1.60*
+- **Settings, autosave and comments work in a Windows profile named in any
+  script.** The configuration folder (`config.ini`, the recent files, the
+  session) and the autosave folder were found through the narrow
+  `getenv("APPDATA")`, which answers in the ANSI code page: for a user name
+  outside it - Thai or Cyrillic under code page 1252 - the folder came back
+  with `?` in it and nothing was saved or restored. A comment's author,
+  taken from `USERNAME`, was stored in those code-page bytes too. All three
+  are read with the framework's `GetEnvUtf8` now (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-05 *1.59*
 - **Published by ULTRA OS Development GmbH.** The Windows file properties
   of `UltraTexter.exe` (Company and Copyright) and its application manifest

@@ -15,10 +15,11 @@
 //
 // argv[1] is the .x - Tests/data/3D/XFile, not the demo copy under media/3D,
 // which was completed from the .blend and no longer has the half-hull this
-// suite pins. Without it only the synthetic cases run.
+// suite pins. argv[2] is that demo copy, which TestTheDemoCopy() holds to the
+// whole aircraft, the right way up. Without them only the synthetic cases run.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-11
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/XFile/UltraCanvasXFileConverter.h"
@@ -152,8 +153,79 @@ static void TestValidation() {
 
 // The property most likely to be got wrong in this format, and the one that
 // decides whether a model renders inside out.
+// Direct3D's space is left-handed: X right, Y up, Z away from the viewer. The
+// document's is right-handed, where Z comes toward the viewer, so the reader
+// negates Z and reverses each face. These cases tell that apart from the two
+// ways of getting it half right - flipping the vertices but not the frames,
+// or flipping Z without reversing the faces - and from not converting at all,
+// which in a symmetric model looks like a half-turn and in any other is a
+// mirror image.
+static void TestChirality() {
+    std::printf("Left-handed to right-handed\n");
+
+    // A point Direct3D puts 3 units into the screen lands 3 units into the
+    // document's screen, which is -Z. X and Y do not move.
+    auto point = ReadText("Mesh { 3; 1;2;3;, 2;2;3;, 1;3;3;; 1; 3;0,1,2;; }\n");
+    Check(point != nullptr && point->Chirality == Handedness::RightHanded,
+          "a mesh parses, into a document that says it is right-handed");
+    if (point) {
+        const Bounds3D bounds = point->ComputeBounds();
+        Check(Near(bounds.Min.x, 1.0, 1e-9) && Near(bounds.Min.y, 2.0, 1e-9) &&
+              Near(bounds.Min.z, -3.0, 1e-9) && Near(bounds.Max.z, -3.0, 1e-9),
+              "Direct3D's z = +3 is the document's z = -3, with X and Y unchanged");
+    }
+
+    // A frame turning 90 degrees about Y - D3DXMatrixRotationY, row-major -
+    // and moving 2 along Z. Direct3D sends local (1,0,0) to (0,0,-1) + (0,0,2)
+    // = (0,0,1), which the document must show at (0,0,-1). Negating only the
+    // vertices, or only the frames, puts it at (0,0,1) instead.
+    auto turned = ReadText(
+            "Frame Turned {\n"
+            "  FrameTransformMatrix { 0,0,-1,0, 0,1,0,0, 1,0,0,0, 0,0,2,1;; }\n"
+            "  Mesh { 3; 1;0;0;, 1;1;0;, 1;0;1;; 1; 3;0,1,2;; }\n"
+            "}\n");
+    Check(turned != nullptr, "a mesh under a rotating frame parses");
+    if (turned && !turned->Meshes.empty()) {
+        const Matrix4x4 world = turned->GlobalTransform(0);
+        const std::vector<Vec3d> expected = {
+                Vec3d(0.0, 0.0, -1.0), Vec3d(0.0, 1.0, -1.0), Vec3d(1.0, 0.0, -1.0)};
+        size_t found = 0;
+        for (const Vec3d& position : turned->Meshes[0].Primitives[0].Positions) {
+            const Vec3d placed = world.TransformPoint(position);
+            for (const Vec3d& want : expected)
+                if (Near(placed.x, want.x, 1e-9) && Near(placed.y, want.y, 1e-9) &&
+                    Near(placed.z, want.z, 1e-9))
+                    ++found;
+        }
+        Check(found == 3,
+              "the frame is converted with its mesh: each corner lands where Direct3D "
+              "draws it, mirrored into the document's space");
+    }
+
+    // The facing that matters for display. Seen by a Direct3D camera at the
+    // origin looking down +Z, this triangle is in front of it and clockwise on
+    // screen - a front face. Seen by the document's camera, looking down -Z,
+    // it has to be in front of that camera and counter-clockwise, so that its
+    // right-handed normal points back at the viewer.
+    auto facing = ReadText("Mesh { 3; 0;1;1;, 1;-1;1;, -1;-1;1;; 1; 3;0,1,2;; }\n");
+    Check(facing != nullptr, "a triangle facing a Direct3D camera parses");
+    if (facing) {
+        const MeshPrimitive& prim = facing->Meshes[0].Primitives[0];
+        const std::vector<uint32_t> face = prim.Face(0);
+        if (face.size() == 3) {
+            const Vec3d& a = prim.Positions[face[0]];
+            const Vec3d normal = (prim.Positions[face[1]] - a).Cross(prim.Positions[face[2]] - a);
+            Check(Near(a.z, -1.0, 1e-9) && normal.z > 0.0,
+                  "and still faces the camera in the document: in front of it at z = -1, "
+                  "wound so its normal points back at the viewer");
+        } else {
+            Check(false, "and stays one triangle");
+        }
+    }
+}
+
 static void TestHandednessAndWinding() {
-    std::printf("Left-handedness and winding\n");
+    std::printf("Winding against the file's own normals\n");
 
     // The triangle is wound counter-clockwise, so its geometric normal is +Z.
     // A stored normal of +Z under an identity frame agrees: no warning.
@@ -163,7 +235,10 @@ static void TestHandednessAndWinding() {
     Check(warnings.empty(), "and is not reported as inside out");
 
     // The same triangle with the opposite stored normal IS inside out, and
-    // there is no reflection anywhere to explain it.
+    // there is no reflection anywhere to explain it. The reader's own
+    // conversion cannot cause this: it negates Z in the normals as well and
+    // reverses the faces, which leaves every face agreeing or disagreeing with
+    // its normal exactly as it did in the file.
     warnings.clear();
     auto reversed = ReadText(Triangle(kIdentity, "0.0;0.0;-1.0"), &warnings);
     Check(reversed != nullptr, "a triangle wound against its normal still parses");
@@ -174,8 +249,8 @@ static void TestHandednessAndWinding() {
                     "without the matching reflection means");
 
     // Now the real case: the same reversed winding, but under a frame whose
-    // matrix is a reflection - the shape of every right-handed export. The two
-    // cancel, so this must NOT be reported.
+    // matrix is a reflection - the shape of every export from a right-handed
+    // application. The two cancel, so this must NOT be reported.
     warnings.clear();
     const char* mirror = "1.0,0.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,0.0,1.0";
     auto mirrored = ReadText(Triangle(mirror, "0.0;0.0;-1.0"), &warnings);
@@ -185,7 +260,8 @@ static void TestHandednessAndWinding() {
         if (w.find("inside out") != std::string::npos) quiet = false;
     Check(quiet, "and is NOT reported: the frame's reflection is what makes it correct");
 
-    // And the reflection itself must survive, or the model comes out mirrored.
+    // And the reflection itself must survive the conversion - conjugated, not
+    // removed - or the exporter's reversed faces would come out inside out.
     if (mirrored) {
         const Matrix4x4 world = mirrored->GlobalTransform(0);
         const double determinant =
@@ -217,15 +293,17 @@ static void TestFrameMatrix() {
         Check(placed->Nodes.size() == 2 && placed->Nodes[1].Parent == 0,
               "the child frame is a child node");
         Check(Near(placed->Nodes[0].Translation.x, 3.0, 1e-9) &&
-              Near(placed->Nodes[0].Translation.z, 5.0, 1e-9),
-              "elements 12 to 14 are the translation, so the matrix copies straight across");
+              Near(placed->Nodes[0].Translation.y, 4.0, 1e-9) &&
+              Near(placed->Nodes[0].Translation.z, -5.0, 1e-9),
+              "elements 12 to 14 are the translation, so the matrix copies straight across "
+              "- with Z negated into the document's right-handed space");
         Check(Near(placed->Nodes[0].Scale.y, 2.0, 1e-9), "and the scale comes back as scale");
         // The child sits one unit along local X, which the parent's scale of 2
         // turns into two units of world X, plus the parent's own offset.
         const Bounds3D bounds = placed->ComputeBounds();
         Check(Near(bounds.Min.x, 5.0, 1e-6) && Near(bounds.Min.y, 4.0, 1e-6) &&
-              Near(bounds.Min.z, 5.0, 1e-6),
-              "and the chain composes: the child's origin lands at (5, 4, 5)");
+              Near(bounds.Min.z, -5.0, 1e-6),
+              "and the chain composes: the child's origin lands at (5, 4, -5)");
     }
 }
 
@@ -323,9 +401,21 @@ static void TestGeometry() {
         const VertexAttribute* colors = prim.FindAttribute(AttributeSemantic::Color, 0);
         Check(colors && colors->Components == 4 && colors->Count() == 3,
               "as a four-component colour per vertex");
-        if (colors)
-            Check(Near(colors->Values[0], 1.0, 1e-6) && Near(colors->Values[9], 1.0, 1e-6),
+        // Found by position, not by order: the reader reverses each face's
+        // corners, so the order the primitive's vertices arrive in follows.
+        if (colors && colors->Count() == 3) {
+            bool redAtOrigin = false, greenAtTop = false;
+            for (size_t v = 0; v < prim.Positions.size(); ++v) {
+                const Vec3d& p = prim.Positions[v];
+                const float* rgba = &colors->Values[v * 4];
+                if (Near(p.x, 0.0, 1e-9) && Near(p.y, 0.0, 1e-9))
+                    redAtOrigin = Near(rgba[0], 1.0, 1e-6) && Near(rgba[1], 0.0, 1e-6);
+                if (Near(p.x, 0.0, 1e-9) && Near(p.y, 1.0, 1e-9))
+                    greenAtTop = Near(rgba[0], 0.0, 1e-6) && Near(rgba[1], 1.0, 1e-6);
+            }
+            Check(redAtOrigin && greenAtTop,
                   "with each colour landing on the vertex its index names");
+        }
     }
 }
 
@@ -445,7 +535,7 @@ static void TestBinaryEncoding() {
     const MeshPrimitive& prim = document->Meshes[0].Primitives[0];
     Check(prim.VertexCount() == 3 && prim.FaceCount() == 1, "three vertices in one triangle");
     Check(Near(document->Nodes[0].Translation.x, 3.0, 1e-6) &&
-          Near(document->Nodes[0].Translation.z, 5.0, 1e-6),
+          Near(document->Nodes[0].Translation.z, -5.0, 1e-6),
           "its FLOAT_LIST matrix lands where the text one does");
     Check(document->Materials.size() == 1 &&
           Near(document->Materials[0].BaseColorFactor.z, 0.75, 1e-6),
@@ -473,6 +563,7 @@ static void TestBinaryEncoding() {
         const Bounds3D fromText = text->ComputeBounds();
         Check(Near(fromBinary.Min.x, fromText.Min.x, 1e-6) &&
               Near(fromBinary.Max.y, fromText.Max.y, 1e-6) &&
+              Near(fromBinary.Min.z, fromText.Min.z, 1e-6) &&
               text->TotalVertexCount() == document->TotalVertexCount(),
               "with identical geometry - the two encodings are one grammar");
     }
@@ -542,11 +633,20 @@ static void TestSample(const char* path) {
           "the root frame's reflection survives as a negative scale");
 
     // World bounds, checked against an independent walk of the same frame
-    // chain. This is the assertion that the straight matrix copy is right.
+    // chain, mirrored in Z into right-handed space. This is the assertion that
+    // the straight matrix copy, and the conjugation after it, are right.
+    //
+    // They are not where the aircraft belongs, and that is the file's doing:
+    // both meshes are parented to armature bones in the .blend, and Blender's
+    // exporter wrote each mesh frame relative to its bone without writing the
+    // bones. The walk therefore rolls the hull 180 degrees about X - it
+    // stands on its head - and leaves the canopy inside it. A reader cannot
+    // recover bones that are not in the file, so it must reproduce exactly
+    // this; the demo copy has the frames corrected instead (TestTheDemoCopy).
     const Bounds3D bounds = doc->ComputeBounds();
     Check(Near(bounds.Min.x, -0.9732, 1e-3) && Near(bounds.Max.x, 0.0, 1e-3) &&
           Near(bounds.Min.y, -2.5754, 1e-3) && Near(bounds.Max.y, 1.6357, 1e-3) &&
-          Near(bounds.Min.z, -5.1948, 1e-3) && Near(bounds.Max.z, 0.9626, 1e-3),
+          Near(bounds.Min.z, -0.9626, 1e-3) && Near(bounds.Max.z, 5.1948, 1e-3),
           "world bounds match an independent walk of the frame chain");
 
     // Like the .dae, .abc and .blend - and unlike the OBJ, 3DS, DXF, PLY and
@@ -556,8 +656,68 @@ static void TestSample(const char* path) {
           "the .x holds only half the hull in X - its mirror modifier was not applied");
 }
 
+// One node's mesh in world space.
+static Bounds3D WorldBoundsOf(const ModelDocument& doc, const std::string& nodeName) {
+    Bounds3D bounds;
+    for (size_t n = 0; n < doc.Nodes.size(); ++n) {
+        const ModelNode& node = doc.Nodes[n];
+        if (node.Name != nodeName || node.Mesh < 0) continue;
+        const Matrix4x4 world = doc.GlobalTransform(static_cast<int>(n));
+        for (const MeshPrimitive& prim : doc.Meshes[static_cast<size_t>(node.Mesh)].Primitives)
+            for (const Vec3d& position : prim.Positions) bounds.Expand(world.TransformPoint(position));
+    }
+    return bounds;
+}
+
+// media/3D/XFile/E-45-Aircraft.x is the copy the demo shows, and it is not the
+// file above. Its geometry was mirrored to the whole aeroplane, and its two
+// mesh frames hold the placements the .blend gives the objects - the hull at
+// the armature's origin, the canopy translated onto the nose - in place of the
+// bone-relative ones Blender wrote. Converted to right-handed space, the
+// aircraft lands where Blender's own OBJ export puts it - (x, z, -y) of the
+// .blend, nose toward -Z - and vertex for vertex where the MS3D sample does:
+// the hull spans Y -1.356..2.855 and the canopy sits on it at 0.060..1.533.
+static void TestTheDemoCopy(const char* path) {
+    std::printf("Demo copy: %s\n", path);
+    XFileConverter converter;
+    std::vector<std::string> warnings;
+    ConversionOptions options;
+    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+
+    auto doc = converter.Import(path, options);
+    if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
+    for (const std::string& warning : warnings) std::printf("      warn: %s\n", warning.c_str());
+    // The mirroring once doubled the vertices and faces but not the UVs or the
+    // per-face material indices; the UV shortfall is what this reader warns
+    // about, and fills with zeros.
+    Check(warnings.empty(), "read without a warning - every vertex has its UV, every face its material");
+
+    Check(doc->Nodes.size() == 4 && doc->Meshes.size() == 2,
+          "the same Root / Armature / Cube frame chain as the export");
+    Check(doc->TotalVertexCount() == 8110 && doc->TotalFaceCount() == 2060,
+          "8110 vertices in 2060 faces - the export's, doubled by the mirror");
+
+    const Bounds3D hull = WorldBoundsOf(*doc, "Cube_021");
+    const Bounds3D canopy = WorldBoundsOf(*doc, "Cube_004");
+    std::printf("      hull   Y [%.3f, %.3f]  Z [%.3f, %.3f]\n", hull.Min.y, hull.Max.y,
+                hull.Min.z, hull.Max.z);
+    std::printf("      canopy Y [%.3f, %.3f]  Z [%.3f, %.3f]\n", canopy.Min.y, canopy.Max.y,
+                canopy.Min.z, canopy.Max.z);
+
+    Check(Near(hull.Min.x, -0.9732, 1e-3) && Near(hull.Max.x, 0.9732, 1e-3),
+          "the hull runs to both sides of zero - the mirror modifier is applied");
+    // Upside down, the same hull spans Y -2.575..1.636.
+    Check(Near(hull.Min.y, -1.356, 1e-3) && Near(hull.Max.y, 2.855, 1e-3) &&
+          Near(hull.Min.z, -2.946, 1e-3) && Near(hull.Max.z, 3.211, 1e-3),
+          "the hull stands the right way up and faces -Z, as the OBJ and MS3D exports do");
+    Check(Near(canopy.Min.y, 0.060, 1e-3) && Near(canopy.Max.y, 1.533, 1e-3) &&
+          Near(canopy.Min.z, -2.958, 1e-3) && Near(canopy.Max.z, 0.102, 1e-3),
+          "and the canopy sits on its nose rather than inside it");
+}
+
 int main(int argc, char** argv) {
     TestValidation();
+    TestChirality();
     TestHandednessAndWinding();
     TestFrameMatrix();
     TestGeometry();
@@ -565,6 +725,8 @@ int main(int argc, char** argv) {
     TestBinaryEncoding();
     if (argc > 1) TestSample(argv[1]);
     else std::printf("Sample: skipped (pass an .x path to run it)\n");
+    if (argc > 2) TestTheDemoCopy(argv[2]);
+    else std::printf("Demo copy: skipped (pass media/3D/XFile/E-45-Aircraft.x second)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

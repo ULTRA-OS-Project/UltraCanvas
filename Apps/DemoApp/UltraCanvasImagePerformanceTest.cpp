@@ -222,7 +222,7 @@
 // ================================================================================
 
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
@@ -297,10 +297,12 @@ namespace UltraCanvas {
 
         std::string TempDirBase() {
 #if defined(_WIN32) || defined(_WIN64)
-            const char* tmp = std::getenv("TEMP");
-            if (!tmp) tmp = std::getenv("TMP");
-            if (!tmp) tmp = "C:\\Temp";
-            return std::string(tmp);
+            // UTF-8 from the wide environment: the files are written by
+            // UTF-8 path, and getenv would answer in the ANSI code page.
+            std::string tmp = GetEnvUtf8("TEMP");
+            if (tmp.empty()) tmp = GetEnvUtf8("TMP");
+            if (tmp.empty()) tmp = "C:\\Temp";
+            return tmp;
 #else
             const char* tmp = std::getenv("TMPDIR");
             if (tmp && *tmp) return std::string(tmp);

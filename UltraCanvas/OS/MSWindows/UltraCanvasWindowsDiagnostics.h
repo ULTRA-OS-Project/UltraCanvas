@@ -63,12 +63,14 @@ namespace UltraCanvas {
     // (every thread's stack, the module list, the memory the stacks refer to)
     // to %LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp,
     // appends one line to the ULTRACANVAS_DEBUG_LOG file naming the exception
-    // code, the faulting address and the module that address belongs to, then
-    // shows a message box with the same text and the dump's path. The log
-    // write goes straight to the file with the Win32 API -- no allocation, no
-    // C++ stream, no lock -- because the process is already in an undefined
-    // state and the normal sink may be mid-write; the dump writer is resolved
-    // here, while the process is healthy, for the same reason.
+    // code, the faulting address, the module that address belongs to, the
+    // offset into it and the function (the nearest name in the module's export
+    // table), then - on x64 - the call stack, one module+offset and function
+    // per caller, and shows a message box with the same text and the dump's
+    // path. The log write goes straight to the file with the Win32 API -- no
+    // allocation, no C++ stream, no lock -- because the process is already in
+    // an undefined state and the normal sink may be mid-write; the dump writer
+    // is resolved here, while the process is healthy, for the same reason.
     // ULTRACANVAS_CRASH_DUMP_DIR names another folder for the dump;
     // ULTRACANVAS_NO_CRASH_DUMP=1 writes none.
     void InstallWindowsCrashReporter(const std::string& appName);

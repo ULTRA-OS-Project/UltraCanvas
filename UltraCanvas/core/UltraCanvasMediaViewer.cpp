@@ -407,6 +407,15 @@ void UltraCanvasMediaSurface::SetAdjustments(const MediaAdjustments& adj) {
 void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
                                         MediaTransition transition,
                                         int durationMs, bool animated) {
+    // A copy: the call below replaces `adjust` with what it is handed.
+    const MediaAdjustments keep = adjust;
+    ShowImage(std::move(img), transition, durationMs, animated, keep);
+}
+
+void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
+                                        MediaTransition transition,
+                                        int durationMs, bool animated,
+                                        const MediaAdjustments& adj) {
     bool animate = animated && transition != MediaTransition::NoTransition &&
                    durationMs > 0 && image && image->IsValid();
     if (animate) {
@@ -425,6 +434,7 @@ void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
     }
 
     image = std::move(img);
+    adjust = adj;
     decodeFailureReported = false;
     // Each new image starts fit-to-window with no rotation/mirror.
     zoom = 1.0;
@@ -1077,8 +1087,10 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                                  [this] { if (surface) surface->ToggleFlipVertical(); }),
              "Mirror vertically");
     toolbar2->AddSeparator("mv_sep4");
+    // The panel follows the toggle only while the shown file takes colour
+    // adjustments (ApplyToolAvailability); the toggle remembers it meanwhile.
     IconOnly(toolbar2->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
-            [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); }),
+            [this](bool on) { adjustPanelOpen = on; ApplyToolAvailability(); }),
             "Adjustments: gamma, brightness, colour, sharpen");
     IconOnly(toolbar2->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
                                  [this] { ShowCurvesDialog(); }),
@@ -1150,6 +1162,8 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     surface->onNavigate = [this](int d) { if (d < 0) Previous(); else Next(); };
     surface->onViewChanged = [this] { UpdateInfoBar(); };
     surface->onDecodeFailed = [this] {
+        // Nothing to zoom, turn or recolour once the pixels did not decode.
+        UpdateToolAvailability();
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
     };
@@ -1378,6 +1392,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         detailsView = dv;
         AddChild(detailsView);
     }
+
+    // Nothing is on show yet, so no view / edit tool applies until a file loads.
+    UpdateToolAvailability();
 
     (void)w; (void)h;
 }
@@ -1774,7 +1791,7 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
 }
 
 void UltraCanvasMediaViewer::ShowSaveDialog() {
-    if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
+    if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
     std::string current = GetCurrentPath();
     std::string defName = current.empty() ? "image.png" : BaseName(current);
 
@@ -1849,8 +1866,9 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
     if (toolbar)  toolbar->SetVisible(visible);
     if (toolbar2) toolbar2->SetVisible(visible);
     // The adjustments panel opens through its toolbar2 toggle; it never stays
-    // open (or reappears) while the bars are hidden.
-    if (!visible && adjustPanel) adjustPanel->SetVisible(false);
+    // open while the bars are hidden, and comes back with them if the toggle
+    // is still on.
+    ApplyToolAvailability();
     UpdateBreadcrumb();
     RequestRedraw();
 }
@@ -1944,6 +1962,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         UpdateTransparencyPalette();   // nothing shown - the strip goes away
+        UpdateToolAvailability();      // and no tool has anything to act on
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
         return;
@@ -2076,7 +2095,8 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ucdDetails = BuildUCDDetailsText(path, hdr, thumbShown);
         if (thumbShown) {
             ShowView(MediaKind::Image);
-            surface->ShowImage(thumb, transition, transitionDurationMs, animated);
+            surface->ShowImage(thumb, transition, transitionDurationMs, animated,
+                               SurfaceAdjustmentsFor(path));
         } else if (textView) {
             ShowView(MediaKind::Text);
             surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
@@ -2160,7 +2180,8 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                 if (!bytes.empty()) img = UCImage::LoadFromMemory(bytes);
             }
             if (img && img->IsValid()) {
-                surface->ShowImage(img, transition, transitionDurationMs, animated);
+                surface->ShowImage(img, transition, transitionDurationMs, animated,
+                                   SurfaceAdjustmentsFor(path));
             } else {
                 // No reader for the drawing and no preview stored: say so
                 // rather than leaving an empty pane the user has to interpret.
@@ -2218,11 +2239,16 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         // Image — or a kind whose backend is unavailable, shown best-effort.
         ShowView(MediaKind::Image);
         auto img = UCImage::Get(path);
-        surface->ShowImage(img, transition, transitionDurationMs, animated);
-        // The adjustments (curves included) carry over to the new picture, so
-        // an open Curves dialog must show the new picture's histogram.
-        if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
+        // The adjustments (curves included) carry over to the next bitmap;
+        // a drawing shown here (an SVG) takes none of them.
+        surface->ShowImage(img, transition, transitionDurationMs, animated,
+                           SurfaceAdjustmentsFor(path));
     }
+    // The toolbar offers what this file takes - and nothing it does not.
+    UpdateToolAvailability();
+    // An open Curves dialog shows the new picture's histogram (none at all
+    // for a file the curves do not apply to).
+    if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
     // The strip of backdrop colours belongs to the file just loaded: up for a
     // transparent image, gone for everything else.
     UpdateTransparencyPalette();
@@ -2233,7 +2259,81 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
-    if (surface) surface->SetAdjustments(adjustments);
+    // A file the adjustments do not apply to keeps showing unaltered, even
+    // while an open Curves dialog is still being dragged.
+    if (surface) surface->SetAdjustments(tools.colour ? adjustments : MediaAdjustments());
+}
+
+// ===== TOOLS FOR THE SHOWN FILE =====
+
+bool UltraCanvasMediaViewer::TakesColourAdjustments(const std::string& path) {
+    if (ClassifyFile(path) != MediaKind::Image) return false;
+    // SVG is markup the image pipeline rasterizes - a drawing, not pixels, so
+    // a gamma curve or a sharpen would be edits of a throwaway rendering.
+    const std::string ext = LowerExt(path);
+    return ext != "svg" && ext != "svgz";
+}
+
+MediaAdjustments UltraCanvasMediaViewer::SurfaceAdjustmentsFor(const std::string& path) const {
+    return TakesColourAdjustments(path) ? adjustments : MediaAdjustments();
+}
+
+void UltraCanvasMediaViewer::UpdateToolAvailability() {
+    MediaViewerTools t;
+    const std::string path = GetCurrentPath();
+    switch (activeKind) {
+        case MediaKind::Image: {
+            // Only what actually shows: an empty surface, or a file whose
+            // pixels did not decode, has nothing to act on.
+            auto img = surface ? surface->GetImage() : nullptr;
+            if (path.empty() || !img || !img->IsValid() || surface->HasDecodeFailure()) break;
+            t.zoom = true;
+            // A *.ucd thumbnail stands in for a document: it can be looked
+            // at more closely, but it is not an image to turn or save.
+            if (ClassifyFile(path) == MediaKind::UCDoc) break;
+            t.transform = true;
+            t.save = true;
+            t.colour = TakesColourAdjustments(path);
+            break;
+        }
+        case MediaKind::Document:   // PDF page zoom
+        case MediaKind::Book:       // reading text scale
+            t.zoom = true;
+            break;
+        case MediaKind::Vector:
+            // The vector view zooms; a graphics plugin's own element is
+            // hosted as it is and brings whatever controls it has.
+            t.zoom = !pluginView && vectorView != nullptr;
+            break;
+        default:
+            // Text, spreadsheet, font, 3D model, video, audio: their views
+            // carry their own controls (or need none from this row).
+            break;
+    }
+    tools = t;
+    // (The surface already holds the right adjustments: every load that puts
+    // a picture on it passes SurfaceAdjustmentsFor() along.)
+    ApplyToolAvailability();
+}
+
+void UltraCanvasMediaViewer::ApplyToolAvailability() {
+    if (toolbar2) {
+        auto show = [this](const char* id, bool on) {
+            if (auto item = toolbar2->GetWidget(id)) item->SetVisible(on);
+        };
+        for (const char* id : { "mv_zoomout", "mv_zoom", "mv_zoomin", "mv_fit" }) show(id, tools.zoom);
+        for (const char* id : { "mv_rotl", "mv_rotr", "mv_mirh", "mv_mirv" })   show(id, tools.transform);
+        show("mv_adjust", tools.colour);
+        show("mv_curves", tools.colour);
+        show("mv_save",   tools.save);
+        // A separator only between two groups that are both up. Details
+        // (always shown) ends the row, so the last one needs only a group
+        // before it.
+        show("mv_sep3", tools.zoom && tools.transform);
+        show("mv_sep4", tools.zoom || tools.transform);
+    }
+    if (adjustPanel) adjustPanel->SetVisible(adjustPanelOpen && tools.colour && topBarsVisible);
+    RequestRedraw();
 }
 
 void UltraCanvasMediaViewer::ResetAdjustments() {
@@ -2251,6 +2351,13 @@ void UltraCanvasMediaViewer::ResetAdjustments() {
 // ===== CURVES DIALOG =====
 
 void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const {
+    // The previous picture's histogram goes first: a file the curves do not
+    // apply to (a drawing, a video, a PDF) gets none rather than a stale one.
+    for (ToneCurveChannel channel : { ToneCurveChannel::RGB, ToneCurveChannel::Red,
+                                      ToneCurveChannel::Green, ToneCurveChannel::Blue }) {
+        dialog.SetHistogram(channel, {});
+    }
+    if (!tools.colour) return;
 #ifdef HAS_LIBVIPS
     if (!surface) return;
     auto img = surface->GetImage();
@@ -2290,10 +2397,11 @@ void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog
 }
 
 void UltraCanvasMediaViewer::ShowCurvesDialog() {
-    // Curves work on the bitmap pipeline; other views have no pixels to map.
-    if (activeKind != MediaKind::Image || !surface ||
-        !surface->GetImage() || !surface->GetImage()->IsValid()) {
-        if (infoLabel) infoLabel->SetText("Curves apply to images only");
+    // Curves work on the bitmap pipeline; other views have no pixels to map,
+    // and a drawing's pixels are only a rendering of it. The toolbar hides
+    // the button then; this guards any other way in.
+    if (!tools.colour) {
+        if (infoLabel) infoLabel->SetText("Curves apply to bitmap images only");
         return;
     }
 
@@ -2371,6 +2479,13 @@ void UltraCanvasMediaViewer::SetDocumentWheelZoom(bool zoom) {
 
 // ===== ZOOM ACTIONS (routed to whichever view is live) =====
 
+UltraCanvasVectorElement* UltraCanvasMediaViewer::ActiveVectorView() const {
+    // The drawing view, while it is the one showing. A plugin-built element
+    // in its place is not a vector element.
+    if (activeKind != MediaKind::Vector || pluginView || !vectorView) return nullptr;
+    return static_cast<UltraCanvasVectorElement*>(vectorView.get());
+}
+
 void UltraCanvasMediaViewer::ZoomInAction() {
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (activeKind == MediaKind::Document && pdfView) {
@@ -2382,6 +2497,7 @@ void UltraCanvasMediaViewer::ZoomInAction() {
         static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomIn();
         return;
     }
+    if (auto* vv = ActiveVectorView()) { vv->SetZoom(vv->GetZoom() * 1.25f); return; }
     if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.25);
 }
 
@@ -2396,6 +2512,7 @@ void UltraCanvasMediaViewer::ZoomOutAction() {
         static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomOut();
         return;
     }
+    if (auto* vv = ActiveVectorView()) { vv->SetZoom(vv->GetZoom() / 1.25f); return; }
     if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.0 / 1.25);
 }
 
@@ -2411,6 +2528,7 @@ void UltraCanvasMediaViewer::ZoomFitAction() {
         static_cast<UltraCanvasEBookViewer*>(bookView.get())->ZoomToWidth();
         return;
     }
+    if (auto* vv = ActiveVectorView()) { vv->ZoomToFit(); return; }
     if (activeKind == MediaKind::Image && surface) surface->ResetView();
 }
 
@@ -2426,6 +2544,7 @@ void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
                 ->SetZoom(static_cast<float>(percent / 100.0));
         return;
     }
+    if (auto* vv = ActiveVectorView()) { vv->SetZoom(static_cast<float>(percent / 100.0)); return; }
     if (activeKind == MediaKind::Image && surface) surface->SetZoomPercent(percent);
 }
 

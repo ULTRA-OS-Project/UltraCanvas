@@ -76,7 +76,13 @@ enum class UltraNetResultCode {
     // server it cannot address, for instance - as opposed to a request it
     // understood and that failed. Last on purpose: the values above are
     // stable for callers that stored them.
-    Unsupported
+    Unsupported,
+    // The server's certificate does not carry the public key the request was
+    // pinned to (UltraNetHttpOptions::pinnedPublicKey): a different machine
+    // answered, or the device was given a new key. Kept apart from
+    // TlsCertificateInvalid because the remedy differs - nothing about the
+    // certificate is wrong except that it is not the one remembered.
+    TlsPublicKeyMismatch
 };
 
 // ============================================================================
@@ -183,6 +189,10 @@ struct UltraNetTlsInfo {
     std::string peerCertificateFingerprint;
     std::string negotiatedAlpn;
     bool sessionResumed = false;
+    // "sha256//<base64>" for the server's certificate (UltraNet_PublicKeyPinOf),
+    // the form UltraNetHttpOptions::pinnedPublicKey takes. Filled when the
+    // request set capturePeerCertificate and the TLS backend reported it.
+    std::string peerPublicKeyPin;
 };
 
 // ============================================================================

@@ -158,13 +158,16 @@ void EmailCleanerApp::WireMailBackend() {
 
     // The two vaults are opened one after the other, never together:
     // UltraVault holds one store per process.
-    std::string ultraMailProblem;
-    const int usable = RegisterUltraMailAccounts(ultraMailProblem) + RegisterOwnAccounts();
+    std::string ultraMailProblem, ownProblem;
+    const int usable = RegisterUltraMailAccounts(ultraMailProblem) +
+                       RegisterOwnAccounts(ownProblem);
 
     if (usable > 0) {
         backendUnavailable_.clear();
     } else if (!ultraMailProblem.empty()) {
         backendUnavailable_ = ultraMailProblem;
+    } else if (!ownProblem.empty()) {
+        backendUnavailable_ = ownProblem;
     } else {
         backendUnavailable_ = "No account has a server and a saved password — add "
                               "one under Accounts…, or set it up in UltraMail.";
@@ -185,11 +188,21 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
     // with the device key UltraMail keeps beside it, and only ever read.
     UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
     if (!vault.TryAutoUnlock()) {
-        problem = vault.Exists()
-            ? "UltraMail's credential vault is locked with a master password — "
-              "open UltraMail once so it stores its device key, then restart."
-            : "UltraMail has no credential vault yet — set the account up in "
-              "UltraMail first, or add it under Accounts….";
+        // Said from why it stayed shut, not guessed from whether the file is
+        // there: a build without an encryption library has no vault file
+        // either, and was told to set the account up in UltraMail first.
+        const UltraVault::UnlockStatus why = vault.GetLastUnlockStatus();
+        if (why == UltraVault::UnlockStatus::Locked) {
+            problem = "UltraMail's credential vault is locked with a master password — "
+                      "open UltraMail once so it stores its device key, then restart.";
+        } else if (why == UltraVault::UnlockStatus::IoError && !vault.Exists()) {
+            problem = "UltraMail has no credential vault yet, and none could be made in " +
+                      mailDataDir_ + "/vault — set the account up in UltraMail first, "
+                      "or add it under Accounts….";
+        } else {
+            problem = "UltraMail's credential vault cannot be opened: " +
+                      UltraVault::DeviceKeyVault::DescribeUnlockStatus(why) + ".";
+        }
         return 0;
     }
     int usable = 0;
@@ -235,12 +248,20 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
     return usable;
 }
 
-int EmailCleanerApp::RegisterOwnAccounts() {
+int EmailCleanerApp::RegisterOwnAccounts(std::string& problem) {
     std::vector<UltraMail::Account> own;
     if (!ownAccounts_.IsOpen() || !ownAccounts_.List(own) || own.empty()) return 0;
 
     UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
-    if (!vault.TryAutoUnlock()) return 0;
+    if (!vault.TryAutoUnlock()) {
+        // Without this the accounts were simply skipped, and the window said
+        // none had a saved password.
+        problem = "The credential vault in " + ownAccounts_.VaultDir() +
+                  " cannot be opened: " +
+                  UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault.GetLastUnlockStatus()) +
+                  ".";
+        return 0;
+    }
     int usable = 0;
     for (const UltraMail::Account& account : own) {
         std::string password;
@@ -711,11 +732,19 @@ void EmailCleanerApp::AddOwnAccount(const NewAccountRequest& request,
             // The password first: an account saved without one would fail
             // every download for no visible reason.
             UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
-            const bool stored = vault.TryAutoUnlock() && vault.Store(account.accountId, password);
+            const bool unlocked = vault.TryAutoUnlock();
+            const bool stored = unlocked && vault.Store(account.accountId, password);
+            const UltraVault::UnlockStatus why = vault.GetLastUnlockStatus();
             vault.Lock();
             if (!stored) {
+                // Why the vault would not open, when that is what failed - a
+                // build without an encryption library cannot keep passwords
+                // at all, which no retry fixes.
                 done("The sign-in worked, but the password could not be stored in " +
-                     ownAccounts_.VaultDir() + ", so the account was not added.");
+                     ownAccounts_.VaultDir() +
+                     (unlocked ? std::string()
+                               : " (" + UltraVault::DeviceKeyVault::DescribeUnlockStatus(why) + ")") +
+                     ", so the account was not added.");
                 return;
             }
             if (UltraDbResult saved = ownAccounts_.Save(account); !saved) {

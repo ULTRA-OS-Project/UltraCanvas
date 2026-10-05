@@ -507,6 +507,13 @@ namespace UltraCanvas {
         virtual AccessibleRole GetAccessibleRole() const { return AccessibleRole::Unknown; }
         virtual std::string GetAccessibleName() const { return ""; }
         virtual IAccessibleText* GetAccessibleTextInterface() { return nullptr; }
+        // True for a field whose content is a secret. The bridges report it
+        // as a password field (UI Automation's IsPassword, AT-SPI's password
+        // text role), so a screen reader says "password" and echoes stars
+        // rather than the characters typed, and other assistive tools leave
+        // the content alone. Such an element must not hand out its text
+        // through GetAccessibleTextInterface().
+        virtual bool IsAccessiblePassword() const { return false; }
 
         // True for an element that shows an input method's pre-edit text in
         // place (TextComposition events). While one has focus the platform

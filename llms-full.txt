@@ -426,10 +426,13 @@ the backing implementation can be replaced without affecting callers.
     (`UltraCanvasXFileConverter.h`) - Frame, Mesh, MeshNormals,
     MeshTextureCoords, MeshVertexColors, MeshMaterialList and Material.
     Read-only and geometry only. It is the framework's one **left-handed**
-    format: the reflection that converts it back sits in the root frame's
-    matrix and the reversed winding cancels against it, so the reader alters
-    neither and instead *checks* the winding against the file's own normals.
-    Consult that header before assuming anything about its handedness.
+    format, and the reader converts it: Z is negated in every position and
+    normal, each frame matrix is conjugated by the same reflection, and every
+    face's corners are reversed, so the document is right-handed and a model
+    is not delivered as its mirror image. An exporter's own root-frame
+    reflection and reversed winding survive that and still cancel, which the
+    reader *checks* against the file's own normals. Consult that header before
+    assuming anything about its handedness.
     **MilkShape 3D** (`Plugins/Models/MS3D/UltraCanvasMS3DConverter.h`) is the
     one reader with no container layer, because an `.ms3d` has no container to
     speak of: a fixed sequence of packed little-endian structs, a count then
@@ -1003,7 +1006,9 @@ the backing implementation can be replaced without affecting callers.
     as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
     page format (`...PrinterPwgRaster.h`) are pure and unit-tested. Both
     backends take a device's display name out of its DNS-SD service name
-    through `...DnsSd.h`.
+    through `...DnsSd.h`, and trust a device's self-signed HTTPS certificate
+    on first use - its public key remembered, every later connection pinned
+    to it - through `...TlsTrust.h`.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
@@ -1249,7 +1254,11 @@ future.
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
-  `UltraNet_FtpDelete`, `UltraNet_FtpRename`
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`,
+  `UltraNet_FtpRemoveDirectory`; the session log of every call
+  (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
+  `UltraNetFtpLogLine` steps, commands with the password masked, replies with
+  their codes, the error with libcurl's number)
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1521,8 +1530,9 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
 the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
-`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
--> `UnlockStatus`, `PersistDeviceKey`), per-account
+`device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
+`DescribeUnlockStatus` saying why it stayed closed) or by a master password
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -6461,12 +6471,22 @@ Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
 std::string name = element->GetAccessibleName();
 IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+bool secret = element->IsAccessiblePassword();        // false by default
 ```
 
-An element describes itself by overriding these three virtuals of
-`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
-`Document`, name the document's title (else the element's identifier), and a
-text interface over the whole document.
+An element describes itself by overriding these virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` does: role `Document`, name
+the document's title (else the element's identifier), and a text interface
+over the whole document. `UltraCanvasTextInput` (and what is built on it) is a
+`TextField`, without a text interface yet.
+
+**Password fields.** `IsAccessiblePassword()` is true for a field whose content
+is a secret - `UltraCanvasTextInput` in password mode, whether or not its text
+is revealed. The bridges report it as a password field (UI Automation's
+`IsPassword`, AT-SPI's *password text* role), so a screen reader says
+"password" and echoes stars instead of the characters typed, and other
+assistive tools leave the content alone. An element that answers true must not
+hand out its text through `GetAccessibleTextInterface()`.
 
 ## Text
 
@@ -6536,7 +6556,7 @@ registers on the accessibility bus with the registry (`Socket.Embed`) and
 answers there for the application (`Accessible`, `Application`), its windows
 (frames) and its elements (`Accessible`, `Component`, and `Text` for elements
 with text). Roles map to AT-SPI roles (`Document` → document text, `TextField`
-→ entry, `Button` → push button, ...); states include enabled, visible,
+→ entry, or password text for a password field, `Button` → push button, ...); states include enabled, visible,
 showing, focusable, focused, editable or read-only, single/multi-line and, for
 a window, active. Text attributes use the names ATK and Orca read: `weight`,
 `style`, `underline`, `strikethrough`, `text-position`, `family-name`, `size`,
@@ -6557,7 +6577,7 @@ no thread of its own.
 **UI Automation (Windows)** - `OS/MSWindows/UltraCanvasWindowsAccessibility`.
 Each window answers `WM_GETOBJECT` with a fragment root; every element is a
 fragment (control type, name, automation id = identifier, framework
-"UltraCanvas", enabled, focusable, focused, offscreen, bounds, navigation,
+"UltraCanvas", enabled, focusable, focused, offscreen, is-password, bounds, navigation,
 `SetFocus`, hit testing). An element with text offers the **Text pattern**:
 document, selection and point ranges that move and expand by character,
 format run, word, line, paragraph and document, find text, select, report one
@@ -35581,6 +35601,9 @@ caption, with the key where there is one:
 | 2 | `save` | Save as… |
 | 2 | `file-info` | Details |
 
+Row 2 shows only the groups the file on show takes - see
+[Tools per kind of file](#tools-per-kind-of-file).
+
 The three dropdowns stay text because a value picker shows its value; the
 interval and transition ones start on the defaults. The Slideshow toggle
 follows the state however it changed: Space and `PlaySlideshow()` /
@@ -35652,10 +35675,41 @@ The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
 
-Image-only tools (rotate, mirror, tone/colour adjustments, curves, save-as) apply to
-images; the zoom toolbar also drives the PDF view and, for e-books, the
-reading text scale (books reflow, so zoom is a text scale and "Fit" means a
-comfortable line measure across the pane).
+## Tools per kind of file
+
+The second toolbar row offers only the tools that mean something for the file
+on show; the rest are hidden, not greyed, so a video or a spreadsheet is not
+handed colour sliders it cannot apply. Each load decides it, and a host with
+its own controls can ask the same question:
+
+```cpp
+MediaViewerTools tools = viewer->GetAvailableTools();
+if (tools.colour) { /* the adjustments panel and Curves apply */ }
+```
+
+| Shown | Zoom | Rotate / mirror | Adjustments + Curves | Save as |
+|---|:-:|:-:|:-:|:-:|
+| Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
+| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
+| Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
+| `*.ucd` preview thumbnail | yes | — | — | — |
+| PDF, e-book | yes | — | — | — |
+| Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
+
+*Details* is always there. Separators follow the groups, so none is left
+standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
+own controls (the players' transport bar, the model's orbit and dolly), so the
+row is down to *Details* for them.
+
+A drawing's pixels are only a rendering of it at the size it is shown, so it
+takes no gamma, colour or curve: the adjustments carry from one bitmap to the
+next, but a drawing or a document preview browsed to in between is shown
+unaltered. The adjustments panel folds away for such a file and comes back with
+the next bitmap while its toggle is still on.
+
+The zoom toolbar also drives the PDF view, the vector drawing view and, for
+e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
+means a comfortable line measure across the pane).
 
 ## Zooming the shown page
 
@@ -35931,8 +35985,10 @@ part of the adjustment like everything else, so *Save as* bakes them in too.
 
 Dragging a point previews on the image itself at full size (untick *Preview* to
 compare against the original); *Cancel*, or closing the window, restores the
-curves the viewer had. The button applies to images — for any other kind of file
-the info bar says so and nothing opens.
+curves the viewer had. The button is there only for bitmap images (see
+[Tools per kind of file](#tools-per-kind-of-file)); browsing on to a file the
+curves do not apply to leaves an open dialog without a histogram rather than
+with the previous picture's.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md
@@ -37764,6 +37820,13 @@ if (document && !document->Empty()) {
 }
 ```
 
+The mesh options - `TriangulateOnImport`, `WeldTolerance`,
+`GenerateMissingNormals` and `ForceUpAxis` - mean the same thing whichever
+reader the extension picks, because a caller going through the dispatch
+cannot know which one that was. `ModelFormatsPluginTest` holds every reader to
+that: each option's result must equal a plain load with the same operation
+applied by hand.
+
 `LoadModelDocument` dispatches on the file extension. To go through the
 framework's plugin registry instead — so a 3D file opens like any other
 graphics file — call `RegisterModelFormatsPlugin()` once at start-up and then
@@ -37914,6 +37977,12 @@ geometry.
 To move the geometry itself rather than the view — for a writer, or to
 normalise a scene — ask the reader for it with
 `ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
+Every reader honours `ForceUpAxis`, whichever one the extension picks;
+`ModelFormatsPluginTest` asks each sample for both axes and checks that the
+geometry turned, not just the label. The turn goes on the root nodes, and
+the translation and rotation keys of any animation that drives a root turn
+with it - a key replaces the value it targets on playback, so leaving them
+would put an animated model back on its side the moment it played.
 
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
@@ -56305,6 +56374,12 @@ std::function<void(bool)> onPasswordVisibilityChanged;
 `GetText()` always returns the real text; only the painted glyphs change. Reveal
 state is reset automatically when the field is switched away from password mode.
 
+To assistive technology a text input is a text field, and in password mode a
+password field (`IsAccessiblePassword()`, revealed or not): screen readers on
+Windows (UI Automation `IsPassword`) and Linux (AT-SPI password text) then say
+"password" instead of speaking what is typed. See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md).
+
 ## Factory Functions
 
 ### Convenience Creation Functions
@@ -62415,12 +62490,44 @@ address belongs to:
 
 ```
 Ladybird crashed: exception 0xC0000005 (ACCESS_VIOLATION) at
-0x00007FFB1C2E4A10 in C:\Windows\System32\ig9icd64.dll.
+0x00007FFB1C2E4A10 (ig9icd64.dll+0x2E4A10) in C:\Windows\System32\ig9icd64.dll.
 Windows 11 (10.0 build 26100)
 ```
 
 A driver, a codec or a third-party DLL in that field means the framework was
 the victim, not the cause.
+
+**Where in our code, and how it got there.** The address alone cannot be
+traced back to a function: a DLL loads at a different address on every start.
+So the line also gives the offset into the module, which is the same on every
+start, and the function — the nearest name in the module's export table.
+`libUltraCanvas.dll` is linked with `WINDOWS_EXPORT_ALL_SYMBOLS`, so every
+function of the framework with external linkage is in that table; for code
+with internal linkage (a lambda, a helper in an anonymous namespace) the name
+is that of the function compiled just before it, which is still the right
+file. On x64 the box and the log then list the call stack, one caller per
+line, walked with the same unwind tables Windows' own exception dispatch uses.
+The shape of it (the names and numbers are made up):
+
+```
+MyApp crashed: exception 0xC0000005 (ACCESS_VIOLATION) at
+0x00007FFB1212C86D (libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D)
+in C:\Apps\MyApp\libUltraCanvas.dll. Windows 11 (10.0 build 26200)
+Call stack:
+  #0 libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D
+  #1 libUltraCanvas.dll+0x12F0A2 UltraCanvas::UltraCanvasExample::OnEvent+0x5B2
+  #2 MyApp.exe+0x1C40
+  #3 kernel32.dll+0x17374 BaseThreadInitThunk+0x14
+  #4 ntdll.dll+0x4CC91 RtlUserThreadStart+0x21
+```
+
+The names are demangled to the qualified name only, without the parameters.
+A frame in a module that exports nothing (an application's `.exe`) has the
+offset alone. A first frame that is a bare address in no module — the
+program called through a freed object — is followed by the caller that made
+that call. The walk stops at a frame it cannot unwind, and is skipped for a
+stack overflow, whose filter runs on what is left of the exhausted stack;
+ARM64 builds name the faulting function without the call stack.
 
 **The crash dump.** The same filter writes a minidump before it shows the
 message box, and the box (and the log line after the crash line) names the
@@ -65909,14 +66016,11 @@ from Bonjour, so the instance is cut out of it and unescaped
 (`IppInstanceFromServiceName`, over the shared `DnsSdInstanceName` in
 `UltraCanvasIODeviceDnsSd.h`) before it is shown or compared.
 
-**A printer offering both is reached over plain IPP.** Printers' certificates
-are self-signed in all but a few cases, and UltraNet's rule is that TLS
-verification stays on, so the `ipps://` route would fail where the `ipp://`
-one works. The TLS address is kept in the device's attributes, and an
-`ipps://` failure says what probably happened rather than reading like a
-network fault. A printer that offers only `ipps://` with a self-signed
-certificate is therefore not reachable yet; the fix is trust on first use,
-not turning verification off (see Gaps).
+**A printer offering both is reached over plain IPP**, which needs nothing
+remembered; the TLS address is kept in the device's attributes. A printer
+that offers only `ipps://` is reached through
+[trust on first use](#self-signed-certificates-trust-on-first-use), since
+its certificate is self-signed in all but a few cases.
 
 **IPP 1.1 printers** answer a 2.0 request with
 `server-error-version-not-supported`; the request is repeated as 1.1 and the
@@ -66217,9 +66321,10 @@ since the device id is the scanner's URL, the two used to be two entries.
 Discovery now recognises a scanner by the `uuid` in its TXT record - the same
 in both advertisements - or by its host when it gives none
 (`EsclScannerIdentity`), keeps the plain-HTTP advertisement, and records the
-TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
-it does for IPP printers: the certificate is self-signed in all but a few
-cases, and TLS verification stays on.
+TLS address as the `escl-tls-url` attribute. Plain HTTP wins, as it does
+for IPP printers, because it needs nothing remembered; a scanner that offers
+only `https://` is reached through
+[trust on first use](#self-signed-certificates-trust-on-first-use).
 
 A scanner is shown by its DNS-SD instance name, as an IPP printer is: it is
 unique on the network, where the model (`ty`) is shared by every scanner of
@@ -66233,6 +66338,53 @@ the `mdns-name` attribute.
 
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
+
+### Self-signed certificates: trust on first use
+
+A scanner or printer that speaks HTTPS presents, in all but a few cases, a
+certificate it signed itself. No certificate authority vouches for it, so
+ordinary verification refuses it, and a device that offered *only* HTTPS was
+unreachable. Turning verification off would accept anything that answers;
+what both backends do instead is what SSH does with host keys
+(`UltraCanvasIODeviceTlsTrust.h`, `Internal::DeviceHttpRequest`):
+
+1. **A certificate that verifies is used as it is**, and nothing is
+   remembered - pinning it would break the day it renews.
+2. **The first time one fails verification**, the device's public key is
+   fetched over a connection that sends a bare `HEAD /` - none of the real
+   request's headers or body - and remembered against `host:port`. The real
+   request then goes ahead pinned to that key. That first contact is the one
+   moment the key is taken on trust.
+3. **From then on the address is reached only with the same key.** The pin
+   is libcurl's `CURLOPT_PINNEDPUBLICKEY` (UltraNet's
+   `UltraNetHttpOptions::pinnedPublicKey`), checked on every handshake even
+   though ordinary verification is off for the request. A different key fails
+   with `TlsPublicKeyMismatch` and is never learned over the old one: the
+   message names the device and says how to forget its key - UOS-Settings'
+   *Devices > Trusted certificates* page, deleting its line, or
+   `IODeviceForgetCertificate()` in code - for a device that was reset or
+   replaced.
+
+The keys are kept in `DeviceCertificates.conf` in the UltraCanvas settings
+folder (`UltraCanvasSettingsFolder.h`), shared by every application, each
+with the name its device was discovered under
+(`host:port=sha256//... Office Printer`) so the settings page can show it.
+The backends hand that name over as they list their devices
+(`Internal::NoteDeviceTlsName`); a printer named only by its address in
+configuration hands it over once it has described itself, and a key learned
+before then takes it on at that point.
+`ULTRACANVAS_DEVICE_CERTIFICATES` names another file and
+`ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new keys being learned.
+
+**Fail closed.** A TLS backend that cannot check a pin makes UltraNet switch
+verification back on for the request rather than drop the pin, and one that
+cannot report the server's certificate leaves the key unlearned; either way a
+self-signed device stays unreachable rather than being accepted unchecked.
+Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
+`ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
+computes for the certificate, a changed certificate is refused with the key
+file untouched, and the first-contact server saw only `HEAD /` before the
+pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
 
 ---
 
@@ -66379,7 +66531,7 @@ backend now exist; the other four protocols do not.
 | eSCL: discovery on Windows | ✅ `Plugins/UltraNet/mdns` browses with `DnsServiceBrowse` and resolves each instance with `DnsServiceResolve`, so a Windows browse now yields host, port and TXT like the Avahi and Bonjour backends. The entry points are bound at run time, so on Windows older than 10 1703 the module still loads and falls back to the PTR-only query — names without addresses, which a caller skips. **Not yet run on Windows**: the name arithmetic is tested (`Tests/MdnsNamesTest`) and the translation unit compiles and links against `dnsapi`, but nobody has browsed a real network with it. Naming a scanner in `ULTRACANVAS_ESCL_SCANNERS` remains the way to reach one on another subnet. |
 | mDNS: `dn` differs between backends | ❌ every backend puts the *full* service name in `dn` ("Office Printer._ipp._tcp.local"), not the instance alone - checked on Avahi against a live advertisement - but Avahi and the Windows backend give it readable while Bonjour passes through the escaped `fullname` it is given. Both consumers now cope with both forms through one helper, `DnsSdInstanceName` (`UltraCanvasIODeviceDnsSd.h`): the IPP backend for every printer's name, eSCL for every scanner's name, ahead of its model (`ty`), which two scanners of one model share. A scanner with no `ty` used to be shown as "Office Scanner._uscan._tcp.local" and is now "Office Scanner" (checked on Avahi against a live advertisement). The plugin's own `dn` is unchanged; making it backend-neutral would mean the plugin reporting the instance itself, through `Mdns::SplitInstanceName`, which lives in the plugin and not in the core library. |
 | eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
-| eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. A scanner offering both is reached over `http://`; one offering only `https://` is not reachable yet. |
+| eSCL: HTTPS with a self-signed certificate | ✅ trust on first use: the scanner's key is learned the first time its certificate fails verification and every later connection is pinned to it; a changed key is refused, not relearned. Checked against a TLS-only eSCL scanner on Linux; not yet on Windows or macOS TLS. See [Architecture.md](Architecture.md#self-signed-certificates-trust-on-first-use). |
 | eSCL: one scanner, one entry | ✅ fixed. A scanner advertising both `_uscan._tcp` and `_uscans._tcp` was listed twice, because the device id is its URL and the two differ. It is now recognised by the TXT record's `uuid` (or its host when it has none) and listed once, over plain HTTP, with the TLS address in the `escl-tls-url` attribute. Checked against a scanner advertised both ways over Avahi: two entries before, one after. |
 | Multi-page ADF, capability detection | ✅ |
 | Preview mode | ❌ detected but not exposed |
@@ -66437,7 +66589,7 @@ absent.
 | IPP: `Get-Printer-Attributes` parsing | ✅ the full RFC 8010 decoder - every value type, collections to any sane depth, and a malformed reply refused rather than read past. Capabilities, status, supplies (`marker-*` and PWG's `printer-supply`) and jobs are read from it. |
 | IPP: device ids never matched CUPS's | ✅ found and worked around. The CUPS backend keys on `printer-uuid`, which `cupsGetDests2` does not return (checked, CUPS 2.4.7), so the registry could never collapse a printer found both ways. The IPP backend matches CUPS queues itself instead - see [Architecture.md](Architecture.md#enumeration-double-counting). |
 | IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
-| IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
+| IPP: `ipps://` with a self-signed certificate | ✅ trust on first use, as for eSCL scanners. Checked against CUPS's `ippeveprinter` over `ipps://` on Linux (connect, status, six jobs); not yet on Windows or macOS TLS. One offering both is still reached over `ipp://`. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
 | IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
 | IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
@@ -69350,7 +69502,7 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
@@ -71743,26 +71895,102 @@ CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 An account that will not send or fetch is rarely diagnosable from the
 `UltraNetResultCode` alone — the server says why in its reply text, and
 libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
-`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+`ULTRANET_CURL_VERBOSE` to anything but empty or `0` to put the conversation
+on stderr:
 
 ```
-ULTRANET_CURL_DEBUG=1 ./UltraMail
+ULTRANET_CURL_VERBOSE=1 ./UltraMail
 ```
 
 | Line | Meaning |
 |---|---|
 | `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
 | `[ultranet] > …` | what we sent |
-| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error`, `-ERR invalid password` |
 
-It is off unless asked for, message bodies are never printed, and the SASL
-exchange is replaced with `<redacted>` — including the bare base64
-continuation lines of `AUTH LOGIN`, which carry the password with no keyword
-on them — so a trace can be pasted into a bug report as it stands. The
-mechanism name is kept, because which step failed is the useful part.
+It is off unless asked for, and message bodies are never printed. Every line
+we send that can carry a secret is printed as `<redacted auth line>`: the
+SASL exchange — including the bare base64 continuation lines of `AUTH LOGIN`,
+which carry the password with no keyword on them — POP3's `PASS`, and IMAP's
+`LOGIN`, which libcurl sends when a server offers no SASL. So a trace can be
+pasted into a bug report as it stands. The server's side is kept whole, its
+list of mechanisms and its answer to the sign-in included, because which step
+failed is the useful part.
 
-Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+Applies to every mail plug-in that goes through libcurl (SMTP, IMAP, POP3);
 `ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
+On Windows a GUI build has no stderr to print to: run it from a console, or
+read `UltraNetResult::diagnostics`, which carries the connection chain of a
+failure either way. FTP calls have their own log, below.
+
+---
+
+## The FTP session log
+
+Every FTP / FTPS / SFTP call (`UltraNetFtp.h`) can report its session as it
+runs — the lines an FTP client shows in its message log:
+
+```
+Step:     Resolving address of ftp.example.com
+Step:     Connecting to 203.0.113.7:21...
+Step:     Connection established, waiting for welcome message...
+Response: 220 Welcome                          (replyCode 220)
+Command:  USER erika
+Command:  PASS ********                        (the password is never logged)
+Response: 230 Logged in
+Step:     Logged in
+Command:  PASV
+Response: 227 Entering Passive Mode (203,0,113,7,246,253)
+Step:     Retrieving directory listing...
+Command:  MLSD
+Error:    Connection timed out after 30 seconds of inactivity   (transportCode 28)
+```
+
+```cpp
+UltraNetFtpOptions opt;
+opt.credentials.username = "erika";
+opt.credentials.password = secret;
+opt.onLog = [](const UltraNetFtpLogLine& line) {   // on the calling thread, while it runs
+    Show(line.kind, line.text, line.replyCode, line.transportCode);
+};
+std::vector<UltraNetFtpEntry> entries;
+UltraNetResult r = UltraNet_FtpListDirectory("ftp://ftp.example.com/pub/", entries, opt);
+// r.message:     "RETR response: 550 - the server said \"550 Permission denied\""
+// r.diagnostics: "Error: ... (libcurl error 19: ...)\nConnected to: 203.0.113.7:21\n..."
+```
+
+| Kind | Holds |
+|---|---|
+| `Step` | what the client is doing: libcurl's own notes, plus the steps an FTP client names — *Logged in*, *Retrieving directory listing...*, *Directory listing successful*, *Insecure server, it does not support FTP over TLS* (an `ftpes://` server that refused AUTH TLS) |
+| `Command` | a command sent, `PASS` / `ACCT` masked as `********` |
+| `Response` | a reply line, with its three-digit `replyCode` (0 inside a multi-line reply) |
+| `Error` | the call's last line on a failure: the message, `resultCode`, and libcurl's error number in `transportCode` |
+
+(The kind is `Step`, not `Status`: Xlib `#define`s `Status`.)
+
+A caller that reaches these functions through a layer that builds the options
+itself — UltraFiler's drive worker calls UltraCloud's FTP provider — sets a
+sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
+previous sink to put back afterwards, and only calls without an `onLog` of
+their own go to it.
+
+What a failure says, whether or not anyone reads the log:
+
+- `message` is libcurl's specific reason (its error buffer, not just the error
+  class), with the server's refusal added when the last reply was a 4xx / 5xx.
+- `diagnostics` is the connection chain (`UltraNetCurlError.h`) plus the last
+  server reply.
+- `UltraNetFtpOptions::inactivityTimeoutMs` (default 30 s) ends a call whose
+  server has gone quiet — no reply to a command, no bytes of a listing or file
+  — as *Connection timed out after N seconds of inactivity*. Before it, a data
+  connection that opened and sent nothing held the call indefinitely.
+- A listing tries MLSD, then LIST, then NLST only when the server refused the
+  command; a failure to connect, sign in, set up TLS or the data connection, or
+  a timeout, is reported once rather than three times, and an empty folder is
+  listed with one request.
+
+`Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
+server on loopback.
 
 ---
 
@@ -71794,6 +72022,14 @@ architecture.
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.
+* **Public-key pinning:** `UltraNetHttpOptions::pinnedPublicKey`
+  (`"sha256//<base64>"`, from `UltraNet_PublicKeyPinOf`) is checked on every
+  handshake, with `acceptInvalidCert` too - so a self-signed server can be
+  trusted by its key and nothing else. A mismatch is `TlsPublicKeyMismatch`;
+  a TLS backend that cannot pin gets verification switched back on rather
+  than the pin dropped. `capturePeerCertificate` fills
+  `UltraNetResponse::tlsInfo`, the pin included. IODeviceManager's trust on
+  first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
@@ -71982,10 +72218,17 @@ UltraVault::DeviceKeyVault vault(dataDir + "/vault",
                                  {"ultramail.vault", "mail.ultramail."});
 
 // First run: a device key is generated and the vault created. Later runs:
-// the key unlocks it. False only when a vault exists that was made with a
-// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
-// this build has no crypto backend.
-if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+// the key unlocks it. False when a vault exists that was made with a master
+// password (Locked: prompt once, Unlock(), then PersistDeviceKey()), when
+// this build has no crypto backend (Unavailable) or when the folder cannot be
+// written (IoError) - GetLastUnlockStatus() says which.
+if (!vault.TryAutoUnlock()) {
+    // "cannot open the credential vault: this build has no encryption
+    // library (UltraCrypt was built without libsodium), so it cannot keep
+    // passwords". Store() will refuse, not drop.
+    Report("cannot open the credential vault: " +
+           UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault.GetLastUnlockStatus()));
+}
 
 vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
 std::string got;
@@ -72000,14 +72243,19 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
 `UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
 tampered file reports) from a build that cannot open a vault at all
 (`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
-written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+written (`IoError`); after `TryAutoUnlock()`, `Locked` means a vault made with
+a master password and no device key. An empty passphrase is refused. The
+directory is a UTF-8 path on every platform: a profile folder named in Thai or
+Cyrillic opens like an ASCII one on Windows too (before 0.2.0 the device
+key's path reached the filesystem through the ANSI code page, and such a
+folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
