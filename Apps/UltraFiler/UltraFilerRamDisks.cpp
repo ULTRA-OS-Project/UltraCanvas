@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRamDisks.cpp
 // The RAM discs behind "+ Drive > RAM disc...". See UltraFilerRamDisks.h.
-// Version: 1.0.0
+// Version: 1.0.1 - the name length comes from VirtualFS
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDisks.h"
@@ -55,8 +55,9 @@ std::string CreateErrorText(VirtualFSResult result, const std::string& name,
                             uint64_t sizeBytes) {
     switch (result) {
         case VirtualFSResult::InvalidArgument:
-            return "\"" + name + "\" cannot name a RAM disc. Use letters, digits, "
-                   "'.', '_' and '-' only.";
+            return "\"" + name + "\" cannot name a RAM disc. Use 1 to " +
+                   std::to_string(MaxNameLength()) +
+                   " letters, digits, '.', '_' and '-'.";
         case VirtualFSResult::AlreadyExists:
             return "A RAM disc named \"" + name + "\" already exists.";
         case VirtualFSResult::DiskFull:
@@ -136,8 +137,16 @@ std::string SuggestName() {
     }
 }
 
+std::size_t MaxNameLength() {
+#ifdef ULTRAFILER_HAS_RAMDISK
+    return VirtualFS::VirtualFS_GetMaxRamDiskNameLength();
+#else
+    return 64;   // nothing can be created without VirtualFS; Available() says so
+#endif
+}
+
 bool IsValidName(const std::string& name) {
-    if (name.empty() || name.size() > 64) return false;
+    if (name.empty() || name.size() > MaxNameLength()) return false;
     return std::all_of(name.begin(), name.end(), [](unsigned char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';

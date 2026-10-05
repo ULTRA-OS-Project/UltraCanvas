@@ -1,3 +1,12 @@
+#### 2026-10-05 *1.65.3*
+- **A RAM disc made on Windows can always be found and ejected again.** The
+  name field took up to 64 characters, but on Windows a RAM disc's name has
+  to fit its volume label: a longer name made a disc that was neither listed
+  nor ejectable. The field now holds what the system can keep - 23
+  characters on Windows, 64 elsewhere - and a name past that is refused with
+  "At most 23 characters." rather than the letters-and-digits hint (framework
+  changelog: a RAM disc's name fits its volume label).
+
 #### 2026-10-05 *1.65.2*
 - **Published by ULTRA OS Development GmbH.** The Windows file properties
   of `UltraFiler.exe` (Company and Copyright) and its application manifest

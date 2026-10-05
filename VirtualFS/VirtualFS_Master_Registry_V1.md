@@ -962,11 +962,18 @@ VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking();
     // The backing VirtualFS_CreateRamDisk() would choose right now, so
     // callers can warn before creating anything
 
+std::size_t VirtualFS_GetMaxRamDiskNameLength();
+    // The longest name VirtualFS_CreateRamDisk() accepts: 64, and 23 on
+    // Windows, where an ImDisk disc keeps "ultravfs-<name>" in its NTFS
+    // volume label (32 characters)
+
 VirtualFSResult VirtualFS_CreateRamDisk(const std::string& name,
                                         uint64_t sizeBytes,
                                         VirtualFSRamDisk& outDisk);
     // Creates an OS-visible RAM disc, private to the calling user
-    // @param name - [A-Za-z0-9._-] only, max 64 chars, unique per user
+    // @param name - [A-Za-z0-9._-] only, at most
+    //                VirtualFS_GetMaxRamDiskNameLength() chars (64; 23 on
+    //                Windows), unique per user
     // @param sizeBytes - requested capacity, must be > 0
     // Returns: Success, InvalidArgument, AlreadyExists, AccessDenied,
     //          DiskFull, NotSupported, Error

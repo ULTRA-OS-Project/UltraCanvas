@@ -10,8 +10,8 @@
 //
 // Unlike the Linux back end this gives an exactly sized volume, because the
 // device is created with a fixed block count.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - PlatformMaxNameLength
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -185,6 +185,12 @@ std::vector<VirtualFSRamDisk> PlatformList() {
         discs.push_back(disk);
     }
     return discs;
+}
+
+// An HFS+ volume name holds 255 characters: the general limit is the
+// only one.
+std::size_t PlatformMaxNameLength() {
+    return kMaxNameLength;
 }
 
 } // namespace RamDiskDetail
