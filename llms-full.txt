@@ -35581,6 +35581,9 @@ caption, with the key where there is one:
 | 2 | `save` | Save as… |
 | 2 | `file-info` | Details |
 
+Row 2 shows only the groups the file on show takes - see
+[Tools per kind of file](#tools-per-kind-of-file).
+
 The three dropdowns stay text because a value picker shows its value; the
 interval and transition ones start on the defaults. The Slideshow toggle
 follows the state however it changed: Space and `PlaySlideshow()` /
@@ -35652,10 +35655,41 @@ The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
 
-Image-only tools (rotate, mirror, tone/colour adjustments, curves, save-as) apply to
-images; the zoom toolbar also drives the PDF view and, for e-books, the
-reading text scale (books reflow, so zoom is a text scale and "Fit" means a
-comfortable line measure across the pane).
+## Tools per kind of file
+
+The second toolbar row offers only the tools that mean something for the file
+on show; the rest are hidden, not greyed, so a video or a spreadsheet is not
+handed colour sliders it cannot apply. Each load decides it, and a host with
+its own controls can ask the same question:
+
+```cpp
+MediaViewerTools tools = viewer->GetAvailableTools();
+if (tools.colour) { /* the adjustments panel and Curves apply */ }
+```
+
+| Shown | Zoom | Rotate / mirror | Adjustments + Curves | Save as |
+|---|:-:|:-:|:-:|:-:|
+| Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
+| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
+| Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
+| `*.ucd` preview thumbnail | yes | — | — | — |
+| PDF, e-book | yes | — | — | — |
+| Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
+
+*Details* is always there. Separators follow the groups, so none is left
+standing alone. Text, spreadsheet, font, 3D, video and audio views carry their
+own controls (the players' transport bar, the model's orbit and dolly), so the
+row is down to *Details* for them.
+
+A drawing's pixels are only a rendering of it at the size it is shown, so it
+takes no gamma, colour or curve: the adjustments carry from one bitmap to the
+next, but a drawing or a document preview browsed to in between is shown
+unaltered. The adjustments panel folds away for such a file and comes back with
+the next bitmap while its toggle is still on.
+
+The zoom toolbar also drives the PDF view, the vector drawing view and, for
+e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
+means a comfortable line measure across the pane).
 
 ## Zooming the shown page
 
@@ -35931,8 +35965,10 @@ part of the adjustment like everything else, so *Save as* bakes them in too.
 
 Dragging a point previews on the image itself at full size (untick *Preview* to
 compare against the original); *Cancel*, or closing the window, restores the
-curves the viewer had. The button applies to images — for any other kind of file
-the info bar says so and nothing opens.
+curves the viewer had. The button is there only for bitmap images (see
+[Tools per kind of file](#tools-per-kind-of-file)); browsing on to a file the
+curves do not apply to leaves an open dialog without a histogram rather than
+with the previous picture's.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md
