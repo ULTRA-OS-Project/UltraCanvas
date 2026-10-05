@@ -30,8 +30,8 @@
 // Header-only and free of libcurl: UltraNetFtp.cpp maps libcurl's debug
 // stream onto Channel, and Tests/UltraNet/test_ftp_log.cpp feeds a recorded
 // transcript straight in.
-// Version: 1.0.0
-// Last Modified: 2026-10-04
+// Version: 1.0.1 - reads libcurl 8.21's "Established connection to" wording
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -246,9 +246,14 @@ private:
             return;
         }
         // The first connection made is the control connection; any after it
-        // carries the listing or the file ("Connected 2nd connection to ...",
-        // or "Connected to ..." again on older libcurl).
-        if (StartsWith(line, "Connected to ") || StartsWith(line, "Connected 2nd connection")) {
+        // carries the listing or the file. libcurl has worded this three
+        // ways: "Connected to ..." for each (7.x), "Connected 2nd connection
+        // to ..." for the data connection (8.x), and from 8.21 "Established
+        // connection to h (ip port n) from ..." / "Established 2nd connection
+        // to ..." - the only wording the vendored third_party/curl uses.
+        if (StartsWith(line, "Connected to ") || StartsWith(line, "Connected 2nd connection") ||
+            StartsWith(line, "Established connection to ") ||
+            StartsWith(line, "Established 2nd connection to ")) {
             if (!controlConnected_) {
                 controlConnected_ = true;
                 Step(sftp_ ? "Connection established, starting the SSH session..."

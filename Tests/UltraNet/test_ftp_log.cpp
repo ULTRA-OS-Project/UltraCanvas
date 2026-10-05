@@ -173,6 +173,29 @@ TEST(ftp_log_transcript_reads_like_an_ftp_client) {
                }), static_cast<std::ptrdiff_t>(1));
 }
 
+// libcurl 8.21 - the vendored third_party/curl, which the Ubuntu 22.04
+// build uses - words a connection "Established connection to ..." and no
+// longer says "Connected to" at all; the steps must not depend on which.
+TEST(ftp_log_transcript_reads_the_8_21_wording) {
+    Collected c;
+    Transcript t(c.Sink(), /*sftp=*/false);
+    t.Begin("ftp://ftp.example.com/pub/");
+    t.Feed(Channel::Text, "  Trying 203.0.113.7:21...\n");
+    t.Feed(Channel::Text, "Established connection to ftp.example.com (203.0.113.7 port 21) "
+                          "from 192.0.2.10 port 50112 \n");
+    t.Feed(Channel::Received, "220 FTP ready\r\n");
+    t.Feed(Channel::Sent, "PASV\r\n");
+    t.Feed(Channel::Received, "227 Entering Passive Mode (203,0,113,7,246,253)\r\n");
+    t.Feed(Channel::Text, "Established 2nd connection to ftp.example.com (203.0.113.7 port "
+                          "63229) from 192.0.2.10 port 50113 \n");
+
+    REQUIRE(c.Has(UltraNetFtpLogKind::Step, "Connecting to 203.0.113.7:21..."));
+    REQUIRE(c.Has(UltraNetFtpLogKind::Step,
+                  "Connection established, waiting for welcome message..."));
+    REQUIRE(c.Has(UltraNetFtpLogKind::Step, "Data connection established"));
+    REQUIRE(!c.Mentions("Established"));
+}
+
 TEST(ftp_log_transcript_says_when_tls_was_refused) {
     Collected c;
     Transcript t(c.Sink(), false);

@@ -35,6 +35,12 @@
     empty folder, MLSD refused, a stalled data connection, a server that
     never answers the listing); `UltraNetApiStatus` probes
     `UltraNet_SetThreadFtpLog`.
+  - The connection steps read every libcurl's wording: "Connected to" (7.x),
+    "Connected 2nd connection to" (8.x) and, from 8.21, "Established
+    connection to" / "Established 2nd connection to". The last is all the
+    vendored `third_party/curl` (8.21, used where the system libcurl lacks
+    WebSockets, as on Ubuntu 22.04) says, so there neither "Connection
+    established" nor "Data connection established" ever appeared.
 - **UltraCloud: a failed `Result` carries the transport's diagnostics.**
   `Result::diagnostics` holds the connection chain the provider's transport
   put together; the FTP provider fills it from `UltraNetResult::diagnostics`
