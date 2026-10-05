@@ -656,6 +656,8 @@ namespace UltraCanvas {
                                UltraCanvasWindowBase* parent = nullptr);
 
         // ===== DIALOG MANAGEMENT =====
+        // Cancels every open dialog (each result callback runs with Cancel).
+        // A dialog that one of those callbacks opens stays open.
         static void CloseAllDialogs();
         static std::shared_ptr<UltraCanvasModalDialog> GetCurrentModalDialog();
         static std::vector<std::shared_ptr<UltraCanvasModalDialog>> GetActiveDialogs();

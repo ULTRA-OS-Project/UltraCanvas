@@ -485,6 +485,28 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT ACCESSIBILITY TEST =====
+# A text field tells assistive technology it is one, and a password field that
+# its content is a secret (UI Automation IsPassword, AT-SPI password text).
+# Headless - no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputAccessibilityTest...")
+    add_executable(TextInputAccessibilityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputAccessibilityTest.cpp
+    )
+    target_include_directories(TextInputAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputAccessibilityTest COMMAND TextInputAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputAccessibilityTest")
+else()
+    message(STATUS "  TextInputAccessibilityTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.
@@ -3335,6 +3357,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DialogEscapeTest")
 else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIALOG CLOSE-ALL TEST =====
+# CloseAllDialogs() cancels every open dialog; it used to erase from the list
+# it was walking and read past its end. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DialogCloseAllTest...")
+    add_executable(DialogCloseAllTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogCloseAllTest.cpp
+    )
+    target_include_directories(DialogCloseAllTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogCloseAllTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogCloseAllTest PRIVATE UltraCanvas)
+    set_target_properties(DialogCloseAllTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogCloseAllTest COMMAND DialogCloseAllTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogCloseAllTest")
+else()
+    message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== UNDECODABLE IMAGE TEST =====

@@ -1,7 +1,10 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.6.0
-// Last Modified: 2026-09-24
+// Version: 1.7.0
+// Last Modified: 2026-10-05
+// V1.7.0: Describes itself to screen readers as a text field, and in password
+//   mode as a password field (IsAccessiblePassword), so assistive technology
+//   treats the content as private instead of as an unnamed, unknown element.
 // V1.6.0: The password eye button is on by default. A masked field with no way
 //   to read it back made every typo a blind retry; SetShowPasswordToggle(false)
 //   still turns it off for a field that must never show its text.
@@ -388,6 +391,12 @@ public:
     const std::string& GetPlaceholder() const { return placeholderText; }
 
     bool AcceptsFocus() const override { return true; }
+
+    // ===== ACCESSIBILITY =====
+    // A one-line text field to a screen reader, and in password mode a
+    // password field - revealed or not, the content is a secret.
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
+    bool IsAccessiblePassword() const override { return passwordMode; }
 
     // ===== INPUT TYPE AND BEHAVIOR =====
     void SetInputType(TextInputType type);

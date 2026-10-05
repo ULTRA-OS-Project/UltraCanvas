@@ -596,6 +596,12 @@ std::function<void(bool)> onPasswordVisibilityChanged;
 `GetText()` always returns the real text; only the painted glyphs change. Reveal
 state is reset automatically when the field is switched away from password mode.
 
+To assistive technology a text input is a text field, and in password mode a
+password field (`IsAccessiblePassword()`, revealed or not): screen readers on
+Windows (UI Automation `IsPassword`) and Linux (AT-SPI password text) then say
+"password" instead of speaking what is typed. See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md).
+
 ## Factory Functions
 
 ### Convenience Creation Functions
