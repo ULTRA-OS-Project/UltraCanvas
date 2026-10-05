@@ -1,3 +1,165 @@
+#### 2026-10-05 *0.9.162*
+- **DemoApp: the Ultra Message page shows each sample message once.** Two
+  causes. `SelectDemoItem` (used by `--component`) selected the tree node,
+  which already fires `onNodeSelected`, and then called `OnTreeNodeSelected`
+  itself, so every page opened that way was built twice and the first copy
+  thrown away. The Ultra Message page seeded the bus both times. Separately,
+  the page's broker and journal outlive the page, so each later visit seeded
+  the samples again. The node is now selected silently and displayed once, and
+  the page seeds only a feed that comes up empty. Building the page twice also
+  destroyed the first Message Centre while its seeded messages were queued,
+  the crash fixed in UltraMessage itself in #672.
+- **DemoApp: the Ultra Message page's subtitle is no longer clipped.** It is
+  three lines at the usual window width and had a fixed 40 px height; its
+  height now follows its lines.
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+
+#### 2026-10-05 *0.9.161*
+- **`UltraCanvasBusyIndicator` gets a sixth kind, `DotRing`, and a two-colour
+  `DualRing`.** `DotRing` is a ring of `ringDotCount` dots (default 8) with a
+  head running round it; the dots behind the head shrink, and
+  `dotRingFade` (`BusyDotRingFade`) picks whether they also fade (`Fade`, the
+  default), stay solid (`NoFade`) or fade and come back in a new random colour
+  every time (`FadeRandomColor`). `DualRing` draws its inner arc in the new
+  `secondArcColor` (orange by default), and `Bar` takes a segment length in
+  pixels, `barLength`, which overrides `barFraction` when set.
+- **DemoApp: the Busy Indicator page shows the new kind.** A `DotRing` row,
+  its three fades side by side at 64 px, the dual ring in two colours (orange
+  and purple in the second-colour column), and a green bar with a 40 px
+  segment.
+- **DemoApp: a long page description is no longer cut off in the header.**
+  The header showed each page's description on one line and cut it off with
+  an ellipsis. 44 of the demo's pages have descriptions too long for the
+  1400 px window, and Media Viewer's lost about three quarters of its text.
+  The title now wraps, and the header grows to fit the lines and shrinks
+  back on a page with a short description. The window's column measured the
+  header against an "at most this wide" width, under which a flex row keeps
+  its items at their one-line width and height, so the header now takes a
+  definite 100 % width. The documentation and source buttons no longer
+  shrink: on the longest descriptions they had been squashed to a few
+  pixels.
+- **DemoApp: the Media Viewer page shows its whole introduction.** The
+  three-line introduction sat in a box two lines tall and lost its first and
+  last lines, and the frame's caption read "Media Viewer wid…".
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+- **UltraMessage: a delivery queued for the UI thread is dropped once its
+  subscription ends.** `UltraMsg_Unsubscribe` and `UltraMsg_Disconnect` took
+  a subscription out of the tables, but a delivery the reader thread had
+  already handed to the UI dispatcher kept its own reference and still called
+  back. A subscriber that unsubscribed in its destructor was then called on
+  freed memory. The Message Centre does exactly that, so the DemoApp crashed a
+  moment after the Ultra Message page opened: the page was built twice at
+  startup, and the first Message Centre was destroyed while the seven
+  messages it had just seeded were still queued. Each subscription now
+  carries an `active` flag that both calls clear and that a queued delivery
+  checks before calling back. A dropped delivery is not acknowledged, exactly
+  as if it had arrived after the unsubscribe. `UltraMessage.h` and the module
+  README state the guarantee. New tests `unsubscribe_cancels_deliveries_already_queued`,
+  `disconnect_cancels_deliveries_already_queued` and
+  `message_center_destroyed_with_deliveries_queued` hold queued deliveries in
+  a test dispatcher and run them after the unsubscribe; without the fix the
+  first two fail and the Message Centre one aborts.
+
+#### 2026-10-05 *0.9.160*
+- **The company is now ULTRA OS Development GmbH.** The old name, Cloverleaf
+  UG, is replaced wherever the repository names the company: the copyright line
+  in `LICENSE`, the licence and "Developed by" lines of `README.md` and
+  `Docs/UltraCanvas/README.md`, the footers of the module READMEs, the
+  copyright string every macOS app bundle shows in its About box
+  (`NSHumanReadableCopyright`, written by `package-macos.sh`), and the
+  publisher name `SignUltraTexter.ps1` and `SignUltraDemo.ps1` put in the
+  self-signed Windows code-signing certificate they create.
+  - A machine that already has the old self-signed certificate keeps signing
+    with it while its `.pfx` file is present. Delete the `.pfx` and run the
+    script once with `-Mode CreateAndSign` to get one in the new name.
+  - Three things keep the old name on purpose. The macOS signing identity in
+    `package-macos.sh` must match the name inside the Apple Developer ID
+    certificate, which Apple issued to Cloverleaf RISCOS Computer UG; it
+    changes when Apple reissues the certificate. The `com.cloverleaf.*`
+    bundle identifiers stay, because macOS files each app's preferences,
+    keychain items and privacy permissions under them. Test data that
+    happens to contain the old name is test data, not a reference to the
+    company.
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+
 #### 2026-10-05 *0.9.159*
 - **Hiding or disabling a focused text field left its caret blinking where
   the field had been.** `UltraCanvasTextInput::OnEvent` and

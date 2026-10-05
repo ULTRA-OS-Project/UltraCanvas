@@ -288,7 +288,11 @@ jobs:
 
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
-      # Silicon and /usr/local on Intel, vcpkg's prefix in .vcpkg/ on both) =====
+      # Silicon and /usr/local on Intel). vcpkg's checkout and binary cache sit
+      # in .vcpkg/; the libraries install outside the workspace, in
+      # ~/.cache/ultracanvas/vcpkg-installed (scripts/macos-deps.sh's default),
+      # because CMake refuses to export link directories from inside the
+      # source tree. =====
       - name: Install build tools (macOS)
         if: runner.os == 'macOS'
         run: |

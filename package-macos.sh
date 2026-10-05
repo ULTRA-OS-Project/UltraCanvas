@@ -32,6 +32,10 @@ DO_SIGN=true
 NOTARIZE=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
+# The company is now ULTRA OS Development GmbH, but this has to be the common
+# name inside the Developer ID certificate in the keychain, and Apple issued
+# that one under the old name. Change it only together with a reissued
+# certificate (and the MACOS_CERTIFICATE / APPLE_SIGN_ID secrets in CI).
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: Cloverleaf RISCOS Computer UG (haftungsbeschrankt) (29638T25M9)}"
 
 # ── Suite layout ─────────────────────────────────────────────────────────────
@@ -240,7 +244,7 @@ generate_plist() {
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright (C) 2026 Cloverleaf UG. All rights reserved.</string>
+    <string>Copyright (C) 2026 ULTRA OS Development GmbH. All rights reserved.</string>
     <key>LSApplicationCategoryType</key>
     <string>${category}</string>
 ${extra_plist_entries}

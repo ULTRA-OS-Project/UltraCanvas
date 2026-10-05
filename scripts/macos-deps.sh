@@ -17,7 +17,12 @@
 # Environment:
 #   UC_VCPKG_ROOT          vcpkg checkout (default: .vcpkg/vcpkg). Cloned at
 #                          VCPKG_COMMIT below and bootstrapped when missing.
-#   UC_DEPS_INSTALL_ROOT   install root (default: .vcpkg/installed)
+#   UC_DEPS_INSTALL_ROOT   install root (default: ~/.cache/ultracanvas/vcpkg-installed,
+#                          or $XDG_CACHE_HOME/ultracanvas/... when that is set).
+#                          Must be outside the source tree: the build exports
+#                          the prefix's lib directory with the UltraCanvas
+#                          package, and CMake's install(EXPORT) refuses a link
+#                          directory inside the source or build tree.
 #   UC_VCPKG_KEEP_GOING=1  build every port it can and list all failures,
 #                          instead of stopping at the first
 #   VCPKG_BINARY_SOURCES   vcpkg's own binary cache setting (CI points it at a
@@ -37,7 +42,7 @@ VCPKG_COMMIT=19780d9cdf84d0944cf9a318666703b89ab6629c # 2026-10-04
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEPS_DIR="$ROOT/MacOS/deps"
 VCPKG_ROOT="${UC_VCPKG_ROOT:-$ROOT/.vcpkg/vcpkg}"
-INSTALL_ROOT="${UC_DEPS_INSTALL_ROOT:-$ROOT/.vcpkg/installed}"
+INSTALL_ROOT="${UC_DEPS_INSTALL_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/ultracanvas/vcpkg-installed}"
 
 if [ "$(uname -s)" != "Darwin" ]; then
     echo "macos-deps: this builds macOS libraries and runs on macOS only" >&2
@@ -58,6 +63,21 @@ if [ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ] && [ "$MACOSX_DEPLOYMENT_TARGET" != "$
     echo "macos-deps: MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET, but $triplet.cmake builds for $triplet_target" >&2
     exit 1
 fi
+
+# The prefix ends up in the UltraCanvas package's exported link directories,
+# and CMake refuses to generate an install(EXPORT) whose link directories lie
+# inside the source or build tree ("... which is prefixed in the source
+# directory"). The default used to be .vcpkg/installed in the checkout, and
+# every macOS build failed at configure that way. Refuse such a root here,
+# before an hour of building, rather than at CMake's generate step.
+mkdir -p "$INSTALL_ROOT"
+INSTALL_ROOT=$(cd "$INSTALL_ROOT" && pwd -P)
+case "$INSTALL_ROOT/" in
+    "$(cd "$ROOT" && pwd -P)/"*)
+        echo "macos-deps: the install root $INSTALL_ROOT is inside the source tree, where CMake" >&2
+        echo "  refuses to export link directories from; set UC_DEPS_INSTALL_ROOT outside $ROOT" >&2
+        exit 1 ;;
+esac
 
 # vcpkg at the pinned commit: a shallow fetch of that one commit, so the
 # checkout costs seconds rather than vcpkg's whole history.
