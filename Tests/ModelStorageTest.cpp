@@ -3,14 +3,15 @@
 // Covers the parts a format converter depends on and would otherwise discover
 // the hard way: TRS composition and decomposition, double-precision positions,
 // every primitive topology including n-gons and point clouds, custom vertex
-// attributes, instancing and transform flattening, up-axis conversion, unit
+// attributes, instancing and transform flattening, up-axis conversion (with
+// the animation keys of the roots it turns), unit
 // bookkeeping, and the Phong <-> PBR material derivation.
 //
 // Pure geometry and data - no UI stack, no GL, no file format beyond the
 // optional STL sample passed as argv[1].
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasModelStorage.h"
@@ -137,6 +138,116 @@ static void TestUpAxis() {
     Check(doc.Up == UpAxis::YUp && Near(b.Max.y, 1.0, 1e-9), "Z-up geometry becomes Y-up without touching vertices");
     Check(Near(doc.UnitScaleToMeters, 0.001, 1e-12) && std::string(ModelUnitSymbol(doc.SourceUnit)) == "mm",
           "the file's declared unit is recorded, not silently normalised");
+}
+
+// ConvertUpAxis turns the roots' static transforms - but an animation channel
+// on a root replaces the static value it targets, so a played animation would
+// put the model straight back on its side. The keys must turn too.
+static Matrix4x4 KeyedPose(const ModelAnimation& animation, const ModelNode& node, int nodeIndex,
+                           size_t key) {
+    Vec3d translation = node.Translation;
+    Quatd rotation = node.Rotation;
+    Vec3d scale = node.Scale;
+    for (const AnimationChannel& channel : animation.Channels) {
+        if (channel.TargetNode != nodeIndex) continue;
+        const AnimationSampler& sampler = animation.Samplers[static_cast<size_t>(channel.Sampler)];
+        const size_t width = channel.Path == AnimationPath::Rotation ? 4 : 3;
+        // A cubic-spline key is in-tangent, value, out-tangent: the value is the middle one.
+        const size_t stride = sampler.Interpolate == Interpolation::CubicSpline ? 3 : 1;
+        const size_t at = (key * stride + (stride == 3 ? 1 : 0)) * width;
+        const float* v = &sampler.Values[at];
+        if (channel.Path == AnimationPath::Translation) translation = Vec3d(v[0], v[1], v[2]);
+        else if (channel.Path == AnimationPath::Rotation) rotation = Quatd(v[0], v[1], v[2], v[3]);
+        else if (channel.Path == AnimationPath::Scale) scale = Vec3d(v[0], v[1], v[2]);
+    }
+    return Matrix4x4::FromTRS(translation, rotation, scale);
+}
+
+static bool MatricesNear(const Matrix4x4& a, const Matrix4x4& b, double eps) {
+    for (int i = 0; i < 16; ++i)
+        if (!Near(a.m[i], b.m[i], eps)) return false;
+    return true;
+}
+
+static void TestUpAxisWithAnimation() {
+    std::printf("Up axis with an animated root\n");
+    ModelDocument doc;
+    doc.Up = UpAxis::ZUp;
+    ModelNode root;
+    root.Name = "root";
+    root.Translation = Vec3d(1, 2, 3);
+    const int rootIndex = doc.AddNode(root, -1);
+    ModelNode child;
+    child.Name = "child";
+    child.Translation = Vec3d(0, 1, 0);
+    const int childIndex = doc.AddNode(child, rootIndex);
+
+    ModelAnimation animation;
+    AnimationSampler moves;                  // shared: the root's and the child's translation
+    moves.Times = {0.0f, 1.0f};
+    moves.Values = {0, 0, 1,  0, 0, 2};
+    AnimationSampler turns;                  // the root's rotation, cubic, with tangents
+    turns.Interpolate = Interpolation::CubicSpline;
+    turns.Times = {0.0f, 1.0f};
+    const float h = 0.70710678f;
+    turns.Values = {0.1f, 0, 0, 0,   0, 0, 0, 1,   0, 0.1f, 0, 0,
+                    0, 0, 0.2f, 0,   0, 0, h, h,   0, 0, 0, 0.3f};
+    AnimationSampler grows;                  // the root's scale, which stays in its own frame
+    grows.Times = {0.0f, 1.0f};
+    grows.Values = {1, 1, 1,  1, 2, 3};
+    animation.Samplers = {moves, turns, grows};
+    animation.Channels = {{rootIndex, AnimationPath::Translation, 0},
+                          {rootIndex, AnimationPath::Rotation, 1},
+                          {rootIndex, AnimationPath::Scale, 2},
+                          {childIndex, AnimationPath::Translation, 0}};
+    doc.Animations.push_back(animation);
+
+    const ModelDocument before = doc;
+    doc.ConvertUpAxis(UpAxis::YUp);
+    const ModelAnimation& after = doc.Animations[0];
+    const Matrix4x4 turn = Matrix4x4::FromQuaternion(
+            Quatd::FromAxisAngle(Vec3d(1, 0, 0), -1.5707963267948966));
+
+    bool everyKeyTurned = true;
+    for (size_t key = 0; key < 2; ++key) {
+        const Matrix4x4 was = KeyedPose(before.Animations[0], before.Nodes[0], rootIndex, key);
+        const Matrix4x4 is = KeyedPose(after, doc.Nodes[0], rootIndex, key);
+        if (!MatricesNear(is, turn * was, 1e-6)) everyKeyTurned = false;
+    }
+    Check(everyKeyTurned,
+          "every keyed pose of the root turns exactly as its static pose did");
+
+    const AnimationSampler& rootMoves = after.Samplers[static_cast<size_t>(after.Channels[0].Sampler)];
+    Check(Near(rootMoves.Values[1], 1.0, 1e-6) && Near(rootMoves.Values[2], 0.0, 1e-6) &&
+          Near(rootMoves.Values[4], 2.0, 1e-6),
+          "Z-up translation keys become Y-up ones: (0, 0, 2) is now (0, 2, 0)");
+    const AnimationSampler& childMoves = after.Samplers[static_cast<size_t>(after.Channels[3].Sampler)];
+    Check(after.Channels[0].Sampler != after.Channels[3].Sampler &&
+          childMoves.Values == before.Animations[0].Samplers[0].Values,
+          "a sampler the root shares with a child is split, and the child's keys are untouched");
+    Check(after.Samplers[static_cast<size_t>(after.Channels[2].Sampler)].Values ==
+          before.Animations[0].Samplers[2].Values,
+          "scale keys stay as they were, in the node's own frame");
+
+    // The cubic tangents sit in the same array as the values, and turning is
+    // linear, so they are pre-multiplied too: in-tangent of the first key.
+    const AnimationSampler& rootTurns = after.Samplers[static_cast<size_t>(after.Channels[1].Sampler)];
+    const Quatd expected = Quatd::FromAxisAngle(Vec3d(1, 0, 0), -1.5707963267948966) *
+                           Quatd(0.1, 0, 0, 0);
+    Check(Near(rootTurns.Values[0], expected.x, 1e-6) && Near(rootTurns.Values[3], expected.w, 1e-6),
+          "cubic-spline tangents turn with their values");
+
+    doc.ConvertUpAxis(UpAxis::ZUp);
+    bool restored = true;
+    for (size_t c = 0; c < 3; ++c) {
+        const std::vector<float>& now =
+                doc.Animations[0].Samplers[static_cast<size_t>(doc.Animations[0].Channels[c].Sampler)].Values;
+        const std::vector<float>& was = before.Animations[0].Samplers[c].Values;
+        if (now.size() != was.size()) { restored = false; continue; }
+        for (size_t k = 0; k < now.size(); ++k)
+            if (!Near(now[k], was[k], 1e-6)) restored = false;
+    }
+    Check(restored, "and converting back restores every key");
 }
 
 static void TestMaterials() {
@@ -409,6 +520,7 @@ int main(int argc, char** argv) {
     TestTopology();
     TestSceneGraph();
     TestUpAxis();
+    TestUpAxisWithAnimation();
     TestMaterials();
     TestConcaveTriangulation();
     TestWeldingAcrossCellBoundaries();
