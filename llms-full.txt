@@ -67480,6 +67480,12 @@ plugin reports the full service name, so the instance is cut out of it
 name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
 the `mdns-name` attribute.
 
+A scanner named in `ULTRACANVAS_ESCL_SCANNERS` has no instance name: it is
+listed under its URL until it has described itself. Once its
+`ScannerCapabilities` are read, it takes the `MakeAndModel` they report as its
+name (`FillInEsclIdentity`), as an IPP printer configured by address takes its
+`printer-name` - and so does a certificate trusted for it.
+
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
 
