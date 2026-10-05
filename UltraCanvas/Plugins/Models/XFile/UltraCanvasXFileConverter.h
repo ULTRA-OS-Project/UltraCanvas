@@ -7,18 +7,30 @@
 // it is still what many game-asset pipelines, Blender and 3ds Max exporters,
 // and two decades of sample code emit - which is why it is worth reading.
 //
-// Two things about it are worth knowing before trusting what comes out.
+// A few things about it are worth knowing before trusting what comes out.
 //
-// **It is a left-handed format, and that is not a detail.** Direct3D's space is
-// left-handed, so an exporter converting from a right-handed application puts a
-// reflection in the root frame's matrix (its determinant is -1) and writes the
-// face indices the other way round to compensate. Both halves of that are in
-// the file and they cancel: the E-45 sample's meshes have *negative* signed
-// volume in their own object space and *positive* volume once the frame chain
-// is applied, and the faces disagree with the file's own MeshNormals in object
-// space while agreeing with them in world space, on 93 of 93 and 925 of 937
-// faces. So this reader changes neither the matrix nor the winding. A reader
-// that "fixed" the winding it saw in object space would deliver a model that is
+// **It is a left-handed format, and the reader converts it.** Direct3D's space
+// is left-handed - X right, Y up, Z *away* from the viewer - and the document's
+// is right-handed, where Z comes toward the viewer. Read number for number, a
+// file therefore arrives as its own mirror image: in a symmetric model that
+// looks like a half-turn about the up axis, in text or markings it is plainly
+// backwards. So the reader negates Z - every position and normal, and each
+// frame matrix conjugated by the same reflection so the hierarchy composes as
+// before - and reverses every face's corners, because a reflection on its own
+// would turn each face inside out. X and Y are untouched, so a Y-up file stays
+// Y-up. This is the conversion Direct3D-to-OpenGL importers have always made.
+//
+// An exporter from a right-handed application adds a second reflection of its
+// own: it puts one in the root frame's matrix (its determinant is -1) and
+// writes the face indices the other way round to compensate. Both halves are
+// in the file and they cancel, and the conversion above preserves that: the
+// E-45 sample's meshes have *negative* signed volume in their own object space
+// and *positive* volume once the frame chain is applied, and the faces disagree
+// with the file's own MeshNormals in object space while agreeing with them in
+// world space, on 93 of 93 and 925 of 937 faces. Together with the reader's
+// reflection, Blender's root frame turns its Z-up (x, y, z) into (x, z, -y) -
+// exactly the axis change Blender's own OBJ export makes. A reader that
+// "fixed" the winding it saw in object space would deliver a model that is
 // inside out - which is the opposite of what the Alembic reader must do, for
 // the opposite reason.
 //
@@ -49,7 +61,7 @@
 // sample that carries none - and a silently wrong animation is worse than one
 // that says it is missing. The capability report says so too.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once

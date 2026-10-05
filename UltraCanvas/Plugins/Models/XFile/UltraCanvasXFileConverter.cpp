@@ -8,8 +8,14 @@
 //     column vectors - and those two layouts are the *same sixteen numbers in
 //     the same order*, because transposing a matrix and swapping which side the
 //     vector multiplies on cancel out. So the matrix copies straight across,
-//     translation already in elements 12 to 14. Checked against the sample: the
-//     frame chain reproduces its world bounds exactly.
+//     translation already in elements 12 to 14, and is then conjugated by the
+//     Z reflection below. Checked against the sample: the frame chain
+//     reproduces its world bounds exactly, mirrored in Z.
+//   * The space is left-handed and the document's is right-handed, so every
+//     Z is negated - positions, normals, and each frame as S*M*S with
+//     S = diag(1, 1, -1) so the hierarchy composes exactly as it did - and
+//     every face's corners are reversed, because a reflection reverses
+//     winding. Without this the model arrives as its own mirror image.
 //   * Normals are indexed per face corner and positions per vertex, and the two
 //     streams need not agree. Where they do - which is what every Blender
 //     export writes - vertices are shared; where they do not, corners are
@@ -18,12 +24,12 @@
 //   * A mesh's faces may use several materials, which the document expresses as
 //     several primitives. The split is by first appearance, so a single-material
 //     mesh - the common case - stays one primitive with its vertices intact.
-//   * Winding is left alone, and then checked. See the header for why: the
-//     left-handedness lives in the root frame's reflection, and the file's own
-//     MeshNormals are the evidence.
+//   * Winding is then checked. See the header for why: an exporter from a
+//     right-handed application leaves a reflection in the root frame, and the
+//     file's own MeshNormals are the evidence of whether it was matched.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-11
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/XFile/UltraCanvasXFileConverter.h"
@@ -80,6 +86,24 @@ bool ReadFaceArray(XFile::Cursor& cursor, int count, std::vector<std::vector<int
     return true;
 }
 
+// Direct3D's left-handed space to the document's right-handed one: Z negated.
+// For a frame that is S*M*S with S = diag(1, 1, -1), which in column-major
+// storage negates exactly the elements with one index on Z - so a vertex
+// converted the same way lands where the unconverted chain put it, mirrored.
+void ConjugateByZReflection(Matrix4x4& matrix) {
+    for (int index : {2, 6, 8, 9, 11, 14}) matrix.m[index] = -matrix.m[index];
+}
+
+// The same reflection applied to a mesh. Reversing the corners keeps each face
+// turned the way it was: a reflection alone would turn every face inside out.
+// Positions and normal indices are reversed together, so they stay paired.
+void ConvertToRightHanded(MeshData& data) {
+    for (Vec3d& position : data.Positions) position.z = -position.z;
+    for (Vec3f& normal : data.Normals) normal.z = -normal.z;
+    for (std::vector<int>& face : data.Faces) std::reverse(face.begin(), face.end());
+    for (std::vector<int>& face : data.NormalFaces) std::reverse(face.begin(), face.end());
+}
+
 double Determinant3x3(const Matrix4x4& matrix) {
     const double* m = matrix.m;
     return m[0] * (m[5] * m[10] - m[6] * m[9]) -
@@ -101,6 +125,9 @@ public:
         // so both are convention rather than something the file said - which is
         // why Units and UpAxis are false in the capability report.
         document_->Up = UpAxis::YUp;
+        // The file is left-handed; the document is not, because the reader
+        // converts every position, normal, face and frame as it goes.
+        document_->Chirality = Handedness::RightHanded;
         document_->Metadata["x.version"] = std::to_string(file_.MajorVersion) + "." +
                                            std::to_string(file_.MinorVersion);
         document_->Metadata["x.encoding"] = XFile::EncodingName(file_.How);
@@ -167,8 +194,10 @@ private:
                 Matrix4x4 matrix;
                 // Straight copy: Direct3D's row-major-with-row-vectors and the
                 // document's column-major-with-column-vectors are the same
-                // sixteen numbers in the same order.
+                // sixteen numbers in the same order. Then into right-handed
+                // space, as every mesh is.
                 for (int i = 0; i < 16; ++i) matrix.m[i] = transform->Numbers[static_cast<size_t>(i)];
+                ConjugateByZReflection(matrix);
 
                 Vec3d translation, scale;
                 Quatd rotation;
@@ -180,9 +209,8 @@ private:
                     // Shear, which TRS cannot express. A reflection is not this
                     // case: DecomposeTRS holds the root frame's mirror as a
                     // negative scale on one axis, which reproduces the matrix
-                    // exactly - and keeping it is what converts the file's
-                    // left-handed object space back to the space the model was
-                    // authored in.
+                    // exactly - and keeping it matters, because an exporter
+                    // compensated for it by reversing the winding.
                     node.Matrix = matrix;
                 }
             } else {
@@ -280,6 +308,7 @@ private:
             else if (!IsKnownIgnorable(type))
                 WarnOnce("mesh." + type, "X: '" + type + "' inside a Mesh is not read");
         }
+        ConvertToRightHanded(data);
         return !data.Positions.empty() && !data.Faces.empty();
     }
 
