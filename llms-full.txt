@@ -15619,7 +15619,10 @@ namespace UltraCanvas {
     enum class ColorPickerWheelStyle   { Ring, Bar, HueLightnessField, HueLightnessSliders };
     enum class ColorPickerSVAreaShape  { Fill, Square, PixelExact };  // Bar style's SV area
 
-    class UltraCanvasColorPicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the hex and value fields are typed
+    // into through a real UltraCanvasTextInput child that moves to whichever
+    // field is being edited.
+    class UltraCanvasColorPicker : public UltraCanvasContainer {
     public:
         UltraCanvasColorPicker(const std::string& id, float x, float y, float w, float h);
 
