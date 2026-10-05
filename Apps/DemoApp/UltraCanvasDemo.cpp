@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.5 - event.targetWindow read via weak_ptr lock()
-// Last Modified: 2026-07-02
+// Version: 1.0.6 - the header title wraps a long page description instead of cutting it off
+// Last Modified: 2026-10-04
+// V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
 //   never scroll the header away); displayContainer is now the explicit single
 //   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
@@ -111,14 +112,17 @@ namespace UltraCanvas {
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier)
             : UltraCanvasContainer(identifier) {
 
-        // Create title label (left side)
+        // Create title label (left side). It is the page's one-line
+        // description, and many are longer than the header is wide: it takes
+        // all the width the two buttons leave and wraps there instead of being
+        // cut off with an ellipsis, and the header grows to fit the lines.
         titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
+        titleLabel->SetWrap(TextWrap::WrapWord);
         titleLabel->SetText("Demo Title");
+        titleLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         AddChild(titleLabel);
-
-        AddStretchSpacer(1);
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", 21, 21);
@@ -126,6 +130,9 @@ namespace UltraCanvas {
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
+        // The title shrinks to make room, the buttons never: a long
+        // description would otherwise squash them to a few pixels.
+        docButton->layoutItem.SetFlexShrink(0);
         AddChild(docButton);
 
         // Create source button (right side)
@@ -134,6 +141,7 @@ namespace UltraCanvas {
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
+        sourceButton->layoutItem.SetFlexShrink(0);
         AddChild(sourceButton);
 
         // Divider line pinned at the bottom of the header. Absolute-positioned
@@ -463,6 +471,12 @@ namespace UltraCanvas {
         // freezes the header at its content height; displayContainer absorbs the
         // overflow and scrolls.
         headerContainer->layoutItem.SetFlexShrink(0);
+        // A definite width, not just the column's "at most this wide": only
+        // then does the header row shrink its wrapping title to the room the
+        // buttons leave and measure the wrapped height. Measured against
+        // "at most", the row keeps the title one line long and one line tall,
+        // so a long description lost its second line.
+        headerContainer->size.width = CSSLayout::Dimension::Pct(100);
         mainContainer->AddChild(headerContainer);
         // displayContainer is the single scroll region: it grows into the space
         // the header leaves and shrinks (flex-shrink:1) to the available height so
@@ -802,7 +816,8 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("busyindicator", "Busy Indicator",
                              "\"Working on it\" with no percentage: a turning ring, two counter-turning "
-                             "rings, swelling dots, a sliding bar or a pulsing circle",
+                             "rings, swelling dots, a sliding bar, a pulsing circle or a ring of "
+                             "circling dots",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBusyIndicatorExamples(); },
                              "DemoApp/UltraCanvasBusyIndicatorExamples.cpp",
@@ -811,7 +826,8 @@ namespace UltraCanvas {
                 .AddVariant("busyindicator", "Dual Ring")
                 .AddVariant("busyindicator", "Dots")
                 .AddVariant("busyindicator", "Bar")
-                .AddVariant("busyindicator", "Pulse");
+                .AddVariant("busyindicator", "Pulse")
+                .AddVariant("busyindicator", "Dot Ring");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
