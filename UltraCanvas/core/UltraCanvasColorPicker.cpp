@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.4.0
-// Last Modified: 2026-09-29
+// Version: 1.5.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -136,6 +136,13 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasColorPicker::SetSVAreaShape(ColorPickerSVAreaShape s) {
+        if (svAreaShape == s) return;
+        svAreaShape = s;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
     void UltraCanvasColorPicker::SetShowValueSpinners(bool show) {
         if (showValueSpinners == show) return;
         showValueSpinners = show;
@@ -217,6 +224,14 @@ namespace UltraCanvas {
         return previewRowH + gap + tabsH + headerH + rowsH;
     }
 
+    float UltraCanvasColorPicker::SquareSVSide(float roomW, float roomH) const {
+        float side = std::min(roomW, roomH);
+        if (svAreaShape == ColorPickerSVAreaShape::PixelExact)
+            side = std::min(side, static_cast<float>(PixelExactSVSide));
+        // Whole pixels, so a PixelExact area is exactly 256 and not 255.9.
+        return std::floor(std::max(40.0f, side));
+    }
+
     float UltraCanvasColorPicker::PreferredHeightForWidth(float width) const {
         const float pad = Scaled(style.padding);
         const float gap = Scaled(style.rowGap);
@@ -231,9 +246,13 @@ namespace UltraCanvas {
                 case ColorPickerWheelStyle::Ring:
                     wheelAreaH = innerW;
                     break;
-                case ColorPickerWheelStyle::Bar:
-                    wheelAreaH = std::max(40.0f, innerW * 0.75f) + gap + Scaled(style.hueBarHeight);
+                case ColorPickerWheelStyle::Bar: {
+                    float svH = (svAreaShape == ColorPickerSVAreaShape::Fill)
+                                ? std::max(40.0f, innerW * 0.75f)
+                                : SquareSVSide(innerW, innerW);
+                    wheelAreaH = svH + gap + Scaled(style.hueBarHeight);
                     break;
+                }
                 case ColorPickerWheelStyle::HueLightnessField:
                     wheelAreaH = std::max(40.0f, innerW * 0.75f);
                     break;
@@ -242,7 +261,16 @@ namespace UltraCanvas {
                     break;
             }
         }
-        return pad + wheelAreaH + gap + ControlsHeight() + pad;
+        float controlsH = ControlsHeight();
+        if (showColorWheel && wheelStyle == ColorPickerWheelStyle::Bar &&
+            svAreaShape == ColorPickerSVAreaShape::PixelExact &&
+            slidersCollapsible && !slidersExpanded) {
+            // Leave room for the sliders, so opening them takes the free space
+            // under the controls instead of shrinking the area below exact.
+            const int nRows = 3 + (showAlpha ? 1 : 0);
+            controlsH += nRows * (Scaled(style.rowHeight) + gap);
+        }
+        return pad + wheelAreaH + gap + controlsH + pad;
     }
 
     void UltraCanvasColorPicker::RecalculateLayout() {
@@ -304,8 +332,17 @@ namespace UltraCanvas {
                 // as a horizontal bar.
                 float hueH = Scaled(style.hueBarHeight);
                 float svH = std::max(40.0f, wheelAreaH - hueH - gap);
-                svRect = Rect2Df(x0, pad, innerW, svH);
-                hueBarRect = Rect2Df(x0, svRect.y + svRect.height + gap, innerW, hueH);
+                if (svAreaShape == ColorPickerSVAreaShape::Fill) {
+                    svRect = Rect2Df(x0, pad, innerW, svH);
+                } else {
+                    // 1:1, centred, on whole pixels so a PixelExact area maps
+                    // pixel column i to exactly step i. Unused height stays
+                    // free at the bottom: the controls follow the hue bar.
+                    float side = SquareSVSide(innerW, svH);
+                    svRect = Rect2Df(std::round(x0 + (innerW - side) * 0.5f), std::round(pad),
+                                     side, side);
+                }
+                hueBarRect = Rect2Df(svRect.x, svRect.y + svRect.height + gap, svRect.width, hueH);
                 hlFieldRect = lightBarRect = Rect2Df();
                 wheelRect = Rect2Df();
                 wheelCenter = Point2Df();
@@ -715,27 +752,34 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::RenderSVSquare(IRenderContext* ctx) {
         Rect2Dd sq(svRect.x, svRect.y, svRect.width, svRect.height);
 
+        // The gradients run from the centre of the first pixel to the centre
+        // of the last, the points UpdateSVFromPoint() maps to 0 and 1: pixel
+        // column i shows exactly the saturation a click on it picks (and a
+        // 256-pixel area shows the 256 8-bit steps, one each). The padded
+        // half pixel at either end is the end colour.
         // Base: white -> full-saturation hue (horizontal)
         auto hueGrad = ctx->CreateLinearGradientPattern(
-                sq.x, sq.y, sq.x + sq.width, sq.y,
+                sq.x + 0.5, sq.y, sq.x + sq.width - 0.5, sq.y,
                 {GradientStop(0.0, Colors::White), GradientStop(1.0, HSV(hue, 1.0f, 1.0f))});
         ctx->SetFillPaint(hueGrad);
         ctx->FillRectangle(sq);
 
         // Overlay: transparent -> black (vertical) for the value axis
         auto valGrad = ctx->CreateLinearGradientPattern(
-                sq.x, sq.y, sq.x, sq.y + sq.height,
+                sq.x, sq.y + 0.5, sq.x, sq.y + sq.height - 0.5,
                 {GradientStop(0.0, Color(0, 0, 0, 0)), GradientStop(1.0, Color(0, 0, 0, 255))});
         ctx->SetFillPaint(valGrad);
         ctx->FillRectangle(sq);
 
+        // The 1-pixel border goes on the pixels just outside the area: drawn
+        // on its edge it would blend into the first and last pixel columns.
         ctx->SetStrokePaint(style.borderColor);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawRectangle(sq);
+        ctx->DrawRectangle(Rect2Dd(sq.x - 0.5, sq.y - 0.5, sq.width + 1.0, sq.height + 1.0));
 
-        // Selection marker
-        float mx = svRect.x + sat * svRect.width;
-        float my = svRect.y + (1.0f - val) * svRect.height;
+        // Selection marker, on the centre of the pixel the value maps to
+        float mx = svRect.x + 0.5f + sat * std::max(1.0f, svRect.width - 1.0f);
+        float my = svRect.y + 0.5f + (1.0f - val) * std::max(1.0f, svRect.height - 1.0f);
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
         ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
@@ -1561,8 +1605,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::UpdateSVFromPoint(const Point2Df& p) {
-        float s = (p.x - svRect.x) / std::max(1.0f, svRect.width);
-        float v = 1.0f - (p.y - svRect.y) / std::max(1.0f, svRect.height);
+        // The pointer reports whole pixels: column 0 is saturation 0 and the
+        // last column (width - 1) is 1, so both ends are reachable inside the
+        // area and a 256-pixel area gives step i on column i.
+        float s = (p.x - svRect.x) / std::max(1.0f, svRect.width - 1.0f);
+        float v = 1.0f - (p.y - svRect.y) / std::max(1.0f, svRect.height - 1.0f);
         sat = std::clamp(s, 0.0f, 1.0f);
         val = std::clamp(v, 0.0f, 1.0f);
     }

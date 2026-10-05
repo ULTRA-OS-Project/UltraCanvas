@@ -15516,8 +15516,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.4.0
-**Last Modified**: 2026-09-29
+**Version**: 1.5.0
+**Last Modified**: 2026-10-05
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -15526,6 +15526,14 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Hue bar** — alternative `Bar` wheel style: the SV rectangle grows to the
   maximum available area (with margin) and the full hue range is shown as a
   thick bar underneath it, without the ring.
+- ✅ **Square / pixel-exact SV area** — `SetSVAreaShape` keeps the Bar style's
+  SV area 1:1 instead of stretching it: `Square` takes the largest square that
+  fits, `PixelExact` a square of `PixelExactSVSide` = **256 × 256 pixels**.
+  8-bit channels have 256 steps (0..255), so at 256 pixels each column is one
+  step of saturation and each row one step of value — every pixel is a
+  different colour and none is skipped (a smaller area skips values, a larger
+  one repeats them). The square is centred, the hue bar takes its width, and
+  any height it does not need stays free under the controls.
 - ✅ **Hue × lightness field** — `HueLightnessField` wheel style: one
   rectangle with the hue running top (red) to bottom through the spectrum and
   the lightness left (black) through the pure colour to right (white). A
@@ -15538,7 +15546,8 @@ natively with the framework's `IRenderContext` primitives.
   hue is kept at black and white so the markers stay on the chosen colour,
   and the channel sliders below still edit any colour.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
-  maximised rectangle (Bar).
+  maximised rectangle (Bar). The first pixel column/row is 0 and the last is
+  100 %, and each pixel is drawn in exactly the colour a click on it picks.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -15588,7 +15597,11 @@ natively with the framework's `IRenderContext` primitives.
   expanding the sliders shrinks the shading area by exactly the space they
   occupy (and collapsing gives it straight back) instead of resizing the
   widget. The shading area absorbs the change best in **Bar** wheel style,
-  where the SV rectangle fills the full available height.
+  where the SV rectangle fills the full available height. A `PixelExact` area
+  does not grow past 256 pixels, so it is the other way round there:
+  `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
+  **expanded** sliders, which then open into the free space under the
+  controls and leave the area exact in both states.
 - ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
   checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
@@ -15604,6 +15617,7 @@ namespace UltraCanvas {
     enum class ColorPickerModeSelector { TabBar, Dropdown };  // mutually exclusive
     enum class ColorPickerSliderStyle  { Thin, Thick };
     enum class ColorPickerWheelStyle   { Ring, Bar, HueLightnessField, HueLightnessSliders };
+    enum class ColorPickerSVAreaShape  { Fill, Square, PixelExact };  // Bar style's SV area
 
     class UltraCanvasColorPicker : public UltraCanvasUIElement {
     public:
@@ -15622,8 +15636,10 @@ namespace UltraCanvas {
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
         void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
+        void SetSVAreaShape(ColorPickerSVAreaShape s);   // Bar: fill / 1:1 / 1:1 at 256 px
+        static constexpr int PixelExactSVSide = 256;     // one pixel per 8-bit step
         void SetShowValueSpinners(bool show);            // < > arrows in value box
-        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
 
@@ -15678,6 +15694,12 @@ picker->SetSliderStyle(UltraCanvas::ColorPickerSliderStyle::Thick);
 
 // Replace the hue ring with a maximised SV rectangle + hue bar underneath:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::Bar);
+
+// Keep the Bar style's SV area square at 256 x 256 - one pixel per 8-bit
+// step of saturation and value - and size the widget for it (with
+// collapsible sliders, for the sliders expanded):
+picker->SetSVAreaShape(UltraCanvas::ColorPickerSVAreaShape::PixelExact);
+picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
 // Hue x lightness field (hue top -> bottom, black -> colour -> white):
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
