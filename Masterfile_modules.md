@@ -1670,19 +1670,23 @@ the shared chat / mail mirrors with category guessing from the application's
 identity, the presenters that put an application's `system.notification` on
 screen through the platform's own notification service and report its click
 back (`freedesktop-presenter`: `Notify` to the desktop's server;
-`windows-presenter`: notification-area balloons, shown as toasts), UltraMail
+`windows-presenter`: notification-area balloons, shown as toasts), the toast
+host that draws the notifications nothing else draws - where UltraMessage
+itself serves `org.freedesktop.Notifications`, as on ULTRA OS - in
+`WindowType::Notification` windows (`UltraCanvasNotificationToast` /
+`UltraCanvasNotificationToastHost`, `include/Plugins/UltraMessage/`, hosted by
+the ULTRA OS desktop; every notification says what shows it in `displayed`), UltraMail
 publishing new mail as `mail.message` and notifying of it on screen
 (`Apps/UltraMail/engine/UltraMailFeedPublisher`, `UltraMailNewMail`), and the desktop message
 centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
 `UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
 search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
 a DemoApp page). Tests in `Tests/UltraMessage` (36 cases, in-tree and
-standalone, the adapter and presenter ones on a private D-Bus session; 5 for
-the element in-tree). Not yet: the `AddFdWatch` event-loop path (a reader
+standalone, the adapter and presenter ones on a private D-Bus session; 11 for
+the message centre and the toasts in-tree). Not yet: the `AddFdWatch` event-loop path (a reader
 thread serves every endpoint), an FTS5 index (text search is a LIKE),
 automatic reconnection after the hosting broker exits, the macOS and Telegram
-adapters, a macOS presenter, and toasts drawn by UltraMessage itself where it
-is the notification server. See
+adapters, and a macOS presenter. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---

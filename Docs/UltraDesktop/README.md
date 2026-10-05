@@ -116,6 +116,33 @@ windows stop short of the bars instead of covering them.
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.
 
+### Notifications
+
+The desktop is also where notifications appear. On ULTRA OS no other
+notification server runs: UltraMessage serves `org.freedesktop.Notifications`
+itself (the desktop usually hosts the UltraMessage broker, being the first
+program of the session), so every application's notification - Telegram,
+the browser, a download, UltraMail's new mail - arrives on the UltraMessage
+bus. The desktop draws each one as a toast in the top-right corner, beside the
+right bar and below the taskbar when that runs along the top: the
+application's icon and name, the summary, the body, the notification's own
+buttons and a close button, newest on top, four at most.
+
+- A click on the text does what the notification offers by default (UltraMail
+  opens the mail); a button does what it says; × dismisses it. The
+  application is told either way.
+- A toast goes by itself after 8 seconds (5 for a low-priority one) - not
+  while the pointer rests on it - and a critical one (battery low) stays until
+  closed. Gone from the screen is not gone: the message feed keeps it.
+- On a desktop with its own notification server (GNOME, Plasma, dunst, ...)
+  that server draws them and the desktop draws nothing, so nothing appears
+  twice.
+
+The toasts are the framework's
+[UltraCanvasNotificationToast](../UltraCanvas/UltraCanvasNotificationToast.md)
+element and host, in windows that stay above everything and never take the
+keyboard focus.
+
 ## Command line
 
 ```

@@ -114,10 +114,10 @@ include(CTest)
 add_test(NAME UltraMessage COMMAND UltraMessageTests
          WORKING_DIRECTORY ${_um_output_dir})
 
-# The message centre element, headless: in-tree only, since it needs the
-# widget library. Same framework, same private bus.
+# The message centre element and the notification toasts, headless: in-tree
+# only, since they need the widget library. Same framework, same private bus.
 if(TARGET UltraMessageCenter)
-    add_executable(UltraMessageCenterTests test_main.cpp test_messagecenter.cpp)
+    add_executable(UltraMessageCenterTests test_main.cpp test_messagecenter.cpp test_toasts.cpp)
     target_compile_features(UltraMessageCenterTests PRIVATE cxx_std_20)
     target_link_libraries(UltraMessageCenterTests PRIVATE UltraMessageCenter UltraMessage)
     target_include_directories(UltraMessageCenterTests PRIVATE

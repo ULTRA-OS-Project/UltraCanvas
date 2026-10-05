@@ -69,11 +69,13 @@ public:
     // `system.notification.dismissed` naming `notification.envelope.id`. A
     // notification that replaces an earlier one (UltraMsgFlag_Replace) updates
     // it where the platform can. Called on a broker thread, outside the
-    // routing lock; must not block on the screen. Return true when this
-    // adapter shows it (the broker then asks no other), false when it does
-    // not present or nothing on this desktop can display it. Notifications
-    // adapters publish themselves are never presented: they came from the
-    // screen already.
+    // routing lock, before the message is journaled or delivered; must not
+    // block on the screen. Return true when this adapter shows it (the broker
+    // then asks no other and sets the body's `displayed` to this adapter's
+    // name), false when it does not present or nothing on this desktop can
+    // display it. Notifications adapters publish themselves are never
+    // presented: they came from the screen already - an adapter that reads
+    // them from a platform service which drew them sets `displayed` itself.
     virtual bool Present(const UltraMsgMessage& notification) { (void)notification; return false; }
 };
 

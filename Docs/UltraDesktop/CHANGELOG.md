@@ -1,3 +1,24 @@
+#### 2026-10-05 *0.2.0*
+- **Notifications appear on screen.** On ULTRA OS no notification server runs
+  besides UltraMessage, which serves `org.freedesktop.Notifications` itself, so
+  every application's notification - Telegram, the browser, UltraMail's new
+  mail - reached the message feed and nothing drew it. The desktop now draws
+  each one as a toast in the top-right corner, beside the right bar (below the
+  taskbar when it runs along the top): icon, application, summary, body, the
+  notification's own buttons and a close button, newest on top, four at most.
+  - A click on the text does what the notification offers by default (UltraMail
+    opens the mail), a button does what it says, × dismisses; the application
+    is told either way, as any notification server tells it.
+  - A toast goes after 8 seconds (5 for a low-priority one), not while the
+    pointer rests on it; a critical one stays until closed. The feed keeps
+    every notification.
+  - The toasts never take the keyboard focus, and on a desktop with its own
+    notification server (GNOME, Plasma, dunst) the desktop draws nothing, so
+    nothing appears twice.
+  - Built on the framework's new `UltraCanvasNotificationToast` element and
+    host and `WindowType::Notification` (the change pending in
+    `Docs/UltraCanvas/changelog.d/notification-toasts.md`).
+
 #### 2026-10-01 *0.1.2*
 - **The desktop's settings moved to UOS-Settings.** The system's settings now
   have an application of their own, UOS-Settings, and the taskbar's *ULTRA OS

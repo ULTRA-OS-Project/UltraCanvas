@@ -2933,7 +2933,8 @@ endif()
 # it is its own target rather than part of either.
 if(TARGET UltraMessage)
     add_library(UltraMessageCenter STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp)
     set_target_properties(UltraMessageCenter PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessagecenter")

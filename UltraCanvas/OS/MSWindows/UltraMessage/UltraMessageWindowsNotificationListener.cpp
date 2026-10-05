@@ -16,6 +16,7 @@
 // process without package identity the listener may be unavailable
 // altogether; the state says so. A toast the windows-presenter adapter put
 // up for an application on the bus is skipped: it is on the bus already.
+// Version: 0.2.1 - a notification says it is on screen (displayed)
 // Version: 0.2.0 - the presenter's own notifications are not read back
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -325,6 +326,7 @@ private:
 
         JSONValue body = MakeSystemNotification(n);
         body.Set("adapter", kAdapterName);
+        body.Set("displayed", kAdapterName);   // read from the Action Center: Windows drew it
         body.Set("nativeId", static_cast<int64_t>(toast.Id()));
         try {
             const time_t created = winrt::clock::to_time_t(toast.CreationTime());

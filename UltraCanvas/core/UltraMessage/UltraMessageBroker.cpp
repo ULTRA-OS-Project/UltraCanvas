@@ -3,6 +3,8 @@
 // one mutex so a sender's messages stay in order, journal writes before
 // fan-out, and a housekeeping thread that bounces unacknowledged recorded
 // notices and applies journal retention.
+// Version: 0.3.1 - presented before it is journaled and delivered, so every copy
+//                   says what shows it (body.displayed)
 // Version: 0.3.0 - an application's system.notification is handed to the presenters
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -641,6 +643,20 @@ void Broker::Route(const SessionPtr& from, UltraMsgMessage& message) {
     if (e.timestampMs == 0) e.timestampMs = NowMs();
     if (e.to.empty()) e.to = "*";
 
+    // An application's notification goes on screen through the platform's
+    // notification service. Only one an application posted (`from`): what an
+    // adapter publishes came from the screen in the first place. Before the
+    // journal and the fan-out, so every copy says what shows it: a toast host
+    // (the ULTRA OS desktop) draws only what nothing else does.
+    if (from && e.topic == UltraMsgTopics::SystemNotification && !(e.flags & UltraMsgFlag_Silent) &&
+        (e.kind == UltraMsgKind::Notice || e.kind == UltraMsgKind::RecordedNotice)) {
+        // Only the broker says what shows it; an application that draws its
+        // own posts Silent.
+        message.body.Remove("displayed");
+        const std::string presenter = DispatchPresent(message);
+        if (!presenter.empty() && message.body.IsObject()) message.body.Set("displayed", presenter);
+    }
+
     // Journal first (§7.4): what the feed shows is always something it can
     // find again.
     const bool journaled = journalOpen_ && !(e.flags & UltraMsgFlag_NoJournal) &&
@@ -658,12 +674,6 @@ void Broker::Route(const SessionPtr& from, UltraMsgMessage& message) {
         (e.topic == UltraMsgTopics::SystemNotificationAction ||
          e.topic == UltraMsgTopics::SystemNotificationDismissed))
         DispatchAction(message);
-    // An application's notification goes on screen through the platform's
-    // notification service. Only one an application posted (`from`): what an
-    // adapter publishes came from the screen in the first place.
-    if (from && e.topic == UltraMsgTopics::SystemNotification && !(e.flags & UltraMsgFlag_Silent) &&
-        (e.kind == UltraMsgKind::Notice || e.kind == UltraMsgKind::RecordedNotice))
-        DispatchPresent(message);
 }
 
 // ===========================================================================
@@ -752,7 +762,7 @@ void Broker::DispatchAction(const UltraMsgMessage& message) {
         if (adapter->HandleAction(message)) break;
 }
 
-void Broker::DispatchPresent(const UltraMsgMessage& message) {
+std::string Broker::DispatchPresent(const UltraMsgMessage& message) {
     std::vector<IAdapter*> running;
     {
         std::lock_guard<std::mutex> lock(adaptersMutex_);
@@ -760,7 +770,8 @@ void Broker::DispatchPresent(const UltraMsgMessage& message) {
             if (slot.state.status == UltraMsgAdapterStatus::Running) running.push_back(slot.adapter.get());
     }
     for (IAdapter* adapter : running)
-        if (adapter->Present(message)) break;
+        if (adapter->Present(message)) return adapter->Name();
+    return std::string();
 }
 
 std::vector<UltraMsgAdapterInfo> Broker::ListAdapters() const {

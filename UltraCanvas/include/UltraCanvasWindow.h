@@ -1,7 +1,8 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-08-08
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -38,7 +39,15 @@ namespace UltraCanvas {
         // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
         // draws its wallpaper and bars in. Where the platform has no such
         // notion it is a borderless window the size of the screen.
-        Desktop
+        Desktop,
+        // A notification on screen (a toast): undecorated, kept above other
+        // windows, on every virtual desktop, out of taskbars and pagers, and
+        // never given the keyboard focus, so it does not interrupt typing
+        // (_NET_WM_WINDOW_TYPE_NOTIFICATION with input hint off on X11;
+        // WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE on Windows).
+        // Placed where config.x / config.y say. Where the platform has no
+        // such notion it is a borderless window.
+        Notification
     };
 
     enum class WindowState {

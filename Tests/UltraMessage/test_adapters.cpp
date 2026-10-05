@@ -7,7 +7,9 @@
 // mode when another server owns the name. The freedesktop-presenter adapter
 // against a fake desktop notification server: an application's notification
 // shown, its click and close reported back, a dismissal closing it, Silent
-// left off screen, and nothing forwarded where UltraMessage is the server.
+// left off screen, and nothing forwarded where UltraMessage is the server;
+// every copy saying what shows it (`displayed`).
+// Version: 0.3.1 - `displayed`
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -456,6 +458,8 @@ TEST(freedesktop_notify_becomes_system_notification_with_chat_mirror) {
     REQUIRE_EQ(Str(toast.body, "adapter"), std::string(kAdapterName));
     REQUIRE_EQ(Int(toast.body, "nativeId"), int64_t(id));
     REQUIRE_EQ(Int(toast.body, "senderPid"), int64_t(4242));
+    // Served, not watched: nothing has drawn it, so a toast host would.
+    REQUIRE(toast.body.Find("displayed") == nullptr);
 
     UltraMsgMessage chat;
     REQUIRE(chats.WaitForField("mirrorOf", toast.envelope.id, chat));
@@ -633,6 +637,7 @@ TEST(freedesktop_switch_and_monitor_mode) {
     REQUIRE(toasts.WaitForField("summary", "Seen passively", toast));
     REQUIRE_EQ(Str(toast.body, "origin"), std::string("freedesktop-monitor"));
     REQUIRE_EQ(Int(toast.body, "nativeId"), int64_t(0));
+    REQUIRE_EQ(Str(toast.body, "displayed"), std::string(kAdapterName));   // the rival drew it
     // A second one proves the monitor stayed connected (a monitor that
     // answered the first call would have been dropped by the daemon).
     app.NotifyNoReply("Watched", "Still watching", "");
@@ -918,11 +923,15 @@ TEST(freedesktop_presenter_draws_nothing_where_ultramessage_serves) {
     Collector toasts;
     toasts.Subscribe(ep.handle, UltraMsgTopics::SystemNotification);
     Scoped app{Connect("org.test.presenter.none.app")};
-    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification,
-                          UltraMessage::MakeSystemNotification(AppNotification("Feed only", "no screen here"))));
+    // An application cannot claim it is on screen: only the broker says so.
+    JSONValue claimed = UltraMessage::MakeSystemNotification(AppNotification("Feed only", "no screen here"));
+    claimed.Set("displayed", "my-own-toast");
+    REQUIRE(UltraMsg_Post(app.handle, UltraMsgTopics::SystemNotification, claimed));
     UltraMsgMessage posted;
     REQUIRE(toasts.WaitForField("summary", "Feed only", posted));
     REQUIRE_EQ(posted.envelope.from.appId, std::string("org.test.presenter.none.app"));
+    // Nothing shows it: a toast host (the ULTRA OS desktop) is to draw it.
+    REQUIRE(posted.body.Find("displayed") == nullptr);
     WaitFor([] { return false; }, 300ms);
     REQUIRE(!AdapterRepublished(toasts, "Feed only"));
 }
@@ -962,6 +971,10 @@ TEST(freedesktop_presenter_shows_application_notifications) {
     REQUIRE(!id.empty());
     NotifyCall call;
     REQUIRE(server->WaitForCall("New mail from Ada", call));
+    // Every copy on the bus says what shows it.
+    UltraMsgMessage onBus;
+    REQUIRE(toasts.WaitForField("summary", "New mail from Ada", onBus));
+    REQUIRE_EQ(Str(onBus.body, "displayed"), std::string(kPresenterName));
     REQUIRE_EQ(call.appName, std::string("UltraMail"));
     REQUIRE_EQ(call.body, std::string("Q&amp;A &lt;draft&gt;\nada@example.org"));
     REQUIRE_EQ(call.actions.size(), size_t(2));

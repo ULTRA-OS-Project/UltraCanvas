@@ -73,7 +73,9 @@ private:
     void StartAdapters();
     void StopAdapters();
     void DispatchAction(const UltraMsgMessage& message);
-    void DispatchPresent(const UltraMsgMessage& message);
+    // Hands an application's notification to the presenters; the name of the
+    // one that shows it, empty when none does.
+    std::string DispatchPresent(const UltraMsgMessage& message);
     AdapterSlot* FindAdapterLocked(const std::string& name);
 
     struct Subscription {

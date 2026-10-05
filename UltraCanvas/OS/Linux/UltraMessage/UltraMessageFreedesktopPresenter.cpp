@@ -13,11 +13,14 @@
 // Each Notify carries the hint `x-ultramessage-id`, so the
 // freedesktop-notifications adapter, which reads every Notify on the bus,
 // does not publish it a second time. Where UltraMessage itself serves
-// org.freedesktop.Notifications nothing on the desktop draws notifications;
-// the adapter then presents nothing and says so in its state.
+// org.freedesktop.Notifications no notification server draws them; the
+// adapter then presents nothing and says so in its state, and a toast host
+// on the bus (UltraCanvasNotificationToastHost, in the ULTRA OS desktop)
+// draws what carries no `displayed`.
 //
 // GDBus (GIO) on a private connection and a private GMainContext in the
 // adapter's own thread, like the freedesktop-notifications adapter.
+// Version: 0.1.1 - the state names the toast host for the case nothing else draws
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -345,10 +348,10 @@ private:
             // process or another broker's): nothing draws what it receives.
             noDisplay_.store(true);
             SetState(UltraMsgAdapterStatus::Running,
-                     "UltraMessage itself serves org.freedesktop.Notifications here, so nothing on this desktop "
-                     "draws notifications: applications' notifications reach the feed only",
-                     "start a notification server (the desktop's own, dunst, mako, ...) and switch the "
-                     "freedesktop-notifications adapter off and on again",
+                     "UltraMessage itself serves org.freedesktop.Notifications here, so no notification server "
+                     "draws them: a toast host on the bus (the ULTRA OS desktop) does, and the feed lists them",
+                     "where no toast host runs, start a notification server (the desktop's own, dunst, mako, ...) "
+                     "and switch the freedesktop-notifications adapter off and on again",
                      "none");
             return false;
         }

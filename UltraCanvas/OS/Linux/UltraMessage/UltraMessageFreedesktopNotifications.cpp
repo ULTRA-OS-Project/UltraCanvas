@@ -18,6 +18,7 @@
 //
 // GDBus (GIO), on a private GMainContext in the adapter's own thread, so an
 // application's own GLib main loop is never touched.
+// Version: 0.3.1 - in monitor mode a notification says it is on screen (displayed)
 // Version: 0.3.0 - an installed server is started rather than replaced; the
 //                  presenter's own notifications are not read back
 // Version: 0.2.1 (Phase 2)
@@ -534,6 +535,10 @@ private:
         n.origin = mode_ == Mode::Monitor ? "freedesktop-monitor" : "freedesktop";
         JSONValue body = MakeSystemNotification(n);
         body.Set("adapter", kAdapterName);
+        // Watched, not served: the desktop's own server drew it. Served by
+        // this adapter, nothing has - a toast host (the ULTRA OS desktop)
+        // draws what carries no `displayed`.
+        if (mode_ == Mode::Monitor) body.Set("displayed", kAdapterName);
         if (assignedId) body.Set("nativeId", static_cast<int64_t>(assignedId));
         if (toast.senderPid) body.Set("senderPid", static_cast<int64_t>(toast.senderPid));
 
