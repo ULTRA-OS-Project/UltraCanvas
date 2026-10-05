@@ -47,6 +47,13 @@ cmake --build build
 UC_MACOS_DEPS_PREFIX="$prefix" MACOSX_DEPLOYMENT_TARGET=14.0 ./package-macos.sh --no-sign
 ```
 
+The libraries install into `~/.cache/ultracanvas/vcpkg-installed/<triplet>`
+(`UC_DEPS_INSTALL_ROOT` moves it), and the script prints that prefix. It must
+lie outside the checkout and the build directory: the UltraCanvas package
+exports the prefix's `lib` directory, and CMake refuses to export a link
+directory from the source or build tree. The script refuses such a root, and so
+does `cmake/UltraCanvasMacOSDeps.cmake`.
+
 The first build compiles every library and takes an hour or more; vcpkg's
 binary cache (`~/.cache/vcpkg/archives` locally, `.vcpkg/binary-cache` in CI,
 restored and saved between runs) makes later ones take a minute or two.
