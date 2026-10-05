@@ -4,8 +4,8 @@
 // Name validation, the secure wipe used by the Windows fallback, and the
 // VirtualFS integration point live here. Everything that actually talks to
 // a mount lives in OS/<Platform>/VirtualFSRamDiskPlatform.cpp.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - names are limited to what the back end can keep
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDisk.h"
@@ -32,8 +32,9 @@ namespace VirtualFS {
 
 bool RamDiskDetail::IsValidName(const std::string& name) {
     // The name becomes part of a real path, so keep it to characters that
-    // cannot escape a directory or confuse a shell on any platform.
-    if (name.empty() || name.size() > 64) {
+    // cannot escape a directory or confuse a shell on any platform - and to
+    // the length the back end can keep (the volume label on Windows).
+    if (name.empty() || name.size() > PlatformMaxNameLength()) {
         return false;
     }
     return std::all_of(name.begin(), name.end(), [](unsigned char c) {
@@ -105,6 +106,10 @@ const char* VirtualFSRamDiskBackingToString(VirtualFSRamDiskBacking backing) {
         case VirtualFSRamDiskBacking::DiskFallback: return "disk fallback (not RAM)";
     }
     return "Unknown";
+}
+
+std::size_t VirtualFS_GetMaxRamDiskNameLength() {
+    return RamDiskDetail::PlatformMaxNameLength();
 }
 
 bool VirtualFS_IsTrueRamDiskAvailable() {

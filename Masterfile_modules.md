@@ -1451,8 +1451,10 @@ attach ram://` on macOS, the ImDisk driver on Windows when installed, an
 overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
 `VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
 `VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
-`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
-user and do not survive a reboot.
+`VirtualFS_GetPreferredRamDiskBacking`, `VirtualFS_GetMaxRamDiskNameLength`
+(names are at most 23 characters on Windows, where they live in the NTFS
+volume label; 64 elsewhere). Discs are private to the calling user and do
+not survive a reboot.
 
 **Provider interface** (`IVirtualFSProvider`) — one implementation per
 format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR

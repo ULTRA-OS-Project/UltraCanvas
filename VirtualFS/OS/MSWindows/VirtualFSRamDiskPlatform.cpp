@@ -16,7 +16,15 @@
 //
 // The fallback exists so that calling code has one code path on all
 // platforms; it is not a security equivalent.
-// Version: 1.1.0 - volume labels read wide, foreign labels not listed
+//
+// Names are at most 23 characters here (PlatformMaxNameLength): an ImDisk
+// disc keeps its name in its NTFS volume label, which holds 32, behind the
+// 9-character prefix. A longer name could not be stamped on the volume, and
+// the disc was then neither found by its name nor listed. The fallback
+// takes the same limit, so a name does not work on one machine and fail on
+// the next only because ImDisk is installed there.
+// Version: 1.2.0 - names fit the NTFS volume label; labels read wide,
+//                  foreign labels not listed
 // Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
@@ -28,6 +36,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -92,10 +101,14 @@ std::string FallbackPathFor(const std::string& name) {
     return TempRoot() + MountPrefix() + name;
 }
 
+// The most characters an NTFS volume label holds.
+constexpr std::size_t kNtfsVolumeLabelLength = 32;
+
 // ImDisk discs live on a drive letter, which carries no name. The NTFS
 // volume label does, so it is set to the prefixed disc name on creation and
 // read back here - that is what makes duplicate detection and listing work
-// for ImDisk discs, not just for fallback directories.
+// for ImDisk discs, not just for fallback directories. IsValidName keeps the
+// name short enough for the whole label to fit (PlatformMaxNameLength).
 std::string VolumeLabelFor(const std::string& name) {
     return std::string(MountPrefix()) + name;
 }
@@ -161,6 +174,12 @@ void RestrictToCurrentUser(const std::string& path) {
 }
 
 } // namespace
+
+// The label must hold the prefix and the whole name: 32 - 9 = 23.
+std::size_t PlatformMaxNameLength() {
+    const std::size_t room = kNtfsVolumeLabelLength - std::strlen(MountPrefix());
+    return room < kMaxNameLength ? room : kMaxNameLength;
+}
 
 VirtualFSResult PlatformCreate(const std::string& name,
                                uint64_t sizeBytes,
