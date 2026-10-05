@@ -291,8 +291,17 @@ namespace UltraCanvas {
             layout.Hide();
         }
         InvalidateLayout();
-        if (!vis) {
-            SetFocus(false);
+        if (!vis && window) {
+            // A hidden element cannot keep the keyboard focus, and neither can
+            // anything inside it: hiding a container used to leave a text
+            // field in it focused - typing still went there, and its caret
+            // kept blinking where the field had been.
+            for (CSSLayout::Element* e = window->GetFocusedElement(); e; e = e->Parent()) {
+                if (e == static_cast<CSSLayout::Element*>(this)) {
+                    window->ClearFocus();
+                    break;
+                }
+            }
         }
     }
 
