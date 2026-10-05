@@ -1,3 +1,27 @@
+#### 2026-10-05 *0.9.159*
+- **Hiding or disabling a focused text field left its caret blinking where
+  the field had been.** `UltraCanvasTextInput::OnEvent` and
+  `UltraCanvasTextArea::OnEvent` returned early for a hidden or disabled
+  element - before the FocusLost case that releases the shared caret - and
+  `SetVisible(false)` hides the element first and only then drops its focus,
+  so the release never ran. FocusLost now always gets through. Found with
+  UltraClaude's login-code box, which is hidden when sign-in ends.
+- **Hiding a container now takes the keyboard focus from the fields inside
+  it.** `UltraCanvasUIElement::SetVisible(false)` dropped the focus only when
+  the hidden element itself held it, so hiding a panel left a text field in it
+  focused: keys still went to the invisible field and its caret blinked where
+  it had been. It now clears the window's focus when the focused element is
+  the hidden element or anywhere inside it (together with
+  `caret-left-by-hidden-input.md`, the caret goes too). UltraClaude's
+  sign-in page drops its own workaround for this.
+- **`UltraCanvasTextArea::onBeforeKeyDown`: a host can give a key a meaning of
+  its own.** The callback sees every KeyDown before the area handles it, in any
+  editing mode and when read-only, and consumes the key by returning true. A
+  chat box can now send on Enter and keep Shift+Enter for a line break without
+  reimplementing the editor - the text area's `OnEvent` never reached the
+  generic `eventCallback`, so there was no way in before. UltraClaude's message
+  box is the first user. Documented in `UltraCanvasTextAreaExamples.md`.
+
 #### 2026-10-05 *0.9.158*
 - **An eSCL scanner is listed by its own name, not its model.** Discovery
   named a scanner by its TXT record's `ty`, so two scanners of one model were
