@@ -4,6 +4,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.h"
+#include "IODeviceManager/UltraCanvasIODeviceDnsSd.h"
 
 #include <tinyxml2.h>
 
@@ -408,6 +409,10 @@ std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
     std::string name = Lower(host);
     while (!name.empty() && name.back() == '.') name.pop_back();
     return name.empty() ? std::string() : "host:" + name;
+}
+
+std::string EsclInstanceFromServiceName(const std::string& serviceName) {
+    return DnsSdInstanceName(serviceName, {"._uscan._tcp", "._uscans._tcp"});
 }
 
 std::string EsclBaseUrlFromMdns(const std::string& host, int port,
