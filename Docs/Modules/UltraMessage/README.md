@@ -95,7 +95,7 @@ endpoints and subscriptions are opaque `UltraMsgHandle`s.
 | Call | Purpose |
 |---|---|
 | `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
-| `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends. |
+| `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends, including deliveries already queued for the UI thread. |
 | `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
 | `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
 
@@ -122,7 +122,13 @@ exact topic, one wildcard segment (`mail.*`, `*.message`), a trailing `#`
 (`app.#`) or `#` alone. Options: `manualAck`, `includeOwn` (also see what
 this endpoint posts), `onWorkerThread` (bypass the UI dispatcher),
 `replaySinceMs` (journaled history first, oldest to newest, then live).
-`UltraMsg_Unsubscribe(subscription)` ends it.
+`UltraMsg_Unsubscribe(subscription)` ends it. Called on the UI thread, no
+callback of the subscription runs after it returns, not even for a message
+that was already queued for the UI thread; such deliveries are dropped
+unacknowledged, as if they had arrived a moment later. An object can
+therefore unsubscribe in its destructor and free what its callbacks capture.
+A callback already running on another thread at that moment still finishes.
+`UltraMsg_Disconnect` ends every subscription of the endpoint the same way.
 
 **Threading.** Callbacks run through the dispatcher installed with
 `UltraMsg_SetUIDispatcher`; an UltraCanvas application installs

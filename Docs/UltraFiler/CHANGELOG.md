@@ -73,6 +73,13 @@
   preview failed with "cannot store the preview". It goes through
   `PathFromUtf8` now.
 
+#### 2026-10-05 *1.65.2*
+- **Published by ULTRA OS Development GmbH.** The Windows file properties
+  of `UltraFiler.exe` (Company and Copyright) and its application manifest
+  (`Apps/UltraFiler/UltraFiler.{rc,manifest}`) now name the company's new name
+  instead of Cloverleaf UG. See
+  `Docs/UltraCanvas/changelog.d/company-name-ultra-os-development.md`.
+
 #### 2026-10-04 *1.65.1*
 - **Display > Sort is greyed out in the History and Favorites views.** Their
   lists keep their own order (most recently used first, pin order), so the

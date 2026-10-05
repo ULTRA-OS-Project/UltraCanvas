@@ -5,8 +5,8 @@
 // slideshow, zoom, rotation, mirroring, colour adjustments, save-as and the
 // info popup. The widget is framed and captioned to separate it from the
 // programmer-facing notes below it.
-// Version: 1.0.0
-// Last Modified: 2026-06-26
+// Version: 1.0.1
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -17,7 +17,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMediaViewerExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("MediaViewerExamples", 0, 0, 1000, 900);
+        auto root = std::make_shared<UltraCanvasContainer>("MediaViewerExamples", 0, 0, 1000, 916);
         root->SetPadding(0, 5, 5, 0);
 
         // Title
@@ -28,7 +28,7 @@ namespace UltraCanvas {
         title->SetTextColor(Color(50, 50, 150, 255));
         root->AddChild(title);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("MediaViewerSubtitle", 20, 42, 940, 36);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("MediaViewerSubtitle", 20, 42, 940, 52);   // three lines at 11 pt
         subtitle->SetText("The framed area below is the live widget, opened on the media/images "
                           "folder. The arrow keys browse the folder right away — no click "
                           "needed (Left = previous, Right = next); clicking the picture does "
@@ -42,13 +42,13 @@ namespace UltraCanvas {
 
         // ---- Frame + caption around the live widget (drawn behind it). ----
         auto widgetFrame = std::make_shared<UltraCanvasUIElement>(
-                "MediaViewerWidgetFrame", 12, 90, 956, 704);
+                "MediaViewerWidgetFrame", 12, 106, 956, 704);
         widgetFrame->SetBackgroundColor(Colors::Transparent);
         widgetFrame->SetBorders(1.5f, Color(120, 120, 130, 255), 6.0f);
         root->AddChild(widgetFrame);
 
         // ---- The live media viewer widget. ----
-        auto viewer = CreateMediaViewer("ultracanvas-mediaviewer", 20, 98, 940, 688);
+        auto viewer = CreateMediaViewer("ultracanvas-mediaviewer", 20, 114, 940, 688);
 
         // Point it at the media/images folder; the first (sorted) image shows.
         const std::string imagesDir = NormalizePath(GetResourcesDir() + "media/images");
@@ -57,7 +57,7 @@ namespace UltraCanvas {
         root->AddChild(viewer);
 
         auto widgetCaption = std::make_shared<UltraCanvasLabel>(
-                "MediaViewerWidgetCaption", 26, 80, 180, 20);
+                "MediaViewerWidgetCaption", 26, 96, 210, 20);
         widgetCaption->SetText("  Media Viewer widget  ");
         widgetCaption->SetFontSize(13);
         widgetCaption->SetFontWeight(FontWeight::Bold);
@@ -66,7 +66,7 @@ namespace UltraCanvas {
         root->AddChild(widgetCaption);
 
         // Programmer-facing note.
-        auto note = std::make_shared<UltraCanvasLabel>("MediaViewerNote", 20, 806, 940, 60);
+        auto note = std::make_shared<UltraCanvasLabel>("MediaViewerNote", 20, 822, 940, 60);
         note->SetText("Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
                       "mirror, gamma, brightness, RGB correction, auto-optimisation and sharpening "
                       "via PixelFX. PDFs render through UltraCanvasPDFView and audio/video through "

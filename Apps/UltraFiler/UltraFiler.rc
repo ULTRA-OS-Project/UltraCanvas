@@ -32,11 +32,11 @@ BEGIN
         // Language: English (US), Code page: Unicode
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName",      "Cloverleaf UG\0"
+            VALUE "CompanyName",      "ULTRA OS Development GmbH\0"
             VALUE "FileDescription",  "UltraFiler - Cross-Platform File Manager\0"
             VALUE "FileVersion",      "1.66.0\0"
             VALUE "InternalName",     "UltraFiler\0"
-            VALUE "LegalCopyright",   "Copyright (C) 2026 Cloverleaf UG\0"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 ULTRA OS Development GmbH\0"
             VALUE "OriginalFilename", "UltraFiler.exe\0"
             VALUE "ProductName",      "UltraFiler\0"
             VALUE "ProductVersion",   "1.66.0\0"

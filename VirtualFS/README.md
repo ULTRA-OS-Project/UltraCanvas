@@ -418,4 +418,4 @@ zlib; the affected features are compiled out with a warning.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*
