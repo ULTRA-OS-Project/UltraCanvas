@@ -10,10 +10,12 @@
 //
 // A disc outlives the window: it stays until the user ejects it (or the
 // machine restarts), and List() finds it again when UltraFiler starts.
-// Version: 1.0.0
+// Version: 1.0.1 - MaxNameLength
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,8 +58,13 @@ std::vector<RamDisc> List();
 // A name no mounted disc uses yet: "RAM1", "RAM2", ...
 std::string SuggestName();
 
-// Whether `name` can name a disc: 1-64 of A-Z a-z 0-9 . _ -  (it becomes
-// part of a path).
+// The longest name a disc can have on this system: 64, and 23 on Windows,
+// where an ImDisk disc keeps its name in its NTFS volume label
+// (VirtualFS_GetMaxRamDiskNameLength).
+std::size_t MaxNameLength();
+
+// Whether `name` can name a disc: 1 to MaxNameLength() of A-Z a-z 0-9 . _ -
+// (it becomes part of a path).
 bool IsValidName(const std::string& name);
 
 // Makes a disc. Fills `outDisc` and returns true, or returns false with a

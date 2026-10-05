@@ -1628,8 +1628,10 @@ attach ram://` on macOS, the ImDisk driver on Windows when installed, an
 overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
 `VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
 `VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
-`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
-user and do not survive a reboot.
+`VirtualFS_GetPreferredRamDiskBacking`, `VirtualFS_GetMaxRamDiskNameLength`
+(names are at most 23 characters on Windows, where they live in the NTFS
+volume label; 64 elsewhere). Discs are private to the calling user and do
+not survive a reboot.
 
 **Provider interface** (`IVirtualFSProvider`) — one implementation per
 format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
@@ -3332,7 +3334,12 @@ Three facts about CI decide how a cloud-only developer works:
   That download is how you run and look at the app without compiling it.
   The macOS one is a disk image holding an `UltraCanvas` folder: copy the
   whole folder to Applications, because its apps share the `Frameworks/`
-  inside it and do not start when moved out on their own.
+  inside it and do not start when moved out on their own. Only a build on
+  `main` is signed and notarized; a pull request's is named
+  `UCDemo-MacOS-<version>-<arch>-unsigned`, and macOS calls its apps
+  *damaged* until you run
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` (the read-me in
+  the image says the same).
 - **A missing changelog entry fails CI before anything builds.** A framework
   change needs a file under `Docs/UltraCanvas/changelog.d/`; an application
   change needs a new top line in `Docs/<App>/CHANGELOG.md`. The number is
@@ -3990,7 +3997,13 @@ builds a single-application AppImage.
 unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
 notarised bundle a release ships; it needs a Developer ID certificate in the
 keychain and the notarisation credentials the script names. CI runs it only on
-pushes to `main`; pull requests get the unsigned bundle.
+pushes to `main`; pull requests get the unsigned bundle. `--no-sign` signs ad
+hoc, so the bundles still carry a valid signature, and names the disk image
+`UCDemo-MacOS-<version>-<arch>-unsigned.dmg`. Once a browser has downloaded
+such an image, macOS refuses its apps - on Apple silicon with *"… is damaged
+and can't be opened"*. Nothing is damaged: copy the `UltraCanvas` folder to
+Applications and run `xattr -dr com.apple.quarantine /Applications/UltraCanvas`,
+as the read-me inside the image says.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
 
@@ -15557,8 +15570,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.4.0
-**Last Modified**: 2026-09-29
+**Version**: 1.5.0
+**Last Modified**: 2026-10-05
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -15567,6 +15580,14 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Hue bar** — alternative `Bar` wheel style: the SV rectangle grows to the
   maximum available area (with margin) and the full hue range is shown as a
   thick bar underneath it, without the ring.
+- ✅ **Square / pixel-exact SV area** — `SetSVAreaShape` keeps the Bar style's
+  SV area 1:1 instead of stretching it: `Square` takes the largest square that
+  fits, `PixelExact` a square of `PixelExactSVSide` = **256 × 256 pixels**.
+  8-bit channels have 256 steps (0..255), so at 256 pixels each column is one
+  step of saturation and each row one step of value — every pixel is a
+  different colour and none is skipped (a smaller area skips values, a larger
+  one repeats them). The square is centred, the hue bar takes its width, and
+  any height it does not need stays free under the controls.
 - ✅ **Hue × lightness field** — `HueLightnessField` wheel style: one
   rectangle with the hue running top (red) to bottom through the spectrum and
   the lightness left (black) through the pure colour to right (white). A
@@ -15579,7 +15600,8 @@ natively with the framework's `IRenderContext` primitives.
   hue is kept at black and white so the markers stay on the chosen colour,
   and the channel sliders below still edit any colour.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
-  maximised rectangle (Bar).
+  maximised rectangle (Bar). The first pixel column/row is 0 and the last is
+  100 %, and each pixel is drawn in exactly the colour a click on it picks.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -15629,7 +15651,11 @@ natively with the framework's `IRenderContext` primitives.
   expanding the sliders shrinks the shading area by exactly the space they
   occupy (and collapsing gives it straight back) instead of resizing the
   widget. The shading area absorbs the change best in **Bar** wheel style,
-  where the SV rectangle fills the full available height.
+  where the SV rectangle fills the full available height. A `PixelExact` area
+  does not grow past 256 pixels, so it is the other way round there:
+  `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
+  **expanded** sliders, which then open into the free space under the
+  controls and leave the area exact in both states.
 - ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
   checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
@@ -15645,8 +15671,12 @@ namespace UltraCanvas {
     enum class ColorPickerModeSelector { TabBar, Dropdown };  // mutually exclusive
     enum class ColorPickerSliderStyle  { Thin, Thick };
     enum class ColorPickerWheelStyle   { Ring, Bar, HueLightnessField, HueLightnessSliders };
+    enum class ColorPickerSVAreaShape  { Fill, Square, PixelExact };  // Bar style's SV area
 
-    class UltraCanvasColorPicker : public UltraCanvasUIElement {
+    // A container, not a bare element: the hex and value fields are typed
+    // into through a real UltraCanvasTextInput child that moves to whichever
+    // field is being edited.
+    class UltraCanvasColorPicker : public UltraCanvasContainer {
     public:
         UltraCanvasColorPicker(const std::string& id, float x, float y, float w, float h);
 
@@ -15663,8 +15693,10 @@ namespace UltraCanvas {
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
         void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
+        void SetSVAreaShape(ColorPickerSVAreaShape s);   // Bar: fill / 1:1 / 1:1 at 256 px
+        static constexpr int PixelExactSVSide = 256;     // one pixel per 8-bit step
         void SetShowValueSpinners(bool show);            // < > arrows in value box
-        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
 
@@ -15719,6 +15751,12 @@ picker->SetSliderStyle(UltraCanvas::ColorPickerSliderStyle::Thick);
 
 // Replace the hue ring with a maximised SV rectangle + hue bar underneath:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::Bar);
+
+// Keep the Bar style's SV area square at 256 x 256 - one pixel per 8-bit
+// step of saturation and value - and size the widget for it (with
+// collapsible sliders, for the sliders expanded):
+picker->SetSVAreaShape(UltraCanvas::ColorPickerSVAreaShape::PixelExact);
+picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
 // Hue x lightness field (hue top -> bottom, black -> colour -> white):
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
@@ -73807,6 +73845,14 @@ if (!disk.IsTrueRam()) {
 
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
+
+A disc's name is at most **23 characters on Windows** (64 elsewhere;
+`VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
+name, so an ImDisk disc keeps it in its NTFS volume label - that is how
+`VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
+nine of them the `ultravfs-` prefix. The fallback directory takes the same
+limit, so a name does not work on one machine and fail on the next only
+because ImDisk is installed there.
 
 ### Privacy and lifetime
 

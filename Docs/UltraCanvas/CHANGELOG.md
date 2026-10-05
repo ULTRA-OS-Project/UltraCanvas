@@ -1,3 +1,84 @@
+#### 2026-10-05 *0.9.166*
+- **macOS: a pull request's disk image no longer passes for the release.**
+  On macOS 27 the apps of `UCDemo-MacOS-0.9.147-arm64.dmg` were refused with
+  *"UltraFiler.app is damaged and can't be opened"*. Two images of that name
+  existed: the one built on `main`, signed with the Developer ID, notarized
+  and stapled, and one built for a pull request with `--no-sign`, which
+  Gatekeeper refuses with exactly that message once a browser has downloaded
+  it. Nothing in the file, the volume or the CI artifact said which was
+  which. `package-macos.sh --no-sign` now names the image
+  `UCDemo-MacOS-<version>-<arch>-unsigned.dmg` and its volume
+  "UltraCanvas <version> (unsigned)", and CI names the artifact the same way
+  on every run that is not a release. The image carries
+  `Unsigned build - read me.txt`: why macOS calls the apps damaged, and that
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` after copying the
+  folder lets them run.
+- **`--no-sign` signs ad hoc instead of not at all.** An unsigned arm64 app
+  had only the linker's signature on its executable - no sealed `Info.plist`
+  or resources - and its dylibs kept whatever `install_name_tool` and `strip`
+  had left of theirs, while Apple silicon runs no code without a valid
+  signature. Every dylib, plug-in, executable and bundle is now signed with
+  `codesign --sign -`, with the same hardened-runtime options and
+  entitlements as the release and in the same order, and verified with
+  `codesign --verify --strict`, so a bundle that cannot be signed fails the
+  pull request instead of the release build on `main`. Ad hoc needs no
+  certificate and no `--timestamp`, so it asks Apple nothing and brings back
+  none of the network failures that took signing out of pull requests in
+  0.8.31.
+
+#### 2026-10-05 *0.9.165*
+- **A RAM disc's name fits its volume label on Windows.** A drive letter
+  carries no name, so an ImDisk disc keeps "ultravfs-<name>" in its NTFS
+  volume label - the only way `VirtualFS_ListRamDisks()` and the duplicate
+  check find it again. A label holds 32 characters, but names of up to 64
+  were accepted: a name over 23 characters could not be stamped on the
+  volume, and the disc was then neither found by its name nor listed, so
+  nothing in VirtualFS could eject it again. Names are now limited to 23 characters on Windows
+  (still 64 elsewhere), for the `%TEMP%` fallback too, so a name works
+  whichever backing a machine has. The limit is computed from the prefix,
+  and `VirtualFS_GetMaxRamDiskNameLength()` reports it. Each back end now
+  states its own limit (`PlatformMaxNameLength`), and `IsValidName` applies
+  it. `VirtualFSRamDiskTest` checks the limit, rejects a name one character
+  longer, and makes and lists a disc with a name of exactly that length -
+  also built for Windows and run under Wine, through the fallback.
+
+#### 2026-10-05 *0.9.164*
+- **Colour picker: a square, pixel-exact saturation/value area for the Bar
+  style.** `UltraCanvasColorPicker::SetSVAreaShape` takes
+  `ColorPickerSVAreaShape::Fill` (the stretched rectangle, still the default),
+  `Square` (1:1, as large as fits) or `PixelExact` (1:1 at
+  `PixelExactSVSide` = 256 x 256 pixels). 8-bit channels have 256 steps, so
+  at 256 pixels each column is one step of saturation and each row one step of
+  value: a smaller area skips values, a larger one repeats them. A square area
+  is centred with the hue bar at its width, and `PreferredHeightForWidth`
+  sizes a collapsible PixelExact picker for its expanded sliders, so opening
+  them does not shrink the area below exact.
+- **Colour picker: the SV area's first and last pixels now are 0 and 100 %.**
+  The pointer mapped column `i` to `i / width`, so the last column inside the
+  area gave 99.6 % and the extremes were reachable only by dragging past the
+  edge, while the gradient was drawn half a pixel off what a click picked.
+  Column `i` now maps to `i / (width - 1)`, the gradients run from the centre
+  of the first pixel to the centre of the last, and the marker sits on the
+  centre of the picked pixel.
+- **DemoApp colour picker page rearranged.** The first row now holds the full
+  picker, the collapsible-sliders picker with a 256 x 256 pixel-exact SV
+  square, and the hue x lightness field with collapsible sliders; the 60 %
+  scaled picker moved to the last row.
+- **Colour picker: value boxes with `< >` steppers cut their value to
+  "17...".** The arrows take 14 px each inside the box, but the box was only
+  12 px wider than a plain one, so "178.0" and "100.0" did not fit. A box
+  with steppers is now the plain width plus both arrows.
+
+#### 2026-10-05 *0.9.163*
+- **IMAP plug-in: the bulk `FetchMessages` fetches the messages it found.** It
+  listed the mailbox with `SEARCH ALL`, which answers with sequence numbers,
+  then fetched each by UID (`/;UID=n`). The two agree only on a mailbox from
+  which nothing has ever been deleted. Elsewhere it fetched the wrong messages,
+  or none at all once the sequence numbers fell below the lowest UID. It now
+  searches with `UID SEARCH ALL`, like `FetchEnvelopes`. Checked against a fake
+  IMAP server whose messages 1 and 2 carry UIDs 10 and 20: before, no messages;
+  after, both.
+
 #### 2026-10-05 *0.9.162*
 - **DemoApp: the Ultra Message page shows each sample message once.** Two
   causes. `SelectDemoItem` (used by `--component`) selected the tree node,
