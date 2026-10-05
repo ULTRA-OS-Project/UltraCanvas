@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -68,28 +69,85 @@ void TestAddresses() {
     CheckEqual(IODeviceTlsAddress(""), "", "nothing");
 }
 
+// The pin a parsed entry holds for `address`, or "" when there is none.
+std::string PinAt(const std::map<std::string, IODeviceTrustedCertificate>& certificates,
+                  const std::string& address) {
+    auto found = certificates.find(address);
+    return found == certificates.end() ? std::string() : found->second.pin;
+}
+
+std::string NameAt(const std::map<std::string, IODeviceTrustedCertificate>& certificates,
+                   const std::string& address) {
+    auto found = certificates.find(address);
+    return found == certificates.end() ? std::string("<missing>") : found->second.name;
+}
+
 void TestTheFile() {
     std::cout << "\n=== DeviceCertificates.conf ===\n";
     const std::string text =
         "# a comment\n"
         "\n"
         "Scanner.Local:8443 = " + kPinA + "\r\n"
-        "printer.local:631=" + kPinB + "\n"
+        "printer.local:631=" + kPinB + " Office Printer  2nd floor \n"
         "broken line without equals\n"
         "other.local:443=md5//nope\n"
         "empty.local:443=sha256//\n"
+        "named.local:443=sha256// A name but no key\n"
         "http://not-a-tls-address=" + kPinA + "\n";
-    const auto pins = ParseIODeviceTrustedCertificates(text);
-    Check(pins.size() == 2, "two good lines read, the rest skipped");
-    CheckEqual(pins.count("scanner.local:8443") ? pins.at("scanner.local:8443") : "", kPinA,
+    const auto certificates = ParseIODeviceTrustedCertificates(text);
+    Check(certificates.size() == 2, "two good lines read, the rest skipped");
+    CheckEqual(PinAt(certificates, "scanner.local:8443"), kPinA,
                "an address is normalised as it is read, CRLF and spaces aside");
-    CheckEqual(pins.count("printer.local:631") ? pins.at("printer.local:631") : "", kPinB,
-               "the second device");
+    CheckEqual(NameAt(certificates, "scanner.local:8443"), "",
+               "  a line without a name - the form of the first version - has none");
+    CheckEqual(PinAt(certificates, "printer.local:631"), kPinB, "the second device");
+    CheckEqual(NameAt(certificates, "printer.local:631"), "Office Printer  2nd floor",
+               "  whatever follows the key is its name, inner spaces kept");
 
-    const auto again = ParseIODeviceTrustedCertificates(FormatIODeviceTrustedCertificates(pins));
-    Check(again == pins, "what is written reads back the same");
+    const auto again =
+        ParseIODeviceTrustedCertificates(FormatIODeviceTrustedCertificates(certificates));
+    Check(again.size() == certificates.size() &&
+              NameAt(again, "printer.local:631") == "Office Printer  2nd floor" &&
+              PinAt(again, "scanner.local:8443") == kPinA,
+          "what is written reads back the same");
     Check(ParseIODeviceTrustedCertificates(FormatIODeviceTrustedCertificates({})).empty(),
           "an empty list is only the explanatory comment");
+
+    IODeviceTrustedCertificate multiline{"lab.local:443", kPinA, "Lab\nScanner=x"};
+    const auto one = ParseIODeviceTrustedCertificates(
+        FormatIODeviceTrustedCertificates({{multiline.address, multiline}}));
+    CheckEqual(NameAt(one, "lab.local:443"), "Lab Scanner=x",
+               "a name with a line break is written on one line");
+}
+
+void TestNames(const std::filesystem::path& file) {
+    std::cout << "\n=== A device's name beside its key ===\n";
+    {
+        std::ofstream out(file, std::ios::binary);
+        out << "scanner.local:8443=" << kPinA << "\n";
+    }
+    Internal::NoteDeviceTlsName("https://scanner.local:8443/eSCL", "Office Scanner");
+    auto listed = IODeviceTrustedCertificates();
+    Check(listed.size() == 1 && listed.front().name == "Office Scanner",
+          "a key kept without a name takes on the one its device is discovered under");
+
+    Internal::NoteDeviceTlsName("https://scanner.local:8443/eSCL",
+                                "https://scanner.local:8443/eSCL");
+    Internal::NoteDeviceTlsName("https://scanner.local:8443/eSCL", "   ");
+    listed = IODeviceTrustedCertificates();
+    Check(listed.size() == 1 && listed.front().name == "Office Scanner",
+          "  a URL or an empty name does not replace it");
+
+    Internal::NoteDeviceTlsName("http://scanner.local:8443/eSCL", "Plain Scanner");
+    Internal::NoteDeviceTlsName("https://other.local/eSCL", "Not Trusted Yet");
+    listed = IODeviceTrustedCertificates();
+    Check(listed.size() == 1 && listed.front().name == "Office Scanner",
+          "  a plain-http address, or one with no key kept, changes nothing in the file");
+
+    Internal::NoteDeviceTlsName("scanner.local:8443", "Front Desk Scanner");
+    listed = IODeviceTrustedCertificates();
+    Check(listed.size() == 1 && listed.front().name == "Front Desk Scanner",
+          "a renamed device's entry follows its new name");
 }
 
 void TestForgetting(const std::filesystem::path& file) {
@@ -97,7 +155,8 @@ void TestForgetting(const std::filesystem::path& file) {
     {
         std::ofstream out(file, std::ios::binary);
         out << FormatIODeviceTrustedCertificates(
-            {{"scanner.local:8443", kPinA}, {"printer.local:631", kPinB}});
+            {{"scanner.local:8443", {"scanner.local:8443", kPinA, "Office Scanner"}},
+             {"printer.local:631", {"printer.local:631", kPinB, ""}}});
     }
     CheckEqual(PathToUtf8(IODeviceTrustedCertificatesFile()), PathToUtf8(file),
                "ULTRACANVAS_DEVICE_CERTIFICATES names the file");
@@ -130,6 +189,7 @@ int main() {
 
     TestAddresses();
     TestTheFile();
+    TestNames(file);
     TestForgetting(file);
 
     std::error_code ec;

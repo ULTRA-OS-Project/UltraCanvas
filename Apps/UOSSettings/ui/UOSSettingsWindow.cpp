@@ -64,10 +64,11 @@ namespace {
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
 
-    // Trusted certificates table: the device column and the button column
-    // are fixed, the key takes the rest.
-    constexpr int kDeviceColumnWidth = 190;
-    constexpr int kForgetColumnWidth = 90;
+    // Trusted certificates table: the name, address and button columns are
+    // fixed, the key takes the rest.
+    constexpr int kDeviceColumnWidth  = 150;
+    constexpr int kAddressColumnWidth = 170;
+    constexpr int kForgetColumnWidth  = 90;
 
     // Segment order of every Global | Individual switch.
     constexpr int kSegmentGlobal = 0;
@@ -667,7 +668,7 @@ void UOSSettingsWindow::BuildCertificatesPage() {
             "Network scanners and printers that are reached over HTTPS with a "
             "certificate they signed themselves. Each was trusted the first time "
             "it was reached; from then on it is reached only while it presents "
-            "the same key.");
+            "the same key - shown here as the SHA-256 of its public key.");
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -678,7 +679,8 @@ void UOSSettingsWindow::BuildCertificatesPage() {
 
     page->AddChild(MakeTable("uos-tc-table",
                              {{"device", "Device", kDeviceColumnWidth},
-                              {"key", "Key (SHA-256 of its public key)", 0},
+                              {"address", "Address", kAddressColumnWidth},
+                              {"key", "Key", 0},
                               {"forget", "", kForgetColumnWidth}},
                              certificateRows_));
 
@@ -707,9 +709,14 @@ void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
     CertificateRow entry;
     entry.row = MakeTableRow(id);
 
-    auto device = MakeLabel(id + "-device", address);
-    device->size.width = CSSLayout::Dimension::Px(kDeviceColumnWidth);
-    entry.row->AddChild(device);
+    entry.name = MakeLabel(id + "-device", "");
+    entry.name->size.width = CSSLayout::Dimension::Px(kDeviceColumnWidth);
+    entry.row->AddChild(entry.name);
+
+    auto where = MakeLabel(id + "-address", address);
+    where->size.width = CSSLayout::Dimension::Px(kAddressColumnWidth);
+    where->SetTooltip(address);
+    entry.row->AddChild(where);
 
     entry.key = MakeLabel(id + "-key", "", kTextFontSize, kMutedTextColor);
     entry.key->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -729,22 +736,28 @@ void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
 
 void UOSSettingsWindow::RefreshCertificatesPage() {
     const std::vector<IODeviceTrustedCertificate> trusted = IODeviceTrustedCertificates();
-    std::map<std::string, std::string> keys;
+    std::map<std::string, IODeviceTrustedCertificate> byAddress;
     for (const IODeviceTrustedCertificate& certificate : trusted) {
-        keys[certificate.address] = certificate.pin;
+        byAddress[certificate.address] = certificate;
         AddCertificateRow(certificate.address);
     }
     // A forgotten device's row stays, hidden, so it can come back in place
     // when the device is trusted again.
     for (auto& [address, row] : certificates_) {
-        auto key = keys.find(address);
-        row.row->SetVisible(key != keys.end());
-        if (key == keys.end()) continue;
+        auto found = byAddress.find(address);
+        row.row->SetVisible(found != byAddress.end());
+        if (found == byAddress.end()) continue;
+        const IODeviceTrustedCertificate& certificate = found->second;
+        // A key learned before the device's name was known, or for one only
+        // ever named by its address, has none to show.
+        row.name->SetText(certificate.name.empty() ? "(name not known)" : certificate.name);
+        row.name->SetTextColor(certificate.name.empty() ? kMutedTextColor : kTextColor);
+        row.name->SetTooltip(certificate.name);
         // "sha256//" is the form the pin is stored in, not part of the key.
-        std::string shown = key->second;
+        std::string shown = certificate.pin;
         if (shown.rfind("sha256//", 0) == 0) shown.erase(0, 8);
         row.key->SetText(shown);
-        row.key->SetTooltip(key->second);
+        row.key->SetTooltip(certificate.pin);
     }
     if (certificateNote_) {
         certificateNote_->SetText(trusted.empty()
@@ -763,15 +776,21 @@ void UOSSettingsWindow::RefreshCertificatesPage() {
 }
 
 void UOSSettingsWindow::ForgetCertificate(const std::string& address) {
+    // "Office Scanner (192.168.1.20:443)" when its name is known.
+    std::string device = address;
+    for (const IODeviceTrustedCertificate& certificate : IODeviceTrustedCertificates()) {
+        if (certificate.address == address && !certificate.name.empty())
+            device = certificate.name + " (" + address + ")";
+    }
     const bool forgotten = IODeviceForgetCertificate(address);
     RefreshCertificatesPage();
     // After the refresh, which shows where the keys are kept: what was done
     // matters more just now.
     if (certificateStatus_) {
         certificateStatus_->SetText(forgotten
-                ? "Forgot the key of " + address + "; it is learned again the next "
+                ? "Forgot the key of " + device + "; it is learned again the next "
                   "time the device is reached."
-                : "Could not forget the key of " + address + " - " +
+                : "Could not forget the key of " + device + " - " +
                   PathToUtf8(IODeviceTrustedCertificatesFile()) + " could not be written.");
     }
 }

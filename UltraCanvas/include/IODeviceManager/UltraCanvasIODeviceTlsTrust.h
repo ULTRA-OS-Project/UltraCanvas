@@ -26,8 +26,9 @@
 // are reached over otherwise.
 //
 // The keys live in DeviceCertificates.conf in the UltraCanvas settings folder
-// (UltraCanvasSettingsFolder.h), one "host:port=sha256//..." line per device,
-// shared by every application. ULTRACANVAS_DEVICE_CERTIFICATES names another
+// (UltraCanvasSettingsFolder.h), one "host:port=sha256//... Name" line per
+// device - the name is the one its backend discovered (NoteDeviceTlsName),
+// for a person to recognise it by - shared by every application. ULTRACANVAS_DEVICE_CERTIFICATES names another
 // file; ULTRACANVAS_DEVICE_TLS_TOFU=0 stops new keys being learned (devices
 // already listed are still reached).
 // Version: 1.0.0
@@ -48,6 +49,7 @@ namespace UltraCanvas {
 struct IODeviceTrustedCertificate {
     std::string address;   // "host:port", as IODeviceTlsAddress() gives it
     std::string pin;       // "sha256//<base64>"
+    std::string name;      // "Office Scanner"; empty when none was discovered
 };
 
 // Every device whose key has been learned.
@@ -72,10 +74,24 @@ std::filesystem::path IODeviceTrustedCertificatesFile();
 // accepts "host:port" itself. Empty for anything else, plain http:// included.
 std::string IODeviceTlsAddress(const std::string& urlOrAddress);
 
-// DeviceCertificates.conf, read and written. Blank lines and lines starting
-// with '#' are skipped, as is any line whose value is not a sha256// pin.
-std::map<std::string, std::string> ParseIODeviceTrustedCertificates(const std::string& text);
-std::string FormatIODeviceTrustedCertificates(const std::map<std::string, std::string>& pins);
+// DeviceCertificates.conf, read and written, keyed by address. A line is
+// "address=pin" or "address=pin name": the pin holds no spaces, so whatever
+// follows the first one is the name. Blank lines and lines starting with '#'
+// are skipped, as is any line whose value is not a sha256// pin.
+std::map<std::string, IODeviceTrustedCertificate> ParseIODeviceTrustedCertificates(
+    const std::string& text);
+std::string FormatIODeviceTrustedCertificates(
+    const std::map<std::string, IODeviceTrustedCertificate>& certificates);
+
+namespace Internal {
+
+// Tells the trust which name the device at `url` (https://, or host:port) was
+// discovered under, so a key learned for it is kept with that name and one
+// already kept takes it on. The backends call it as they list their devices.
+// A name that is empty, or only the device's URL again, is ignored.
+void NoteDeviceTlsName(const std::string& url, const std::string& name);
+
+}  // namespace Internal
 
 #if defined(ULTRACANVAS_HAS_NET)
 namespace Internal {
