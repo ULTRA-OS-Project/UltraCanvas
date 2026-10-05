@@ -197,6 +197,14 @@ TEST(toasts_on_the_bus) {
     options.journalPath = ":memory:";
     REQUIRE(host.Connect(options));
     REQUIRE(host.IsConnected());
+    // One toast host per bus: a second stands back rather than draw twice.
+    {
+        UltraCanvasNotificationToastHost second;
+        Headless(second);
+        REQUIRE(!second.Connect(options));
+        REQUIRE(!second.IsConnected());
+        REQUIRE(second.LastError().find("another toast host") != std::string::npos);
+    }
 
     // An application, watching what the toasts say back.
     Scoped app{Connect("org.test.toasts.app", "Test App")};

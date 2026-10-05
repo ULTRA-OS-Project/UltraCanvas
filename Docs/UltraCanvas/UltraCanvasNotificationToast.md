@@ -9,7 +9,11 @@ Where UltraMessage itself is the notification server — on ULTRA OS, and on a
 Linux session with no notification daemon installed — every application's
 notification arrives on the UltraMessage bus as a `system.notification`
 (`Docs/Modules/UltraMessage/README.md` §3.6), and nothing else would draw it.
-These two classes do:
+These two classes do. **Applications do not use them:** an application posts
+a `system.notification` on UltraMessage, and the desktop's notification
+service shows it - on ULTRA OS the toast host the desktop runs. There is one
+host per bus (a second `Connect` is refused), so nothing is drawn twice; the
+element on its own serves that host and previews such as the DemoApp page.
 
 - **`UltraCanvasNotificationToast`** — one notification as an element: the
   application's icon and name, the summary, the body, the notification's own
@@ -27,6 +31,10 @@ These two classes do:
 UltraCanvas library and `UltraMessage`)
 **Used by:** the ULTRA OS desktop (`Apps/UltraDesktop`, top right beside its
 right bar)
+**Demo:** `Apps/DemoApp/UltraCanvasNotificationToastExamples.cpp` (Notification
+Toast, next to Alert / Message Box): the element on the page, real toasts at
+the screen corner, a download updating in place, and when to use a toast
+rather than an Alert
 **Tests:** `Tests/UltraMessage/test_toasts.cpp` (target
 `UltraMessageCenterTests`, in-tree, headless)
 

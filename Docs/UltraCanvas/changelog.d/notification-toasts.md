@@ -15,6 +15,10 @@
   pointer resting on it holds it), when it is dismissed or acted on anywhere
   on the bus, and a replacement updates it. The ULTRA OS desktop hosts it
   (UltraDesktop 0.2.0).
+  - **For the desktop shell, not applications.** An application posts a
+    `system.notification` and the message system decides who shows it; the
+    host is the desktop's, one per bus - a second `Connect` is refused so
+    nothing is drawn twice.
   - **`UltraCanvasNotificationToast`**, the toast as an element: the
     application's icon and name, summary, body, the notification's action
     buttons and a close button, from catalogue elements. In the element
@@ -32,6 +36,11 @@
     `windows-notification-listener` write it on what the platform drew. A
     toast host draws only what carries none, so on GNOME, Plasma, dunst or
     Windows nothing is shown twice.
+  - DemoApp: a *Notification Toast* page next to *Alert / Message Box* - the
+    element on the page, real toasts at the screen corner (mail, a chat with
+    Reply, a critical one, a download updating in place, six at once against
+    the limit of four), what the clicks report, and when to use a toast
+    rather than an Alert; the Alert page points at it.
   - The `freedesktop-presenter`'s state names the toast host for the case no
     notification server runs.
   - The Alert's documentation pointed transient messages at a "Toast

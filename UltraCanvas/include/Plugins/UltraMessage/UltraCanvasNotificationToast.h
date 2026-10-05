@@ -30,6 +30,13 @@
 //   toasts.SetScreenMargins(0, 0, rightBarWidth, 0);   // keep clear of the bars
 //   toasts.Connect();                                   // or hosts the broker
 //
+// Who uses it: the desktop shell, and only it. An application never shows a
+// toast itself - it posts a `system.notification` on UltraMessage, and the
+// desktop's notification service (or, where there is none, this host in the
+// ULTRA OS desktop) shows it. One host per bus: Connect refuses while
+// another runs. The element on its own is for that host and for previews
+// (the DemoApp page).
+//
 // Threading: deliveries reach the host on the UI thread (Connect installs the
 // UltraCanvas dispatcher when none is installed and an application exists).
 // The ULTRA OS desktop (Apps/UltraDesktop) hosts one.
@@ -146,7 +153,9 @@ public:
     // Connects and subscribes to `system.notification` (live only: what is
     // already in the journal is the feed's) and to the dismissals and
     // actions that take a toast away. False when no broker could be reached
-    // or started (LastError says why).
+    // or started, or when another toast host (the same app id) is already on
+    // the bus - one draws, a second would draw everything twice (LastError
+    // says why).
     bool Connect(const UltraMsgConnectOptions& options = DefaultConnectOptions());
     void Disconnect();
     bool IsConnected() const;

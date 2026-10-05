@@ -603,6 +603,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAlertExamples.cpp
+            Apps/DemoApp/UltraCanvasNotificationToastExamples.cpp
             Apps/DemoApp/UltraCanvasPaginationExamples.cpp
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
@@ -858,8 +859,10 @@ if(BUILD_DEMO_APP)
     # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
-    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
-    # needs the element's library; without UltraMessage the page says so.
+    # The message centre and notification toast pages
+    # (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp,
+    # UltraCanvasNotificationToastExamples.cpp) need the elements' library;
+    # without UltraMessage the pages say so.
     if(TARGET UltraMessageCenter)
         target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
     endif()

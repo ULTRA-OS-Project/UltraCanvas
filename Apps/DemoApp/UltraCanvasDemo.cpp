@@ -745,6 +745,21 @@ namespace UltraCanvas {
                 .AddVariant("alert", "Confirm (Yes/No)")
                 .AddVariant("alert", "Rich (details / buttons)");
 
+        // The non-modal sibling of the Alert: how ULTRA OS shows a
+        // notification (the element lives with the message centre in the
+        // UltraMessageCenter target; without it the page says so).
+        basicBuilder.AddItem("notificationtoast", "Notification Toast",
+                             "Non-modal notifications in a screen corner, never focused, gone by themselves "
+                             "- how ULTRA OS shows every application's notification",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNotificationToastExamples(); },
+                             "DemoApp/UltraCanvasNotificationToastExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasNotificationToast.md")
+                .AddVariant("notificationtoast", "The element")
+                .AddVariant("notificationtoast", "On the screen (host)")
+                .AddVariant("notificationtoast", "Updates in place")
+                .AddVariant("notificationtoast", "Toast or Alert?");
+
         basicBuilder.AddItem("pagination", "Pagination",
                              "Page-navigation strip with ellipsis windowing, compact and simple modes",
                              ImplementationStatus::FullyImplemented,

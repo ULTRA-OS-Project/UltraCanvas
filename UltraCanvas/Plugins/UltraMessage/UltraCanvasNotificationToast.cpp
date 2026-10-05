@@ -278,6 +278,18 @@ bool UltraCanvasNotificationToastHost::Connect(const UltraMsgConnectOptions& opt
         return false;
     }
     lastError_.clear();
+    // One toast host per bus - the desktop's. A second one would draw every
+    // notification twice; it stands back instead.
+    UltraMsgEndpointInfo self;
+    std::vector<std::string> hosts;
+    if (UltraMsg_GetEndpointInfo(endpoint_, self) &&
+        UltraMsg_ResolveApp(endpoint_, options.appId, hosts) && !hosts.empty() &&
+        hosts.front() != self.instanceId) {
+        lastError_ = "another toast host already draws the notifications on this bus (" + hosts.front() + ")";
+        UltraMsg_Disconnect(endpoint_);
+        endpoint_ = UltraMsgInvalidHandle;
+        return false;
+    }
     auto subscribe = [this](const char* topic, UltraMsgCallback callback) {
         UltraMsgResult result;
         UltraMsgHandle sub = UltraMsg_Subscribe(endpoint_, topic, std::move(callback), {}, &result);
