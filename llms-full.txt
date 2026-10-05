@@ -167,11 +167,11 @@ The following features are planned for future releases:
 
 ## License
 
-MIT License - Copyright 2025 Cloverleaf UG (contributions welcome)
+MIT License - Copyright 2025 ULTRA OS Development GmbH (contributions welcome)
 
 ----------
 
-_Developed by Cloverleaf UG_
+_Developed by ULTRA OS Development GmbH_
 
 ==============================================================================
 FILE: Masterfile_modules.md
@@ -5755,11 +5755,11 @@ The following features are planned for future releases:
 
 ## License
 
-MIT License - Copyright 2025 Cloverleaf UG (contributions welcome)
+MIT License - Copyright 2025 ULTRA OS Development GmbH (contributions welcome)
 
 ----------
 
-_Developed by Cloverleaf UG_
+_Developed by ULTRA OS Development GmbH_
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UCD-FileFormat-v2.md
@@ -69026,7 +69026,7 @@ cmake -S UltraAI -B build \
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/intro.md
@@ -70656,7 +70656,7 @@ headless data module usable from any ULTRA OS process.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*
 
 ==============================================================================
 FILE: Docs/Modules/UltraDatabase/intro.md
@@ -71752,7 +71752,7 @@ internet access. See [`ApiStatus.md`](ApiStatus.md).
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*
 
 ==============================================================================
 FILE: Docs/Modules/UltraNet/intro.md
@@ -73899,7 +73899,7 @@ zlib; the affected features are compiled out with a warning.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*
 
 ==============================================================================
 FILE: Docs/Modules/VirtualFS/intro.md
