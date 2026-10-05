@@ -86,6 +86,13 @@
   OpenPGP shows **[S/MIME]** / **[OpenPGP]** in grey: detected, not yet
   verified. The badge's and the sender's tooltips name a verified sender:
   "✓ Verified sender: paypal.com (DKIM signature and DMARC)".
+- **Buttons in HTML mail show their text again.** In a newsletter whose
+  template colours every link red with `!important` and whose buttons set
+  their own white text the same way (Lexware, via Intercom), the buttons'
+  text was painted red on the red button - "Zum Artikel", "Anmelden" looked
+  like empty red boxes - and the white footer links came out red. The
+  button's own colour now wins, as in a browser. See the framework
+  changelog, "HTML reader: an inline `!important` beats a style sheet's".
 - **Tooltips no longer cover what they explain.** A tooltip - a message
   row's, the sender badge's, a link's address - opened below and to the right
   of the pointer, over the line being read. It now opens above and to the
