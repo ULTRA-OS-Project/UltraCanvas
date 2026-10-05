@@ -4003,6 +4003,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>
@@ -61331,7 +61341,13 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
 
