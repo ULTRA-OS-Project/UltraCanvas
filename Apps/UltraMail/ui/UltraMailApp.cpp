@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.23 - the senders of a sync's new mail go into the address book in one
+//                   transaction (CollectSenders), not a search and a commit each
 // Version: 0.9.22 - recipient suggestions ranked by how often - and how lately - each
 //                   address is written to
 // Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
@@ -2245,12 +2247,13 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 NoteConnection(aid, ConnectionState::Connected);
                 vaultLockReported_ = false;
                 if (last) ShowAccountStatus();
-                // The senders of the new mail only: going through the whole
-                // inbox here (one address-book lookup per message, on the UI
-                // thread) held the window for a large mailbox after every sync.
+                // The senders of the new mail only, and all of them at once:
+                // one by one, each was a search of the address book and a
+                // commit of its own on the UI thread - after a large sync (a
+                // new account, a cache refetched) the window did not answer
+                // for tens of seconds on Windows.
                 if (contacts_.IsOpen())
-                    for (const auto& [name, addr] : *arrived)
-                        ContactCollector::CollectSender(contacts_, name, addr);
+                    ContactCollector::CollectSenders(contacts_, *arrived);
                 Refresh();   // authoritative, correctly sorted final list
             });
         },

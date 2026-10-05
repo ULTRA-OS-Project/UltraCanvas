@@ -1,3 +1,24 @@
+#### 2026-10-05 *0.10.31*
+- **The window no longer freezes after a sync that brought much mail.**
+  At the end of every sync the senders of the new mail go into the address
+  book, and that ran on the window's own thread one sender at a time: a
+  search of the whole address book, then - for a new address - a save in a
+  transaction of its own, each flushed to disk. With a handful of new
+  messages nobody noticed. After a sync that brought many - a newly added
+  account, an inbox downloaded again - it held the window: on Windows,
+  where every flush also meets the virus scanner, clicks went unanswered
+  for twenty seconds and more (160 messages), and for minutes on a mailbox
+  of a few thousand. A click on the other account's tile looked as if
+  switching accounts were slow. The senders of a sync are now collected
+  together: one read of the stored addresses, one transaction for every new
+  contact, each address once however many messages it sent
+  (`ContactCollector::CollectSenders`, `ContactStore::SaveAll`). Measured
+  on Linux against the old way: 160 senders 146 ms -> 1.2 ms, 2228 senders
+  2.2 s -> 10 ms; disk flushes for 160 senders 303 -> 8.
+- **The address book is in WAL mode**, as the mail index has been since
+  0.10.21: a saved contact no longer creates, flushes and deletes a journal
+  file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+
 #### 2026-10-04 *0.10.30*
 - **Switching accounts is immediate.** A click on an account's tile shows its
   mail as stored at once - the list first, the message beside it a moment

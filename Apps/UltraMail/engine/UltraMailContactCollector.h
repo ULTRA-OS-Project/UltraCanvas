@@ -9,6 +9,8 @@
 // was backed on, the shop an order came from, the creator-support service a
 // membership runs through. That is what makes the registry a source of new
 // business contacts and not only a source of icons.
+// Version: 0.3.0 - CollectSenders: a batch of senders (a sync's new mail) in one
+//                  read of the address book and one transaction
 // Version: 0.2.0 - CollectSender files a known service under Services with the
 //                  service's name as the organization
 // Author: UltraCanvas Framework / ULTRA OS
@@ -17,6 +19,8 @@
 #include "UltraMailContactStore.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace UltraMail {
 
@@ -38,6 +42,17 @@ public:
     // it, whatever the registry says.
     static bool CollectSender(ContactStore& store, const std::string& name,
                               const std::string& email);
+
+    // Collect the senders of a batch of messages - (name, address) pairs, a
+    // sync's new mail - each as CollectSender would. An address that comes
+    // more than once is collected once, under the first name it came with.
+    // One read of the stored addresses and one transaction for all the new
+    // contacts, however many senders: collected one by one, each was a search
+    // of the whole address book and a commit of its own, and after a large
+    // sync that held the window for tens of seconds on Windows. Returns the
+    // number of contacts created (0 when the batch could not be saved).
+    static int CollectSenders(ContactStore& store,
+                              const std::vector<std::pair<std::string, std::string>>& senders);
 };
 
 } // namespace UltraMail
