@@ -12,8 +12,10 @@
 //      entry at most once per delete call.
 //   3. The ZIP raw-copy fast path and the generic libarchive rewrite
 //      (.tar.gz) both work, as does the VirtualFSManager batch entry point.
-// Version: 1.0.0
-// Last Modified: 2026-07-25
+//   4. The fast path opens an archive with a Thai-and-emoji name, and lets
+//      go of both files before the rewrite replaces the original.
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
@@ -190,6 +192,11 @@ int main(int argc, char** argv) {
     // .tar.gz always exercises the generic libarchive rewrite.
     RunDeleteScenario(outDir + "/bulk.zip", "ZIP archive", kBulkCount);
     RunDeleteScenario(outDir + "/bulk.tar.gz", "TAR.GZ archive", 100);
+    // The fast path opens the archive and writes its rewrite by their UTF-8
+    // names (OpenFileUtf8), never through miniz's own fopen.
+    RunDeleteScenario(outDir + "/\xE0\xB8\x8B\xE0\xB8\xB4\xE0\xB8\x9B "
+                               "\xF0\x9F\x93\xA6 bulk.zip",
+                      "ZIP archive with a Thai-and-emoji name", 100);
 
     // Manager-level batch entry point (what UltraFiler / the Filer widget
     // calls): one DeleteFromArchive call for a mixed selection.
