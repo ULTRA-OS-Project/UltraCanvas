@@ -1,3 +1,82 @@
+#### 2026-10-06 *0.9.172*
+- **A clipboard history that outlives the program that showed it.**
+  `UltraCanvasClipboardHistory` (library `UltraClipboardHistory`) keeps every
+  copy - files with the cut flag, images as copied, text with its HTML - in
+  an SQLite database (UltraDatabase) with one content-addressed file per
+  payload, under `<data>/ultraos/clipboard/`. Titles, texts and payloads are
+  sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key file
+  kept apart from them; images get 96 px thumbnails. Each entry is described
+  when it is recorded (text, code, formatted text, link, colour, image,
+  files; title, preview, source program, sizes), the same content copied
+  again moves to the top, and a copy marked secret is never recorded.
+  `List` searches case- and accent-insensitively and filters by kind;
+  `Remove` / `Restore` give an undo, `Replace` an edited copy beside or in
+  place of the original, `SetPinned`, `Clear`, and a policy of limits,
+  pause, thumbnails and excluded programs. Two processes share one history:
+  a generation number tells the other side to reload, and a lease lets
+  exactly one of them record. See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
+  - `UltraCanvasClipboardRecorder` records from a UI timer, and puts the last
+    copy back on the clipboard when the program that owned it quits (X11).
+  - `CaptureClipboard` / `RestoreToClipboard` move a `ClipboardSnapshot`
+    between the live clipboard and the history; `EditClipboardText` (trim,
+    join lines, upper / lower / title / sentence case for Latin, Greek and
+    Cyrillic) and `ClipboardImageFile` serve an editor.
+  - `ClipboardHistoryListModel` and `ClipboardHistoryRowDelegate`
+    (`UltraCanvasClipboardHistoryView.h`) show a history in an
+    `UltraCanvasListView`: section headers, a thumbnail by kind, a meta line
+    and painted Copy / Edit / Delete, in a light style and the desktop's dark
+    compact one.
+  - The X11 clipboard learns of a new copy from XFixes
+    (`XFixesSelectSelectionInput` on a connection and thread of its own) when
+    libXfixes is found. Before, `HasClipboardChanged` fetched the clipboard's
+    text every 100 ms and compared it, which also missed every copied image
+    and file list; that stays the fallback without XFixes.
+    `HasClipboardOwner()` is new on the backend.
+  - `Tests/ClipboardHistoryStoreTest.cpp` (headless).
+- **A copied password no longer ends up in a clipboard history.**
+  `SetText(text, ClipboardHint::Secret)` (and `SetClipboardText(text, hint)`)
+  puts the text on the clipboard together with each platform's "leave this out
+  of the history" marker: `x-kde-passwordManagerHint` = `secret` on X11 (the
+  marker KDE's Klipper and KeePassXC use);
+  `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory` = 0 and `CanUploadToCloudClipboard` = 0 on
+  Windows, which also keep it out of `Win+V` and the cloud clipboard; and
+  `org.nspasteboard.ConcealedType` on macOS. The clipboard's own history
+  honours the same markers, from this process or any other:
+  `ProcessNewClipboardContent` and the entry recorded at start-up skip content
+  whose owner marked it, through the new backend call
+  `IsClipboardMarkedSecret()`. Until now UltraDesktop's monitor recorded
+  every text it saw, so a password copied from UltraPassword stayed in its
+  clipboard menu after UltraPassword had cleared the clipboard.
+  - `UltraCanvasClipboardBackend` gains `SetClipboardSecretText` and
+    `IsClipboardMarkedSecret`; a backend without markers (Android,
+    WebAssembly) puts plain text and reports nothing marked.
+  - `UltraCanvasClipboard::InitializeWithBackend` takes a backend from the
+    caller, for a platform the framework has none for, and for tests.
+  - `GetEntries()` is documented as newest first, which it always was.
+  - `Tests/ClipboardHistoryTest.cpp`: newest-first order, a secret copy from
+    another program, from this process, and one already on the clipboard at
+    start-up, against a fake backend (headless).
+- **A key combination for the whole desktop.** `UltraCanvasGlobalShortcut`
+  (`UltraCanvasDesktopShell.h`) calls back when `"Super+V"`, `"Ctrl+Alt+H"`
+  or another combination is pressed, whichever window has the focus: on X11 a
+  passive `XGrabKey` on the root window, with the Caps Lock and Num Lock
+  variants, on a connection and thread of its own. `Start` fails and says why
+  when the combination cannot be read, when another program holds it, and
+  on the platforms without a backend; `Stop` joins the thread. UltraDesktop
+  opens its clipboard panel with it.
+- **A 16-bit picture saved as an 8-bit PNG keeps its colours.** `pngsave`
+  narrows 16-bit samples to the bit depth it is given by clipping them, so a
+  16-bit PNG (as ImageMagick, scanners and some screenshot tools write them)
+  that `UCImage::Save` wrote as an ordinary PNG - a thumbnail, an export -
+  came out white. A 16-bit RGB or grey image is now converted to 8-bit sRGB
+  or grey first, as the JPEG and WebP writers already do on their own.
+- **Files copied with xclip arrive complete.** The X11 clipboard reads files
+  from `x-special/gnome-copied-files`, whose first line is the verb `copy` or
+  `cut`. A program that answers every target with the same bytes, as xclip
+  does, hands over a bare URI list there, and its first file was taken for
+  the verb and dropped. Only `copy` and `cut` count as the verb now.
+
 #### 2026-10-06 *0.9.171*
 - **`RasterizeVectorElements`: chosen elements of an open drawing as a
   picture.** `UltraCanvasVectorRaster.h` could rasterize a vector *file*;
