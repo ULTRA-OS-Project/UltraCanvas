@@ -91,6 +91,12 @@ MEDIA_TYPES = FileTypes("ultracanvas.media", "Images, video, audio and documents
 # still ships in the package; it just has no entry. A listed .exe that this
 # build did not produce is skipped, as package-macos.sh's package_if_built
 # does.
+#
+# Not listed until they keep their data in %APPDATA% on Windows: EmailCleaner
+# and UltraSocial. Both fall back to a folder under the working directory
+# ("./EmailCleaner"), and a packaged application starts in System32, so they
+# would quit on their first write. See "What changes inside a package" in
+# Docs/UltraCanvas/UltraCanvasWindowsMSIX.md.
 APPS = [
     App("UltraCanvasDemo", "UltraCanvas Demo", "Demo.png",
         "Every UltraCanvas element in one window, with its source code"),
@@ -105,8 +111,6 @@ APPS = [
     App("UltraAIApp", "UltraAI", "UltraAI.png",
         "AI capabilities: chat, speech, image, video and music generation"),
     App("UltraMail", "UltraMail", "UltraMail.png", "Mail client"),
-    App("EmailCleaner", "EmailCleaner", "EmailCleaner.png",
-        "Maps who sends what, and when, across several mail accounts"),
     App("UltraCleaner", "UltraCleaner", "UltraCleaner.png",
         "Removes temporary files, caches, logs and other leftovers"),
     App("UltraClaude", "UltraClaude", "UltraClaude.png",

@@ -18,4 +18,7 @@
   Store package once the repository has the `MSIX_*` Actions variables.
   `Docs/UltraCanvas/UltraCanvasWindowsMSIX.md` describes the modes, the Store
   submission, and why MSIX is a better fit than the EXE/MSI route. The
-  EXE/MSI route needs every DLL signed with a CA-issued certificate.
+  EXE/MSI route needs every DLL signed with a CA-issued certificate. The page
+  also lists what behaves differently inside a package. EmailCleaner and
+  UltraSocial have no Start menu entry yet: on Windows they keep their data
+  under the working folder, and a packaged application starts in System32.

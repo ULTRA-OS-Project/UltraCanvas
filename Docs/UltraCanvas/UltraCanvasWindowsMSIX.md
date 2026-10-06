@@ -98,6 +98,35 @@ variables, not secrets.
 5. Each later submission needs a higher version. The framework version rises
    with every release, so this happens without extra steps.
 
+## What changes inside a package
+
+The applications run as ordinary full-trust Win32 programs, but Windows
+handles four things differently for a packaged program. The table says how
+each one affects the applications in this repository as of this writing.
+
+| Inside a package | Effect here |
+|---|---|
+| The install folder (`C:\Program Files\WindowsApps\...`) is **read-only** | Fine. Everything next to the `.exe` is only read: `Resources/`, `data/`, `lib/`, `Plugins/`, `cacert.pem`. Fonts, caches, crash dumps and settings go to `%APPDATA%` / `%LOCALAPPDATA%`. The one exception is the ImageMagick coder repair (`UltraCanvasCoderModuleRepair.cpp`), which renames coders in place. It does nothing on a `package-win.sh` package, because that script already renamed them. |
+| The program starts with **System32 as its working folder**, not its own folder | **EmailCleaner and UltraSocial** keep their data in `./<App>` on Windows, because they look only at `XDG_DATA_HOME` / `HOME`. Under a package they would write into System32 and quit, so they have no Start menu entry yet. **UltraNet's default plug-in folder** is the relative `Plugins/UltraNet` (`UltraNetPlugins.cpp`). UltraMail sets an absolute one and works. Printer and scanner discovery over the network (mDNS, used by DeviceExplorer) finds no plug-in. **The file dialog** opens in the working folder the first time (`UltraCanvasModalDialog.cpp`), which is System32. A package cannot set the working folder; Microsoft's Package Support Framework can, but the fix belongs in those three places. |
+| Writes to `%APPDATA%` / `%LOCALAPPDATA%` are kept per package | Fine within the package. All the applications share one package, so they still see each other's settings (`%APPDATA%\UltraCanvas`, `%APPDATA%\ultraos`). They read what an unpackaged copy wrote before. |
+| Registry writes stay inside the package | Fine. No first-party code writes the registry (only reads). File associations come from the manifest. OAuth sign-in uses a loopback listener, not a URL scheme, so there is nothing to register. |
+
+Two more points:
+
+- **Elevation.** UltraFiler's *Delete as administrator* restarts its own
+  `.exe` with `runas`. A packaged program can do that only with the
+  restricted capability `allowElevation`. Microsoft grants it to Store apps
+  only on request, with a written justification, so the manifest does not
+  declare it. Inside the package, that command fails. Declaring it is a
+  one-line change in `build_manifest`, and it is fine for a sideloaded
+  (`--mode signed`) package.
+- **Non-ASCII file names.** When a file type association opens a file,
+  Windows passes the file to the application as its first argument. Texter
+  reads that argument from the narrow `__argv`, and its root CMake target
+  embeds no UTF-8 manifest. On a machine whose code page cannot hold a
+  name, that name arrives mangled. UltraViewer embeds the manifest and is
+  fine on Windows 10 1903 and later.
+
 ## What is in the package
 
 `scripts/make_msix_layout.py` builds the package layout from `dist/`:
@@ -109,8 +138,9 @@ variables, not secrets.
   menu entry) for each application in the script's `APPS` table whose `.exe`
   is in `dist/`. Executables that are not in the table still ship, but they
   get no entry. These are the command-line tools (`ultramsg`,
-  `ultrafibu_cli`, `ultrawin-setup`) and the ULTRA OS desktop components
-  (UltraDesktop, UOS-Settings, UltraWinManager).
+  `ultrafibu_cli`, `ultrawin-setup`), the ULTRA OS desktop components
+  (UltraDesktop, UOS-Settings, UltraWinManager), and for now EmailCleaner and
+  UltraSocial (see the previous section).
 - **File associations** for Texter (text and source code) and UltraViewer
   (images, video, audio, PDF, e-books, `.ucd`). These put the applications in
   Explorer's *Open with* list, the way `package-macos.sh` declares their
