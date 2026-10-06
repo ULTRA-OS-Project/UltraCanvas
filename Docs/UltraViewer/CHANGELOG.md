@@ -1,12 +1,21 @@
 #### 2026-10-06 *1.0.4*
 - **Save image as saves an SVG.** Saving a drawing wrote nothing: the dialog
   offered `<name>.svg`, which the viewer cannot write, and the failure showed
-  only in the info line at the bottom. It now offers `<name>.png`, gives a
-  name typed without a format `.png`, and says in a message when a save
-  fails. The fix is in the framework's media viewer
+  only in the info line at the bottom. It now offers `<name>.png` and says in
+  a message when a save fails. The fix is in the framework's media viewer
   (`Docs/UltraCanvas/changelog.d/media-viewer-save-svg.md`); the viewer
   therefore shows message boxes now - a failed save and a replace prompt -
   which follow the framework-dialog setting like its file dialogs.
+- **The file type chosen in Save image as is the format saved.** Picking JPEG
+  and typing `photo` saved nothing - a name without an extension is no format
+  the viewer knows - and the type list was ignored; it now saves `photo.jpg`. The dialog also starts on the type of the file shown (a JPEG
+  opens on JPEG) and renames the file when another type is picked. Framework
+  change: `Docs/UltraCanvas/changelog.d/save-dialog-file-type.md`.
+- **A failed save leaves no empty file.** Saving as AVIF on a build without
+  an AV1 encoder left a 0-byte `.avif` behind, and the same failure over an
+  existing file emptied it. The image is now written to a temporary file and
+  put in place only when complete. Framework change:
+  `Docs/UltraCanvas/changelog.d/image-save-staged.md`.
 
 #### 2026-10-01 *1.0.3*
 - **Open and Save use the framework's new file dialog.** The toolbar's Open

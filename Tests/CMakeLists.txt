@@ -3498,6 +3498,28 @@ else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SAVE FILE TYPE TEST =====
+# The type picked in a save dialog decides the file name ("photo" with JPEG
+# picked is photo.jpg), and a failed image save leaves no file behind and the
+# one it was saving over intact. No display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SaveFileTypeTest...")
+    add_executable(SaveFileTypeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SaveFileTypeTest.cpp
+    )
+    target_include_directories(SaveFileTypeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SaveFileTypeTest PRIVATE cxx_std_20)
+    target_link_libraries(SaveFileTypeTest PRIVATE UltraCanvas)
+    set_target_properties(SaveFileTypeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SaveFileTypeTest COMMAND SaveFileTypeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SaveFileTypeTest")
+else()
+    message(STATUS "  SaveFileTypeTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DIALOG CLOSE-ALL TEST =====
 # CloseAllDialogs() cancels every open dialog; it used to erase from the list
 # it was walking and read past its end. Skips without DISPLAY.

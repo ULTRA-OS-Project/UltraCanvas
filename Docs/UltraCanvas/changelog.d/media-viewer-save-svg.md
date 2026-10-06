@@ -7,9 +7,9 @@
   looked as if Save did nothing. `UltraCanvasMediaViewer` now:
   - offers a name the viewer can write: the file's own when it is PNG, JPEG,
     WebP, TIFF, AVIF or BMP, otherwise its stem as a PNG (`diagram.png`);
-  - adds `.png` to a name typed without one of those extensions
-    (`diagram` → `diagram.png`, `diagram.svg` → `diagram.svg.png`) - added
-    rather than swapped in, because what follows the last dot is not always
-    a format - and asks before replacing a file of that name, which the
-    dialog could not ask about;
+  - as a last resort, after the dialog has applied the chosen type (see the
+    "Files of type" entry), adds `.png` to a name that still has none of
+    those extensions - added rather than swapped in, because what follows
+    the last dot is not always a format - and asks before replacing a file
+    of that name, which the dialog could not ask about;
   - shows an error message when a save fails, as well as the info line.
