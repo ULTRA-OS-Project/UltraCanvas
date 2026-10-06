@@ -1,3 +1,13 @@
+#### 2026-10-07 *0.6.7*
+- **Save as and Export keep the file type you chose.** Both added an
+  extension of their own to a name typed without one - `.xar` on Save as,
+  `.pdf` on Export - whatever type was chosen, so "drawing" with SVG chosen
+  was saved as Xara, after the dialog had asked about replacing "drawing"
+  rather than that file. The save dialog now gives the name the chosen
+  type's extension itself (UltraCanvas 0.9.176, PR #694), so ArtCreator saves
+  the name it hands back as it is. A name without an extension saved under
+  "All files" is refused with a message saying it needs one.
+
 #### 2026-10-06 *0.6.6*
 - **SVG files styled with CSS open in their colours.** A drawing that sets
   its fills, strokes, corner radii and text styles from a `<style>` block

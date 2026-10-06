@@ -22070,6 +22070,11 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- Under All files a name without an extension stays without one, so there
+  is no format to pick. Don't add a default extension of your own after the
+  dialog - it would bypass the Replace File question; the framework's savers
+  (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
+  refuse such a name with a message asking for an extension.
 - The native dialogs follow the same rule. Windows is given the chosen
   type's extension as its default (`SetDefaultExtension`) and the result is
   checked as above; the GTK chooser rewrites the name when the type changes
