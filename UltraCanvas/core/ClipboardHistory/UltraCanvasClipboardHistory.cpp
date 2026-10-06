@@ -225,6 +225,26 @@ std::vector<uint8_t> DecodableImage(const ClipboardFormat& image) {
     return file;
 }
 
+// Image bytes start with their format's signature. A clipboard owner that
+// answers every request with the same bytes (xclip does) would otherwise
+// turn a text into an "image".
+bool LooksLikeImage(const std::vector<uint8_t>& d, const std::string& mime) {
+    if (d.size() < 12) return false;
+    if (d[0] == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G') return true;
+    if (d[0] == 0xFF && d[1] == 0xD8 && d[2] == 0xFF) return true;                          // JPEG
+    if (d[0] == 'G' && d[1] == 'I' && d[2] == 'F' && d[3] == '8') return true;
+    if ((d[0] == 'I' && d[1] == 'I' && d[2] == 42 && d[3] == 0) ||
+        (d[0] == 'M' && d[1] == 'M' && d[2] == 0 && d[3] == 42)) return true;                // TIFF
+    if (d[0] == 'B' && d[1] == 'M') return true;
+    if (d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F' &&
+        d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P') return true;
+    if (mime == "image/bmp") {   // a bare CF_DIB: its BITMAPINFOHEADER's size first
+        const uint32_t header = ReadLe32(d, 0);
+        return header == 12 || header == 40 || header == 52 || header == 56 || header == 108 || header == 124;
+    }
+    return false;
+}
+
 // FNV-1a, for digests when this build has no hash (no libsodium).
 uint64_t Fnv1a(const uint8_t* data, size_t size, uint64_t seed) {
     uint64_t hash = seed;
@@ -1345,15 +1365,18 @@ bool CaptureClipboard(UltraCanvasClipboard& clipboard, ClipboardSnapshot& snapsh
     }
     std::vector<uint8_t> image;
     std::string format;
-    if (clipboard.GetImage(image, format) && !image.empty()) {
+    if (clipboard.GetImage(image, format) && LooksLikeImage(image, NormaliseImageMime(format))) {
         snapshot.formats.push_back({NormaliseImageMime(format), std::move(image)});
         return true;
     }
     std::string text;
     if (clipboard.GetText(text) && !Trimmed(text).empty()) {
         snapshot.SetText(text);
+        // Kept when it is markup: an owner that hands its text to every
+        // request would otherwise make every copy "formatted".
         std::string html;
-        if (clipboard.GetHtml(html) && !Trimmed(html).empty()) {
+        if (clipboard.GetHtml(html) && html != text && html.find('<') != std::string::npos &&
+            html.find('>') != std::string::npos) {
             snapshot.formats.push_back({ClipboardMime::Html, Bytes(html)});
         }
         return true;

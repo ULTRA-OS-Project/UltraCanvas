@@ -2832,20 +2832,24 @@ endif()
 # UltraDesktop records into it and shows it in its quick panel, the
 # UltraClipboard application shows and edits it. SQLite through UltraDatabase
 # (which the UltraCanvas library carries), payloads encrypted with UltraCrypt.
-# Without libsqlite3 there is no target, and both programs do without it.
-if(TARGET UltraDatabase AND TARGET UltraCrypt)
+# Built everywhere UltraCrypt is (always): without libsqlite3 the history
+# reports itself unavailable (IsAvailable) and the desktop shows the
+# framework's in-memory list instead.
+if(TARGET UltraCrypt)
     add_library(UltraClipboardHistory STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistory.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp)
     set_target_properties(UltraClipboardHistory PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_features(UltraClipboardHistory PUBLIC cxx_std_20)
     target_include_directories(UltraClipboardHistory PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(UltraClipboardHistory PUBLIC ${ULTRACANVAS_LIB_NAME} UltraCrypt)
-    target_compile_definitions(UltraClipboardHistory PUBLIC ULTRACANVAS_HAS_CLIPBOARD_HISTORY=1)
-    message(STATUS "  [✓] UltraClipboardHistory - ENABLED")
-else()
-    message(STATUS "  [−] UltraClipboardHistory - DISABLED (needs UltraDatabase and UltraCrypt)")
+    if(TARGET UltraDatabase)
+        message(STATUS "  [✓] UltraClipboardHistory - ENABLED")
+    else()
+        message(STATUS "  [~] UltraClipboardHistory - built without a database: no history is kept")
+    endif()
 endif()
 
 # ===== BUILD ULTRAMESSAGE LIBRARY (Phase 1: channel + journal) =====

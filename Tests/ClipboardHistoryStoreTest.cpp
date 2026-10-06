@@ -386,6 +386,17 @@ int main(int, char** argv) {
                                       recorded.List()[0].kind == ClipboardEntryKind::Image);
 
         state->Clear();
+        state->text = "plain words";
+        state->image = Bytes("plain words");   // an owner that answers every request with its text
+        state->imageFormat = "image/png";
+        state->html = "plain words";
+        state->changed = true;
+        recorder.Tick();
+        TEST("text is not taken for an image, nor for HTML", recorded.List().size() == 4 &&
+                                                             recorded.List()[0].kind == ClipboardEntryKind::Text);
+        recorded.Remove(recorded.List()[0].id);
+
+        state->Clear();
         state->text = "correct horse battery staple";
         state->secret = true;
         state->changed = true;
