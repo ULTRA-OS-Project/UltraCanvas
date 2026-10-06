@@ -133,6 +133,12 @@ public:
     virtual bool IsClipboardMarkedSecret() {
         return false;
     }
+    // False when no program holds the clipboard any more: on X11 the content
+    // leaves with the program that copied it. Systems that keep the content
+    // themselves always answer true.
+    virtual bool HasClipboardOwner() {
+        return true;
+    }
 
     // Cut/copy-aware file clipboard operations. File managers mark a "cut"
     // (move-on-paste) on the clipboard next to the file list

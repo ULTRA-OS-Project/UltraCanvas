@@ -14,7 +14,12 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/select.h>
+#include <poll.h>
+#include <cerrno>
 #include "UltraCanvasDebug.h"
+#ifdef ULTRACANVAS_HAS_XFIXES
+#include <X11/extensions/Xfixes.h>
+#endif
 
 namespace UltraCanvas {
 
@@ -67,6 +72,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxClipboard::Shutdown() {
+        StopChangeListener();
         if (display && window) {
             XDestroyWindow(display, window);
             window = 0;
@@ -269,7 +275,90 @@ namespace UltraCanvas {
     }
 
 // ===== MONITORING =====
+    // XFixes reports every new owner of CLIPBOARD (and the owner going away)
+    // on a connection of its own, so this thread never touches the
+    // application's display. It only counts; HasClipboardChanged reads the count.
+    void UltraCanvasLinuxClipboard::StartChangeListener() {
+#ifdef ULTRACANVAS_HAS_XFIXES
+        if (!display) return;
+        Display* d = XOpenDisplay(DisplayString(display));
+        int eventBase = 0, errorBase = 0;
+        if (!d || !XFixesQueryExtension(d, &eventBase, &errorBase) || ::pipe(changeWakePipe) != 0) {
+            if (d) XCloseDisplay(d);
+            debugOutput << "UltraCanvas: no XFixes; clipboard changes are noticed by their text" << std::endl;
+            return;
+        }
+        XFixesSelectSelectionInput(d, DefaultRootWindow(d), XInternAtom(d, "CLIPBOARD", False),
+                                   XFixesSetSelectionOwnerNotifyMask |
+                                   XFixesSelectionWindowDestroyNotifyMask |
+                                   XFixesSelectionClientCloseNotifyMask);
+        XFlush(d);
+        changeDisplay = d;
+        changeListenerAlive = true;
+        const int wakeFd = changeWakePipe[0];
+        changeThread = std::thread([this, d, eventBase, wakeFd]() {
+            for (;;) {
+                while (XPending(d) > 0) {
+                    XEvent event;
+                    XNextEvent(d, &event);
+                    if (event.type == eventBase + XFixesSelectionNotify) ownerChanges.fetch_add(1);
+                }
+                pollfd fds[2];
+                fds[0].fd = ConnectionNumber(d);
+                fds[0].events = POLLIN;
+                fds[0].revents = 0;
+                fds[1].fd = wakeFd;
+                fds[1].events = POLLIN;
+                fds[1].revents = 0;
+                const int n = ::poll(fds, 2, -1);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    break;
+                }
+                if (fds[1].revents & POLLIN) break;
+                if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
+            }
+            changeListenerAlive = false;
+        });
+#endif
+    }
+
+    void UltraCanvasLinuxClipboard::StopChangeListener() {
+        if (changeThread.joinable()) {
+            const char byte = 1;
+            if (::write(changeWakePipe[1], &byte, 1) < 0) {
+                // The thread is gone already; join below returns at once.
+            }
+            changeThread.join();
+        }
+        if (changeDisplay) XCloseDisplay(changeDisplay);
+        changeDisplay = nullptr;
+        for (int& fd : changeWakePipe) {
+            if (fd >= 0) ::close(fd);
+            fd = -1;
+        }
+        changeListenerAlive = false;
+    }
+
+    bool UltraCanvasLinuxClipboard::HasClipboardOwner() {
+        return display && XGetSelectionOwner(display, atomClipboard) != None;
+    }
+
     bool UltraCanvasLinuxClipboard::HasClipboardChanged() {
+        // Whoever asks is watching the clipboard: start listening for owners.
+        if (!changeListenerTried) {
+            changeListenerTried = true;
+            StartChangeListener();
+        }
+        if (changeListenerAlive) {
+            const uint64_t changes = ownerChanges.load();
+            if (changes != ownerChangesSeen) {
+                ownerChangesSeen = changes;
+                clipboardChanged = true;
+            }
+            return clipboardChanged;
+        }
+
         // Check if enough time has passed since last check
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastChangeCheck);

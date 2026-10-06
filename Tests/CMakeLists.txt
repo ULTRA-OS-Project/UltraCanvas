@@ -548,6 +548,29 @@ else()
     message(STATUS "  ClipboardHistoryTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== CLIPBOARD HISTORY STORE TEST =====
+# The persistent history UltraDesktop and UltraClipboard share: kinds, the
+# encrypted store, search, pin/remove/undo/edit, limits, two instances on one
+# folder, the recorder lease, and the recorder against a fake clipboard.
+# Headless, in a temporary folder.
+if(TARGET UltraClipboardHistory)
+    message(STATUS "  Building ClipboardHistoryStoreTest...")
+    add_executable(ClipboardHistoryStoreTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardHistoryStoreTest.cpp
+    )
+    target_include_directories(ClipboardHistoryStoreTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardHistoryStoreTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardHistoryStoreTest PRIVATE UltraClipboardHistory)
+    set_target_properties(ClipboardHistoryStoreTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardHistoryStoreTest COMMAND ClipboardHistoryStoreTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardHistoryStoreTest")
+else()
+    message(STATUS "  ClipboardHistoryStoreTest skipped (UltraClipboardHistory not built)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.

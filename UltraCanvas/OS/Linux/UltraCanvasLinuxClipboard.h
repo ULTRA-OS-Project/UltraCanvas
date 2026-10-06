@@ -6,6 +6,10 @@
 // paste into external file managers and vice versa. A secret copy also
 // offers x-kde-passwordManagerHint = "secret", the marker KDE's Klipper,
 // KeePassXC and this framework's own clipboard history agree on.
+// Changes are noticed through XFixes when the library is there: a listener on
+// a connection and thread of its own, started the first time something asks
+// whether the clipboard changed, reports every new owner - an image or a file
+// copy as much as a text. Without XFixes the text is compared as before.
 // Version: 1.3.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
@@ -15,9 +19,11 @@
 #include "../../include/UltraCanvasClipboard.h"
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <atomic>
 #include <memory>
 #include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -52,6 +58,15 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point lastChangeCheck;
         std::string lastClipboardText;
         bool clipboardChanged;
+
+        // ===== CHANGE LISTENER (XFixes) =====
+        bool changeListenerTried = false;
+        std::atomic<bool> changeListenerAlive{false};
+        std::atomic<uint64_t> ownerChanges{0};
+        uint64_t ownerChangesSeen = 0;
+        Display* changeDisplay = nullptr;
+        int changeWakePipe[2] = {-1, -1};
+        std::thread changeThread;
 
         // ===== SELECTION HANDLING (reading other apps' clipboards) =====
         std::vector<uint8_t> selectionData;
@@ -90,6 +105,7 @@ namespace UltraCanvas {
         bool SetClipboardText(const std::string& text) override;
         bool SetClipboardSecretText(const std::string& text) override;
         bool IsClipboardMarkedSecret() override;
+        bool HasClipboardOwner() override;
         bool SetClipboardHtml(const std::string& html, const std::string& plainText) override;
         bool GetClipboardHtml(std::string& html) override;
         bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
@@ -112,6 +128,8 @@ namespace UltraCanvas {
     private:
         // ===== INITIALIZATION HELPERS =====
         void InitializeAtoms();
+        void StartChangeListener();
+        void StopChangeListener();
         Window CreateHelperWindow();
         bool GetDisplayFromApplication();
 
