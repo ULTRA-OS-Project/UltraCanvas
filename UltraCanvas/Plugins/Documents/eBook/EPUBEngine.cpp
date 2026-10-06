@@ -3,8 +3,8 @@
 // XML documents are parsed with the tolerant HTMLReader parser (namespace
 // prefixes are stripped from tag names: dc:title → title, navPoint →
 // navpoint; attribute names keep their prefixes).
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "EPUBEngine.h"
@@ -143,7 +143,7 @@ bool EPUBEngine::ParseContainer() {
     return true;
 }
 
-bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
+bool EPUBEngine::ReadPackageDocument(HTML::Document& doc) {
     std::string opfXml = archive.ReadTextFile(opfPath);
     if (opfXml.empty()) {
         Fail("Failed to read " + opfPath);
@@ -151,14 +151,18 @@ bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
     }
 
     HTML::Parser parser;
-    HTML::Document doc = parser.Parse(opfXml);
+    doc = parser.Parse(opfXml);
+    return true;
+}
 
-    HTML::Node* pkg = Find(doc.root.get(), "package");
+void EPUBEngine::ParsePackage(HTML::Node* root, std::string& ncxId,
+                              std::string& navHref) {
+    HTML::Node* pkg = Find(root, "package");
     if (pkg) versionString = pkg->GetAttribute("version");
 
     // ---- metadata (Dublin Core; dc: prefix is stripped by the parser) ----
-    if (HTML::Node* meta = Find(doc.root.get(), "metadata")) {
-        std::string coverId;
+    std::string coverMeta;   // EPUB 2 <meta name="cover" content="...">
+    if (HTML::Node* meta = Find(root, "metadata")) {
         meta->ForEachElement([&](HTML::Node& e) {
             std::string text = UltraCanvas::Trim(e.TextContent());
             if (e.tag == "title" && metadata.title.empty()) {
@@ -186,20 +190,15 @@ bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
                 }
             } else if (e.tag == "meta" &&
                        LowerCopy(e.GetAttribute("name")) == "cover") {
-                coverId = e.GetAttribute("content");   // EPUB 2 cover
+                coverMeta = UltraCanvas::Trim(e.GetAttribute("content"));
             }
             return true;
         });
-        if (!coverId.empty()) {
-            // Resolved after the manifest is read; stash in coverPath field
-            // temporarily via the id — handled below.
-            coverPath = "\x01" + coverId;   // marker: id, not a path yet
-        }
     }
 
     // ---- manifest ----
-    std::string ncxId, navHref;
-    if (HTML::Node* man = Find(doc.root.get(), "manifest")) {
+    std::string coverImageItem;   // EPUB 3 properties="cover-image"
+    if (HTML::Node* man = Find(root, "manifest")) {
         for (const auto& child : man->children) {
             if (!child->IsElement("item")) continue;
             ManifestItem item;
@@ -212,7 +211,7 @@ bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
                 stylesheetPaths.push_back(item.href);
             }
             if (item.properties.find("cover-image") != std::string::npos) {
-                coverPath = item.href;                 // EPUB 3 cover
+                coverImageItem = item.href;
             }
             if (item.properties.find("nav") != std::string::npos) {
                 navHref = item.href;                   // EPUB 3 nav doc
@@ -226,21 +225,15 @@ bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
         }
     }
 
-    // EPUB 2 cover id → path.
-    if (!coverPath.empty() && coverPath[0] == '\x01') {
-        const ManifestItem* item = ItemById(coverPath.substr(1));
-        coverPath = item ? item->href : "";
-    }
-    // Fallback: a manifest image whose id mentions "cover".
-    if (coverPath.empty()) {
-        for (const auto& item : manifest) {
-            if (item.mediaType.rfind("image/", 0) == 0 &&
-                LowerCopy(item.id).find("cover") != std::string::npos) {
-                coverPath = item.href;
-                break;
-            }
-        }
-    }
+    ResolveCover(root, coverImageItem, coverMeta);
+}
+
+bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
+    HTML::Document doc;
+    if (!ReadPackageDocument(doc)) return false;
+
+    std::string ncxId, navHref;
+    ParsePackage(doc.root.get(), ncxId, navHref);
 
     // ---- spine ----
     if (HTML::Node* spine = Find(doc.root.get(), "spine")) {
@@ -452,6 +445,146 @@ std::vector<uint8_t> EPUBEngine::GetCoverImage() const {
     std::vector<uint8_t> data;
     if (!coverPath.empty()) archive.ReadFile(coverPath, data);
     return data;
+}
+
+// ============================================================================
+// COVER
+// ============================================================================
+
+namespace {
+
+// Past these an entry is not a cover page or a package document but a broken
+// or hostile archive; nothing is inflated for it.
+constexpr uint64_t kMaxCoverBytes = 64ull << 20;
+constexpr uint64_t kMaxCoverPageBytes = 1ull << 20;
+constexpr uint64_t kMaxPackageBytes = 16ull << 20;
+
+bool IsImageMediaType(const std::string& mediaType) {
+    return LowerCopy(mediaType).rfind("image/", 0) == 0;
+}
+
+// For an href whose manifest entry is missing or says nothing useful.
+bool HasImageExtension(const std::string& path) {
+    size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = LowerCopy(path.substr(dot + 1));
+    return ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "gif" ||
+           ext == "webp" || ext == "svg" || ext == "bmp";
+}
+
+} // namespace
+
+bool EPUBEngine::IsImagePath(const std::string& path) const {
+    for (const auto& item : manifest) {
+        if (item.href == path) return IsImageMediaType(item.mediaType);
+    }
+    return HasImageExtension(path);
+}
+
+std::string EPUBEngine::ImageOnCoverPage(const std::string& pagePath) const {
+    if (archive.FileSize(pagePath) > kMaxCoverPageBytes) return {};
+    std::string xhtml = archive.ReadTextFile(pagePath);
+    if (xhtml.empty()) return {};
+
+    HTML::Parser parser;
+    HTML::Document doc = parser.Parse(xhtml);
+    if (!doc.root) return {};
+
+    // <img src> in an HTML page, <image xlink:href> (or SVG 2's plain href)
+    // in the SVG wrapper Calibre and many converters write. The first one
+    // that names a file actually in the book wins.
+    std::string found;
+    doc.root->ForEachElement([&](HTML::Node& e) {
+        std::string ref;
+        if (e.tag == "img") {
+            ref = e.GetAttribute("src");
+        } else if (e.tag == "image") {
+            ref = e.GetAttribute("xlink:href");
+            if (ref.empty()) ref = e.GetAttribute("href");
+        }
+        ref = UltraCanvas::Trim(ref);
+        if (ref.empty() || LowerCopy(ref).rfind("data:", 0) == 0) return true;
+        std::string path = ResolveHref(pagePath, StripFragment(ref));
+        if (!archive.Contains(path)) return true;
+        found = path;
+        return false;
+    });
+    return found;
+}
+
+std::string EPUBEngine::CoverImageFor(const std::string& path) const {
+    if (path.empty() || !archive.Contains(path)) return {};
+    if (IsImagePath(path)) return path;
+    // A cover PAGE: the picture is whatever that page shows.
+    return ImageOnCoverPage(path);
+}
+
+void EPUBEngine::ResolveCover(HTML::Node* root, const std::string& coverImageItem,
+                              const std::string& coverMeta) {
+    coverPath.clear();
+
+    // 1. EPUB 3: the manifest item with properties="cover-image".
+    coverPath = CoverImageFor(coverImageItem);
+    if (!coverPath.empty()) return;
+
+    // 2. EPUB 2: <meta name="cover" content="id">. Some producers put the
+    //    file's href there instead of its id, so that is tried as well.
+    if (!coverMeta.empty()) {
+        if (const ManifestItem* item = ItemById(coverMeta)) {
+            coverPath = CoverImageFor(item->href);
+        }
+        if (coverPath.empty()) {
+            coverPath = CoverImageFor(ResolveHref(opfPath, StripFragment(coverMeta)));
+        }
+        if (!coverPath.empty()) return;
+    }
+
+    // 3. EPUB 2: <guide><reference type="cover" href="cover.xhtml"/> - a
+    //    page, normally, whose picture is the cover.
+    if (HTML::Node* guide = Find(root, "guide")) {
+        for (const auto& ref : guide->children) {
+            if (!ref->IsElement("reference")) continue;
+            if (LowerCopy(ref->GetAttribute("type")) != "cover") continue;
+            coverPath = CoverImageFor(
+                ResolveHref(opfPath, StripFragment(ref->GetAttribute("href"))));
+            if (!coverPath.empty()) return;
+        }
+    }
+
+    // 4. Nothing declared: a manifest image whose id or file name says
+    //    "cover".
+    for (const auto& item : manifest) {
+        if (!IsImageMediaType(item.mediaType)) continue;
+        if (LowerCopy(item.id).find("cover") == std::string::npos &&
+            LowerCopy(FileStem(item.href)).find("cover") == std::string::npos) {
+            continue;
+        }
+        if (!archive.Contains(item.href)) continue;
+        coverPath = item.href;
+        return;
+    }
+}
+
+std::vector<uint8_t> EPUBEngine::ReadCoverImageFromFile(const std::string& filePath) {
+    try {
+        EPUBEngine engine;
+        if (!engine.archive.OpenFromFile(filePath)) return {};
+        if (!engine.ParseContainer()) return {};
+        if (engine.archive.FileSize(engine.opfPath) > kMaxPackageBytes) return {};
+
+        HTML::Document doc;
+        if (!engine.ReadPackageDocument(doc)) return {};
+        std::string ncxId, navHref;
+        engine.ParsePackage(doc.root.get(), ncxId, navHref);
+
+        if (engine.coverPath.empty()) return {};
+        if (engine.archive.FileSize(engine.coverPath) > kMaxCoverBytes) return {};
+        return engine.GetCoverImage();
+    } catch (...) {
+        // A damaged book costs that book its cover, nothing more: the callers
+        // are background workers going through a folder.
+        return {};
+    }
 }
 
 // ============================================================================

@@ -7,8 +7,8 @@
 // category belongs to. A format the file manager can open but cannot list is
 // a format whose thumbnail nobody can switch on - which is how audio files
 // were missing from both lists.
-// Version: 1.0.0
-// Last Modified: 2026-09-03
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -141,11 +141,23 @@ int main(int argc, char** argv) {
     }
     // The container formats no reader unpacks must not advertise a page
     // preview either.
-    for (const char* ext : {"epub", "mobi", "azw3", "xls"}) {
+    for (const char* ext : {"mobi", "azw3", "xls"}) {
         auto it = byExtension.find(ext);
         if (it == byExtension.end()) continue;   // not in this build's tables
         Check(!it->second.thumbnailSupported,
               std::string(ext) + ": no page preview is advertised (no reader)");
+    }
+    // An EPUB's text is not read either, but its cover is: the EPUB engine
+    // is built into every build, so the switch always does something.
+    {
+        auto it = byExtension.find("epub");
+        Check(it != byExtension.end(), "epub: listed");
+        if (it != byExtension.end()) {
+            Check(it->second.kind == FilerPreviewType::Docs,
+                  "epub: filed under Docs");
+            Check(it->second.thumbnailSupported,
+                  "epub: a thumbnail (the cover) is advertised");
+        }
     }
     for (const char* ext : {"txt", "md", "csv", "html"}) {
         auto it = byExtension.find(ext);

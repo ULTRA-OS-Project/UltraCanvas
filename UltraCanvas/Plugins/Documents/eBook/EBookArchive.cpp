@@ -1,7 +1,7 @@
 // Plugins/Documents/eBook/EBookArchive.cpp
 // miniz-backed ZIP access and DEFLATE helpers.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "EBookArchive.h"
@@ -12,7 +12,6 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
@@ -36,19 +35,33 @@ EBookArchive::~EBookArchive() {
 }
 
 bool EBookArchive::OpenFromFile(const std::string& filePath) {
-    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
+    Close();
+
+    // OpenFileUtf8 rather than miniz's own fopen: a UTF-8 name must open on
+    // Windows whatever the code page, and miniz only converts it for some
+    // toolchains.
+    std::FILE* f = OpenFileUtf8(filePath, "rb");
+    if (!f) {
         lastError = "Failed to open file: " + filePath;
         return false;
     }
-    std::streamsize size = file.tellg();
-    file.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(std::max<std::streamsize>(size, 0)));
-    if (size > 0 && !file.read(reinterpret_cast<char*>(data.data()), size)) {
-        lastError = "Failed to read file: " + filePath;
+
+    auto* archive = new mz_zip_archive();
+    std::memset(archive, 0, sizeof(*archive));
+    // Size 0: miniz measures the file itself (and refuses one too short to
+    // hold an end-of-central-directory record).
+    if (!mz_zip_reader_init_cfile(archive, f, 0, 0)) {
+        lastError = "Not a ZIP archive: " + filePath;
+        delete archive;
+        std::fclose(f);
         return false;
     }
-    return OpenFromMemory(std::move(data));
+
+    zip = archive;
+    file = f;
+    opened = true;
+    lastError.clear();
+    return true;
 }
 
 bool EBookArchive::OpenFromMemory(std::vector<uint8_t> data) {
@@ -81,6 +94,11 @@ void EBookArchive::Close() {
         mz_zip_reader_end(Zip(zip));
         delete Zip(zip);
         zip = nullptr;
+    }
+    // miniz does not close a FILE* it was handed (only one it opened).
+    if (file) {
+        std::fclose(file);
+        file = nullptr;
     }
     buffer.clear();
     opened = false;
@@ -124,6 +142,16 @@ int EBookArchive::FindIndex(const std::string& name) const {
 
 bool EBookArchive::Contains(const std::string& name) const {
     return FindIndex(name) >= 0;
+}
+
+uint64_t EBookArchive::FileSize(const std::string& name) const {
+    int index = FindIndex(name);
+    if (index < 0) return 0;
+    mz_zip_archive_file_stat stat;
+    if (!mz_zip_reader_file_stat(Zip(zip), static_cast<mz_uint>(index), &stat)) {
+        return 0;
+    }
+    return stat.m_uncomp_size;
 }
 
 bool EBookArchive::ReadFile(const std::string& name, std::vector<uint8_t>& out) const {

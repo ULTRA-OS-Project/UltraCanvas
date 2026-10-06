@@ -2,9 +2,10 @@
 // Unit tests for the EPUB, FB2, MOBI and TXT engines: builds synthetic books
 // in memory (miniz writer for the EPUB, a hand-assembled PDB for the MOBI)
 // and exercises metadata, spine, TOC, resources, cover, text extraction,
-// search, and the engine registry.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// search, and the engine registry - plus the EPUB cover rules and the
+// cover-only file reader a file manager's thumbnails use.
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "EPUBEngine.h"
@@ -12,13 +13,16 @@
 #include "MOBIEngine.h"
 #include "TXTEngine.h"
 
+#include "UltraCanvasPathUtf8.h"
 #include "miniz.h"
 
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -261,6 +265,194 @@ static void TestEPUBErrors() {
 
     CHECK(!engine.LoadFromMemory(notEpub));
     CHECK(engine.GetLastError().find("container.xml") != std::string::npos);
+}
+
+// ============================================================================
+// EPUB COVER
+// ============================================================================
+// Real books declare their cover in four different ways, and a file manager
+// that knows only one shows the plain type glyph for most of a library.
+
+static const std::string kCoverJpeg = "\xFF\xD8\xFF\xE0 a stand-in for a JPEG";
+static const std::string kOtherPng = "\x89PNG\r\n\x1A\n not the cover";
+
+static const char* kContainerXml =
+    "<?xml version=\"1.0\"?>\n"
+    "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">\n"
+    "  <rootfiles>\n"
+    "    <rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>\n"
+    "  </rootfiles>\n"
+    "</container>";
+
+// An EPUB whose package carries `metadata`, `manifest` and `guide` (the
+// inner markup of each), with one chapter and the given extra files.
+static std::vector<uint8_t> MakeCoverEPUB(const std::string& metadata,
+                                          const std::string& manifest,
+                                          const std::string& guide,
+                                          const std::map<std::string, std::string>& files) {
+    mz_zip_archive zip;
+    std::memset(&zip, 0, sizeof(zip));
+    mz_zip_writer_init_heap(&zip, 0, 0);
+    AddFile(zip, "mimetype", "application/epub+zip", MZ_NO_COMPRESSION);
+    AddFile(zip, "META-INF/container.xml", kContainerXml);
+    AddFile(zip, "OEBPS/content.opf",
+        "<?xml version=\"1.0\"?>\n"
+        "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\">\n"
+        "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n"
+        "    <dc:title>Cover test</dc:title>\n" + metadata +
+        "  </metadata>\n"
+        "  <manifest>\n"
+        "    <item id=\"ch1\" href=\"text/ch1.xhtml\" media-type=\"application/xhtml+xml\"/>\n" +
+        manifest +
+        "  </manifest>\n"
+        "  <spine><itemref idref=\"ch1\"/></spine>\n"
+        "  <guide>" + guide + "</guide>\n"
+        "</package>");
+    AddFile(zip, "OEBPS/text/ch1.xhtml",
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>Text.</p></body></html>");
+    for (const auto& [name, data] : files) AddFile(zip, name.c_str(), data);
+
+    void* buffer = nullptr;
+    size_t size = 0;
+    mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+    std::vector<uint8_t> result(static_cast<uint8_t*>(buffer),
+                                static_cast<uint8_t*>(buffer) + size);
+    mz_zip_writer_end(&zip);
+    mz_free(buffer);
+    return result;
+}
+
+static std::string AsString(const std::vector<uint8_t>& bytes) {
+    return std::string(bytes.begin(), bytes.end());
+}
+
+// The cover the loaded engine reports, which is what the viewer shows.
+static std::string LoadedCover(const std::vector<uint8_t>& epub) {
+    EPUBEngine engine;
+    if (!engine.LoadFromMemory(epub)) return "<load failed>";
+    if (engine.GetMetadata().hasCover != !engine.GetCoverImage().empty()) {
+        return "<hasCover disagrees>";
+    }
+    return AsString(engine.GetCoverImage());
+}
+
+static void TestEPUBCoverRules() {
+    // EPUB 3: properties="cover-image".
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"c\" href=\"images/c.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // EPUB 2: <meta name="cover"> naming the image's id.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"pic\"/>\n",
+        "<item id=\"pic\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // ... naming the image's href instead, as some producers write it.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta content=\"images/c.jpg\" name=\"cover\"/>\n",
+        "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // ... naming a cover PAGE: the picture on that page is the cover, not
+    // the page's own markup.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"cpage\"/>\n",
+        "<item id=\"cpage\" href=\"text/cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+        "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/text/cover.xhtml",
+              "<html><body><div><img src=\"../images/c.jpg\" alt=\"\"/></div></body></html>"},
+             {"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // EPUB 2 guide: <reference type="cover"> to the SVG-wrapped cover page
+    // Calibre writes (<image xlink:href>). Nothing here is named "cover", so
+    // only the guide can find it.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"titlepage\" href=\"titlepage.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+        "<item id=\"img01\" href=\"img-0001.jpeg\" media-type=\"image/jpeg\"/>\n",
+        "<reference type=\"Cover\" title=\"Cover\" href=\"titlepage.xhtml\"/>",
+        {{"OEBPS/titlepage.xhtml",
+          "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>"
+          "<svg:svg xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">"
+          "<svg:image width=\"600\" height=\"800\" xlink:href=\"img-0001.jpeg\"/></svg:svg>"
+          "</body></html>"},
+         {"OEBPS/img-0001.jpeg", kCoverJpeg}})), kCoverJpeg);
+
+    // Nothing declared: an image whose file name says "cover".
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"img00\" href=\"images/map.png\" media-type=\"image/png\"/>\n"
+        "<item id=\"img01\" href=\"images/Cover.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/map.png", kOtherPng},
+             {"OEBPS/images/Cover.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // A declared cover missing from the archive falls through to the next
+    // declaration instead of yielding nothing.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"pic\"/>\n",
+        "<item id=\"gone\" href=\"images/gone.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n"
+        "<item id=\"pic\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // No cover anywhere: the first picture of the book is not one.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"img00\" href=\"images/map.png\" media-type=\"image/png\"/>\n",
+        "", {{"OEBPS/images/map.png", kOtherPng}})), std::string());
+}
+
+static std::filesystem::path WriteTempFile(const std::string& utf8Name,
+                                           const std::vector<uint8_t>& bytes) {
+    std::filesystem::path path =
+        std::filesystem::temp_directory_path() / PathFromUtf8(utf8Name);
+    std::FILE* f = OpenFileUtf8(PathToUtf8(path), "wb");
+    if (f) {
+        std::fwrite(bytes.data(), 1, bytes.size(), f);
+        std::fclose(f);
+    }
+    return path;
+}
+
+static void TestEPUBCoverFromFile() {
+    // A Thai-and-emoji file name: the reader opens UTF-8 paths on every
+    // platform, which is what a folder of real books needs.
+    std::filesystem::path book = WriteTempFile(
+        "\xE0\xB8\xAB\xE0\xB8\x99\xE0\xB8\xB1\xE0\xB8\x87\xE0\xB8\xAA\xE0\xB8\xB7\xE0\xB8\xAD "
+        "\xF0\x9F\x93\x9A cover-test.epub",
+        MakeCoverEPUB("<meta name=\"cover\" content=\"cpage\"/>\n",
+            "<item id=\"cpage\" href=\"text/cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+            "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+            "", {{"OEBPS/text/cover.xhtml",
+                  "<html><body><img src=\"../images/c.jpg\"/></body></html>"},
+                 {"OEBPS/images/c.jpg", kCoverJpeg}}));
+    CHECK_EQ(AsString(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(book))), kCoverJpeg);
+
+    // The bundled test book: the same cover the loaded engine reports.
+    std::filesystem::path plain = WriteTempFile("ebook-cover-test.epub", MakeTestEPUB());
+    std::vector<uint8_t> cover = EPUBEngine::ReadCoverImageFromFile(PathToUtf8(plain));
+    CHECK_EQ(cover.size(), size_t(45));
+    {
+        EPUBEngine engine;
+        CHECK(engine.LoadFromMemory(MakeTestEPUB()));
+        CHECK(cover == engine.GetCoverImage());
+    }
+
+    // Everything that is not a book with a cover reads as "no cover", and
+    // none of it throws.
+    std::filesystem::path noCover = WriteTempFile("ebook-no-cover.epub",
+        MakeCoverEPUB("", "", "", {}));
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(noCover)).empty());
+    std::filesystem::path junk = WriteTempFile("ebook-junk.epub",
+        std::vector<uint8_t>{'n', 'o', 't', ' ', 'a', ' ', 'z', 'i', 'p'});
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(junk)).empty());
+    std::filesystem::path empty = WriteTempFile("ebook-empty.epub", {});
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(empty)).empty());
+    CHECK(EPUBEngine::ReadCoverImageFromFile(
+        PathToUtf8(std::filesystem::temp_directory_path() / "ebook-missing.epub")).empty());
+    CHECK(EPUBEngine::ReadCoverImageFromFile("").empty());
+
+    std::error_code ec;
+    for (const auto& p : {book, plain, noCover, junk, empty}) {
+        std::filesystem::remove(p, ec);
+    }
 }
 
 // ============================================================================
@@ -1003,6 +1195,8 @@ int main() {
     TestPathUtilities();
     TestEPUB();
     TestEPUBErrors();
+    TestEPUBCoverRules();
+    TestEPUBCoverFromFile();
     TestFB2();
     TestFB2SingleWrapperSection();
     TestFB2Zip();
