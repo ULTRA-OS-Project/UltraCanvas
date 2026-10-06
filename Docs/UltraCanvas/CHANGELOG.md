@@ -1,3 +1,290 @@
+#### 2026-10-06 *0.9.168*
+- **The .blend and .ms3d readers ignored three more of the mesh import
+  options: `TriangulateOnImport`, `WeldTolerance` and
+  `GenerateMissingNormals`.** Every other mesh reader applies them, so a
+  caller asking the dispatch for triangles got Blender's quads and n-gons
+  back. Both readers now finish the way the others do: generate the normals
+  a surface is missing, weld, triangulate, then turn to the requested up
+  axis.
+  - Blender's stored normals are a cache the reader never reads, so it
+    always generated its own, even when a caller asked for none. It now
+    generates them only when `GenerateMissingNormals` is on, which is the
+    default, so a default load returns exactly what it did before.
+  - `ModelFormatsPluginTest` holds every reader in the dispatch to the three
+    options. Each option's result must equal a plain load with the same
+    operation applied by hand, a check only a reader that applies the
+    option can pass. All twelve formats pass. On the samples in
+    `media/3D` only Blender's triangulation tells the old readers apart:
+    MilkShape is triangles with normals already, and neither sample has
+    coincident vertices to weld. So `ModelBlendTest` and `ModelMS3DTest`
+    also build files that do tell them apart: a `.blend` quad read with
+    normals off and triangulated, and an `.ms3d` whose two corners
+    0.00001 apart weld into one.
+- **`UltraCanvasDialogManager::CloseAllDialogs()` closes every dialog.** It
+  walked the list of open dialogs while each close erased that dialog from the
+  same list, so every second dialog stayed open, and the loop went on to read
+  the vacated slots past the list's end. The `clear()` after it then
+  unregistered a dialog that a result callback had opened meanwhile, leaving it
+  on screen where no later call could reach it. It now closes from a copy and
+  unregisters only the dialogs it closed. Apps call it to lock or reset
+  (UltraPassword's `Lock()`), so far never with more than one dialog open. New
+  `DialogCloseAllTest` (Xvfb) closes one and three dialogs and one whose
+  callback opens another; three of its checks fail without the fix.
+- **`ModelDocument::ConvertUpAxis` turned a model's root nodes but not the
+  animation keys that drive them.** An animation channel replaces the value
+  it targets, so a root's keyed translation or rotation would have undone
+  the turn on playback: an FBX, COLLADA or MilkShape model whose root is
+  animated, read with `ForceUpAxis`, would have lain back on its side. Nothing in the
+  framework plays animations yet, so nothing showed it. The keys now turn
+  with the node: R * (T * Q * S) = (R t) * (R * Q) * S, so translation keys
+  are rotated, rotation keys are pre-multiplied, and scale keys stay as they
+  are in the node's own frame. Both operations are linear in the stored
+  values, so cubic-spline tangents turn exactly too.
+  - A sampler that a turned channel shares with one that must not turn (a
+    child node, or a root's scale) is split, so the other channel keeps its
+    keys. Converting back restores every key.
+  - `ModelStorageTest` checks that every keyed pose of an animated root
+    turns exactly as its static pose does, along with the shared-sampler
+    split, the tangents, the untouched scale keys and the round trip.
+    `ModelMS3DTest` checks it end to end on an `.ms3d` whose root joint
+    carries translation keys. The old code fails both.
+- **A trusted device's certificate is kept with the device's name.**
+  `DeviceCertificates.conf` lines now read
+  `host:port=sha256//... Office Printer`, the name being the one the eSCL or
+  IPP backend discovered the device under (`Internal::NoteDeviceTlsName`).
+  A key learned before the name was known takes it on when the device is
+  next listed, or - for a printer named only by its address - once it has
+  described itself. `IODeviceTrustedCertificate` gains `name`, and lines
+  without one, as the first version wrote them, still read.
+- **A scanner or printer that speaks only HTTPS is now reachable.** Such a
+  device presents a certificate it signed itself, which ordinary verification
+  refuses, so an eSCL scanner offering only `https://` or a printer offering
+  only `ipps://` could not be used. Both backends now trust the device on
+  first use, as SSH does a host key: a certificate that verifies is used as
+  it is; the first time one fails, the device's public key is read over a
+  connection that sends nothing but `HEAD /` and remembered, and every later
+  connection is pinned to it. A device that presents a different key is
+  refused - never relearned - with a message saying how to forget the old
+  one: UOS-Settings' *Devices > Trusted certificates* page lists every
+  trusted device with a *Forget* button (`IODeviceForgetCertificate()` in
+  code). Keys are kept in
+  `DeviceCertificates.conf` in the UltraCanvas settings folder;
+  `ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new ones being learned.
+- **UltraNet: public-key pinning.** `UltraNetHttpOptions::pinnedPublicKey`
+  accepts a server only when its certificate carries that key, checked even
+  with `acceptInvalidCert`; a mismatch is the new `TlsPublicKeyMismatch`, and
+  a TLS backend that cannot pin turns verification back on rather than drop
+  the pin. `capturePeerCertificate` fills `UltraNetResponse::tlsInfo`, which
+  was never filled before, and `UltraNet_PublicKeyPinOf()` computes a pin
+  from a certificate - the same value `openssl` prints for it.
+- **`UltraCanvasSettingsFolder()`** names the per-user folder every
+  application keeps settings in; the file dialog's settings now use it too.
+- **The .blend and .ms3d readers ignored `ConversionOptions::ForceUpAxis`.**
+  Every other model reader turns the scene to the up axis a caller asks for.
+  These two returned their own (Z-up for Blender, Y-up for MilkShape), so a
+  `.blend` asked for Y-up through `LoadModelDocument` still arrived Z-up.
+  Both now call `ModelDocument::ConvertUpAxis` as the others do. The rotation
+  goes on the root nodes, and for MilkShape that includes the root joints, so
+  a skinned mesh and its skeleton turn together.
+  - `ModelFormatsPluginTest` now asks every geometry sample in `media/3D` for
+    each up axis in turn. It checks that the document reports the axis it was
+    asked for, and that the height measured along Y in one equals the height
+    measured along Z in the other, so a reader cannot pass by relabelling.
+    Against the old readers it fails for `.blend` and `.ms3d` and for nothing
+    else.
+- **HTML reader: an inline `!important` beats a style sheet's `!important`.**
+  The resolver applied a whole `style` attribute at once and then every
+  `!important` rule of the style sheets on top, so
+  `style="color: #ffffff !important"` lost to
+  `a.intercom-content-link { color: #FF4554 !important }`. CSS orders the
+  cascade the other way round (Cascading 4, 6.1: normal rules, inline,
+  `!important` rules, inline `!important`). In a Lexware newsletter (Intercom)
+  three red buttons came out empty - "Zum Artikel", "Anmelden" - their white
+  text painted in the button's own red, and the footer's white links ("E-Mails
+  abbestellen", "Kontakt") came out red on black. The inline `!important`
+  declarations are now applied last; this also means a later normal
+  declaration in the same `style` attribute no longer replaces an earlier
+  `!important` one. `HTMLStyleResolver::Resolve`; test
+  `TestInlineImportantBeatsSheetImportant` in `HTMLReaderTest.cpp`.
+- **IMAP: headers and bodies are fetched in batches, forty times faster on a
+  slow link.** The IMAP plug-in fetched mail one message at a time: its flags,
+  then its header or body by URL (which libcurl fetches with BODY[], marking it
+  read), then the read mark taken off again - four to six round trips a
+  message. Through a virus scanner that reads the mail on Windows that came to
+  about a second a message: a mailbox of 2228 took over half an hour to load
+  the first time. The plug-in now opens a session of its own on the connection
+  libcurl signs in (`CURLOPT_CONNECT_ONLY`: TLS, STARTTLS, password or XOAUTH2
+  as before) and asks for two hundred headers in one `UID FETCH`, and for
+  bodies in blocks cut by size - their `RFC822.SIZE` is asked first, then up
+  to 4 MB or a hundred bodies go in one `UID FETCH` - all with `BODY.PEEK`:
+  nothing is marked read, and nothing has to be put back. Measured against
+  Dovecot at 150 ms a round trip: 160 messages with their bodies 107.8 s ->
+  2.5 s (0.67 -> 0.016 s a message), 2228 messages in about 10 s, unread mail
+  still unread. `FetchEnvelopes`, `FetchEnvelopesByUid` and `FetchMessageBodies`
+  use it; the per-message way stays as the fallback when libcurl will not open
+  such a session, and for the rest of a batch the server refuses. The
+  responses are read whole, literals included (`ImapResponseReader`,
+  `ParseFetchResponse`, `UidSetString` in `ImapParse.h`) - libcurl hands on
+  only the lines of a command's response that begin with `*`, which is why a
+  message's text could not be fetched in one command before. Tests:
+  `test_imap_mailbox.cpp`.
+- **IMAP: one sign-in serves many checks.** Every call into the IMAP plug-in
+  signed in to the server anew: a mail check - the folder's status, the list
+  of new messages, the read flags, the bodies - came to four sign-ins, twelve
+  a minute per account at a check every twenty seconds, which some providers
+  limit or block. The plug-in now keeps its signed-in sessions in a pool
+  (`SessionPool`), keyed by server, user, credentials and TLS settings: up to
+  two a key and sixteen in all, each kept for up to 330 s unused. A call takes
+  one, runs on it and gives it back (`WithSession`); one that has been idle
+  for over 15 s is first asked `NOOP`, and one the server closed (`* BYE`, an
+  error, a time-out) is dropped and a new one opened. `ListFolders`,
+  `GetMailboxStatus`, `FetchEnvelopes`, `FetchEnvelopesByUid`, `FetchMessage`,
+  `FetchMessageBodies`, `FetchAllFlags`, `StoreFlags`, `ExpungeMessage` and
+  `MoveMessage` run on a pooled session, each with the URL-based way as the
+  fallback when libcurl will not open one. `STATUS` is not trusted on the
+  folder a session has open (RFC 3501 6.3.10), so the session leaves it first
+  - `UNSELECT`, or a failed `EXAMINE` where the server lacks it, neither of
+  which expunges as `CLOSE` would. `Shutdown` closes the pool. Measured
+  against Dovecot with a check every twenty seconds: no sign-in at all over
+  65 s of checks after the first (four a check before), a newly delivered
+  message picked up within one check, and a message marked read on the
+  server, without signing in. `ImapResponse::AsLine` hands a response with
+  its literals to the line parsers (a folder name the server sends as a
+  literal), and a quoted folder name in a `LIST` response is now unescaped
+  (`\"`, `\\`). Tests: `test_imap_mailbox.cpp`.
+- **The media viewer's toolbar offers only what the shown file takes.** The
+  second row used to show every tool for every file, so a video, a PDF, a 3D
+  model, a spreadsheet, a text file or a drawing still offered the gamma /
+  brightness / colour sliders, Curves with its histogram, rotate, mirror and
+  Save as - buttons that did nothing, or that worked on a picture that was
+  not the file. Each load now decides the tool groups
+  (`UltraCanvasMediaViewer::GetAvailableTools()`, a `MediaViewerTools`): a
+  bitmap gets them all; an SVG or another drawing on the image surface keeps
+  zoom, rotate / mirror and Save as, but no colour adjustments and no Curves;
+  a `*.ucd` preview, a PDF and an e-book get zoom; text, spreadsheets, fonts,
+  3D models, video and audio get only Details, because their views carry
+  their own controls. Separators follow the groups, so none stands alone.
+- **An open adjustments panel folds away for a file it cannot change** and
+  comes back with the next bitmap while its toggle is still on (and when the
+  top bars are shown again, where it used to stay closed under a pressed
+  toggle). The adjustments still carry from one photo to the next, but they
+  no longer reach a drawing or a document preview browsed to in between,
+  which used to be drawn tinted by them - and now hides the sliders that
+  would take the tint off. An
+  open Curves dialog drops the previous picture's histogram for such a file
+  instead of showing it as this one's.
+- **Zoom works on the vector drawing view.** DXF, DWG and the other drawings
+  the Vector plugin reads were shown with the zoom buttons up and no effect;
+  zoom in / out, Fit and the zoom levels now drive the drawing.
+- `UltraCanvasMediaSurface::ShowImage` has an overload that takes the
+  adjustments for the new image, so it is colour-processed once rather than
+  with the previous image's settings first. `Tests/MediaViewerToolsTest`
+  checks the tool set and the toolbar for a photo, an SVG, text, a
+  spreadsheet, an STL model, video, audio and a PDF, and the panel and the
+  adjustments across them.
+- **Screen readers are told a password field is one.** The Windows bridge
+  answered UI Automation's `IsPassword` with a constant false, and
+  `UltraCanvasTextInput` described nothing about itself, so assistive
+  technology treated every password field - UltraPassword's master password
+  and entry fields among them - as an unknown element, and a screen reader
+  would speak each character typed. `UltraCanvasUIElement` gains
+  `IsAccessiblePassword()`; a text input reports itself as a `TextField`, and
+  in password mode (revealed or not) as a password. UI Automation gets
+  `IsPassword` from it, and AT-SPI the *password text* role (Orca then says
+  "password" and speaks no characters). The field's text is still not exposed
+  through either bridge. New headless `TextInputAccessibilityTest`;
+  `AtspiBridgeTest` now has a password field and checks that a libatspi client
+  sees password text with nothing to read. `UltraCanvasAccessibility.md` and
+  `UltraCanvasTextInputExamples.md` describe it.
+- **Tooltips sit above and to the right of the pointer.** A tooltip's top-left
+  corner was put 10 px right of and 10 px below the pointer's tip: the body
+  covered the lower half of the line the pointer was on, its soft shadow (10 px
+  blur) reached over the rest, and the lines below went under it - the text
+  being read was hidden by its own explanation, and the tooltip sat on the
+  pointer's arrow. Now its body ends 20 px above the pointer and starts 12 px
+  to its right (`TooltipStyle::offsetY` / `offsetX`, now the gap above and
+  right of the pointer), so the line under the pointer and the arrow stay in
+  view, and it follows the pointer as before. With no room above - near the
+  top of the window - it goes below the pointer's arrow instead, and with no
+  room on the right, to the left of the pointer
+  (`UltraCanvasTooltipManager::UpdateTooltipPosition`). `UltraCanvasGroupBox`'s
+  help tooltip, anchored at a spot rather than the pointer, now passes the
+  info icon's top edge, so it opens above the icon instead of over it.
+- **A Windows crash report now names the function and the call stack.** The
+  message box and the crash line in the log said only *"at 0x00007FFB1212C86D
+  in libUltraCanvas.dll"* - an address that changes on every start, since the
+  DLL loads somewhere else each time (ASLR), and that nobody can trace to a
+  line without the dump and the matching build in a debugger. UltraPassword's
+  crash on pasting a password (UCDemo 0.9.147, Windows 11) arrived as exactly
+  that and could not be placed. The report now adds the offset into the module,
+  which is the same on every start, and the function, taken from the module's
+  export table: `libUltraCanvas.dll` is linked with
+  `WINDOWS_EXPORT_ALL_SYMBOLS`, so every framework function with external
+  linkage is named there (`libUltraCanvas.dll+0x<offset>
+  UltraCanvas::<Class>::<Function>+0x<n>`). On x64 the box and the log
+  then list up to 16 callers the same way, walked from the faulting context with
+  `RtlLookupFunctionEntry` / `RtlVirtualUnwind`. A call through a freed object
+  that jumps to no module at all is followed by the caller that made it. The
+  filter still allocates nothing and loads nothing: it reads the modules' own
+  mapped headers, never leaves the thread's stack, skips the walk for a stack
+  overflow, and does not walk twice if a walk over a smashed stack faults.
+  Checked under Wine 9 with a MinGW build: a fault in an exported member
+  function of a DLL, and a virtual call through a bad pointer, both reported
+  with every frame down to `RtlUserThreadStart`. `UltraCanvasWindowsDiagnostics.md`
+  shows the new lines. ARM64 builds name the faulting function without the
+  call stack.
+- **The DirectX .x aircraft on the demo's 3D Model Formats page stood on its
+  head, and its glass canopy was missing.** The reader was right; the sample
+  was not. Both meshes in the source `.blend` hang from armature bones, and
+  Blender's exporter wrote each mesh frame relative to its bone without
+  writing the bones. Walked as written, those frames roll the hull 180
+  degrees about X and leave the canopy inside it. No reader can recover bones
+  that are not in the file, so
+  `media/3D/XFile/E-45-Aircraft.x` now carries the placements the `.blend`
+  gives the objects: the hull at the armature's origin, and the canopy
+  translated onto the nose by (0, -0.101452, 1.525604). Those are the numbers
+  Blender's own X3D export of the scene writes. The aircraft now stands the
+  same way up as the OBJ, 3DS, DXF, PLY, MS3D, Alembic and FBX samples.
+  - The same file was also incomplete in a way the picture did not show.
+    When it was mirrored to the whole aeroplane in 0.8.90, its vertices,
+    faces and normals were doubled but its UVs (372 for 744 vertices, 3683
+    for 7366) and its per-face material indices (93 for 186 faces, 937 for
+    1874) were not. The reader warned about the UVs and filled the gap with
+    zeros. The mirrored half now has its twin's UVs, which is what Blender's
+    Mirror modifier gives it, and every face has its material index.
+  - `ModelXFileTest` now also reads the demo copy and asserts that it loads
+    without a warning, that the hull is the right way up, and that the canopy
+    sits on its nose. Run against the old file, it fails all three. The
+    untouched export in `Tests/data/3D` keeps its bone-relative frames, and
+    the suite still pins the reader reproducing them.
+- **The DirectX .x reader delivered every model as its mirror image.**
+  Direct3D's space is left-handed (Z points away from the viewer) and the
+  `ModelDocument` is right-handed (Z points toward the viewer). The reader
+  copied the numbers across unchanged, so a file arrived mirrored in Z. On
+  the symmetric E-45 sample this looked like a half-turn: the nose pointed +Z
+  where the OBJ, DXF and MS3D exports point it -Z. In text, markings or any
+  asymmetric model it is plainly backwards. The reader now converts as
+  Direct3D-to-OpenGL importers do. It negates Z in every position and
+  normal, conjugates each frame matrix by the same reflection so the
+  hierarchy composes as before, and reverses every face's corners, because a
+  reflection alone would turn each face inside out. X and Y do not move, so a
+  Y-up file stays Y-up, and the document now states `RightHanded` because it
+  is.
+  - An exporter's own root-frame reflection and the face winding it reversed
+    to match still cancel after the conversion. The winding check against
+    the file's own MeshNormals still passes on the E-45 export (93 of 93 and
+    925 of 937 faces). Blender's Z-up `(x, y, z)` now arrives as
+    `(x, z, -y)`, the axis change Blender's own OBJ export makes. The E-45
+    `.x` now lands vertex for vertex where the MS3D sample does.
+  - `ModelXFileTest` gains three chirality cases. A point at Direct3D's
+    z = +3 lands at -3. A mesh under a rotating frame lands where Direct3D
+    draws it, mirrored, which catches negating the vertices without
+    converting the frames. A triangle facing a Direct3D camera still faces
+    the document's camera. The old reader fails all three, and a reader that
+    skips the frame conjugation fails the second. The vertex-colour case now
+    finds its vertices by position, because reversing the winding changes
+    the order a face visits them in.
+
 #### 2026-10-05 *0.9.167*
 - **`UltraVault::DeviceKeyVault` opens in a profile folder of any name, and
   says why when it does not open.**
