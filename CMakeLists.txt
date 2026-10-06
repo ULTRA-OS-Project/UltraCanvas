@@ -527,6 +527,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRAWEB =====
+# The ULTRA OS browser. This version runs WebAssembly apps that build their UI
+# out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
+# reader and JavaScript follow Docs/UltraWeb/UltraWebProposal.md. A headless
+# --check mode starts an app without a window.
+option(BUILD_ULTRAWEB "Build the UltraWeb browser" ON)
+if(BUILD_ULTRAWEB)
+    message(STATUS "")
+    message(STATUS "── Building UltraWeb ──")
+    add_subdirectory(Apps/UltraWeb)
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the

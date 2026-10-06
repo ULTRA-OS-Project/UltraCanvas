@@ -2253,6 +2253,39 @@ if(WIN32)
     target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
 
+# WebAssembly modules for applications (UltraWeb, Docs/UltraWeb/UltraWeb.md):
+# compile, link host functions, run with a memory cap and a per-call time
+# limit. UI-free like NetworkMonitor. The engine is wasmtime's prebuilt C
+# API (cmake/UltraCanvasWasmtime.cmake), private to this library: no
+# wasmtime header reaches its users. Without an engine - the option off, or
+# a platform with no prebuilt library - the library still builds and every
+# call reports that there is no engine, so its users link everywhere.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_uc_wasm_host_default ON)
+else()
+    # Not yet built in CI on macOS or Windows; see UltraCanvasWasmtime.cmake.
+    set(_uc_wasm_host_default OFF)
+endif()
+option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
+add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+target_include_directories(WasmHost PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(WasmHost PUBLIC cxx_std_20)
+set_target_properties(WasmHost PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmtime.cmake")
+    if(ULTRACANVAS_WASMTIME_FOUND)
+        target_link_libraries(WasmHost PRIVATE UltraCanvas::wasmtime)
+        target_compile_definitions(WasmHost PRIVATE ULTRACANVAS_HAS_WASMTIME=1)
+        message(STATUS "  [✓] WasmHost - ENABLED (wasmtime ${ULTRACANVAS_WASMTIME_VERSION})")
+    else()
+        message(STATUS "  [−] WasmHost - no engine (no wasmtime C API for this platform; set ULTRACANVAS_WASMTIME_DIR)")
+    endif()
+else()
+    message(STATUS "  [−] WasmHost - no engine (ULTRACANVAS_ENABLE_WASM_HOST=OFF)")
+endif()
+
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
 

@@ -50,9 +50,10 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # follow and query the per-user message channel.
 # UltraAuthenticator and UltraPassword are built only when libsodium is found
 # (UltraCrypt); without it they are skipped here like any app not built.
+# UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword)
+      UltraAuthenticator UltraPassword UltraWeb)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

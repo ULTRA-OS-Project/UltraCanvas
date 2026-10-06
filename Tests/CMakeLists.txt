@@ -161,6 +161,52 @@ add_test(NAME TextWrapTest COMMAND TextWrapTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TextWrapTest")
 
+# ===== WASM HOST TEST =====
+# The WebAssembly runner under UltraWeb (WasmHost). Its guests are written
+# inline as WebAssembly text, so no wasm toolchain is needed; built without
+# an engine it checks that every call says so.
+if(TARGET WasmHost)
+    message(STATUS "  Building WasmHostTest...")
+    add_executable(WasmHostTest ${CMAKE_CURRENT_SOURCE_DIR}/WasmHostTest.cpp)
+    target_link_libraries(WasmHostTest PRIVATE WasmHost)
+    set_target_properties(WasmHostTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WasmHostTest COMMAND WasmHostTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: WasmHostTest")
+endif()
+
+# ===== ULTRAWEB GUEST TEST =====
+# UltraWeb's element bridge and loader (Apps/UltraWeb/host), built from the
+# app's own sources: guests written as WebAssembly text and the built-in
+# about:demo app build real UltraCanvas elements, without a window.
+if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
+    message(STATUS "  Building UltraWebGuestTest...")
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebGuestTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebGuestTest.cpp
+        ${_uw_dir}/host/UltraWebGuest.cpp
+        ${_uw_dir}/host/UltraWebLoader.cpp)
+    target_include_directories(UltraWebGuestTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
+    target_compile_features(UltraWebGuestTest PRIVATE cxx_std_20)
+    # As the app links them; a shared core already carries UltraNet.
+    get_target_property(_uw_core_type UltraCanvas TYPE)
+    if(_uw_core_type STREQUAL "SHARED_LIBRARY")
+        target_include_directories(UltraWebGuestTest PRIVATE $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
+        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraCanvas)
+    else()
+        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraNet UltraCanvas)
+    endif()
+    set_target_properties(UltraWebGuestTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebGuestTest COMMAND UltraWebGuestTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebGuestTest")
+endif()
+
 # ===== FOLDER WATCHER TEST =====
 # UltraCanvasFolderWatcher is built from its own sources - the core file plus
 # this platform's backend - so the test needs no display and does not link

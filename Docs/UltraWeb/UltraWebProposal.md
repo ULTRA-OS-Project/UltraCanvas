@@ -1,8 +1,9 @@
 # UltraWeb — WebAssembly Apps on UltraCanvas, Then the Web
 
-**Status:** Proposal — nothing implemented yet; Phase 1 (the WebAssembly
-app host, §4) is next. This document is the feasibility study, the
-architecture and the phase plan.
+**Status:** Proposal, with Phase 1 started. UltraWeb 0.1.0 runs WebAssembly
+apps on Linux ([`UltraWeb.md`](UltraWeb.md)). Everything else in this
+document — the feasibility study, the architecture and the phase plan — is
+not implemented yet.
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-10-06
 
@@ -52,8 +53,8 @@ native DOM work is (§7.3).
 
 | Capability | Phase | Basis |
 |---|---|---|
-| Load a `.wasm` app from a file or URL and run it sandboxed | 1 | wasmtime behind `UltraCanvasWasmHost`, §4.1 |
-| App UI from UltraCanvas elements through the element ABI | 1 | element ABI v1 and guest SDK, §4.2 |
+| Load a `.wasm` app from a file or URL and run it sandboxed | 1 | wasmtime behind `UltraCanvasWasmHost`, §4.1 — **started** |
+| App UI from UltraCanvas elements through the element ABI | 1 | element ABI v1 and guest SDK, §4.2 — **started** |
 | fetch, timers, storage, clipboard for apps; per-app permissions | 1 | UltraNet and new host services, §4.3 |
 | Fetch and render HTML + CSS pages; links, images, history, downloads | 2 | HTMLReader + CSSLayout + `HTML::PageLoader`, §5 |
 | Flex, grid, `position`, viewport units, `calc()` | 3 | CSSLayout has the layouts; the resolver does not map them, §6.2 |
@@ -210,20 +211,23 @@ A guest talks to elements the host owns, through a small, generic,
 handle-based tree protocol. It does not get one import per element method:
 
 ```c
-// imports, module "ultracanvas"; strings cross as (pointer, length) into guest memory
-uint32_t uc_create(const char* kind, uint32_t kindLen);   // "Container", "Label", "Button", "TextInput", "Checkbox" → handle
-void     uc_release(uint32_t handle);
-int32_t  uc_insert(uint32_t parent, uint32_t child, uint32_t before);   // before 0 = append
+// UltraWeb/guest/ultraweb.h (v1). Imports, module "ultracanvas"; strings
+// cross as (pointer, length) into guest memory; results are UC_OK or UC_ERR_*.
+uint32_t uc_create(const char* kind, uint32_t kindLength);   // "Container", "Label", "Button", "TextInput", "Checkbox" → handle
+int32_t  uc_release(uint32_t handle);                         // and its subtree
+int32_t  uc_insert(uint32_t parent, uint32_t child, uint32_t before);   // before UC_NO_HANDLE = append
 int32_t  uc_remove(uint32_t child);
-int32_t  uc_set_text(uint32_t handle, uint32_t prop, const char* value, uint32_t len);
-int32_t  uc_set_number(uint32_t handle, uint32_t prop, double value);
-int32_t  uc_get_text(uint32_t handle, uint32_t prop, char* out, uint32_t cap);   // returns the full length
-double   uc_get_number(uint32_t handle, uint32_t prop);
+int32_t  uc_set_text(uint32_t handle, uint32_t property, const char* value, uint32_t valueLength);
+int32_t  uc_set_number(uint32_t handle, uint32_t property, double value);
+int32_t  uc_get_text(uint32_t handle, uint32_t property, char* out, uint32_t capacity);   // returns the full length
+double   uc_get_number(uint32_t handle, uint32_t property);   // NaN for an error
 int32_t  uc_listen(uint32_t handle, uint32_t eventMask);
-int32_t  uc_bounds(uint32_t handle, float* outXYWH);   // as of the last layout pass; a synchronous flush is Phase 4 (§7.3)
+int32_t  uc_bounds(uint32_t handle, float* outXYWH);         // as of the last layout pass; a synchronous flush is Phase 4 (§7.3)
+void     uc_log(const char* message, uint32_t messageLength);
 // exports the guest provides
-void     uc_main(void);                                // build the UI, then return
+void     uc_main(void);                                       // build the UI, then return
 void     uc_event(uint32_t handle, uint32_t event, int32_t detail);   // host → guest, UI thread
+int32_t  uc_abi_version(void);                                // optional: the ABI it needs
 ```
 
 - **Why handles and generic setters**, rather than one import per
@@ -405,7 +409,8 @@ and the eBook viewer can later delegate to it.
 - History and bookmarks as JSON (`UltraCanvasJSON`) in the settings
   directory.
 
-Phase 1 ships the window, the address bar and the status bar first.
+Phase 1 already has the window, the address bar and the status bar
+([`UltraWeb.md`](UltraWeb.md)).
 
 ---
 
@@ -675,22 +680,34 @@ full engine" for the pages the native path cannot show.
 
 ## 10. Phases
 
-### Phase 1 — WebAssembly app host
+### Phase 1 — WebAssembly app host (started)
 
-- `UltraCanvasWasmHost`: wasmtime through its C API, module validation,
-  instances, memory limits, epoch interruption, traps reported as errors.
-- Element ABI v1: Container, Label, Button, TextInput, Checkbox; text and
-  number properties; click, change and toggle events; `uc_bounds`.
-- Guest header `UltraWeb/guest/ultraweb.h` and a sample guest.
-- `Apps/UltraWeb`:
-  - an address bar that opens `.wasm` from a file path, `file://` or
+Done in UltraWeb 0.1.0 ([`UltraWeb.md`](UltraWeb.md)):
+- **The WasmHost module**, the `UltraCanvasWasmHost` of this document
+  (`UltraCanvas/{include,core}/WasmHost/`). It runs wasmtime 49.0.2 through
+  its C API: module validation, instances, a memory cap, epoch interruption,
+  traps and host exceptions reported as `WasmStatus`. Host functions use the
+  unchecked API.
+- **Element ABI v1:** Container, Label, Button, TextInput, Checkbox; text
+  and number properties; click, change, submit and toggle events;
+  `uc_bounds`, `uc_log`, `uc_abi_version`.
+- **The guest header** `UltraWeb/guest/ultraweb.h`, and `about:demo` built in.
+- **`Apps/UltraWeb`:**
+  - an address bar that opens `about:demo`, a path, `file://` or
     `https://`;
-  - a status bar;
   - an error view;
-  - the version in the title.
-- Then: `uc_fetch`, timers, storage, clipboard, manifests, compiled-module
-  cache, `.ucpkg`, a permissions UI, C++ proxies generated from the
-  element headers.
+  - a status bar;
+  - the version in the title;
+  - `--check` for headless starts.
+- **Tests:** `WasmHostTest` and `UltraWebGuestTest`, plus the window driven
+  under Xvfb by hand.
+
+Next:
+- `uc_fetch`, timers, storage and the clipboard for apps.
+- Manifests, `<link rel="ultraweb-app">` and `.ucpkg` packages.
+- A compiled-module cache and a permissions UI.
+- C++ proxies generated from the element headers.
+- The macOS and Windows builds (§4.1), and packaging.
 
 **Done when:** a C++ app built with wasi-sdk against the guest SDK (a form,
 a list of 10,000 rows, a fetch from its origin) loads from an `https` URL
