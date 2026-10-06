@@ -7,7 +7,7 @@
 // category belongs to. A format the file manager can open but cannot list is
 // a format whose thumbnail nobody can switch on - which is how audio files
 // were missing from both lists.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
@@ -141,22 +141,23 @@ int main(int argc, char** argv) {
     }
     // The container formats no reader unpacks must not advertise a page
     // preview either.
-    for (const char* ext : {"mobi", "azw3", "xls"}) {
+    for (const char* ext : {"xls"}) {
         auto it = byExtension.find(ext);
         if (it == byExtension.end()) continue;   // not in this build's tables
         Check(!it->second.thumbnailSupported,
               std::string(ext) + ": no page preview is advertised (no reader)");
     }
-    // An EPUB's text is not read either, but its cover is: the EPUB engine
-    // is built into every build, so the switch always does something.
-    {
-        auto it = byExtension.find("epub");
-        Check(it != byExtension.end(), "epub: listed");
+    // An e-book's text is not read either, but its cover is: the EPUB and
+    // MOBI engines are built into every build, so the switch always does
+    // something.
+    for (const char* ext : {"epub", "mobi", "prc", "azw", "azw3"}) {
+        auto it = byExtension.find(ext);
+        Check(it != byExtension.end(), std::string(ext) + ": listed");
         if (it != byExtension.end()) {
             Check(it->second.kind == FilerPreviewType::Docs,
-                  "epub: filed under Docs");
+                  std::string(ext) + ": filed under Docs");
             Check(it->second.thumbnailSupported,
-                  "epub: a thumbnail (the cover) is advertised");
+                  std::string(ext) + ": a thumbnail (the cover) is advertised");
         }
     }
     for (const char* ext : {"txt", "md", "csv", "html"}) {
