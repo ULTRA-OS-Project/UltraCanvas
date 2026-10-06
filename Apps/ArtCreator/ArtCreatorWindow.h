@@ -98,6 +98,14 @@ private:
     void CmdCut();
     void CmdCopy();
     void CmdPaste();
+    // ----- the system clipboard (copy and paste with other programs) -----
+    void PutPictureOnSystemClipboard(const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& elements);
+    bool PasteFromSystemClipboard();
+    void PasteCopiedElements();
+    bool PlacePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& what);
+    bool PlaceDrawingFile(const std::string& path);
+    void PlaceElement(const std::shared_ptr<VectorStorage::VectorElement>& element, const std::string& label,
+                      const std::function<void()>& alongside = {});
     void CmdDuplicate();
     void CmdDelete();
     void CmdSelectAll();
@@ -187,6 +195,10 @@ private:
     // in-app clipboard: clones of the copied elements
     std::vector<std::shared_ptr<VectorStorage::VectorElement>> clipboard;
     int pasteCount = 0;
+    // the picture of them the last copy put on the system clipboard: while
+    // the clipboard still holds exactly these bytes, a paste is this
+    // window's own copy and comes back as the objects themselves
+    std::vector<uint8_t> clipboardPng;
 
     double pointerX = 0, pointerY = 0;
     bool pointerInside = false;
