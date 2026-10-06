@@ -337,6 +337,21 @@ to 556 MB. The rules:
   whole `UltraCanvas` folder to Applications. Say so wherever the macOS
   install is described.
 
+### Packaging a new app for Windows (MSIX)
+
+`package-win.sh` copies every `.exe` into `dist/`, so the zip needs nothing
+added for a new app. The MSIX that `package-win-msix.sh` builds from that
+same `dist/` is one package for the whole suite, and **an app gets a Start
+menu entry only from its row in `APPS` in `scripts/make_msix_layout.py`**.
+Each row gives the `.exe` name, the display name, the icon in
+`media/appicon/` and a one-line description. An app without a row still
+ships in the package, but nobody can start it. Never give an app its own
+MSIX: it would carry a copy of all the shared DLLs. Inside the package, the
+app's folder is read-only and its registry writes stay inside the package.
+Read *What changes inside a package* in
+`Docs/UltraCanvas/UltraCanvasWindowsMSIX.md` before an app writes next to its
+`.exe` or registers itself with Windows.
+
 ## Versioning
 
 The **first line of a changelog is the single source of truth** for a version,

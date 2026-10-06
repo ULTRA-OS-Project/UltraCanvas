@@ -1089,6 +1089,28 @@ jobs:
         if: runner.os == 'Windows'
         run: ./package-win.sh --no-sign
 
+      # The same dist/ as an MSIX package (package-win-msix.sh, see
+      # Docs/UltraCanvas/UltraCanvasWindowsMSIX.md). Every run builds the test
+      # package: unsigned, and Windows 11 installs it from an elevated
+      # PowerShell with Add-AppxPackage -AllowUnsigned, so a pull request can
+      # be tried as a packaged app. A release build also builds the Store
+      # package once the repository holds Partner Center's identity in its
+      # Actions variables (MSIX_IDENTITY_NAME, MSIX_PUBLISHER,
+      # MSIX_PUBLISHER_DISPLAY_NAME - not secrets, Partner Center shows them
+      # on the app's Product identity page). That one is uploaded to Partner
+      # Center unsigned and the Store signs it, so no certificate is needed.
+      - name: Package MSIX (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          ./package-win-msix.sh --mode test
+          if [ "$RELEASE_BUILD" = "true" ] && [ -n "$MSIX_PUBLISHER" ]; then
+            ./package-win-msix.sh --mode store
+          fi
+
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.
       - name: Import code signing certificate (macOS)
@@ -1170,6 +1192,17 @@ jobs:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist/
+          retention-days: 7
+
+      # An .msix is a zip already, hence compression-level 0.
+      - name: Upload MSIX (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-Windows-MSIX-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: dist-msix/*.msix
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       # The disk image only, not the dist-macos/ folders: upload-artifact
