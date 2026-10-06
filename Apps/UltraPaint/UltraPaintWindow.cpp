@@ -152,12 +152,6 @@ namespace {
         return copy;
     }
 
-    std::string HexOf(const RasterPixel& p) {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", p.r, p.g, p.b);
-        return buf;
-    }
-
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
         if (!win) return false;
         UltraCanvasUIElement* f = win->GetFocusedElement();
