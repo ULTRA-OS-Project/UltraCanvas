@@ -58763,6 +58763,11 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 - Tooltip text is laid out with Pango markup; the text passed in is wrapped
   in a `<span>` carrying `fontSize`/`fontFamily`, so tooltip strings may
   themselves contain markup (e.g. `<b>`, `<span foreground="...">`).
+- Text wider than `maxWidth` (less the padding) wraps at word boundaries and,
+  where a word alone is too long - a URL, a file path, a hash - between any
+  two of its characters. The box is sized to the wrapped text, so nothing a
+  tooltip draws runs past its border. Over-wide table cells wrap the same way
+  inside their column.
 
 ## Dependencies
 
