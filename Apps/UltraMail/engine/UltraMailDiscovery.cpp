@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.5.0 - ICloudSetupGuide, OffersICloudSetupGuide
 // Version: 0.4.0 - IncomingMailboxChanged
 // Version: 0.3.0 - ServerNameProblem
 // Version: 0.2.0 (Phase 2)
@@ -27,6 +28,53 @@ std::string EmailDomain(const std::string& email) {
 std::string EmailLocalPart(const std::string& email) {
     auto at = email.find('@');
     return at == std::string::npos ? email : email.substr(0, at);
+}
+
+std::string ICloudSetupGuide() {
+    // The servers as the preset fills them in.
+    const DiscoveryResult icloud = AutoDiscovery::FromPresets("someone@icloud.com");
+    auto security = [](MailSecurity s) {
+        return s == MailSecurity::SslTls ? std::string("SSL/TLS")
+             : s == MailSecurity::StartTls ? std::string("STARTTLS") : std::string("none");
+    };
+    const std::string incoming = "**" + icloud.imap.host + "**, port **" +
+        std::to_string(icloud.imap.port) + "**, " + security(icloud.imap.security);
+    const std::string outgoing = "**" + icloud.smtp.host + "**, port **" +
+        std::to_string(icloud.smtp.port) + "**, " + security(icloud.smtp.security);
+
+    return
+        "**Before you start**\n\n"
+        "- Two-factor authentication must be on for your Apple Account.\n"
+        "- iCloud Mail must be turned on for it (in your iCloud settings on an "
+        "iPhone, iPad or Mac, or on iCloud.com).\n\n"
+        "**1. Create an app-specific password.** Apple does not let other mail "
+        "programs sign in with your Apple Account password.\n\n"
+        "1. Sign in at **account.apple.com**.\n"
+        "2. Open **Sign-In and Security**, then **App-Specific Passwords**.\n"
+        "3. Choose **Generate an app-specific password**, name it \"UltraMail\" "
+        "and copy the password Apple shows.\n\n"
+        "**2. Add the account here.**\n\n"
+        "- **Email address:** your @icloud.com, @me.com or @mac.com address - "
+        "UltraMail fills in Apple's servers.\n"
+        "- **Password:** the app-specific password. Your Apple Account password "
+        "fails with \"authentication failed\".\n\n"
+        "**Your own domain with iCloud+?** Type your own address above. On the "
+        "server settings page that follows, enter:\n\n"
+        "- Incoming (IMAP): " + incoming + "\n"
+        "- Outgoing (SMTP): " + outgoing + "\n"
+        "- Username: your **@icloud.com address** - not the address on your own "
+        "domain.\n\n"
+        "**Sign-in still fails?**\n\n"
+        "- Changing your Apple Account password revokes every app-specific "
+        "password: create a new one.\n"
+        "- Check that iCloud Mail is turned on.\n"
+        "- With an own domain, the username must be your @icloud.com address.\n";
+}
+
+bool OffersICloudSetupGuide(const std::string& email) {
+    if (email.find('@') == std::string::npos) return true;   // nothing typed yet
+    const DiscoveryResult preset = AutoDiscovery::FromPresets(email);
+    return !preset.found || preset.displayName == "iCloud";
 }
 
 bool LooksLikeEmailAddress(const std::string& email) {

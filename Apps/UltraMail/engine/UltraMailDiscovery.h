@@ -4,6 +4,8 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
+// Version: 0.6.0 - ICloudSetupGuide / OffersICloudSetupGuide: the account
+//                  wizard's "How to set up an iCloud mail account" info
 // Version: 0.5.0 - IncomingMailboxChanged: new settings that reach another mailbox
 // Version: 0.4.0 - ServerNameProblem: a typed server name checked before it is tried
 // Version: 0.3.0 - settings resolved per account (stored, else presets);
@@ -67,6 +69,20 @@ std::string EmailLocalPart(const std::string& email);
 // It exists to catch typos before an account is created — not to validate
 // RFC 5322, which the mail server does authoritatively.
 bool LooksLikeEmailAddress(const std::string& email);
+
+// The guide the account wizard shows under its sign-in fields ("How to set up
+// an iCloud mail account" - Show info), as Markdown: the app-specific
+// password Apple requires and where it is made, what to type here, the
+// servers for an own domain on iCloud+, and what to check when the sign-in
+// still fails. The server names, ports and security are the iCloud preset's,
+// so the guide cannot drift from what UltraMail fills in.
+std::string ICloudSetupGuide();
+
+// Whether the wizard offers that guide for the address typed so far: an
+// iCloud address (icloud.com, me.com, mac.com), an address at a domain no
+// preset knows (an own domain on iCloud+ looks like that), and nothing typed
+// yet - not Gmail, Outlook or another known provider.
+bool OffersICloudSetupGuide(const std::string& email);
 
 // Whether a server name typed on the manual settings page can be one at all,
 // before a sign-in is tried with it: empty when it can, else why not, as a

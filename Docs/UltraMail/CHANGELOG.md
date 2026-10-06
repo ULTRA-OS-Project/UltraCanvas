@@ -1,3 +1,21 @@
+#### 2026-10-06 *0.10.33*
+- **The account wizard explains how to set up iCloud mail.** Apple takes only
+  an app-specific password in other mail programs, made on account.apple.com -
+  the Apple Account password fails with "authentication failed", and the
+  wizard's one-line hint said only that an app password was needed. Under the
+  sign-in fields, *How to set up an iCloud mail account* now has a **Show
+  info** button that opens the steps in an info area (the dialog grows to hold
+  it, *Hide info* closes it): two-factor authentication and iCloud Mail turned
+  on; account.apple.com, *Sign-In and Security*, *App-Specific Passwords*,
+  *Generate*; what goes in the address and password fields; the servers and
+  the username (the @icloud.com address) for an own domain on iCloud+; and what
+  to check when the sign-in still fails. It is offered for iCloud addresses
+  and for addresses at a domain no preset knows (an own iCloud+ domain looks
+  like that), not for Gmail, Outlook or the other known providers. For an
+  iCloud address the hint and the password field say "app-specific password".
+  The servers in the guide are taken from the iCloud preset
+  (`ICloudSetupGuide`, `OffersICloudSetupGuide`). Tests: `test_discovery.cpp`.
+
 #### 2026-10-05 *0.10.32*
 - **The window no longer freezes after a sync that brought much mail.**
   At the end of every sync the senders of the new mail go into the address

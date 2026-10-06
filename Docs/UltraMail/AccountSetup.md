@@ -117,6 +117,24 @@ the Apple ID must have two-factor authentication on. Sign in at
 Security → App-Specific Passwords*, generate one named UltraMail, and type it
 into the wizard. iCloud Mail itself must be enabled for the Apple ID.
 
+The wizard carries these steps itself: under the sign-in fields, *How to set
+up an iCloud mail account* has a **Show info** button that opens them in an
+info area (offered for iCloud addresses and for addresses at a domain UltraMail
+does not know, which is what an own domain on iCloud+ looks like).
+
+**An own domain on iCloud+.** Type your own address in the wizard. UltraMail
+finds no settings published for the domain and opens the server settings page;
+enter `imap.mail.me.com` (993, SSL/TLS) and `smtp.mail.me.com` (587,
+STARTTLS), and as the **username your @icloud.com address**, not the address
+on your own domain. The password is the app-specific password.
+
+**If the sign-in still fails:** changing the Apple Account password revokes
+every app-specific password, so create a new one; check that iCloud Mail is
+turned on; with an own domain, check that the username is the @icloud.com
+address. Apple also accepts just the part before the @ as the incoming
+username, but its outgoing server wants the full address, and UltraMail uses
+one username for both - so keep the full address.
+
 ### GMX (`gmx.net`, `gmx.de`, `gmx.com`)
 
 | | |
