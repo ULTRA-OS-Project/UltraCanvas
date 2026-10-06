@@ -48,6 +48,14 @@ const std::vector<uint8_t> kPng = {
     0x12, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xb8, 0xa3, 0xa1, 0xf1, 0x1f, 0x19, 0x33, 0x10, 0x14, 0x00,
     0x00, 0x95, 0x41, 0x1a, 0x05, 0x70, 0x0b, 0xcc, 0x23, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
     0x42, 0x60, 0x82};
+// 4 x 3 of #3B82F6 at 16 bits a sample, as ImageMagick and scanners write
+// them: its thumbnail came out white once.
+const std::vector<uint8_t> kPng16 = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x03, 0x10, 0x02, 0x00, 0x00, 0x00, 0x6b, 0x06, 0xe5, 0xd2, 0x00, 0x00, 0x00,
+    0x17, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xb4, 0xb6, 0x6e, 0x6a, 0xfa, 0xf6, 0x8d, 0x01, 0x03, 0x30,
+    0x31, 0xe0, 0x00, 0x38, 0x25, 0x00, 0xf1, 0x3d, 0x03, 0x6c, 0x70, 0xc7, 0x5d, 0xc5, 0x00, 0x00, 0x00, 0x00,
+    0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
 
 ClipboardSnapshot TextCopy(const std::string& text, const std::string& source = "") {
     ClipboardSnapshot snapshot;
@@ -254,6 +262,26 @@ int main(int, char** argv) {
                                           formats[0].mime == "image/png" && formats[0].data == kPng);
     TEST("the newest is first", !entries.empty() && entries[0].kind == ClipboardEntryKind::Image);
 
+    ClipboardSnapshot deepImage;
+    deepImage.formats.push_back({"image/png", kPng16});
+    int64_t deepId = 0;
+    history.Record(deepImage, &deepId);
+    const auto deepEntry = history.Get(deepId);
+    uint32_t thumbPixel = 0;
+    if (deepEntry && !deepEntry->thumbnailPath.empty()) {
+        if (auto thumb = UCImage::Get(deepEntry->thumbnailPath)) {
+            if (auto pixmap = thumb->GetPixmap(thumb->GetWidth(), thumb->GetHeight(), ImageFitMode::Contain, 1.0f)) {
+                thumbPixel = pixmap->GetPixelData()[0];
+            }
+        }
+    }
+    auto near = [](uint32_t value, uint32_t want) { return value + 3 >= want && value <= want + 3; };
+    TEST("a 16-bit image's thumbnail keeps its colour", near((thumbPixel >> 16) & 0xFF, 0x3B) &&
+                                                         near((thumbPixel >> 8) & 0xFF, 0x82) &&
+                                                         near(thumbPixel & 0xFF, 0xF6));
+    history.Remove(deepId);
+    history.Prune();
+
     std::cerr << "\n--- On disk ---" << std::endl;
     if (encrypted) {
         TEST("no title or text in the database file", !AnyFileContains(dir, "Meeting at 14:00") &&
@@ -441,6 +469,16 @@ int main(int, char** argv) {
     TEST("Cyrillic lowered", FoldForClipboardSearch("ПРИВЕТ") == "привет");
     TEST("Greek lowered", FoldForClipboardSearch("ΑΒΓ") == "αβγ");
     TEST("CJK untouched", FoldForClipboardSearch("日本語") == "日本語");
+
+    std::cerr << "\n--- Text tools ---" << std::endl;
+    TEST("upper case, accents and all", EditClipboardText("straße éte żółw", ClipboardTextEdit::Upper) == "STRAßE ÉTE ŻÓŁW");
+    TEST("lower case, Greek and Cyrillic", EditClipboardText("ΑΘΗΝΑ МОСКВА", ClipboardTextEdit::Lower) == "αθηνα москва");
+    TEST("title case", EditClipboardText("the QUICK brown fox's tail", ClipboardTextEdit::Title) == "The Quick Brown Fox's Tail");
+    TEST("a dash separates words", EditClipboardText("east\xE2\x80\x94west", ClipboardTextEdit::Title) == "East\xE2\x80\x94West");
+    TEST("sentence case", EditClipboardText("HELLO THERE. HOW ARE YOU?\nfine", ClipboardTextEdit::Sentence) ==
+                          "Hello there. How are you?\nFine");
+    TEST("trim", EditClipboardText("\n\n  one  \ntwo\t\n\n", ClipboardTextEdit::Trim) == "  one\ntwo");
+    TEST("join lines", EditClipboardText("one\n  two\n\nthree ", ClipboardTextEdit::JoinLines) == "one two three");
 
     fs::remove_all(root, ec);
     std::cerr << "\n========================================" << std::endl;

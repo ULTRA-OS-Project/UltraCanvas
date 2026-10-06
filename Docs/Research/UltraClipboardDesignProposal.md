@@ -1,7 +1,7 @@
 # UltraClipboard — a clipboard manager for the ULTRA OS desktop (Investigation and Proposal)
 
 **Date:** 2026-10-06
-**Status:** Proposal — investigation only, no implementation yet
+**Status:** Phases 1 and 2 implemented, with part of phases 0 and 3 — §13 lists what was built and where it departs from this proposal; the rest is still a proposal
 **Scope:** a clipboard history that records everything copied on ULTRA OS,
 shown in two places. The first is a **quick panel** that the desktop's
 clipboard button and `Super+V` open. The second is a separate application,
@@ -725,6 +725,51 @@ history if a third user appears.
 6. **Recording `PRIMARY`.** Off here (§5.6). Some X11 users rely on the
    mouse selection as a second clipboard; an *also record the mouse
    selection* switch would serve them without flooding everyone else.
+
+---
+
+## 13. What was built (2026-10-06)
+
+Phases 1 and 2 of §10, the X11 half of phase 0's change detection, and the
+UltraPaint hand-off from phase 3:
+
+| Part | Where |
+|---|---|
+| The store: entries, formats and settings in SQLite, payloads in content-addressed files, sealed titles, previews and payloads, thumbnails, the generation number, the recorder lease | `UltraCanvasClipboardHistory.h`, `core/ClipboardHistory/`, library `UltraClipboardHistory`; [`UltraCanvasClipboardHistory.md`](../UltraCanvas/UltraCanvasClipboardHistory.md) |
+| The list model and row painter both programs share | `UltraCanvasClipboardHistoryView.h` |
+| Change detection on X11 through XFixes | `OS/Linux/UltraCanvasLinuxClipboard.cpp` |
+| `Super+V` | `UltraCanvasGlobalShortcut` in `UltraCanvasDesktopShell.h` |
+| The desktop records, keeps the last copy alive, and opens the quick panel | `Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.*`, `UltraDesktopWindow.cpp` |
+| The application: list with sections, search, kind filter, pin, copy, delete with undo, the edit dialog for the text kinds, settings, images to UltraPaint | `Apps/UltraClipboard/`; [`README.md`](../UltraClipboard/README.md) |
+| Tests | `Tests/ClipboardHistoryStoreTest.cpp`, `Tests/ClipboardHistoryTest.cpp` |
+
+Where the code departs from the proposal, and why:
+
+| Proposal | Built | Why |
+|---|---|---|
+| The key in UltraVault / the device key vault (§5.5) | An owner-only key file, `<config>/ultraos/clipboard.key`, apart from the data | UltraVault opens one vault per process, and the programs that show the history may already hold theirs. The file still keeps key and data apart, which is what protects a copied or backed-up history folder |
+| `UltraCanvasListView::SetRowActions` (§8.4) | The row painter draws Copy, Edit and Delete and hit-tests them through `onCellClicked`, as UltraMail's contact list paints its bin | No ListView change was needed for two users; the generic row actions remain a proposal for when UltraFiler and UltraMail want them |
+| `GetFormats` / `ReadFormat` / `SetFormats` on the clipboard (§8.1) | Capture reads files (with the cut flag), else an image, else text with its HTML, through the existing calls | Those are the formats every backend reads today; a generic format API is still open |
+| The source from the selection owner, `GetOwner()` (§5.4) | The program of the active window when the copy is seen | Available on every X11 window manager without a new backend call; wrong only for a copy made in the background |
+| Thumbnails as QOI (§5.5) | PNG, at most 96 px on the longer side | `UCImage` writes PNG everywhere; QOI saving is not exposed |
+| `CLIPBOARD_MANAGER` save-targets (§5.7) | The recorder puts the last copy it recorded back on the clipboard when the clipboard has no owner any more | Works with every X11 program, including those that never ask a clipboard manager to save |
+| The edit dialog per kind (§6.4) | One text area for every text kind (monospace for code) with *Plain text*, *Trim*, *Case* and *Join lines*; images go to UltraPaint; files are not editable | Rich-text editing, syntax highlighting, *Replace…*, the colour *Format* tool and the image crop, rotate and resize are still phase 3 |
+| Case- and accent-insensitive search in `UltraCanvasTextUtils` (§5.10) | `FoldForClipboardSearch` in the history library | Kept beside its one user until another wants it |
+| *Clear history* with *Also remove pinned* (§5.6) | *Clear history* removes the unpinned entries; `Clear(true)` exists in the API but not in the UI | A setting nobody asked for yet |
+
+Windows and macOS needed no listener: their backends already compare a
+counter the system keeps (`GetClipboardSequenceNumber`, `changeCount`), which
+moves with every copy in any format.
+
+Not built yet: the preview pane and dragging an entry out (phase 2),
+per-source "forget after", recording `PRIMARY`, Wayland, and everything in
+phase 3 beyond the UltraPaint hand-off.
+
+Two framework bugs turned up on the way and were fixed in the same change:
+`UCImage::Save` wrote a 16-bit image as a white 8-bit PNG (every thumbnail of
+a 16-bit PNG was blank), and the X11 clipboard dropped the first file of a
+file list from a program that serves the same bytes for every target
+(xclip).
 
 ---
 

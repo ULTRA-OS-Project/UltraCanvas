@@ -261,4 +261,20 @@ private:
 // Greek and Cyrillic letters lowered, Latin accents dropped, ß as "ss".
 std::string FoldForClipboardSearch(const std::string& text);
 
+// The edit dialog's text tools. Case changes cover Latin, Greek and Cyrillic.
+enum class ClipboardTextEdit {
+    Trim,        // spaces at the ends of lines, empty lines at the ends of the text
+    JoinLines,   // one line, the lines joined by single spaces
+    Upper,
+    Lower,
+    Title,       // Every Word Capitalised
+    Sentence     // The first letter of each sentence capitalised, the rest lower
+};
+std::string EditClipboardText(const std::string& text, ClipboardTextEdit edit);
+
+// An image entry as a file another program opens (UltraClipboard hands images
+// to UltraPaint this way): its bytes - a Windows CF_DIB gains the BMP file
+// header it lacks - and the extension that names its format ("png", "jpg").
+std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension);
+
 } // namespace UltraCanvas

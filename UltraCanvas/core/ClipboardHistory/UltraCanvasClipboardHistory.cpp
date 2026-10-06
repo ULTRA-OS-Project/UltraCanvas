@@ -473,6 +473,124 @@ std::string FoldForClipboardSearch(const std::string& text) {
     return out;
 }
 
+namespace {
+
+// One code point from `text` at `i`; a broken sequence is taken byte by byte.
+uint32_t DecodeUtf8(const std::string& text, size_t& i) {
+    const unsigned char c = static_cast<unsigned char>(text[i]);
+    uint32_t cp = c;
+    size_t length = 1;
+    if (c >= 0xF0) { cp = c & 0x07; length = 4; }
+    else if (c >= 0xE0) { cp = c & 0x0F; length = 3; }
+    else if (c >= 0xC0) { cp = c & 0x1F; length = 2; }
+    if (i + length > text.size()) { length = 1; cp = c; }
+    for (size_t k = 1; k < length; ++k) {
+        const unsigned char next = static_cast<unsigned char>(text[i + k]);
+        if ((next & 0xC0) != 0x80) { length = 1; cp = c; break; }
+        cp = (cp << 6) | (next & 0x3F);
+    }
+    i += length;
+    return cp;
+}
+
+// Latin-1, Latin Extended-A (its pairs), Greek and Cyrillic.
+bool PairedEvenUpper(uint32_t cp) { return (cp >= 0x100 && cp <= 0x137) || (cp >= 0x14A && cp <= 0x177); }
+bool PairedOddUpper(uint32_t cp) { return (cp >= 0x139 && cp <= 0x148) || (cp >= 0x179 && cp <= 0x17E); }
+
+uint32_t UpperOf(uint32_t cp) {
+    if (cp >= 'a' && cp <= 'z') return cp - 32;
+    if (cp >= 0xE0 && cp <= 0xFE && cp != 0xF7) return cp - 0x20;
+    if (cp == 0xFF) return 0x178;
+    if (cp == 0x131) return 'I';
+    if (cp == 0x17F) return 'S';
+    if (PairedEvenUpper(cp)) return cp % 2 == 1 ? cp - 1 : cp;
+    if (PairedOddUpper(cp)) return cp % 2 == 0 ? cp - 1 : cp;
+    if (cp >= 0x3B1 && cp <= 0x3C9) return cp == 0x3C2 ? 0x3A3 : cp - 0x20;
+    if (cp >= 0x430 && cp <= 0x44F) return cp - 0x20;
+    if (cp >= 0x450 && cp <= 0x45F) return cp - 0x50;
+    return cp;
+}
+
+uint32_t LowerOf(uint32_t cp) {
+    if (cp >= 'A' && cp <= 'Z') return cp + 32;
+    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 0x20;
+    if (cp == 0x178) return 0xFF;
+    if (cp == 0x130) return 'i';
+    if (PairedEvenUpper(cp)) return cp % 2 == 0 ? cp + 1 : cp;
+    if (PairedOddUpper(cp)) return cp % 2 == 1 ? cp + 1 : cp;
+    if (cp >= 0x391 && cp <= 0x3A9 && cp != 0x3A2) return cp + 0x20;
+    if (cp >= 0x410 && cp <= 0x42F) return cp + 0x20;
+    if (cp >= 0x400 && cp <= 0x40F) return cp + 0x50;
+    return cp;
+}
+
+// Letters and digits, and the apostrophe inside a word; dashes, quotes and
+// the rest of General Punctuation (U+2000-206F) separate words.
+bool IsWordCharacter(uint32_t cp) {
+    if (cp < 0x80) return std::isalnum(static_cast<int>(cp)) || cp == '\'';
+    if (cp == 0xD7 || cp == 0xF7 || (cp >= 0x2000 && cp <= 0x206F) || (cp >= 0x3000 && cp <= 0x303F)) return false;
+    return cp >= 0xC0;
+}
+
+} // namespace
+
+std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension) {
+    std::string format = image.mime.rfind("image/", 0) == 0 ? image.mime.substr(6) : "png";
+    format = format.substr(0, format.find(';'));
+    if (format == "jpeg") format = "jpg";
+    else if (format == "svg+xml") format = "svg";
+    else if (format == "x-icon" || format == "vnd.microsoft.icon") format = "ico";
+    extension = format.empty() ? "png" : format;
+    return DecodableImage(image);
+}
+
+std::string EditClipboardText(const std::string& text, ClipboardTextEdit edit) {
+    if (edit == ClipboardTextEdit::Trim || edit == ClipboardTextEdit::JoinLines) {
+        std::vector<std::string> lines;
+        for (std::string line : SplitLines(text)) {
+            const size_t end = line.find_last_not_of(" \t");
+            line = end == std::string::npos ? std::string() : line.substr(0, end + 1);
+            if (edit == ClipboardTextEdit::JoinLines) {
+                line = Trimmed(line);
+                if (line.empty()) continue;
+            }
+            lines.push_back(std::move(line));
+        }
+        while (!lines.empty() && Trimmed(lines.front()).empty()) lines.erase(lines.begin());
+        while (!lines.empty() && Trimmed(lines.back()).empty()) lines.pop_back();
+        std::string out;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (i) out += edit == ClipboardTextEdit::JoinLines ? " " : "\n";
+            out += lines[i];
+        }
+        return out;
+    }
+    std::string out;
+    out.reserve(text.size());
+    bool startOfWord = true;
+    bool startOfSentence = true;
+    size_t i = 0;
+    while (i < text.size()) {
+        const uint32_t cp = DecodeUtf8(text, i);
+        const bool word = IsWordCharacter(cp);
+        uint32_t mapped = cp;
+        switch (edit) {
+            case ClipboardTextEdit::Upper: mapped = UpperOf(cp); break;
+            case ClipboardTextEdit::Lower: mapped = LowerOf(cp); break;
+            case ClipboardTextEdit::Title: mapped = word && startOfWord ? UpperOf(cp) : LowerOf(cp); break;
+            case ClipboardTextEdit::Sentence:
+                mapped = word && startOfSentence ? UpperOf(cp) : LowerOf(cp);
+                if (word) startOfSentence = false;
+                break;
+            default: break;
+        }
+        AppendUtf8(out, mapped);
+        startOfWord = !word;
+        if (cp == '.' || cp == '!' || cp == '?' || cp == '\n') startOfSentence = true;
+    }
+    return out;
+}
+
 ClipboardHistoryPolicy ClipboardHistoryPolicy::Defaults() {
     ClipboardHistoryPolicy policy;
     policy.excludedApplications = {"UltraPassword", "UltraAuthenticator", "KeePassXC", "Bitwarden", "1Password"};

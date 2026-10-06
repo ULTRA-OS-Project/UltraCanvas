@@ -1167,6 +1167,15 @@ package_if_built "UltraPassword" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraClipboard, the clipboard history (it records while it is open)
+package_if_built "UltraClipboard" build_app_bundle \
+    "UltraClipboard" \
+    "UltraClipboard" \
+    "com.cloverleaf.UltraClipboard" \
+    "media/appicon/UltraClipboard.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
