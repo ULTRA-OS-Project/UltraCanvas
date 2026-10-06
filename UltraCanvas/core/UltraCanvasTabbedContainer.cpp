@@ -1,7 +1,9 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
+//                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -38,18 +40,15 @@ namespace UltraCanvas {
     // inflate the container's scroll range.
     void UltraCanvasTabbedContainer::Arrange(const Rect2Df& finalRect,
                                              const CSSLayout::LayoutContext& ctx) {
-        UltraCanvasUIElement::Arrange(finalRect, ctx);
-//        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
-//        Rect2Df oldBounds = finalBounds;
-//        finalBounds = finalRect;
-//        arrangeValid = true;
-//        Rect2Df damage = oldBounds.Union(finalBounds);
-//        if (auto* parentCont = GetParentContainer()) {
-//            parentCont->InvalidateRect(damage);
-//        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
-//            window->AddDirtyRectangle(damage);
-//        }
-//
+        // Take the box only. The ordinary block layout would first stack the
+        // tab contents, each as tall as its content - and in that throwaway
+        // pass every scroll view in the active tab saw a viewport as tall as
+        // what it holds and was clamped to the top: a resize sent a scrolled
+        // page back to its start. The active content and the overflow button
+        // are placed below; a hidden page is laid out when it is switched to
+        // (SetActiveTab).
+        ArrangeOwnBox(finalRect);
+
         // Deterministic tab-bar layout (GetTabAreaBounds no longer mutates finalBounds).
         CalculateLayout();
         UpdateOverflowDropdown();
