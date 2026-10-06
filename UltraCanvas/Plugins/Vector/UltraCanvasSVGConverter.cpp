@@ -619,7 +619,10 @@ public:
         if (hasViewBox) doc->ViewBox = Rect2Dd{vb[0], vb[1], vb[2], vb[3]};
 
         // Style sheets first: every property read below, gradient stops
-        // included, goes through them.
+        // included, goes through them. The cache is keyed by element
+        // address, which a second document could reuse.
+        styleSheet.Clear();
+        sheetValues.clear();
         if (w > 0) styleSheet.SetMediaWidth(static_cast<float>(w));
         CollectStyleSheets(svg);
 
