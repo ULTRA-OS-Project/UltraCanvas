@@ -537,62 +537,51 @@ void TestLoader() {
     CHECK(!UltraWebLoader::LoadOffline("https://example.org/app.wasm").ok);
 }
 
-CSSLayout::AlignSelf AlignOf(const std::shared_ptr<UltraCanvasUIElement>& element) {
-    const auto* item = element ? std::get_if<CSSLayout::FlexItem>(&element->layoutItem.data) : nullptr;
-    return item ? item->alignSelf : CSSLayout::AlignSelf::Auto;
+CSSLayout::AlignItems AlignItemsOf(const std::shared_ptr<UltraCanvasUIElement>& element) {
+    const auto* flex = element ? std::get_if<CSSLayout::FlexLayout>(&element->layout.data) : nullptr;
+    return flex ? flex->alignItems : CSSLayout::AlignItems::Baseline;   // Baseline: not a flex container
 }
 
-// A container stretches its children across, except one the guest sized
-// on that axis - CSS stretches only an automatic cross size.
-void TestSizedChildrenNotStretched() {
+// Children sit at the start of a container, at their own size, until the
+// app asks for something else; the root goes back to how the window had it
+// when the app goes.
+void TestAlignment() {
     Harness h;
+    h.root->layout.SetFlexColumn();            // as the window's app area
+    const auto windowLayout = h.root->layout;
+    h.root->SetPadding(3.0f);
+    const auto windowPadding = h.root->box.padding.left;
     const bool started = h.Start(Guest(R"(
-  (global $row (mut i32) (i32.const 0))
   (func (export "uc_main")
-    (local $b i32)
-    (drop (call $insert (i32.const 1) (call $create (i32.const 16) (i32.const 5)) (i32.const 0)))   ;; 2 label
-    (local.set $b (call $create (i32.const 32) (i32.const 6)))                                      ;; 3 button
-    (drop (call $set_number (local.get $b) (i32.const 6) (f64.const 200)))
-    (drop (call $insert (i32.const 1) (local.get $b) (i32.const 0)))
-    (global.set $row (call $create (i32.const 0) (i32.const 9)))                                    ;; 4 row
-    (drop (call $set_number (global.get $row) (i32.const 9) (f64.const 1)))
-    (drop (call $insert (i32.const 1) (global.get $row) (i32.const 0)))
-    (local.set $b (call $create (i32.const 32) (i32.const 6)))                                      ;; 5 tall
-    (drop (call $insert (global.get $row) (local.get $b) (i32.const 0)))
-    (drop (call $set_number (local.get $b) (i32.const 7) (f64.const 40)))
-    (local.set $b (call $create (i32.const 32) (i32.const 6)))                                      ;; 6 wide
-    (drop (call $set_number (local.get $b) (i32.const 6) (f64.const 90)))
-    (drop (call $insert (global.get $row) (local.get $b) (i32.const 0)))
-    (local.set $b (call $create (i32.const 32) (i32.const 6)))                                      ;; 7 wide, unsized again
-    (drop (call $set_number (local.get $b) (i32.const 6) (f64.const 90)))
-    (drop (call $insert (i32.const 1) (local.get $b) (i32.const 0)))
-    (drop (call $set_number (local.get $b) (i32.const 6) (f64.const 0)))
-    (drop (call $listen (i32.const 3) (i32.const 1))))
-  (func (export "uc_event") (param i32 i32 i32)
-    ;; The row turns into a column.
-    (drop (call $set_number (global.get $row) (i32.const 9) (f64.const 0))))
+    (local $box i32) (local $label i32)
+    (local.set $box (call $create (i32.const 0) (i32.const 9)))
+    (drop (call $insert (i32.const 1) (local.get $box) (i32.const 0)))
+    (local.set $label (call $create (i32.const 16) (i32.const 5)))
+    (drop (call $insert (local.get $box) (local.get $label) (i32.const 0)))
+    ;; a new container: start
+    (call $check (i32.trunc_f64_s (call $get_number (local.get $box) (i32.const 15))) (i32.const 0))
+    (call $check (call $set_number (local.get $box) (i32.const 15) (f64.const 3)) (i32.const 0))
+    (call $check (i32.trunc_f64_s (call $get_number (local.get $box) (i32.const 15))) (i32.const 3))
+    (call $check (call $set_number (local.get $box) (i32.const 15) (f64.const 1)) (i32.const 0))
+    ;; not a container, not an alignment
+    (call $check (call $set_number (local.get $label) (i32.const 15) (f64.const 3)) (i32.const -3))
+    (call $check (call $set_number (local.get $box) (i32.const 15) (f64.const 7)) (i32.const -6))
+    ;; the root takes it too, with padding and a gap
+    (call $check (call $set_number (i32.const 1) (i32.const 15) (f64.const 3)) (i32.const 0))
+    (call $check (call $set_number (i32.const 1) (i32.const 11) (f64.const 20)) (i32.const 0))
+    (call $check (call $set_number (i32.const 1) (i32.const 9) (f64.const 1)) (i32.const 0)))
 )"));
     CHECK(started);
     if (!started) return;
-    using CSSLayout::AlignSelf;
-    CHECK(AlignOf(h.guest->ElementForTest(2)) == AlignSelf::Auto);
-    CHECK(AlignOf(h.guest->ElementForTest(3)) == AlignSelf::Start);    // width in a column
-    CHECK(AlignOf(h.guest->ElementForTest(5)) == AlignSelf::Start);    // height in a row
-    CHECK(AlignOf(h.guest->ElementForTest(6)) == AlignSelf::Auto);     // width in a row: the main axis
-    CHECK(AlignOf(h.guest->ElementForTest(7)) == AlignSelf::Auto);
-    // The row turns into a column: now the width counts, not the height.
-    auto button = h.Get<UltraCanvasButton>(3);
-    if (button) button->onClick();
-    CHECK(AlignOf(h.guest->ElementForTest(5)) == AlignSelf::Auto);
-    CHECK(AlignOf(h.guest->ElementForTest(6)) == AlignSelf::Start);
-    // A text input is 240 x 28 unless sized, so it keeps its width too.
-    Harness input;
-    CHECK(input.Start(Guest(R"(
-  (data (i32.const 1024) "TextInput")
-  (func (export "uc_main")
-    (drop (call $insert (i32.const 1) (call $create (i32.const 1024) (i32.const 9)) (i32.const 0))))
-)")));
-    if (input.guest) CHECK(AlignOf(input.guest->ElementForTest(2)) == AlignSelf::Start);
+    using CSSLayout::AlignItems;
+    CHECK(AlignItemsOf(h.guest->ElementForTest(2)) == AlignItems::Center);
+    CHECK(AlignItemsOf(h.root) == AlignItems::Stretch);
+    CHECK(h.root->box.padding.left.value == 20.0f);
+    h.guest.reset();
+    const auto* flex = std::get_if<CSSLayout::FlexLayout>(&h.root->layout.data);
+    const auto* windowFlex = std::get_if<CSSLayout::FlexLayout>(&windowLayout.data);
+    CHECK(flex && windowFlex && flex->alignItems == windowFlex->alignItems && flex->direction == windowFlex->direction);
+    CHECK(h.root->box.padding.left.value == windowPadding.value);
 }
 
 // ===== ABI v2: TIMERS =====
@@ -1146,7 +1135,7 @@ int main() {
         TestReleaseSubtree();
         TestLimits();
         TestFailuresAfterStart();
-        TestSizedChildrenNotStretched();
+        TestAlignment();
         TestTimers();
         TestFetchThroughGuest();
         TestFetchOutcomes();

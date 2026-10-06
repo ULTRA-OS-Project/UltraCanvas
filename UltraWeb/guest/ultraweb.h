@@ -61,11 +61,8 @@
 #define UC_PROP_CHECKED     3u   /* 0 / 1:  Checkbox */
 #define UC_PROP_ENABLED     4u   /* 0 / 1:  every kind (default 1) */
 #define UC_PROP_VISIBLE     5u   /* 0 / 1:  every kind (default 1) */
-#define UC_PROP_WIDTH       6u   /* px, 0 = automatic: every kind */
-#define UC_PROP_HEIGHT      7u   /* px, 0 = automatic: every kind. A container
-                                    stretches an automatic child across (its
-                                    width in a column, height in a row); a
-                                    sized one keeps its size. */
+#define UC_PROP_WIDTH       6u   /* px, 0 = automatic (the content's size): every kind */
+#define UC_PROP_HEIGHT      7u   /* px, 0 = automatic: every kind */
 #define UC_PROP_GROW        8u   /* flex-grow inside the parent: every kind */
 #define UC_PROP_DIRECTION   9u   /* UC_DIRECTION_*: Container */
 #define UC_PROP_GAP        10u   /* px between children: Container */
@@ -73,9 +70,21 @@
 #define UC_PROP_FONT_SIZE  12u   /* points: Label, Button, TextInput */
 #define UC_PROP_TEXT_COLOR 13u   /* 0xRRGGBBAA: Label */
 #define UC_PROP_BACKGROUND 14u   /* 0xRRGGBBAA: Container, Label */
+#define UC_PROP_ALIGN      15u   /* UC_ALIGN_*: Container (v2). Where the children
+                                    sit across it - across a column means
+                                    horizontally. START (the default) leaves each
+                                    at its own size; STRETCH fills the width of a
+                                    column (the height of a row) for every child
+                                    whose size on that axis is automatic: a child
+                                    with a set width keeps it. */
 
 #define UC_DIRECTION_COLUMN 0
 #define UC_DIRECTION_ROW    1
+
+#define UC_ALIGN_START   0
+#define UC_ALIGN_CENTER  1
+#define UC_ALIGN_END     2
+#define UC_ALIGN_STRETCH 3
 
 /* ===== Events (bits for uc_listen; one value per uc_event call) ===== */
 #define UC_EVENT_CLICK  1u   /* Button pressed.                          detail 0 */

@@ -13,10 +13,17 @@
   app runs unchanged; a v2 app exports `uc_abi_version()` returning 2, so
   UltraWeb 0.1.0 refuses it with a message. `about:demo` counts into storage,
   copies what was typed and shows a timer.
-- **A size the app sets is kept.** A container stretched every child across
-  it, so a button given a width in a column, or a text input's 240 px, went
-  full width; a child with a width in a column, or a height in a row, now
-  keeps it, as in CSS.
+- **Nothing is stretched unless the app asks.** A container stretched every
+  child across it, so a button given a width in a column, or a text input's
+  240 px, went full width. Children now sit at their own size, at the start;
+  the new `UC_PROP_ALIGN` (start, center, end, stretch) is how an app asks
+  for something else, and even stretch leaves a child with a set width at
+  that width. This is the framework's layout engine's rule now, for every
+  app (see the framework changelog).
+- **An app no longer inherits the last one's root.** Padding, gap,
+  direction, alignment and background an app set on its root stayed for the
+  next app opened in the window; the root goes back to the window's setup
+  when an app goes.
 - **An app cut off while downloading is an error.** A transfer that broke
   after the server's first line (a timeout, a lost connection) used to hand
   over the part that had arrived as if it were the app; UltraWeb now says

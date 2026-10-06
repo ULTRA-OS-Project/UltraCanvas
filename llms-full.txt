@@ -2599,14 +2599,19 @@ The full-rect constructor stamps `AbsoluteUI` **only for a real non-zero offset*
 ([UltraCanvasUIElement.h:144-155](../UltraCanvas/include/UltraCanvasUIElement.h#L144-L155)) —
 flex/grid children are conventionally built with `(0, 0, w, h)` so they stay in flow and
 the parent's algorithm can place them. Note also that an explicit `width`/`height`
-**overrides** parent stretch (grid cell, `flex-grow`, `align-self: stretch`); for a widget
-you want the engine to size or stretch, use the no-size constructor (or pass `0, 0`).
+**overrides** the parent's stretch (`align-items` / `justify-items: stretch`), though not
+the element's own `align-self: stretch`; for a widget you want the engine to size or
+stretch, use the no-size constructor (or pass `0, 0`). See
+[Stretching is a design decision](#stretching-is-a-design-decision).
 
 ## Quick guidelines
 
 - **Prefer Flex / Grid layouts over absolute positions.**
 - For children of a flex/grid container, use the **no-size** (or `(0,0)`) constructor so the
   parent's algorithm sizes them; pass a fixed `w`/`h` only when you truly want a fixed box.
+- **Ask for stretch where the design wants it.** Nothing stretches by default; a container
+  that should fill its children across says `SetFlexAlignItems(AlignItems::Stretch)` (grid:
+  `SetGridJustifyItems` / `SetGridAlignItems`), one child says `SetAlignSelf(Stretch)`.
 - For **leaf widgets**, implement `MeasureOwnContent()` to publish the content-box size.
 - Override `Arrange()` only for internal sub-rect placement — call the base first.
 - **Never write to `finalBounds` directly;** use `SetElementSize()` /
@@ -2736,6 +2741,46 @@ scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
 
 The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
 `min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
+## Stretching is a design decision
+
+The engine stretches nothing on its own. A child is stretched across its container only
+when the layout asks for it, and the most specific statement wins: the child's own
+`align-self` / `justify-self`, then the child's own size, then its container's
+`align-items` / `justify-items`.
+
+| Who asks | Flex | Grid |
+|---|---|---|
+| the container, for every child | `layout.SetFlexAlignItems(AlignItems::Stretch)` | `layout.SetGridJustifyItems(JustifyItems::Stretch)` (across the column), `layout.SetGridAlignItems(AlignItems::Stretch)` (down the row) |
+| one child (wins over its own size) | `layoutItem.SetAlignSelf(AlignSelf::Stretch)` | `layoutItem.SetJustifySelf(...)`, `layoutItem.SetGridAlignSelf(...)` |
+| the default | `AlignItems::Start`: each child at its own size, at the start | `Start` both ways; a grid item's `Auto` takes the container's |
+
+- **A set size beats the container's stretch.** A child with a `width` (in a column, or a
+  grid cell's width) or a `height` (in a row, or a grid cell's height) keeps it when only
+  its container asks for `Stretch`, aligned to the start — CSS Flexbox §9.4 step 11, CSS
+  Box Alignment §6.1. A 200 px button in a stretching column is 200 px; a text input that
+  should fill the column is one built without a width.
+- **The child's own stretch beats its size.** `layoutItem.SetAlignSelf(Stretch)` (grid:
+  `SetJustifySelf` / `SetGridAlignSelf`) stretches the child over a width or height it
+  carries. CSS would keep the size; here a size often comes from a constructor that needs
+  one, while an `align-self` is always meant, so this is the one place the engine departs
+  from CSS. A reader mapping a stylesheet drops an `align-self: stretch` that CSS would
+  ignore.
+- **A negative size is no size.** CSS rejects a negative `width` / `height`; here `-1` is
+  the "not set" marker and a size computed before the window had one can come out
+  negative, so a negative length counts as automatic.
+- **Finding leftovers:** run an application with `ULTRACANVAS_LAYOUT_AUDIT=1` and every
+  child whose set size outranked its container's stretch is printed once on stderr, with
+  both sizes — a size given only because a constructor wanted one shows up there.
+- **Wrapping still works.** A child that is not stretched is measured against the
+  container's width as an upper bound, so a word-wrapping label in a `Start` column still
+  wraps at the column's width; it is just not widened past its text.
+- **For a stylesheet reader:** the CSS initial value of `align-items` is `stretch`, so code
+  that maps CSS onto these structures sets `Stretch` explicitly wherever the sheet leaves
+  `align-items` unset.
+- Until 2026-10-06 flex `align-items` and grid items defaulted to stretch and a set size
+  was stretched over; the containers in the framework and apps that relied on that ask for
+  it explicitly now. `Apps/CSSLayoutTests` (Phase 11) pins the rule.
 
 ## Table layout
 

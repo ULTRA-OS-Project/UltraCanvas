@@ -101,8 +101,6 @@ private:
         std::vector<uint32_t> children;   // in order, mirrored by the container
         uint32_t listening = 0;
         bool live = false;
-        float width = 0, height = 0;      // px the guest set (0 = automatic)
-        bool row = false;                 // a container laid out as a row
     };
 
     struct Timer {
@@ -149,7 +147,6 @@ private:
     const Entry* Find(uint32_t handle) const;
     bool IsAncestor(uint32_t ancestor, uint32_t handle) const;
     void Detach(uint32_t handle);
-    void UpdateCrossAlignment(uint32_t handle);
     void WireCallbacks(uint32_t handle);
     void Deliver(uint32_t handle, uint32_t event, int32_t detail);
     // An event of the app itself (timer, fetch): now, or - while a call into
@@ -163,6 +160,11 @@ private:
     std::unique_ptr<UltraCanvas::UltraCanvasWasmInstance> instance_;
     std::vector<Entry> entries_;          // index = handle; 0 unused, 1 the root
     std::vector<uint32_t> freeHandles_;
+    // The root as the window had it: the guest may change its layout,
+    // padding and colour, and the next app must not inherit them.
+    UltraCanvas::CSSLayout::Layout rootLayout_;
+    UltraCanvas::CSSLayout::BoxModel rootBox_;
+    UltraCanvas::Color rootBackground_;
     size_t liveCount_ = 0;
     bool inGuest_ = false;                // a call into the guest is running
     bool inUserAction_ = false;           // ... and it handles a click, a toggle, an edit

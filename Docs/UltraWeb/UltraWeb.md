@@ -229,16 +229,22 @@ in the middle.
 
 | Kind (`uc_create`) | Text properties | Number properties | Events |
 |---|---|---|---|
-| `Container` (flex column; row with `UC_PROP_DIRECTION`) | — | `DIRECTION`, `GAP`, `PADDING`, `BACKGROUND` | — |
+| `Container` (flex column; row with `UC_PROP_DIRECTION`) | — | `DIRECTION`, `GAP`, `PADDING`, `ALIGN`, `BACKGROUND` | — |
 | `Label` (wraps at its width) | `TEXT` | `FONT_SIZE`, `TEXT_COLOR`, `BACKGROUND` | — |
 | `Button` | `TEXT` | `FONT_SIZE` | `CLICK` |
-| `TextInput` (240 × 28 unless sized) | `TEXT`, `PLACEHOLDER` | `FONT_SIZE` | `CHANGE`, `SUBMIT` |
+| `TextInput` (240 × 28 unless sized; `WIDTH` 0 makes it automatic) | `TEXT`, `PLACEHOLDER` | `FONT_SIZE` | `CHANGE`, `SUBMIT` |
 | `Checkbox` | `TEXT` | `CHECKED` | `TOGGLE` (detail 1 / 0) |
 | every kind | | `ENABLED`, `VISIBLE`, `WIDTH`, `HEIGHT` (px, 0 = automatic), `GROW` | |
 
-The root takes the container properties too. A container stretches a child
-across it — its width in a column, its height in a row — unless the app set
-that size: a 200 px button in a column stays 200 px. `uc_get_number` of
+The root takes the container properties too. Nothing is stretched unless
+the app asks: a container puts each child at its own size, at the start of
+its cross axis (the left of a column, the top of a row). `UC_PROP_ALIGN`
+says otherwise — `UC_ALIGN_CENTER`, `UC_ALIGN_END`, or `UC_ALIGN_STRETCH`,
+which fills the column's width (the row's height) for every child whose size
+on that axis is automatic; a child with a set width keeps it, so a full-width
+text input is one with `WIDTH` 0 in a stretching column. Text still wraps at
+the width it has. What an app sets on the root goes when the app goes, so
+the next one starts from the window's defaults. `uc_get_number` of
 `WIDTH` / `HEIGHT` answers the laid-out size, and `uc_bounds` the box in the
 app area — both as of the last layout pass, so not yet right after a change
 (a synchronous layout flush is Phase 4 of the plan). Colours are `0xRRGGBBAA`.

@@ -165,6 +165,8 @@ wat = f"""
     (local.set $row (call $add (i32.const 1) {s("kContainer")}))
     (drop (call $set_number (local.get $row) (i32.const 9) (f64.const 1)))
     (drop (call $set_number (local.get $row) (i32.const 10) (f64.const 12)))
+    ;; The count beside the button, centred on it (UC_PROP_ALIGN center).
+    (drop (call $set_number (local.get $row) (i32.const 15) (f64.const 1)))
     (global.set $button (call $add (local.get $row) {s("kButton")}))
     (call $text (global.get $button) {s("count")})
     (drop (call $listen (global.get $button) (i32.const 1)))
@@ -188,7 +190,6 @@ wat = f"""
     (global.set $copy (call $create {s("kButton")}))
     (drop (call $insert (i32.const 1) (global.get $copy) (global.get $echo)))
     (call $text (global.get $copy) {s("copy")})
-    (drop (call $set_number (global.get $copy) (i32.const 6) (f64.const 200)))
     (drop (call $listen (global.get $copy) (i32.const 1)))
 
     ;; A second-by-second timer.

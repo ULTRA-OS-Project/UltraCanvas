@@ -97,6 +97,9 @@ std::unique_ptr<UltraWebGuest> UltraWebGuest::Start(const std::vector<uint8_t>& 
     rootEntry.element = root;
     rootEntry.kind = "Root";
     rootEntry.live = true;
+    guest->rootLayout_ = root->layout;
+    guest->rootBox_ = root->box;
+    guest->rootBackground_ = root->GetBackgroundColor();
 
     WasmStatus status;
     guest->instance_ = UltraCanvasWasmInstance::Create(module, guest->MakeImports(), guest->options_.limits, status);
@@ -153,6 +156,9 @@ UltraWebGuest::~UltraWebGuest() {
             for (uint32_t child : entries_[UC_ROOT_HANDLE].children) {
                 if (child < entries_.size() && entries_[child].live) root->RemoveChild(entries_[child].element);
             }
+            root->layout = rootLayout_;
+            root->box = rootBox_;
+            root->SetBackgroundColor(rootBackground_);
             root->InvalidateLayout();
             root->RequestRedraw();
         }
@@ -380,8 +386,10 @@ uint32_t UltraWebGuest::Create(const std::string& kind) {
     // Zero sizes leave both dimensions automatic: each element measures its
     // own content, and the guest sets UC_PROP_WIDTH / HEIGHT when it wants.
     if (kind == UC_KIND_CONTAINER) {
+        // Children at the start of the cross axis, at their own size, until
+        // the app asks for something else (UC_PROP_ALIGN).
         auto container = CreateContainer(id, 0, 0, 0, 0);
-        container->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        container->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
         ContainerStyle plain;
         plain.autoShowScrollbars = false;
         container->SetContainerStyle(plain);
@@ -407,10 +415,6 @@ uint32_t UltraWebGuest::Create(const std::string& kind) {
     entry.element = element;
     entry.kind = kind;
     entry.live = true;
-    if (kind == UC_KIND_TEXT_INPUT) {
-        entry.width = kInputWidth;
-        entry.height = kInputHeight;
-    }
     ++liveCount_;
     WireCallbacks(handle);
     return handle;
@@ -475,21 +479,9 @@ int32_t UltraWebGuest::Insert(uint32_t parentHandle, uint32_t childHandle, uint3
     for (uint32_t h : tail) container->AddChild(entries_[h].element);
     order.insert(order.begin() + (at - order.begin()), childHandle);
     entries_[childHandle].parent = parentHandle;
-    UpdateCrossAlignment(childHandle);
     container->InvalidateLayout();
     container->RequestRedraw();
     return UC_OK;
-}
-
-// A container stretches its children across its line (AlignItems::Stretch),
-// which CSS does only for an item whose cross size is automatic (Flexbox
-// 9.4 step 11); the layout engine stretches a sized one too. So a child
-// the guest gave a width in a column, or a height in a row, opts out.
-void UltraWebGuest::UpdateCrossAlignment(uint32_t handle) {
-    Entry& entry = entries_[handle];
-    if (handle == UC_ROOT_HANDLE || entry.parent == UC_NO_HANDLE) return;
-    const bool sized = entries_[entry.parent].row ? entry.height > 0 : entry.width > 0;
-    entry.element->layoutItem.SetAlignSelf(sized ? CSSLayout::AlignSelf::Start : CSSLayout::AlignSelf::Auto);
 }
 
 int32_t UltraWebGuest::Remove(uint32_t childHandle) {
@@ -547,14 +539,8 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
         case UC_PROP_HEIGHT:
             if (handle == UC_ROOT_HANDLE) return UC_ERR_STATE;
             if (!InRange(value, 0, kMaxLength)) return UC_ERR_LIMIT;
-            if (property == UC_PROP_WIDTH) {
-                element->SetElementSize(Length(value), element->size.height);
-                entry->width = static_cast<float>(value);
-            } else {
-                element->SetElementSize(element->size.width, Length(value));
-                entry->height = static_cast<float>(value);
-            }
-            UpdateCrossAlignment(handle);
+            if (property == UC_PROP_WIDTH) element->SetElementSize(Length(value), element->size.height);
+            else element->SetElementSize(element->size.width, Length(value));
             break;
         case UC_PROP_GROW:
             if (handle == UC_ROOT_HANDLE) return UC_ERR_STATE;
@@ -567,9 +553,18 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
             if (value == UC_DIRECTION_ROW) element->layout.SetFlexRow();
             else if (value == UC_DIRECTION_COLUMN) element->layout.SetFlexColumn();
             else return UC_ERR_LIMIT;
-            entry->row = value == UC_DIRECTION_ROW;
-            for (uint32_t child : entry->children) UpdateCrossAlignment(child);
             break;
+        case UC_PROP_ALIGN: {
+            if (!isContainer) return UC_ERR_PROPERTY;
+            CSSLayout::AlignItems align;
+            if (value == UC_ALIGN_START) align = CSSLayout::AlignItems::Start;
+            else if (value == UC_ALIGN_CENTER) align = CSSLayout::AlignItems::Center;
+            else if (value == UC_ALIGN_END) align = CSSLayout::AlignItems::End;
+            else if (value == UC_ALIGN_STRETCH) align = CSSLayout::AlignItems::Stretch;
+            else return UC_ERR_LIMIT;
+            element->layout.SetFlexAlignItems(align);
+            break;
+        }
         case UC_PROP_GAP:
             if (!isContainer) return UC_ERR_PROPERTY;
             if (!InRange(value, 0, kMaxLength)) return UC_ERR_LIMIT;
@@ -639,6 +634,16 @@ double UltraWebGuest::GetNumber(uint32_t handle, uint32_t property) {
         case UC_PROP_CHECKED: {
             auto box = std::dynamic_pointer_cast<UltraCanvasCheckbox>(element);
             return box ? (box->IsChecked() ? 1.0 : 0.0) : none;
+        }
+        case UC_PROP_ALIGN: {
+            const auto* flex = std::get_if<CSSLayout::FlexLayout>(&element->layout.data);
+            if (!IsContainerKind(entry->kind) || !flex) return none;
+            switch (flex->alignItems) {
+                case CSSLayout::AlignItems::Center:  return UC_ALIGN_CENTER;
+                case CSSLayout::AlignItems::End:     return UC_ALIGN_END;
+                case CSSLayout::AlignItems::Stretch: return UC_ALIGN_STRETCH;
+                default:                             return UC_ALIGN_START;
+            }
         }
         case UC_PROP_ENABLED: return element->IsDisabled() ? 0.0 : 1.0;
         case UC_PROP_VISIBLE: return element->IsVisible() ? 1.0 : 0.0;

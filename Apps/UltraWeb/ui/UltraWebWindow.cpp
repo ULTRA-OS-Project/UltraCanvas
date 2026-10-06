@@ -115,9 +115,10 @@ bool UltraWebWindow::Initialize() {
     toolbar->AddChild(reloadButton_);
     page_->AddChild(toolbar);
 
-    // UC_ROOT_HANDLE: a flex column the app fills.
+    // UC_ROOT_HANDLE: a flex column the app fills; how its children sit
+    // across it is the app's to say (UC_PROP_ALIGN), start until then.
     appArea_ = CreateContainer("uwAppArea", 0, 0, 0, 0);
-    appArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    appArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
     appArea_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     appArea_->layoutItem.SetFlexGrow(1);
     appArea_->layoutItem.SetFlexShrink(1);
