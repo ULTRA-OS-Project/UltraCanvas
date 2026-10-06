@@ -24,7 +24,7 @@ namespace UltraCanvas {
         bool OpenClipboardRetrying() {
             for (int attempt = 0; attempt < 20; ++attempt) {
                 if (OpenClipboard(nullptr)) return true;
-                Sleep(10);
+                ::Sleep(10);   // qualified: UCKeys has a Sleep key in this namespace
             }
             debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
             return false;
