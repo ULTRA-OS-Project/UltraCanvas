@@ -1,3 +1,12 @@
+#### 2026-10-06 *1.66.1*
+- **Windows: Paste of a picture copied in another program writes a picture.**
+  It wrote the clipboard's raw bitmap block as `Pasted image.bmp`, a file
+  with no bitmap header that no viewer could open; it is now
+  `Pasted image.png`. Copied files also go on the clipboard with the formats
+  Explorer adds beside the file list, so a program that pastes files copied
+  in Explorer pastes them from UltraFiler too. Both are framework changes -
+  see `Docs/UltraCanvas/changelog.d/windows-clipboard-images.md`.
+
 #### 2026-10-04 *1.66.0*
 - **Every step of a remote-drive connection is on screen, and a failure can
   be read with its codes.** When an FTP connection failed, the status bar

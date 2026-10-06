@@ -410,6 +410,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboardDib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibilityBridge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp

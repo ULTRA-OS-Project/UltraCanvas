@@ -1,17 +1,159 @@
 // OS/MSWindows/UltraCanvasWindowsClipboard.cpp
 // Win32 Clipboard implementation
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0 - images go on as PNG, CF_DIBV5 and CF_DIB and come off
+//                  as PNG; files go on the way Explorer puts them
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsClipboard.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "UltraCanvasClipboardDib.h"
+#include <shlobj.h>   // ILCreateFromPathW, ILGetSize, ILFree
 #include <iostream>
 #include <cstdio>
 #include <cstring>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+    namespace {
+        // Another program - a clipboard manager, Remote Desktop's rdpclip -
+        // can hold the clipboard open for a moment right after it changes,
+        // and OpenClipboard fails while it does. Retrying briefly turns that
+        // into a short wait instead of a copy or paste that does nothing.
+        bool OpenClipboardRetrying() {
+            for (int attempt = 0; attempt < 20; ++attempt) {
+                if (OpenClipboard(nullptr)) return true;
+                Sleep(10);
+            }
+            debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
+            return false;
+        }
+
+        // "PNG" is the name browsers, Office, GIMP, Paint.NET and Krita
+        // register for a PNG on the clipboard.
+        UINT PngClipboardFormat() {
+            return RegisterClipboardFormatW(L"PNG");
+        }
+
+        // A movable global block holding a copy of size bytes, ready for
+        // SetClipboardData.
+        HGLOBAL GlobalCopyOf(const void* data, size_t size) {
+            HGLOBAL block = GlobalAlloc(GMEM_MOVEABLE, size ? size : 1);
+            if (!block) return nullptr;
+            void* target = GlobalLock(block);
+            if (!target) {
+                GlobalFree(block);
+                return nullptr;
+            }
+            if (size) std::memcpy(target, data, size);
+            GlobalUnlock(block);
+            return block;
+        }
+
+        HGLOBAL GlobalCopyOf(const std::vector<uint8_t>& bytes) {
+            return bytes.empty() ? nullptr : GlobalCopyOf(bytes.data(), bytes.size());
+        }
+
+        // The bytes of one format; the clipboard must be open. A block is
+        // often larger than what was put into it, so a reader that cares
+        // trims the end (a PNG to its IEND).
+        std::vector<uint8_t> ClipboardFormatBytes(UINT format) {
+            std::vector<uint8_t> bytes;
+            HANDLE block = GetClipboardData(format);
+            if (!block) return bytes;
+            const auto* data = static_cast<const uint8_t*>(GlobalLock(block));
+            if (!data) return bytes;
+            bytes.assign(data, data + GlobalSize(block));
+            GlobalUnlock(block);
+            return bytes;
+        }
+
+        // One format to put on the clipboard and the block that holds it.
+        // A required format that is refused fails the whole write.
+        struct ClipboardFormatBlock {
+            UINT format;
+            HGLOBAL block;
+            bool required;
+        };
+
+        // Replaces the clipboard's content with these formats, in this order
+        // - the order a program that takes the first format it knows reads
+        // them in - with one open of the clipboard, so no other program can
+        // read it half written. Owns every block: the clipboard keeps the
+        // ones it accepts and the rest are freed.
+        bool ReplaceClipboardContent(const std::vector<ClipboardFormatBlock>& formats) {
+            bool missingRequired = false;
+            for (const auto& entry : formats) {
+                if (entry.required && !entry.block) missingRequired = true;
+            }
+            if (missingRequired || !OpenClipboardRetrying()) {
+                for (const auto& entry : formats) {
+                    if (entry.block) GlobalFree(entry.block);
+                }
+                return false;
+            }
+            EmptyClipboard();
+            bool anySet = false, requiredSet = true;
+            for (const auto& entry : formats) {
+                if (!entry.block) continue;
+                if (SetClipboardData(entry.format, entry.block)) {
+                    anySet = true;
+                } else {
+                    GlobalFree(entry.block);
+                    if (entry.required) requiredSet = false;
+                }
+            }
+            CloseClipboard();
+            if (!anySet || !requiredSet) {
+                debugOutput << "UltraCanvas Clipboard: SetClipboardData failed" << std::endl;
+            }
+            return anySet && requiredSet;
+        }
+
+        // "Shell IDList Array" (CFSTR_SHELLIDLIST): the files as shell item
+        // ID lists, which is what the shell's own data-object helpers read
+        // (SHCreateShellItemArrayFromDataObject among them), so programs
+        // built on them take a file list only when it carries this. A CIDA:
+        // the count, then count + 1 offsets - the parent folder's ID list,
+        // then each item's relative to it. The parent here is the desktop,
+        // whose ID list is empty, so each file's absolute list serves as its
+        // relative one.
+        HGLOBAL ShellIdListOf(const std::vector<std::wstring>& paths) {
+            std::vector<PIDLIST_ABSOLUTE> items;
+            size_t total = sizeof(UINT) * (paths.size() + 2) + sizeof(USHORT);
+            for (const auto& path : paths) {
+                PIDLIST_ABSOLUTE item = ILCreateFromPathW(path.c_str());
+                if (!item) break;
+                items.push_back(item);
+                total += ILGetSize(item);
+            }
+            HGLOBAL block = nullptr;
+            if (!items.empty() && items.size() == paths.size()) {
+                block = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, total);
+                auto* base = block ? static_cast<uint8_t*>(GlobalLock(block)) : nullptr;
+                if (base) {
+                    auto* header = reinterpret_cast<UINT*>(base);
+                    header[0] = static_cast<UINT>(items.size());
+                    size_t at = sizeof(UINT) * (items.size() + 2);
+                    header[1] = static_cast<UINT>(at);   // the desktop: an empty list, already zero
+                    at += sizeof(USHORT);
+                    for (size_t i = 0; i < items.size(); ++i) {
+                        header[i + 2] = static_cast<UINT>(at);
+                        const UINT size = ILGetSize(items[i]);
+                        std::memcpy(base + at, items[i], size);
+                        at += size;
+                    }
+                    GlobalUnlock(block);
+                } else if (block) {
+                    GlobalFree(block);
+                    block = nullptr;
+                }
+            }
+            for (PIDLIST_ABSOLUTE item : items) ILFree(item);
+            return block;
+        }
+    }
 
     UltraCanvasWindowsClipboard* UltraCanvasWindowsClipboard::instance = nullptr;
 
@@ -46,8 +188,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        if (!OpenClipboard(nullptr)) {
-            debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
+        if (!OpenClipboardRetrying()) {
             return false;
         }
 
@@ -88,9 +229,8 @@ namespace UltraCanvas {
         std::memcpy(pMem, wtext.c_str(), byteSize);
         GlobalUnlock(hMem);
 
-        if (!OpenClipboard(nullptr)) {
+        if (!OpenClipboardRetrying()) {
             GlobalFree(hMem);
-            debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
             return false;
         }
 
@@ -139,7 +279,7 @@ namespace UltraCanvas {
         GlobalUnlock(hText);
         std::memcpy(GlobalLock(hHtml), payload.c_str(), payload.size() + 1);
         GlobalUnlock(hHtml);
-        if (!OpenClipboard(nullptr)) {
+        if (!OpenClipboardRetrying()) {
             GlobalFree(hText);
             GlobalFree(hHtml);
             return false;
@@ -156,7 +296,7 @@ namespace UltraCanvas {
     bool UltraCanvasWindowsClipboard::GetClipboardHtml(std::string& html) {
         const UINT format = RegisterClipboardFormatW(L"HTML Format");
         if (!format || !IsClipboardFormatAvailable(format)) return false;
-        if (!OpenClipboard(nullptr)) return false;
+        if (!OpenClipboardRetrying()) return false;
         HANDLE hData = GetClipboardData(format);
         std::string payload;
         if (hData) {
@@ -190,66 +330,98 @@ namespace UltraCanvas {
 
 // ===== IMAGE OPERATIONS =====
 
+    // A picture comes off the clipboard as PNG, the form every decoder in the
+    // framework reads. Most programs that copy one put a "PNG" next to the
+    // bitmap (browsers, Office, GIMP, Paint.NET, Krita, and the framework
+    // itself), which keeps transparency and comes over byte for byte.
+    // Without one, the DIB that every Windows program copying a picture
+    // offers (Windows makes one from a CF_BITMAP too) is converted. This used
+    // to hand back the raw CF_DIB block as "image/bmp": a bitmap with no file
+    // header, which nothing could decode, so a picture copied in another
+    // program pasted as nothing.
     bool UltraCanvasWindowsClipboard::GetClipboardImage(
             std::vector<uint8_t>& imageData, std::string& format) {
-        if (!IsClipboardFormatAvailable(CF_DIB)) {
+        const UINT pngFormat = PngClipboardFormat();
+        const bool hasPng = pngFormat && IsClipboardFormatAvailable(pngFormat);
+        // CF_DIBV5 first: only its header can say the fourth byte is alpha.
+        std::vector<UINT> dibFormats;
+        if (IsClipboardFormatAvailable(CF_DIBV5)) dibFormats.push_back(CF_DIBV5);
+        if (IsClipboardFormatAvailable(CF_DIB)) dibFormats.push_back(CF_DIB);
+        if (!hasPng && dibFormats.empty()) {
             return false;
         }
 
-        if (!OpenClipboard(nullptr)) {
-            return false;
-        }
-
-        HANDLE hData = GetClipboardData(CF_DIB);
-        if (!hData) {
+        if (hasPng && OpenClipboardRetrying()) {
+            std::vector<uint8_t> png = ClipboardFormatBytes(pngFormat);
             CloseClipboard();
-            return false;
+            const size_t length = ClipboardDib::PngStreamLength(png.data(), png.size());
+            if (length) {
+                png.resize(length);
+                imageData = std::move(png);
+                format = "image/png";
+                return true;
+            }
         }
 
-        auto* pData = static_cast<const uint8_t*>(GlobalLock(hData));
-        if (!pData) {
-            CloseClipboard();
-            return false;
+        for (UINT dibFormat : dibFormats) {
+            if (!OpenClipboardRetrying()) return false;
+            std::vector<uint8_t> dib = ClipboardFormatBytes(dibFormat);
+            CloseClipboard();   // before converting: other programs wait while it is open
+            std::vector<uint8_t> png;
+            if (ClipboardDib::DibToPng(dib.data(), dib.size(), png)) {
+                imageData = std::move(png);
+                format = "image/png";
+                return true;
+            }
         }
-
-        SIZE_T dataSize = GlobalSize(hData);
-        imageData.assign(pData, pData + dataSize);
-        format = "image/bmp";
-
-        GlobalUnlock(hData);
-        CloseClipboard();
-        return true;
+        return false;
     }
 
+    // Every program reads a picture from the clipboard its own way, so it
+    // goes on in each form one may ask for: "PNG" (browsers, Office, GIMP,
+    // Paint.NET, Krita - transparency survives), CF_DIBV5 (alpha-aware
+    // readers of a bitmap) and CF_DIB (the programs that read only a bitmap;
+    // Windows makes CF_BITMAP from it). This used to put the
+    // PNG bytes under CF_DIB, which gave every other program a bitmap header
+    // it could not read, so nothing copied here pasted anywhere else.
     bool UltraCanvasWindowsClipboard::SetClipboardImage(
             const std::vector<uint8_t>& imageData, const std::string& format) {
         if (imageData.empty()) return false;
 
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, imageData.size());
-        if (!hMem) return false;
-
-        auto* pMem = static_cast<uint8_t*>(GlobalLock(hMem));
-        if (!pMem) {
-            GlobalFree(hMem);
-            return false;
-        }
-        std::memcpy(pMem, imageData.data(), imageData.size());
-        GlobalUnlock(hMem);
-
-        if (!OpenClipboard(nullptr)) {
-            GlobalFree(hMem);
-            return false;
+        ClipboardDib::RgbaImage image;
+        std::vector<uint8_t> png;
+        if (ClipboardDib::IsPng(imageData.data(), imageData.size())) {
+            png = imageData;
+            ClipboardDib::DecodePng(png.data(), png.size(), image);
+        } else {
+            // A .bmp file, or a bare DIB as this backend used to hand out.
+            std::vector<uint8_t> dib = ClipboardDib::DibOfBmpFile(imageData.data(), imageData.size());
+            const std::vector<uint8_t>& source = dib.empty() ? imageData : dib;
+            if (ClipboardDib::DecodeDib(source.data(), source.size(), image)) {
+                ClipboardDib::EncodePng(image, png);
+            }
         }
 
-        EmptyClipboard();
-        if (!SetClipboardData(CF_DIB, hMem)) {
-            GlobalFree(hMem);
-            CloseClipboard();
-            return false;
+        std::vector<ClipboardFormatBlock> formats;
+        if (!png.empty()) {
+            formats.push_back({PngClipboardFormat(), GlobalCopyOf(png), false});
         }
-
-        CloseClipboard();
-        return true;
+        if (image.IsValid()) {
+            formats.push_back({CF_DIBV5, GlobalCopyOf(ClipboardDib::EncodeDibV5(image)), false});
+            formats.push_back({CF_DIB, GlobalCopyOf(ClipboardDib::EncodeDib24(image)), false});
+        }
+        if (formats.empty()) {
+            // A JPEG, a GIF, ... that this backend cannot decode: under the
+            // name Windows programs know it by, else its MIME type, so a
+            // program that reads that format still gets it.
+            const std::wstring name = format == "image/jpeg" ? L"JFIF"
+                                    : format == "image/gif"  ? L"GIF"
+                                    : UltraCanvasWindowsApplication::Utf8ToUtf16(format);
+            const UINT registered = name.empty() ? 0 : RegisterClipboardFormatW(name.c_str());
+            if (!registered) return false;
+            formats.push_back({registered, GlobalCopyOf(imageData), true});
+        }
+        return ReplaceClipboardContent(formats);
     }
 
 // ===== FILE OPERATIONS =====
@@ -260,7 +432,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        if (!OpenClipboard(nullptr)) {
+        if (!OpenClipboardRetrying()) {
             return false;
         }
 
@@ -300,7 +472,7 @@ namespace UltraCanvas {
         UINT dropEffectFormat = RegisterClipboardFormatW(L"Preferred DropEffect");
         if (dropEffectFormat != 0 &&
             IsClipboardFormatAvailable(dropEffectFormat) &&
-            OpenClipboard(nullptr)) {
+            OpenClipboardRetrying()) {
             HANDLE hEffect = GetClipboardData(dropEffectFormat);
             if (hEffect) {
                 DWORD* pEffect = static_cast<DWORD*>(GlobalLock(hEffect));
@@ -314,83 +486,57 @@ namespace UltraCanvas {
         return true;
     }
 
+    // A file list goes on the way Explorer puts one, so a program that
+    // pastes files copied in Explorer pastes them from here too: CF_HDROP
+    // (the list most programs read), "Shell IDList Array" (what programs
+    // built on the shell's data-object helpers read), "FileNameW" (the first
+    // file, for programs that take one) and "Preferred DropEffect" (copy or
+    // cut). All in one open of the clipboard: the cut marker used to follow
+    // in a second open, after another program could already have read the
+    // list as a copy.
     bool UltraCanvasWindowsClipboard::SetClipboardFiles(
             const std::vector<std::string>& filePaths, bool cutOperation) {
-        if (!SetClipboardFiles(filePaths)) {
-            return false;
-        }
-
-        // Append the "Preferred DropEffect" marker so Explorer moves (cut) or
-        // copies on paste. SetClipboardFiles already emptied + set CF_HDROP;
-        // adding another format must not empty the clipboard again.
-        UINT dropEffectFormat = RegisterClipboardFormatW(L"Preferred DropEffect");
-        if (dropEffectFormat == 0) return true;   // files are on the clipboard anyway
-
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
-        if (!hMem) return true;
-        DWORD* pEffect = static_cast<DWORD*>(GlobalLock(hMem));
-        if (!pEffect) {
-            GlobalFree(hMem);
-            return true;
-        }
-        *pEffect = cutOperation ? 2 /* DROPEFFECT_MOVE */
-                                : 5 /* DROPEFFECT_COPY | DROPEFFECT_LINK */;
-        GlobalUnlock(hMem);
-
-        if (!OpenClipboard(nullptr)) {
-            GlobalFree(hMem);
-            return true;
-        }
-        if (!SetClipboardData(dropEffectFormat, hMem)) {
-            GlobalFree(hMem);
-        }
-        CloseClipboard();
-        return true;
-    }
-
-    bool UltraCanvasWindowsClipboard::SetClipboardFiles(
-            const std::vector<std::string>& filePaths) {
         if (filePaths.empty()) return false;
 
-        // Build DROPFILES structure followed by double-null-terminated file list
-        // Format: DROPFILES header + file1\0file2\0...fileN\0\0
+        // DROPFILES followed by the double-null-terminated wide file list:
+        // file1\0file2\0...fileN\0\0
+        std::vector<std::wstring> widePaths;
         std::wstring allPaths;
         for (const auto& path : filePaths) {
-            allPaths += UltraCanvasWindowsApplication::Utf8ToUtf16(path);
+            widePaths.push_back(UltraCanvasWindowsApplication::Utf8ToUtf16(path));
+            allPaths += widePaths.back();
             allPaths += L'\0';
         }
         allPaths += L'\0';  // Double-null terminator
 
-        size_t totalSize = sizeof(DROPFILES) + allPaths.size() * sizeof(wchar_t);
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, totalSize);
-        if (!hMem) return false;
+        std::vector<uint8_t> dropFiles(sizeof(DROPFILES) + allPaths.size() * sizeof(wchar_t), 0);
+        auto* header = reinterpret_cast<DROPFILES*>(dropFiles.data());
+        header->pFiles = sizeof(DROPFILES);
+        header->fWide = TRUE;  // Using wide characters
+        std::memcpy(dropFiles.data() + sizeof(DROPFILES), allPaths.data(), allPaths.size() * sizeof(wchar_t));
 
-        auto* pDrop = static_cast<DROPFILES*>(GlobalLock(hMem));
-        if (!pDrop) {
-            GlobalFree(hMem);
-            return false;
+        // Copy is DROPEFFECT_COPY | DROPEFFECT_LINK, as Explorer writes it;
+        // cut is DROPEFFECT_MOVE.
+        const DWORD dropEffect = cutOperation ? 2 : 5;
+        const std::wstring& firstPath = widePaths.front();
+
+        std::vector<ClipboardFormatBlock> formats;
+        if (UINT idList = RegisterClipboardFormatW(L"Shell IDList Array")) {
+            formats.push_back({idList, ShellIdListOf(widePaths), false});
         }
-
-        pDrop->pFiles = sizeof(DROPFILES);
-        pDrop->fWide = TRUE;  // Using wide characters
-        std::memcpy(reinterpret_cast<uint8_t*>(pDrop) + sizeof(DROPFILES),
-                     allPaths.c_str(), allPaths.size() * sizeof(wchar_t));
-        GlobalUnlock(hMem);
-
-        if (!OpenClipboard(nullptr)) {
-            GlobalFree(hMem);
-            return false;
+        formats.push_back({CF_HDROP, GlobalCopyOf(dropFiles), true});
+        if (UINT fileName = RegisterClipboardFormatW(L"FileNameW")) {
+            formats.push_back({fileName, GlobalCopyOf(firstPath.c_str(), (firstPath.size() + 1) * sizeof(wchar_t)), false});
         }
-
-        EmptyClipboard();
-        if (!SetClipboardData(CF_HDROP, hMem)) {
-            GlobalFree(hMem);
-            CloseClipboard();
-            return false;
+        if (UINT effect = RegisterClipboardFormatW(L"Preferred DropEffect")) {
+            formats.push_back({effect, GlobalCopyOf(&dropEffect, sizeof(dropEffect)), false});
         }
+        return ReplaceClipboardContent(formats);
+    }
 
-        CloseClipboard();
-        return true;
+    bool UltraCanvasWindowsClipboard::SetClipboardFiles(
+            const std::vector<std::string>& filePaths) {
+        return SetClipboardFiles(filePaths, false);
     }
 
 // ===== MONITORING =====
@@ -415,7 +561,7 @@ namespace UltraCanvas {
     std::vector<std::string> UltraCanvasWindowsClipboard::GetAvailableFormats() {
         std::vector<std::string> formats;
 
-        if (!OpenClipboard(nullptr)) {
+        if (!OpenClipboardRetrying()) {
             return formats;
         }
 
@@ -425,7 +571,9 @@ namespace UltraCanvas {
             int nameLen = GetClipboardFormatNameW(format, name, 256);
 
             if (nameLen > 0) {
-                formats.push_back(UltraCanvasWindowsApplication::Utf16ToUtf8(name));
+                std::string formatName = UltraCanvasWindowsApplication::Utf16ToUtf8(name);
+                // What GetClipboardImage reads it as.
+                formats.push_back(formatName == "PNG" ? "image/png" : formatName);
             } else {
                 // Standard format - convert to string
                 switch (format) {
@@ -433,6 +581,7 @@ namespace UltraCanvas {
                     case CF_UNICODETEXT: formats.push_back("text/plain;charset=utf-8"); break;
                     case CF_BITMAP:      formats.push_back("image/bmp"); break;
                     case CF_DIB:         formats.push_back("image/bmp"); break;
+                    case CF_DIBV5:       formats.push_back("image/bmp"); break;
                     case CF_HDROP:       formats.push_back("text/uri-list"); break;
                     default:
                         formats.push_back("format/" + std::to_string(format));
@@ -451,7 +600,11 @@ namespace UltraCanvas {
                    IsClipboardFormatAvailable(CF_TEXT);
         }
         if (format == "image/bmp" || format == "image/png" || format == "image/jpeg") {
-            return IsClipboardFormatAvailable(CF_DIB) ||
+            // Any of them is read as an image, and handed over as PNG.
+            const UINT pngFormat = PngClipboardFormat();
+            return (pngFormat && IsClipboardFormatAvailable(pngFormat)) ||
+                   IsClipboardFormatAvailable(CF_DIBV5) ||
+                   IsClipboardFormatAvailable(CF_DIB) ||
                    IsClipboardFormatAvailable(CF_BITMAP);
         }
         if (format == "text/uri-list") {

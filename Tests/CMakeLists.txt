@@ -608,6 +608,34 @@ add_test(NAME PathUtf8Test COMMAND PathUtf8Test
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PathUtf8Test")
 
+# ===== CLIPBOARD DIB TEST =====
+# UltraCanvasClipboardDib: the CF_DIB / CF_DIBV5 <-> PNG conversion the
+# Windows clipboard backend puts every image through. Byte work plus cairo's
+# PNG codec, so it is tested here on Linux without a display.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(CLIPBOARDDIB_CAIRO QUIET cairo)
+endif()
+if(CLIPBOARDDIB_CAIRO_FOUND)
+    message(STATUS "  Building ClipboardDibTest...")
+    add_executable(ClipboardDibTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardDibTest.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasClipboardDib.cpp
+    )
+    target_include_directories(ClipboardDibTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CLIPBOARDDIB_CAIRO_INCLUDE_DIRS}
+    )
+    target_link_libraries(ClipboardDibTest PRIVATE ${CLIPBOARDDIB_CAIRO_LINK_LIBRARIES})
+    target_compile_features(ClipboardDibTest PRIVATE cxx_std_20)
+    set_target_properties(ClipboardDibTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardDibTest COMMAND ClipboardDibTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardDibTest")
+endif()
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.
