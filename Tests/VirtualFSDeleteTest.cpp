@@ -14,7 +14,12 @@
 //      (.tar.gz) both work, as does the VirtualFSManager batch entry point.
 //   4. The fast path opens an archive with a Thai-and-emoji name, and lets
 //      go of both files before the rewrite replaces the original.
-// Version: 1.1.0
+//
+// The archives are written to the directory given as the first argument
+// (ctest passes one in the build tree), else to the system temp directory -
+// never to the current directory, which run from the repository root put
+// them into the source tree, where they were once committed.
+// Version: 1.1.1
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
@@ -178,7 +183,9 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
 }
 
 int main(int argc, char** argv) {
-    std::string outDir = (argc > 1) ? argv[1] : "vfsdelete-test-out";
+    std::string outDir = (argc > 1)
+        ? std::string(argv[1])
+        : UltraCanvas::PathToUtf8(fs::temp_directory_path() / "vfsdelete-test-out");
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(outDir), ec);
     fs::create_directories(UltraCanvas::PathFromUtf8(outDir));
