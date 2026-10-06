@@ -59,6 +59,14 @@ namespace DesktopShellBackend {
     void MonitorWake(MonitorState* state);
     void MonitorClose(MonitorState* state);
 
+    // A global shortcut: `ShortcutWait` blocks until the combination is
+    // pressed (true) or `ShortcutWake` was called (false).
+    struct ShortcutState;
+    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error);   // nullptr + error
+    bool ShortcutWait(ShortcutState* state);
+    void ShortcutWake(ShortcutState* state);
+    void ShortcutClose(ShortcutState* state);
+
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas
 

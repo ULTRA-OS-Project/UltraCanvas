@@ -127,6 +127,7 @@ _ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md"
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRADESKTOP        "Docs/UltraDesktop/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRACLIPBOARD      "Docs/UltraClipboard/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")

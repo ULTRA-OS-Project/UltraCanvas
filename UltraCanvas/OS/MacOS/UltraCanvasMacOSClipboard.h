@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSClipboard.h
 // macOS-specific clipboard implementation using NSPasteboard
-// Version: 1.0.0
-// Last Modified: 2025-12-05
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -57,6 +57,8 @@ namespace UltraCanvas {
         // ===== CLIPBOARD OPERATIONS =====
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
+        bool SetClipboardSecretText(const std::string& text) override;
+        bool IsClipboardMarkedSecret() override;
         bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
         bool SetClipboardImage(const std::vector<uint8_t>& imageData, const std::string& format) override;
         bool GetClipboardFiles(std::vector<std::string>& filePaths) override;

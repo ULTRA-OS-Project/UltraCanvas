@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="760" viewBox="0 0 1040 760" role="img">
+<title>UltraClipboard - main window (proposal)</title>
+<desc>The clipboard history as a list: a search field, a filter by kind, the recording switch, pinned entries first, then entries by day. Every row has a thumbnail, a title, a line naming the kind, size, source application and age, and three actions: copy, edit and delete.</desc>
+<defs>
+<style>text{font-family:Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif} .mono{font-family:'DejaVu Sans Mono', Consolas, Menlo, monospace}</style>
+<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.22"/></filter>
+<linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3A7BD5"/><stop offset="1" stop-color="#7B4397"/></linearGradient><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="0.75" stop-color="#FCD34D"/></linearGradient>
+</defs>
+
+<rect x="0" y="0" width="1040" height="760" fill="#E7EAEE"/>
+<rect x="20" y="20" width="1000" height="720" rx="10" fill="#FFFFFF" stroke="#C5CBD3" stroke-width="1" filter="url(#shadow)"/>
+<path d="M20 56V30a10 10 0 0 1 10-10h980a10 10 0 0 1 10 10v26Z" fill="#F3F4F6"/>
+<line x1="20" y1="56" x2="1020" y2="56" stroke="#DDE1E6" stroke-width="1"/>
+<g transform="translate(36 29) scale(0.75)" fill="none" stroke="#0078D7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3h6v2"/><path d="M8 11h8M8 15h6"/></g>
+<text x="62" y="43" font-size="13" fill="#111827" font-weight="600">UltraClipboard 0.1.0</text>
+<g transform="translate(928 32) scale(0.541667)" fill="none" stroke="#4B5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></g>
+<g transform="translate(958 32) scale(0.541667)" fill="none" stroke="#4B5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/></g>
+<g transform="translate(988 32) scale(0.541667)" fill="none" stroke="#4B5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></g>
+<rect x="40" y="68" width="330" height="32" rx="6" fill="#FFFFFF" stroke="#C5CBD3" stroke-width="1"/>
+<g transform="translate(51 76) scale(0.666667)" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></g>
+<text x="75" y="89" font-size="13" fill="#9CA3AF">Search clipboard history</text>
+<rect x="320" y="75" width="48.28" height="19" rx="4" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/><text x="344.14" y="88.5" font-size="11" fill="#6B7280" text-anchor="middle">Ctrl+F</text>
+<rect x="386" y="68" width="376" height="32" rx="6" fill="#FFFFFF" stroke="#C5CBD3" stroke-width="1"/>
+<path d="M392 68h46v32h-46a6 6 0 0 1-6-6V74a6 6 0 0 1 6-6Z" fill="#0078D7"/>
+<text x="412" y="89" font-size="13" fill="#FFFFFF" font-weight="600" text-anchor="middle">All</text>
+<line x1="438" y1="69" x2="438" y2="99" stroke="#E5E7EB" stroke-width="1"/>
+<text x="468" y="89" font-size="13" fill="#374151" text-anchor="middle">Text</text>
+<line x1="498" y1="69" x2="498" y2="99" stroke="#E5E7EB" stroke-width="1"/>
+<text x="534" y="89" font-size="13" fill="#374151" text-anchor="middle">Images</text>
+<line x1="570" y1="69" x2="570" y2="99" stroke="#E5E7EB" stroke-width="1"/>
+<text x="600" y="89" font-size="13" fill="#374151" text-anchor="middle">Files</text>
+<line x1="630" y1="69" x2="630" y2="99" stroke="#E5E7EB" stroke-width="1"/>
+<text x="660" y="89" font-size="13" fill="#374151" text-anchor="middle">Links</text>
+<line x1="690" y1="69" x2="690" y2="99" stroke="#E5E7EB" stroke-width="1"/>
+<text x="726" y="89" font-size="13" fill="#374151" text-anchor="middle">Pinned</text>
+<text x="790" y="89" font-size="13" fill="#374151">Recording</text>
+<rect x="860" y="74" width="40" height="20" rx="10" fill="#0078D7"/><circle cx="890" cy="84" r="7.5" fill="#fff"/>
+<g transform="translate(924 72) scale(0.916667)" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></g>
+<g transform="translate(962 72) scale(0.916667)" fill="none" stroke="#4B5563" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></g>
+<line x1="20" y1="112" x2="1020" y2="112" stroke="#E5E7EB" stroke-width="1"/>
+<rect x="21" y="112" width="998" height="28" fill="#FAFBFC"/>
+<text x="40" y="131" font-size="11" fill="#6B7280" font-weight="600" letter-spacing="0.8">PINNED</text>
+<text x="97.2" y="131" font-size="11" fill="#9CA3AF">2</text>
+<line x1="20" y1="140" x2="1020" y2="140" stroke="#EEF0F3" stroke-width="1"/>
+<g transform="translate(40 148) scale(1)"><clipPath id="tc1"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#F3F4F6" stroke="#E5E7EB" stroke-width="1"/><rect x="8" y="12" width="32" height="3" rx="1.5" fill="#9CA3AF"/><rect x="8" y="20" width="26" height="3" rx="1.5" fill="#9CA3AF"/><rect x="8" y="28" width="30" height="3" rx="1.5" fill="#9CA3AF"/><rect x="8" y="36" width="17" height="3" rx="1.5" fill="#9CA3AF"/></g>
+<g transform="translate(104 155) scale(0.625)" fill="none" stroke="#0078D7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6"/><path d="M10 2v6l-4 4v2h12v-2l-4-4V2"/><path d="M12 14v8"/></g>
+<text x="124" y="168" font-size="14" fill="#111827" font-weight="500">ULTRA OS Project · Example Street 12 · 10115 Berlin</text>
+<text x="104" y="187" font-size="12" fill="#6B7280">Text · 50 characters · UltraTexter · pinned 3 Oct</text>
+<g transform="translate(891 163) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 163) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 163) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="204" x2="1020" y2="204" stroke="#EEF0F3" stroke-width="1"/>
+<g transform="translate(40 212) scale(1)"><clipPath id="tc2"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#E8F1FB" stroke="#CFE3F7" stroke-width="1"/><g transform="translate(12 12) scale(1)" fill="none" stroke="#0078D7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></g></g>
+<g transform="translate(104 219) scale(0.625)" fill="none" stroke="#0078D7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6"/><path d="M10 2v6l-4 4v2h12v-2l-4-4V2"/><path d="M12 14v8"/></g>
+<text x="124" y="232" font-size="14" fill="#111827" font-weight="500">https://github.com/ULTRA-OS-Project/UltraCanvas</text>
+<text x="104" y="251" font-size="12" fill="#6B7280">Link · github.com · UltraWeb · pinned 28 Sep</text>
+<g transform="translate(891 227) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 227) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 227) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="268" x2="1020" y2="268" stroke="#EEF0F3" stroke-width="1"/>
+<rect x="21" y="268" width="998" height="28" fill="#FAFBFC"/>
+<text x="40" y="287" font-size="11" fill="#6B7280" font-weight="600" letter-spacing="0.8">TODAY</text>
+<text x="89" y="287" font-size="11" fill="#9CA3AF">19</text>
+<line x1="20" y1="296" x2="1020" y2="296" stroke="#EEF0F3" stroke-width="1"/>
+<rect x="21" y="296" width="998" height="64" fill="#E5F3FF"/>
+<g transform="translate(40 304) scale(1)"><clipPath id="tc3"><rect width="48" height="48" rx="7"/></clipPath><g clip-path="url(#tc3)"><rect width="48" height="48" fill="url(#wall)"/><rect x="0" y="0" width="6" height="48" fill="#4A4A4A"/><rect x="42" y="0" width="6" height="48" fill="#4A4A4A"/><rect x="12" y="10" width="25" height="22" rx="2" fill="#FFFFFF"/><rect x="12" y="10" width="25" height="5" rx="2" fill="#D1D5DB"/><rect x="15" y="19" width="14" height="2" fill="#9CA3AF"/><rect x="15" y="24" width="18" height="2" fill="#9CA3AF"/></g><rect x="0.5" y="0.5" width="47" height="47" rx="7" fill="none" stroke="#00000022" stroke-width="1"/></g>
+<text x="104" y="324" font-size="14" fill="#111827" font-weight="500">Screenshot 2026-10-06 09:41</text>
+<text x="104" y="343" font-size="12" fill="#6B7280">Image · PNG · 1920 × 1080 · 412 KB · UltraDesktop · 2 min ago</text>
+<g transform="translate(891 319) scale(0.75)" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<circle cx="936" cy="328" r="16" fill="#CCE4F7"/>
+<g transform="translate(927 319) scale(0.75)" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 319) scale(0.75)" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<rect x="21" y="360" width="998" height="64" fill="#0078D7"/>
+<g transform="translate(40 368) scale(1)"><clipPath id="tc4"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#1E1E2E"/><rect x="8" y="12" width="20" height="3" rx="1.5" fill="#89B4FA"/><rect x="14" y="20" width="24" height="3" rx="1.5" fill="#F9E2AF"/><rect x="14" y="28" width="18" height="3" rx="1.5" fill="#A6E3A1"/><rect x="8" y="36" width="10" height="3" rx="1.5" fill="#89B4FA"/></g>
+<text x="104" y="388" font-size="13.5" fill="#FFFFFF" font-weight="500" class="mono">auto history = CreateListView("history", 0, 0, 640, 480);</text>
+<text x="104" y="407" font-size="12" fill="#DCEBFA">Text · 1 line · 57 characters · UltraTexter · 14 min ago</text>
+<g transform="translate(891 383) scale(0.75)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 383) scale(0.75)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 383) scale(0.75)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<g transform="translate(40 432) scale(1)"><clipPath id="tc5"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#F3F4F6" stroke="#E5E7EB" stroke-width="1"/><path d="M19 6h13l6 6v24a2 2 0 0 1-2 2H19a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" fill="#fff" stroke="#9CA3AF"/><rect x="17" y="26" width="21" height="7" fill="#2563EB"/><path d="M11 12h13l6 6v22a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2V14a2 2 0 0 1 2-2Z" fill="#fff" stroke="#9CA3AF"/><rect x="9" y="29" width="21" height="9" fill="#DC2626"/><text x="19.5" y="36" font-size="7" fill="#fff" font-weight="700" text-anchor="middle">PDF</text><circle cx="39" cy="39" r="8" fill="#374151" stroke="#fff" stroke-width="1.5"/><text x="39" y="42.2" font-size="8.5" fill="#fff" font-weight="700" text-anchor="middle">+1</text></g>
+<text x="104" y="452" font-size="14" fill="#111827" font-weight="500">Invoice-2026-10.pdf, Contract.odt and 1 more</text>
+<text x="104" y="471" font-size="12" fill="#6B7280">3 files · 2.4 MB · UltraFiler · 38 min ago</text>
+<g transform="translate(891 447) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 447) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 447) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="488" x2="1020" y2="488" stroke="#EEF0F3" stroke-width="1"/>
+<g transform="translate(40 496) scale(1)"><clipPath id="tc6"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#3B82F6"/><rect x="0.5" y="0.5" width="47" height="47" rx="7" fill="none" stroke="#00000026" stroke-width="1"/></g>
+<text x="104" y="516" font-size="14" fill="#111827" font-weight="500">#3B82F6</text>
+<text x="104" y="535" font-size="12" fill="#6B7280">Colour · rgb(59, 130, 246) · UltraPaint · 1 h ago</text>
+<g transform="translate(891 511) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 511) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 511) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="552" x2="1020" y2="552" stroke="#EEF0F3" stroke-width="1"/>
+<rect x="21" y="552" width="998" height="28" fill="#FAFBFC"/>
+<text x="40" y="571" font-size="11" fill="#6B7280" font-weight="600" letter-spacing="0.8">YESTERDAY</text>
+<text x="121.8" y="571" font-size="11" fill="#9CA3AF">41</text>
+<line x1="20" y1="580" x2="1020" y2="580" stroke="#EEF0F3" stroke-width="1"/>
+<g transform="translate(40 588) scale(1)"><clipPath id="tc7"><rect width="48" height="48" rx="7"/></clipPath><rect x="0" y="0" width="48" height="48" rx="7" fill="#FFF7ED" stroke="#FED7AA" stroke-width="1"/><rect x="8" y="10" width="26" height="5" rx="2" fill="#EA580C"/><rect x="8" y="21" width="32" height="3" rx="1.5" fill="#A8A29E"/><rect x="8" y="28" width="29" height="3" rx="1.5" fill="#A8A29E"/><rect x="8" y="35" width="20" height="3" rx="1.5" fill="#A8A29E"/><rect x="30" y="35" width="10" height="3" rx="1.5" fill="#2563EB"/></g>
+<text x="104" y="608" font-size="14" fill="#111827" font-weight="500">Q4 planning — notes from Monday's call</text>
+<text x="104" y="627" font-size="12" fill="#6B7280">Formatted text · 3 paragraphs · UltraMail · yesterday 16:20</text>
+<g transform="translate(891 603) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 603) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 603) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="644" x2="1020" y2="644" stroke="#EEF0F3" stroke-width="1"/>
+<g transform="translate(40 652) scale(1)"><clipPath id="tc8"><rect width="48" height="48" rx="7"/></clipPath><g clip-path="url(#tc8)"><rect width="48" height="48" fill="url(#sky)"/><circle cx="33" cy="19" r="6" fill="#FFF7CC"/><path d="M0 40 13 23l9 10 10-14 16 19v10H0Z" fill="#1E3A5F"/><rect y="40" width="48" height="8" fill="#2563EB" opacity="0.75"/></g></g>
+<text x="104" y="672" font-size="14" fill="#111827" font-weight="500">Photo 800 × 533</text>
+<text x="104" y="691" font-size="12" fill="#6B7280">Image · JPEG · 96 KB · UltraWeb · yesterday 11:05</text>
+<g transform="translate(891 667) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>
+<g transform="translate(927 667) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></g>
+<g transform="translate(963 667) scale(0.75)" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></g>
+<line x1="104" y1="708" x2="1020" y2="708" stroke="#EEF0F3" stroke-width="1"/>
+<rect x="892" y="350" width="88" height="24" rx="4" fill="#1F2937"/>
+<text x="904" y="366" font-size="11.5" fill="#FFFFFF" font-weight="500">Edit</text><text x="970" y="366" font-size="11" fill="#9CA3AF" text-anchor="end">Ctrl+E</text>
+<path transform="translate(938 326)" d="M0 0v17l4.5-4.2 3 6.8 2.6-1.1-3-6.6H13Z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+<rect x="1008" y="118" width="6" height="150" rx="3" fill="#C5CBD3"/>
+<path d="M20 712h1000v18a10 10 0 0 1-10 10H30a10 10 0 0 1-10-10Z" fill="#F9FAFB"/>
+<line x1="20" y1="712" x2="1020" y2="712" stroke="#E5E7EB" stroke-width="1"/>
+<text x="40" y="731" font-size="12" fill="#6B7280">126 entries · 18.2 MB · kept for 30 days · pinned entries never expire</text>
+<rect x="788" y="717" width="54.66" height="19" rx="4" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1"/><text x="815.33" y="730.5" font-size="11" fill="#6B7280" text-anchor="middle">Super+V</text><text x="850.66" y="731" font-size="12" fill="#6B7280">opens the quick panel</text>
+<circle cx="40" cy="68" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="40" y="72" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<circle cx="386" cy="68" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="386" y="72" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<circle cx="790" cy="70" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="790" y="74" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<circle cx="100" cy="126" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="100" y="130" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<circle cx="884" cy="146" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="884" y="150" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<circle cx="40" cy="302" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="40" y="306" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">6</text>
+<circle cx="788" cy="716" r="10" fill="#E8590C" stroke="#fff" stroke-width="2"/><text x="788" y="720" font-size="11" fill="#fff" font-weight="700" text-anchor="middle">7</text>
+<rect x="20" y="20" width="1000" height="720" rx="10" fill="none" stroke="#C5CBD3" stroke-width="1"/>
+</svg>
