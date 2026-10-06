@@ -1,3 +1,52 @@
+#### 2026-10-06 *0.9.169*
+- **The menu cursor shows on Windows, and has a clearer picture.**
+  `UCMouseCursor::ContextMenu` - the pointer over a breadcrumb item's dropdown
+  (UltraFiler's path bar, the media viewer), the breadcrumb's `...` item and
+  the dropdown widget's button - never appeared on Windows: the backend handed
+  `media/lib/cursor/context-menu.png` to `LoadCursorFromFileW` and
+  `LoadImageW`, which read only `.cur`, `.ani` and `.ico`, and fell back to the
+  arrow. `LoadCursorFromImageFile` now decodes any other image through
+  `UCImage` and builds an alpha cursor from it, drawn at the window's DPI scale
+  with the hotspot scaled along. The context-menu cursor is drawn from the new
+  `context-menu.svg`, so it is sharp at 125 %, 150 % and 200 %. The same fix
+  brings the colour picker's eyedropper cursor (`color-picker.png`) to
+  Windows, where it was the arrow too.
+  - New artwork: a pointer arrow with a small menu beside it, hotspot at the
+    arrow tip. The old picture was a large page with a faint grey cross at
+    its corner and no arrow, so it did not show where the pointer pointed.
+    `context-menu.png` (Linux, macOS) is the SVG rendered at 32 x 32.
+- **A breadcrumb dropdown opens from the full height of the breadcrumb.** The
+  dropdown zone at the end of an item, and the whole `...` item, now reach
+  from the top to the bottom of the element, padding and border included,
+  instead of stopping at the item row. The menu cursor covers the same zone.
+  `UltraCanvasBreadcrumb` 1.6.1.
+- **Cursors drawn from a picture follow the screen's scaling.** The
+  context-menu and magnifier cursors and the colour picker's eyedropper were
+  drawn once, at the scaling of the screen they were first shown on, and kept
+  that size after their window moved to a screen with other scaling - too
+  small on a 200 % screen, too large back on a 100 % one. Windows and Linux
+  now keep each such cursor's file and draw it once for every scaling it is
+  asked for (`UCImageCursorCache`, `UltraCanvasImageCursorCache.h`); Windows
+  picks the right one on the next pointer move, and Linux puts it up as soon
+  as the window's scaling changes. `Tests/ImageCursorCacheTest.cpp` covers
+  the cache.
+- **macOS uses its own context-menu cursor.** `UCMouseCursor::ContextMenu`
+  is `[NSCursor contextualMenuCursor]` on macOS: macOS draws it at the
+  screen's resolution, where `context-menu.png` was scaled up and blurred on
+  Retina, and there is no file to read - the PNG was read from disk again on
+  every switch to that cursor. The magnifier cursor, still a picture on
+  macOS, is now read once and kept.
+- **The magnifier cursor on Windows.** `UCMouseCursor::LookingGlass` was a
+  crosshair on Windows, because `looking-glass.png` could not be read there;
+  it is now the same magnifier Linux and macOS show (the zoom tools of
+  UltraPaint and ArtCreator). The crosshair remains the fallback when the
+  picture is missing.
+- **Window icons on Windows have clean edges.** `SetWindowIcon` copied
+  cairo's premultiplied pixels straight into the icon, which Windows reads as
+  straight alpha, so every soft edge of the taskbar and title-bar icon came
+  out too dark. The icon and the image cursors now go through one conversion,
+  `UltraCanvasWindowsApplication::IconFromPixmap`.
+
 #### 2026-10-06 *0.9.168*
 - **The .blend and .ms3d readers ignored three more of the mesh import
   options: `TriangulateOnImport`, `WeldTolerance` and
