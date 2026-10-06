@@ -117,7 +117,7 @@ std::filesystem::path ImageHandOffFolder() {
         std::random_device random;
         char name[32];
         std::snprintf(name, sizeof(name), "UltraClipboard-%08x%08x", random(), random());
-        folder = fs::temp_directory_path(ec) / name;
+        folder = fs::temp_directory_path(ec) / PathFromUtf8(name);
         if (!fs::create_directory(folder, ec)) return {};
 #endif
     }
