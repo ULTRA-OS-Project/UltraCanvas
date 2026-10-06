@@ -1,4 +1,12 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.25 - sender icons are fetched by the icon cache's loader when the list
+//                   paints a row that lacks one (no longer on the sync worker);
+//                   website icons (Settings > Privacy > Sender icons)
+// Version: 0.9.24 - how often new mail is checked comes from Settings > Mail > New
+//                   mail (20 seconds to 10 minutes); an account still syncing is
+//                   not synced a second time beside it
+// Version: 0.9.23 - the senders of a sync's new mail go into the address book in one
+//                   transaction (CollectSenders), not a search and a commit each
 // Version: 0.9.22 - recipient suggestions ranked by how often - and how lately - each
 //                   address is written to
 // Version: 0.9.21 - the compose window's To / Cc / Bcc complete from the address book
@@ -106,6 +114,10 @@ constexpr int   kActionIcon    = 12;
 // The first fetch after start waits this long, so the main window is painted
 // (with the cached mail) before the network work begins.
 constexpr unsigned int kStartupSyncDelayMs = 400;
+// How often the background sync asks the scheduler which accounts are due:
+// the shortest interval offered is 20 seconds, so a tick of a few seconds
+// keeps every choice on time without a timer per account.
+constexpr unsigned int kSyncTickMs = 5000;
 // After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
 // seconds to reconnect, and a check before that would only report "offline".
 constexpr unsigned int kWakeSyncDelayMs = 5000;
@@ -735,7 +747,9 @@ void UltraMailApp::UpdateConnectionIndicator() {
             tip.AddText("Update contacts the server now.");
             break;
         default:
-            tip.AddText("Mail is checked every five minutes; Update checks now.");
+            tip.AddText("Mail is checked every " +
+                        Preferences::CheckMailLabel(prefs_.checkMailEverySec) +
+                        "; Update checks now.");
             break;
     }
     connectionBadge_->SetTooltipContent(tip);
@@ -1871,17 +1885,19 @@ void UltraMailApp::StartBackgroundSync() {
     for (const auto& a : accounts_) {
         DiscoveryResult d = SettingsFor(a);
         std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
-        scheduler_.SetAccount(a.accountId, url, /*intervalSec=*/300);
+        scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
     }
     // Only run the live loop when the IMAP plug-in is present (otherwise a timer
-    // would just fire against nothing), and only one of it.
+    // would just fire against nothing), and only one of it. It ticks every few
+    // seconds; the scheduler says which accounts are due at the interval
+    // chosen in Settings, so a new choice applies at the next tick.
     if (syncTimerStarted_ || !ImapPlugin()) return;
     if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
-        app->StartTimer(300000, /*periodic=*/true,
+        app->StartTimer(kSyncTickMs, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
         syncTimerStarted_ = true;
-        // The five-minute timer cannot tell a wake from sleep: after one it may
-        // be minutes before it fires. This short one can (see WakeDetector).
+        // The sync timer cannot tell a wake from sleep: due accounts look the
+        // same either way. This one can (see WakeDetector).
         wake_.Tick(static_cast<int64_t>(std::time(nullptr)));   // start its clock
         app->StartTimer(static_cast<unsigned int>(wake_.TickSec() * 1000), /*periodic=*/true,
                         [this](UltraCanvas::TimerId) {
@@ -1889,6 +1905,17 @@ void UltraMailApp::StartBackgroundSync() {
                                 OnWokeFromSleep();
                         });
     }
+}
+
+void UltraMailApp::ApplyCheckMailInterval() {
+    // SetAccount keeps each account's last-sync time: a shorter interval makes
+    // an account due at once if it has waited that long already.
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = SettingsFor(a);
+        std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        scheduler_.SetAccount(a.accountId, url, prefs_.checkMailEverySec);
+    }
+    UpdateConnectionIndicator();   // its tooltip says how often
 }
 
 void UltraMailApp::OnWokeFromSleep() {
@@ -2118,6 +2145,8 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
 
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     for (const auto& acc : targets) {
+        // Still syncing from the last check: it brings what this one would.
+        if (accountSyncsInFlight_.count(acc.accountId)) continue;
         const Account* account = nullptr;
         for (const auto& a : accounts_) if (a.accountId == acc.accountId) account = &a;
         const std::string email = account ? account->email : "";
@@ -2153,6 +2182,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
 
         auto svc = std::make_shared<SyncService>(workerStore_, *imap, mailDir_);
         const std::string aid = acc.accountId;
+        accountSyncsInFlight_.insert(aid);
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
         SetStatus("Checking " + who + "…");
         NoteConnection(aid, ConnectionState::Checking);
@@ -2190,6 +2220,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             if (!app) return;
             app->PostToUIThread([this, aid, who, provider, userInitiated, outcome, credCode,
                                  arrived]() {
+                accountSyncsInFlight_.erase(aid);
                 const bool last = (--syncsInFlight_ <= 0);
                 if (last) {
                     syncsInFlight_ = 0;
@@ -2245,12 +2276,13 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 NoteConnection(aid, ConnectionState::Connected);
                 vaultLockReported_ = false;
                 if (last) ShowAccountStatus();
-                // The senders of the new mail only: going through the whole
-                // inbox here (one address-book lookup per message, on the UI
-                // thread) held the window for a large mailbox after every sync.
+                // The senders of the new mail only, and all of them at once:
+                // one by one, each was a search of the address book and a
+                // commit of its own on the UI thread - after a large sync (a
+                // new account, a cache refetched) the window did not answer
+                // for tens of seconds on Windows.
                 if (contacts_.IsOpen())
-                    for (const auto& [name, addr] : *arrived)
-                        ContactCollector::CollectSender(contacts_, name, addr);
+                    ContactCollector::CollectSenders(contacts_, *arrived);
                 Refresh();   // authoritative, correctly sorted final list
             });
         },
@@ -2258,10 +2290,9 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                               // one worker touches progressBuf, so no lock is
                               // needed; each flush hands a fresh batch to the UI.
                               [this, aid, progressBuf, arrived](const MessageEnvelope& m) {
-            // On the worker thread, so this is where a known service's icon is
-            // fetched: once per brand, never for an address that is not in the
-            // registry, and not at all when the user turned downloads off.
-            senderIcons_.EnsureIconForAddress(m.fromAddr);
+            // Sender icons are not fetched here: a download held the sync
+            // for its whole round trip. The list asks for the icons of the
+            // rows it paints, and the icon cache's own threads fetch them.
             if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             progressBuf->push_back(m);
@@ -2282,25 +2313,57 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
     }
 }
 
+namespace {
+
+// Icon and page requests look like a browser's: some sites answer anything
+// else with an error page.
+UltraNetHttpOptions SenderIconHttpOptions(int64_t maxBytes) {
+    UltraNetHttpOptions options = UltraNetHttpOptions::Default();
+    options.timeoutMs        = 10000;
+    options.connectTimeoutMs = 5000;
+    options.followRedirects  = true;
+    options.maxReceiveSize   = maxBytes;
+    options.headers.Set("User-Agent", "Mozilla/5.0 (compatible; UltraMail)");
+    return options;
+}
+
+} // namespace
+
 void UltraMailApp::ConfigureSenderIcons() {
     senderIcons_.SetRoot(cacheDir_ + "/sender-icons");
     senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
-    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout:
-    // an icon is never worth holding a sync open for. Only the URLs in the
-    // known-sender registry are ever passed here.
+    senderIcons_.SetSiteIconsEnabled(prefs_.fetchSiteIcons);
+    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout,
+    // on the icon cache's own loader threads - never the sync's or the UI's.
     senderIcons_.SetFetcher([](const std::string& url, std::vector<uint8_t>& out) {
-        UltraNetHttpOptions options = UltraNetHttpOptions::Default();
-        options.timeoutMs        = 10000;
-        options.connectTimeoutMs = 5000;
-        options.followRedirects  = true;
-        options.maxReceiveSize   = 512 * 1024;   // an icon, not a page
         UltraNetResponse response;
-        if (!UltraNet_HttpGet(url, response, options)) return false;
+        if (!UltraNet_HttpGet(url, response, SenderIconHttpOptions(512 * 1024)))   // an icon
+            return false;
         if (!response.IsSuccess() || response.body.empty()) return false;
         out = response.body;
         return true;
     });
+    // A website's home page, for its <link rel="icon">: the head is at the
+    // start, so a page cut off at 256 KB still names its icon - what arrived
+    // is used.
+    senderIcons_.SetPageFetcher([](const std::string& url, std::string& html,
+                                   std::string& finalUrl) {
+        UltraNetResponse response;
+        UltraNet_HttpGet(url, response, SenderIconHttpOptions(256 * 1024));
+        if (!response.IsSuccess() || response.body.empty()) return false;
+        html.assign(response.body.begin(), response.body.end());
+        finalUrl = response.finalUrl;
+        return true;
+    });
+    // An icon arrived (on a loader thread): the rows and the reading pane
+    // waiting for it show it.
+    senderIcons_.SetReadyHandler([this](const std::string& key) {
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, key]() { mailView_.IconCached(key); });
+    });
     mailView_.SetIconCache(&senderIcons_);
+    mailView_.SetIconRequester([this](const std::string& key) { senderIcons_.Request(key); });
 }
 
 void UltraMailApp::RefreshContactIndex() {
@@ -3006,8 +3069,14 @@ void UltraMailApp::OpenSettings() {
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
-        senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+        if (senderIcons_.NetworkEnabled() != prefs_.fetchSenderIcons ||
+            senderIcons_.SiteIconsEnabled() != prefs_.fetchSiteIcons) {
+            senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+            senderIcons_.SetSiteIconsEnabled(prefs_.fetchSiteIcons);
+            mailView_.RefreshBadges();   // which badges may ask for an icon
+        }
         ApplyLinkDisplay();
+        ApplyCheckMailInterval();
         // New waiting-for-reply rules: the account bar's count and the list's
         // reply marks are worked out again.
         if (ApplyNeedsAnswerRules()) Refresh();

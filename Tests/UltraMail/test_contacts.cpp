@@ -2,15 +2,23 @@
 // Exercises the contact store: sectioned storage (Friends/Work/Leisure/
 // Services), emails/phones round-trip, section counts, search, update and
 // remove. Each test uses its own in-memory database.
+// Version: 0.2.0 - CollectSenders, SaveAll, KnownAddresses; the file store in WAL mode
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
+#include "UltraCanvasPathUtf8.h"
+
+#include <UltraDatabase/UltraDatabase.h>
 
 #include <cstdio>
+#include <filesystem>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace UltraMail;
 
@@ -281,6 +289,8 @@ TEST(groups_add_move_count_and_remove) {
 TEST(open_repairs_names_stored_as_raw_bytes) {
     const std::string path = "contacts-jis-repair.db";
     std::remove(path.c_str());
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
     {
         ContactStore s;
         REQUIRE(s.Open("contacts-jis-a", path).success);
@@ -304,5 +314,97 @@ TEST(open_repairs_names_stored_as_raw_bytes) {
                std::string("\xE6\xA0\xAA\xE5\xBC\x8F\xE4\xBC\x9A\xE7\xA4\xBE"
                            "\xE3\x83\x86\xE3\x83\xAC\xE3\x82\xB7\xE3\x82\xA2"));
     std::remove(path.c_str());
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
 }
 #endif
+
+// After a sync the senders of all its new mail are collected at once: one
+// contact per new address however often it came, none for an address the
+// address book holds already, each filed as CollectSender files one.
+TEST(collect_senders_adds_each_new_address_once) {
+    ContactStore s = FreshStore("collect-batch");
+    Contact mine = MakeContact("Anna (mine)", ContactSection::Friends, "anna@example.com");
+    REQUIRE(s.Save(mine).success);
+
+    const std::vector<std::pair<std::string, std::string>> senders = {
+        {"Anna Schmidt", "Anna@Example.com"},          // in the book, in other letters
+        {"Bob", "bob@example.org"},
+        {"Robert", "BOB@example.org"},                 // Bob again: the first name stays
+        {"Kickstarter", "no-reply@kickstarter.com"},   // a known service
+        {"Nobody", ""},                                // no address: nothing to keep
+        {"", "carol@example.net"},                     // no name: the address stands in
+    };
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, senders), 3);
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);   // Anna untouched
+
+    std::vector<Contact> services;
+    REQUIRE(s.ListBySection(ContactSection::Services, services).success);
+    REQUIRE_EQ(services.size(), (size_t)1);
+    REQUIRE_EQ(services.front().organization, std::string("Kickstarter"));
+
+    std::vector<Contact> other;
+    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+    REQUIRE_EQ(other.size(), (size_t)2);
+    REQUIRE_EQ(other[0].displayName, std::string("Bob"));   // sorted by name
+    REQUIRE_EQ(other[0].PrimaryEmail(), std::string("bob@example.org"));
+    REQUIRE_EQ(other[1].displayName, std::string("carol@example.net"));
+
+    // The same batch again finds every address known; an empty one is nothing.
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, senders), 0);
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, {}), 0);
+}
+
+TEST(save_all_saves_a_batch_or_nothing) {
+    ContactStore s = FreshStore("save-all");
+    std::vector<Contact> batch = {
+        MakeContact("Ada", ContactSection::Friends, "Ada@X.example"),
+        MakeContact("Ben", ContactSection::Work, "ben@x.example"),
+    };
+    REQUIRE(s.SaveAll(batch).success);
+    REQUIRE(batch[0].id > 0);
+    REQUIRE(batch[1].id > 0);
+    REQUIRE(batch[0].id != batch[1].id);
+    Contact got;
+    REQUIRE(s.Get(batch[1].id, got).success);
+    REQUIRE_EQ(got.PrimaryEmail(), std::string("ben@x.example"));
+
+    // One contact that cannot be saved: none of the batch is.
+    std::vector<Contact> bad = {
+        MakeContact("Cleo", ContactSection::Friends, "cleo@x.example"),
+        MakeContact("", ContactSection::Friends, "nameless@x.example"),
+    };
+    REQUIRE(!s.SaveAll(bad).success);
+    REQUIRE_EQ(bad[0].id, (int64_t)0);
+
+    // The stored addresses, lower-cased.
+    std::set<std::string> known;
+    REQUIRE(s.KnownAddresses(known).success);
+    REQUIRE_EQ(known.size(), (size_t)2);
+    REQUIRE(known.count("ada@x.example") == 1);
+    REQUIRE(known.count("ben@x.example") == 1);
+    REQUIRE(known.count("cleo@x.example") == 0);
+}
+
+// The address book on disk is in WAL mode, as the mail index is: in the
+// default rollback journal every saved contact created, flushed and deleted a
+// journal file, which on Windows cost tens of milliseconds a contact.
+TEST(file_contact_store_uses_wal) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "ultramail_contacts_wal_test";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    {
+        ContactStore s;
+        REQUIRE(s.Open("contacts-wal", UltraCanvas::PathToUtf8(dir / "contacts.db")).success);
+        UltraDbResultSet rs;
+        REQUIRE(UltraDb_Query("contacts-wal", "PRAGMA journal_mode", rs).success);
+        REQUIRE_EQ(rs.Size(), (size_t)1);
+        REQUIRE_EQ(rs.Row(0)[0].AsString(), std::string("wal"));
+        Contact c = MakeContact("Dora", ContactSection::Other, "dora@x.example");
+        REQUIRE(s.Save(c).success);
+    }
+    UltraDb_CloseConnection("contacts-wal");
+    fs::remove_all(dir, ec);
+}

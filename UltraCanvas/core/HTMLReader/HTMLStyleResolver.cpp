@@ -1,5 +1,9 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.17.0 - an inline !important declaration beats a style sheet's
+//                  !important one, as in CSS: style="color:#fff !important" on
+//                  a mail's button link no longer loses to the template's
+//                  a.link{color:#ff4554 !important} (red text on a red button)
 // Version: 1.16.0 - merged with main's 1.2.1-1.4.0 (attribute selectors,
 //                  structural pseudo-classes, float / clear, box-sizing as borderBox)
 // Version: 1.15.0 - letter-spacing (px / em, inherited; normal = 0)
@@ -288,17 +292,30 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
         }
     }
 
-    // Inline style beats normal author rules...
+    // The cascade, weakest first (CSS Cascading 4, 6.1): normal author rules,
+    // normal inline declarations, !important author rules, !important inline
+    // declarations - within one origin and importance the style attribute
+    // wins. So an inline style beats a normal rule...
+    std::vector<Declaration> inlineImportant;
     std::string inlineStyle = element.GetAttribute("style");
     if (!inlineStyle.empty()) {
-        for (const auto& decl : StyleSheet::ParseDeclarationList(inlineStyle)) {
-            ApplyDeclaration(decl, style, parentStyle);
+        for (auto& decl : StyleSheet::ParseDeclarationList(inlineStyle)) {
+            if (decl.important) inlineImportant.push_back(std::move(decl));
+            else ApplyDeclaration(decl, style, parentStyle);
         }
     }
 
-    // ...but !important beats inline.
+    // ...an !important rule beats an inline style...
     for (const Declaration* decl : importantDecls) {
         ApplyDeclaration(*decl, style, parentStyle);
+    }
+
+    // ...and an !important inline declaration beats both. Mail templates
+    // write the button's own colour that way over a stylesheet's
+    // a.link{color:...!important} - applied last, the button's white text
+    // was painted in the button's red.
+    for (const Declaration& decl : inlineImportant) {
+        ApplyDeclaration(decl, style, parentStyle);
     }
 
     // Presentational attributes still common in eBook markup. "auto" (mail

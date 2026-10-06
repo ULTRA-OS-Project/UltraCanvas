@@ -1,3 +1,112 @@
+#### 2026-10-05 *0.10.32*
+- **The window no longer freezes after a sync that brought much mail.**
+  At the end of every sync the senders of the new mail go into the address
+  book, and that ran on the window's own thread one sender at a time: a
+  search of the whole address book, then - for a new address - a save in a
+  transaction of its own, each flushed to disk. With a handful of new
+  messages nobody noticed. After a sync that brought many - a newly added
+  account, an inbox downloaded again - it held the window: on Windows,
+  where every flush also meets the virus scanner, clicks went unanswered
+  for twenty seconds and more (160 messages), and for minutes on a mailbox
+  of a few thousand. A click on the other account's tile looked as if
+  switching accounts were slow. The senders of a sync are now collected
+  together: one read of the stored addresses, one transaction for every new
+  contact, each address once however many messages it sent
+  (`ContactCollector::CollectSenders`, `ContactStore::SaveAll`). Measured
+  on Linux against the old way: 160 senders 146 ms -> 1.2 ms, 2228 senders
+  2.2 s -> 10 ms; disk flushes for 160 senders 303 -> 8.
+- **The address book is in WAL mode**, as the mail index has been since
+  0.10.21: a saved contact no longer creates, flushes and deletes a journal
+  file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+- **How often new mail is checked is a setting**: *Settings > Mail > New
+  mail* offers every 20, 30, 40 or 50 seconds, every 1, 2, 3, 4 or 5 minutes
+  and every 10 minutes (the default stays 5 minutes). It applies as soon as it
+  is chosen - the sync timer now ticks every five seconds and the scheduler
+  starts the accounts that are due - and the connection's tooltip says the
+  interval. An account whose last check is still running when the next falls
+  due is not checked a second time beside it, which a short interval and a
+  slow server or a first download would otherwise do. Stored as
+  `check_mail_every_sec` in `preferences.ini`; a number edited in by hand is
+  read as the nearest choice. Tests: `test_preferences.cpp`,
+  `test_scheduler.cpp`.
+- **A new account's mail arrives forty times faster**: the IMAP plug-in
+  now fetches headers and bodies in batches instead of one message at a time
+  (about a second a message on Windows before): two hundred headers to a
+  request, and bodies in blocks of up to 4 MB. See the framework changelog,
+  "IMAP: headers and bodies are fetched in batches".
+- **Sender icons are fetched in the background, for the rows on screen.**
+  The sync fetched a known service's icon as each new message's header
+  arrived, and waited for the download (up to ten seconds when a site did
+  not answer) before taking the next message. Now the message list asks for
+  an icon when it paints a row whose sender has none yet - so only the
+  senders actually shown are fetched - and the icon cache's own threads (up to
+  three) download it; the row, and the reading pane, show it as it arrives.
+  Neither the sync nor the window waits for a download
+  (`SenderIconCache::Request`, `SetReadyHandler`).
+- **Other senders show their website's icon.** A sender that is not on
+  UltraMail's list of known services now gets the icon of the website it
+  writes from: the home page of its domain (`mail.shop.example` ->
+  `shop.example`) is read for its `<link rel="icon">`, the size that suits
+  the badge first, with `/favicon.ico` as the fallback; the icon is kept in
+  `cache/sender-icons/sites`, and a site without one is asked again after a
+  week. Only for mail that passed the scam check - never for spam, a scam,
+  the junk folder or a mailbox provider such as gmail.com - because reading
+  the site tells its server that someone looked. A second switch in
+  *Settings > Privacy > Sender icons*, "Show other senders' website icons"
+  (on; `fetch_site_icons`). Tests: `test_senderidentity.cpp`.
+- **A spam or scam badge no longer wears the brand's logo.** An icon is
+  drawn without the badge's frame, so a phishing mail from a forged
+  `paypal.com` address showed PayPal's logo and not the red frame. A
+  dangerous message's badge now always shows its frame.
+- **Genuine mail is no longer marked as a scam for its tracking links.** A
+  newsletter whose link reads "www.shop.example/sale" but goes through its
+  mail service's click tracker looked like a link lying about where it goes -
+  the strongest scam rule - and a bank asking to update payment details, a
+  help-desk Reply-To or links to many sites added to it. UltraMail now reads
+  the checks the receiving server made of the sending domain (the
+  `Authentication-Results` header: DKIM, SPF, DMARC). A sender is **verified**
+  when DMARC passed for its From domain or a DKIM signature of that domain
+  verified; for it those rules no longer count, and for a verified known
+  service (PayPal from `paypal.com`, proven) neither does asking to update
+  account details. Every rule that catches a lie stays: a look-alike domain
+  that signs its own mail is still a scam. Only the topmost header is read -
+  the user's own server's; one further down may be the sender's own forgery
+  (the scan read the bottom one before). A failure counts when DMARC fails,
+  or nothing passed: forwarded mail fails SPF, and a mail service's second
+  signature may fail while the sender's passes - both were "possibly forged"
+  before. Stored verdicts of older rules are scanned again by the sync, 300
+  per folder and check, so the list's badges follow without each message
+  being opened (`SyncEngine::RescanStaleVerdicts`, schema 10). Tests:
+  `test_threatscan.cpp`, `test_localstore.cpp`.
+- **[DMARC] [DKIM] [SPF] beside the sender.** The reading pane shows the
+  sender checks as small bordered labels - green passed, red failed, grey
+  no verdict - each with a tooltip saying what was checked, for which domain,
+  what that proves and which server checked it; **[Not checked]** when the
+  server recorded none (not a warning). A message signed with S/MIME or
+  OpenPGP shows **[S/MIME]** / **[OpenPGP]** in grey: detected, not yet
+  verified. The badge's and the sender's tooltips name a verified sender:
+  "✓ Verified sender: paypal.com (DKIM signature and DMARC)".
+- **Buttons in HTML mail show their text again.** In a newsletter whose
+  template colours every link red with `!important` and whose buttons set
+  their own white text the same way (Lexware, via Intercom), the buttons'
+  text was painted red on the red button - "Zum Artikel", "Anmelden" looked
+  like empty red boxes - and the white footer links came out red. The
+  button's own colour now wins, as in a browser. See the framework
+  changelog, "HTML reader: an inline `!important` beats a style sheet's".
+- **Tooltips no longer cover what they explain.** A tooltip - a message
+  row's, the sender badge's, a link's address - opened below and to the right
+  of the pointer, over the line being read. It now opens above and to the
+  right, with a gap, so the line under the pointer stays readable (below the
+  pointer only at the top of the window). See the framework changelog,
+  "Tooltips sit above and to the right of the pointer".
+- **A mail check no longer signs in four times.** The status, the new
+  messages, the read flags and the bodies each signed in to the server on a
+  connection of their own; now the plug-in keeps a signed-in connection and
+  every check, and every flag change, move or delete between them, runs on
+  it. At a check every twenty seconds that is no sign-in at all after the
+  first, instead of twelve a minute per account - which some providers limit.
+  See the framework changelog, "IMAP: one sign-in serves many checks".
+
 #### 2026-10-05 *0.10.31*
 - **The mailbox opens in a Windows profile named in any script.** The data
   folder (`%APPDATA%\UltraMail`: the mail database, the credential vault,

@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.5.0 - mail authentication (ParseAuthenticationResults, VerifiedSenderDomain,
+//                  TopHeaderValue): proven senders are not flagged for tracking
+//                  links, help-desk reply addresses or many link domains
 // Version: 0.4.0 - plain text: mailto: and bare mail addresses are links too
 // Version: 0.3.0 - PlainLinkAt: the bare URL at a position of plain text
 // Version: 0.2.0 - borrowed-brand-pictures rule (a brand's own pictures over links
@@ -526,16 +529,29 @@ ThreatReport ScanMessage(const ScanInput& input) {
     }
 
     // ---- Authentication results -------------------------------------------
-    const std::string auth = Lower(input.authResults);
-    if (!auth.empty()) {
-        if (Contains(auth, "dmarc=fail") || Contains(auth, "spf=fail") ||
-            Contains(auth, "dkim=fail")) {
-            Add(report, 30, "auth-failure",
-                "The sending domain failed its own SPF/DKIM/DMARC checks, so the "
-                "From address may be forged.");
-        } else if (Contains(auth, "dmarc=pass")) {
-            report.score -= 10;   // the From address is at least genuinely theirs
-        }
+    // The receiving server's verdict on the From domain. A proven domain is
+    // the sender's own - not a promise that the mail is harmless (a fraudster
+    // can sign for a domain of their own), but it does mean the things a
+    // genuine sender's mail service does are not signs of forgery: links
+    // through its click tracker, a reply address at its help desk, links to
+    // many sites.
+    const AuthResults auth = ParseAuthenticationResults(input.authResults);
+    report.verifiedDomain = VerifiedSenderDomain(auth, senderDomain, &report.verifiedBy);
+    const bool authenticated = !report.verifiedDomain.empty();
+    // A registry brand's own domain, proven: the mail really is the brand's.
+    const bool verifiedBrand = authenticated && senderBrand != nullptr;
+    bool dkimFailed = false;
+    for (const auto& sig : auth.dkim) dkimFailed = dkimFailed || sig.first == "fail";
+    // A failure counts when DMARC says so, or - with no DMARC result - when
+    // SPF or a signature failed and nothing passed: forwarded mail fails SPF
+    // and a second, foreign signature may fail while the sender's own passes.
+    if (auth.dmarc == "fail" ||
+        (auth.dmarc.empty() && !authenticated && (auth.spf == "fail" || dkimFailed))) {
+        Add(report, 30, "auth-failure",
+            "The sending domain failed its own SPF/DKIM/DMARC checks, so the "
+            "From address may be forged.");
+    } else if (authenticated) {
+        report.score -= 10;   // the From address is at least genuinely theirs
     }
 
     // ---- The sender claims a brand its address does not belong to ---------
@@ -632,19 +648,23 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 ", so its real destination cannot be seen.");
         }
 
-        // The anchor text names one address and the link goes to another.
+        // The anchor text names one address and the link goes to another -
+        // unless the address named is the proven sender's own, and the link
+        // goes through its mail service's click tracker.
         const std::string claimedHost = ClaimedHostIn(link.text);
         if (!claimedHost.empty()) {
             const std::string claimedReg = RegistrableDomain(claimedHost);
-            if (!claimedReg.empty() && claimedReg != linkReg && linkReg != senderReg) {
+            if (!claimedReg.empty() && claimedReg != linkReg && linkReg != senderReg &&
+                !(authenticated && claimedReg == senderReg)) {
                 Add(report, 50, "link-target-mismatch",
                     "A link reads \"" + claimedHost + "\" but actually goes to " +
                     link.host + ".");
             }
         }
 
-        // A button or link that names a brand and goes somewhere else entirely.
-        if (!link.text.empty()) {
+        // A button or link that names a brand and goes somewhere else entirely
+        // (the brand itself, proven, links where it likes).
+        if (!link.text.empty() && !verifiedBrand) {
             const SenderBrand* linkBrand = BrandNamedIn(link.text);
             if (linkBrand && !DomainBelongsToBrand(link.host, *linkBrand) &&
                 !(senderBrand && senderBrand->id == linkBrand->id)) {
@@ -683,14 +703,16 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
-    if (foreignDomains.size() >= 5) {
+    if (!authenticated && foreignDomains.size() >= 5) {
         Add(report, 8, "many-foreign-domains",
             "The message links to " + std::to_string(foreignDomains.size()) +
             " different domains, none of them the sender's.");
     }
 
     // ---- Language that asks for credentials, plus a link off-domain -------
-    if (!foreignDomains.empty()) {
+    // Not from a proven registry brand: the bank itself asking to update
+    // account details is the bank.
+    if (!foreignDomains.empty() && !verifiedBrand) {
         for (const auto& phrase : CredentialPhrases()) {
             if (Contains(bodyLower, phrase)) {
                 Add(report, 30, "credential-request",
@@ -728,7 +750,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
     }
 
     // ---- Reply-To pointing somewhere else ---------------------------------
-    if (!input.replyTo.empty() && !senderReg.empty()) {
+    // A proven sender's replies may well go to its help desk's domain.
+    if (!authenticated && !input.replyTo.empty() && !senderReg.empty()) {
         const std::string replyReg = RegistrableDomain(DomainOfAddress(input.replyTo));
         if (!replyReg.empty() && replyReg != senderReg) {
             Add(report, 15, "reply-to-mismatch",
@@ -793,7 +816,9 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     in.autoSubmitted   = Header(msg.root.headers, "Auto-Submitted");
     in.spamFlag        = Header(msg.root.headers, "X-Spam-Flag");
     in.spamStatus      = Header(msg.root.headers, "X-Spam-Status");
-    in.authResults     = Header(msg.root.headers, "Authentication-Results");
+    // The topmost: the parsed headers keep the last of a repeated header,
+    // and the bottom-most Authentication-Results may be anyone's.
+    in.authResults     = TopHeaderValue(rawMessage, "Authentication-Results");
 
     std::string body;
     bool isHtml = false;
@@ -809,6 +834,305 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
 }
 
 } // namespace
+
+// ---------------------------------------------------------------------------
+// Mail authentication
+// ---------------------------------------------------------------------------
+std::string TopHeaderValue(const std::string& raw, const std::string& name) {
+    const std::string want = Lower(name) + ":";
+    std::size_t pos = 0;
+    while (pos < raw.size()) {
+        std::size_t end = raw.find('\n', pos);
+        if (end == std::string::npos) end = raw.size();
+        std::string line = raw.substr(pos, end - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) break;   // the end of the header block
+        if (Lower(line.substr(0, want.size())) == want) {
+            std::string value = line.substr(want.size());
+            // Folded: the lines that follow and begin with white space.
+            for (std::size_t next = end + 1; next < raw.size();) {
+                if (raw[next] != ' ' && raw[next] != '\t') break;
+                std::size_t stop = raw.find('\n', next);
+                if (stop == std::string::npos) stop = raw.size();
+                std::string more = raw.substr(next, stop - next);
+                if (!more.empty() && more.back() == '\r') more.pop_back();
+                value += " " + Trim(more);
+                next = stop + 1;
+            }
+            return Trim(value);
+        }
+        pos = end + 1;
+    }
+    return "";
+}
+
+namespace {
+
+// `s` split at `sep` outside double quotes.
+std::vector<std::string> SplitOutsideQuotes(const std::string& s, char sep) {
+    std::vector<std::string> parts;
+    std::string current;
+    bool quoted = false;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const char c = s[i];
+        if (quoted && c == '\\' && i + 1 < s.size()) { current += c; current += s[++i]; continue; }
+        if (c == '"') quoted = !quoted;
+        if (!quoted && (sep == ' ' ? std::isspace(static_cast<unsigned char>(c)) != 0 : c == sep)) {
+            if (!Trim(current).empty()) parts.push_back(Trim(current));
+            current.clear();
+            continue;
+        }
+        current += c;
+    }
+    if (!Trim(current).empty()) parts.push_back(Trim(current));
+    return parts;
+}
+
+std::string Unquote(const std::string& s) {
+    if (s.size() < 2 || s.front() != '"' || s.back() != '"') return s;
+    std::string out;
+    for (std::size_t i = 1; i + 1 < s.size(); ++i) {
+        if (s[i] == '\\' && i + 2 < s.size()) ++i;
+        out += s[i];
+    }
+    return out;
+}
+
+} // namespace
+
+AuthResults ParseAuthenticationResults(const std::string& value) {
+    AuthResults out;
+    // Comments out - "(p=REJECT sp=REJECT dis=NONE)", "(google.com: domain
+    // of ... designates ...)" - nested ones too; quoted strings kept.
+    std::string clean;
+    int depth = 0;
+    bool quoted = false;
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        const char c = value[i];
+        if (depth > 0) {
+            if (c == '\\') ++i;
+            else if (c == '(') ++depth;
+            else if (c == ')') --depth;
+            continue;
+        }
+        if (quoted) {
+            clean += c;
+            if (c == '\\' && i + 1 < value.size()) clean += value[++i];
+            else if (c == '"') quoted = false;
+            continue;
+        }
+        if (c == '(') { ++depth; clean += ' '; continue; }
+        if (c == '"') quoted = true;
+        clean += c;
+    }
+
+    // The authserv-id, then one result per ';'.
+    const std::vector<std::string> parts = SplitOutsideQuotes(clean, ';');
+    if (parts.empty()) return out;
+    const std::vector<std::string> head = SplitOutsideQuotes(parts[0], ' ');
+    if (!head.empty()) out.authservId = Lower(head[0]);
+    for (std::size_t p = 1; p < parts.size(); ++p) {
+        const std::vector<std::string> tokens = SplitOutsideQuotes(parts[p], ' ');
+        if (tokens.empty()) continue;
+        const std::size_t eq = tokens[0].find('=');
+        if (eq == std::string::npos) continue;   // "none": nothing was checked
+        std::string method = Lower(Trim(tokens[0].substr(0, eq)));
+        method = method.substr(0, method.find('/'));   // "dkim/1" -> "dkim"
+        const std::string result = Lower(Trim(tokens[0].substr(eq + 1)));
+        std::map<std::string, std::string> props;
+        for (std::size_t t = 1; t < tokens.size(); ++t) {
+            const std::size_t at = tokens[t].find('=');
+            if (at == std::string::npos) continue;
+            props.emplace(Lower(tokens[t].substr(0, at)), Unquote(tokens[t].substr(at + 1)));
+        }
+        auto prop = [&props](const char* key) {
+            const auto it = props.find(key);
+            return it == props.end() ? std::string() : Lower(Trim(it->second));
+        };
+        auto domainOf = [](const std::string& s) {
+            const std::size_t at = s.rfind('@');
+            return at == std::string::npos ? s : s.substr(at + 1);
+        };
+        if (method == "dmarc" && out.dmarc.empty()) {
+            out.dmarc     = result;
+            out.dmarcFrom = domainOf(prop("header.from"));
+        } else if (method == "spf" && out.spf.empty()) {
+            out.spf       = result;
+            out.spfDomain = domainOf(prop("smtp.mailfrom"));
+        } else if (method == "dkim") {
+            std::string signer = prop("header.d");
+            if (signer.empty()) signer = domainOf(prop("header.i"));
+            out.dkim.emplace_back(result, signer);
+        }
+    }
+    return out;
+}
+
+std::string VerifiedSenderDomain(const AuthResults& auth, const std::string& fromDomain,
+                                 std::string* method) {
+    const std::string from = Lower(Trim(fromDomain));
+    const std::string fromReg = RegistrableDomain(from);
+    if (fromReg.empty() || auth.dmarc == "fail") return "";
+    const bool dmarc = auth.dmarc == "pass" &&
+                       (auth.dmarcFrom.empty() || RegistrableDomain(auth.dmarcFrom) == fromReg);
+    bool dkim = false;
+    for (const auto& sig : auth.dkim)
+        if (sig.first == "pass" && !sig.second.empty() && RegistrableDomain(sig.second) == fromReg)
+            dkim = true;
+    if (!dmarc && !dkim) return "";
+    if (method) *method = dkim && dmarc ? "DKIM signature and DMARC" : dkim ? "DKIM signature" : "DMARC";
+    return from;
+}
+
+namespace {
+
+std::string StateWord(const std::string& result) {
+    if (result == "pass") return "passed";
+    if (result == "fail") return "failed";
+    if (result == "softfail") return "soft fail (not authorised, but the domain does not insist)";
+    if (result == "neutral") return "neutral (the domain makes no statement)";
+    if (result == "none") return "none (the domain publishes no record)";
+    if (result == "temperror") return "temporary error (the check could not be completed)";
+    if (result == "permerror") return "error (the domain's record is broken)";
+    if (result == "policy") return "not accepted by the receiving server's policy";
+    return result;
+}
+
+AuthCheckState StateOf(const std::string& result) {
+    if (result == "pass") return AuthCheckState::Passed;
+    if (result == "fail") return AuthCheckState::Failed;
+    return AuthCheckState::Neutral;
+}
+
+} // namespace
+
+std::vector<AuthCheck> DescribeAuthentication(const AuthResults& auth,
+                                              const std::string& fromDomain) {
+    std::vector<AuthCheck> checks;
+    const std::string from    = Lower(Trim(fromDomain));
+    const std::string fromReg = RegistrableDomain(from);
+    const std::string fromName = from.empty() ? std::string("the sender's domain") : from;
+    const std::string checkedBy = auth.authservId.empty()
+        ? std::string("Checked by the receiving server when the message arrived.")
+        : "Checked by " + auth.authservId + " when the message arrived.";
+
+    if (!auth.dmarc.empty()) {
+        AuthCheck c;
+        c.label = "DMARC";
+        c.state = StateOf(auth.dmarc);
+        const std::string domain = auth.dmarcFrom.empty() ? fromName : auth.dmarcFrom;
+        c.tooltip = "DMARC: " + StateWord(auth.dmarc) + "\n";
+        if (auth.dmarc == "pass")
+            c.tooltip += "The message meets " + domain + "'s own rules for mail with its "
+                         "From address: a DKIM signature or SPF check of " + domain +
+                         " passed. The From address is genuine - the strongest of the "
+                         "three checks.";
+        else if (auth.dmarc == "fail")
+            c.tooltip += "The message does not meet " + domain + "'s own rules for mail "
+                         "with its From address: neither a signature nor the delivering "
+                         "server belongs to " + domain + ". The From address is likely forged.";
+        else
+            c.tooltip += "No verdict on whether " + domain + " sent this message.";
+        c.tooltip += "\n" + checkedBy;
+        checks.push_back(c);
+    }
+
+    if (!auth.dkim.empty()) {
+        AuthCheck c;
+        c.label = "DKIM";
+        bool ownPass = false, anyPass = false, anyFail = false;
+        for (const auto& sig : auth.dkim) {
+            const bool own = !sig.second.empty() && RegistrableDomain(sig.second) == fromReg;
+            if (sig.first == "pass") { anyPass = true; ownPass = ownPass || own; }
+            if (sig.first == "fail") anyFail = true;
+        }
+        c.state = anyPass ? AuthCheckState::Passed
+                : anyFail ? AuthCheckState::Failed : AuthCheckState::Neutral;
+        c.tooltip = std::string("DKIM: ") + (anyPass ? "passed" : anyFail ? "failed" : "no verdict");
+        for (const auto& sig : auth.dkim) {
+            const std::string signer = sig.second.empty() ? std::string("an unnamed domain")
+                                                           : sig.second;
+            const bool own = !sig.second.empty() && RegistrableDomain(sig.second) == fromReg;
+            c.tooltip += "\n- Signature of " + signer + ": " + StateWord(sig.first);
+            if (sig.first == "pass")
+                c.tooltip += own ? " - the message comes from " + signer +
+                                       " and was not changed on the way."
+                                 : " - " + signer + " (a mail service) sent it; that says "
+                                       "nothing about the From address.";
+            else if (sig.first == "fail")
+                c.tooltip += " - the message was changed on the way, or the signature "
+                             "is forged.";
+        }
+        if (anyPass && !ownPass)
+            c.tooltip += "\nNo signature is " + fromName + "'s own.";
+        c.tooltip += "\n" + checkedBy;
+        checks.push_back(c);
+    }
+
+    if (!auth.spf.empty()) {
+        AuthCheck c;
+        c.label = "SPF";
+        c.state = StateOf(auth.spf);
+        const std::string domain = auth.spfDomain.empty() ? std::string("the envelope sender's domain")
+                                                          : auth.spfDomain;
+        c.tooltip = "SPF: " + StateWord(auth.spf) + "\n";
+        if (auth.spf == "pass")
+            c.tooltip += "The server that delivered the message is one " + domain +
+                         " allows to send its mail.";
+        else if (auth.spf == "fail")
+            c.tooltip += "The server that delivered the message is not one " + domain +
+                         " allows to send its mail. Forwarded mail fails this check too.";
+        else
+            c.tooltip += "No clear answer whether " + domain + " allows the server that "
+                         "delivered the message.";
+        if (!auth.spfDomain.empty() && RegistrableDomain(auth.spfDomain) != fromReg)
+            c.tooltip += "\n(" + auth.spfDomain + " is the envelope sender, often a mail "
+                         "service - not necessarily the From address.)";
+        c.tooltip += "\n" + checkedBy;
+        checks.push_back(c);
+    }
+
+    if (checks.empty()) {
+        AuthCheck c;
+        c.label = "Not checked";
+        c.state = AuthCheckState::Neutral;
+        c.tooltip = "The receiving server recorded no sender checks (DKIM, SPF, DMARC) for "
+                    "this message, so whether " + fromName + " really sent it cannot be "
+                    "told from here. Not a warning: many mail servers do not record them.";
+        checks.push_back(c);
+    }
+    return checks;
+}
+
+std::string MessageSignatureKind(const std::string& rawMessage) {
+    const std::string type = Lower(TopHeaderValue(rawMessage, "Content-Type"));
+    if (Contains(type, "multipart/signed")) {
+        if (Contains(type, "pkcs7-signature")) return "S/MIME";
+        if (Contains(type, "pgp-signature"))   return "OpenPGP";
+    }
+    if (Contains(type, "application/pkcs7-mime") || Contains(type, "application/x-pkcs7-mime"))
+        if (Contains(type, "signed-data")) return "S/MIME";
+    return "";
+}
+
+std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessage) {
+    const std::string from = DomainOfAddress(TopHeaderValue(rawMessage, "From"));
+    std::vector<AuthCheck> checks = DescribeAuthentication(
+        ParseAuthenticationResults(TopHeaderValue(rawMessage, "Authentication-Results")), from);
+    const std::string kind = MessageSignatureKind(rawMessage);
+    if (!kind.empty()) {
+        AuthCheck c;
+        c.label = kind;
+        c.state = AuthCheckState::Neutral;
+        c.tooltip = kind + ": the author signed this message with " +
+                    (kind == "S/MIME" ? std::string("a personal certificate")
+                                      : std::string("an OpenPGP key")) +
+                    ".\nUltraMail does not check such signatures yet, so the signature "
+                    "says nothing on its own - anyone can attach one.";
+        checks.push_back(c);
+    }
+    return checks;
+}
 
 ThreatReport ScanRawMessage(const std::string& rawMessage) {
     ScanInput in;

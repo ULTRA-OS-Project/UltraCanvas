@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.4.0 - schema 10 (verified_domain, verified_by); ListStaleVerdicts
 // Version: 0.3.0 - WeighSentRecipients (recent mail weighs more)
 // Version: 0.2.0 - schema 8: the account's signature (SetAccountSignature)
 // Version: 0.1.0 (Phase 1)
@@ -205,6 +206,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // '' until the next folder list fills it in; the names are read
           // with a separator worked out from them meanwhile.
           "ALTER TABLE folders ADD COLUMN delimiter TEXT DEFAULT '';" },
+        { 10, "verified sender domain",
+          // '' = nothing proved the From domain (or scanned before this).
+          "ALTER TABLE message_security ADD COLUMN verified_domain TEXT DEFAULT '';"
+          "ALTER TABLE message_security ADD COLUMN verified_by TEXT DEFAULT '';" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -716,16 +721,19 @@ UltraDbResult LocalStore::SetSecurity(const std::string& accountId,
                                            : static_cast<int64_t>(std::time(nullptr));
     return UltraDb_Exec(connection_,
         "INSERT INTO message_security(account_id, folder, uid, level, score, bulk, "
-        "  reason, scanned_at, attachments) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "  reason, scanned_at, attachments, verified_domain, verified_by) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
         "level=excluded.level, score=excluded.score, bulk=excluded.bulk, "
         "reason=excluded.reason, scanned_at=excluded.scanned_at, "
+        "verified_domain=excluded.verified_domain, verified_by=excluded.verified_by, "
         // A verdict without a count keeps the count already stored.
         "attachments=CASE WHEN excluded.attachments >= 0 THEN excluded.attachments "
         "                 ELSE message_security.attachments END",
         { accountId, folder, uid, ToString(sec.level),
           static_cast<int64_t>(sec.score), static_cast<int64_t>(sec.bulk ? 1 : 0),
-          sec.reason, when, static_cast<int64_t>(sec.attachments) });
+          sec.reason, when, static_cast<int64_t>(sec.attachments),
+          sec.verifiedDomain, sec.verifiedBy });
 }
 
 UltraDbResult LocalStore::SetAttachmentCount(const std::string& accountId,
@@ -755,6 +763,23 @@ UltraDbResult LocalStore::ListUncountedAttachments(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult LocalStore::ListStaleVerdicts(const std::string& accountId,
+                                            const std::string& folder, int64_t rulesRevision,
+                                            int limit, std::vector<int64_t>& uids) const {
+    uids.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT s.uid AS uid FROM message_security s "
+        "JOIN messages m ON m.account_id = s.account_id AND m.folder = s.folder "
+        "  AND m.uid = s.uid "
+        "WHERE s.account_id=? AND s.folder=? AND s.level <> 'unscanned' AND s.scanned_at < ? "
+        "ORDER BY m.date DESC LIMIT ?",
+        { accountId, folder, rulesRevision, static_cast<int64_t>(limit) }, rs);
+    if (!q) return q;
+    for (const auto& row : rs) uids.push_back(row["uid"].AsInt64());
+    return UltraDbResult::Ok();
+}
+
 namespace {
 
 MessageSecurity RowToSecurity(const UltraDbRow& row) {
@@ -765,10 +790,13 @@ MessageSecurity RowToSecurity(const UltraDbRow& row) {
     sec.reason    = row["reason"].AsString();
     sec.scannedAt = row["scanned_at"].AsInt64();
     sec.attachments = static_cast<int>(row["attachments"].AsInt64());
+    sec.verifiedDomain = row["verified_domain"].AsString();
+    sec.verifiedBy     = row["verified_by"].AsString();
     return sec;
 }
 
-const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at, attachments";
+const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at, attachments, "
+                               "verified_domain, verified_by";
 
 } // namespace
 

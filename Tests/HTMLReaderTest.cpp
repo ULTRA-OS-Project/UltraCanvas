@@ -1,6 +1,8 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.17.0 - the !important cascade: inline !important beats a style
+//                  sheet's !important (a newsletter's white button text)
 // Version: 1.16.0 - merged with main's 1.4.0-1.7.0
 // Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
@@ -542,6 +544,55 @@ static void TestImportantWidthReplacesInlineWidth() {
     CHECK(!sa.widthPercent.has_value());
 }
 
+// A newsletter's button (Intercom / Lexware): the template's style sheet says
+// a.intercom-content-link { color: #FF4554 !important } and the button's link
+// says style="color: #ffffff !important" on a #FF4554 cell. The inline
+// !important wins in CSS; applied before the sheet's, the text was red on red.
+static void TestInlineImportantBeatsSheetImportant() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "a.intercom-content-link { color: #FF4554 !important; font-weight: normal !important; }"
+        "p.lead { color: #333333 !important; }"
+        "</style></head><body>"
+        "<table><tr><td style='background-color: #FF4554; padding: 10px 24px;' bgcolor='#FF4554'>"
+        "<a id='btn' href='https://example.com/' class='intercom-content-link' "
+        "style='color: #ffffff !important; font-size: 14px; white-space: nowrap;'>Zum Artikel</a>"
+        "</td></tr></table>"
+        "<a id='plain' href='https://example.com/' class='intercom-content-link' "
+        "style='color: #00ff00;'>Weiter</a>"
+        "<p id='lead' class='lead' style='color: #0000ff !important; color: #00ff00;'>x</p>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 16.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    Node* btn = find(doc.root.get(), "btn");
+    Node* plain = find(doc.root.get(), "plain");
+    Node* lead = find(doc.root.get(), "lead");
+    CHECK(btn && plain && lead);
+    if (!btn || !plain || !lead) return;
+
+    // Inline !important over the sheet's !important: white.
+    const ComputedStyle& sb = resolver.StyleOf(btn);
+    CHECK(sb.color.r == 255 && sb.color.g == 255 && sb.color.b == 255);
+    CHECK(Near(sb.fontSizePx, 14.f));
+    // A plain inline colour still loses to the sheet's !important.
+    const ComputedStyle& sp = resolver.StyleOf(plain);
+    CHECK(sp.color.r == 0xFF && sp.color.g == 0x45 && sp.color.b == 0x54);
+    // Within the style attribute, !important beats a later normal declaration.
+    const ComputedStyle& sl = resolver.StyleOf(lead);
+    CHECK(sl.color.r == 0 && sl.color.g == 0 && sl.color.b == 255);
+}
+
 // Attribute selectors, as Mailchimp writes its narrow-screen rules:
 // table[id=templateBody]{width:100% !important}, td[class=mcnTextContent].
 static void TestAttributeSelectors() {
@@ -1044,6 +1095,7 @@ int main() {
     TestMailTableStyles();
     TestImageAutoAttributes();
     TestImportantWidthReplacesInlineWidth();
+    TestInlineImportantBeatsSheetImportant();
     TestAttributeSelectors();
     TestStructuralPseudoClasses();
     TestMediaAndBackgrounds();
