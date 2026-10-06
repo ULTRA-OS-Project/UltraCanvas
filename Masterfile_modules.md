@@ -1949,3 +1949,44 @@ Rules: every blocking call returns `VideoFXResult`, with the reason in
 `VideoFX_GetLastError()`; effects are typed values, never filter strings from
 the caller; numbers in filter text are dot-decimal whatever the locale; paths
 are UTF-8; a failed or cancelled export leaves no partial file behind.
+
+---
+
+### **17. WasmHost**
+
+Runs WebAssembly modules for UltraCanvas applications: compile (binary or
+WebAssembly text), link the host functions an application offers,
+instantiate with WASI preview 1 and nothing granted, call exports - with a
+memory cap per instance and a time limit per call. Sources under
+`UltraCanvas/{include,core}/WasmHost/`, target `WasmHost`, header
+`<WasmHost/UltraCanvasWasmHost.h>`, `namespace UltraCanvas`. First user:
+UltraWeb (`Docs/UltraWeb/UltraWeb.md`, plan in
+`Docs/UltraWeb/UltraWebProposal.md`).
+
+**A wrapped engine.** The engine is wasmtime 49.0.2 through its prebuilt C
+API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
+`ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
+reaches a caller, so the engine can be replaced (WAMR is the measured
+fallback). UI-free and thread-agnostic; an instance belongs to the thread
+that created it.
+
+**Implementation status:** Phase 1 started. On by default on Linux
+(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
+exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
+engine and every call says so.
+
+- Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
+  `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,
+  `WasmLimits` (`memoryBytes`, `callTimeoutMs`), `WasmStatus`
+  (`ok`, `trapped`, `interrupted`, `message`)
+- `UltraCanvasWasmInstance::Create`, `HasFunction`, `Call`, `IsUsable`
+- `UltraCanvasWasm_IsAvailable`, `UltraCanvasWasm_EngineDescription`,
+  `UltraCanvasWasm_WatToWasm`
+- Helpers: `WasmI32`, `WasmF64`
+
+Rules: every failure - a trap, a C++ exception thrown by a host function, a
+call running past its limit, malformed input - ends in a `WasmStatus`, never
+a crash or a hang of the host; after a trap or an interruption an instance
+refuses further calls; host functions are registered through the unchecked
+host-function API (measured at 7 ns per empty call against 82 ns for the
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.

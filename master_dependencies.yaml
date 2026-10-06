@@ -502,3 +502,22 @@ ai:
       # Not a system package: fetched via CMake FetchContent (or an existing
       # checkout via ULTRAAI_LLAMACPP_SOURCE_DIR) and built as static libs
       # when ULTRAAI_ADAPTER_LLAMACPP=ON. Off by default.
+
+# ===== WEBASSEMBLY (WasmHost) =====
+#
+# WasmHost runs WebAssembly modules for applications (UltraWeb). Its engine
+# is wasmtime through the prebuilt C API, downloaded at configure time and
+# checked against a pinned SHA-256 (cmake/UltraCanvasWasmtime.cmake), linked
+# statically and privately. Absence is tolerated: the module then builds as a
+# stub and every call reports that there is no engine.
+webassembly:
+  core:
+    wasmtime:
+      min_version: "49.0.2"
+      purpose: "WebAssembly engine for WasmHost / UltraWeb (Apache-2.0 WITH LLVM-exception)"
+      required: false
+      platforms: ["linux"]            # on by default; macOS / Windows MSVC / GNU MinGW opt-in
+      # Not a system package: FetchContent of the release's C API, or an
+      # unpacked one via ULTRACANVAS_WASMTIME_DIR. No prebuilt library for
+      # MSYS2 CLANG64 (gnullvm); that needs the c-api crate built with
+      # Corrosion. ULTRACANVAS_ENABLE_WASM_HOST switches it.

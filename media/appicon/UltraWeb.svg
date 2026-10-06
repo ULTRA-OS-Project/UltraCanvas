@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraWeb</title>
+  <desc>A globe carrying a building block: the browser that runs WebAssembly apps.</desc>
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a8dde"/>
+      <stop offset="1" stop-color="#1c4f9c"/>
+    </linearGradient>
+    <linearGradient id="block" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8f6af2"/>
+      <stop offset="1" stop-color="#5a3fc4"/>
+    </linearGradient>
+  </defs>
+  <circle cx="118" cy="118" r="100" fill="url(#sea)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="5">
+    <ellipse cx="118" cy="118" rx="44" ry="100"/>
+    <line x1="118" y1="18" x2="118" y2="218"/>
+    <line x1="18" y1="118" x2="218" y2="118"/>
+    <path d="M 32 68 Q 118 92 204 68"/>
+    <path d="M 32 168 Q 118 144 204 168"/>
+  </g>
+  <circle cx="118" cy="118" r="100" fill="none" stroke="#163f7d" stroke-width="6"/>
+  <rect x="140" y="140" width="96" height="96" rx="18" fill="url(#block)" stroke="#ffffff" stroke-width="7"/>
+  <path d="M 158 166 L 172 212 L 188 180 L 204 212 L 218 166" fill="none"
+        stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

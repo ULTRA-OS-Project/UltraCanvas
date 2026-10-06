@@ -2129,6 +2129,47 @@ Rules: every blocking call returns `VideoFXResult`, with the reason in
 the caller; numbers in filter text are dot-decimal whatever the locale; paths
 are UTF-8; a failed or cancelled export leaves no partial file behind.
 
+---
+
+### **17. WasmHost**
+
+Runs WebAssembly modules for UltraCanvas applications: compile (binary or
+WebAssembly text), link the host functions an application offers,
+instantiate with WASI preview 1 and nothing granted, call exports - with a
+memory cap per instance and a time limit per call. Sources under
+`UltraCanvas/{include,core}/WasmHost/`, target `WasmHost`, header
+`<WasmHost/UltraCanvasWasmHost.h>`, `namespace UltraCanvas`. First user:
+UltraWeb (`Docs/UltraWeb/UltraWeb.md`, plan in
+`Docs/UltraWeb/UltraWebProposal.md`).
+
+**A wrapped engine.** The engine is wasmtime 49.0.2 through its prebuilt C
+API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
+`ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
+reaches a caller, so the engine can be replaced (WAMR is the measured
+fallback). UI-free and thread-agnostic; an instance belongs to the thread
+that created it.
+
+**Implementation status:** Phase 1 started. On by default on Linux
+(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
+exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
+engine and every call says so.
+
+- Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
+  `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,
+  `WasmLimits` (`memoryBytes`, `callTimeoutMs`), `WasmStatus`
+  (`ok`, `trapped`, `interrupted`, `message`)
+- `UltraCanvasWasmInstance::Create`, `HasFunction`, `Call`, `IsUsable`
+- `UltraCanvasWasm_IsAvailable`, `UltraCanvasWasm_EngineDescription`,
+  `UltraCanvasWasm_WatToWasm`
+- Helpers: `WasmI32`, `WasmF64`
+
+Rules: every failure - a trap, a C++ exception thrown by a host function, a
+call running past its limit, malformed input - ends in a `WasmStatus`, never
+a crash or a hang of the host; after a trap or an interruption an instance
+refuses further calls; host functions are registered through the unchecked
+host-function API (measured at 7 ns per empty call against 82 ns for the
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
 ==============================================================================
@@ -2894,6 +2935,7 @@ their *License* is likewise marked **—** (OS component).
 | visioncortex | [visioncortex.org](https://www.visioncortex.org/) | [github.com/visioncortex/visioncortex](https://github.com/visioncortex/visioncortex) | [MIT](https://spdx.org/licenses/MIT.html) |
 | VTracer | [visioncortex.org/vtracer-docs](https://www.visioncortex.org/vtracer-docs) | [github.com/visioncortex/vtracer](https://github.com/visioncortex/vtracer) | [MIT](https://spdx.org/licenses/MIT.html) |
 | WASAPI | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi) | — | — |
+| wasmtime | [wasmtime.dev](https://wasmtime.dev/) | [github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) | [Apache 2 with LLVM exception](https://spdx.org/licenses/LLVM-exception.html) |
 | WGL | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/opengl/wgl-and-windows-reference) | — | — |
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
@@ -3288,6 +3330,22 @@ configure time naming what is missing.
 > and LZ4 are opt-in via `-DVIRTUALFS_USE_ZSTD=ON` / `-DVIRTUALFS_USE_LZ4=ON`
 > (both default OFF). libmspack, wimlib, and libbrotli belong to the planned
 > CHM/LIT, WIM, and Brotli providers and are not detected by the build yet.
+
+### WasmHost module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| WebAssembly engine (compile, run, WASI preview 1) | wasmtime 49.0.2 C API (prebuilt, downloaded) | wasmtime 49.0.2 C API (opt-in, not yet built in CI) | wasmtime 49.0.2 C API for MSVC / GNU MinGW (opt-in); none for MSYS2 CLANG64 |
+
+> Not a system package: `cmake/UltraCanvasWasmtime.cmake` downloads the
+> release's prebuilt C API with FetchContent and checks its SHA-256, or takes
+> an unpacked one from `ULTRACANVAS_WASMTIME_DIR`; no Rust toolchain is
+> needed. Linked statically and privately - no wasmtime type appears in a
+> WasmHost header. On by default on Linux (`ULTRACANVAS_ENABLE_WASM_HOST`);
+> without it the module builds as a stub that reports there is no engine.
+> The MSYS2 CLANG64 / CLANGARM64 builds (the `gnullvm` ABI) have no prebuilt
+> library; building the `c-api` crate with Corrosion, as the Vectorizer plugin
+> builds VTracer, is the way there. Used by UltraWeb.
 
 ---
 
