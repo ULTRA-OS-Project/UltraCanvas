@@ -80,7 +80,9 @@ namespace {
         c->layout.SetGrid()
                  .SetGridColumns({fr(), fr(), fr()})
                  .SetGridRows({fr(), fr()})
-                 .SetGridGap(gap);
+                 .SetGridGap(gap)
+                 .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                 .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
     }
     // 3-column x 3-row equal (1fr) grid.
     inline void SetGrid3x3(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
@@ -89,7 +91,9 @@ namespace {
         c->layout.SetGrid()
                  .SetGridColumns({fr(), fr(), fr()})
                  .SetGridRows({fr(), fr(), fr()})
-                 .SetGridGap(gap);
+                 .SetGridGap(gap)
+                 .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                 .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
     }
     inline void AddGrid(const std::shared_ptr<UltraCanvasContainer>& parent,
                         const std::shared_ptr<UltraCanvasUIElement>& child, int row, int col) {

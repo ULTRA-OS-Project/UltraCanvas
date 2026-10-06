@@ -456,7 +456,7 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         };
 
-        categoryContainer->layout.SetFlexColumn();
+        categoryContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         // flex-grow fills the main (vertical) axis; align-self: stretch fills the
         // cross (horizontal) axis. justify-self is grid-only — adding it here would
         // convert layoutItem into a GridItem and discard the flex props above.
@@ -484,7 +484,7 @@ namespace UltraCanvas {
         // example content. Shrink is the default, but make it explicit so a future
         // edit can't silently drop it and reintroduce the overflow.
         displayContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        displayContainer->layout.SetFlexColumn();
+        displayContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         mainContainer->AddChild(displayContainer);
 
         mainWindow->layout
@@ -495,7 +495,9 @@ namespace UltraCanvas {
              // (otherwise Auto would collapse the sidebar to ~4 tree rows).
              // Row 1 = the 25-pixel status bar at the bottom.
              .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
-                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}});
+                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}})
+            .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+            .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
         categoryContainer->layoutItem.SetGridRowColSimplified(0, 0);
         mainWindow->AddChild(categoryContainer);

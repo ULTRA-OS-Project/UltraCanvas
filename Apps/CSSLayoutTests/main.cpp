@@ -1,8 +1,9 @@
 // Apps/CSSLayoutTests/main.cpp
 // Non-UI test harness for the new UltraCanvas::CSSLayout engine.
 // Builds Element trees, calls Measure+Arrange, and asserts finalBounds.
+// Version: 1.4.0 - stretch only when asked; a set size kept (Phase 11)
 // Version: 1.3.1
-// Last Modified: 2026-06-02
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -596,6 +597,13 @@ void test_flex_nested_grow_with_explicit_basis() {
 
 // -------------------- Phase 4: Grid --------------------
 
+// These cases read the track sizes off items that fill their cells, which
+// a grid does only when asked (it starts items at the start, content-sized).
+static void fillCells(GridLayout& gl) {
+    gl.justifyItems = JustifyItems::Stretch;
+    gl.alignItems   = AlignItems::Stretch;
+}
+
 static GridTrackSize trackPx(float v)  { GridTrackSize t; t.kind = GridTrackSizeKind::Fixed; t.value = Dimension::Px(v); return t; }
 static GridTrackSize trackFr(float v)  { GridTrackSize t; t.kind = GridTrackSizeKind::Fr;    t.value = Dimension::Fr(v); return t; }
 static GridTrackSize trackAuto()       { GridTrackSize t; t.kind = GridTrackSizeKind::Auto;  return t; }
@@ -615,6 +623,7 @@ void test_grid_basic_3col_fr() {
     GridLayout gl;
     gl.columns.tracks = { trackPx(100), trackFr(1), trackPx(100) };
     gl.rows.tracks    = { trackPx(40) };
+    fillCells(gl);
     root->layout.data = gl;
 
     auto a = std::make_shared<Leaf>("a", 50, 20);
@@ -636,6 +645,7 @@ void test_grid_explicit_placement_and_span() {
     GridLayout gl;
     gl.columns.tracks = { trackPx(100), trackPx(100), trackPx(100) };
     gl.rows.tracks    = { trackPx(40), trackPx(40) };
+    fillCells(gl);
     root->layout.data = gl;
 
     auto wide = std::make_shared<Leaf>("wide", 0, 0);
@@ -665,6 +675,7 @@ void test_grid_gap() {
     gl.rows.tracks    = { trackPx(40),  trackPx(40)  };
     gl.columnGap = Dimension::Px(10);
     gl.rowGap    = Dimension::Px(10);
+    fillCells(gl);
     root->layout.data = gl;
 
     auto a = std::make_shared<Leaf>("a", 0, 0);
@@ -687,6 +698,7 @@ void test_grid_auto_track_max_content() {
     GridLayout gl;
     gl.columns.tracks = { trackAuto(), trackFr(1) };
     gl.rows.tracks    = { trackPx(20) };
+    fillCells(gl);
     root->layout.data = gl;
 
     auto label = std::make_shared<Leaf>("label", 80, 16);
@@ -858,6 +870,7 @@ void test_grid_auto_track_uses_intrinsic() {
     GridLayout gl;
     gl.columns.tracks = { trackAuto(), trackAuto() };
     gl.rows.tracks    = { trackPx(40) };
+    fillCells(gl);
     root->layout.data = gl;
     auto a = std::make_shared<Leaf>("a", 50, 20);
     auto b = std::make_shared<Leaf>("b", 80, 20);
@@ -866,6 +879,120 @@ void test_grid_auto_track_uses_intrinsic() {
     // Auto columns size to each child's content width: 50, then 80.
     expectRect("a", *a,  0, 0, 50, 40);
     expectRect("b", *b, 50, 0, 80, 40);
+}
+
+
+// -------------------- Phase 11: stretch only when asked --------------------
+
+// A flex container that does not ask for stretch leaves each item at its
+// content size on the cross axis.
+void test_flex_default_does_not_stretch() {
+    beginTest("flex: the default align-items does not stretch");
+    LayoutContext ctx;
+    auto root = std::make_shared<Leaf>("flex", 0, 0);
+    root->layout.SetFlexColumn();                       // FlexLayout defaults
+    auto a = std::make_shared<Leaf>("a", 80, 20);
+    auto b = std::make_shared<Leaf>("b", 0, 20);
+    addAll(*root, a, b);
+    runRoot(*root, 300, 100, ctx);
+    expectRect("a", *a, 0,  0, 80, 20);
+    expectRect("b", *b, 0, 20,  0, 20);
+}
+
+// Stretch asked for fills only an automatic cross size: a set width in a
+// column (or height in a row) is the item's size.
+void test_flex_stretch_keeps_a_set_size() {
+    beginTest("flex: stretch fills an automatic cross size and keeps a set one");
+    LayoutContext ctx;
+    auto column = makeFlexRoot(FlexDirection::Column, FlexWrap::NoWrap, JustifyContent::Start, AlignItems::Stretch);
+    auto fill = makeFlexChild("fill", 50, 20);
+    auto sized = makeFlexChild("sized", 50, 20);
+    sized->size.width = Dimension::Px(120);
+    auto pct = makeFlexChild("pct", 50, 20);
+    pct->size.width = Dimension::Pct(50);
+    // A negative length is no size (CSS: invalid, so auto) - the framework's
+    // "not set" -1, or a size computed before the window had one.
+    auto unset = makeFlexChild("unset", 50, 20);
+    unset->size.width = Dimension::Px(-1);
+    addAll(*column, fill, sized, pct, unset);
+    runRoot(*column, 300, 100, ctx);
+    expectRect("fill",  *fill,  0,  0, 300, 20);
+    expectRect("sized", *sized, 0, 20, 120, 20);
+    expectRect("pct",   *pct,   0, 40, 150, 20);
+    expectRect("unset", *unset, 0, 60, 300, 20);
+
+    auto row = makeFlexRoot(FlexDirection::Row, FlexWrap::NoWrap, JustifyContent::Start, AlignItems::Stretch);
+    auto tall = makeFlexChild("tall", 40, 10);
+    auto set = makeFlexChild("set", 40, 10);
+    set->size.height = Dimension::Px(30);
+    addAll(*row, tall, set);
+    runRoot(*row, 200, 80, ctx);
+    expectRect("tall", *tall,  0, 0, 40, 80);
+    expectRect("set",  *set,  40, 0, 40, 30);
+}
+
+// One item may ask for stretch in a container that does not - and its own
+// request is stretched over a size it carries (the most specific statement
+// wins; CSS would keep the size).
+void test_flex_align_self_stretch_in_a_start_container() {
+    beginTest("flex: align-self: stretch on one item, the rest at the start");
+    LayoutContext ctx;
+    auto root = std::make_shared<Leaf>("flex", 0, 0);
+    root->layout.SetFlexColumn();
+    auto plain = std::make_shared<Leaf>("plain", 60, 20);
+    auto wide = std::make_shared<Leaf>("wide", 60, 20);
+    wide->layoutItem.SetAlignSelf(AlignSelf::Stretch);
+    auto sizedWide = std::make_shared<Leaf>("sizedWide", 60, 20);
+    sizedWide->size.width = Dimension::Px(90);          // a constructor's width
+    sizedWide->layoutItem.SetAlignSelf(AlignSelf::Stretch);
+    addAll(*root, plain, wide, sizedWide);
+    runRoot(*root, 250, 100, ctx);
+    expectRect("plain",     *plain,     0,  0,  60, 20);
+    expectRect("wide",      *wide,      0, 20, 250, 20);
+    expectRect("sizedWide", *sizedWide, 0, 40, 250, 20);
+}
+
+// A grid puts an item at the start of its cell, content-sized, unless the
+// container or the item asks for stretch; a set size is kept even then.
+void test_grid_stretch_only_when_asked() {
+    beginTest("grid: start by default, stretch when asked, a set size kept");
+    LayoutContext ctx;
+    auto makeGrid = []() {
+        auto root = std::make_shared<Leaf>("grid", 0, 0);
+        root->layout.display = DisplayType::Grid;
+        GridLayout gl;
+        gl.columns.tracks = { trackPx(100), trackPx(100) };
+        gl.rows.tracks    = { trackPx(40), trackPx(40) };
+        root->layout.data = gl;
+        return root;
+    };
+    auto plainGrid = makeGrid();
+    auto a = std::make_shared<Leaf>("a", 30, 10);
+    auto b = std::make_shared<Leaf>("b", 30, 10);
+    b->layoutItem.SetJustifySelf(JustifySelf::Stretch);
+    b->layoutItem.SetGridAlignSelf(AlignSelf::Stretch);
+    auto f = std::make_shared<Leaf>("f", 30, 10);
+    f->size.width = Dimension::Px(50);
+    f->layoutItem.SetJustifySelf(JustifySelf::Stretch);  // its own stretch, over its own width
+    addAll(*plainGrid, a, b, f);
+    runRoot(*plainGrid, 200, 80, ctx);
+    expectRect("a (default)",       *a,   0, 0,  30, 10);
+    expectRect("b (asks to stretch)", *b, 100, 0, 100, 40);
+    expectRect("f (own stretch, own width)", *f, 0, 40, 100, 10);
+
+    auto stretchGrid = makeGrid();
+    stretchGrid->layout.SetGridJustifyItems(JustifyItems::Stretch).SetGridAlignItems(AlignItems::Stretch);
+    auto c = std::make_shared<Leaf>("c", 30, 10);
+    auto d = std::make_shared<Leaf>("d", 30, 10);
+    d->size.width = Dimension::Px(70);
+    d->size.height = Dimension::Px(25);
+    auto e = std::make_shared<Leaf>("e", 30, 10);
+    e->size.width = Dimension::Px(-1);       // no size: stretched
+    addAll(*stretchGrid, c, d, e);
+    runRoot(*stretchGrid, 200, 80, ctx);
+    expectRect("c (container stretches)", *c,   0, 0, 100, 40);
+    expectRect("d (set size kept)",       *d, 100, 0,  70, 25);
+    expectRect("e (negative is no size)", *e,   0, 40, 100, 40);
 }
 
 } // namespace
@@ -910,6 +1037,11 @@ int main() {
     test_flex_uses_intrinsic_for_auto_basis();
     test_flex_column_wrapping_child_height_for_width();
     test_grid_auto_track_uses_intrinsic();
+
+    test_flex_default_does_not_stretch();
+    test_flex_stretch_keeps_a_set_size();
+    test_flex_align_self_stretch_in_a_start_container();
+    test_grid_stretch_only_when_asked();
 
     std::printf("\n----- %d passed, %d failed -----\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
