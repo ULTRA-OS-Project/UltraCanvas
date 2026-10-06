@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.6.0
-// Last Modified: 2026-08-23
+// Version: 3.7.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -179,7 +179,53 @@ namespace UltraCanvas {
             }
             return false;
         }
+
+        // An "All files" filter: it takes any file, whatever its name.
+        bool TakesAnyFile() const {
+            return std::find(extensions.begin(), extensions.end(), "*") != extensions.end();
+        }
+
+        // The extension a file saved as this type is given: the first one
+        // listed, or "" for a filter that takes any file or lists none.
+        std::string PrimaryExtension() const {
+            if (extensions.empty() || TakesAnyFile()) return std::string();
+            return extensions.front();
+        }
     };
+
+// ----- Save dialogs: the file type and the file name agree -----
+// One set of rules for UltraCanvasFileDialog and the platforms' own save
+// dialogs, so "Files of type" means the same in all of them. It used to mean
+// nothing: the name came back as typed whatever type was chosen, so "photo"
+// with JPEG picked was saved as whatever the application fell back to.
+
+    // The extension of a file name's last component, lower case and without
+    // the dot; "" when there is none. A leading dot (".profile") does not
+    // start one.
+    std::string FileNameExtension(const std::string& fileName);
+
+    // The type a Save dialog starts on for `fileName`: `preferred` when that
+    // filter already describes the name (an "All files" filter describes every
+    // name), else the first filter listing the name's extension, else
+    // `preferred` - so "photo.jpg" opens on JPEG, not on the first type.
+    int FileFilterIndexForName(const std::vector<FileFilter>& filters,
+                               const std::string& fileName, int preferred = 0);
+
+    // `fileName` once the user picks `type` in a Save dialog: it takes that
+    // type's extension. An extension belonging to another of the dialog's
+    // `filters` is replaced ("photo.png" -> "photo.jpg"); any other is kept and
+    // the type's added, because "notes.v2" is a name, not a format. Unchanged
+    // for an "All files" type and for a name the type already describes.
+    std::string FileNameForFileType(const std::string& fileName, const FileFilter& type,
+                                    const std::vector<FileFilter>& filters);
+
+    // `fileName` as a Save dialog hands it back: given the chosen type's
+    // extension when it has none, or one that is none of the dialog's types
+    // ("photo" -> "photo.jpg", "diagram.svg" -> "diagram.svg.jpg"). An
+    // extension of one of the dialog's types was typed on purpose and is kept,
+    // whichever type is picked. Unchanged for an "All files" type.
+    std::string FileNameWithTypeExtension(const std::string& fileName, const FileFilter& type,
+                                          const std::vector<FileFilter>& filters);
 
 // ===== DIALOG STYLE =====
     struct ModalDialogStyle {

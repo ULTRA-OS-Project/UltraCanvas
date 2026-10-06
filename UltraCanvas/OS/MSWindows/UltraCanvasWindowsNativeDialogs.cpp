@@ -1,12 +1,13 @@
 // OS/MSWindows/UltraCanvasWindowsNativeDialogs.cpp
 // Win32 implementation of native OS dialogs
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -381,6 +382,17 @@ namespace UltraCanvas {
             filterData.Build(options.filters);
             pDialog->SetFileTypes(
                 static_cast<UINT>(filterData.specs.size()), filterData.specs.data());
+            // Start on the type of the name offered ("photo.jpg" on JPEG), and
+            // give the dialog a default extension: with one set it adds the
+            // chosen type's extension to a name typed without one, and follows
+            // the type the user picks. Not set when the dialog starts on "All
+            // files", where it would add that extension to every name.
+            const int type = FileFilterIndexForName(options.filters, options.defaultFileName);
+            pDialog->SetFileTypeIndex(static_cast<UINT>(type + 1));   // one-based
+            const std::string ext = options.filters[type].PrimaryExtension();
+            if (!ext.empty()) {
+                pDialog->SetDefaultExtension(UltraCanvasWindowsApplication::Utf8ToUtf16(ext).c_str());
+            }
         }
 
         // Set default filename
@@ -408,6 +420,29 @@ namespace UltraCanvas {
             if (SUCCEEDED(pDialog->GetResult(&pItem))) {
                 result = GetPathFromShellItem(pItem);
                 pItem->Release();
+            }
+            // The type picked applies to a name without an extension, or with
+            // one that is none of the types offered - including in a dialog
+            // that started on "All files" and so has no default extension
+            // (above). The dialog asked before replacing the name as typed,
+            // not this one.
+            UINT type = 0;
+            if (!result.empty() && SUCCEEDED(pDialog->GetFileTypeIndex(&type)) &&
+                type >= 1 && type <= options.filters.size()) {
+                const std::string named =
+                        FileNameWithTypeExtension(result, options.filters[type - 1], options.filters);
+                if (named != result) {
+                    std::error_code ec;
+                    const bool exists = std::filesystem::exists(PathFromUtf8(named), ec);
+                    if (!exists || ConfirmYesNo(
+                            "\"" + PathToUtf8(PathFromUtf8(named).filename()) +
+                            "\" already exists.\nDo you want to replace it?",
+                            "Replace File", options.parentWindow)) {
+                        result = named;
+                    } else {
+                        result.clear();
+                    }
+                }
             }
         }
 

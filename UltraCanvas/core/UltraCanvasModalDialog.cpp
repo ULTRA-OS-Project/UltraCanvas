@@ -1,8 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.6.0
-// Last Modified: 2026-08-23
+// Version: 3.7.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -1272,6 +1272,86 @@ namespace UltraCanvas {
         }
     } // namespace
 
+// ----- Save dialogs: the file type and the file name agree -----
+    namespace {
+        std::string LowerAscii(std::string text) {
+            std::transform(text.begin(), text.end(), text.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return text;
+        }
+
+        // `filter` names `ext` (lower case) among its extensions; "*" names none.
+        bool ListsExtension(const FileFilter& filter, const std::string& ext) {
+            if (ext.empty()) return false;
+            for (const std::string& own : filter.extensions) {
+                if (own != "*" && LowerAscii(own) == ext) return true;
+            }
+            return false;
+        }
+
+        // `fileName` without its extension, or without a trailing lone dot.
+        std::string WithoutExtension(const std::string& fileName) {
+            if (!FileNameExtension(fileName).empty()) {
+                return fileName.substr(0, fileName.find_last_of('.'));
+            }
+            if (!fileName.empty() && fileName.back() == '.') {
+                return fileName.substr(0, fileName.size() - 1);
+            }
+            return fileName;
+        }
+    } // namespace
+
+    std::string FileNameExtension(const std::string& fileName) {
+        // The last component's: a dot in a folder's name is not the file's.
+        const size_t separator = fileName.find_last_of("/\\");
+        const size_t start = separator == std::string::npos ? 0 : separator + 1;
+        const size_t dot = fileName.find_last_of('.');
+        if (dot == std::string::npos || dot <= start || dot + 1 >= fileName.size()) {
+            return std::string();
+        }
+        return LowerAscii(fileName.substr(dot + 1));
+    }
+
+    int FileFilterIndexForName(const std::vector<FileFilter>& filters,
+                               const std::string& fileName, int preferred) {
+        const int count = static_cast<int>(filters.size());
+        if (count == 0) return 0;
+        if (preferred < 0 || preferred >= count) preferred = 0;
+        const std::string ext = FileNameExtension(fileName);
+        const FileFilter& current = filters[preferred];
+        if (current.TakesAnyFile() || ext.empty() || ListsExtension(current, ext)) return preferred;
+        for (int i = 0; i < count; ++i) {
+            if (ListsExtension(filters[i], ext)) return i;
+        }
+        return preferred;
+    }
+
+    std::string FileNameForFileType(const std::string& fileName, const FileFilter& type,
+                                    const std::vector<FileFilter>& filters) {
+        const std::string typeExt = type.PrimaryExtension();
+        if (typeExt.empty() || fileName.empty()) return fileName;
+        const std::string ext = FileNameExtension(fileName);
+        if (ListsExtension(type, ext)) return fileName;
+        bool replace = ext.empty();
+        for (const FileFilter& filter : filters) {
+            if (ListsExtension(filter, ext)) replace = true;
+        }
+        return (replace ? WithoutExtension(fileName) : fileName) + "." + typeExt;
+    }
+
+    std::string FileNameWithTypeExtension(const std::string& fileName, const FileFilter& type,
+                                          const std::vector<FileFilter>& filters) {
+        const std::string typeExt = type.PrimaryExtension();
+        if (typeExt.empty() || fileName.empty()) return fileName;
+        const std::string ext = FileNameExtension(fileName);
+        if (!ext.empty()) {
+            for (const FileFilter& filter : filters) {
+                if (ListsExtension(filter, ext)) return fileName;
+            }
+        }
+        return (ext.empty() ? WithoutExtension(fileName) : fileName) + "." + typeExt;
+    }
+
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
         // A file dialog without filters lists every file; a folder picker
@@ -1279,6 +1359,12 @@ namespace UltraCanvas {
         if (fileConfig.filters.empty() && fileConfig.dialogType != FileDialogType::SelectFolder) {
             fileConfig.filters = { FileFilter("All Files", "*") };
             fileConfig.selectedFilterIndex = 0;
+        }
+        // A Save dialog starts on the type of the name it offers, so "Files of
+        // type" and the name agree from the start: "photo.jpg" opens on JPEG.
+        if (fileConfig.dialogType == FileDialogType::Save && !fileConfig.filterToggles) {
+            fileConfig.selectedFilterIndex = FileFilterIndexForName(
+                    fileConfig.filters, fileConfig.defaultFileName, fileConfig.selectedFilterIndex);
         }
         // Opens the way the user left it last time: same view, same size
         // (UltraCanvasFileDialogSettings.h, FileDialog.conf).
@@ -1545,6 +1631,14 @@ namespace UltraCanvas {
                     if (index == fileConfig.selectedFilterIndex) return;
                     fileConfig.selectedFilterIndex = index;
                     ApplyListingFilter();
+                    // Saving, the name follows the type: "photo.png" becomes
+                    // "photo.jpg" when JPEG is picked.
+                    if (fileConfig.dialogType == FileDialogType::Save && fileNameInput) {
+                        const std::string name = fileNameInput->GetText();
+                        const std::string renamed =
+                                FileNameForFileType(name, fileConfig.filters[index], fileConfig.filters);
+                        if (renamed != name) fileNameInput->SetText(renamed);
+                    }
                 };
                 inputColumn->AddChild(filterDropdown);
                 RebuildFilterDropdown();
@@ -1983,6 +2077,10 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::SetDefaultFileName(const std::string& fileName) {
         fileConfig.defaultFileName = fileName;
         if (fileNameInput) fileNameInput->SetText(fileName);
+        if (fileConfig.dialogType == FileDialogType::Save && !fileConfig.filterToggles) {
+            SetSelectedFilterIndex(FileFilterIndexForName(
+                    fileConfig.filters, fileName, fileConfig.selectedFilterIndex));
+        }
     }
 
     std::string UltraCanvasFileDialog::GetDefaultFileName() const {
@@ -2057,9 +2155,20 @@ namespace UltraCanvas {
             return;
         }
         if (fileConfig.dialogType == FileDialogType::Save) {
-            std::filesystem::path parent = PathFromUtf8(full).parent_path();
+            // A name typed without an extension, or with one that is none of
+            // the dialog's types, is saved as the type chosen for it - "photo"
+            // with JPEG picked is photo.jpg - and that is settled before
+            // Accept, so a replace question is about the file that will be
+            // written.
+            std::string target = full;
+            const int type = fileConfig.selectedFilterIndex;
+            if (!fileConfig.filterToggles && type >= 0 &&
+                type < static_cast<int>(fileConfig.filters.size())) {
+                target = FileNameWithTypeExtension(full, fileConfig.filters[type], fileConfig.filters);
+            }
+            std::filesystem::path parent = PathFromUtf8(target).parent_path();
             if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) return;
-            Accept({full});
+            Accept({target});
             return;
         }
         // Open: only a file that is there.

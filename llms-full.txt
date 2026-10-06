@@ -22004,7 +22004,7 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
-| `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
+| `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice. A Save dialog starts on the type of `defaultFileName` instead when the chosen one does not describe it (see [Saving: the type gives the extension](#saving-the-type-gives-the-extension)) |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
 | `filterToggles` | Toggle buttons instead of the dropdown |
@@ -22035,6 +22035,41 @@ between folders.
 
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
+
+## Saving: the type gives the extension
+
+In a Save dialog "Files of type" decides the extension of the file written,
+as the platforms' own save dialogs do:
+
+- **It starts on the type of the name offered.** `photo.jpg` opens on JPEG,
+  not on the first filter. A first filter that already describes the name -
+  an "All files" (`*`) filter describes every name - stays chosen.
+- **Picking a type renames the file.** `photo.png` becomes `photo.jpg` when
+  JPEG is picked, and a name without an extension gets one. An extension that
+  is none of the dialog's types is kept and the type's added (`notes.v2` →
+  `notes.v2.png`): what follows the last dot is not always a format. A type
+  that lists several extensions keeps any of them (`photo.jpeg` stays when
+  JPEG is picked), and "All files" leaves the name alone.
+- **OK applies the type to a bare name.** `photo` with JPEG chosen is saved
+  as `photo.jpg`, and an extension that is none of the dialog's types gets the
+  chosen one added (`diagram.svg` → `diagram.svg.png` in an image dialog that
+  offers no SVG). An extension of one of the dialog's types was typed on
+  purpose and is kept whichever type is chosen. This happens before the
+  **Replace File** question, so that is asked about the file actually written.
+
+The platforms' save dialogs follow the same rules, so the choice means the
+same whether native dialogs are on or off: on Windows the dialog starts on
+the matching type and is given a default extension (the `IFileSaveDialog`
+then follows the chosen type itself); on Linux the GTK chooser starts on the
+matching type, renames on a type change and applies the type on Save, asking
+again when that names a file that is already there. macOS's save panel has
+no type list - it requires one of the filters' extensions by itself.
+
+The rules are free functions next to `FileFilter` in
+`UltraCanvasModalDialog.h`, for an application that names files itself:
+`FileNameExtension`, `FileFilterIndexForName`, `FileNameForFileType` and
+`FileNameWithTypeExtension`, plus `FileFilter::TakesAnyFile()` and
+`FileFilter::PrimaryExtension()`.
 
 ## Filter toggles
 
