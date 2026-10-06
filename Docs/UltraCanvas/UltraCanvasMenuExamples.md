@@ -178,6 +178,7 @@ struct MenuStyle {
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
     MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
+    MenuCheckboxShape checkboxShape;  // Outline of a Checkbox item's indicator: Square (default) or Round
     
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
@@ -429,6 +430,58 @@ Both shapes are `iconSize` wide and are centred on the row. The label is
 centred on the row by its cap height rather than by its line box (which
 holds the ascender and descender space too), so the indicator and the
 visible text sit on one centre line whatever the item height.
+
+### Checkbox Indicator Shape
+
+A `Checkbox` item draws a tick inside a square box, as `UltraCanvasCheckbox`
+does. `MenuCheckboxShape::Round` draws the same tick, smaller, inside a
+circle - the outline a `Radio` item gets - for a menu whose indicators should
+all be round:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.checkboxShape = MenuCheckboxShape::Round;
+menu->SetStyle(style);
+```
+
+An application that wants round checkboxes in **every** menu it shows sets the
+default once, before it builds its windows. Every `MenuStyle` starts from it,
+so it also reaches menus an element builds for itself, such as the file
+display's context menu, which an application never gets to style:
+
+```cpp
+// UltraFiler's main(), after app.Initialize(...)
+SetDefaultMenuCheckboxShape(MenuCheckboxShape::Round);
+```
+
+Until an application calls it the default is `Square`, so nothing changes for
+one that never does.
+
+### Icon and Indicator Columns
+
+A vertical menu lines its labels up. When any visible item is a `Checkbox` or
+`Radio`, the menu has an indicator column; when any has an icon (`iconPath`
+or `iconImage`), it has an icon column beside that. Each column is
+`iconSize + iconSpacing` wide, and **every** row steps over both, so an
+`Action` without an icon starts its label where the others do:
+
+```
+| paddingLeft | [indicator] | [icon] | label | gap | [shortcut] | [arrow] | paddingRight |
+```
+
+An item can fill both columns: a checkbox with an icon shows the indicator,
+then the icon, then the label.
+
+```cpp
+MenuItemData hidden = MenuItemData::Checkbox("Hidden files", showHidden,
+        [this](bool on) { SetShowHiddenFiles(on); });
+hidden.iconPath = iconDir + "hidden-files.svg";   // tick + icon + label
+menu->AddItem(hidden);
+```
+
+The icon of a disabled item is drawn faded (35 % opacity), with its label
+greyed. A menubar (horizontal menu) lays each item out on its own and has no
+columns.
 
 ### Custom Styling
 

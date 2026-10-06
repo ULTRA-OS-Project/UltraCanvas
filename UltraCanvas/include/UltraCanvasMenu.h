@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.1
-// Last Modified: 2026-08-31
+// Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -159,6 +159,24 @@ namespace UltraCanvas {
         Square      // the same box a Checkbox item gets (the earlier look)
     };
 
+    // Outline of a Checkbox item's indicator. The tick inside is the same
+    // either way, so a round checkbox still reads as "on / off" rather than
+    // as one choice of several.
+    enum class MenuCheckboxShape {
+        Square,     // a box, as UltraCanvasCheckbox draws it (the default)
+        Round       // a circle, the outline a Round Radio item gets
+    };
+
+    // ===== APPLICATION-WIDE CHECKBOX SHAPE =====
+    // The checkboxShape every MenuStyle starts with. An application that wants
+    // one look in every menu it shows sets it once at start-up, and it reaches
+    // the menus elements build for themselves (a file display's context menu)
+    // as well as the application's own - UltraFiler draws only round
+    // indicators this way. Square until an application changes it, so
+    // nothing changes for one that never calls it.
+    void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape);
+    MenuCheckboxShape GetDefaultMenuCheckboxShape();
+
     struct MenuStyle {
         // Colors
         Color backgroundColor = Color(248, 248, 248);
@@ -191,6 +209,7 @@ namespace UltraCanvas {
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
         MenuRadioShape radioShape = MenuRadioShape::Round;   // Outline of a Radio item's indicator
+        MenuCheckboxShape checkboxShape = GetDefaultMenuCheckboxShape();   // Outline of a Checkbox item's indicator
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
@@ -363,6 +382,17 @@ namespace UltraCanvas {
         Rect2Di GetItemBounds(int index) const;
 
         int CalculateItemWidth(const MenuItemData& item) const;
+
+        // The columns in front of the labels of a vertical menu: one for the
+        // Checkbox / Radio indicators when any visible item has one, one for
+        // icons when any has an icon. Every label starts after both, so the
+        // labels line up down the menu whichever items carry what.
+        struct LeadingColumns {
+            bool check = false;
+            bool icon = false;
+        };
+        LeadingColumns GetLeadingColumns() const;
+        LeadingColumns leadingColumns;   // taken at the start of each Render()
 
 
         // ===== POSITIONING =====
