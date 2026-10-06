@@ -4336,6 +4336,27 @@ else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ScrollKeepsPositionOnResizeTest =====
+# A scroll view keeps its position across a resize inside a split pane and a
+# tabbed container (they used to run a throwaway block layout first).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ScrollKeepsPositionOnResizeTest...")
+    add_executable(ScrollKeepsPositionOnResizeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ScrollKeepsPositionOnResizeTest.cpp
+    )
+    target_include_directories(ScrollKeepsPositionOnResizeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ScrollKeepsPositionOnResizeTest PRIVATE cxx_std_20)
+    target_link_libraries(ScrollKeepsPositionOnResizeTest PRIVATE UltraCanvas)
+    set_target_properties(ScrollKeepsPositionOnResizeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ScrollKeepsPositionOnResizeTest COMMAND ScrollKeepsPositionOnResizeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ScrollKeepsPositionOnResizeTest")
+else()
+    message(STATUS "  ScrollKeepsPositionOnResizeTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== AUDIO STREAMING TEST =====
 # The live-audio building blocks (frame ring, packetiser) are header-only and
 # backend-free, so the test links nothing and needs no sound device.
