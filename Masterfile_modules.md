@@ -1103,7 +1103,9 @@ future.
 **Available Functions (Core, Tier 1):**
 - `UltraNet_HttpGet`, `UltraNet_HttpPost`, `UltraNet_HttpPut`,
   `UltraNet_HttpDelete`, `UltraNet_HttpHead`, `UltraNet_HttpPatch`
-- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync`
+- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
+  cut off after its status line carries `UltraNetResponse::transferError`,
+  `IsComplete()` and `exceededReceiveLimit`)
 - `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
@@ -1141,8 +1143,8 @@ future.
   `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
   `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
-- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
-  `UltraNet_UrlDecode`
+- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_ResolveUrl` (RFC 3986
+  reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 

@@ -7,6 +7,7 @@
 
 #include <map>
 #include <string>
+#include <utility>
 
 TEST(url_parse_basic) {
     UltraNet_Initialize();
@@ -130,4 +131,32 @@ TEST(url_build_round_trips_with_parse) {
     REQUIRE_EQ(c2.host, c.host);
     REQUIRE_EQ(c2.port, c.port);
     REQUIRE_EQ(c2.path, c.path);
+}
+
+// RFC 3986 section 5.4 reference resolution, the examples UltraWeb needs to
+// turn an app's relative fetch into the URL it names.
+TEST(url_resolve_relative_references) {
+    const std::string base = "https://x.org/app/dir/main.wasm?v=1#top";
+    const std::pair<const char*, const char*> cases[] = {
+        {"data.json",               "https://x.org/app/dir/data.json"},
+        {"./data.json",             "https://x.org/app/dir/data.json"},
+        {"../img/a.png",            "https://x.org/app/img/a.png"},
+        {"/api/items?page=2",       "https://x.org/api/items?page=2"},
+        {"//cdn.x.org/lib.js",      "https://cdn.x.org/lib.js"},
+        {"?v=2",                    "https://x.org/app/dir/main.wasm?v=2"},
+        {"http://other.org:8080/a", "http://other.org:8080/a"},
+        {"",                        "https://x.org/app/dir/main.wasm?v=1"},
+    };
+    for (const auto& [reference, expected] : cases) {
+        std::string out;
+        REQUIRE(bool(UltraNet_ResolveUrl(base, reference, out)));
+        REQUIRE_EQ(out, std::string{expected});
+    }
+}
+
+TEST(url_resolve_needs_an_absolute_base) {
+    std::string out = "stale";
+    CHECK(!bool(UltraNet_ResolveUrl("", "a.json", out)));
+    CHECK(out.empty());
+    CHECK(!bool(UltraNet_ResolveUrl("relative/base", "a.json", out)));
 }

@@ -114,6 +114,39 @@ std::string UltraNet_BuildUrl(const UltraNetUrlComponents& c) {
     return std::string(raw);
 }
 
+UltraNetResult UltraNet_ResolveUrl(const std::string& base,
+                                   const std::string& reference,
+                                   std::string& outUrl) {
+    outUrl.clear();
+    CurlUrlPtr u(curl_url());
+    if (!u) {
+        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                     "curl_url() failed");
+    }
+    if (base.empty() || curl_url_set(u.get(), CURLUPART_URL, base.c_str(),
+                                     CURLU_NON_SUPPORT_SCHEME) != CURLUE_OK) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                     "the base is not an absolute URL");
+    }
+    if (reference.empty()) {
+        curl_url_set(u.get(), CURLUPART_FRAGMENT, nullptr, 0);
+    } else if (curl_url_set(u.get(), CURLUPART_URL, reference.c_str(),
+                            CURLU_NON_SUPPORT_SCHEME) != CURLUE_OK) {
+        // A URL set on a handle that already holds one is resolved against
+        // it when it is relative (curl_url_set(3)).
+        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                     "invalid URL reference");
+    }
+    char* raw = nullptr;
+    if (curl_url_get(u.get(), CURLUPART_URL, &raw, 0) != CURLUE_OK || !raw) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                     "invalid URL reference");
+    }
+    CurlStringPtr owned(raw);
+    outUrl = raw;
+    return UltraNetResult::Ok();
+}
+
 std::string UltraNet_UrlEncode(const std::string& input) {
     if (input.empty()) return {};
     CURL* easy = curl_easy_init();
