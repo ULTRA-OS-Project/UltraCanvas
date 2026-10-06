@@ -736,6 +736,7 @@ add_executable(EBookArchiveTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
 )
 target_include_directories(EBookArchiveTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
 )
