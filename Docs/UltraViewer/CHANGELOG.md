@@ -1,3 +1,13 @@
+#### 2026-10-06 *1.0.4*
+- **Save image as saves an SVG.** Saving a drawing wrote nothing: the dialog
+  offered `<name>.svg`, which the viewer cannot write, and the failure showed
+  only in the info line at the bottom. It now offers `<name>.png`, gives a
+  name typed without a format `.png`, and says in a message when a save
+  fails. The fix is in the framework's media viewer
+  (`Docs/UltraCanvas/changelog.d/media-viewer-save-svg.md`); the viewer
+  therefore shows message boxes now - a failed save and a replace prompt -
+  which follow the framework-dialog setting like its file dialogs.
+
 #### 2026-10-01 *1.0.3*
 - **Open and Save use the framework's new file dialog.** The toolbar's Open
   button showed the platform's picker, because `main.cpp` turned native
