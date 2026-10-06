@@ -206,6 +206,19 @@ private:
     // in-app clipboard (the system clipboard gets a PNG too when it can)
     std::shared_ptr<UCRasterLayer> clipboardLayer;
     Point2Di clipboardOrigin;
+    // the PNG the last copy put on the system clipboard: while the clipboard
+    // still holds exactly these bytes, a paste is this window's own copy
+    std::vector<uint8_t> clipboardPng;
+
+    // What a paste brings in: a picture, or an image file copied in a file
+    // manager. fromHere marks this window's own copy, which goes back where
+    // it was copied from.
+    struct PasteSource {
+        std::shared_ptr<UCRasterLayer> image;
+        bool fromHere = false;
+        std::string file;
+    };
+    PasteSource ReadPasteSource();
 
     // filter preview state
     std::shared_ptr<UCRasterLayer> previewOriginal;

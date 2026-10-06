@@ -1,3 +1,23 @@
+#### 2026-10-06 *0.6.5*
+- **Copy and paste work with other programs.** Copy and Paste only ever
+  used ArtCreator's own in-app list of objects: nothing copied here could be
+  pasted anywhere else, and a picture or a file copied anywhere else pasted
+  nothing here.
+  - *Copy* now also puts a picture of the selection on the system clipboard,
+    a pixel a point and cropped to what it draws, so UltraPaint, Paint Shop
+    Pro, a word processor or a chat can paste it (UltraCanvas
+    `RasterizeVectorElements`).
+  - *Paste* takes what was copied last. A picture another program put on the
+    clipboard becomes an image object in the middle of the page, shrunk to
+    the page if it is larger. So does an image file copied in UltraFiler,
+    Explorer or Finder, and a drawing file (SVG, CorelDRAW, Xara, ...) comes
+    in as one group with its gradients and symbols. ArtCreator's own copy
+    still pastes as the editable objects, offset as before - it recognises
+    the picture it put on the clipboard byte for byte.
+  - On Windows this needs the framework's clipboard fix in the same release
+    (`Docs/UltraCanvas/changelog.d/windows-clipboard-images.md`): before it,
+    no picture crossed the Windows clipboard in either direction.
+
 #### 2026-10-02 *0.6.4*
 - **The selection box fits the selected shape.** Selecting a part of an SVG
   drawn with relative curves (`astronaut.svg`) drew a box much larger than

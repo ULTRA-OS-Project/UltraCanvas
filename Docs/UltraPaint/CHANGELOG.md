@@ -1,3 +1,24 @@
+#### 2026-10-06 *0.2.9*
+- **Paste takes an image file copied in a file manager.** Copying a picture
+  file in UltraFiler, Explorer, Finder or Files and pressing Ctrl+V in
+  UltraPaint did nothing - "Nothing to paste": the clipboard held a file
+  list, and paste only ever asked it for pixels. *Paste as New Layer* now
+  adds the file as a layer named after it, centred; *Paste as New Image*
+  opens it as a new, unsaved image with its own layers, so Save asks where
+  to put it instead of writing over the file that was copied. A drawing
+  comes in at its natural size and a 3D model at the viewer's opening view.
+- **Pictures copied in other programs paste on Windows, and pictures copied
+  here paste in them.** A copy in Paint Shop Pro pasted nothing in
+  UltraPaint, and a copy in UltraPaint pasted nothing in Paint Shop Pro: the
+  framework's Windows clipboard wrote and read images in a form no other
+  program used. Fixed in the framework - see
+  `Docs/UltraCanvas/changelog.d/windows-clipboard-images.md`.
+- **A picture of the same size copied elsewhere is the one that pastes.**
+  Paste decided whether the clipboard still held UltraPaint's own copy by
+  comparing sizes, so copying a different 400 x 300 picture in another
+  program after copying a 400 x 300 selection here pasted the old
+  selection. It now compares the PNG it put there byte for byte.
+
 #### 2026-09-28 *0.2.8*
 - **The version is in the window title** — `UltraPaint 0.2.8` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's
