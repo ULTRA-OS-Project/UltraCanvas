@@ -2,6 +2,8 @@
 // Account auto-discovery: provider presets, Mozilla-autoconfig XML parsing,
 // username placeholder resolution and server-URL construction. All pure — no
 // network.
+// Version: 0.3.0 - the iCloud setup guide: which addresses offer it, and its
+//                  servers are the preset's
 // Version: 0.2.0 - ServerNameProblem
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -506,4 +508,32 @@ TEST(credential_vault_migrates_legacy_format) {
 
     vault.Lock();
     fs::remove_all(dir);
+}
+
+TEST(icloud_setup_guide_is_offered_for_icloud_and_unknown_domains) {
+    REQUIRE(OffersICloudSetupGuide(""));                      // nothing typed yet
+    REQUIRE(OffersICloudSetupGuide("erika"));                 // still typing
+    REQUIRE(OffersICloudSetupGuide("erika@icloud.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@me.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@mac.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@own-domain.example"));   // iCloud+ own domain?
+    REQUIRE(!OffersICloudSetupGuide("erika@gmail.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@outlook.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@yahoo.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@gmx.net"));
+}
+
+TEST(icloud_setup_guide_names_the_presets_servers) {
+    const std::string guide = ICloudSetupGuide();
+    const DiscoveryResult icloud = AutoDiscovery::FromPresets("erika@icloud.com");
+    REQUIRE(icloud.found);
+    auto has = [&guide](const std::string& text) { return guide.find(text) != std::string::npos; };
+    REQUIRE(has("**" + icloud.imap.host + "**, port **" + std::to_string(icloud.imap.port) +
+                "**, SSL/TLS"));
+    REQUIRE(has("**" + icloud.smtp.host + "**, port **" + std::to_string(icloud.smtp.port) +
+                "**, STARTTLS"));
+    REQUIRE(has("account.apple.com"));
+    REQUIRE(has("App-Specific Passwords"));
+    REQUIRE(has("Two-factor authentication"));
+    REQUIRE(has("@icloud.com address"));
 }

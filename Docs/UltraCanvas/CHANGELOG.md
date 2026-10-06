@@ -1,3 +1,62 @@
+#### 2026-10-06 *0.9.171*
+- **`RasterizeVectorElements`: chosen elements of an open drawing as a
+  picture.** `UltraCanvasVectorRaster.h` could rasterize a vector *file*;
+  a drawing program had no way to turn its own selection into pixels, so its
+  Copy had nothing to offer a paint program, a word processor or a chat. The
+  new call draws the elements where they sit in the document (their
+  ancestors' transforms applied, definitions resolved) at a given number of
+  pixels per point, over transparency, and crops the layer to what they
+  paint, so a thick stroke or a shadow is kept and empty margin is not.
+  ArtCreator's Copy is its first user. `Tests/VectorRasterTest.cpp` covers
+  it, and the read-back it shares with the plugin rasterizer is one function
+  now instead of two copies.
+- **Windows: pictures cross the clipboard between UltraCanvas applications
+  and every other program.** Nothing image-shaped went either way before:
+  - *Copy* put the application's PNG bytes under `CF_DIB`, the format that
+    must hold a bitmap header and pixels. Paint Shop Pro, Paint, Word and
+    the rest read a header that was not there and pasted nothing. An image
+    now goes on as `"PNG"` (browsers, Office, GIMP, Paint.NET and Krita read
+    it, transparency included), `CF_DIBV5` (32-bit with straight alpha) and
+    `CF_DIB` (24-bit, transparency flattened onto white, for the programs
+    that read only a bitmap; Windows makes `CF_BITMAP` from it).
+  - *Paste* handed back the raw `CF_DIB` block as `image/bmp` - a bitmap
+    with no file header, which no decoder reads - so a picture copied in
+    another program pasted as nothing in UltraPaint, and UltraFiler's Paste
+    wrote it to a `Pasted image.bmp` nothing could open. `GetImage` now
+    returns PNG on Windows as on the other desktops: the `"PNG"` format when
+    the source offered one (trimmed to its `IEND`; a clipboard block is often
+    larger than its content), else `CF_DIBV5` or `CF_DIB` converted. 1/4/8-bit
+    palettes, 16/24/32-bit `BI_RGB` and bit fields, `BI_PNG`, and rows stored
+    either way up are read; alpha is taken only from a bit-field DIB, and a
+    picture whose alpha is zero everywhere reads as opaque.
+  - The conversion is `UltraCanvasClipboardDib.h` (`ClipboardDib::DecodeDib`,
+    `EncodeDibV5`, `EncodeDib24`, `DibToPng`, PNG through cairo): plain byte
+    work, so `Tests/ClipboardDibTest.cpp` checks it on Linux.
+- **Windows: a copied file list goes on the clipboard the way Explorer puts
+  it.** Next to `CF_HDROP` it now carries `"Shell IDList Array"` (what
+  programs built on the shell's data-object helpers read), `"FileNameW"` and
+  `"Preferred DropEffect"`, all written in one open of the clipboard. The cut
+  marker used to be added in a second open, after another program could
+  already have read the list as a copy; a plain `SetFiles` now marks a copy,
+  as Explorer does.
+- **Windows: a clipboard another program holds for a moment no longer makes
+  a copy or paste silently do nothing.** A clipboard manager or Remote
+  Desktop's `rdpclip` opens the clipboard right after every change, and
+  `OpenClipboard` fails while it does; every read and write now retries for
+  up to 200 ms.
+
+#### 2026-10-06 *0.9.170*
+- **Resizing a window keeps the scroll position of the page in a tabbed
+  container.** `UltraCanvasTabbedContainer::Arrange` ran the ordinary block
+  layout over its tab pages before placing the active one, and in that
+  throwaway pass every scroll view on the page saw a viewport as tall as its
+  content and was clamped to the top - the same fault the split pane had
+  (0.9.154). The tabbed container now takes its box with `ArrangeOwnBox` and
+  places only the active page and the overflow button, as it already did
+  after that pass. A hidden page is laid out when it is switched to, as
+  before. New test: `ScrollKeepsPositionOnResizeTest` scrolls a tall view in
+  a split pane and in a tab, resizes the page, and checks the position.
+
 #### 2026-10-06 *0.9.169*
 - **The menu cursor shows on Windows, and has a clearer picture.**
   `UCMouseCursor::ContextMenu` - the pointer over a breadcrumb item's dropdown

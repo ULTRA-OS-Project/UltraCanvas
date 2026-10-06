@@ -1,6 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsClipboard.h
 // Win32 Clipboard implementation
-// Supports text (CF_UNICODETEXT), images (CF_DIB), and files (CF_HDROP).
+// Supports text (CF_UNICODETEXT, "HTML Format"), images ("PNG", CF_DIBV5,
+// CF_DIB - handed to the framework as PNG) and files (CF_HDROP with the
+// formats Explorer puts beside it).
 // Secret text also carries ExcludeClipboardContentFromMonitorProcessing,
 // CanIncludeInClipboardHistory = 0 and CanUploadToCloudClipboard = 0, which
 // keep it out of Windows' own clipboard history (Win+V), its cloud clipboard
