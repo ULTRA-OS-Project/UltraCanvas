@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.6.0
-// Last Modified: 2026-09-06
+// Version: 1.6.1
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -381,7 +381,7 @@ namespace UltraCanvas {
             Rect2Di iconRect;
             Rect2Di textRect;
             Rect2Di dropdownRect;         // Chevron glyph box (empty if no dropdown)
-            Rect2Di dropdownHitRect;      // Full-height zone that opens the dropdown
+            Rect2Di dropdownHitRect;      // Zone that opens the dropdown: top to bottom of the strip
             std::string displayText;      // Original item text (kept for overflow menu / debugging)
             Size2Dd textSize;             // Cached logical size from textLayout
             std::unique_ptr<ITextLayout> textLayout;
@@ -445,9 +445,12 @@ namespace UltraCanvas {
         // Full-height click zone at the trailing end of a slot, covering the
         // chevron and — in the segment styles — the arrow tip past its right
         // edge. `tipExtra` is that overhang, 0 for every other item style;
-        // `maxRight` is the clipped right edge of the content area.
+        // `maxRight` is the clipped right edge of the content area. "Full
+        // height" is the whole breadcrumb, padding and border included.
         Rect2Di ComputeDropdownHitRect(const Rect2Di& slotRect, const Rect2Di& chevronRect,
                                        int tipExtra, int maxRight) const;
+        // `rect` stretched to the top and bottom of the element's bounds.
+        Rect2Di FullHeightBand(const Rect2Di& rect) const;
 
         // Hit testing (returns slot index or -1).
         int HitTest(const Point2Di& localPoint, bool& onDropdown) const;

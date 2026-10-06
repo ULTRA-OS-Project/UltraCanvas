@@ -821,8 +821,8 @@ namespace UltraCanvas {
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
-        // Hand, not LookingGlass: Windows has no magnifier cursor and maps that
-        // one to a crosshair, which does not read as "click to open".
+        // Hand, not LookingGlass: a click opens the image in the viewer, and a
+        // magnifier reads as "zoom" rather than "click to open".
         image->SetClickable(true);   // also sets the hand cursor
         image->onClick = [sampleImagePath]() {
             ShowInMediaViewer(sampleImagePath);

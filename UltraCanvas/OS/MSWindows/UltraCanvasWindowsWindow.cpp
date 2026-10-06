@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
-// Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-07-03
+// Version: 1.1.1 - window icon pixels converted to straight alpha
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -616,57 +616,13 @@ namespace UltraCanvas {
         uint32_t* pixels = pixmap->GetPixelData();
         if (!pixels || w <= 0 || h <= 0) return;
 
-        // Helper lambda to create HICON from ARGB pixel data at a given size
+        // An icon at a given size. IconFromPixmap converts cairo's
+        // premultiplied pixels to the straight alpha an icon carries; copied
+        // as they were, the soft edges came out too dark.
         auto createIcon = [&](int targetW, int targetH) -> HICON {
-            // Get pixmap at target size
             auto sizedPixmap = img->GetPixmap(targetW, targetH);
             if (!sizedPixmap || !sizedPixmap->IsValid()) return nullptr;
-
-            int pw = sizedPixmap->GetWidth();
-            int ph = sizedPixmap->GetHeight();
-            uint32_t* px = sizedPixmap->GetPixelData();
-            if (!px) return nullptr;
-
-            // Create a 32-bit ARGB DIB section
-            BITMAPV5HEADER bi = {};
-            bi.bV5Size = sizeof(BITMAPV5HEADER);
-            bi.bV5Width = pw;
-            bi.bV5Height = -ph; // top-down
-            bi.bV5Planes = 1;
-            bi.bV5BitCount = 32;
-            bi.bV5Compression = BI_BITFIELDS;
-            bi.bV5RedMask   = 0x00FF0000;
-            bi.bV5GreenMask = 0x0000FF00;
-            bi.bV5BlueMask  = 0x000000FF;
-            bi.bV5AlphaMask = 0xFF000000;
-
-            void* dibBits = nullptr;
-            HDC screenDC = GetDC(nullptr);
-            HBITMAP hBitmap = CreateDIBSection(screenDC,
-                reinterpret_cast<BITMAPINFO*>(&bi),
-                DIB_RGB_COLORS, &dibBits, nullptr, 0);
-            ReleaseDC(nullptr, screenDC);
-
-            if (!hBitmap || !dibBits) return nullptr;
-
-            // Copy pixel data — Cairo ARGB32 premultiplied to Windows ARGB
-            // Both use the same byte layout (BGRA in memory on little-endian)
-            memcpy(dibBits, px, pw * ph * 4);
-
-            // Create mask bitmap (all zeros = fully opaque, alpha is in the color bitmap)
-            HBITMAP hMask = CreateBitmap(pw, ph, 1, 1, nullptr);
-
-            ICONINFO iconInfo = {};
-            iconInfo.fIcon = TRUE;
-            iconInfo.hbmColor = hBitmap;
-            iconInfo.hbmMask = hMask;
-
-            HICON icon = CreateIconIndirect(&iconInfo);
-
-            DeleteObject(hBitmap);
-            DeleteObject(hMask);
-
-            return icon;
+            return UltraCanvasWindowsApplication::IconFromPixmap(*sizedPixmap, false, 0, 0);
         };
 
         // Clean up previous icons

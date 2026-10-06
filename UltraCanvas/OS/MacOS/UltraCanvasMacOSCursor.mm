@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasCursorMacOS.mm
 // macOS NSCursor implementation for custom cursor support
-// Version: 1.0.1
-// Last Modified: 2025-12-30
+// Version: 1.1.0 - system context-menu cursor; picture cursors loaded once
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -161,8 +161,10 @@ namespace UltraCanvas {
                     break;
 
                 case UCMouseCursor::LookingGlass:
-                    // Load cursor from image
+                    // macOS has no magnifier cursor: draw ours. Kept, so the
+                    // file is read once rather than on every switch to it.
                     cursor = LoadCursorFromImage(GetResourcesDir() + "media/lib/cursor/looking-glass.png", 0, 0);
+                    if (cursor) cursors[cur] = cursor;
                     break;
 
                 case UCMouseCursor::SizeAll:
@@ -192,8 +194,12 @@ namespace UltraCanvas {
                     cursor = [NSCursor arrowCursor];
                     break;
                 case UCMouseCursor::ContextMenu:
-                    cursor = LoadCursorFromImage(
-                        (GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
+                    // The system's own context-menu pointer - an arrow with a
+                    // small menu, the same idea as context-menu.png. macOS
+                    // draws it at the screen's resolution (sharp on Retina,
+                    // where the 32 px PNG was scaled up and blurred) and there
+                    // is no file to read each time the pointer changes to it.
+                    cursor = [NSCursor contextualMenuCursor];
                     break;
                 default:
                     cursor = [NSCursor arrowCursor];
