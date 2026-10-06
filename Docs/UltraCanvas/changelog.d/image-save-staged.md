@@ -12,4 +12,9 @@
   (UltraPaint) staged its own write around `FileIO::Save` and now relies on
   it. `UltraCanvasQRCode::ExportToImage` and its SVG export
   (`QRCodeUtils::ExportToSVG`), which wrote straight to the target, are
-  staged the same way. New test: `Tests/SaveFileTypeTest.cpp`.
+  staged the same way. Its AVIF export also crashed the whole process
+  wherever an AV1 encoder was installed: it marked its image sRGB with
+  `set("interpretation", ...)`, which leaves the header's interpretation at
+  "multiband", and libvips' heifsave double-frees on a 4-band multiband
+  image (8.12 and 8.15 alike). The image is now marked through `copy()`.
+  New test: `Tests/SaveFileTypeTest.cpp`.

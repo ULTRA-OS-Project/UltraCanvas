@@ -781,7 +781,13 @@ namespace UltraCanvas {
                 sw, sh,
                 4,
                 VIPS_FORMAT_UCHAR);
-            img.set("interpretation", static_cast<int>(VIPS_INTERPRETATION_sRGB));
+            // Marked sRGB through copy(): set("interpretation", ...) only adds a
+            // metadata item and leaves the header's interpretation at
+            // "multiband", and libvips' heifsave crashes on a 4-band
+            // multiband image (a double free in 8.12 and 8.15 alike), so an
+            // AVIF export took the whole process down wherever an AV1
+            // encoder was installed.
+            img = img.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
             // Staged: libvips opens - and truncates - the target before it has
             // encoded a byte, so a failed encode (AVIF on a libheif without an
             // AV1 encoder) left an empty file, or emptied the one it replaced.
