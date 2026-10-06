@@ -1358,7 +1358,9 @@ namespace UltraCanvas {
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         pathRow->layoutItem.SetFlexShrink(0);
 
-        upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight);
+        // No text: the constructor's default is "Button", which would lay the
+        // arrow out as an icon beside a label and leave it at the left padding.
+        upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight, "");
         upButton->SetIcon(FileDialogIconPath("arrow-up.svg"));
         upButton->SetTooltip("Up one level");
         upButton->layoutItem.SetFlexShrink(0);
@@ -1451,6 +1453,7 @@ namespace UltraCanvas {
         filerView->SetDetailsColumnWidth(FilerDetailsColumn::ModifiedDate, modifiedColumnWidth);
         filerView->SetShowHiddenFiles(showHiddenFiles);
         filerView->SetSelectionInfoVisible(false);
+        filerView->SetHoverIconMenuEnabled(fileConfig.hoverIconMenu);
         filerView->SetActivateOpensWithDefaultApp(false);
         filerView->SetBorders(1.0f, kFileDialogBorderColor);
         filerView->onSelectionChanged = [this](const std::vector<FilerEntry>& selected) {

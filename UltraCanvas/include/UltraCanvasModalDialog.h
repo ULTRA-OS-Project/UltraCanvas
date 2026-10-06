@@ -326,6 +326,10 @@ namespace UltraCanvas {
         // file, as the platforms' own save dialogs do. Off for a caller that
         // asks itself (or appends to the file).
         bool confirmOverwrite = true;
+        // The listing's hover icon menu (Copy / Cut / Rename / Delete on the
+        // file under the pointer), as UltraFiler has it. Off: a picker chooses
+        // files, it does not manage them.
+        bool hoverIconMenu = false;
         bool validateNames = true;
         bool addToRecent = true;
 

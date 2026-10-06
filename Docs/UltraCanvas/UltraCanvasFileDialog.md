@@ -8,7 +8,10 @@ every platform:
   four icon sizes);
 - a folder tree (Home, the user's places and every mounted drive, loaded as
   each node is expanded) beside the listing of the current folder, which is an
-  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard;
+  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard -
+  but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
+  the file under the pointer): a picker chooses files rather than managing
+  them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
   of toggle buttons (see [Filter toggles](#filter-toggles)).
 
@@ -48,7 +51,8 @@ options say `SetRegisterAsRecent(false)`.
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles`, `SetConfirmOverwrite` and the parent window.
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
+window.
 
 ### Building it yourself
 
@@ -79,6 +83,7 @@ A config starts without filters: the dialog then lists every file under an
 | `showHiddenFiles` | List dot-files / hidden files |
 | `filterToggles` | Toggle buttons instead of the dropdown |
 | `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
+| `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),

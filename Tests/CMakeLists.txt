@@ -614,6 +614,28 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILE DIALOG LAYOUT TEST =====
+# The file dialog's Up arrow and view glyphs centred in their buttons, and its
+# listing without the Filer's hover icon menu. Reads the composited window
+# pixels back; skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileDialogLayoutTest...")
+    add_executable(FileDialogLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileDialogLayoutTest.cpp
+    )
+    target_include_directories(FileDialogLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileDialogLayoutTest PRIVATE cxx_std_20)
+    target_link_libraries(FileDialogLayoutTest PRIVATE UltraCanvas)
+    set_target_properties(FileDialogLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileDialogLayoutTest COMMAND FileDialogLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileDialogLayoutTest")
+else()
+    message(STATUS "  FileDialogLayoutTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT METRICS SCREENSHOT TEST =====
 # Cap-height centring, level indicators, crisp 1px borders and a caret that
 # spans the text's line box, read back from the composited pixels. It is also
