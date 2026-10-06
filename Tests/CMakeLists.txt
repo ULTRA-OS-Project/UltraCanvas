@@ -818,6 +818,27 @@ add_test(NAME EBookArchiveTest COMMAND EBookArchiveTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: EBookArchiveTest")
 
+# ===== ZIP PACKAGE TEST =====
+# UCZipPackageReader / Writer on a Thai-and-emoji path. Needs only the module
+# and miniz; Windows CI compiles the same three files by hand.
+message(STATUS "  Building ZipPackageTest...")
+add_executable(ZipPackageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZipPackageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasZipPackage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(ZipPackageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_features(ZipPackageTest PRIVATE cxx_std_20)
+set_target_properties(ZipPackageTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ZipPackageTest COMMAND ZipPackageTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ZipPackageTest")
+
 # ===== EBOOK ENGINE TEST =====
 message(STATUS "  Building EBookEngineTest...")
 
