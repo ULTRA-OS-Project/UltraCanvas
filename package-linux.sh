@@ -52,9 +52,10 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # (UltraCrypt); without it they are skipped here like any app not built.
 # UltraClipboard shows the clipboard history UltraDesktop records, and
 # records it itself while it is open on another desktop.
+# UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
