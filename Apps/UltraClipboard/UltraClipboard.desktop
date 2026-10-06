@@ -1,0 +1,20 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraClipboard. `Icon=UltraClipboard` is
+# resolved through the icon themes; the install rules put
+# media/appicon/UltraClipboard.png and .svg into share/icons/hicolor.
+#
+# UltraDesktop starts it too, with --search TEXT or --edit ID, from its
+# clipboard quick panel (Super+V).
+Type=Application
+Version=1.5
+Name=UltraClipboard
+GenericName=Clipboard History
+Comment=Everything you copied: find it, copy it again, edit it or pin it
+Exec=UltraClipboard
+TryExec=UltraClipboard
+Icon=UltraClipboard
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraClipboard
+Categories=Utility;
+Keywords=clipboard;history;copy;paste;pin;snippets;

@@ -72,11 +72,24 @@ windows stop short of the bars instead of covering them.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Stickerboard* toggle, the *clipboard*
-  (a menu of the last fifteen things copied; choosing one puts it back on
-  the clipboard) and *screenshot* (the whole screen to
+  *Stickerboard* toggle, the *clipboard* and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
   green dot for three seconds and its tooltip names the file).
+- **Clipboard**: the desktop records every copy into the clipboard history
+  ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
+  on disk and encrypted, leaving out copies a password manager marks as
+  secret. The clipboard button, or `Super+V` from any window, opens the quick
+  panel: a search field, the pinned entries and the ten latest (typing
+  searches the whole history), each with a thumbnail and Copy, Edit and
+  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
+  *Recording* switch pauses the history and *Open UltraClipboard* shows all
+  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  and *Clear history*; while recording is paused the button is crossed out.
+  When a program that made a copy quits, the desktop puts that copy back on
+  the clipboard, so it can still be pasted. Without a history (a build
+  without SQLite) the button shows a menu of this session's last fifteen
+  copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. The markers:

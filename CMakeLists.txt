@@ -552,6 +552,16 @@ if(BUILD_ULTRADESKTOP)
     add_subdirectory(Apps/UltraDesktop)
 endif()
 
+# ===== ULTRACLIPBOARD =====
+# The clipboard history of ULTRA OS: everything copied - texts, links,
+# colours, images, files - with a thumbnail and Copy / Edit / Delete on every
+# entry, search, pins and the history's settings. UltraDesktop records the
+# history and opens this from its quick panel (Super+V).
+option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
+if(BUILD_ULTRACLIPBOARD)
+    add_subdirectory(Apps/UltraClipboard)
+endif()
+
 # ===== DEVICEEXPLORER =====
 # Shows the devices connected to this computer - printers, scanners, cameras -
 # as the IODeviceManager module finds them: a tree grouped by category,

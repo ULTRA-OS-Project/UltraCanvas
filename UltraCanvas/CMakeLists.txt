@@ -318,6 +318,11 @@ endif()
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xrandr: per-monitor DPI query for HiDPI scaling (XRRGetMonitors).
     pkg_check_modules(X11 REQUIRED x11 xcursor xrandr)
+    # XFixes: the clipboard backend hears of every new clipboard owner (an
+    # image or a file copy as much as a text) instead of comparing the text.
+    # libXcursor depends on it, so it is installed wherever xcursor is;
+    # optional all the same.
+    pkg_check_modules(XFIXES xfixes)
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
@@ -410,6 +415,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboardDib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibilityBridge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
@@ -1776,6 +1782,15 @@ endif()
 
 # Platform-specific libraries
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    if(XFIXES_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${XFIXES_INCLUDE_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${XFIXES_LIBRARIES})
+        set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxClipboard.cpp
+            APPEND PROPERTY COMPILE_DEFINITIONS ULTRACANVAS_HAS_XFIXES=1)
+        message(STATUS "  XFixes: ${XFIXES_VERSION} (clipboard change notification)")
+    else()
+        message(STATUS "  XFixes: not found - clipboard changes are noticed by comparing the text")
+    endif()
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${X11_LIBRARIES}
             ${GTK3_LIBRARIES}
@@ -2844,6 +2859,31 @@ if(ULTRACANVAS_ENABLE_DATABASE)
     endif()
 else()
     message(STATUS "  [−] UltraDatabase - DISABLED")
+endif()
+
+# ===== CLIPBOARD HISTORY =====
+# The persistent clipboard history (include/UltraCanvasClipboardHistory.h):
+# UltraDesktop records into it and shows it in its quick panel, the
+# UltraClipboard application shows and edits it. SQLite through UltraDatabase
+# (which the UltraCanvas library carries), payloads encrypted with UltraCrypt.
+# Built everywhere UltraCrypt is (always): without libsqlite3 the history
+# reports itself unavailable (IsAvailable) and the desktop shows the
+# framework's in-memory list instead.
+if(TARGET UltraCrypt)
+    add_library(UltraClipboardHistory STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp)
+    set_target_properties(UltraClipboardHistory PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraClipboardHistory PUBLIC cxx_std_20)
+    target_include_directories(UltraClipboardHistory PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(UltraClipboardHistory PUBLIC ${ULTRACANVAS_LIB_NAME} UltraCrypt)
+    if(TARGET UltraDatabase)
+        message(STATUS "  [✓] UltraClipboardHistory - ENABLED")
+    else()
+        message(STATUS "  [~] UltraClipboardHistory - built without a database: no history is kept")
+    endif()
 endif()
 
 # ===== BUILD ULTRAMESSAGE LIBRARY (Phase 1: channel + journal) =====

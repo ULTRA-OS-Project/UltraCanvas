@@ -661,7 +661,40 @@ the backing implementation can be replaced without affecting callers.
   - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
     `IsRunning`, `IsNative`: window list, active window and desktop changes,
     reported on the monitor's thread.
+  - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
+    `Stop()` (joins) / `IsRunning`: a key combination that reaches this
+    program from any window (X11 `XGrabKey` on its own connection and
+    thread; fails with a reason elsewhere and when another program holds it).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
+  `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
+  clipboard history of ULTRA OS: every copy (files, images, text with its
+  HTML) kept on disk, shared by UltraDesktop, which records it and shows it
+  in its `Super+V` panel, and the UltraClipboard application. SQLite through
+  UltraDatabase, payloads in content-addressed files, titles, texts and
+  payloads sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key
+  file; copies marked secret are never recorded. Public surface:
+  - `UltraCanvasClipboardHistory` - `Open` / `Close`, `Record`, `List`
+    (`ClipboardHistoryQuery`: accent-insensitive text, kinds, pinned),
+    `Get`, `ReadFormats`, `ReadText`, `GetStats`, `MarkUsed`, `SetPinned`,
+    `Remove` / `Restore` (undo), `Replace` (an edited copy), `Clear`,
+    `Prune`, `GetPolicy` / `SetPolicy` (`ClipboardHistoryPolicy`: limits,
+    pause, thumbnails, excluded programs), `GetGeneration` (reload when
+    another process wrote), `AcquireRecorder` / `ReleaseRecorder` (one
+    process records).
+  - `CaptureClipboard` / `RestoreToClipboard` - a `ClipboardSnapshot` from and
+    to the live clipboard.
+  - `UltraCanvasClipboardRecorder` - records from a UI timer, holds the
+    lease, skips secret copies, puts the last copy back when its owner quits
+    (X11).
+  - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
+    (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
+    `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
+    / Delete hit-tested with `ActionAt`.
+  - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+  See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
   between two groups on one bar; one group's colour up to the curve, the next

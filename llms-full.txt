@@ -840,7 +840,40 @@ the backing implementation can be replaced without affecting callers.
   - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
     `IsRunning`, `IsNative`: window list, active window and desktop changes,
     reported on the monitor's thread.
+  - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
+    `Stop()` (joins) / `IsRunning`: a key combination that reaches this
+    program from any window (X11 `XGrabKey` on its own connection and
+    thread; fails with a reason elsewhere and when another program holds it).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
+  `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
+  clipboard history of ULTRA OS: every copy (files, images, text with its
+  HTML) kept on disk, shared by UltraDesktop, which records it and shows it
+  in its `Super+V` panel, and the UltraClipboard application. SQLite through
+  UltraDatabase, payloads in content-addressed files, titles, texts and
+  payloads sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key
+  file; copies marked secret are never recorded. Public surface:
+  - `UltraCanvasClipboardHistory` - `Open` / `Close`, `Record`, `List`
+    (`ClipboardHistoryQuery`: accent-insensitive text, kinds, pinned),
+    `Get`, `ReadFormats`, `ReadText`, `GetStats`, `MarkUsed`, `SetPinned`,
+    `Remove` / `Restore` (undo), `Replace` (an edited copy), `Clear`,
+    `Prune`, `GetPolicy` / `SetPolicy` (`ClipboardHistoryPolicy`: limits,
+    pause, thumbnails, excluded programs), `GetGeneration` (reload when
+    another process wrote), `AcquireRecorder` / `ReleaseRecorder` (one
+    process records).
+  - `CaptureClipboard` / `RestoreToClipboard` - a `ClipboardSnapshot` from and
+    to the live clipboard.
+  - `UltraCanvasClipboardRecorder` - records from a UI timer, holds the
+    lease, skips secret copies, puts the last copy back when its owner quits
+    (X11).
+  - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
+    (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
+    `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
+    / Delete hit-tested with `ActionAt`.
+  - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+  See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
   between two groups on one bar; one group's colour up to the curve, the next
@@ -15551,6 +15584,241 @@ Diagrams → Class Diagram, five buttons:
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared orthogonal router
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
+==============================================================================
+
+# UltraCanvasClipboardHistory
+
+The clipboard history of ULTRA OS: every copy, in every format the
+framework's clipboard reads, kept on disk so it outlives the program that
+made it. UltraDesktop records into it and shows it in its quick panel
+(`Super+V`); the [UltraClipboard](../UltraClipboard/README.md) application
+shows, searches and edits the same history. Any other application can read it
+or record into it.
+
+Headers: `UltraCanvasClipboardHistory.h` (the store, the recorder, capture and
+restore) and `UltraCanvasClipboardHistoryView.h` (a list model and a row
+painter for `UltraCanvasListView`). Library: `UltraClipboardHistory` (CMake),
+which links UltraCrypt; without UltraDatabase (no libsqlite3) it builds and
+`IsAvailable()` answers false. Design: `Docs/Research/UltraClipboardDesignProposal.md`.
+
+## Quick start
+
+```cpp
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasClipboardHistory.h"
+using namespace UltraCanvas;
+
+UltraCanvasClipboardHistory history;
+if (!history.Open()) {                       // the per-user default place
+    debugOutput << "no clipboard history: " << history.GetLastError() << std::endl;
+    return;
+}
+
+// What is on the clipboard now, into the history.
+ClipboardSnapshot copy;
+if (CaptureClipboard(*GetClipboard(), copy)) history.Record(copy);
+
+// Pinned first, then the most recently used.
+for (const ClipboardHistoryEntry& entry : history.List()) {
+    std::cout << ClipboardEntryKindName(entry.kind) << ": " << entry.title << "\n";
+}
+
+// Put the third entry back on the clipboard.
+std::vector<ClipboardFormat> formats;
+const int64_t id = history.List()[2].id;
+if (history.ReadFormats(id, formats) && RestoreToClipboard(*GetClipboard(), formats)) {
+    history.MarkUsed(id);                   // it is the newest again
+}
+```
+
+## What is kept
+
+A `ClipboardSnapshot` is a list of `ClipboardFormat { mime, data }`. Capture
+takes, in this order of preference:
+
+| Content | Formats |
+|---|---|
+| Files | `application/x-ultracanvas-files` (`ClipboardMime::Files`): `copy` or `cut`, then one path per line |
+| An image | its own type (`image/png`, `image/jpeg`, `image/bmp` for a Windows `CF_DIB`, …), as copied |
+| Text | `text/plain;charset=utf-8` (`ClipboardMime::Text`), plus `text/html` (`ClipboardMime::Html`) when the HTML is markup and differs from the text |
+
+A copy whose source marked it secret (`ClipboardHint::Secret`, KeePassXC's
+`x-kde-passwordManagerHint`, Windows' `ExcludeClipboardContentFromMonitorProcessing`)
+is never recorded. Bytes that do not start with an image signature are not an
+image, whatever the target says: an owner that serves the same bytes for every
+target (xclip) would otherwise turn a text into one.
+
+Each entry (`ClipboardHistoryEntry`) is described when it is recorded:
+
+| Field | |
+|---|---|
+| `kind` | `Text`, `Code`, `RichText`, `Link`, `Colour`, `Image`, `Files` |
+| `title` | first line, file names (`Invoice.pdf, Contract.odt and 1 more`), URL, `Image 1920 × 1080` |
+| `preview` | the first 4 KB of the text; searched |
+| `sourceApplication` | what the recorder's `sourceProvider` answered (the active window's application on the desktop) |
+| `copiedAt`, `lastUsedAt`, `useCount` | Unix ms |
+| `pinned` | kept whatever the limits say; listed first |
+| `sizeBytes`, `width`, `height`, `fileCount`, `cut`, `lineCount` | for the meta line |
+| `thumbnailPath` | images: a PNG at most 96 px on its longer side |
+
+The same content copied again is not a second entry: it moves to the top
+(`ClipboardRecordResult::MovedToTop`).
+
+## Reading and acting
+
+| Call | |
+|---|---|
+| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss) |
+| `Get(id)`, `ReadFormats(id, formats)`, `ReadText(id)` | one entry, its content |
+| `GetStats()` | entries, pinned, bytes, encrypted |
+| `MarkUsed(id)` | it was put back on the clipboard |
+| `SetPinned(id, on)` | |
+| `Remove(id)` / `Restore(id)` | hidden at once, gone after `kUndoSeconds` (8) unless restored |
+| `Replace(id, snapshot, keepOriginal)` | an edited copy: beside the original, or in its place; returns the entry holding it |
+| `Clear(includePinned)` | |
+| `GetPolicy()` / `SetPolicy(policy)` | limits, pause, thumbnails, excluded programs |
+| `Prune()` | applies the limits and finishes removals (`Record` runs it too) |
+
+`ClipboardHistoryPolicy` holds `maxEntries` (500 unpinned), `maxAgeDays` (30,
+by last use), `maxTotalBytes` (512 MB), `maxEntryBytes` (64 MB; a larger copy
+is not recorded), `recordingPaused`, `imageThumbnails` and
+`excludedApplications` (`Defaults()`: UltraPassword, UltraAuthenticator,
+KeePassXC, Bitwarden, 1Password).
+
+`EditClipboardText(text, edit)` is the edit dialog's text tools:
+`ClipboardTextEdit::Trim`, `JoinLines`, `Upper`, `Lower`, `Title`,
+`Sentence` (case changes for Latin, Greek and Cyrillic).
+`ClipboardImageFile(format, extension)` gives an image entry as a file another
+program opens (a bare `CF_DIB` gains its BMP file header).
+
+## Recording
+
+`UltraCanvasClipboardRecorder` records the clipboard from a UI timer:
+
+```cpp
+recorder.sourceProvider = []() { return ActiveApplicationName(); };   // optional
+recorder.onRecorded = [this](int64_t, ClipboardRecordResult) { RefreshList(); };
+recorder.Attach(&history, GetClipboard(), "desktop", 10);
+// every 250 ms on the UI thread:
+recorder.Tick();
+```
+
+Exactly one process records at a time: the holder of the recorder lease
+(`AcquireRecorder(holder, priority)`, renewed every two seconds by `Tick`,
+lost after `kLeaseSeconds` of silence). The desktop records with priority 10,
+UltraClipboard with 0, so the application records only where no desktop does
+— on another desktop, on Windows and macOS — and stops when one starts.
+
+On X11 the clipboard goes with the program that owns it. When that program
+quits, the recorder puts the last copy it recorded back on the clipboard, so
+a copy outlives the program it came from. On X11 the recorder learns of a new
+copy from XFixes (`XFixesSelectSelectionInput`, on a connection and a thread
+of its own) instead of polling the clipboard's owner.
+
+## Sharing between processes
+
+Every write raises a generation number. A process that shows the history
+reads `GetGeneration()` about once a second and reloads when it moved. The
+desktop and UltraClipboard work on one history this way, with no other link
+between them.
+
+## On disk
+
+| Path | |
+|---|---|
+| `<data>/ultraos/clipboard/history.db` | SQLite (UltraDatabase, WAL): entries, formats, settings, the lease |
+| `<data>/ultraos/clipboard/blobs/ab/<hash>.bin` | one file per payload, named by a keyed hash (HMAC) of its content |
+| `<data>/ultraos/clipboard/thumbs/<hash>.png` | image thumbnails |
+| `<config>/ultraos/clipboard.key` | the 256-bit key, owner-only |
+
+`<data>` is `$XDG_DATA_HOME` (`~/.local/share`), `%LOCALAPPDATA%` on Windows,
+`~/Library/Application Support` on macOS; `<config>` is the folder the
+desktop's settings use. The folders are owner-only.
+
+With libsodium, titles, previews and payloads are sealed with
+XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
+history folder, or a backup of it, reads as noise. That does not protect
+against a program running as the same user, which can read the clipboard
+itself. Thumbnails are not encrypted. A key that no longer opens the history
+(deleted, replaced) leaves it unreadable, so `Open` clears it and starts
+again. Without libsodium the history is stored as it was copied, and
+`GetStats().encrypted` says so.
+
+The key is a file of its own rather than an UltraVault entry: UltraVault
+allows one vault per process, and the applications that show the history
+already open theirs.
+
+## Showing it in a list
+
+`ClipboardHistoryListModel` and `ClipboardHistoryRowDelegate` put a history
+into an `UltraCanvasListView`, in the light style UltraClipboard uses or the
+dark compact one of the desktop's panel
+(`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
+
+```cpp
+auto model = std::make_shared<ClipboardHistoryListModel>();
+auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
+list->SetModel(model);
+list->SetDelegate(rows);
+list->SetVariableRowHeights(true);          // headers are lower than rows
+model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
+
+// Raw pointers: a lambda stored in the list must not own the list.
+list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+    if (rows->SetHover(row, at)) view->RequestRedraw();
+};
+list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+    const ClipboardHistoryEntry* entry = model->GetEntry(row);
+    if (!entry) return;                     // a section header
+    switch (rows->ActionAt(row, at)) {
+        case ClipboardRowAction::Copy:   Copy(entry->id); break;
+        case ClipboardRowAction::Edit:   Edit(entry->id); break;
+        case ClipboardRowAction::Delete: Delete(entry->id); break;
+        default: break;
+    }
+};
+list->tooltipProvider = [rows = rows.get()](int row, int) {
+    return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
+};
+```
+
+- **Sections**: `Flat`; `ByDay` (Pinned, Today, Yesterday, Earlier, with
+  counts); `PinnedAndRecent` (the panel's Pinned and Recent).
+  `GetEntry(row)` is `nullptr` on a header; `EntryRowFrom(row, step)` skips
+  them for Up / Down; `FindRow(id)` keeps a selection across a reload.
+- **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
+  swatch, a code tile, a link tile, file sheets with a `+n` badge), the
+  title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
+  characters · UltraMail · 5 min ago") and Copy, Edit and Delete. The light
+  style shows the actions on every row, the compact one on the hovered and
+  selected rows only. `ShowCopied(id)` turns Copy into a check with a
+  "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+- The action glyphs are `media/icons/clipboard/*.svg`, drawn as masks;
+  `iconsDir` points elsewhere.
+- Helpers: `FormatClipboardAge`, `FormatClipboardSize`,
+  `ParseClipboardColour`.
+
+The actions are painted into the row and hit-tested, as UltraMail's contact
+list paints its bin, so the keyboard reaches them through the window's keys:
+Enter copies, F2 edits, Delete deletes.
+
+## Tests
+
+`Tests/ClipboardHistoryStoreTest.cpp` (headless): kinds and titles, the
+encryption on disk, search, pin, remove and undo, edit, the policy's limits,
+two instances on one history, the recorder lease, clear, a wrong key, a 16-bit
+image's thumbnail, the text tools, and the recorder against a fake backend
+(secret copies, putting the last copy back, text that is not an image).
+
+## See also
+
+- [UltraClipboard](../UltraClipboard/README.md) and
+  [UltraDesktop](../UltraDesktop/README.md) — the two programs built on it.
+- [UltraCanvasDesktopShell](UltraCanvasDesktopShell.md) — `UltraCanvasGlobalShortcut`, the desktop's `Super+V`.
+- `UltraCanvasClipboard.h` — the live clipboard, `ClipboardHint::Secret`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md
 ==============================================================================
 
@@ -18182,12 +18450,37 @@ atomic, post to the UI thread. One change can produce several callbacks; the
 receiver coalesces. Where the platform cannot notify, `Start()` succeeds and
 nothing is ever reported: `IsNative()` says which.
 
+### Global shortcuts
+
+`UltraCanvasGlobalShortcut` is a key combination that reaches the program
+whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
+panel:
+
+```cpp
+UltraCanvasGlobalShortcut shortcut;   // a member: Stop() runs in its destructor
+std::string error;
+if (!shortcut.Start("Super+V", [this]() {
+        // The shortcut's own thread: hand the press to the UI thread.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { TogglePanel(); });
+        }
+    }, &error)) {
+    debugOutput << "Super+V is not available: " << error << std::endl;
+}
+```
+
+`Start(accelerator, onPressed, &error)` reads `Super`, `Ctrl`, `Alt` and
+`Shift` and one key (`"Ctrl+Alt+H"`, `"Super+V"`); it fails, saying why, when
+the combination cannot be read, when another program already holds it, and on
+a platform without global shortcuts. `Stop()` joins the thread, so no
+callback runs after it returns; `IsRunning()`.
+
 ## Backends
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` and `CaptureScreenImage` fail with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -18196,6 +18489,8 @@ fallback when it is absent.
 ## See also
 
 - [UltraDesktop](../UltraDesktop/README.md) — the desktop built on this.
+- [UltraCanvasClipboardHistory](UltraCanvasClipboardHistory.md) — the
+  clipboard history the desktop's `Super+V` panel shows.
 - [UltraCanvasWaveSeparator](UltraCanvasWaveSeparator.md) and the
   [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
   elements the desktop's bars are made of.
@@ -22450,7 +22745,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **epub shows its cover**, the way Finder shows a folder of books — see [E-book covers](#e-book-covers); mobi / prc / azw / azw3 keep their glyph |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -22547,9 +22842,10 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
+reader here unpacks (xls, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
-glyph instead of drawing a "page" holding the file's ZIP magic.
+glyph instead of drawing a "page" holding the file's ZIP magic. An epub's text
+is not read either, but its cover is, so epub reports true in every build.
 
 `onDisplayFormatsChanged` fires after any of the four sets changes, whoever
 changed it (the Display menu included) — that is where an application saves
@@ -22587,6 +22883,50 @@ it never throws, so a worker can hand it any file the user points at.
 `UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
 rasterize is displayed from its embedded preview, which is what gives these
 formats a detail pane as well as a tile.
+
+### E-book covers
+
+An `.epub` tile shows the book's cover, as Finder does: a folder of books reads
+as a shelf instead of a wall of identical purple "EPUB" sheets. The cover is
+read on the thumbnail workers by `EPUBEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/EPUBEngine.h`, built into every build), which opens
+the archive's central directory and reads three entries —
+`META-INF/container.xml`, the package document and the cover image — and no
+chapter, so a 300 MB illustrated book costs what a novel does. The image is
+then decoded like any other picture and its outermost pixels are darkened a
+little, which gives a white cover an edge against the white tile and leaves a
+dark one as it is.
+
+The cover is the one the book declares, tried in this order, the first that
+names a file actually in the archive winning:
+
+1. EPUB 3 — the manifest item with `properties="cover-image"`;
+2. EPUB 2 — `<meta name="cover" content="…">`, which names the item's id (or,
+   from some producers, its href);
+3. EPUB 2 — `<guide><reference type="cover" href="…">`;
+4. failing all of those, a manifest image whose id or file name contains
+   "cover".
+
+Where a declaration names a cover **page** rather than an image — the
+`cover.xhtml` or the SVG-wrapped `titlepage.xhtml` most converters write — the
+picture on that page is the cover (`<img src>`, or SVG `<image xlink:href>`).
+A book that declares none of these keeps the glyph; the first picture inside
+the book is not assumed to be its cover.
+
+```cpp
+std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);
+if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG
+```
+
+It never throws and returns an empty vector for a book without a cover, a
+damaged archive or a file that is not an EPUB at all. The same rules decide
+`IEBookEngine::GetCoverImage()` and `EBookMetadata::hasCover` for a book the
+viewer has open. Covers are cached like every other thumbnail — in memory and,
+when `ThumbnailDiskCache` is on, on disk — so a library is read once, and a
+folder of books shows covers peeking out of its icon under Display > Folder
+previews. Display > Thumbnails > Docs turns them off with the other documents,
+and `SetThumbnailFormatEnabled("epub", false)` (UltraFiler: Settings > Display >
+Thumbnails) turns off only them.
 
 ### File types the FileLoader knows
 
@@ -60871,6 +61211,40 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+## Elements of a loaded drawing
+
+`RasterizeVectorElements` is the same job for a drawing that is already open:
+it draws chosen elements of a `VectorDocument` - an editor's selection, say -
+into a fresh layer. It is how a drawing program's *Copy* gives other programs
+a picture.
+
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+std::string error;
+Rect2Dd where;   // optional: the document rectangle the layer covers
+auto layer = RasterizeVectorElements(*document, selection->Elements(),
+                                     1.0,          // pixels per point
+                                     error, &where);
+if (!layer) ShowStatus(error);   // nothing visible, or too large
+```
+
+- **Scale** is pixels per document point. 1 gives a pixel a point, which is
+  the size `RasterizeVectorFile` renders a drawing at naturally, so a copy
+  pasted into a bitmap editor is as big as the same drawing dropped on it.
+- **Where** each element is drawn is where it sits in the document: its own
+  transform and every ancestor's are applied, and definitions (gradients,
+  clip paths, symbols) resolve against the document. Elements are drawn in
+  the order given, so pass them in drawing order.
+- **Cropped** to the pixels the elements paint: the bounds the elements
+  report are their geometry's, so the render is made with a margin and then
+  trimmed, which keeps a thick stroke or a shadow and drops empty margin. The
+  render area starts on a whole pixel, so an edge on a whole point stays
+  crisp.
+- The background is transparent. Null comes back with `error` set when there
+  are no elements, nothing visible, a scale that is not positive, or a result
+  larger than `maxPixels` (64 Mpx by default - a clipboard copy, not a print).
+
 ## What it is not
 
 - **Not a vector editor.** The document model, the converters between vector
@@ -60891,13 +61265,19 @@ UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
+ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
+by `RasterizeVectorElements` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+
 ## Tests
 
 `Tests/VectorRasterTest.cpp` (CTest target `VectorRasterTest`): the natural
 size is the size the artwork asks for, a requested size is delivered exactly,
 one dimension keeps the aspect ratio, the background composites under the
 drawing, and an absurd size is refused rather than allocated. It reports
-`[SKIP]` on a build with no SVG rasterizer instead of failing.
+`[SKIP]` on a build with no SVG rasterizer instead of failing. Its
+`RasterizeVectorElements` checks need no file rasterizer and run on every
+build: the crop to what is painted, a stroke past the bounds, the scale, an
+ancestor's transform, and the refusals.
 
 ## See also
 
@@ -75229,6 +75609,107 @@ passwords and tampering, the unlock back-off, CSV in and out (Chrome and
 Bitwarden layouts included) and the generator.
 
 ==============================================================================
+FILE: Docs/UltraClipboard/README.md
+==============================================================================
+
+# UltraClipboard
+
+The clipboard history of ULTRA OS: everything you copied, with a thumbnail and
+Copy, Edit and Delete on every entry. Find a copy from last week, use it
+again, change it first, or pin it so it stays.
+
+Source: [`Apps/UltraClipboard/`](../../Apps/UltraClipboard/). Changelog:
+[`CHANGELOG.md`](CHANGELOG.md). The history itself:
+[UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md).
+Design and mock-ups: `Docs/Research/UltraClipboardDesignProposal.md`.
+
+## Where the history comes from
+
+UltraDesktop records every copy — texts, links, colours, code, formatted
+text, images and files — into a history on disk, and its quick panel
+(`Super+V`, or the clipboard button on the right bar) shows the pinned and
+the latest entries. UltraClipboard shows the whole history. Both work on the
+same history, so a change in one appears in the other within a second.
+
+Where no UltraDesktop records — another desktop, Windows, macOS —
+UltraClipboard records while it is open. When the desktop starts it takes
+over.
+
+Copies a password manager marks as secret are never recorded (UltraPassword,
+KeePassXC and the others that mark theirs), and copies made in the programs
+listed in the settings are left out.
+
+## Using it
+
+**The list.** Pinned entries come first, then Today, Yesterday and Earlier.
+Every row has a thumbnail by kind (the picture itself for an image, the
+colour for a colour, a sheet with a `+n` badge for several files), the title,
+a line on what it is, which program it came from and when, and three buttons:
+
+| Button | Key | |
+|---|---|---|
+| Copy | Enter, double-click | puts it back on the clipboard; it moves to the top |
+| Edit | F2, Ctrl+E | the edit dialog; an image opens in UltraPaint |
+| Delete | Delete | with *Undo* in the status bar for 8 seconds (Ctrl+Z) |
+
+Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P). Up and Down move
+through the list, skipping the section headers.
+
+**Finding.** Type in the search field (Ctrl+F) to search titles and texts,
+whatever their case and accents. *All*, *Text*, *Images*, *Files*, *Links* and
+*Pinned* narrow the list. Escape clears the search.
+
+**Editing.** The edit dialog holds the text with four tools: *Plain text*
+(formatted text only: keep the words, drop the formatting), *Trim* (spaces at
+the ends of lines, empty lines at the ends), *Case* (UPPER, lower, Title,
+Sentence) and *Join lines*. *Keep the original entry as well* (on) adds the
+edited text as a new entry; off, it replaces the entry. *Save and copy* also
+puts it on the clipboard. An image goes to UltraPaint; copy the result there
+and it arrives as a new entry. Files are edited where they are.
+
+**Recording.** The *Recording* switch pauses the history; while it is off
+nothing copied is kept (the desktop's clipboard button shows it crossed out).
+
+**Settings** (the sliders button): how many entries the history keeps (100 to
+2,000, pinned ones not counted), for how long (a day to a year, by last use),
+how much in all and the largest single copy, whether images get thumbnails,
+and the programs whose copies are never recorded. The dialog also says where
+the key is kept and what the encryption protects.
+
+**More** (`⋯`): *Find*, *Settings* and *Clear history*, which removes every
+entry that is not pinned.
+
+## From the desktop
+
+The desktop's quick panel starts UltraClipboard for what does not fit in it:
+
+| In the panel | Starts |
+|---|---|
+| *Open UltraClipboard* | `UltraClipboard`, or `UltraClipboard --search TEXT` with the panel's search |
+| F2 or Ctrl+E on an entry | `UltraClipboard --edit ID`: that entry's edit dialog at once |
+
+The desktop looks for `UltraClipboard` next to its own executable first, then
+on `PATH`.
+
+## Command line
+
+```
+UltraClipboard [--search TEXT] [--edit ID]
+UltraClipboard --version
+```
+
+## Privacy
+
+The history lives in `~/.local/share/ultraos/clipboard/` (`%LOCALAPPDATA%` on
+Windows, `~/Library/Application Support` on macOS), in folders only you can
+open. Titles, texts and copies are encrypted with a key kept apart from them
+in `~/.config/ultraos/clipboard.key`, so a copy of the history folder or a
+backup of it cannot be read without the key. Image thumbnails are not
+encrypted. A program running as you can read the clipboard itself, so the
+encryption does not protect against that; leaving such programs' copies out,
+or pausing the recording, does.
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -75637,11 +76118,24 @@ windows stop short of the bars instead of covering them.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Stickerboard* toggle, the *clipboard*
-  (a menu of the last fifteen things copied; choosing one puts it back on
-  the clipboard) and *screenshot* (the whole screen to
+  *Stickerboard* toggle, the *clipboard* and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
   green dot for three seconds and its tooltip names the file).
+- **Clipboard**: the desktop records every copy into the clipboard history
+  ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
+  on disk and encrypted, leaving out copies a password manager marks as
+  secret. The clipboard button, or `Super+V` from any window, opens the quick
+  panel: a search field, the pinned entries and the ten latest (typing
+  searches the whole history), each with a thumbnail and Copy, Edit and
+  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
+  *Recording* switch pauses the history and *Open UltraClipboard* shows all
+  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  and *Clear history*; while recording is paused the button is crossed out.
+  When a program that made a copy quits, the desktop puts that copy back on
+  the clipboard, so it can still be pasted. Without a history (a build
+  without SQLite) the button shows a menu of this session's last fifteen
+  copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. The markers:

@@ -14,6 +14,12 @@
 // or closed, the active window or the current desktop changed) and the
 // device poll (every two seconds, since a USB and network listing is not
 // free).
+//
+// The clipboard: the desktop records every copy into the persistent history
+// (UltraCanvasClipboardHistory) while it runs, and its clipboard button -
+// or Super+V anywhere - opens the quick panel on that history. The
+// UltraClipboard application edits the same history. Without a database in
+// the build the button shows the framework's in-memory list instead.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,6 +44,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+    class UltraCanvasClipboardHistory;
+    class UltraCanvasClipboardRecorder;
     class UltraCanvasContainer;
     class UltraCanvasToolbar;
     class UltraCanvasImageElement;
@@ -48,6 +56,7 @@ namespace UltraCanvas {
 namespace UltraDesktop {
 
 class UltraDesktopAppStarter;
+class UltraDesktopClipboardPanel;
 class UltraDesktopStickerboard;
 class UltraDesktopTasksWindow;
 
@@ -124,6 +133,17 @@ private:
     // ===== RUNNING APPS =====
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
+
+    // ===== CLIPBOARD HISTORY =====
+    void StartClipboardHistory();
+    // From the bar (beside the button) or Super+V (centred).
+    void ToggleClipboardPanel(bool besideButton);
+    void ShowClipboardButtonMenu(int windowX, int windowY);
+    void CopyHistoryEntry(int64_t entryId);
+    void OpenClipboardApplication(const std::vector<std::string>& arguments);
+    void SetClipboardRecording(bool on);
+    void UpdateClipboardButton();
+    void CheckClipboardHistory();
     std::string RunningItemId(uint64_t windowId) const;
 
     // ===== STATE =====
@@ -146,6 +166,17 @@ private:
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
+
+    // The clipboard history; null when the build has no database.
+    std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;
+    std::unique_ptr<UltraCanvas::UltraCanvasClipboardRecorder> recorder_;
+    std::shared_ptr<UltraDesktopClipboardPanel> clipboardPanel_;
+    UltraCanvas::UltraCanvasGlobalShortcut clipboardShortcut_;
+    UltraCanvas::UltraCanvasButton* clipboardButton_ = nullptr;   // owned by the organiser
+    uint64_t historyGeneration_ = 0;
+    bool clipboardPaused_ = false;
+    int ticksSinceHistoryCheck_ = 0;
+    int ticksSincePrune_ = 0;
 
     // window id -> the toolbar item for it, in the order the user keeps
     std::map<uint64_t, std::string> runningItems_;

@@ -1,3 +1,174 @@
+#### 2026-10-06 *0.9.173*
+- **EPUB files show their cover in the file display, as in Finder.** A folder
+  of books was a wall of identical purple "EPUB" sheets: the thumbnail workers
+  had no picture to read out of an e-book, and epub was on the list of
+  containers no reader unpacks. `UltraCanvasFilerWidget` now shows the cover
+  the book declares - in the thumbnail grids, the icon column of the Details
+  and List rows, and (Display > Folder previews) peeking out of the folder
+  that holds the books. It is cached like every other thumbnail, on disk
+  included, so a library is read once. Display > Thumbnails > Docs, or the
+  epub switch of the per-format list, turns it off; `GetPreviewableFormats()`
+  now reports epub as thumbnail-supported in every build. mobi / prc / azw /
+  azw3 keep their glyph.
+  - **Reading a cover does not read the book.** The new
+    `EPUBEngine::ReadCoverImageFromFile(path)` inflates three entries -
+    `META-INF/container.xml`, the package document and the cover - and no
+    chapter, table of contents or other resource, so a 300 MB illustrated
+    book costs what a novel does. `EBookArchive::OpenFromFile` (which nothing
+    called) now reads only the ZIP central directory and inflates entries
+    from the file as they are asked for, opening the UTF-8 path through
+    `OpenFileUtf8`; `EBookArchive::FileSize` lets a caller refuse an entry
+    before inflating it, which the cover reader does past 64 MB.
+  - **More books are found to have a cover.** The engine took a cover only
+    from EPUB 3 `cover-image` or an EPUB 2 `<meta name="cover">` id, and
+    otherwise from a manifest image whose id said "cover". It now also takes
+    a `<meta name="cover">` that names the image's href instead of its id,
+    and the `<guide>` cover reference; a declaration that names a cover
+    **page** (the `cover.xhtml`, or the SVG-wrapped `titlepage.xhtml` Calibre
+    writes) gives the picture on that page instead of the page's markup; a
+    declared cover missing from the archive falls through to the next rule;
+    and the last resort also matches an image's file name. The viewer's
+    `GetCoverImage()` and `EBookMetadata::hasCover` follow the same rules.
+    `EPUBEngine` 1.1.0, `EBookArchive` 1.1.0.
+
+#### 2026-10-06 *0.9.172*
+- **A clipboard history that outlives the program that showed it.**
+  `UltraCanvasClipboardHistory` (library `UltraClipboardHistory`) keeps every
+  copy - files with the cut flag, images as copied, text with its HTML - in
+  an SQLite database (UltraDatabase) with one content-addressed file per
+  payload, under `<data>/ultraos/clipboard/`. Titles, texts and payloads are
+  sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key file
+  kept apart from them; images get 96 px thumbnails. Each entry is described
+  when it is recorded (text, code, formatted text, link, colour, image,
+  files; title, preview, source program, sizes), the same content copied
+  again moves to the top, and a copy marked secret is never recorded.
+  `List` searches case- and accent-insensitively and filters by kind;
+  `Remove` / `Restore` give an undo, `Replace` an edited copy beside or in
+  place of the original, `SetPinned`, `Clear`, and a policy of limits,
+  pause, thumbnails and excluded programs. Two processes share one history:
+  a generation number tells the other side to reload, and a lease lets
+  exactly one of them record. See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
+  - `UltraCanvasClipboardRecorder` records from a UI timer, and puts the last
+    copy back on the clipboard when the program that owned it quits (X11).
+  - `CaptureClipboard` / `RestoreToClipboard` move a `ClipboardSnapshot`
+    between the live clipboard and the history; `EditClipboardText` (trim,
+    join lines, upper / lower / title / sentence case for Latin, Greek and
+    Cyrillic) and `ClipboardImageFile` serve an editor.
+  - `ClipboardHistoryListModel` and `ClipboardHistoryRowDelegate`
+    (`UltraCanvasClipboardHistoryView.h`) show a history in an
+    `UltraCanvasListView`: section headers, a thumbnail by kind, a meta line
+    and painted Copy / Edit / Delete, in a light style and the desktop's dark
+    compact one.
+  - The X11 clipboard learns of a new copy from XFixes
+    (`XFixesSelectSelectionInput` on a connection and thread of its own) when
+    libXfixes is found. Before, `HasClipboardChanged` fetched the clipboard's
+    text every 100 ms and compared it, which also missed every copied image
+    and file list; that stays the fallback without XFixes.
+    `HasClipboardOwner()` is new on the backend.
+  - `Tests/ClipboardHistoryStoreTest.cpp` (headless).
+- **A copied password no longer ends up in a clipboard history.**
+  `SetText(text, ClipboardHint::Secret)` (and `SetClipboardText(text, hint)`)
+  puts the text on the clipboard together with each platform's "leave this out
+  of the history" marker: `x-kde-passwordManagerHint` = `secret` on X11 (the
+  marker KDE's Klipper and KeePassXC use);
+  `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory` = 0 and `CanUploadToCloudClipboard` = 0 on
+  Windows, which also keep it out of `Win+V` and the cloud clipboard; and
+  `org.nspasteboard.ConcealedType` on macOS. The clipboard's own history
+  honours the same markers, from this process or any other:
+  `ProcessNewClipboardContent` and the entry recorded at start-up skip content
+  whose owner marked it, through the new backend call
+  `IsClipboardMarkedSecret()`. Until now UltraDesktop's monitor recorded
+  every text it saw, so a password copied from UltraPassword stayed in its
+  clipboard menu after UltraPassword had cleared the clipboard.
+  - `UltraCanvasClipboardBackend` gains `SetClipboardSecretText` and
+    `IsClipboardMarkedSecret`; a backend without markers (Android,
+    WebAssembly) puts plain text and reports nothing marked.
+  - `UltraCanvasClipboard::InitializeWithBackend` takes a backend from the
+    caller, for a platform the framework has none for, and for tests.
+  - `GetEntries()` is documented as newest first, which it always was.
+  - `Tests/ClipboardHistoryTest.cpp`: newest-first order, a secret copy from
+    another program, from this process, and one already on the clipboard at
+    start-up, against a fake backend (headless).
+- **A key combination for the whole desktop.** `UltraCanvasGlobalShortcut`
+  (`UltraCanvasDesktopShell.h`) calls back when `"Super+V"`, `"Ctrl+Alt+H"`
+  or another combination is pressed, whichever window has the focus: on X11 a
+  passive `XGrabKey` on the root window, with the Caps Lock and Num Lock
+  variants, on a connection and thread of its own. `Start` fails and says why
+  when the combination cannot be read, when another program holds it, and
+  on the platforms without a backend; `Stop` joins the thread. UltraDesktop
+  opens its clipboard panel with it.
+- **A 16-bit picture saved as an 8-bit PNG keeps its colours.** `pngsave`
+  narrows 16-bit samples to the bit depth it is given by clipping them, so a
+  16-bit PNG (as ImageMagick, scanners and some screenshot tools write them)
+  that `UCImage::Save` wrote as an ordinary PNG - a thumbnail, an export -
+  came out white. A 16-bit RGB or grey image is now converted to 8-bit sRGB
+  or grey first, as the JPEG and WebP writers already do on their own.
+- **Files copied with xclip arrive complete.** The X11 clipboard reads files
+  from `x-special/gnome-copied-files`, whose first line is the verb `copy` or
+  `cut`. A program that answers every target with the same bytes, as xclip
+  does, hands over a bare URI list there, and its first file was taken for
+  the verb and dropped. Only `copy` and `cut` count as the verb now.
+
+#### 2026-10-06 *0.9.171*
+- **`RasterizeVectorElements`: chosen elements of an open drawing as a
+  picture.** `UltraCanvasVectorRaster.h` could rasterize a vector *file*;
+  a drawing program had no way to turn its own selection into pixels, so its
+  Copy had nothing to offer a paint program, a word processor or a chat. The
+  new call draws the elements where they sit in the document (their
+  ancestors' transforms applied, definitions resolved) at a given number of
+  pixels per point, over transparency, and crops the layer to what they
+  paint, so a thick stroke or a shadow is kept and empty margin is not.
+  ArtCreator's Copy is its first user. `Tests/VectorRasterTest.cpp` covers
+  it, and the read-back it shares with the plugin rasterizer is one function
+  now instead of two copies.
+- **Windows: pictures cross the clipboard between UltraCanvas applications
+  and every other program.** Nothing image-shaped went either way before:
+  - *Copy* put the application's PNG bytes under `CF_DIB`, the format that
+    must hold a bitmap header and pixels. Paint Shop Pro, Paint, Word and
+    the rest read a header that was not there and pasted nothing. An image
+    now goes on as `"PNG"` (browsers, Office, GIMP, Paint.NET and Krita read
+    it, transparency included), `CF_DIBV5` (32-bit with straight alpha) and
+    `CF_DIB` (24-bit, transparency flattened onto white, for the programs
+    that read only a bitmap; Windows makes `CF_BITMAP` from it).
+  - *Paste* handed back the raw `CF_DIB` block as `image/bmp` - a bitmap
+    with no file header, which no decoder reads - so a picture copied in
+    another program pasted as nothing in UltraPaint, and UltraFiler's Paste
+    wrote it to a `Pasted image.bmp` nothing could open. `GetImage` now
+    returns PNG on Windows as on the other desktops: the `"PNG"` format when
+    the source offered one (trimmed to its `IEND`; a clipboard block is often
+    larger than its content), else `CF_DIBV5` or `CF_DIB` converted. 1/4/8-bit
+    palettes, 16/24/32-bit `BI_RGB` and bit fields, `BI_PNG`, and rows stored
+    either way up are read; alpha is taken only from a bit-field DIB, and a
+    picture whose alpha is zero everywhere reads as opaque.
+  - The conversion is `UltraCanvasClipboardDib.h` (`ClipboardDib::DecodeDib`,
+    `EncodeDibV5`, `EncodeDib24`, `DibToPng`, PNG through cairo): plain byte
+    work, so `Tests/ClipboardDibTest.cpp` checks it on Linux.
+- **Windows: a copied file list goes on the clipboard the way Explorer puts
+  it.** Next to `CF_HDROP` it now carries `"Shell IDList Array"` (what
+  programs built on the shell's data-object helpers read), `"FileNameW"` and
+  `"Preferred DropEffect"`, all written in one open of the clipboard. The cut
+  marker used to be added in a second open, after another program could
+  already have read the list as a copy; a plain `SetFiles` now marks a copy,
+  as Explorer does.
+- **Windows: a clipboard another program holds for a moment no longer makes
+  a copy or paste silently do nothing.** A clipboard manager or Remote
+  Desktop's `rdpclip` opens the clipboard right after every change, and
+  `OpenClipboard` fails while it does; every read and write now retries for
+  up to 200 ms.
+
+#### 2026-10-06 *0.9.170*
+- **Resizing a window keeps the scroll position of the page in a tabbed
+  container.** `UltraCanvasTabbedContainer::Arrange` ran the ordinary block
+  layout over its tab pages before placing the active one, and in that
+  throwaway pass every scroll view on the page saw a viewport as tall as its
+  content and was clamped to the top - the same fault the split pane had
+  (0.9.154). The tabbed container now takes its box with `ArrangeOwnBox` and
+  places only the active page and the overflow button, as it already did
+  after that pass. A hidden page is laid out when it is switched to, as
+  before. New test: `ScrollKeepsPositionOnResizeTest` scrolls a tall view in
+  a split pane and in a tab, resizes the page, and checks the position.
+
 #### 2026-10-06 *0.9.169*
 - **The menu cursor shows on Windows, and has a clearer picture.**
   `UCMouseCursor::ContextMenu` - the pointer over a breadcrumb item's dropdown

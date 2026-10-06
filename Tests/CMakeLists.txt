@@ -571,6 +571,52 @@ else()
     message(STATUS "  TextInputAccessibilityTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== CLIPBOARD HISTORY TEST =====
+# The clipboard history the desktop shows is newest first, and never records
+# content marked secret - a password copied from UltraPassword, or another
+# program's copy carrying its platform's marker. Headless: a fake backend
+# stands in for the platform clipboard.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ClipboardHistoryTest...")
+    add_executable(ClipboardHistoryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardHistoryTest.cpp
+    )
+    target_include_directories(ClipboardHistoryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardHistoryTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardHistoryTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardHistoryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardHistoryTest COMMAND ClipboardHistoryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardHistoryTest")
+else()
+    message(STATUS "  ClipboardHistoryTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== CLIPBOARD HISTORY STORE TEST =====
+# The persistent history UltraDesktop and UltraClipboard share: kinds, the
+# encrypted store, search, pin/remove/undo/edit, limits, two instances on one
+# folder, the recorder lease, and the recorder against a fake clipboard.
+# Headless, in a temporary folder.
+if(TARGET UltraClipboardHistory)
+    message(STATUS "  Building ClipboardHistoryStoreTest...")
+    add_executable(ClipboardHistoryStoreTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardHistoryStoreTest.cpp
+    )
+    target_include_directories(ClipboardHistoryStoreTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardHistoryStoreTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardHistoryStoreTest PRIVATE UltraClipboardHistory)
+    set_target_properties(ClipboardHistoryStoreTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardHistoryStoreTest COMMAND ClipboardHistoryStoreTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardHistoryStoreTest")
+else()
+    message(STATUS "  ClipboardHistoryStoreTest skipped (UltraClipboardHistory not built)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.
@@ -672,6 +718,34 @@ add_test(NAME PathUtf8Test COMMAND PathUtf8Test
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PathUtf8Test")
 
+# ===== CLIPBOARD DIB TEST =====
+# UltraCanvasClipboardDib: the CF_DIB / CF_DIBV5 <-> PNG conversion the
+# Windows clipboard backend puts every image through. Byte work plus cairo's
+# PNG codec, so it is tested here on Linux without a display.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(CLIPBOARDDIB_CAIRO QUIET cairo)
+endif()
+if(CLIPBOARDDIB_CAIRO_FOUND)
+    message(STATUS "  Building ClipboardDibTest...")
+    add_executable(ClipboardDibTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardDibTest.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasClipboardDib.cpp
+    )
+    target_include_directories(ClipboardDibTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CLIPBOARDDIB_CAIRO_INCLUDE_DIRS}
+    )
+    target_link_libraries(ClipboardDibTest PRIVATE ${CLIPBOARDDIB_CAIRO_LINK_LIBRARIES})
+    target_compile_features(ClipboardDibTest PRIVATE cxx_std_20)
+    set_target_properties(ClipboardDibTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardDibTest COMMAND ClipboardDibTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardDibTest")
+endif()
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.
@@ -708,6 +782,7 @@ add_executable(EBookArchiveTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
 )
 target_include_directories(EBookArchiveTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
 )
@@ -4380,6 +4455,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DemoScrollTextTest")
 else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ScrollKeepsPositionOnResizeTest =====
+# A scroll view keeps its position across a resize inside a split pane and a
+# tabbed container (they used to run a throwaway block layout first).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ScrollKeepsPositionOnResizeTest...")
+    add_executable(ScrollKeepsPositionOnResizeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ScrollKeepsPositionOnResizeTest.cpp
+    )
+    target_include_directories(ScrollKeepsPositionOnResizeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ScrollKeepsPositionOnResizeTest PRIVATE cxx_std_20)
+    target_link_libraries(ScrollKeepsPositionOnResizeTest PRIVATE UltraCanvas)
+    set_target_properties(ScrollKeepsPositionOnResizeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ScrollKeepsPositionOnResizeTest COMMAND ScrollKeepsPositionOnResizeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ScrollKeepsPositionOnResizeTest")
+else()
+    message(STATUS "  ScrollKeepsPositionOnResizeTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== AUDIO STREAMING TEST =====

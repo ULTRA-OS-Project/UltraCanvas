@@ -539,7 +539,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **epub shows its cover**, the way Finder shows a folder of books — see [E-book covers](#e-book-covers); mobi / prc / azw / azw3 keep their glyph |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -636,9 +636,10 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
+reader here unpacks (xls, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
-glyph instead of drawing a "page" holding the file's ZIP magic.
+glyph instead of drawing a "page" holding the file's ZIP magic. An epub's text
+is not read either, but its cover is, so epub reports true in every build.
 
 `onDisplayFormatsChanged` fires after any of the four sets changes, whoever
 changed it (the Display menu included) — that is where an application saves
@@ -676,6 +677,50 @@ it never throws, so a worker can hand it any file the user points at.
 `UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
 rasterize is displayed from its embedded preview, which is what gives these
 formats a detail pane as well as a tile.
+
+### E-book covers
+
+An `.epub` tile shows the book's cover, as Finder does: a folder of books reads
+as a shelf instead of a wall of identical purple "EPUB" sheets. The cover is
+read on the thumbnail workers by `EPUBEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/EPUBEngine.h`, built into every build), which opens
+the archive's central directory and reads three entries —
+`META-INF/container.xml`, the package document and the cover image — and no
+chapter, so a 300 MB illustrated book costs what a novel does. The image is
+then decoded like any other picture and its outermost pixels are darkened a
+little, which gives a white cover an edge against the white tile and leaves a
+dark one as it is.
+
+The cover is the one the book declares, tried in this order, the first that
+names a file actually in the archive winning:
+
+1. EPUB 3 — the manifest item with `properties="cover-image"`;
+2. EPUB 2 — `<meta name="cover" content="…">`, which names the item's id (or,
+   from some producers, its href);
+3. EPUB 2 — `<guide><reference type="cover" href="…">`;
+4. failing all of those, a manifest image whose id or file name contains
+   "cover".
+
+Where a declaration names a cover **page** rather than an image — the
+`cover.xhtml` or the SVG-wrapped `titlepage.xhtml` most converters write — the
+picture on that page is the cover (`<img src>`, or SVG `<image xlink:href>`).
+A book that declares none of these keeps the glyph; the first picture inside
+the book is not assumed to be its cover.
+
+```cpp
+std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);
+if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG
+```
+
+It never throws and returns an empty vector for a book without a cover, a
+damaged archive or a file that is not an EPUB at all. The same rules decide
+`IEBookEngine::GetCoverImage()` and `EBookMetadata::hasCover` for a book the
+viewer has open. Covers are cached like every other thumbnail — in memory and,
+when `ThumbnailDiskCache` is on, on disk — so a library is read once, and a
+folder of books shows covers peeking out of its icon under Display > Folder
+previews. Display > Thumbnails > Docs turns them off with the other documents,
+and `SetThumbnailFormatEnabled("epub", false)` (UltraFiler: Settings > Display >
+Thumbnails) turns off only them.
 
 ### File types the FileLoader knows
 

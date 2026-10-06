@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraClipboard</title>
+  <desc>A white clipboard with three lines of text in front of an earlier copy, on a teal tile: the clipboard history mark.</desc>
+  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#0d9488"/>
+  <rect x="92" y="58" width="112" height="140" rx="16" ry="16" fill="#99f6e4"/>
+  <rect x="58" y="78" width="120" height="146" rx="16" ry="16" fill="#ffffff"/>
+  <rect x="90" y="64" width="56" height="30" rx="10" ry="10" fill="#134e4a"/>
+  <rect x="104" y="58" width="28" height="14" rx="7" ry="7" fill="#134e4a"/>
+  <rect x="80" y="122" width="76" height="12" rx="6" fill="#0f766e"/>
+  <rect x="80" y="148" width="76" height="12" rx="6" fill="#5eead4"/>
+  <rect x="80" y="174" width="50" height="12" rx="6" fill="#5eead4"/>
+</svg>

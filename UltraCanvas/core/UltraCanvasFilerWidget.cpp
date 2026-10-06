@@ -105,6 +105,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "Documents/eBook/EPUBEngine.h"     // EPUB covers for the thumbnails
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
@@ -925,7 +926,8 @@ namespace UltraCanvas {
         // unpacks: reading their head yields a few bytes of container magic,
         // which is neither a page of text nor an honest "no preview". Naming
         // them in one place keeps the format lists' "this build cannot render
-        // it" and the extractor's answer the same fact.
+        // it" and the extractor's answer the same fact. (An EPUB's tile is
+        // its cover instead - EBookCoverReadable below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
                 "xls",      // OLE2 workbook (the reader covers xlsx / ods)
@@ -933,6 +935,44 @@ namespace UltraCanvas {
                 "mobi", "prc", "azw", "azw3",   // Mobipocket record files
             };
             return containersWithoutReader.find(ext) == containersWithoutReader.end();
+        }
+
+        // ===== E-BOOK COVERS =====
+        // A book shows its cover, the way Finder shows a folder of books: the
+        // picture the book's package declares, which the EPUB engine reads
+        // out of the archive without unpacking a chapter - container.xml, the
+        // package document and the cover, three entries whatever the size of
+        // the book. EPUB only: the Mobipocket / Kindle files keep their type
+        // glyph, and FB2 its page of text.
+        bool EBookCoverReadable(const std::string& ext) {
+            return ext == "epub";
+        }
+
+        // A cover is drawn as it is, but a white one would melt into the
+        // white tile around it. Its outermost pixels are darkened by a fifth:
+        // a grey edge on a light cover, nothing visible on a dark one.
+        void ShadeCoverEdge(UCPixmap& pm) {
+            pm.Flush();
+            uint32_t* px = pm.GetPixelData();
+            const int w = pm.GetRawWidth(), h = pm.GetRawHeight();
+            if (!px || w < 3 || h < 3) return;
+            // Premultiplied ARGB: scaling the colour leaves alpha alone and
+            // keeps every channel within it.
+            auto shade = [](uint32_t& p) {
+                const uint32_t r = ((p >> 16) & 0xFFu) * 4 / 5;
+                const uint32_t g = ((p >> 8) & 0xFFu) * 4 / 5;
+                const uint32_t b = (p & 0xFFu) * 4 / 5;
+                p = (p & 0xFF000000u) | (r << 16) | (g << 8) | b;
+            };
+            for (int x = 0; x < w; ++x) {
+                shade(px[x]);
+                shade(px[static_cast<size_t>(h - 1) * w + x]);
+            }
+            for (int y = 1; y < h - 1; ++y) {
+                shade(px[static_cast<size_t>(y) * w]);
+                shade(px[static_cast<size_t>(y) * w + w - 1]);
+            }
+            pm.MarkDirty();
         }
 
         // Whether THIS build can produce a thumbnail for the format at all —
@@ -973,9 +1013,11 @@ namespace UltraCanvas {
                 // Text-shaped kinds are read, not decoded - but only where
                 // there is something readable to find.
                 case FilerPreviewType::Text:
-                case FilerPreviewType::Docs:
                 case FilerPreviewType::Spreadsheets:
                     return TextPreviewReadable(ext);
+                // ... or, for a book, a cover to show.
+                case FilerPreviewType::Docs:
+                    return TextPreviewReadable(ext) || EBookCoverReadable(ext);
                 // Audio files have no picture in them that anything here
                 // reads (cover art is not extracted yet), so no switch can
                 // give them a thumbnail. They are listed all the same: the
@@ -1065,6 +1107,27 @@ namespace UltraCanvas {
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
             return img->GetPixmap(w, h, fit, scale);
+        }
+
+        // ===== E-BOOK COVER (EPUB) =====
+        // The cover the book declares, decoded like any other picture. Runs
+        // on the thumbnail workers: ReadCoverImageFromFile owns its archive
+        // and parser, so any number of books can be read at once.
+        std::shared_ptr<UCPixmap> RenderEBookCoverPixmap(const std::string& path,
+                                                         int w, int h,
+                                                         ImageFitMode fit,
+                                                         float scale) {
+            if (!EBookCoverReadable(LowerExtension(path))) return nullptr;
+            std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(path);
+            if (bytes.empty()) return nullptr;
+            auto img = UCImage::LoadFromMemory(bytes);
+            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
+            // The pixmap is this image's alone - an image loaded from memory
+            // gets a cache key no other caller can ask for - so it is shaded
+            // in place.
+            auto pm = img->GetPixmap(w, h, fit, scale);
+            if (pm) ShadeCoverEdge(*pm);
+            return pm;
         }
 
         // Logical size times the display scale, floored at one pixel.
@@ -4201,8 +4264,8 @@ namespace UltraCanvas {
                 return rect.width >= kContentPreviewMinEdge &&
                        rect.height >= kContentPreviewMinEdge;
             default:
-                // Bitmaps, vectors and video poster frames read fine even in
-                // the icon column of a Details row.
+                // Bitmaps, vectors, video poster frames and book covers read
+                // fine even in the icon column of a Details row.
                 return true;
         }
     }
@@ -10560,8 +10623,14 @@ namespace UltraCanvas {
             // once and the tile keeps its glyph.
             case FilerPreviewType::Fonts:
                 return e.path;
-            // Text, Docs and Spreadsheets have no image to decode: they
-            // preview through AcquireTextPreview instead.
+            // A book's cover, read out of the EPUB. The other documents have
+            // no image to decode.
+            case FilerPreviewType::Docs:
+                return EBookCoverReadable(NormalizedFormatExtension(e.extension))
+                               ? e.path : std::string{};
+            // Text and Spreadsheets have no image to decode either: they -
+            // and the documents above - preview through AcquireTextPreview
+            // instead.
             default:
                 return {};
         }
@@ -10743,6 +10812,10 @@ namespace UltraCanvas {
                     case FilerPreviewType::PDF:
                     case FilerPreviewType::Models3D:
                     case FilerPreviewType::Fonts:
+                        break;
+                    // A book is its cover - a folder of books shows books.
+                    case FilerPreviewType::Docs:
+                        if (!EBookCoverReadable(ext)) continue;
                         break;
                     // Text-shaped files preview as a page of their own
                     // content, which a card this size cannot show.
@@ -11678,6 +11751,12 @@ namespace UltraCanvas {
                     break;
                 case FilerPreviewType::Fonts:
                     pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                // A document reaches the image workers only as a book whose
+                // cover ThumbSourceFor asked for.
+                case FilerPreviewType::Docs:
+                    pm = RenderEBookCoverPixmap(req.path, req.w, req.h, req.fit,
+                                                req.scale);
                     break;
                 case FilerPreviewType::VectorGraphics: {
                     // The image pipeline first (svg/svgz, and eps/ps on a
