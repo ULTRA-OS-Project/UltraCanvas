@@ -1,3 +1,17 @@
+#### 2026-10-06 *0.1.4*
+- **The clipboard menu lists the newest copies, not the oldest.** The menu
+  walked the history from the back, believing the newest entry was last; the
+  history keeps the newest first, so once more than fifteen things had been
+  copied the menu showed the fifteen oldest, oldest first, and nothing copied
+  since could be chosen from it.
+- **A password copied from UltraPassword is no longer kept.** The desktop's
+  clipboard monitor recorded every text it saw, so a password stayed in the
+  clipboard history, and its first characters in the clipboard menu, after
+  UltraPassword had cleared the clipboard. Copies marked secret by their
+  source are not recorded now - UltraPassword's, and those of KeePassXC and
+  other password managers that mark theirs (framework changelog:
+  `clipboard-secret-hint`).
+
 #### 2026-10-05 *0.1.3*
 - **The desktop keeps its settings in a Windows profile named in any
   script.** `desktop.json` lives under `%APPDATA%\ultraos`, and `APPDATA`

@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsClipboard.cpp
 // Win32 Clipboard implementation
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsClipboard.h"
@@ -71,6 +71,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasWindowsClipboard::SetClipboardText(const std::string& text) {
+        return WriteText(text, false);
+    }
+
+    bool UltraCanvasWindowsClipboard::SetClipboardSecretText(const std::string& text) {
+        return WriteText(text, true);
+    }
+
+    bool UltraCanvasWindowsClipboard::WriteText(const std::string& text, bool secret) {
         std::wstring wtext = UltraCanvasWindowsApplication::Utf8ToUtf16(text);
         size_t byteSize = (wtext.size() + 1) * sizeof(wchar_t);
 
@@ -102,8 +110,40 @@ namespace UltraCanvas {
             return false;
         }
 
+        if (secret) {
+            // Each marker is a registered format holding a DWORD; for
+            // ExcludeClipboardContentFromMonitorProcessing its presence is
+            // what counts, for the other two the value 0 means "no".
+            for (const wchar_t* name : {L"ExcludeClipboardContentFromMonitorProcessing",
+                                        L"CanIncludeInClipboardHistory",
+                                        L"CanUploadToCloudClipboard"}) {
+                const UINT format = RegisterClipboardFormatW(name);
+                HGLOBAL hFlag = format ? GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(DWORD)) : nullptr;
+                if (hFlag && !SetClipboardData(format, hFlag)) GlobalFree(hFlag);
+            }
+        }
+
         CloseClipboard();
         return true;
+    }
+
+    bool UltraCanvasWindowsClipboard::IsClipboardMarkedSecret() {
+        const UINT exclude = RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing");
+        if (exclude && IsClipboardFormatAvailable(exclude)) return true;
+
+        const UINT history = RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
+        if (!history || !IsClipboardFormatAvailable(history) || !OpenClipboard(nullptr)) return false;
+        bool secret = false;
+        if (HANDLE hFlag = GetClipboardData(history)) {
+            if (GlobalSize(hFlag) >= sizeof(DWORD)) {
+                if (const auto* value = static_cast<const DWORD*>(GlobalLock(hFlag))) {
+                    secret = *value == 0;
+                    GlobalUnlock(hFlag);
+                }
+            }
+        }
+        CloseClipboard();
+        return secret;
     }
 
 // ===== HTML =====

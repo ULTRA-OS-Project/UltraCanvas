@@ -1,8 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsClipboard.h
 // Win32 Clipboard implementation
-// Supports text (CF_UNICODETEXT), images (CF_DIB), and files (CF_HDROP)
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Supports text (CF_UNICODETEXT), images (CF_DIB), and files (CF_HDROP).
+// Secret text also carries ExcludeClipboardContentFromMonitorProcessing,
+// CanIncludeInClipboardHistory = 0 and CanUploadToCloudClipboard = 0, which
+// keep it out of Windows' own clipboard history (Win+V), its cloud clipboard
+// and every clipboard manager that honours them.
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -42,6 +46,8 @@ namespace UltraCanvas {
         // ===== CLIPBOARD OPERATIONS =====
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
+        bool SetClipboardSecretText(const std::string& text) override;
+        bool IsClipboardMarkedSecret() override;
         // "HTML Format" (CF_HTML) with CF_UNICODETEXT beside it.
         bool SetClipboardHtml(const std::string& html, const std::string& plainText) override;
         bool GetClipboardHtml(std::string& html) override;
@@ -61,6 +67,10 @@ namespace UltraCanvas {
         // ===== FORMAT DETECTION =====
         std::vector<std::string> GetAvailableFormats() override;
         bool IsFormatAvailable(const std::string& format) override;
+
+    private:
+        // CF_UNICODETEXT, plus the three history markers when `secret`.
+        bool WriteText(const std::string& text, bool secret);
     };
 
 } // namespace UltraCanvas

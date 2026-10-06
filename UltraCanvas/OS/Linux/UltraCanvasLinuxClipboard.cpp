@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxClipboard.cpp
 // X11-specific clipboard implementation for Linux
-// Version: 1.0.1
-// Last Modified: 2025-08-14
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxClipboard.h"
@@ -138,6 +138,7 @@ namespace UltraCanvas {
         atomApplicationOctetStream = XInternAtom(display, "application/octet-stream", False);
         atomGnomeCopiedFiles = XInternAtom(display, "x-special/gnome-copied-files", False);
         atomKdeCutSelection = XInternAtom(display, "application/x-kde-cutselection", False);
+        atomPasswordManagerHint = XInternAtom(display, "x-kde-passwordManagerHint", False);
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -156,6 +157,32 @@ namespace UltraCanvas {
         }
 
         return success;
+    }
+
+    // Not logged, unlike SetClipboardText: the text is a password.
+    bool UltraCanvasLinuxClipboard::SetClipboardSecretText(const std::string& text) {
+        return WriteTextToClipboard(atomClipboard, text, true);
+    }
+
+    // The marker is a target of its own whose content is "secret". Our own
+    // copy is answered from what we offer; another program's by asking it for
+    // that target, which an owner without the marker refuses at once.
+    bool UltraCanvasLinuxClipboard::IsClipboardMarkedSecret() {
+        if (!display || !window) return false;
+        std::vector<uint8_t> hint;
+        if (ownsClipboard && XGetSelectionOwner(display, atomClipboard) == window) {
+            for (const auto& offer : offeredTargets) {
+                if (offer.first == atomPasswordManagerHint) hint = offer.second;
+            }
+        } else {
+            std::string format;
+            if (!ReadClipboardData(atomClipboard, atomPasswordManagerHint, hint, format)) return false;
+        }
+        std::string value(hint.begin(), hint.end());
+        while (!value.empty() && (value.back() == '\0' || std::isspace(static_cast<unsigned char>(value.back())))) {
+            value.pop_back();
+        }
+        return value == "secret";
     }
 
     // text/html next to the text flavours: browsers, office suites and mail
@@ -317,7 +344,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text) {
+    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text, bool secret) {
         std::vector<uint8_t> data(text.begin(), text.end());
         // One string, several targets: requestors ask for whichever text
         // flavour they prefer.
@@ -327,6 +354,10 @@ namespace UltraCanvas {
         offers.emplace_back(atomTextPlain, data);
         offers.emplace_back(atomString, data);
         offers.emplace_back(atomText, std::move(data));
+        if (secret) {
+            const std::string hint = "secret";
+            offers.emplace_back(atomPasswordManagerHint, std::vector<uint8_t>(hint.begin(), hint.end()));
+        }
         return WriteClipboardTargets(selection, std::move(offers));
     }
 

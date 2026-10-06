@@ -882,8 +882,9 @@ void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {
     size_t shown = 0;
     if (clipboard) {
         const auto& entries = clipboard->GetEntries();
-        // Newest last in the store; a menu reads best newest first.
-        for (auto it = entries.rbegin(); it != entries.rend() && shown < 15; ++it) {
+        // The store keeps the newest first (AddEntry inserts at the front),
+        // which is the order a menu reads best in.
+        for (auto it = entries.begin(); it != entries.end() && shown < 15; ++it) {
             const ClipboardData entry = *it;
             std::string label = entry.type == ClipboardDataType::Text
                     ? entry.preview : (entry.GetTypeString() + ": " + entry.preview);

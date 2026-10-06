@@ -3,9 +3,11 @@
 // Serves multiple targets per selection (UTF8_STRING / STRING / text/plain
 // variants for text; text/uri-list + x-special/gnome-copied-files +
 // application/x-kde-cutselection for file copy/cut) so files copied here
-// paste into external file managers and vice versa.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// paste into external file managers and vice versa. A secret copy also
+// offers x-kde-passwordManagerHint = "secret", the marker KDE's Klipper,
+// KeePassXC and this framework's own clipboard history agree on.
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -44,6 +46,7 @@ namespace UltraCanvas {
         Atom atomApplicationOctetStream;
         Atom atomGnomeCopiedFiles;   // x-special/gnome-copied-files ("copy\n<uris>" / "cut\n<uris>")
         Atom atomKdeCutSelection;    // application/x-kde-cutselection ("0" copy / "1" cut)
+        Atom atomPasswordManagerHint; // x-kde-passwordManagerHint ("secret": keep out of histories)
 
         // ===== CLIPBOARD STATE =====
         std::chrono::steady_clock::time_point lastChangeCheck;
@@ -85,6 +88,8 @@ namespace UltraCanvas {
         // ===== CLIPBOARD OPERATIONS =====
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
+        bool SetClipboardSecretText(const std::string& text) override;
+        bool IsClipboardMarkedSecret() override;
         bool SetClipboardHtml(const std::string& html, const std::string& plainText) override;
         bool GetClipboardHtml(std::string& html) override;
         bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
@@ -130,7 +135,7 @@ namespace UltraCanvas {
 
         // ===== TEXT OPERATIONS =====
         bool ReadTextFromClipboard(Atom selection, std::string& text);
-        bool WriteTextToClipboard(Atom selection, const std::string& text);
+        bool WriteTextToClipboard(Atom selection, const std::string& text, bool secret = false);
 
         // ===== IMAGE OPERATIONS =====
         bool ReadImageFromClipboard(Atom selection, std::vector<uint8_t>& imageData, std::string& format);

@@ -41,8 +41,9 @@ panel (search, thumbnails, copy, edit and delete). A new application,
 `UltraClipboard`, opens the same history in a full window for searching,
 pinning, editing and settings. Before any of this, fix the framework
 clipboard: today it only notices **text** changes, so a copied image or file
-never reaches the history. Also fix the menu, which keeps a copied password in
-plain text (§3.3).
+never reaches the history (§3.3). The two worst defects, a copied password
+kept in the desktop's menu and the menu showing the oldest entries, are
+fixed in the same change as this proposal.
 
 Why each choice was made, in one line each; the rest of the document is the
 evidence:
@@ -55,7 +56,7 @@ evidence:
 | Clipboard events, not text polling (§5.3) | Today the monitor reads the whole clipboard text every 500 ms (`UltraCanvas/core/UltraCanvasClipboard.cpp:273`), and only a *changed text* counts as a change (`:284`; the Linux backend compares text too, `UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp:259`). Copying an image or files therefore records nothing. XFixes on X11, `AddClipboardFormatListener` on Windows and `NSPasteboard.changeCount` on macOS report *every* change, for every format, without polling. |
 | Keep every standard format of a copy (§5.4) | A copy from a browser or word processor offers HTML and plain text, UltraPaint offers an image, and UltraFiler offers a file list and a cut flag. Putting back only the text loses what was copied: today a formatted-text entry is put back as plain text (`UltraCanvasClipboard.cpp:380-381`), and of several copied files only the first is kept (`:321`). |
 | SQLite index, content-addressed blobs, encrypted at rest (§5.5) | UltraDatabase holds the index, and each payload is one file named by its SHA-256, so an image copied twice is stored once. Payloads are encrypted with XChaCha20-Poly1305 (UltraCrypt) under a key kept in a `DeviceKeyVault`. This protects a backup or a stolen disk. It does **not** protect against a program running as the same user, and the settings page says so. |
-| Never record what the source marks as secret (§5.6) | Password managers mark their copies: `x-kde-passwordManagerHint` on X11, `ExcludeClipboardContentFromMonitorProcessing` on Windows, `org.nspasteboard.ConcealedType` on macOS. The recorder honours all three. UltraPassword marks nothing today, so a copied password sits in the desktop's menu (§3.3). |
+| Never record what the source marks as secret (§5.6) | Password managers mark their copies: `x-kde-passwordManagerHint` on X11, `ExcludeClipboardContentFromMonitorProcessing` on Windows, `org.nspasteboard.ConcealedType` on macOS. The recorder honours all three. Until this change UltraPassword marked nothing, so a copied password sat in the desktop's menu (§3.3 item 1, now fixed). |
 | The desktop keeps the clipboard alive after the source quits (§5.7) | On X11, the clipboard is held by the program that copied, so closing it empties the clipboard. A desktop that records every copy can answer the freedesktop `CLIPBOARD_MANAGER` protocol and keep the last copy pasteable. |
 | Rows are an `UltraCanvasListView` with a delegate, and the actions are one real toolbar (§6.6) | The house rule says anything that takes input is an element. A history of 500 entries needs a virtualised list. One `UltraCanvasToolbar` (Copy, Edit, Delete) is placed over the row under the pointer or the selected row, which gives tooltips, focus and keyboard for free. It is proposed as a general ListView feature, *row actions* (§8.4), because UltraFiler and UltraMail want the same thing. |
 
@@ -113,16 +114,18 @@ records. Nothing is written to disk.
 ### 3.3 Defects found while reading
 
 These are in the existing code and should be fixed whether or not the app is
-built. Phase 0 of the roadmap (§10) is exactly this list.
+built. Phase 0 of the roadmap (§10) is exactly this list. Items 1 and 2 are
+**fixed in the same change as this proposal**. The descriptions below are of
+the code before that change, and line numbers refer to it.
 
-1. **A copied password is kept and shown.** UltraPassword copies a password
+1. **A copied password is kept and shown.** *(Fixed: `ClipboardHint::Secret`, §8.1.)* UltraPassword copies a password
    with plain `SetClipboardText` (`Apps/UltraPassword/ui/PasswordApp.cpp:891-901`)
    and clears the clipboard 30 seconds later. By then the desktop's monitor
    has recorded it. It stays in the desktop's history, and its first 50
    characters appear in the clipboard menu, until a hundred newer copies
    push it out or the user clears the history. The 30-second clear protects
    the clipboard, not the history.
-2. **The desktop menu shows the oldest entries, not the newest.** `AddEntry`
+2. **The desktop menu shows the oldest entries, not the newest.** *(Fixed.)* `AddEntry`
    inserts at the front (`UltraCanvasClipboard.cpp:227`), so the newest entry
    is index 0. The menu walks the list from the back, under the comment
    "Newest last in the store" (`UltraDesktopWindow.cpp:885-886`). Once there
@@ -297,7 +300,7 @@ $XDG_DATA_HOME/ultraos/clipboard/          (%LOCALAPPDATA%\UltraCanvas\clipboard
 | Measure | Default |
 |---|---|
 | Honour the source's secret / transient markers (§5.4) | Always on; there is no setting to turn it off |
-| `SetText(text, ClipboardHint::Secret)` in the framework, which sets all three markers on each platform; UltraPassword's `CopyToClipboard` uses it, and so does UltraAuthenticator's code copy when it gets one (its README lists copying as a gap until a manager that persists history can be told to skip it) | Phase 0 |
+| `SetText(text, ClipboardHint::Secret)` in the framework, which sets each platform's markers; UltraPassword's `CopyToClipboard` uses it, and so does UltraAuthenticator's code copy when it gets one (its README lists copying as a gap until a manager that persists history can be told to skip it) | Done in the same change as this proposal |
 | Excluded applications: copies whose source is on the list are not recorded | Pre-filled with UltraPassword, UltraAuthenticator, KeePassXC, Bitwarden, 1Password |
 | Pause recording: the quick panel's switch, the app's switch, and the right-click menu of the desktop button | Off (recording) |
 | "Forget after": entries from one source can be set to expire sooner, for example a terminal after 1 hour | Not set |
@@ -546,16 +549,22 @@ entry refers to.
 
 ### 8.1 `UltraCanvasClipboard`
 
+Already done, in the same change as this proposal: `enum class ClipboardHint
+{ Normal, Secret }`, `SetText(text, ClipboardHint)` and
+`SetClipboardText(text, hint)`, which put each platform's marker next to the
+text. On the backend side there are `SetClipboardSecretText` and
+`IsClipboardMarkedSecret()`, the second true when the current owner, in this
+process or another, marked its content. The monitor and the start-up entry
+honour it, and `InitializeWithBackend` takes a backend from the caller. Still
+to come:
+
 ```cpp
-// The source's hint on what it puts on the clipboard. Secret sets every
-// platform's marker (x-kde-passwordManagerHint, ExcludeClipboardContentFrom-
-// MonitorProcessing + CanIncludeInClipboardHistory=0, org.nspasteboard.ConcealedType)
-// so clipboard managers - ours and others - leave it out of their history.
-enum class ClipboardHint { Normal, Secret, Transient };
+// A copy the source wants gone soon rather than hidden (a one-time code):
+// org.nspasteboard.TransientType on macOS. Another program's transient marker
+// already keeps its copy out of the history, like a secret.
+// ClipboardHint::Transient
 
 struct ClipboardFormatData { std::string mime; std::vector<uint8_t> data; };
-
-bool SetText(const std::string& text, ClipboardHint hint);
 
 // Every format the clipboard offers right now, and one of them by name.
 std::vector<std::string> GetFormats();
@@ -568,11 +577,10 @@ void SetChangeListener(std::function<void()> onChanged);
 
 // The application that owns the clipboard now, when the platform can tell.
 ClipboardOwnerInfo GetOwner();   // { processId, programName, desktopEntryId }
-bool IsMarkedSecret();           // the source set one of the markers above
 ```
 
 The existing in-memory history (`AddEntry` … `CopyEntryToClipboard`) stays
-for compatibility, with §3.3 items 2–6 fixed. Nothing outside the desktop
+for compatibility, with §3.3 items 3–6 fixed. Nothing outside the desktop
 uses it today, and once the desktop moves to `UltraCanvasClipboardHistory`
 it can be marked deprecated.
 
@@ -667,7 +675,7 @@ history if a third user appears.
 
 | Phase | Delivers | Size |
 |---|---|---|
-| **0 — fix what is there** | §3.3 items 1–7: `ClipboardHint::Secret` and UltraPassword using it; the menu's order; change detection for every format (XFixes, `AddClipboardFormatListener`, `changeCount`); image de-duplication by content; all copied files; formatted text kept and restored | One framework PR and a one-line desktop fix; independently useful |
+| **0 — fix what is there** | §3.3 items 1 and 2: `ClipboardHint::Secret` and UltraPassword using it, and the menu's order — **done** in the same change as this proposal. Items 3–7: change detection for every format (XFixes, `AddClipboardFormatListener`, `changeCount`); image de-duplication by content; all copied files; formatted text kept and restored | Items 3–7: one framework PR; independently useful |
 | **1 — persistent history in the desktop** | `UltraCanvasClipboardHistory` (store, retention, encryption, thumbnails, change notification); the desktop records into it and keeps the clipboard alive (§5.7); the quick panel replaces the menu; `Super+V` | The core of the feature |
 | **2 — the application** | `Apps/UltraClipboard`: list, sections, search, kind filter, pin, copy, delete with undo, edit for text, links and colours, preview, drag out, settings | The deliverable the request names |
 | **3 — richer editing** | Image crop, rotate and resize; *UltraPaint* hand-off; formatted-text editing; *Copy text* once the OCR module exists; *Paste after choosing* | |
@@ -682,7 +690,7 @@ history if a third user appears.
 | Notice every clipboard change | Text-only polling (§3.3 item 3) | Per-platform change listener (§5.3) |
 | Read all formats of a copy | Text, HTML, image, files separately; no format list API | `GetFormats` / `ReadFormat` / `SetFormats` (§8.1) |
 | Know the source application | Nothing | `GetOwner()` (§5.4) |
-| Leave secrets out | Nothing; UltraPassword's copy is recorded | `ClipboardHint`, marker detection (§5.6) |
+| Leave secrets out | Done in the same change: `ClipboardHint::Secret`, `IsClipboardMarkedSecret()`, UltraPassword uses it | — |
 | A persistent, shared store | In-memory vector per process | `UltraCanvasClipboardHistory` on UltraDatabase, UltraCrypt, UltraVault (§5.5) |
 | Thumbnails | A field nobody fills | QOI cache keyed by blob digest (§5.5) |
 | Keep the clipboard after the source quits | Nothing | `CLIPBOARD_MANAGER` + client-close handling in the desktop (§5.7) |

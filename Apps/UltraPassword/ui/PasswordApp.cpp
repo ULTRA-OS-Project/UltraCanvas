@@ -890,11 +890,15 @@ void PasswordApp::ChangeMasterPassword() {
 
 void PasswordApp::CopyToClipboard(const std::string& text, const std::string& what) {
     if (text.empty()) return;
-    if (!SetClipboardText(text)) {
+    // A password goes out marked secret, so no clipboard history keeps it -
+    // the desktop's included. The 30-second clear only empties the clipboard;
+    // a history that had recorded it would keep it.
+    const bool isPassword = what == "Password";
+    if (!SetClipboardText(text, isPassword ? ClipboardHint::Secret : ClipboardHint::Normal)) {
         SetStatus("The clipboard is not available.", true);
         return;
     }
-    if (what == "Password") {
+    if (isPassword) {
         WipeString(clipboardText_);
         clipboardText_ = text;
         clipboardClearAt_ = NowSeconds() + kClipboardSeconds;
