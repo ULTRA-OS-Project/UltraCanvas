@@ -10,4 +10,6 @@
   complete, so a failure leaves no file and the old one as it was. The media
   viewer's Save image as goes through them; `UCRasterDocument::SaveToFile`
   (UltraPaint) staged its own write around `FileIO::Save` and now relies on
-  it. New test: `Tests/SaveFileTypeTest.cpp`.
+  it. `UltraCanvasQRCode::ExportToImage` and its SVG export
+  (`QRCodeUtils::ExportToSVG`), which wrote straight to the target, are
+  staged the same way. New test: `Tests/SaveFileTypeTest.cpp`.

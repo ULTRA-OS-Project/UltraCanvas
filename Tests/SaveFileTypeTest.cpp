@@ -15,7 +15,8 @@
 //    encoder did exactly that). PixelFX::FileIO's savers now write through
 //    WriteFileAtomically; a source that fails to decode halfway through the
 //    save stands in for the encoder, because it fails the same way on every
-//    machine.
+//    machine. The QR code's own image and SVG exports, which write without
+//    PixelFX, are staged the same way.
 // The dialog section skips without a DISPLAY; the rest needs none.
 // Version: 1.0.0
 // Last Modified: 2026-10-06
@@ -28,6 +29,8 @@
 #include "UltraCanvasTextInput.h"
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
+// After the headers above: it #undefs X11's None for its own enumerators.
+#include "Plugins/QRCode/UltraCanvasQRCode.h"
 #endif
 
 #include <cstdlib>
@@ -189,6 +192,29 @@ bool Throws(Save save) {
     return false;
 }
 
+// The QR code writes its exports itself rather than through PixelFX.
+void TestQRCodeExport(const fs::path& dir) {
+    UltraCanvasQRCode qr("qr");
+    qr.SetContent("https://example.com/ultracanvas");
+    std::string error;
+    const fs::path png = dir / "qr.png";
+    TEST("a QR code exports as PNG",
+         qr.ExportToImage(PathToUtf8(png), QRImageFormat::PNG, 4, &error) &&
+         fs::file_size(png) > 0);
+    const fs::path svg = dir / "qr.svg";
+    TEST("and as SVG", qr.ExportToSVG(PathToUtf8(svg), 4) && fs::file_size(svg) > 0);
+
+    // Over an existing file, as AVIF: where the encoder is missing the export
+    // fails and the file must be as it was; where it is there, replaced whole.
+    const fs::path avif = dir / "qr.avif";
+    { std::ofstream(avif, std::ios::binary) << "ORIGINAL"; }
+    const bool exported = qr.ExportToImage(PathToUtf8(avif), QRImageFormat::AVIF, 4, &error);
+    TEST("an AVIF QR export replaces the file whole or keeps it",
+         exported ? fs::file_size(avif) > 0 && ReadAll(avif) != "ORIGINAL"
+                  : ReadAll(avif) == "ORIGINAL");
+    TEST("no QR export left anything staged", !HasStagedLeftovers(dir));
+}
+
 void TestStagedImageSave(const char* programName) {
     if (VIPS_INIT(programName) != 0) {
         TEST("libvips starts", false);
@@ -249,6 +275,7 @@ void TestStagedImageSave(const char* programName) {
          avifFailed ? !fs::exists(avif) : fs::file_size(avif) > 0);
     TEST("no failed save left anything staged", !HasStagedLeftovers(dir));
 
+    TestQRCodeExport(dir);
     fs::remove_all(dir, ec);
 }
 #endif

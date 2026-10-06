@@ -20,6 +20,7 @@
 #include <cairo/cairo.h>
 #include <vips/vips8>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // WriteFileAtomically
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
 #include <zbar.h>
 #endif
@@ -167,32 +168,40 @@ namespace UltraCanvas {
         const int totalModules = data.size + 2 * quiet;
         const int px = totalModules * moduleSize;
 
-        std::ofstream f(UltraCanvas::PathFromUtf8(filename));
-        if (!f) return false;
+        // Staged, like the image export: the file is written beside the target
+        // and moved over it only when complete, so a write that fails part way
+        // (a full disk) leaves no half-written file and keeps an older one.
+        const std::string failure = UltraCanvas::WriteFileAtomically(filename,
+                [&](const std::string& staged) -> std::string {
+                    std::ofstream f(UltraCanvas::PathFromUtf8(staged));
+                    if (!f) return "cannot create the file";
 
-        f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-        f << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
-          << "viewBox=\"0 0 " << totalModules << " " << totalModules << "\" "
-          << "width=\"" << px << "\" height=\"" << px << "\" "
-          << "shape-rendering=\"crispEdges\">\n";
-        f << "  <rect width=\"" << totalModules << "\" height=\"" << totalModules
-          << "\" fill=\"" << background.ToHexString() << "\"/>\n";
+                    f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+                    f << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+                      << "viewBox=\"0 0 " << totalModules << " " << totalModules << "\" "
+                      << "width=\"" << px << "\" height=\"" << px << "\" "
+                      << "shape-rendering=\"crispEdges\">\n";
+                    f << "  <rect width=\"" << totalModules << "\" height=\"" << totalModules
+                      << "\" fill=\"" << background.ToHexString() << "\"/>\n";
 
-        f << "  <path fill=\"" << foreground.ToHexString() << "\" d=\"";
-        for (int y = 0; y < data.size; ++y) {
-            int x = 0;
-            while (x < data.size) {
-                if (!data.IsDark(x, y)) { ++x; continue; }
-                int runStart = x;
-                while (x < data.size && data.IsDark(x, y)) ++x;
-                int runLen = x - runStart;
-                f << "M" << (runStart + quiet) << "," << (y + quiet)
-                  << "h" << runLen << "v1h-" << runLen << "z";
-            }
-        }
-        f << "\"/>\n";
-        f << "</svg>\n";
-        return f.good();
+                    f << "  <path fill=\"" << foreground.ToHexString() << "\" d=\"";
+                    for (int y = 0; y < data.size; ++y) {
+                        int x = 0;
+                        while (x < data.size) {
+                            if (!data.IsDark(x, y)) { ++x; continue; }
+                            int runStart = x;
+                            while (x < data.size && data.IsDark(x, y)) ++x;
+                            int runLen = x - runStart;
+                            f << "M" << (runStart + quiet) << "," << (y + quiet)
+                              << "h" << runLen << "v1h-" << runLen << "z";
+                        }
+                    }
+                    f << "\"/>\n";
+                    f << "</svg>\n";
+                    f.close();
+                    return f.fail() ? "the file could not be written" : "";
+                });
+        return failure.empty();
     }
 
     std::string QRCodeUtils::CreateURLContent(const std::string& url) {
@@ -773,7 +782,22 @@ namespace UltraCanvas {
                 4,
                 VIPS_FORMAT_UCHAR);
             img.set("interpretation", static_cast<int>(VIPS_INTERPRETATION_sRGB));
-            img.write_to_file(outPath.c_str());
+            // Staged: libvips opens - and truncates - the target before it has
+            // encoded a byte, so a failed encode (AVIF on a libheif without an
+            // AV1 encoder) left an empty file, or emptied the one it replaced.
+            // Written beside the target and moved over it only when complete,
+            // a failure leaves no file and the old one as it was.
+            vips_error_clear();
+            const std::string failure = WriteFileAtomically(outPath,
+                    [&img](const std::string& staged) -> std::string {
+                        try {
+                            img.write_to_file(staged.c_str());
+                            return std::string();
+                        } catch (const vips::VError& e) {
+                            return std::string("vips: ") + e.what();
+                        }
+                    });
+            if (!failure.empty()) { setErr(failure); return false; }
             return true;
         } catch (const vips::VError& e) {
             setErr(std::string("vips: ") + e.what());
