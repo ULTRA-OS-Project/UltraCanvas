@@ -565,6 +565,13 @@ namespace UltraCanvas {
                 rest.clear();
             }
             if (!verb.empty() && verb.back() == '\r') verb.pop_back();
+            // Only "copy" or "cut" is a verb. An owner that answers every
+            // target with the same bytes (xclip) hands over a bare URI
+            // list here, whose first line is a file.
+            if (verb != "copy" && verb != "cut") {
+                verb.clear();
+                rest = payload;
+            }
             cutOperation = (verb == "cut");
             filePaths = ParseUriListPaths(rest);
             if (!filePaths.empty()) return true;
