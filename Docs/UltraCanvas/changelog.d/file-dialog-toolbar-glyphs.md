@@ -17,5 +17,5 @@
   Save, Select folder) now leaves it off; `FileDialogConfig::hoverIconMenu`
   (`FileDialogOptions::SetHoverIconMenu` through `UltraCanvasFileLoader`)
   brings it back for a caller that wants it.
-- New display test `FileDialogLayoutTest` reads the dialog's pixels back and
-  checks all three, skipping without a display like the other window tests.
+- New test `FileDialogTest` reads the dialog's pixels back and checks all
+  three, skipping that part without a display like the other window tests.

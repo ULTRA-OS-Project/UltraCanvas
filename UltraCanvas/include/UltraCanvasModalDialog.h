@@ -181,6 +181,26 @@ namespace UltraCanvas {
         }
     };
 
+// ===== SAVE NAMES =====
+    // The name a Save dialog hands back when `type` is the file type chosen
+    // from `offered`. Applications pick the format to write from the name's
+    // extension, so the name has to carry the chosen type's:
+    //  - a name ending in one of `type`'s extensions (any case) is kept, and
+    //    so is every name when `type` takes all files ("*") or names none;
+    //  - the extension of another offered type is swapped for `type`'s first
+    //    ("photo.jpg" -> "photo.png" with PNG chosen);
+    //  - any other name gets `type`'s first extension added ("photo" ->
+    //    "photo.png", "Report v1.2" -> "Report v1.2.png").
+    // Trailing dots are dropped first. Takes a bare name or a path - only its
+    // last component is looked at.
+    std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
+                                   const std::vector<FileFilter>& offered);
+
+    // The index of the first filter in `filters` whose extension `name` ends
+    // in, passing over "*" filters; -1 when there is none. A Save dialog
+    // opens on the type of the name it suggests.
+    int FindFilterForName(const std::string& name, const std::vector<FileFilter>& filters);
+
 // ===== DIALOG STYLE =====
     struct ModalDialogStyle {
         // Spacing
@@ -852,6 +872,9 @@ namespace UltraCanvas {
         // True when the file name passes the type filter: the selected
         // dropdown entry, or any toggle that is on.
         bool MatchesTypeFilter(const std::string& fileName) const;
+        // A Save name with the chosen type's extension (ApplySaveExtension):
+        // the selected dropdown entry, or the first toggle that is on.
+        std::string WithSaveExtension(const std::string& name) const;
 
         // ===== FOLDER TREE =====
         void PopulateFolderTree();

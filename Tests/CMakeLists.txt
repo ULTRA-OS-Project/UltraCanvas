@@ -614,26 +614,28 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
-# ===== FILE DIALOG LAYOUT TEST =====
-# The file dialog's Up arrow and view glyphs centred in their buttons, and its
-# listing without the Filer's hover icon menu. Reads the composited window
-# pixels back; skips itself without a DISPLAY.
+# ===== FILE DIALOG TEST =====
+# The name a Save hands back (the chosen type's extension, always run), and
+# the dialog itself: the Up arrow and view glyphs centred in their buttons,
+# the listing without the Filer's hover icon menu, Save's naming and its
+# "Replace it?" question. That part reads the composited window pixels back
+# and skips itself without a DISPLAY.
 if(TARGET UltraCanvas)
-    message(STATUS "  Building FileDialogLayoutTest...")
-    add_executable(FileDialogLayoutTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FileDialogLayoutTest.cpp
+    message(STATUS "  Building FileDialogTest...")
+    add_executable(FileDialogTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileDialogTest.cpp
     )
-    target_include_directories(FileDialogLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FileDialogLayoutTest PRIVATE cxx_std_20)
-    target_link_libraries(FileDialogLayoutTest PRIVATE UltraCanvas)
-    set_target_properties(FileDialogLayoutTest PROPERTIES
+    target_include_directories(FileDialogTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileDialogTest PRIVATE cxx_std_20)
+    target_link_libraries(FileDialogTest PRIVATE UltraCanvas)
+    set_target_properties(FileDialogTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
-    add_test(NAME FileDialogLayoutTest COMMAND FileDialogLayoutTest
+    add_test(NAME FileDialogTest COMMAND FileDialogTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FileDialogLayoutTest")
+    message(STATUS "    Test registered: FileDialogTest")
 else()
-    message(STATUS "  FileDialogLayoutTest skipped (UltraCanvas target not present)")
+    message(STATUS "  FileDialogTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== TEXT METRICS SCREENSHOT TEST =====

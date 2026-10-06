@@ -1,6 +1,5 @@
-// Tests/FileDialogLayoutTest.cpp
-// The file dialog's toolbar glyphs sit in the middle of their buttons, and its
-// listing comes without the Filer's hover icon menu.
+// Tests/FileDialogTest.cpp
+// The framework file dialog: what it shows, and the name a Save hands back.
 //
 // Two glyphs were off centre. The Up button was created without a label, so
 // it carried UltraCanvasButton's default "Button" and was laid out as an icon
@@ -14,19 +13,29 @@
 // file manager's toolbar; a picker turns it off unless the caller asks for it
 // (FileDialogConfig::hoverIconMenu).
 //
-// Reads the composited pixels back, so it runs under Xvfb and skips - rather
-// than fails - without a display.
-// Version: 1.0.0
+// A Save handed back the name exactly as typed. Applications pick the format
+// from the extension, so "photo" with JPEG chosen came back without one and
+// each application added its own default - UltraPaint ".png" - after the
+// dialog had asked about replacing "photo", not the file actually written.
+// The name now takes the chosen type's extension (ApplySaveExtension) before
+// the "Replace it?" question.
+//
+// The naming rule is checked on its own and always runs; the dialog itself
+// is read back from the composited pixels, so that part runs under Xvfb and
+// skips - rather than fails - without a display.
+// Version: 1.1.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTextInput.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -123,20 +132,94 @@ void WritePpm(UltraCanvasWindow* window, int width, int height, const std::strin
     }
 }
 
+// The types UltraPaint offers when saving, cut down.
+std::vector<FileFilter> ImageTypes() {
+    return {FileFilter("PNG", "png"),
+            FileFilter("JPEG", std::vector<std::string>{"jpg", "jpeg"}),
+            FileFilter("Archive", "tar.gz"),
+            FileFilter("All files", "*")};
+}
+
+void CheckName(const std::string& typed, int type, const std::string& expected) {
+    const auto types = ImageTypes();
+    const std::string got = ApplySaveExtension(typed, types[type], types);
+    TEST("\"" + typed + "\" as " + types[type].description + " -> \"" + expected + "\"",
+         got == expected);
+    if (got != expected) std::cerr << "      got \"" << got << "\"" << std::endl;
+}
+
+// Shows a Save dialog, types `name` and presses Enter. Answers the path the
+// dialog accepted, or "" when it accepted none (it asked a question instead).
+struct SaveRun {
+    std::shared_ptr<UltraCanvasFileDialog> dialog;
+    UltraCanvasTextInput* nameField = nullptr;
+    std::shared_ptr<std::string> accepted = std::make_shared<std::string>();
+};
+
+SaveRun ShowSave(const std::string& folder, const std::string& defaultName, int selectedType = 0) {
+    FileDialogConfig config;
+    config.title = "Save test";
+    config.dialogType = FileDialogType::Save;
+    config.initialDirectory = folder;
+    config.defaultFileName = defaultName;
+    config.filters = ImageTypes();
+    config.selectedFilterIndex = selectedType;
+    SaveRun run;
+    run.dialog = UltraCanvasDialogManager::CreateFileDialog(config);
+    auto accepted = run.accepted;
+    run.dialog->onFileSelected = [accepted](const std::string& path) { *accepted = path; };
+    UltraCanvasDialogManager::ShowDialog(run.dialog, nullptr, nullptr);
+    run.nameField = dynamic_cast<UltraCanvasTextInput*>(run.dialog->FindChildById("FileDialogName"));
+    return run;
+}
+
+void PressEnter(SaveRun& run, const std::string& name) {
+    if (!run.nameField || !run.nameField->onEnterPressed) return;
+    run.nameField->SetText(name);
+    run.nameField->onEnterPressed(name);
+}
+
 } // namespace
 
 int main() {
     std::cerr << "========================================" << std::endl;
-    std::cerr << "   File Dialog Layout Suite"              << std::endl;
+    std::cerr << "   File Dialog Suite"                     << std::endl;
     std::cerr << "========================================" << std::endl;
 
-    if (!std::getenv("DISPLAY")) SKIP_ALL("no DISPLAY");
+    std::cerr << "\n--- Save names ---" << std::endl;
+    CheckName("photo", 0, "photo.png");
+    CheckName("photo.", 0, "photo.png");
+    CheckName("photo.png", 0, "photo.png");
+    CheckName("photo.PNG", 0, "photo.PNG");
+    CheckName("photo.jpg", 0, "photo.png");                 // another offered type's
+    CheckName("photo.jpeg", 1, "photo.jpeg");               // any of the type's own
+    CheckName("photo.png", 1, "photo.jpg");                 // the type's first
+    CheckName("Report v1.2", 0, "Report v1.2.png");         // not an offered type's
+    CheckName("backup.tar.gz", 0, "backup.png");            // the longest that matches
+    CheckName("backup", 2, "backup.tar.gz");
+    CheckName("anything.xyz", 3, "anything.xyz");           // all files: as typed
+    CheckName("noext", 3, "noext");
+    CheckName(".png", 0, ".png.png");                       // a name, not an extension
+    CheckName("/home/me/my.pictures/photo", 0, "/home/me/my.pictures/photo.png");
+    CheckName("C:\\Users\\me\\photo.jpg", 0, "C:\\Users\\me\\photo.png");
+    {
+        const auto types = ImageTypes();
+        TEST("A JPEG name finds the JPEG type", FindFilterForName("holiday.JPEG", types) == 1);
+        TEST("A name of no offered type finds none", FindFilterForName("notes.txt", types) == -1);
+        TEST("The all-files type is never the one found", FindFilterForName("notes", types) == -1);
+    }
+
+    if (!std::getenv("DISPLAY")) {
+        std::cerr << "SKIP: the dialog itself (no DISPLAY)" << std::endl;
+        std::cerr << "\n   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
+        return failCount == 0 ? 0 : 1;
+    }
 
     // The dialog remembers its view and size in the settings folder: keep
     // the test's copy away from the user's, and start from the defaults.
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path scratch = fs::temp_directory_path(ec) / "FileDialogLayoutTest";
+    const fs::path scratch = fs::temp_directory_path(ec) / "FileDialogTest";
     fs::remove_all(scratch, ec);
     fs::create_directories(scratch / "config", ec);
     fs::create_directories(scratch / "listing" / "A folder", ec);
@@ -144,7 +227,7 @@ int main() {
     RedirectSettingsFolder(scratch / "config");
 
     UltraCanvasApplication app;
-    if (!app.Initialize("FileDialogLayoutTest")) SKIP_ALL("application would not initialise");
+    if (!app.Initialize("FileDialogTest")) SKIP_ALL("application would not initialise");
     UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
     FileDialogConfig config;
@@ -238,6 +321,58 @@ int main() {
                               : nullptr;
         TEST("A caller that asks for the hover icon menu gets it",
              listing && listing->IsHoverIconMenuEnabled());
+    }
+
+    std::cerr << "\n--- Save dialog ---" << std::endl;
+    {
+        const std::string folder = PathToUtf8(scratch / "listing");
+        auto expect = [&](const char* leaf) { return PathToUtf8(scratch / "listing" / leaf); };
+
+        SaveRun run = ShowSave(folder, "untitled.png");
+        PressEnter(run, "photo");
+        TEST("A name typed without an extension gets the chosen type's",
+             *run.accepted == expect("photo.png"));
+
+        run = ShowSave(folder, "untitled", 1);
+        PressEnter(run, "photo");
+        TEST("... the type chosen, not the first in the list", *run.accepted == expect("photo.jpg"));
+
+        run = ShowSave(folder, "photo.jpg", 1);
+        PressEnter(run, "photo.png");
+        TEST("An extension of another type gives way to the chosen one's",
+             *run.accepted == expect("photo.jpg"));
+
+        run = ShowSave(folder, "holiday.jpg");
+        TEST("The dialog opens on the type of the name it suggests",
+             run.dialog->GetSelectedFilterIndex() == 1);
+        PressEnter(run, "holiday.jpg");
+        TEST("... so that name is saved as it is", *run.accepted == expect("holiday.jpg"));
+
+        run = ShowSave(folder, "untitled.png");
+        auto* types = dynamic_cast<UltraCanvasDropdown*>(run.dialog->FindChildById("FileDialogType"));
+        TEST("The Save dialog has its type dropdown", types != nullptr);
+        if (types && run.nameField) {
+            run.nameField->SetText("photo.png");
+            types->SetSelectedIndex(1);
+            TEST("Switching the type swaps the name's extension",
+                 run.nameField->GetText() == "photo.jpg");
+            types->SetSelectedIndex(3);
+            TEST("... and All files leaves the name alone", run.nameField->GetText() == "photo.jpg");
+        }
+        run.dialog->CloseDialog(DialogResult::Cancel);
+
+        // picture.png is in the folder: "picture" means that file, so the
+        // dialog asks before replacing it rather than accepting the name.
+        run = ShowSave(folder, "untitled.png");
+        PressEnter(run, "picture");
+        TEST("A name that becomes an existing file is asked about first", run.accepted->empty());
+        TEST("... and the name field shows the name that would be written",
+             run.nameField && run.nameField->GetText() == "picture.png");
+        // The question and the Save dialog under it; the Open dialog stays
+        // up for the screenshot below.
+        for (const auto& open : UltraCanvasDialogManager::GetActiveDialogs()) {
+            if (open && open != dialog) open->CloseDialog(DialogResult::Cancel);
+        }
     }
 
     if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {

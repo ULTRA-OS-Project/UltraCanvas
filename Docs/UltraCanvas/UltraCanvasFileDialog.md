@@ -97,7 +97,8 @@ between folders.
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
   listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists. A name that is already a
+- **Save** accepts any name in a folder that exists, with the chosen file
+  type's extension - see [Save names](#save-names). A name that is already a
   file gets a **Replace File** question first ("… already exists. Do you want
   to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
   dialog open on that name. A caller that asks itself, or appends to the
@@ -110,6 +111,42 @@ between folders.
 
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
+
+## Save names
+
+The Save callback receives a path and nothing else, so an application picks
+the format to write from the path's extension. The dialog therefore hands
+back a name that carries the extension of the file type chosen under "Files
+of type" - `ApplySaveExtension(name, type, offered)` in
+`UltraCanvasModalDialog.h`, with PNG, JPEG (`jpg`, `jpeg`) and All files
+offered:
+
+| Typed | Chosen | Saved as |
+|---|---|---|
+| `photo` or `photo.` | PNG | `photo.png` |
+| `photo.png`, `photo.PNG` | PNG | as typed |
+| `photo.jpeg` | JPEG | as typed - any of the type's extensions stands |
+| `photo.png` | JPEG | `photo.jpg` - another offered type's extension is swapped |
+| `Report v1.2` | PNG | `Report v1.2.png` - an extension no type offers is kept |
+| anything | All files (`*`) | as typed |
+
+- The extension goes on **before** the Replace File question, so the question
+  names the file that will be written: "picture" with PNG chosen asks about
+  `picture.png`. The name field shows the name as it will be saved.
+- Switching the type rewrites the name the same way ("photo.png" becomes
+  "photo.jpg"), as the platforms' own save dialogs do.
+- The dialog opens on the type of `defaultFileName` when the type the caller
+  chose does not fit it (`FindFilterForName`): suggesting "holiday.jpg" with
+  PNG first in the list opens on JPEG rather than saving "holiday.png".
+- With filter toggles on, a name of any type that is on stands; any other
+  takes the first one's extension.
+- The native dialogs follow the same rule. Windows is given the chosen
+  type's extension as its default (`SetDefaultExtension`) and the result is
+  checked as above; the GTK chooser rewrites the name when the type changes
+  and when it is accepted. Where that produces a different name that is
+  already a file, they ask about replacing it - GTK leaves the chooser open
+  on **No**, Windows cancels. The macOS panel already insists on one of the
+  offered extensions.
 
 ## Filter toggles
 
