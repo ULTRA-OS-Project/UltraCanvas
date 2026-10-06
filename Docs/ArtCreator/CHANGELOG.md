@@ -1,3 +1,12 @@
+#### 2026-10-06 *0.6.6*
+- **SVG files styled with CSS open in their colours.** A drawing that sets
+  its fills, strokes, corner radii and text styles from a `<style>` block
+  (diagram tools and hand-written SVG do) opened with every such shape black
+  and the status bar saying "SVG import: `<style>` is not supported,
+  skipped": an architecture diagram's light grey page came in as a black
+  one. The style sheet now applies. The fix is in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-style-sheets.md`).
+
 #### 2026-10-06 *0.6.5*
 - **Copy and paste work with other programs.** Copy and Paste only ever
   used ArtCreator's own in-app list of objects: nothing copied here could be

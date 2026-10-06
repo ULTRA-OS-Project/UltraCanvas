@@ -6,12 +6,13 @@
 // real SVG rendering pipeline (UCImage) and pixel-checked, which proves the
 // output is valid SVG to an independent renderer, not just to our importer.
 // A hand-written snippet exercises importer robustness (inline style,
-// percentages, entities, tspans, defs-referenced gradients).
+// percentages, entities, tspans, defs-referenced gradients), and a styled
+// one the <style> cascade (class/id/descendant rules, !important, CDATA).
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Version: 1.2.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -22,6 +23,7 @@
 #include <functional>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -401,6 +403,78 @@ int main(int argc, char** argv) {
         Check(innerRect && innerRect->Style.ClipPath && *innerRect->Style.ClipPath != "c" &&
               cdoc->GetDefinition(*innerRect->Style.ClipPath) != nullptr,
               "the nested image's clip path is carried over under its own name");
+    }
+
+    // ===== CSS STYLE SHEETS =====
+    // Diagrams style their boxes by class from a <style> block; skipping it
+    // imported every such box black (an architecture diagram whose page
+    // background, `.container { fill: #f8f9fa; rx: 8 }`, came in black).
+    {
+        const char* styled = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs>
+    <style>
+      /* a comment */
+      .box { fill: #f8f9fa; stroke: #343a40; stroke-width: 2; rx: 8; }
+      rect.hot { fill: #ff0000; }
+      #special { fill: #00ff00; }
+      .forced { fill: #111111 !important; }
+      g .inner { fill: #0000ff; }
+      .label { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; fill: #2c3e50; }
+    </style>
+  </defs>
+  <style type="text/css"><![CDATA[ .late { fill: #123456; } ]]></style>
+  <style media="print">.box { fill: #ff00ff; }</style>
+  <rect class="box" x="0" y="0" width="400" height="200"/>
+  <rect class="box hot" x="10" y="10" width="20" height="20" fill="#000000"/>
+  <rect id="special" class="hot box" x="40" y="10" width="20" height="20"/>
+  <rect class="box" x="70" y="10" width="20" height="20" style="fill: #abcdef"/>
+  <rect class="forced" x="100" y="10" width="20" height="20" style="fill: #abcdef"/>
+  <g><circle class="inner" cx="150" cy="20" r="10"/></g>
+  <circle class="inner" cx="180" cy="20" r="10"/>
+  <rect class="late" x="200" y="10" width="20" height="20"/>
+  <text class="label" x="200" y="100">Title</text>
+</svg>)SVG";
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions cssOptions;
+        cssOptions.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+        auto sdoc = converter.ImportFromString(styled, cssOptions);
+        auto sl = (sdoc && !sdoc->Layers.empty()) ? sdoc->Layers[0] : nullptr;
+        Check(sl && sl->Children.size() == 9, "styled SVG: nine elements");
+        auto fillOf = [](const std::shared_ptr<VectorElement>& e) -> const Color* {
+            return (e && e->Style.Fill) ? std::get_if<Color>(&*e->Style.Fill) : nullptr;
+        };
+        auto isColor = [&](const std::shared_ptr<VectorElement>& e, uint8_t r, uint8_t g, uint8_t b) {
+            const Color* c = fillOf(e);
+            return c && c->r == r && c->g == g && c->b == b;
+        };
+
+        auto bg = ChildAs<VectorRect>(sl, 0);
+        Check(isColor(bg, 0xf8, 0xf9, 0xfa), "a class rule fills the shape (not black)");
+        Check(bg && bg->Style.Stroke && std::fabs(bg->Style.Stroke->Width - 2.0f) < 0.01f,
+              "a class rule sets stroke and stroke-width");
+        Check(bg && std::fabs(bg->RadiusX - 8.0f) < 0.01f && bg->Type == VectorElementType::RoundedRectangle,
+              "rx from a style sheet rounds the rect (SVG 2 geometry property)");
+        Check(isColor(ChildAs<VectorRect>(sl, 1), 255, 0, 0),
+              "a more specific rule wins, and beats the presentation attribute");
+        Check(isColor(ChildAs<VectorRect>(sl, 2), 0, 255, 0), "an id rule beats class rules");
+        Check(isColor(ChildAs<VectorRect>(sl, 3), 0xab, 0xcd, 0xef), "style=\"...\" beats the style sheet");
+        Check(isColor(ChildAs<VectorRect>(sl, 4), 0x11, 0x11, 0x11), "!important in the sheet beats style=\"...\"");
+        auto g = ChildAs<VectorGroup>(sl, 5);
+        Check(g && !g->Children.empty() && isColor(g->Children[0], 0, 0, 255),
+              "a descendant selector matches inside its ancestor");
+        Check(isColor(ChildAs<VectorCircle>(sl, 6), 0, 0, 0),
+              "a descendant selector does not match outside its ancestor");
+        Check(isColor(ChildAs<VectorRect>(sl, 7), 0x12, 0x34, 0x56),
+              "a top-level <style> in CDATA applies");
+        auto label = ChildAs<VectorText>(sl, 8);
+        Check(label && label->BaseStyle.Anchor == TextAnchor::Middle &&
+              std::fabs(label->BaseStyle.FontSize - 16.0f) < 0.01f &&
+              label->BaseStyle.Weight == FontWeight::Bold && label->BaseStyle.FontFamily == "Arial" &&
+              isColor(label, 0x2c, 0x3e, 0x50),
+              "a class rule styles text (anchor, size, weight, family, fill)");
+        bool styleNote = false;
+        for (const auto& n : notes) styleNote = styleNote || n.find("style") != std::string::npos;
+        Check(!styleNote, "no reader note about <style>");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

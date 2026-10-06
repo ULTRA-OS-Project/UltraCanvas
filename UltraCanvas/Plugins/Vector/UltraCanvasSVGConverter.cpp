@@ -7,13 +7,17 @@
 // <g> elements, transforms stay matrix attributes, gradients keep all their
 // stops in <defs>, text keeps its spans, and nothing is flattened. The
 // importer parses with tinyxml2 and leans on the storage utilities
-// (ParsePathString, ParseColorString, ParseTransformString).
+// (ParsePathString, ParseColorString, ParseTransformString), and applies
+// <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
+//                  with presentation attributes and style="" (SVG 2 order)
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "HTMLReader/CSSStyleSheet.h"   // HTML::StyleSheet: <style> parsing
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
 #include "UltraCanvasFileLoader.h"   // LoadFile: inflates .svgz
 
@@ -614,6 +618,11 @@ public:
         doc->Size = Size2Dd{w, h};
         if (hasViewBox) doc->ViewBox = Rect2Dd{vb[0], vb[1], vb[2], vb[3]};
 
+        // Style sheets first: every property read below, gradient stops
+        // included, goes through them.
+        if (w > 0) styleSheet.SetMediaWidth(static_cast<float>(w));
+        CollectStyleSheets(svg);
+
         // Definitions pre-pass: gradients can be referenced before (or after)
         // their definition, so collect them document-wide first.
         CollectGradients(svg);
@@ -749,7 +758,10 @@ public:
 private:
     std::function<void(const std::string&)> warn;
     std::map<std::string, GradientData> gradients;
-    bool warnedCss = false;
+    // Every <style> in the document, and what it gives each element (worked
+    // out on the element's first property read).
+    HTML::StyleSheet styleSheet;
+    std::map<const tinyxml2::XMLElement*, std::map<std::string, HTML::Declaration>> sheetValues;
     // Maps viewBox units onto the page (identity when they coincide).
     Matrix3x3 viewBoxMatrix = Matrix3x3::Identity();
     // SVG images inside SVG images: how deep this reader is, and how many it
@@ -795,29 +807,199 @@ private:
         return ParseLength(e->Attribute(name), fallback);
     }
 
-    // Presentation attribute or `style="…"` property (style wins, per CSS).
-    static std::string Prop(const tinyxml2::XMLElement* e, const char* name) {
+    // x, y, width, height, rx, ry, cx, cy and r are properties in SVG 2, so a
+    // style sheet can set them too (`.card { rx: 8 }`).
+    double GeometryLength(const tinyxml2::XMLElement* e, const char* name, double fallback) {
+        const std::string v = Prop(e, name);
+        return ParseLength(v.empty() ? nullptr : v.c_str(), fallback);
+    }
+
+    // A property of `e` by the CSS cascade SVG 2 specifies: the presentation
+    // attribute is weakest, then the <style> sheets, then style="…"; an
+    // !important declaration beats every normal one, and an !important
+    // style="…" beats an !important sheet.
+    std::string Prop(const tinyxml2::XMLElement* e, const char* name) {
         std::string result;
         if (const char* a = e->Attribute(name)) result = a;
+        const HTML::Declaration* sheet = nullptr;
+        if (!styleSheet.rules.empty()) {
+            const auto& values = SheetValues(e);
+            auto it = values.find(name);
+            if (it != values.end()) sheet = &it->second;
+        }
+        std::vector<HTML::Declaration> inlineDecls;
+        const HTML::Declaration* inl = nullptr;
         if (const char* styleAttr = e->Attribute("style")) {
-            std::string s = styleAttr;
-            std::istringstream iss(s);
-            std::string decl;
-            while (std::getline(iss, decl, ';')) {
-                size_t colon = decl.find(':');
-                if (colon == std::string::npos) continue;
-                std::string key = decl.substr(0, colon);
-                key.erase(0, key.find_first_not_of(" \t"));
-                key.erase(key.find_last_not_of(" \t") + 1);
-                if (key == name) {
-                    std::string value = decl.substr(colon + 1);
-                    value.erase(0, value.find_first_not_of(" \t"));
-                    value.erase(value.find_last_not_of(" \t") + 1);
-                    result = value;
+            inlineDecls = HTML::StyleSheet::ParseDeclarationList(styleAttr);
+            for (const auto& d : inlineDecls) {
+                if (d.property == name && (d.important || !inl || !inl->important)) inl = &d;
+            }
+        }
+        if (sheet && !sheet->important) result = sheet->value;
+        if (inl && !inl->important) result = inl->value;
+        if (sheet && sheet->important) result = sheet->value;
+        if (inl && inl->important) result = inl->value;
+        return result;
+    }
+
+    // ===== CSS =====
+
+    // The <style> elements, wherever they are (editors write them at the top,
+    // hand-written files often inside <defs>), in document order so that of
+    // two equally specific rules the later wins.
+    void CollectStyleSheets(const tinyxml2::XMLElement* e) {
+        if (std::strcmp(StripNs(e->Name()), "style") == 0) {
+            const char* type = e->Attribute("type");
+            if (type && *type && !std::strstr(type, "css")) return;
+            const char* media = e->Attribute("media");
+            if (media && !HTML::StyleSheet::MediaMatches(media, styleSheet.GetMediaWidth())) return;
+            std::string css;   // the text and CDATA sections, in order
+            for (const tinyxml2::XMLNode* n = e->FirstChild(); n; n = n->NextSibling()) {
+                if (const tinyxml2::XMLText* t = n->ToText()) css += t->Value();
+            }
+            styleSheet.ParseAppend(css);
+            return;
+        }
+        for (const tinyxml2::XMLElement* child = e->FirstChildElement();
+             child; child = child->NextSiblingElement()) {
+            CollectStyleSheets(child);
+        }
+    }
+
+    // What the sheets say about `e`: matching rules in specificity, then
+    // source order, the !important declarations after all the normal ones.
+    const std::map<std::string, HTML::Declaration>& SheetValues(const tinyxml2::XMLElement* e) {
+        auto [it, inserted] = sheetValues.try_emplace(e);
+        if (!inserted) return it->second;
+        struct Match {
+            int specificity;
+            int order;
+            const HTML::Rule* rule;
+        };
+        std::vector<Match> matches;
+        for (const auto& rule : styleSheet.rules) {
+            int best = -1;
+            for (const auto& selector : rule.selectors) {
+                if (SelectorMatches(selector, e)) best = std::max(best, selector.Specificity());
+            }
+            if (best >= 0) matches.push_back({best, rule.sourceOrder, &rule});
+        }
+        std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
+            return a.specificity != b.specificity ? a.specificity < b.specificity : a.order < b.order;
+        });
+        for (bool important : {false, true}) {
+            for (const auto& m : matches) {
+                for (const auto& d : m.rule->declarations) {
+                    if (d.important == important) it->second[d.property] = d;
                 }
             }
         }
-        return result;
+        return it->second;
+    }
+
+    static std::string Lower(std::string s) {
+        for (char& ch : s) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return s;
+    }
+
+    // The last compound matches `e`, the ones before it ancestors in order.
+    // The parser reads `a > b` as `a b`, and drops sibling combinators and
+    // dynamic pseudo-classes (:hover) - nothing is hovered in a file.
+    static bool SelectorMatches(const HTML::Selector& selector, const tinyxml2::XMLElement* e) {
+        if (selector.path.empty() || !CompoundMatches(selector.path.back(), e)) return false;
+        int index = static_cast<int>(selector.path.size()) - 2;
+        for (const tinyxml2::XMLNode* n = e->Parent(); n && index >= 0; n = n->Parent()) {
+            const tinyxml2::XMLElement* ancestor = n->ToElement();
+            if (ancestor && CompoundMatches(selector.path[static_cast<size_t>(index)], ancestor)) --index;
+        }
+        return index < 0;
+    }
+
+    static bool CompoundMatches(const HTML::SimpleSelector& part, const tinyxml2::XMLElement* e) {
+        // The parser lower-cases type selectors; SVG's names are camelCase.
+        if (!part.tag.empty() && part.tag != "*" && Lower(StripNs(e->Name())) != part.tag) return false;
+        if (!part.id.empty()) {
+            const char* id = e->Attribute("id");
+            if (!id || part.id != id) return false;
+        }
+        if (!part.classes.empty()) {
+            std::set<std::string> have;
+            if (const char* cls = e->Attribute("class")) {
+                std::istringstream iss(cls);
+                std::string c;
+                while (iss >> c) have.insert(c);
+            }
+            for (const auto& c : part.classes) {
+                if (!have.count(c)) return false;
+            }
+        }
+        if (part.link && !(std::strcmp(StripNs(e->Name()), "a") == 0 &&
+                           (e->Attribute("href") || e->Attribute("xlink:href")))) return false;
+        for (const auto& pc : part.pseudos) {
+            if (!PseudoMatches(pc, e)) return false;
+        }
+        for (const auto& attr : part.attributes) {
+            if (!AttributeMatches(attr, e)) return false;
+        }
+        return true;
+    }
+
+    static bool PseudoMatches(const HTML::PseudoClass& pc, const tinyxml2::XMLElement* e) {
+        if (pc.kind == HTML::PseudoClass::Kind::Root) return e->Parent() && e->Parent()->ToDocument();
+        if (pc.kind == HTML::PseudoClass::Kind::Empty) {
+            for (const tinyxml2::XMLNode* n = e->FirstChild(); n; n = n->NextSibling()) {
+                if (n->ToElement() || (n->ToText() && *n->Value())) return false;
+            }
+            return true;
+        }
+        // The 1-based position among the element siblings (of the same name
+        // for -of-type), from the first or the last, is a*n + b for an n >= 0.
+        const tinyxml2::XMLNode* parent = e->Parent();
+        if (!parent) return false;
+        int index = 0, count = 0;
+        for (const tinyxml2::XMLElement* sib = parent->FirstChildElement(); sib;
+             sib = sib->NextSiblingElement()) {
+            if (pc.ofType && std::strcmp(sib->Name(), e->Name()) != 0) continue;
+            ++count;
+            if (sib == e) index = count;
+        }
+        if (index == 0) return false;
+        const int pos = pc.fromEnd ? count - index + 1 : index;
+        if (pc.a == 0) return pos == pc.b;
+        const int diff = pos - pc.b;
+        return diff % pc.a == 0 && diff / pc.a >= 0;
+    }
+
+    static bool AttributeMatches(const HTML::AttributeSelector& attr, const tinyxml2::XMLElement* e) {
+        // The parser lower-cases the name; SVG's attributes are camelCase.
+        const char* value = nullptr;
+        for (const tinyxml2::XMLAttribute* a = e->FirstAttribute(); a && !value; a = a->Next()) {
+            if (Lower(a->Name()) == attr.name) value = a->Value();
+        }
+        if (!value) return false;
+        if (attr.op == 0) return true;
+        std::string have = value, want = attr.value;
+        if (attr.ignoreCase) {
+            have = Lower(have);
+            want = Lower(want);
+        }
+        switch (attr.op) {
+            case '=': return have == want;
+            case '^': return !want.empty() && have.compare(0, want.size(), want) == 0;
+            case '$': return !want.empty() && have.size() >= want.size() &&
+                             have.compare(have.size() - want.size(), want.size(), want) == 0;
+            case '*': return !want.empty() && have.find(want) != std::string::npos;
+            case '|': return have == want || have.compare(0, want.size() + 1, want + "-") == 0;
+            case '~': {
+                std::istringstream iss(have);
+                std::string word;
+                while (iss >> word) {
+                    if (word == want) return true;
+                }
+                return false;
+            }
+        }
+        return false;
     }
 
     // ===== GRADIENTS =====
@@ -1146,8 +1328,9 @@ private:
                  child; child = child->NextSiblingElement()) {
                 const char* childName = StripNs(child->Name());
                 if (std::strcmp(childName, "linearGradient") == 0 ||
-                    std::strcmp(childName, "radialGradient") == 0) {
-                    continue;   // collected in the pre-pass
+                    std::strcmp(childName, "radialGradient") == 0 ||
+                    std::strcmp(childName, "style") == 0) {
+                    continue;   // collected in the pre-passes
                 }
                 auto el = ParseShape(child, doc);
                 if (el && !el->Id.empty()) doc.AddDefinition(el->Id, el);
@@ -1162,18 +1345,11 @@ private:
             if (const char* t = e->GetText()) doc.Description = t;
             return;
         }
-        if (std::strcmp(name, "style") == 0) {
-            if (!warnedCss) {
-                warnedCss = true;
-                warn("SVG import: CSS stylesheets are not supported; only "
-                     "presentation attributes and inline style apply");
-            }
-            return;
-        }
-        if (std::strcmp(name, "linearGradient") == 0 ||
+        if (std::strcmp(name, "style") == 0 ||
+            std::strcmp(name, "linearGradient") == 0 ||
             std::strcmp(name, "radialGradient") == 0 ||
             std::strcmp(name, "metadata") == 0) {
-            return;   // gradients were collected in the pre-pass
+            return;   // style sheets and gradients were collected in the pre-passes
         }
 
         auto el = ParseShape(e, doc);
@@ -1186,10 +1362,10 @@ private:
 
         if (std::strcmp(name, "rect") == 0) {
             auto r = std::make_shared<VectorRect>();
-            r->Bounds = Rect2Dd{LengthAttr(e, "x", 0), LengthAttr(e, "y", 0),
-                                LengthAttr(e, "width", 0), LengthAttr(e, "height", 0)};
-            r->RadiusX = static_cast<float>(LengthAttr(e, "rx", 0));
-            r->RadiusY = static_cast<float>(LengthAttr(e, "ry", r->RadiusX));
+            r->Bounds = Rect2Dd{GeometryLength(e, "x", 0), GeometryLength(e, "y", 0),
+                                GeometryLength(e, "width", 0), GeometryLength(e, "height", 0)};
+            r->RadiusX = static_cast<float>(GeometryLength(e, "rx", 0));
+            r->RadiusY = static_cast<float>(GeometryLength(e, "ry", r->RadiusX));
             if (r->RadiusX <= 0 && r->RadiusY > 0) r->RadiusX = r->RadiusY;
             if (r->RadiusX > 0) r->Type = VectorElementType::RoundedRectangle;
             ApplyStyle(e, *r);
@@ -1197,16 +1373,16 @@ private:
         }
         if (std::strcmp(name, "circle") == 0) {
             auto c = std::make_shared<VectorCircle>();
-            c->Center = Point2Dd(LengthAttr(e, "cx", 0), LengthAttr(e, "cy", 0));
-            c->Radius = static_cast<float>(LengthAttr(e, "r", 0));
+            c->Center = Point2Dd(GeometryLength(e, "cx", 0), GeometryLength(e, "cy", 0));
+            c->Radius = static_cast<float>(GeometryLength(e, "r", 0));
             ApplyStyle(e, *c);
             return c;
         }
         if (std::strcmp(name, "ellipse") == 0) {
             auto el = std::make_shared<VectorEllipse>();
-            el->Center = Point2Dd(LengthAttr(e, "cx", 0), LengthAttr(e, "cy", 0));
-            el->RadiusX = static_cast<float>(LengthAttr(e, "rx", 0));
-            el->RadiusY = static_cast<float>(LengthAttr(e, "ry", 0));
+            el->Center = Point2Dd(GeometryLength(e, "cx", 0), GeometryLength(e, "cy", 0));
+            el->RadiusX = static_cast<float>(GeometryLength(e, "rx", 0));
+            el->RadiusY = static_cast<float>(GeometryLength(e, "ry", 0));
             ApplyStyle(e, *el);
             return el;
         }
