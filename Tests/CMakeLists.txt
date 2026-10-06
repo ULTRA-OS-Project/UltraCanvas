@@ -660,6 +660,30 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILE DIALOG TEST =====
+# The name a Save hands back (the chosen type's extension, always run), and
+# the dialog itself: the Up arrow and view glyphs centred in their buttons,
+# the listing without the Filer's hover icon menu, Save's naming and its
+# "Replace it?" question. That part reads the composited window pixels back
+# and skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileDialogTest...")
+    add_executable(FileDialogTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileDialogTest.cpp
+    )
+    target_include_directories(FileDialogTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileDialogTest PRIVATE cxx_std_20)
+    target_link_libraries(FileDialogTest PRIVATE UltraCanvas)
+    set_target_properties(FileDialogTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileDialogTest COMMAND FileDialogTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileDialogTest")
+else()
+    message(STATUS "  FileDialogTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT METRICS SCREENSHOT TEST =====
 # Cap-height centring, level indicators, crisp 1px borders and a caret that
 # spans the text's line box, read back from the composited pixels. It is also
