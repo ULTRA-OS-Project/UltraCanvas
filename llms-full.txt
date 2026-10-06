@@ -11813,9 +11813,10 @@ clickable area of its own.
 The pointer says which parts open a menu: the dropdown zone — and the whole
 overflow (`...`) item, which opens from anywhere on it, also top to bottom —
 shows the menu cursor (`UCMouseCursor::ContextMenu`, the same one the dropdown
-widget's button uses: an arrow with a small menu beside it, drawn from
-`media/lib/cursor/context-menu.svg`), the rest of the strip shows the item
-cursor. Both are style fields:
+widget's button uses: an arrow with a small menu beside it - the system's own
+context-menu pointer on macOS, drawn from `media/lib/cursor/context-menu.svg`
+elsewhere), the rest of the strip shows the item cursor. Both are style
+fields:
 
 ```cpp
 BreadcrumbStyle s = bc->GetStyle();

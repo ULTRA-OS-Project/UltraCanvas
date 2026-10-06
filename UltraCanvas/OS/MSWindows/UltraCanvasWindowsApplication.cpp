@@ -145,6 +145,7 @@ namespace UltraCanvas {
             }
         }
         cursors.clear();
+        imageCursors.Clear();
 
         // Unregister window class
         UnregisterWindowClass();

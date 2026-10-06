@@ -104,6 +104,24 @@ add_test(NAME FocusHistoryTest COMMAND FocusHistoryTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FocusHistoryTest")
 
+# ===== IMAGE CURSOR CACHE TEST =====
+# UCImageCursorCache (cursors drawn from a picture, one per screen scaling) is
+# header-only and draws through a callable, so the test needs no display and
+# no framework link.
+message(STATUS "  Building ImageCursorCacheTest...")
+
+add_executable(ImageCursorCacheTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImageCursorCacheTest.cpp
+)
+target_include_directories(ImageCursorCacheTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ImageCursorCacheTest PRIVATE cxx_std_20)
+set_target_properties(ImageCursorCacheTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ImageCursorCacheTest COMMAND ImageCursorCacheTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ImageCursorCacheTest")
+
 # ===== RECENT FILES TEST =====
 # UltraTexter's recent-files store lives in the header-only
 # Apps/Texter/UltraCanvasTextEditorConfig.h, so the test builds without
