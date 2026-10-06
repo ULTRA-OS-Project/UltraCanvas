@@ -1,8 +1,9 @@
 // Apps/UltraWeb/host/UltraWebGuest.cpp
 // The host side of the UltraWeb element ABI (UltraWeb/guest/ultraweb.h):
-// a handle table over real UltraCanvas elements, the eleven imports, and
-// the element callbacks that become uc_event calls.
-// Version: 0.1.0
+// a handle table over real UltraCanvas elements, the element imports, the
+// element callbacks that become uc_event calls, and (ABI v2) the app's
+// timers, fetches, storage and clipboard.
+// Version: 0.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -16,6 +17,7 @@
 #include "UltraCanvasTextInput.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -31,6 +33,12 @@ constexpr uint32_t kMaxLogBytes = 4096;
 constexpr double kMaxLength = 100000.0;   // px; anything larger is a guest bug
 constexpr float kInputWidth = 240.0f;     // a text input has no intrinsic width
 constexpr float kInputHeight = 28.0f;
+constexpr size_t kMaxTimers = 256;
+constexpr uint32_t kMinTimerMs = 4;
+constexpr size_t kMaxOpenFetches = 16;
+constexpr uint32_t kMaxHeaderNameBytes = 256;
+// User actions: the events a guest may answer with a clipboard write.
+constexpr uint32_t kUserActions = UC_EVENT_CLICK | UC_EVENT_CHANGE | UC_EVENT_SUBMIT | UC_EVENT_TOGGLE;
 
 bool IsContainerKind(const std::string& kind) { return kind == UC_KIND_CONTAINER || kind == "Root"; }
 
@@ -42,9 +50,42 @@ CSSLayout::Dimension Length(double px) {
 
 WasmValue I32(int32_t v) { return WasmI32(v); }
 
+std::string Lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    return s;
+}
+
+// What a guest's (pointer, length) names, or false for memory it does not
+// have - read into bytes for a body or a stored value.
+bool ReadBytes(WasmCaller& c, uint32_t at, uint32_t length, std::vector<uint8_t>& out) {
+    std::string bytes;
+    if (!c.ReadMemory(at, length, bytes)) return false;
+    out.assign(bytes.begin(), bytes.end());
+    return true;
+}
+
+// Copies what fits of `data` to the guest and answers its full length, the
+// way every "out, capacity" import does.
+int32_t CopyOut(WasmCaller& c, uint32_t at, uint32_t capacity, const void* data, size_t size) {
+    const uint32_t copied = uint32_t(std::min<size_t>(size, capacity));
+    if (!c.WriteMemory(at, data, copied)) return UC_ERR_MEMORY;
+    return int32_t(std::min<size_t>(size, size_t(std::numeric_limits<int32_t>::max())));
+}
+
+// The next id from `next` on that `used` does not hold; after the largest
+// int32_t it starts again at 1.
+template <class Map> int32_t NextId(int32_t& next, const Map& used) {
+    for (;;) {
+        const int32_t id = next;
+        next = next == std::numeric_limits<int32_t>::max() ? 1 : next + 1;
+        if (!used.count(id)) return id;
+    }
+}
+
 } // namespace
 
-UltraWebGuest::UltraWebGuest(GuestOptions options) : options_(std::move(options)) {}
+UltraWebGuest::UltraWebGuest(GuestOptions options)
+    : options_(std::move(options)), alive_(std::make_shared<int>(0)) {}
 
 std::unique_ptr<UltraWebGuest> UltraWebGuest::Start(const std::vector<uint8_t>& module,
                                                     std::shared_ptr<UltraCanvasContainer> root,
@@ -79,12 +120,23 @@ std::unique_ptr<UltraWebGuest> UltraWebGuest::Start(const std::vector<uint8_t>& 
     status = guest->instance_->Call("uc_main", {});
     guest->inGuest_ = false;
     if (!status.ok) { error = status.message; return nullptr; }
+    guest->DrainAppEvents();
     return guest;
 }
 
 UltraWebGuest::~UltraWebGuest() {
-    // Callbacks first, so nothing calls back into a guest being destroyed;
-    // then the root's children - everything else hangs below them.
+    // Timers and requests first: what is already on its way finds the
+    // guest gone (alive_) rather than calling into it.
+    alive_.reset();
+    for (auto& [id, timer] : timers_) {
+        if (options_.services.stopTimer) options_.services.stopTimer(timer.hostId);
+    }
+    for (auto& [id, fetch] : fetches_) {
+        if (fetch.cancel) fetch.cancel();
+    }
+    if (options_.services.storage) options_.services.storage->Flush();
+    // Element callbacks next, so nothing calls back into a guest being
+    // destroyed; then the root's children - everything else hangs below them.
     for (uint32_t h = UC_ROOT_HANDLE + 1; h < entries_.size(); ++h) {
         Entry& entry = entries_[h];
         if (!entry.live) continue;
@@ -174,7 +226,124 @@ std::vector<WasmImport> UltraWebGuest::MakeImports() {
         const uint32_t length = std::min(uint32_t(a[1].i32), kMaxLogBytes);
         if (c.ReadMemory(uint32_t(a[0].i32), length, line) && options_.onLog) options_.onLog(line);
     });
+    AddServiceImports(imports);
     return imports;
+}
+
+// ABI v2: timers, fetch, storage, clipboard.
+void UltraWebGuest::AddServiceImports(std::vector<WasmImport>& imports) {
+    using T = WasmValueType;
+    auto add = [&imports](const char* name, std::vector<T> params, std::vector<T> results, WasmHostFunction fn) {
+        imports.push_back({"ultracanvas", name, std::move(params), std::move(results), std::move(fn)});
+    };
+    add("uc_timer_start", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = StartTimer(uint32_t(a[0].i32), a[1].i32 != 0);
+    });
+    add("uc_timer_stop", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = StopTimer(a[0].i32);
+    });
+
+    add("uc_fetch", {T::I32, T::I32, T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            const uint32_t urlLength = uint32_t(a[1].i32), bodyLength = uint32_t(a[4].i32), typeLength = uint32_t(a[6].i32);
+            if (urlLength > FetchRules::kMaxUrlBytes || bodyLength > FetchRules::kMaxRequestBytes
+                || typeLength > FetchRules::kMaxContentTypeBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+            std::string url, contentType;
+            std::vector<uint8_t> body;
+            if (!c.ReadMemory(uint32_t(a[0].i32), urlLength, url) || !ReadBytes(c, uint32_t(a[3].i32), bodyLength, body)
+                || !c.ReadMemory(uint32_t(a[5].i32), typeLength, contentType)) { r[0].i32 = UC_ERR_MEMORY; return; }
+            r[0].i32 = StartFetch(url, uint32_t(a[2].i32), std::move(body), std::move(contentType));
+        });
+    add("uc_fetch_status", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = fetches_.find(a[0].i32);
+        r[0].i32 = at == fetches_.end() ? UC_ERR_NOT_FOUND : at->second.status;
+    });
+    add("uc_fetch_body", {T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        int32_t result = UC_OK;
+        const Fetch* fetch = FinishedFetch(a[0].i32, result);
+        r[0].i32 = fetch ? CopyOut(c, uint32_t(a[1].i32), uint32_t(a[2].i32), fetch->body.data(), fetch->body.size()) : result;
+    });
+    add("uc_fetch_header", {T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            int32_t result = UC_OK;
+            const Fetch* fetch = FinishedFetch(a[0].i32, result);
+            if (!fetch) { r[0].i32 = result; return; }
+            const uint32_t nameLength = uint32_t(a[2].i32);
+            std::string name;
+            if (nameLength > kMaxHeaderNameBytes) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+            if (!c.ReadMemory(uint32_t(a[1].i32), nameLength, name)) { r[0].i32 = UC_ERR_MEMORY; return; }
+            name = Lower(name);
+            std::string value;
+            bool found = false;
+            for (const auto& [header, v] : fetch->headers) {
+                if (header != name) continue;
+                value += (found ? ", " : "") + v;
+                found = true;
+            }
+            r[0].i32 = found ? CopyOut(c, uint32_t(a[3].i32), uint32_t(a[4].i32), value.data(), value.size()) : UC_ERR_NOT_FOUND;
+        });
+    add("uc_fetch_close", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = CloseFetch(a[0].i32);
+    });
+
+    add("uc_storage_get", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        UltraWebStorage* storage = options_.services.storage.get();
+        if (!storage) { r[0].i32 = UC_ERR_DENIED; return; }
+        const uint32_t keyLength = uint32_t(a[1].i32);
+        if (keyLength > UltraWebStorage::kMaxKeyBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string key, value;
+        if (!c.ReadMemory(uint32_t(a[0].i32), keyLength, key)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        if (!storage->Get(key, value)) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        r[0].i32 = CopyOut(c, uint32_t(a[2].i32), uint32_t(a[3].i32), value.data(), value.size());
+    });
+    add("uc_storage_set", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        UltraWebStorage* storage = options_.services.storage.get();
+        if (!storage) { r[0].i32 = UC_ERR_DENIED; return; }
+        const uint32_t keyLength = uint32_t(a[1].i32), valueLength = uint32_t(a[3].i32);
+        if (keyLength > UltraWebStorage::kMaxKeyBytes || valueLength > UltraWebStorage::kQuotaBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string key, value;
+        if (!c.ReadMemory(uint32_t(a[0].i32), keyLength, key) || !c.ReadMemory(uint32_t(a[2].i32), valueLength, value)) {
+            r[0].i32 = UC_ERR_MEMORY;
+            return;
+        }
+        r[0].i32 = storage->Set(key, value);
+        if (r[0].i32 == UC_OK) StorageChanged();
+    });
+    add("uc_storage_remove", {T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        UltraWebStorage* storage = options_.services.storage.get();
+        if (!storage) { r[0].i32 = UC_ERR_DENIED; return; }
+        const uint32_t keyLength = uint32_t(a[1].i32);
+        if (keyLength > UltraWebStorage::kMaxKeyBytes) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        std::string key;
+        if (!c.ReadMemory(uint32_t(a[0].i32), keyLength, key)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        if (!storage->Remove(key)) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        StorageChanged();
+        r[0].i32 = UC_OK;
+    });
+    add("uc_storage_key", {T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        UltraWebStorage* storage = options_.services.storage.get();
+        if (!storage) { r[0].i32 = UC_ERR_DENIED; return; }
+        std::string key;
+        if (!storage->KeyAt(uint32_t(a[0].i32), key)) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        r[0].i32 = CopyOut(c, uint32_t(a[1].i32), uint32_t(a[2].i32), key.data(), key.size());
+    });
+    add("uc_storage_clear", {}, {T::I32}, [this](WasmCaller&, const WasmValue*, WasmValue* r) {
+        UltraWebStorage* storage = options_.services.storage.get();
+        if (!storage) { r[0].i32 = UC_ERR_DENIED; return; }
+        if (storage->KeyCount() > 0) {
+            storage->Clear();
+            StorageChanged();
+        }
+        r[0].i32 = UC_OK;
+    });
+
+    add("uc_clipboard_write", {T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t length = uint32_t(a[1].i32);
+        if (length > options_.maxTextBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string text;
+        if (!c.ReadMemory(uint32_t(a[0].i32), length, text)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = WriteClipboard(text);
+    });
 }
 
 // ===== HANDLES =====
@@ -238,6 +407,10 @@ uint32_t UltraWebGuest::Create(const std::string& kind) {
     entry.element = element;
     entry.kind = kind;
     entry.live = true;
+    if (kind == UC_KIND_TEXT_INPUT) {
+        entry.width = kInputWidth;
+        entry.height = kInputHeight;
+    }
     ++liveCount_;
     WireCallbacks(handle);
     return handle;
@@ -302,9 +475,21 @@ int32_t UltraWebGuest::Insert(uint32_t parentHandle, uint32_t childHandle, uint3
     for (uint32_t h : tail) container->AddChild(entries_[h].element);
     order.insert(order.begin() + (at - order.begin()), childHandle);
     entries_[childHandle].parent = parentHandle;
+    UpdateCrossAlignment(childHandle);
     container->InvalidateLayout();
     container->RequestRedraw();
     return UC_OK;
+}
+
+// A container stretches its children across its line (AlignItems::Stretch),
+// which CSS does only for an item whose cross size is automatic (Flexbox
+// 9.4 step 11); the layout engine stretches a sized one too. So a child
+// the guest gave a width in a column, or a height in a row, opts out.
+void UltraWebGuest::UpdateCrossAlignment(uint32_t handle) {
+    Entry& entry = entries_[handle];
+    if (handle == UC_ROOT_HANDLE || entry.parent == UC_NO_HANDLE) return;
+    const bool sized = entries_[entry.parent].row ? entry.height > 0 : entry.width > 0;
+    entry.element->layoutItem.SetAlignSelf(sized ? CSSLayout::AlignSelf::Start : CSSLayout::AlignSelf::Auto);
 }
 
 int32_t UltraWebGuest::Remove(uint32_t childHandle) {
@@ -362,8 +547,14 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
         case UC_PROP_HEIGHT:
             if (handle == UC_ROOT_HANDLE) return UC_ERR_STATE;
             if (!InRange(value, 0, kMaxLength)) return UC_ERR_LIMIT;
-            if (property == UC_PROP_WIDTH) element->SetElementSize(Length(value), element->size.height);
-            else element->SetElementSize(element->size.width, Length(value));
+            if (property == UC_PROP_WIDTH) {
+                element->SetElementSize(Length(value), element->size.height);
+                entry->width = static_cast<float>(value);
+            } else {
+                element->SetElementSize(element->size.width, Length(value));
+                entry->height = static_cast<float>(value);
+            }
+            UpdateCrossAlignment(handle);
             break;
         case UC_PROP_GROW:
             if (handle == UC_ROOT_HANDLE) return UC_ERR_STATE;
@@ -376,6 +567,8 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
             if (value == UC_DIRECTION_ROW) element->layout.SetFlexRow();
             else if (value == UC_DIRECTION_COLUMN) element->layout.SetFlexColumn();
             else return UC_ERR_LIMIT;
+            entry->row = value == UC_DIRECTION_ROW;
+            for (uint32_t child : entry->children) UpdateCrossAlignment(child);
             break;
         case UC_PROP_GAP:
             if (!isContainer) return UC_ERR_PROPERTY;
@@ -480,6 +673,132 @@ int32_t UltraWebGuest::Bounds(uint32_t handle, float out[4]) {
     return UC_OK;
 }
 
+// ===== SERVICES =====
+
+void UltraWebGuest::Log(const std::string& line) {
+    if (options_.onLog) options_.onLog("UltraWeb: " + line);
+}
+
+int32_t UltraWebGuest::StartTimer(uint32_t delayMs, bool repeat) {
+    const GuestServices& services = options_.services;
+    if (!services.startTimer) return UC_ERR_DENIED;
+    if (!instance_->HasFunction("uc_event")) return UC_ERR_STATE;
+    if (timers_.size() >= kMaxTimers) return UC_ERR_LIMIT;
+    if (delayMs > uint32_t(std::numeric_limits<int32_t>::max())) return UC_ERR_LIMIT;
+    const int32_t id = NextId(nextTimerId_, timers_);
+    std::weak_ptr<int> alive = alive_;
+    // Raw `this` behind the alive token: the host timer outlives nothing it
+    // reaches once ~UltraWebGuest has stopped it.
+    const uint32_t hostId = services.startTimer(std::max(delayMs, kMinTimerMs), repeat, [this, alive, id]() {
+        if (!alive.expired()) TimerFired(id);
+    });
+    if (hostId == 0) return UC_ERR_STATE;
+    timers_[id] = Timer{hostId, repeat};
+    return id;
+}
+
+int32_t UltraWebGuest::StopTimer(int32_t id) {
+    auto at = timers_.find(id);
+    if (at == timers_.end()) return UC_ERR_NOT_FOUND;
+    if (options_.services.stopTimer) options_.services.stopTimer(at->second.hostId);
+    timers_.erase(at);
+    return UC_OK;
+}
+
+void UltraWebGuest::TimerFired(int32_t id) {
+    auto at = timers_.find(id);
+    if (at == timers_.end()) return;   // stopped meanwhile
+    // A one-shot timer is gone once it has fired.
+    if (!at->second.repeat) timers_.erase(at);
+    DeliverAppEvent(UC_EVENT_TIMER, id);
+}
+
+int32_t UltraWebGuest::StartFetch(const std::string& url, uint32_t method, std::vector<uint8_t> body,
+                                  std::string contentType) {
+    if (!options_.services.fetch) return UC_ERR_DENIED;
+    if (!instance_->HasFunction("uc_event")) return UC_ERR_STATE;
+    if (fetches_.size() >= kMaxOpenFetches) {
+        Log("fetch " + url + ": " + std::to_string(kMaxOpenFetches) + " fetches are open already; close some");
+        return UC_ERR_LIMIT;
+    }
+    FetchRequest request;
+    std::string reason;
+    const int32_t result = FetchRules::Prepare(options_.address, url, method, std::move(body), std::move(contentType),
+                                               request, reason);
+    if (result != UC_OK) {
+        Log("fetch " + url + " refused: " + reason);
+        return result;
+    }
+    const int32_t id = NextId(nextFetchId_, fetches_);
+    Fetch& fetch = fetches_[id];
+    fetch.request = request;
+    std::weak_ptr<int> alive = alive_;
+    std::function<void()> cancel = options_.services.fetch(request, [this, alive, id](FetchResponse response) {
+        if (!alive.expired()) FetchDone(id, std::move(response));
+    });
+    // The service may have answered already, and the entry with it.
+    auto at = fetches_.find(id);
+    if (at != fetches_.end() && at->second.status == 0) at->second.cancel = std::move(cancel);
+    return id;
+}
+
+void UltraWebGuest::FetchDone(int32_t id, FetchResponse response) {
+    auto at = fetches_.find(id);
+    if (at == fetches_.end() || at->second.status != 0) return;   // closed meanwhile
+    Fetch& fetch = at->second;
+    fetch.cancel = nullptr;
+    std::string reason;
+    const int32_t result = FetchRules::Admit(fetch.request, response, fetch.headers, reason);
+    if (result == UC_OK) {
+        fetch.status = response.status;
+        fetch.body = std::move(response.body);
+    } else {
+        fetch.status = result;
+        fetch.headers.clear();
+        Log("fetch " + fetch.request.url + ": " + reason);
+    }
+    DeliverAppEvent(UC_EVENT_FETCH, id);
+}
+
+const UltraWebGuest::Fetch* UltraWebGuest::FinishedFetch(int32_t id, int32_t& result) const {
+    auto at = fetches_.find(id);
+    if (at == fetches_.end()) { result = UC_ERR_NOT_FOUND; return nullptr; }
+    if (at->second.status == 0) { result = UC_ERR_STATE; return nullptr; }
+    if (at->second.status < 0) { result = at->second.status; return nullptr; }
+    return &at->second;
+}
+
+int32_t UltraWebGuest::CloseFetch(int32_t id) {
+    auto at = fetches_.find(id);
+    if (at == fetches_.end()) return UC_ERR_NOT_FOUND;
+    std::function<void()> cancel = std::move(at->second.cancel);
+    fetches_.erase(at);
+    if (cancel) cancel();
+    return UC_OK;
+}
+
+void UltraWebGuest::StorageChanged() {
+    const std::shared_ptr<UltraWebStorage>& storage = options_.services.storage;
+    if (!storage || !storage->TakeFlushRequest()) return;
+    // One write for a run of changes, on a later turn; the store flushes
+    // itself when it closes, so a lost task loses nothing.
+    std::weak_ptr<UltraWebStorage> weak = storage;
+    auto flush = [weak]() {
+        if (auto s = weak.lock()) s->Flush();
+    };
+    if (options_.defer) options_.defer(flush);
+    else flush();
+}
+
+int32_t UltraWebGuest::WriteClipboard(const std::string& text) {
+    if (!inUserAction_) {
+        Log("clipboard: an app may write it only while it handles a click, a toggle or an edit");
+        return UC_ERR_DENIED;
+    }
+    if (!options_.services.writeClipboard) return UC_ERR_DENIED;
+    return options_.services.writeClipboard(text) ? UC_OK : UC_ERR_STATE;
+}
+
 // The callbacks capture the guest raw, with the handle: the element owns the
 // callback, the guest owns the element, and ~UltraWebGuest clears them.
 void UltraWebGuest::WireCallbacks(uint32_t handle) {
@@ -507,6 +826,29 @@ void UltraWebGuest::Deliver(uint32_t handle, uint32_t event, int32_t detail) {
     if (inGuest_ || failed_ || !instance_) return;
     const Entry* entry = Find(handle);
     if (!entry || !(entry->listening & event)) return;
+    inUserAction_ = (event & kUserActions) != 0;
+    CallEvent(handle, event, detail);
+    inUserAction_ = false;
+    DrainAppEvents();
+}
+
+void UltraWebGuest::DeliverAppEvent(uint32_t event, int32_t detail) {
+    if (failed_ || !instance_) return;
+    appEvents_.emplace_back(event, detail);
+    DrainAppEvents();
+}
+
+void UltraWebGuest::DrainAppEvents() {
+    // While a call runs the events wait; the call's caller drains them once
+    // it has returned, one call at a time.
+    while (!inGuest_ && !failed_ && !appEvents_.empty()) {
+        const auto [event, detail] = appEvents_.front();
+        appEvents_.pop_front();
+        CallEvent(UC_NO_HANDLE, event, detail);
+    }
+}
+
+void UltraWebGuest::CallEvent(uint32_t handle, uint32_t event, int32_t detail) {
     inGuest_ = true;
     const WasmStatus status = instance_->Call("uc_event", {I32(int32_t(handle)), I32(int32_t(event)), I32(detail)});
     inGuest_ = false;

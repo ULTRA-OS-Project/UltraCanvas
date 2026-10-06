@@ -186,8 +186,10 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
     add_executable(UltraWebGuestTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebGuestTest.cpp
+        ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
-        ${_uw_dir}/host/UltraWebLoader.cpp)
+        ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebStorage.cpp)
     target_include_directories(UltraWebGuestTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebGuestTest PRIVATE cxx_std_20)
