@@ -6,6 +6,13 @@
   skipped": an architecture diagram's light grey page came in as a black
   one. The style sheet now applies. The fix is in the framework's SVG reader
   (`Docs/UltraCanvas/changelog.d/svg-import-style-sheets.md`).
+- **Arrowheads on imported SVG lines.** Lines that end in an SVG marker -
+  the arrows connecting the boxes of a diagram - opened as bare lines, with
+  "`<marker>` is not supported, skipped" in the status bar. The marker is
+  now drawn: each line and its arrowheads come in as one group, so the arrow
+  moves as one object, and ungrouping it gives the arrowhead as an editable
+  shape. Also in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-markers.md`).
 
 #### 2026-10-06 *0.6.5*
 - **Copy and paste work with other programs.** Copy and Paste only ever

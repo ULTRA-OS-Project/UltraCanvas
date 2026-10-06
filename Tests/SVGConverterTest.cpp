@@ -6,12 +6,14 @@
 // real SVG rendering pipeline (UCImage) and pixel-checked, which proves the
 // output is valid SVG to an independent renderer, not just to our importer.
 // A hand-written snippet exercises importer robustness (inline style,
-// percentages, entities, tspans, defs-referenced gradients), and a styled
-// one the <style> cascade (class/id/descendant rules, !important, CDATA).
+// percentages, entities, tspans, defs-referenced gradients), a styled
+// one the <style> cascade (class/id/descendant rules, !important, CDATA),
+// and a marked one <marker> drawing (placement, orient, viewBox, units,
+// context paint, clipping, inheritance, a self-referencing marker).
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
@@ -475,6 +477,96 @@ int main(int argc, char** argv) {
         bool styleNote = false;
         for (const auto& n : notes) styleNote = styleNote || n.find("style") != std::string::npos;
         Check(!styleNote, "no reader note about <style>");
+    }
+
+    // ===== MARKERS =====
+    // Diagram connectors draw their arrowheads with <marker>; skipping it
+    // left every arrow a bare line. Each marker is drawn as shapes grouped
+    // with its line.
+    {
+        const char* marked = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+  <style>.arrow { stroke: #ff0000; stroke-width: 2; marker-end: url(#head); }</style>
+  <defs>
+    <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50"/>
+    </marker>
+    <marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" markerUnits="userSpaceOnUse">
+      <circle cx="5" cy="5" r="5" fill="context-stroke"/>
+    </marker>
+    <marker id="rev" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L5 0"/></marker>
+    <marker id="big" markerWidth="2" markerHeight="2"><rect width="10" height="10"/></marker>
+    <marker id="self" markerWidth="5" markerHeight="5"><line x2="5" y2="5" stroke="black" marker-end="url(#self)"/></marker>
+  </defs>
+  <line class="arrow" x1="10" y1="10" x2="10" y2="50"/>
+  <polyline points="20 10, 60 10, 60 50" fill="none" stroke="#00ff00" marker-mid="url(#dot)"/>
+  <path d="M100 10 L140 10" stroke="black" marker-start="url(#rev)" marker-end="url(#rev)"/>
+  <path d="M100 50 C 120 50 140 70 140 90" fill="none" stroke="black" marker-end="url(#head)"/>
+  <line x1="150" y1="10" x2="190" y2="10" stroke="black" marker-end="url(#big)"/>
+  <g marker-end="url(#head)"><line x1="0" y1="90" x2="40" y2="90" stroke="blue"/></g>
+  <line x1="150" y1="50" x2="190" y2="50" stroke="black" marker-end="url(#self)"/>
+  <line x1="0" y1="0" x2="5" y2="5" stroke="black"/>
+</svg>)SVG";
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions markerOptions;
+        markerOptions.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+        auto mdoc = converter.ImportFromString(marked, markerOptions);
+        auto ml = (mdoc && !mdoc->Layers.empty()) ? mdoc->Layers[0] : nullptr;
+        Check(ml && ml->Children.size() == 8, "marked SVG: eight elements");
+        // The marker drawings of top-level element i (the group's children
+        // after the shape itself).
+        auto drawings = [&](size_t i) {
+            std::vector<std::shared_ptr<VectorGroup>> out;
+            auto g = ChildAs<VectorGroup>(ml, i);
+            if (g) for (size_t k = 1; k < g->Children.size(); ++k)
+                if (auto d = std::dynamic_pointer_cast<VectorGroup>(g->Children[k])) out.push_back(d);
+            return out;
+        };
+        auto near = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
+            if (!d || !d->Transform) return false;
+            const Point2Dd p = d->Transform->Transform(content);
+            return std::fabs(p.x - x) < 1e-6 && std::fabs(p.y - y) < 1e-6;
+        };
+
+        auto arrow = ChildAs<VectorGroup>(ml, 0);
+        auto head = drawings(0);
+        Check(arrow && arrow->Children.size() == 2 && std::dynamic_pointer_cast<VectorLine>(arrow->Children[0]) &&
+              head.size() == 1, "marker-end from a CSS class: the line and its arrowhead become one group");
+        Check(!head.empty() && near(head[0], Point2Dd(9, 3.5), 10, 50) && near(head[0], Point2Dd(10, 3.5), 10, 52),
+              "the arrowhead's refX/refY sits on the line's end, turned along it and scaled by stroke-width");
+        const Color* hc = (!head.empty() && !head[0]->Children.empty() && head[0]->Children[0]->Style.Fill)
+                ? std::get_if<Color>(&*head[0]->Children[0]->Style.Fill) : nullptr;
+        Check(hc && hc->r == 0x2c && hc->g == 0x3e && hc->b == 0x50, "the arrowhead keeps the marker's own fill");
+
+        auto dot = drawings(1);
+        Check(dot.size() == 1 && near(dot[0], Point2Dd(5, 5), 60, 10) && near(dot[0], Point2Dd(10, 5), 62, 10),
+              "marker-mid on the middle vertex only, viewBox mapped, markerUnits=userSpaceOnUse unscaled");
+        const Color* dc = (!dot.empty() && !dot[0]->Children.empty() && dot[0]->Children[0]->Style.Fill)
+                ? std::get_if<Color>(&*dot[0]->Children[0]->Style.Fill) : nullptr;
+        Check(dc && dc->g == 255 && dc->r == 0, "fill=\"context-stroke\" takes the line's stroke");
+
+        auto rev = drawings(2);
+        Check(rev.size() == 2 && near(rev[0], Point2Dd(5, 0), 95, 10) && near(rev[1], Point2Dd(5, 0), 145, 10),
+              "orient=auto-start-reverse turns the start marker round, not the end one");
+        auto curve = drawings(3);
+        Check(curve.size() == 1 && near(curve[0], Point2Dd(10, 3.5), 140, 91),
+              "an arrowhead on a curve follows the curve's tangent at its end");
+        auto big = drawings(4);
+        Check(big.size() == 1 && big[0]->Style.ClipPath &&
+              std::dynamic_pointer_cast<VectorClipPath>(mdoc->GetDefinition(*big[0]->Style.ClipPath)) != nullptr,
+              "content larger than the marker is clipped to its viewport");
+        Check(head.size() == 1 && !head[0]->Style.ClipPath, "content inside the viewport is not clipped");
+        auto inGroup = ChildAs<VectorGroup>(ml, 5);
+        auto inherited = (inGroup && !inGroup->Children.empty())
+                ? std::dynamic_pointer_cast<VectorGroup>(inGroup->Children[0]) : nullptr;
+        Check(inherited && inherited->Children.size() == 2, "marker-end inherits from a <g>");
+        auto self = drawings(6);
+        Check(self.size() == 1 && !self[0]->Children.empty() &&
+              std::dynamic_pointer_cast<VectorLine>(self[0]->Children[0]) != nullptr,
+              "a marker that uses itself is drawn once, not forever");
+        Check(ChildAs<VectorLine>(ml, 7) != nullptr, "a line without markers stays a plain line");
+        bool markerNote = false;
+        for (const auto& n : notes) markerNote = markerNote || n.find("marker") != std::string::npos;
+        Check(!markerNote, "no reader note about <marker>");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
