@@ -163,6 +163,10 @@ namespace UltraCanvas {
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
         config.confirmOverwrite = opts.confirmOverwrite;
         config.hoverIconMenu    = opts.hoverIconMenu;
+        // The framework dialog adds what it accepts to the recent files
+        // itself (FileDialogConfig::addToRecent); the native path below does
+        // it here.
+        config.addToRecent      = opts.registerAsRecent;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
@@ -225,8 +229,8 @@ namespace UltraCanvas {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::Open, "Open File"),
                 opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
                 });
             return;
         }
@@ -257,7 +261,7 @@ namespace UltraCanvas {
         if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::OpenMultiple, "Open Files"),
-                opts.parentWindow, deliver);
+                opts.parentWindow, onResult);
             return;
         }
 
@@ -286,8 +290,8 @@ namespace UltraCanvas {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::Save, "Save File"),
                 opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
                 });
             return;
         }
