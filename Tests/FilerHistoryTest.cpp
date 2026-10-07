@@ -307,6 +307,41 @@ void TestMissingPathsDropOut() {
     CheckEq(paths.front(), PathToUtf8(kept), "the one still there is kept");
 }
 
+// ===== A NAME OUTSIDE THE CODE PAGE =====
+// Paths() asks the disk whether each entry is still there. On Windows a UTF-8
+// path handed to the filesystem as a plain string is read in the ANSI code
+// page (1252 on CI), which cannot hold Thai or an emoji - the file was "not
+// found" and the entry forgotten the first time the History view was opened.
+void TestNonAsciiNameStays() {
+    std::printf("\n-- a Thai and emoji file name --\n");
+
+    const std::filesystem::path dir =
+            PathFromUtf8(UltraFilerSettings::GetConfigDirectory()) / "files";
+    std::filesystem::create_directories(dir);
+    // "รูปภาพ 📄.txt"
+    const std::string name =
+            "\xE0\xB8\xA3\xE0\xB8\xB9\xE0\xB8\x9B\xE0\xB8\xA0\xE0\xB8\xB2\xE0\xB8\x9E"
+            " \xF0\x9F\x93\x84.txt";
+    const std::filesystem::path file = dir / PathFromUtf8(name);
+    { std::ofstream(file) << "x"; }
+    Check(std::filesystem::exists(file), "the file was written under its own name");
+
+    UltraFilerHistory history;
+    history.ClearAll();
+    history.Record(FilerHistoryKind::File, PathToUtf8(file));
+    std::vector<std::string> paths = history.Paths(FilerHistoryKind::File);
+    CheckEq(paths.size(), 1u, "it is listed while it exists");
+    if (!paths.empty())
+        CheckEq(paths.front(), PathToUtf8(file), "under the same UTF-8 path");
+
+    // Paths() writes the list back when it drops anything, so a wrongly
+    // forgotten entry would also be missing after a restart.
+    UltraFilerHistory reloaded;
+    reloaded.Load();
+    CheckEq(reloaded.Paths(FilerHistoryKind::File).size(), 1u,
+            "and is still there after a restart");
+}
+
 } // namespace
 
 int main() {
@@ -332,6 +367,7 @@ int main() {
     TestLimitClamped();
     TestSettingRoundTrip();
     TestMissingPathsDropOut();
+    TestNonAsciiNameStays();
 
     std::filesystem::remove_all(root, ec);
 
