@@ -341,8 +341,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `HTMLReader/HTMLDocument.h`) — `Parser::Parse(html)` → `Document`
   (tolerant HTML/XHTML: unclosed elements, void and self-closing tags,
   comments, CDATA, doctype and `quirksMode`, entities, raw-text `<style>` /
-  `<script>`; `Errors()` lists repairs). `Node` (one struct per node; tag
-  and attribute names lower-case) with `GetAttribute`, `HasClass`,
+  `<script>`; `Errors()` lists repairs; inside an inline `<svg>` / `<math>`
+  the names keep their vocabulary's case, `linearGradient`, `viewBox`).
+  `Node` (one struct per node; HTML tag and attribute names lower-case,
+  attribute lookup exact then case-insensitive) with `GetAttribute`, `HasClass`,
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4

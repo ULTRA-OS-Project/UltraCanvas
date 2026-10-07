@@ -65,7 +65,7 @@ replaced presents a new one and is refused until its old key is forgotten.
 
 | Column | What it shows |
 |---|---|
-| **Device** | The name the device was discovered under - its DNS-SD instance name, or the name a printer gives itself - kept beside its key. *(name not known)* for a key learned before any name was, until the device is listed again. |
+| **Device** | The name the device was discovered under - its DNS-SD instance name, or, for a device named by its address in configuration, the name a printer gives itself or the make and model a scanner reports - kept beside its key. *(name not known)* for a key learned before any name was, until the device is listed again. |
 | **Address** | The address the key is kept under, `host:port`. |
 | **Key** | The SHA-256 of the device's public key, base64; the tooltip has it in full. |
 | **Forget** | Removes the key. The device's new key is learned the next time it is reached - on the same terms as the first time, so forget one only when you know it was reset or replaced. |

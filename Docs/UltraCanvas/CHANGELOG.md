@@ -1,3 +1,60 @@
+#### 2026-10-07 *0.9.185*
+- **A scanner named in `ULTRACANVAS_ESCL_SCANNERS` is called what it is.**
+  It has no DNS-SD instance name, so it was listed under its URL - and a
+  certificate trusted for it read *(name not known)* in UOS-Settings. Once its
+  `ScannerCapabilities` are read it takes the make and model they report
+  ("Acme MegaScan 42") as its name, and its model and serial number are filled
+  in, as an IPP printer configured by address already took its
+  `printer-name`. A scanner found by DNS-SD keeps its instance name.
+
+#### 2026-10-07 *0.9.184*
+- **`FilerHistoryTest` runs.** The test of UltraFiler's recently-used lists
+  (`Tests/FilerHistoryTest.cpp` - the Files / Folders / Apps lists survive a
+  restart and keep the History & Favorites limit while recording, on reading
+  the file back and when the limit is lowered) was written in September but
+  never added to any CMake file, so no build compiled it and CI never ran it.
+  It is in `Tests/FilerTests.cmake` now, so Linux runs it in the full test
+  pass and the Windows job runs it with the other Filer tests, where
+  UltraFiler keeps its history under `%APPDATA%`. For Windows its paths now go
+  through `PathToUtf8` / `PathFromUtf8` and its config folder is redirected
+  with the wide environment API, and `scripts/check_path_string.py` scans it,
+  as it does every test that runs on Windows.
+- **Inline `<svg>` and `<math>` in a page keep their names' case.** The HTML
+  parser lower-cased every tag and attribute name, so an SVG drawn inside a
+  page came out as `lineargradient` with a `viewbox`, which no SVG consumer
+  recognises. Inside `<svg>` and `<math>` the parser now applies the HTML
+  standard's foreign-content tables: the vocabulary's own spelling
+  (`linearGradient`, `viewBox`, `preserveAspectRatio`, `definitionURL`)
+  whatever case the source used, HTML again inside `foreignObject`, `desc`,
+  `title` and the MathML text elements, no HTML implicit closes or void
+  elements in between. `Node::GetAttribute` finds a name exactly, then in any
+  ASCII case, and a CSS type selector matches a foreign element's camelCase
+  name, as in a browser. Needed before UltraWeb renders pages; harmless for
+  mail and eBooks, whose SVG cover wrappers still show their raster image.
+- **The tests compile the HTMLReader core once.** `Tests/CMakeLists.txt`
+  listed the parser, CSS and resolver sources in three test targets; they are
+  one object library, `HTMLReaderTestCore`, that the three link.
+- **The unbuilt SVG plugin is gone.** `Plugins/SVG/UltraCanvasSVGPlugin`
+  (a separate `UltraCanvasSVGElement` with its own SVG model, renderer and
+  `style=""` parser, 1,850 lines) was commented out of the build and named
+  only by the demo page, which has shown SVG files through
+  `UltraCanvasImageElement` all along. An SVG is a picture: the image
+  element and the media viewer show it (librsvg), `UltraCanvasVectorRaster`
+  rasterizes it, the Vector plugin's `SVGConverter` reads and writes it.
+  `Docs/UltraCanvas/UltraCanvasSVGExamples.md` now says so instead of
+  documenting the removed element.
+- **The Filer tests that run on Windows are checked for code-page path
+  conversions.** `scripts/check_path_string.py` scans only the tests that run
+  on Windows, and of the five Filer tests the Windows job runs it covered
+  none until `FilerHistoryTest` - so a `.string()` or `fs::path(std::string)`
+  added to `FilerFolderPreviewTest`, `FilerHostIconsTest`,
+  `FilerNameEncodingTest` or `FilerShortcutEntryTest` would have passed the
+  check and failed only on a Windows machine with a name its code page cannot
+  hold. All five are scanned now, and `path-strings.yml` runs when one of
+  them changes - before, a change to a test file alone never started it. The
+  two sites in `FilerNameEncodingTest` that write a raw Latin-1 file name on
+  POSIX on purpose say so with `// path-string-ok`.
+
 #### 2026-10-07 *0.9.183*
 - **CSS selector matching is one piece of code for every tree.** The HTML
   style resolver matched selectors with a private method typed on the HTML
