@@ -1,5 +1,6 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.2.1 - a left press is taken only when it starts a pan
 // Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
 //                  drags are left to the parent when nothing zooms; plot area
 //                  recomputed on every resize; the element's own background
@@ -269,6 +270,9 @@ namespace UltraCanvas {
 
         // Dragging a zoomed x axis sideways with the left button. Off by
         // default; only does something while a chart that zooms is zoomed in.
+        // A left press that starts no pan, and its release, are left to the
+        // parent, so a chart inside a scrolling or draggable container does
+        // not swallow its clicks.
         void SetEnablePan(bool enable) {
             enablePan = enable;
             if (!enable) EndPan();
