@@ -19,6 +19,7 @@
 #include "VideoFXBackend.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
+#include "VideoFXBeats.h"
 #include "VideoFXMusic.h"
 #include "VideoFX/VideoFX.h"
 
@@ -2095,6 +2096,111 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
     return VideoFXResult::Ok;
 }
 
+// ---------------------------------------------------------------------------
+// beat detection
+// ---------------------------------------------------------------------------
+
+// The whole sound of `path`, mixed to mono at the beat analysis rate
+VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
+    out.clear();
+    FormatInputPtr fmt;
+    VideoFXResult r = OpenInput(path, fmt);
+    if (r != VideoFXResult::Ok) return r;
+    const int stream = av_find_best_stream(fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (stream < 0) return Fail(VideoFXResult::NoMediaStreams, "The file has no sound: " + path);
+    CodecContextPtr dec;
+    if ((r = OpenDecoder(fmt.get(), stream, dec)) != VideoFXResult::Ok) return r;
+    Graph graph;
+    FramePtr decoded = MakeFrame();
+    FramePtr scratch = MakeFrame();
+    int64_t nextPts = 0;
+    auto collect = [&](AVFrame* f) -> VideoFXResult {
+        const float* p = reinterpret_cast<const float*>(f->extended_data[0]);
+        out.insert(out.end(), p, p + f->nb_samples);
+        return VideoFXResult::Ok;
+    };
+    auto feed = [&](AVFrame* f) -> VideoFXResult {
+        if (!graph.graph) {
+            const std::string desc = "[in]aresample=" + std::to_string(kBeatSampleRate) +
+                                     ",aformat=sample_fmts=flt:channel_layouts=mono[out]";
+            VideoFXResult br = BuildGraph(graph, false, {{"in", AudioBufferSourceArgs(f, AVRational{1, f->sample_rate})}},
+                                          desc);
+            if (br != VideoFXResult::Ok) return br;
+        }
+        f->pts = nextPts;                   // the sound in order, gaps and all closed up
+        nextPts += f->nb_samples;
+        int err = av_buffersrc_add_frame_flags(graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the sound", err);
+        return PullGraph(graph, scratch.get(), collect);
+    };
+    auto receive = [&]() -> VideoFXResult {
+        while (true) {
+            int err = avcodec_receive_frame(dec.get(), decoded.get());
+            if (err == AVERROR(EAGAIN) || err == AVERROR_EOF) return VideoFXResult::Ok;
+            if (err < 0) return Fail(VideoFXResult::DecodeError, "Cannot decode the sound", err);
+            VideoFXResult fr = feed(decoded.get());
+            av_frame_unref(decoded.get());
+            if (fr != VideoFXResult::Ok) return fr;
+        }
+    };
+    PacketPtr pkt = MakePacket();
+    while (av_read_frame(fmt.get(), pkt.get()) >= 0) {
+        if (pkt->stream_index == stream) {
+            int err = avcodec_send_packet(dec.get(), pkt.get());
+            if (err < 0 && err != AVERROR(EAGAIN) && err != AVERROR_INVALIDDATA) {
+                av_packet_unref(pkt.get());
+                return Fail(VideoFXResult::DecodeError, "Cannot decode the sound", err);
+            }
+            if ((r = receive()) != VideoFXResult::Ok) return r;
+        }
+        av_packet_unref(pkt.get());
+    }
+    avcodec_send_packet(dec.get(), nullptr);
+    if ((r = receive()) != VideoFXResult::Ok) return r;
+    if (graph.src) {
+        int err = av_buffersrc_add_frame_flags(graph.src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the sound", err);
+        if ((r = PullGraph(graph, scratch.get(), collect)) != VideoFXResult::Ok) return r;
+    }
+    return VideoFXResult::Ok;
+}
+
+// The beats of a song list on the slideshow's timeline: each song's beats
+// moved to where it plays, a crossfade handing over at its middle
+VideoFXResult TimelineBeats(const VideoFXMusic& music, const std::vector<double>& lengths, std::vector<double>& out) {
+    out.clear();
+    const std::vector<std::string> songs = music.Songs();
+    double offset = -music.start;           // where song i's own second 0 falls on the timeline
+    double from = 0.0;                      // its beats count from here...
+    for (size_t i = 0; i < songs.size(); ++i) {
+        std::vector<float> mono;
+        VideoFXResult r = DecodeMono(songs[i], mono);
+        if (r != VideoFXResult::Ok) {
+            const std::string reason = VideoFX_GetLastError();
+            return Fail(r, "Music " + songs[i] + ": " + reason);
+        }
+        const double length = lengths[i] > 0.0 ? lengths[i] : static_cast<double>(mono.size()) / kBeatSampleRate;
+        const double played = length - (i == 0 ? music.start : 0.0);
+        double handover = std::numeric_limits<double>::infinity();      // ...up to here
+        double next = 0.0;
+        if (i + 1 < songs.size()) {
+            const double nextPlayed = lengths[i + 1] > 0.0 ? lengths[i + 1] : 0.0;
+            const double fade = CrossfadeSeconds(music.crossfade, played, nextPlayed);
+            next = offset + length - fade;
+            handover = offset + length - fade / 2.0;
+        }
+        for (double b : AnalyseBeats(mono, kBeatSampleRate).beats) {
+            const double t = b + offset;
+            if (t >= from && t < handover) out.push_back(t);
+        }
+        if (i + 1 < songs.size()) {
+            from = handover;
+            offset = next;
+        }
+    }
+    return VideoFXResult::Ok;
+}
+
 } // namespace
 
 // ============================================================================
@@ -2147,11 +2253,19 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (imagePaths.empty()) return Fail(VideoFXResult::InvalidArgument, "A slideshow needs at least one image");
     const VideoFXMusic music = options.music.IsSet() ? options.music : settings.music;
 
+    const bool beatSync = options.beatSync || options.beatsPerImage > 0;
+    if (options.beatsPerImage < 0 || options.beatsPerImage > 64)
+        return Fail(VideoFXResult::InvalidArgument, "Beats per image must be 0..64");
+    if (beatSync && !music.IsSet()) return Fail(VideoFXResult::InvalidArgument, "beatSync needs music");
+    const double transition = options.transition.IsCut() ? 0.0 : options.transition.duration;
+
     // Long enough per image that the show ends with the song
     double secondsPerImage = options.secondsPerImage;
-    if (options.matchMusicLength) {
-        if (!music.IsSet()) return Fail(VideoFXResult::InvalidArgument, "matchMusicLength needs music");
-        std::vector<double> lengths;
+    double musicSeconds = 0.0;
+    std::vector<double> lengths;
+    if (options.matchMusicLength && !music.IsSet())
+        return Fail(VideoFXResult::InvalidArgument, "matchMusicLength needs music");
+    if (options.matchMusicLength || beatSync) {
         for (const std::string& song : music.Songs()) {
             VideoFXMediaInfo info;
             VideoFXResult r = VideoFX_Probe(song, info);
@@ -2161,36 +2275,57 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
             }
             lengths.push_back(info.duration);
         }
-        const double musicSeconds = PlaylistSeconds(lengths, music.crossfade, music.start);
+        musicSeconds = PlaylistSeconds(lengths, music.crossfade, music.start);
+    }
+    if (options.matchMusicLength) {
         if (!(musicSeconds > 0.0))
             return Fail(VideoFXResult::InvalidArgument, "The music's length cannot be read");
-        secondsPerImage = SlideshowSecondsForMusic(musicSeconds, imagePaths.size(),
-                                                   options.transition.IsCut() ? 0.0 : options.transition.duration);
+        secondsPerImage = SlideshowSecondsForMusic(musicSeconds, imagePaths.size(), transition);
     }
     if (!(secondsPerImage >= 0.5 && secondsPerImage <= 3600.0))
         return Fail(VideoFXResult::InvalidArgument, "Seconds per image must be 0.5..3600");
     if (!options.transition.IsCut() && options.transition.duration > secondsPerImage / 2.0)
         return Fail(VideoFXResult::InvalidArgument, "A transition may take at most half of an image's time");
 
+    // Each image's time on screen: all alike, or set by the changes on the beat
+    // (a change is a cut, or a transition's middle)
+    const size_t n = imagePaths.size();
+    std::vector<double> seconds(n, secondsPerImage);
+    if (beatSync && n > 1) {
+        std::vector<double> beats;
+        VideoFXResult r = TimelineBeats(music, lengths, beats);
+        if (r != VideoFXResult::Ok) return r;
+        const std::vector<double> changes = BeatAlignedChanges(beats, n, secondsPerImage,
+                                                               std::max(1.0, 2.0 * transition), options.beatsPerImage);
+        const double typical = changes.size() > 1 ? (changes.back() - changes.front()) / (changes.size() - 1)
+                                                  : changes.front();
+        const double end = options.matchMusicLength ? musicSeconds : changes.back() + typical;
+        double start = 0.0;                 // where image i begins, its transition in included
+        for (size_t i = 0; i < n; ++i) {
+            const double until = i + 1 < n ? changes[i] + transition / 2.0 : end;
+            seconds[i] = std::max(until - start, std::max(1.0, 2.0 * transition));
+            start = i + 1 < n ? changes[i] - transition / 2.0 : start;
+        }
+    }
+
     std::vector<VideoFXSegment> segments;
-    segments.reserve(imagePaths.size());
-    for (size_t i = 0; i < imagePaths.size(); ++i) {
-        VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], secondsPerImage, options.motion);
+    segments.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], seconds[i], options.motion);
         s.imageFit = options.imageFit;
         if (i > 0) s.transitionIn = options.transition;
         if (i < options.captions.size() && !options.captions[i].empty()) {
             VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);
             caption.box = true;
-            caption.fadeIn = std::min(0.5, secondsPerImage / 4.0);
+            caption.fadeIn = std::min(0.5, seconds[i] / 4.0);
             caption.fadeOut = caption.fadeIn;
             s.overlays.push_back(caption);
         }
         segments.push_back(std::move(s));
     }
     if (options.fadeInOut) {
-        const double fade = std::min(0.8, secondsPerImage / 4.0);
-        segments.front().effects.push_back(VideoFXEffect::FadeIn(fade));
-        segments.back().effects.push_back(VideoFXEffect::FadeOut(fade));
+        segments.front().effects.push_back(VideoFXEffect::FadeIn(std::min(0.8, seconds.front() / 4.0)));
+        segments.back().effects.push_back(VideoFXEffect::FadeOut(std::min(0.8, seconds.back() / 4.0)));
     }
 
     VideoFXExportSettings s = settings;
@@ -2201,6 +2336,19 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (s.frameRate <= 0.0) s.frameRate = 30.0;
     s.music = music;
     return VideoFX_Export(segments, outputPath, s, progress);
+}
+
+VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info) {
+    ClearError();
+    info = VideoFXBeatInfo{};
+    std::vector<float> mono;
+    VideoFXResult r = DecodeMono(path, mono);
+    if (r != VideoFXResult::Ok) return r;
+    const BeatAnalysis a = AnalyseBeats(mono, kBeatSampleRate);
+    info.bpm = a.bpm;
+    info.confidence = a.confidence;
+    info.beats = a.beats;
+    return VideoFXResult::Ok;
 }
 
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds, int width, int height,

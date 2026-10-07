@@ -308,6 +308,43 @@ VideoFX_CreateSlideshow(photos, "show.mp4", options);
 With a song list the show lasts as long as the list plays once: the songs'
 lengths minus the crossfades between them.
 
+**On the beat.** `beatSync` moves every change — the cut, or the middle of a
+transition — onto a beat of the music: the beat nearest `secondsPerImage`
+after the change before, never less than a second (or two transitions)
+later. `beatsPerImage` instead gives every image exactly that many beats;
+4 is one bar of a song in 4/4. With a song list the beats come from each
+song where it plays, handing over in the middle of each crossfade.
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.beatSync = true;              // changes on the beat, about every 4 s
+options.beatsPerImage = 8;            // or: exactly two bars per photo
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+The beat finder is VideoFX's own and needs nothing beyond FFmpeg to decode.
+It reads the sound's spectral flux (how sharply the spectrum rises — drum
+hits, plucked notes), takes the tempo from the strongest repetition between
+40 and 240 BPM (weighted towards 120 so a song is not read at half or double
+speed), and picks the chain of onsets that best fits that tempo. It is tuned
+for music with a steady pulse; for speech, noise or a held chord it reports
+no beat, and the slideshow falls back to plain `secondsPerImage`.
+
+`VideoFX_DetectBeats` gives the analysis itself:
+
+```cpp
+VideoFXBeatInfo beats;
+if (VideoFX_DetectBeats("song.mp3", beats) == VideoFXResult::Ok && beats.HasBeat())
+    std::printf("%.1f BPM, first beat at %.2f s\n", beats.bpm, beats.beats.front());
+```
+
+| `VideoFXBeatInfo` | Meaning |
+|---|---|
+| `bpm` | Tempo in beats per minute; 0 = no steady beat |
+| `confidence` | 0..1, how clearly the sound repeats at that tempo |
+| `beats` | Beat times in seconds from the start of the file |
+
 Sound-only outputs work too: photos plus music into `.mp3` is a valid,
 correctly timed (if unusual) export, and so is music under silent clips.
 
@@ -541,6 +578,9 @@ videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
 videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4 --fit-music
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
+videofx beats song.mp3                                   # tempo and beat times
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -576,6 +616,7 @@ generates its own clips, so it needs no media files.
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
 | 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
 | 3b | Song lists, each song crossfading into the next | **Done** |
+| 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

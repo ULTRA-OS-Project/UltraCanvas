@@ -58,6 +58,8 @@ set(VIDEOFX_SOURCES
     core/VideoFXKenBurns.h
     core/VideoFXMusic.cpp
     core/VideoFXMusic.h
+    core/VideoFXBeats.cpp
+    core/VideoFXBeats.h
     core/VideoFXJob.cpp
 )
 

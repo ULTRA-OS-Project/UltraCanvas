@@ -15,6 +15,7 @@
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
+#include "VideoFXBeats.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
 #include "VideoFXMusic.h"
@@ -28,6 +29,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <locale>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -450,6 +452,68 @@ static void TestMusicMath() {
 // ============================================================================
 // PART 2 - ENGINE
 // ============================================================================
+
+// A click track: a short low thump every beat from `offset`, over optional noise
+static std::vector<float> ClickTrack(int rate, double bpm, double offset, double seconds, float noise = 0.0f) {
+    std::vector<float> s(static_cast<size_t>(seconds * rate), 0.0f);
+    std::mt19937 gen(7);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+    if (noise > 0.0f) for (float& v : s) v = noise * dist(gen);
+    for (double t = offset; t < seconds; t += 60.0 / bpm) {
+        const size_t at = static_cast<size_t>(t * rate);
+        const int length = rate / 30;
+        for (int i = 0; i < length && at + i < s.size(); ++i)
+            s[at + i] += static_cast<float>(0.8 * std::exp(-i * 280.0 / rate) * std::sin(2.0 * 3.14159265 * 150.0 * i / rate));
+    }
+    return s;
+}
+
+static void TestBeatMath() {
+    std::printf("Beat detection: tempo, beats, changes on the beat\n");
+    const int r = kBeatSampleRate;
+    BeatAnalysis a = AnalyseBeats(ClickTrack(r, 120.0, 0.25, 12.0), r);
+    CHECK(Near(a.bpm, 120.0, 1.0) && a.confidence > 0.5, "120 BPM clicks: 120 BPM");
+    CHECK(!a.beats.empty() && Near(a.beats.front(), 0.25, 0.02), "the first beat on the first click");
+    bool onClicks = a.beats.size() >= 20;
+    for (double b : a.beats) {
+        const double phase = std::fmod(b - 0.25 + 100.0, 0.5);
+        onClicks = onClicks && (phase < 0.02 || phase > 0.48);
+    }
+    CHECK(onClicks, "every beat within 20 ms of a click");
+    a = AnalyseBeats(ClickTrack(r, 150.0, 0.05, 12.0, 0.02f), r);
+    CHECK(Near(a.bpm, 150.0, 2.0), "150 BPM over noise: 150, not half of it");
+    a = AnalyseBeats(ClickTrack(r, 90.0, 0.4, 12.0), r);
+    CHECK(Near(a.bpm, 90.0, 1.5), "90 BPM");
+    a = AnalyseBeats(std::vector<float>(static_cast<size_t>(4 * r), 0.0f), r);
+    CHECK(a.bpm == 0.0 && a.beats.empty(), "silence: no beat");
+    std::vector<float> noise(static_cast<size_t>(12 * r));
+    std::mt19937 gen(3);
+    std::normal_distribution<float> dist(0.0f, 0.2f);
+    for (float& v : noise) v = dist(gen);
+    a = AnalyseBeats(noise, r);
+    CHECK(a.bpm == 0.0 && a.beats.empty(), "white noise: no beat");
+
+    std::vector<double> beats;
+    for (int k = 0; k < 24; ++k) beats.push_back(0.25 + 0.5 * k);
+    auto same = [](const std::vector<double>& got, const std::vector<double>& want) {
+        if (got.size() != want.size()) return false;
+        for (size_t i = 0; i < got.size(); ++i) if (!Near(got[i], want[i], 1e-9)) return false;
+        return true;
+    };
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 0), {1.75, 3.25, 4.75}),
+          "1.7 s per image: each change on the nearest beat");
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 4), {2.25, 4.25, 6.25}), "4 beats per image: one bar each");
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 1), {1.25, 2.25, 3.25}),
+          "1 beat per image is under the 1 s minimum: 2 beats");
+    CHECK(same(BeatAlignedChanges({0.25, 0.75, 1.25, 1.75}, 4, 1.0, 1.0, 0), {1.25, 2.25, 3.25}),
+          "past the last beat: on the beat grid");
+    CHECK(same(BeatAlignedChanges({}, 4, 1.7, 1.0, 0), {1.7, 3.4, 5.1}), "no beats: every 1.7 s");
+    std::vector<double> wobbly = beats;
+    wobbly[8] = 4.247;                      // 3 ms early, as detected beats are
+    CHECK(same(BeatAlignedChanges(wobbly, 3, 2.0, 2.0, 0), {2.25, 4.247}),
+          "a beat 3 ms short of the minimum gap still takes the change");
+    CHECK(BeatAlignedChanges(beats, 1, 1.7, 1.0, 0).empty(), "one image: no change");
+}
 
 #ifdef VIDEOFX_HAS_FFMPEG
 
@@ -1065,6 +1129,23 @@ struct Wav {
     }
 };
 
+// 16-bit stereo WAV of a mono signal
+static bool WriteWav(const std::string& path, const std::vector<float>& mono, int rate) {
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return false;
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) std::fputc(static_cast<int>((v >> (8 * i)) & 0xFF), f); };
+    auto u16 = [&](uint16_t v) { std::fputc(v & 0xFF, f); std::fputc(v >> 8, f); };
+    const uint32_t bytes = static_cast<uint32_t>(mono.size() * 4);
+    std::fputs("RIFF", f); u32(36 + bytes); std::fputs("WAVEfmt ", f);
+    u32(16); u16(1); u16(2); u32(static_cast<uint32_t>(rate)); u32(static_cast<uint32_t>(rate * 4)); u16(4); u16(16);
+    std::fputs("data", f); u32(bytes);
+    for (float v : mono) {
+        const int16_t s16 = static_cast<int16_t>(std::lround(std::clamp(v, -1.0f, 1.0f) * 32767.0f));
+        u16(static_cast<uint16_t>(s16)); u16(static_cast<uint16_t>(s16));
+    }
+    return std::fclose(f) == 0;
+}
+
 static Wav ReadWav(const std::string& path) {
     Wav w;
     std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
@@ -1215,6 +1296,69 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK_OK(VideoFX_Probe(listShowPath, info), "probe it");
     CHECK(Near(info.duration, 3.0, 0.1), "2 s + 2 s songs, 1 s crossfade: a 3 s slideshow");
 
+    // ---- beats: detected in a file, and a slideshow changing on them ----
+    const std::string click = TempPath("click120.wav");
+    CHECK(WriteWav(click, ClickTrack(44100, 120.0, 0.25, 12.0), 44100), "write a 120 BPM click track");
+    VideoFXBeatInfo beatInfo;
+    CHECK_OK(VideoFX_DetectBeats(click, beatInfo), "detect its beats");
+    CHECK(beatInfo.HasBeat() && Near(beatInfo.bpm, 120.0, 1.0), "120 BPM");
+    CHECK(!beatInfo.beats.empty() && Near(beatInfo.beats.front(), 0.25, 0.02), "first beat at 0.25 s");
+    CHECK_OK(VideoFX_DetectBeats(longSong, beatInfo), "detect the beats of a steady tone");
+    CHECK(!beatInfo.HasBeat(), "a steady tone has no beat");
+    CHECK(VideoFX_DetectBeats(TempPath("none.wav"), beatInfo) == VideoFXResult::FileNotFound, "missing file");
+
+    const uint32_t colours[4] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF};
+    std::vector<std::string> cardsOnBeat;
+    for (int i = 0; i < 4; ++i) {
+        VideoFXFrame card;
+        card.width = 64; card.height = 36;
+        card.pixels.resize(64 * 36 * 4);
+        for (size_t p = 0; p < card.pixels.size(); p += 4) {
+            card.pixels[p] = (colours[i] >> 16) & 0xFF;
+            card.pixels[p + 1] = (colours[i] >> 8) & 0xFF;
+            card.pixels[p + 2] = colours[i] & 0xFF;
+            card.pixels[p + 3] = 255;
+        }
+        cardsOnBeat.push_back(TempPath("beat-card" + std::to_string(i) + ".png"));
+        CHECK_OK(VideoFX_SaveFrameImage(card, cardsOnBeat.back()), "a coloured card");
+    }
+    auto colourAt = [&](const std::string& file, double t) {
+        VideoFXFrame f;
+        if (VideoFX_ExtractFrame(file, t, f) != VideoFXResult::Ok) return -1;
+        double cr, cg, cb;
+        CentreColour(f, cr, cg, cb);
+        for (int i = 0; i < 4; ++i) {
+            const double er = (colours[i] >> 16) & 0xFF, eg = (colours[i] >> 8) & 0xFF, eb = colours[i] & 0xFF;
+            if (std::fabs(cr - er) < 60 && std::fabs(cg - eg) < 60 && std::fabs(cb - eb) < 60) return i;
+        }
+        return -1;
+    };
+    VideoFXSlideshowOptions onBeat;
+    onBeat.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+    onBeat.secondsPerImage = 1.7;
+    onBeat.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+    onBeat.fadeInOut = false;
+    onBeat.music = VideoFXMusic::FromFile(click);
+    onBeat.beatSync = true;
+    const std::string beatShow = TempPath("beat-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow(cardsOnBeat, beatShow, onBeat, small), "slideshow on the beat");
+    CHECK(colourAt(beatShow, 1.67) == 0 && colourAt(beatShow, 1.83) == 1, "first change on the beat at 1.75 s");
+    CHECK(colourAt(beatShow, 3.17) == 1 && colourAt(beatShow, 3.33) == 2, "second at 3.25 s");
+    CHECK(colourAt(beatShow, 4.67) == 2 && colourAt(beatShow, 4.83) == 3, "third at 4.75 s");
+    onBeat.beatsPerImage = 4;
+    onBeat.beatSync = false;                // implied
+    const std::string barShow = TempPath("bar-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow(cardsOnBeat, barShow, onBeat, small), "slideshow, one bar per image");
+    CHECK(colourAt(barShow, 2.17) == 0 && colourAt(barShow, 2.33) == 1, "4 beats per image: change at 2.25 s");
+    CHECK(colourAt(barShow, 6.17) == 2 && colourAt(barShow, 6.33) == 3, "and at 6.25 s");
+    VideoFXSlideshowOptions noBeatMusic;
+    noBeatMusic.beatSync = true;
+    CHECK(VideoFX_CreateSlideshow(cardsOnBeat, TempPath("x.mkv"), noBeatMusic) == VideoFXResult::InvalidArgument,
+          "beat sync without music refused");
+    onBeat.beatsPerImage = 65;
+    CHECK(VideoFX_CreateSlideshow(cardsOnBeat, TempPath("x.mkv"), onBeat, small) == VideoFXResult::InvalidArgument,
+          "65 beats per image refused");
+
     // ---- errors ----
     VideoFXExportSettings bad = VideoFXExportSettings::AudioOnlyWAV();
     bad.music = VideoFXMusic::FromFile(TempPath("none.mp3"));
@@ -1252,6 +1396,7 @@ int main() {
     TestTransitionAndOverlayText();
     TestKenBurnsMath();
     TestMusicMath();
+    TestBeatMath();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

@@ -508,6 +508,20 @@ struct VideoFXSlideshowOptions {
     bool fadeInOut = true;                      // fade from and to black at the ends
     VideoFXMusic music;                         // background music; when set, used instead of settings.music
     bool matchMusicLength = false;              // choose secondsPerImage so the slideshow ends with the music
+    // Change images on the music's beats: each change (a cut, or the middle of
+    // a transition) moves to the beat nearest secondsPerImage after the last
+    bool beatSync = false;
+    int beatsPerImage = 0;                      // > 0: every image lasts exactly this many beats (4 = a bar
+                                                // in 4/4); implies beatSync. 0..64
+};
+
+// The beat of a piece of music (VideoFX_DetectBeats)
+struct VideoFXBeatInfo {
+    double bpm = 0.0;               // tempo, beats per minute; 0 = no steady beat found
+    double confidence = 0.0;        // 0..1, how clearly the music repeats at that tempo
+    std::vector<double> beats;      // seconds from the start of the file
+
+    bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then
