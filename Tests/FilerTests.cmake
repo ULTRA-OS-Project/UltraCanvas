@@ -131,7 +131,9 @@ endif()
 # header-only): the Files / Folders / Apps lists survive a restart, and each
 # keeps the number of entries Settings > Extras > History & Favorites asks
 # for - while recording, when the file is read back and the moment the limit
-# is lowered. Writes its config into a temporary folder, never a real one.
+# is lowered - and History and Favorites keep a file named in Thai with an
+# emoji (UltraFilerFavorites.h too). Writes its config into a temporary
+# folder, never a real one.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerHistoryTest...")
     add_executable(FilerHistoryTest

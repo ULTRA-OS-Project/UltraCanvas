@@ -10,6 +10,11 @@
 // and at the moment it is lowered - a limit that only takes effect at the next
 // restart looks, to the person who just moved the slider, like it did nothing.
 //
+// Both History and Favorites (UltraFilerFavorites.h) drop an entry whose file
+// has left the disk, so both are checked with a Thai-and-emoji file name: on
+// Windows that check once read the UTF-8 path in the code page, found nothing
+// and forgot the entry.
+//
 // It runs on Windows CI too (Tests/FilerTests.cmake), where a path converted
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
@@ -28,6 +33,7 @@
 #include <vector>
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraFilerFavorites.h"
 #include "UltraFilerHistory.h"
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -340,6 +346,18 @@ void TestNonAsciiNameStays() {
     reloaded.Load();
     CheckEq(reloaded.Paths(FilerHistoryKind::File).size(), 1u,
             "and is still there after a restart");
+
+    // Favorites prune their dead pins the same way.
+    UltraFilerFavorites favorites;
+    favorites.ClearAll();
+    Check(favorites.Pin(FilerFavoriteKind::File, PathToUtf8(file)),
+          "the same file can be pinned to Favorites");
+    CheckEq(favorites.Paths(FilerFavoriteKind::File).size(), 1u,
+            "the pin is listed while the file exists");
+    UltraFilerFavorites reloadedFavorites;
+    reloadedFavorites.Load();
+    CheckEq(reloadedFavorites.Paths(FilerFavoriteKind::File).size(), 1u,
+            "and the pin is still there after a restart");
 }
 
 } // namespace

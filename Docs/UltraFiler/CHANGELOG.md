@@ -1,11 +1,13 @@
 #### 2026-10-07 *1.67.1*
-- **Windows: History no longer forgets a file with a Thai, CJK or emoji
-  name.** Before listing an entry, the History view checks that its file is
-  still on disk, and it handed the path to Windows as a plain string, which
-  Windows reads in the ANSI code page. A name that code page cannot hold was
-  "not found", so the entry was dropped - and written out of `history.txt`,
-  so it stayed gone. The check now passes the path as UTF-8, like every other
-  file call in UltraFiler. `FilerHistoryTest` records such a file, and the
+- **Windows: History and Favorites no longer forget a file with a Thai, CJK
+  or emoji name.** Before listing an entry, the History and Favorites views
+  check that its file is still on disk, and they handed the path to Windows
+  as a plain string, which Windows reads in the ANSI code page. A name that
+  code page cannot hold was "not found", so the entry was dropped - and
+  written out of `history.txt` / `favorites.txt`, so it stayed gone: a file
+  pinned to Favorites disappeared the first time the Favorites view was
+  opened. The check now passes the path as UTF-8, like every other file call
+  in UltraFiler. `FilerHistoryTest` records and pins such a file, and the
   Windows CI job runs it under code page 1252.
 
 #### 2026-10-06 *1.67.0*
