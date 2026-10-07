@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasCDRExamples.cpp
 // CDR vector graphics demo examples for UltraCanvas Framework
+// Version: 1.3.0 - Save as XAR works: the Vector plugin's CDRConverter reads
+//                  the drawing into its document model and XARConverter
+//                  writes that (the CDR plugin alone cannot reach either)
 // Version: 1.2.1
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -11,6 +14,10 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasFileLoader.h"
 #include "../Plugins/Vector/CDR/UltraCanvasCDRPlugin.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasCDRConverter.h"
+#include "UltraCanvasXARConverter.h"
+#endif
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -19,10 +26,42 @@
 namespace UltraCanvas {
 
 // ===== "SAVE AS" BUTTON =====
+    // CDR to XAR goes through the Vector plugin's document model: its
+    // CDRConverter reads the drawing (the first page, through the CDR
+    // plugin and librevenge's SVG) and its XARConverter writes it. The CDR
+    // plugin cannot do this itself - it sits below the Vector plugin - so
+    // without the Vector plugin this is ExportToXAR's error.
+    static CDRExportResult SaveCDRAsXAR(const std::string& cdrFile, const std::string& xarPath) {
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        CDRExportResult result;
+        VectorConverter::ConversionOptions options;
+        std::string firstWarning;
+        options.WarningCallback = [&firstWarning](const std::string& message) {
+            if (firstWarning.empty()) firstWarning = message;
+        };
+        VectorConverter::CDRConverter reader;
+        auto document = reader.Import(cdrFile, options);
+        if (!document) {
+            result.error = firstWarning.empty() ? "could not read " + cdrFile : firstWarning;
+            return result;
+        }
+        VectorConverter::XARConverter writer;
+        if (!writer.Export(*document, xarPath, options)) {
+            result.error = firstWarning.empty() ? "could not write " + xarPath : firstWarning;
+            return result;
+        }
+        result.success = true;
+        result.writtenFiles.push_back(xarPath);
+        return result;
+#else
+        return UltraCanvasCDRPlugin::ExportToXAR(cdrFile, xarPath);
+#endif
+    }
+
     // A "Save as…" button for one CDR tile: native save dialog offering SVG
-    // (working) and XAR (writer not finished yet), then export of the tile's
-    // currently shown page through the CDR plugin. Outcome lands in the
-    // shared status label.
+    // (the tile's currently shown page, through the CDR plugin) and XAR (the
+    // first page, through SaveCDRAsXAR). Outcome lands in the shared status
+    // label.
     static std::shared_ptr<UltraCanvasButton> MakeCDRSaveAsButton(
             const std::string& id, int x, int y, int w, int h,
             std::shared_ptr<UltraCanvasCDRElement> cdrElement,
@@ -48,7 +87,7 @@ namespace UltraCanvas {
             opts.title = "Save " + stem + " as SVG or XAR";
             opts.defaultFileName = stem + ".svg";
             opts.AddFilter("SVG vector graphics", "svg");
-            opts.AddFilter("Xara drawing (not finished yet)", "xar");
+            opts.AddFilter("Xara drawing (first page)", "xar");
 
             const int page = cdrElement->GetCurrentPage();
             UltraCanvasFileLoader::SaveFileDialog(opts,
@@ -60,15 +99,15 @@ namespace UltraCanvas {
                     if (d != std::string::npos) ext = path.substr(d + 1);
                     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-                    CDRExportResult r = (ext == "xar")
-                            ? UltraCanvasCDRPlugin::ExportToXAR(cdrFile, path)
-                            : UltraCanvasCDRPlugin::ExportToSVG(cdrFile, path, page);
+                    const bool xar = ext == "xar";
+                    CDRExportResult r = xar ? SaveCDRAsXAR(cdrFile, path)
+                                            : UltraCanvasCDRPlugin::ExportToSVG(cdrFile, path, page);
                     if (r.success) {
                         std::string files;
                         for (const auto& f : r.writtenFiles) {
                             files += (files.empty() ? "" : ", ") + f;
                         }
-                        statusLabel->SetText("Saved page " + std::to_string(page + 1) +
+                        statusLabel->SetText("Saved page " + std::to_string(xar ? 1 : page + 1) +
                                              " of " + cdrFile + " to " + files);
                     } else {
                         statusLabel->SetText("Save failed: " + r.error);

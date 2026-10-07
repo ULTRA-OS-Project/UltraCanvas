@@ -703,6 +703,8 @@ def run_clang(clang, flags, pch_header, source, work, tag, doc=None):
     path.write_text(source, encoding="utf-8")
     cmd = [clang] + flags + ["-include-pch", str(pch_header) + ".pch", "-fsyntax-only", str(path)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if "has been modified since the precompiled header" in proc.stderr:
+        raise RuntimeError("a header changed while the docs were being checked; run again")
     errors = []
     for line in proc.stderr.splitlines():
         m = ERR.match(line)
@@ -729,6 +731,8 @@ def header_compiles(path, clang, flags, pch_header):
             return _header_ok[key]
     proc = subprocess.run([clang] + flags + ["-include-pch", str(pch_header) + ".pch", "-fsyntax-only",
                            "-x", "c++", "-include", str(path), os.devnull], capture_output=True, text=True)
+    if "has been modified since the precompiled header" in proc.stderr:
+        raise RuntimeError("a header changed while the docs were being checked; run again")
     first = next((l for l in proc.stderr.splitlines() if ": error:" in l or "fatal error" in l), "")
     result = (proc.returncode == 0, first)
     with _header_lock:
