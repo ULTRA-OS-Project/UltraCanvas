@@ -944,8 +944,16 @@ file untouched, and the first-contact server saw only `HEAD /` before the
 pinned request. `IODevicePrinterIPPLiveTest` checks the same against
 `ippeveprinter` over `ipps://` on every Linux CI run: first contact, a print
 through the pinned connection, a changed key refused and not overwritten,
-relearning after forgetting, and learning switched off. Not yet run on
-Schannel (Windows) or Apple's TLS.
+relearning after forgetting, and learning switched off.
+`IODeviceScannerESCLLiveTest` does the same for a scanner on every Linux CI
+run, against `Tests/IODeviceScannerESCLLiveScanner.py` - an eSCL scanner that
+answers only over HTTPS, since there is no reference one to run - with
+certificates the test makes with `openssl`: the scanner's first request is a
+bare `HEAD /`, the key kept is its certificate's, under the make and model it
+reports; pages are scanned through the pinned connection; restarted with a
+second certificate on the same port, it is refused before any request reaches
+it; forgetting the key learns the new one; and learning switched off refuses it.
+Not yet run on Schannel (Windows) or Apple's TLS.
 
 ---
 
