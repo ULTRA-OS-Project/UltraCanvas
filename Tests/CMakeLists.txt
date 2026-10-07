@@ -660,6 +660,30 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILE DIALOG TEST =====
+# The name a Save hands back (the chosen type's extension, always run), and
+# the dialog itself: the Up arrow and view glyphs centred in their buttons,
+# the listing without the Filer's hover icon menu, Save's naming and its
+# "Replace it?" question. That part reads the composited window pixels back
+# and skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileDialogTest...")
+    add_executable(FileDialogTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileDialogTest.cpp
+    )
+    target_include_directories(FileDialogTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileDialogTest PRIVATE cxx_std_20)
+    target_link_libraries(FileDialogTest PRIVATE UltraCanvas)
+    set_target_properties(FileDialogTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileDialogTest COMMAND FileDialogTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileDialogTest")
+else()
+    message(STATUS "  FileDialogTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT METRICS SCREENSHOT TEST =====
 # Cap-height centring, level indicators, crisp 1px borders and a caret that
 # spans the text's line box, read back from the composited pixels. It is also
@@ -3498,26 +3522,25 @@ else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
 endif()
 
-# ===== SAVE FILE TYPE TEST =====
-# The type picked in a save dialog decides the file name ("photo" with JPEG
-# picked is photo.jpg), and a failed image save leaves no file behind and the
-# one it was saving over intact. No display needed.
+# ===== IMAGE SAVE STAGED TEST =====
+# A failed image save (PixelFX::FileIO, the QR code's exports) leaves no file
+# behind and the one it was saving over intact. No display needed.
 if(TARGET UltraCanvas)
-    message(STATUS "  Building SaveFileTypeTest...")
-    add_executable(SaveFileTypeTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/SaveFileTypeTest.cpp
+    message(STATUS "  Building ImageSaveStagedTest...")
+    add_executable(ImageSaveStagedTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageSaveStagedTest.cpp
     )
-    target_include_directories(SaveFileTypeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(SaveFileTypeTest PRIVATE cxx_std_20)
-    target_link_libraries(SaveFileTypeTest PRIVATE UltraCanvas)
-    set_target_properties(SaveFileTypeTest PROPERTIES
+    target_include_directories(ImageSaveStagedTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageSaveStagedTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageSaveStagedTest PRIVATE UltraCanvas)
+    set_target_properties(ImageSaveStagedTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
-    add_test(NAME SaveFileTypeTest COMMAND SaveFileTypeTest
+    add_test(NAME ImageSaveStagedTest COMMAND ImageSaveStagedTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: SaveFileTypeTest")
+    message(STATUS "    Test registered: ImageSaveStagedTest")
 else()
-    message(STATUS "  SaveFileTypeTest skipped (UltraCanvas target not present)")
+    message(STATUS "  ImageSaveStagedTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== DIALOG CLOSE-ALL TEST =====

@@ -17,4 +17,4 @@
   `set("interpretation", ...)`, which leaves the header's interpretation at
   "multiband", and libvips' heifsave double-frees on a 4-band multiband
   image (8.12 and 8.15 alike). The image is now marked through `copy()`.
-  New test: `Tests/SaveFileTypeTest.cpp`.
+  New test: `Tests/ImageSaveStagedTest.cpp`.

@@ -1669,7 +1669,9 @@ UltraFiler does that when a tile of its History view is activated.
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
-item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
+item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
+turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
+`FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
 so no icon assets are required.
 
 A button acts on the hovered entry — or on the **whole selection** when the

@@ -8,7 +8,10 @@ every platform:
   four icon sizes);
 - a folder tree (Home, the user's places and every mounted drive, loaded as
   each node is expanded) beside the listing of the current folder, which is an
-  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard;
+  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard -
+  but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
+  the file under the pointer): a picker chooses files rather than managing
+  them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
   of toggle buttons (see [Filter toggles](#filter-toggles)).
 
@@ -48,7 +51,8 @@ options say `SetRegisterAsRecent(false)`.
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles`, `SetConfirmOverwrite` and the parent window.
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
+window.
 
 ### Building it yourself
 
@@ -74,11 +78,12 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
-| `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice. A Save dialog starts on the type of `defaultFileName` instead when the chosen one does not describe it (see [Saving: the type gives the extension](#saving-the-type-gives-the-extension)) |
+| `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
 | `filterToggles` | Toggle buttons instead of the dropdown |
 | `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
+| `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -92,7 +97,8 @@ between folders.
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
   listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists. A name that is already a
+- **Save** accepts any name in a folder that exists, with the chosen file
+  type's extension - see [Save names](#save-names). A name that is already a
   file gets a **Replace File** question first ("… already exists. Do you want
   to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
   dialog open on that name. A caller that asks itself, or appends to the
@@ -106,40 +112,41 @@ between folders.
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
 
-## Saving: the type gives the extension
+## Save names
 
-In a Save dialog "Files of type" decides the extension of the file written,
-as the platforms' own save dialogs do:
+The Save callback receives a path and nothing else, so an application picks
+the format to write from the path's extension. The dialog therefore hands
+back a name that carries the extension of the file type chosen under "Files
+of type" - `ApplySaveExtension(name, type, offered)` in
+`UltraCanvasModalDialog.h`, with PNG, JPEG (`jpg`, `jpeg`) and All files
+offered:
 
-- **It starts on the type of the name offered.** `photo.jpg` opens on JPEG,
-  not on the first filter. A first filter that already describes the name -
-  an "All files" (`*`) filter describes every name - stays chosen.
-- **Picking a type renames the file.** `photo.png` becomes `photo.jpg` when
-  JPEG is picked, and a name without an extension gets one. An extension that
-  is none of the dialog's types is kept and the type's added (`notes.v2` →
-  `notes.v2.png`): what follows the last dot is not always a format. A type
-  that lists several extensions keeps any of them (`photo.jpeg` stays when
-  JPEG is picked), and "All files" leaves the name alone.
-- **OK applies the type to a bare name.** `photo` with JPEG chosen is saved
-  as `photo.jpg`, and an extension that is none of the dialog's types gets the
-  chosen one added (`diagram.svg` → `diagram.svg.png` in an image dialog that
-  offers no SVG). An extension of one of the dialog's types was typed on
-  purpose and is kept whichever type is chosen. This happens before the
-  **Replace File** question, so that is asked about the file actually written.
+| Typed | Chosen | Saved as |
+|---|---|---|
+| `photo` or `photo.` | PNG | `photo.png` |
+| `photo.png`, `photo.PNG` | PNG | as typed |
+| `photo.jpeg` | JPEG | as typed - any of the type's extensions stands |
+| `photo.png` | JPEG | `photo.jpg` - another offered type's extension is swapped |
+| `Report v1.2` | PNG | `Report v1.2.png` - an extension no type offers is kept |
+| anything | All files (`*`) | as typed |
 
-The platforms' save dialogs follow the same rules, so the choice means the
-same whether native dialogs are on or off: on Windows the dialog starts on
-the matching type and is given a default extension (the `IFileSaveDialog`
-then follows the chosen type itself); on Linux the GTK chooser starts on the
-matching type, renames on a type change and applies the type on Save, asking
-again when that names a file that is already there. macOS's save panel has
-no type list - it requires one of the filters' extensions by itself.
-
-The rules are free functions next to `FileFilter` in
-`UltraCanvasModalDialog.h`, for an application that names files itself:
-`FileNameExtension`, `FileFilterIndexForName`, `FileNameForFileType` and
-`FileNameWithTypeExtension`, plus `FileFilter::TakesAnyFile()` and
-`FileFilter::PrimaryExtension()`.
+- The extension goes on **before** the Replace File question, so the question
+  names the file that will be written: "picture" with PNG chosen asks about
+  `picture.png`. The name field shows the name as it will be saved.
+- Switching the type rewrites the name the same way ("photo.png" becomes
+  "photo.jpg"), as the platforms' own save dialogs do.
+- The dialog opens on the type of `defaultFileName` when the type the caller
+  chose does not fit it (`FindFilterForName`): suggesting "holiday.jpg" with
+  PNG first in the list opens on JPEG rather than saving "holiday.png".
+- With filter toggles on, a name of any type that is on stands; any other
+  takes the first one's extension.
+- The native dialogs follow the same rule. Windows is given the chosen
+  type's extension as its default (`SetDefaultExtension`) and the result is
+  checked as above; the GTK chooser rewrites the name when the type changes
+  and when it is accepted. Where that produces a different name that is
+  already a file, they ask about replacing it - GTK leaves the chooser open
+  on **No**, Windows cancels. The macOS panel already insists on one of the
+  offered extensions.
 
 ## Filter toggles
 

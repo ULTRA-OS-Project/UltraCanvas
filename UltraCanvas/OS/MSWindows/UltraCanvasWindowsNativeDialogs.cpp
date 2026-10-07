@@ -1,13 +1,13 @@
 // OS/MSWindows/UltraCanvasWindowsNativeDialogs.cpp
 // Win32 implementation of native OS dialogs
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.0.0
+// Last Modified: 2026-03-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasWindowsApplication.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -382,16 +382,38 @@ namespace UltraCanvas {
             filterData.Build(options.filters);
             pDialog->SetFileTypes(
                 static_cast<UINT>(filterData.specs.size()), filterData.specs.data());
-            // Start on the type of the name offered ("photo.jpg" on JPEG), and
-            // give the dialog a default extension: with one set it adds the
-            // chosen type's extension to a name typed without one, and follows
-            // the type the user picks. Not set when the dialog starts on "All
-            // files", where it would add that extension to every name.
-            const int type = FileFilterIndexForName(options.filters, options.defaultFileName);
-            pDialog->SetFileTypeIndex(static_cast<UINT>(type + 1));   // one-based
-            const std::string ext = options.filters[type].PrimaryExtension();
-            if (!ext.empty()) {
-                pDialog->SetDefaultExtension(UltraCanvasWindowsApplication::Utf8ToUtf16(ext).c_str());
+
+            // Open on the type of the suggested name, not on the first in
+            // the list: "photo.jpg" offered under PNG would be saved as
+            // "photo.png".
+            UINT typeIndex = 1;   // 1-based
+            if (!options.defaultFileName.empty() &&
+                ApplySaveExtension(options.defaultFileName, options.filters.front(),
+                                   options.filters) != options.defaultFileName) {
+                const int named = FindFilterForName(options.defaultFileName, options.filters);
+                if (named >= 0) typeIndex = static_cast<UINT>(named) + 1;
+            }
+            pDialog->SetFileTypeIndex(typeIndex);
+
+            // With a default extension the dialog adds the chosen type's
+            // extension to a name typed without one, follows the type as the
+            // user switches it, and asks about replacing the file so named.
+            // Without one it adds nothing. The chosen type's first extension,
+            // else the first any type names.
+            std::string defaultExtension;
+            auto firstExtension = [](const FileFilter& filter) {
+                for (const std::string& ext : filter.extensions) {
+                    if (!ext.empty() && ext != "*") return ext;
+                }
+                return std::string();
+            };
+            defaultExtension = firstExtension(options.filters[typeIndex - 1]);
+            for (size_t i = 0; defaultExtension.empty() && i < options.filters.size(); ++i) {
+                defaultExtension = firstExtension(options.filters[i]);
+            }
+            if (!defaultExtension.empty()) {
+                const std::wstring wext = UltraCanvasWindowsApplication::Utf8ToUtf16(defaultExtension);
+                pDialog->SetDefaultExtension(wext.c_str());
             }
         }
 
@@ -421,27 +443,29 @@ namespace UltraCanvas {
                 result = GetPathFromShellItem(pItem);
                 pItem->Release();
             }
-            // The type picked applies to a name without an extension, or with
-            // one that is none of the types offered - including in a dialog
-            // that started on "All files" and so has no default extension
-            // (above). The dialog asked before replacing the name as typed,
-            // not this one.
-            UINT type = 0;
-            if (!result.empty() && SUCCEEDED(pDialog->GetFileTypeIndex(&type)) &&
-                type >= 1 && type <= options.filters.size()) {
+
+            // The dialog adds an extension only to a name without one; a
+            // name ending in another extension still gets the chosen type's
+            // (ApplySaveExtension), as on the other platforms. The dialog
+            // asked about replacing the name it was given, so a different
+            // name that is already a file is asked about here; No cancels.
+            UINT chosen = 0;
+            if (!result.empty() && !options.filters.empty() &&
+                SUCCEEDED(pDialog->GetFileTypeIndex(&chosen)) &&
+                chosen >= 1 && chosen <= options.filters.size()) {
                 const std::string named =
-                        FileNameWithTypeExtension(result, options.filters[type - 1], options.filters);
-                if (named != result) {
-                    std::error_code ec;
-                    const bool exists = std::filesystem::exists(PathFromUtf8(named), ec);
-                    if (!exists || ConfirmYesNo(
-                            "\"" + PathToUtf8(PathFromUtf8(named).filename()) +
-                            "\" already exists.\nDo you want to replace it?",
-                            "Replace File", options.parentWindow)) {
+                        ApplySaveExtension(result, options.filters[chosen - 1], options.filters);
+                std::error_code ec;
+                if (named != result && std::filesystem::exists(PathFromUtf8(named), ec)) {
+                    const std::string leaf = PathToUtf8(PathFromUtf8(named).filename());
+                    if (ConfirmYesNo("\"" + leaf + "\" already exists.\nDo you want to replace it?",
+                                     "Replace File", options.parentWindow)) {
                         result = named;
                     } else {
                         result.clear();
                     }
+                } else {
+                    result = named;
                 }
             }
         }

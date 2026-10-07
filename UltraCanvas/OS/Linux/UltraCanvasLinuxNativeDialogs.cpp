@@ -1,13 +1,13 @@
 // OS/Linux/UltraCanvasNativeDialogsLinux.cpp
 // Linux implementation of native OS dialogs using GTK+
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.3.0
-// Last Modified: 2026-10-06
+// Version: 2.2.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #ifdef __linux__
@@ -175,60 +175,38 @@ namespace UltraCanvas {
             }
         }
 
-        // A Save dialog's file types: the caller's filters and the GtkFileFilter
-        // made for each, in the same order. It lives on SaveFile's stack, which
-        // outlasts the chooser.
-        struct SaveFileTypes {
+        // A Save chooser's filters next to the FileFilters they were made
+        // from, for the filter-change handler below.
+        struct SaveFilterList {
             const std::vector<FileFilter>* filters = nullptr;
-            std::vector<GtkFileFilter*> gtkFilters;
-
-            // The caller's filter the chooser has selected; null for the "All
-            // Files" one added when the caller gave none.
-            const FileFilter* Chosen(GtkFileChooser* chooser) const {
-                GtkFileFilter* selected = gtk_file_chooser_get_filter(chooser);
-                for (size_t i = 0; i < gtkFilters.size(); ++i) {
-                    if (gtkFilters[i] == selected && filters && i < filters->size()) {
-                        return &(*filters)[i];
-                    }
-                }
-                return nullptr;
-            }
+            std::vector<GtkFileFilter*> gtkFilters;   // in the order of *filters
         };
 
         // GTK's Save file chooser does NOT rewrite the extension in the name
         // entry when the user picks a different "Dateityp"/file-type filter, so
         // the filename keeps whatever extension it started with. We fix that
-        // ourselves: on every filter change the name takes the new type's
-        // extension, by the rule every save dialog follows (FileNameForFileType).
+        // ourselves: on every filter change the name takes the newly selected
+        // type's extension (ApplySaveExtension), the same rule the name
+        // follows when it is accepted.
         void OnSaveFilterChanged(GObject* chooserObj, GParamSpec*, gpointer data) {
-            const auto* types = static_cast<const SaveFileTypes*>(data);
+            const auto* list = static_cast<const SaveFilterList*>(data);
             GtkFileChooser* chooser = GTK_FILE_CHOOSER(chooserObj);
-            const FileFilter* type = types ? types->Chosen(chooser) : nullptr;
-            if (!type) return;
+            GtkFileFilter* filter = gtk_file_chooser_get_filter(chooser);
+            if (!list || !list->filters || !filter) return;
 
             gchar* current = gtk_file_chooser_get_current_name(chooser);
             if (!current) return;
             const std::string name = current;
             g_free(current);
+            if (name.empty()) return;
 
-            const std::string renamed = FileNameForFileType(name, *type, *types->filters);
-            if (renamed != name) gtk_file_chooser_set_current_name(chooser, renamed.c_str());
-        }
-
-        // Asked over the chooser before a save replaces `path` - a name the
-        // chooser's own overwrite question never saw.
-        bool ConfirmReplaceFile(GtkWidget* chooser, const std::string& path) {
-            const std::string name = PathToUtf8(PathFromUtf8(path).filename());
-            GtkWidget* ask = gtk_message_dialog_new(
-                    GTK_WINDOW(chooser),
-                    static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
-                    GTK_MESSAGE_QUESTION, GTK_BUTTONS_YES_NO,
-                    "\"%s\" already exists.", name.c_str());
-            gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(ask),
-                                                     "Do you want to replace it?");
-            const bool replace = gtk_dialog_run(GTK_DIALOG(ask)) == GTK_RESPONSE_YES;
-            gtk_widget_destroy(ask);
-            return replace;
+            for (size_t i = 0; i < list->gtkFilters.size(); ++i) {
+                if (list->gtkFilters[i] != filter) continue;
+                const std::string renamed =
+                        ApplySaveExtension(name, (*list->filters)[i], *list->filters);
+                if (renamed != name) gtk_file_chooser_set_current_name(chooser, renamed.c_str());
+                return;
+            }
         }
 
     } // anonymous namespace
@@ -562,15 +540,17 @@ namespace UltraCanvas {
         // Set show hidden files
         gtk_file_chooser_set_show_hidden(chooser, options.showHiddenFiles);
 
-        // Add file filters
-        SaveFileTypes types;
-        types.filters = &options.filters;
+        // Add file filters, remembered next to options.filters so the
+        // chooser's choice can be read back as a FileFilter.
+        SaveFilterList filterList;
+        filterList.filters = &options.filters;
+        std::vector<GtkFileFilter*>& gtkFilters = filterList.gtkFilters;
         for (const auto& filter : options.filters) {
             GtkFileFilter* gtkFilter = gtk_file_filter_new();
+            gtkFilters.push_back(gtkFilter);
             gtk_file_filter_set_name(gtkFilter, filter.ToDisplayString().c_str());
             AddFilterPatterns(gtkFilter, filter);
             gtk_file_chooser_add_filter(chooser, gtkFilter);
-            types.gtkFilters.push_back(gtkFilter);
         }
 
         // Add "All Files" filter if no filters specified
@@ -581,44 +561,57 @@ namespace UltraCanvas {
             gtk_file_chooser_add_filter(chooser, allFilter);
         }
 
-        // Start on the type of the name offered: "photo.jpg" opens on JPEG,
-        // not on the first type.
-        if (!types.gtkFilters.empty()) {
-            const int type = FileFilterIndexForName(options.filters, options.defaultFileName);
-            gtk_file_chooser_set_filter(chooser, types.gtkFilters[type]);
+        // Open on the type of the suggested name, not on the first in the
+        // list: "photo.jpg" offered under PNG would be saved as "photo.png".
+        if (!options.defaultFileName.empty() && !gtkFilters.empty() &&
+            ApplySaveExtension(options.defaultFileName, options.filters.front(),
+                               options.filters) != options.defaultFileName) {
+            const int named = FindFilterForName(options.defaultFileName, options.filters);
+            if (named >= 0) gtk_file_chooser_set_filter(chooser, gtkFilters[named]);
         }
 
         // Keep the filename's extension in sync with the selected file type.
-        // Connected after the filters are added and the first one chosen, so
-        // priming them doesn't rewrite the caller-supplied default filename.
+        // Connected after the filters are added so priming the default filter
+        // doesn't rewrite the caller-supplied default filename.
         g_signal_connect(chooser, "notify::filter",
-                         G_CALLBACK(OnSaveFilterChanged), &types);
+                         G_CALLBACK(OnSaveFilterChanged), &filterList);
 
         std::string result;
         while (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
             char* filename = gtk_file_chooser_get_filename(chooser);
             if (!filename) break;
-            std::string chosen = filename;
+            const std::string accepted = filename;
             g_free(filename);
-            // A name typed without an extension, or with one that is none of
-            // the types offered, is saved as the chosen type: "photo" with
-            // JPEG picked is photo.jpg. GTK asked before replacing
-            // the name as typed; the file that will be written is asked about
-            // here, and No leaves the chooser open on its name.
-            if (const FileFilter* type = types.Chosen(chooser)) {
-                const std::string named = FileNameWithTypeExtension(chosen, *type, options.filters);
-                if (named != chosen) {
-                    std::error_code ec;
-                    if (std::filesystem::exists(PathFromUtf8(named), ec) &&
-                        !ConfirmReplaceFile(dialog, named)) {
-                        gtk_file_chooser_set_current_name(
-                                chooser, PathToUtf8(PathFromUtf8(named).filename()).c_str());
-                        continue;
-                    }
-                    chosen = named;
+
+            // GTK hands back the name as typed: give it the chosen type's
+            // extension (ApplySaveExtension), as the other platforms do.
+            std::string named = accepted;
+            GtkFileFilter* chosen = gtk_file_chooser_get_filter(chooser);
+            for (size_t i = 0; i < gtkFilters.size(); ++i) {
+                if (gtkFilters[i] == chosen) {
+                    named = ApplySaveExtension(accepted, options.filters[i], options.filters);
+                    break;
                 }
             }
-            result = chosen;
+            // GTK asked about replacing the name it was given; a different
+            // name that is already a file needs asking about too. No leaves
+            // the chooser open on that name.
+            std::error_code ec;
+            if (named != accepted && std::filesystem::exists(PathFromUtf8(named), ec)) {
+                const std::string leaf = PathToUtf8(PathFromUtf8(named).filename());
+                GtkWidget* ask = gtk_message_dialog_new(
+                        GTK_WINDOW(dialog), GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION,
+                        GTK_BUTTONS_YES_NO, "\"%s\" already exists.", leaf.c_str());
+                gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(ask),
+                        "Do you want to replace it?");
+                const bool replace = gtk_dialog_run(GTK_DIALOG(ask)) == GTK_RESPONSE_YES;
+                gtk_widget_destroy(ask);
+                if (!replace) {
+                    gtk_file_chooser_set_current_name(chooser, leaf.c_str());
+                    continue;
+                }
+            }
+            result = named;
             break;
         }
 

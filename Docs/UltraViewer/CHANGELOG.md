@@ -8,9 +8,11 @@
   which follow the framework-dialog setting like its file dialogs.
 - **The file type chosen in Save image as is the format saved.** Picking JPEG
   and typing `photo` saved nothing - a name without an extension is no format
-  the viewer knows - and the type list was ignored; it now saves `photo.jpg`. The dialog also starts on the type of the file shown (a JPEG
-  opens on JPEG) and renames the file when another type is picked. Framework
-  change: `Docs/UltraCanvas/changelog.d/save-dialog-file-type.md`.
+  the viewer knows - and the type list was ignored; it now saves `photo.jpg`.
+  The dialog also starts on the type of the file shown (a JPEG opens on
+  JPEG) and renames the file when another type is picked. Framework change:
+  0.9.176 ("A Save dialog gives the name the chosen file type's
+  extension").
 - **A failed save leaves no empty file.** Saving as AVIF on a build without
   an AV1 encoder left a 0-byte `.avif` behind, and the same failure over an
   existing file emptied it. The image is now written to a temporary file and

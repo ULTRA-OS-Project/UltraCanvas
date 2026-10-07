@@ -1,3 +1,59 @@
+#### 2026-10-06 *0.9.176*
+- **The file dialog's Up arrow sits in the middle of its button.** The button
+  was created without a label, and `UltraCanvasButton`'s constructor defaults
+  the label to "Button", so it was laid out as an icon beside text: the arrow
+  started at the left padding, 6px right of centre in the 28px button, and
+  lost the tip of its right arm to the button's edge. It is created with an
+  empty label now.
+- **The file dialog's view buttons have their glyphs in the middle.**
+  `UltraCanvasSegmentedControl` drew a segment's icon at the segment's left
+  padding even when the segment had no text, so wherever the segments are
+  wider than icon + padding - every equal-width control - the glyph sat to the
+  right: 3px in the file dialog's six view buttons. An icon-only segment now
+  centres its icon; a segment with text is laid out as before.
+- **The file dialog's listing has no hover icon menu.** The Copy / Cut /
+  Rename / Delete strip that `UltraCanvasFilerWidget` floats over the file
+  under the pointer belongs to a file manager, not to a picker, and covered
+  the names being chosen from. Every mode of the dialog (Open, Open multiple,
+  Save, Select folder) now leaves it off; `FileDialogConfig::hoverIconMenu`
+  (`FileDialogOptions::SetHoverIconMenu` through `UltraCanvasFileLoader`)
+  brings it back for a caller that wants it.
+- New test `FileDialogTest` reads the dialog's pixels back and checks all
+  three, skipping that part without a display like the other window tests.
+- **A Save dialog gives the name the chosen file type's extension.** It
+  handed back the name exactly as typed, so "photo" with JPEG chosen came
+  back without an extension. Applications pick the format from the
+  extension, and each one patched the gap with its own default: UltraPaint
+  saved that "photo" as a PNG called `photo.png`, whatever type was
+  chosen. The patch also came after the dialog had asked about replacing
+  "photo", so an existing `photo.png` was overwritten without a question.
+  The name now carries the chosen type's extension before the Replace File
+  question is asked: added when it has none ("photo" -> "photo.jpg"),
+  swapped when it has another offered type's ("photo.png" -> "photo.jpg"),
+  kept when it already fits, and left alone under All files. The new
+  `ApplySaveExtension` and `FindFilterForName` (`UltraCanvasModalDialog.h`)
+  hold the rule for every dialog:
+  - **The framework dialog** applies it on OK and shows the result in the
+    name field, rewrites the name when the type is switched, and opens on
+    the type of `defaultFileName` when the caller's type does not fit it,
+    so "holiday.jpg" offered under PNG is not saved as `holiday.png`.
+  - **The GTK chooser** applies it to the name it returns. It already swapped
+    the extension when the type changed, but it swapped any trailing
+    extension, so "Report v1.2" became "Report v1.png"; it now uses the same
+    rule. It opens on the suggested name's type, and when the corrected name
+    is an existing file it asks before replacing it - **No** leaves the
+    chooser open on that name.
+  - **The Windows dialog** is given the chosen type's extension as its
+    default (`SetDefaultExtension`), so it adds and follows the extension
+    itself and asks about the final name; it also opens on the suggested
+    name's type. A name that still does not fit, such as one ending in
+    another type's extension, is corrected afterwards, with the question
+    asked there if the corrected name exists (**No** cancels).
+  - The macOS panel already insisted on an offered extension and is
+    unchanged.
+- `FileDialogTest` (was `FileDialogLayoutTest`) checks the rule on its own,
+  which runs everywhere, and the framework dialog's Save under a display.
+
 #### 2026-10-06 *0.9.175*
 - **A long URL ran out of its tooltip's box.** UltraMail shows a link's
   address as a tooltip, and a tracking link is mostly long runs of letters and
