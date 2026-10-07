@@ -71510,8 +71510,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
-| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
+| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | Tests (34 cases; the adapter ones on a private D-Bus session; 5 more for the element in-tree) | `Tests/UltraMessage/` |
 
