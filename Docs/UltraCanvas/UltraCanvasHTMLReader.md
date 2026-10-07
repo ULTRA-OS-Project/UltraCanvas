@@ -1,5 +1,7 @@
 # UltraCanvasHTMLReader — HTML, CSS and entities, once
 
+<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
+
 The **HTMLReader** module (`UltraCanvas/{include,core}/HTMLReader/`) is the
 framework's one implementation of reading HTML and CSS: a tolerant parser, a
 DOM, a CSS parser with selector matching and a cascade, a builder that turns
@@ -143,7 +145,7 @@ for (const HTML::Rule& rule : sheet.rules)
     for (const HTML::Declaration& d : rule.declarations)
         ;   // d.property (lower-case), d.value (trimmed, "!important" removed), d.important
 
-auto inline = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
+auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
 ```
 
@@ -157,11 +159,13 @@ elements - matches through the same code as the HTML style resolver, and a
 selector feature added once (a new pseudo-class, an operator) reaches both.
 
 ```cpp
+namespace UltraCanvas { namespace HTML {
 template <class Traits> bool CompoundMatches(const SimpleSelector&, const typename Traits::Element&);
 template <class Traits> bool SelectorMatches(const Selector&, const typename Traits::Element&);
 template <class Traits> std::vector<const Rule*> MatchingRules(const StyleSheet&, const typename Traits::Element&);
 bool AttributeValueMatches(const AttributeSelector&, const std::string& value);
 bool NthPositionMatches(const PseudoClass&, int index, int count);
+} }
 ```
 
 `MatchingRules` returns the rules that match, weakest first: by the

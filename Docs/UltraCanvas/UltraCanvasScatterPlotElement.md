@@ -14,8 +14,8 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.0  
-**Last Modified:** 2026-07-29  
+**Version:** 1.1.1  
+**Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
 > [`UltraCanvasScatterPlot3DElement`](UltraCanvasScatterPlot3D.md).
@@ -48,8 +48,8 @@ UltraCanvasScatterPlotElement(const std::string& id, long uid,
 - `height` - Height of the chart
 
 ### Default Settings
-- `enableZoom` = true
-- `enablePan` = true
+- `enableZoom` = false
+- `enablePan` = false
 - `enableSelection` = true
 - `pointShape` = PointShape::Circle
 - `pointColor` = Color(0, 102, 204, 255) // Blue
@@ -242,13 +242,19 @@ Enables/disables tooltips when hovering over data points.
 ```cpp
 void SetEnableZoom(bool enable)
 ```
-Enables/disables zoom functionality using mouse wheel.
+Wheel zoom of the x axis around the pointer: wheel up zooms in, wheel down
+zooms out, up to 50x. Off by default. A wheel turn that changes nothing (over
+the margins, or zooming out of the whole range) goes to the parent, so a
+scrolling container around the chart still scrolls. Turning it off shows the
+whole range again; `ResetZoom()` does that too, and `IsZoomed()` says whether
+the view is narrowed.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enable)
 ```
-Enables/disables panning by dragging the mouse.
+Dragging sideways with the left button moves a zoomed-in x axis. Off by
+default; it does nothing while the whole range is shown.
 
 #### SetEnableSelection
 ```cpp
@@ -531,6 +537,8 @@ Integrates with the UltraCanvas event system:
 
 ## Version History
 
+- **1.1.1** (2026-10-07): zoom and pan are off by default, and work when
+  turned on (the wheel zooms the x axis, a drag pans it)
 - **1.1.0** (2026-07-29): Correlation line and per-point colors
   - Least-squares trend line with solid/dashed/dotted styles
   - `y = ax + b`, r and r² readout (`SetShowCorrelationInfo`)

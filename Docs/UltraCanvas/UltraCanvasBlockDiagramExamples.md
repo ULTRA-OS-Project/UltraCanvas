@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasBlockDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.3.2
+**Version:** 2.4.0
 
 ## Class Hierarchy
 
@@ -46,7 +46,7 @@ enum class BlockShape {
     Triangle, Star, Cloud, Cylinder, StickyNote, Actor
 };
 
-enum class ConnectionStyle {
+enum class BlockConnectionStyle {
     Straight,    // Direct line
     Orthogonal,  // Right-angle bends
     Curved,      // Smooth curve
@@ -59,6 +59,10 @@ enum class ArrowStyle {
 
 enum class LineStyle { Solid, Dashed, Dotted, DashDot };
 ```
+
+`BlockConnectionStyle` was called `ConnectionStyle` until 0.9.184, which clashed with the
+chart connection renderer's `ConnectionStyle` struct: a program could not
+include both headers.
 
 ### Nested Enumerations on UltraCanvasBlockDiagram
 
@@ -107,7 +111,7 @@ struct BlockConnection {
     std::string sourceId;
     std::string targetId;
 
-    ConnectionStyle style     = ConnectionStyle::Straight;
+    BlockConnectionStyle style     = BlockConnectionStyle::Straight;
     ArrowStyle      arrowStyle = ArrowStyle::Forward;
     LineStyle       lineStyle = LineStyle::Solid;
 
@@ -167,11 +171,11 @@ void AddConnection(const std::string& id,
 void AddConnection(const std::string& id,
                    const std::string& sourceId,
                    const std::string& targetId,
-                   ConnectionStyle style);
+                   BlockConnectionStyle style);
 void AddConnection(const std::string& id,
                    const std::string& sourceId,
                    const std::string& targetId,
-                   ConnectionStyle style,
+                   BlockConnectionStyle style,
                    ArrowStyle arrowStyle);
 void RemoveConnection(const std::string& id);
 BlockConnection* GetConnection(const std::string& id);
@@ -180,7 +184,7 @@ BlockConnection* GetConnection(const std::string& id);
 void SetConnectionColor(const std::string& id, const Color& color);
 void SetConnectionWidth(const std::string& id, float width);
 void SetConnectionLabel(const std::string& id, const std::string& label);
-void SetConnectionStyle(const std::string& id, ConnectionStyle style);
+void SetConnectionStyle(const std::string& id, BlockConnectionStyle style);
 void SetConnectionLineStyle(const std::string& id, LineStyle lineStyle);
 ```
 
@@ -287,22 +291,22 @@ Color coolConn  = Color(70, 120, 170, 255);
 float connWidth = 2.0f;
 
 diagram->AddConnection("ref1", "compressor", "condenser",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref1", coolConn);
 diagram->SetConnectionWidth("ref1", connWidth);
 
 diagram->AddConnection("ref2", "condenser", "expansion",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref2", coolConn);
 diagram->SetConnectionWidth("ref2", connWidth);
 
 diagram->AddConnection("ref3", "expansion", "evaporator",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref3", coolConn);
 diagram->SetConnectionWidth("ref3", connWidth);
 
 diagram->AddConnection("ref4", "evaporator", "compressor",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ref4", coolConn);
 diagram->SetConnectionWidth("ref4", connWidth);
 ```
@@ -316,7 +320,7 @@ flow it modulates.
 Color ctrlConn = Color(120, 130, 145, 255);
 
 diagram->AddConnection("ctrl_comp", "comp_control", "compressor",
-                       ConnectionStyle::Orthogonal);
+                       BlockConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ctrl_comp", ctrlConn);
 diagram->SetConnectionWidth("ctrl_comp", connWidth);
 diagram->SetConnectionLineStyle("ctrl_comp", LineStyle::Dashed);

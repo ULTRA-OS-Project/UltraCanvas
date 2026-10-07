@@ -11,7 +11,7 @@ The `UltraCanvasCDRElement` is a UI element that loads and renders **CorelDRAW v
 **Implementation Header:** `Plugins/Vector/CDR/UltraCanvasCDRPluginImpl.h`  
 **Plugin Interface:** `IGraphicsPlugin`  
 **UI Element Base:** `UltraCanvasUIElement`  
-**Version:** 1.1.1  
+**Version:** 1.1.2  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -268,9 +268,22 @@ Notes:
   attribute. The file is valid SVG (browsers open it), but renderers built on
   libxml2's default limits (e.g. librsvg) refuse attributes over 10 MB.
 
-`ExportToXAR` is **not implemented yet**: it always fails with an error
-saying so — offer the format in UI, surface the message, and route users to
-SVG meanwhile.
+`ExportToXAR` always fails, with an error naming the way that works: XAR is
+written by the Vector plugin, which builds on this one. Read the drawing into
+its document model with `CDRConverter` (the first page, through this plugin)
+and write it with `XARConverter`:
+
+```cpp
+#include "UltraCanvasCDRConverter.h"   // Plugins/Vector
+#include "UltraCanvasXARConverter.h"
+
+VectorConverter::CDRConverter reader;
+std::shared_ptr<VectorStorage::VectorDocument> drawing = reader.Import("design.cdr");
+VectorConverter::XARConverter writer;
+bool saved = drawing && writer.Export(*drawing, "design.xar");
+```
+
+The DemoApp's CDR page saves as XAR this way.
 
 ### Plugin Registration
 
@@ -534,7 +547,7 @@ The info panel in the demo lists the headline capabilities exposed by the CDR pl
 - Stroke and fill styles (incl. linear / radial / conical gradients)
 - Zoom and pan controls
 - Fit modes (FitPage, FitWidth, FitHeight, FitNone)
-- Save as SVG via `ExportToSVG` (XAR export planned; see Export section)
+- Save as SVG via `ExportToSVG`, and as XAR through the Vector plugin (see Export section)
 
 Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterface` (see `UltraCanvasCDRPainterImpl` in `UltraCanvasCDRPluginImpl.h`).
 

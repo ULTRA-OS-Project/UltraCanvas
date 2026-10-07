@@ -1,7 +1,9 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
+//                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -546,11 +548,18 @@ namespace UltraCanvas {
         void MoveCursorToEnd(bool selecting = false);
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
-        LineColumnIndex GetCursorPosition() {
+        LineColumnIndex GetCursorPosition() const {
             return cursorPosition;
         }
+        // Moves the caret to `pos`. With `selecting` the selection runs from
+        // its anchor to `pos`, as Shift+arrow extends it: the anchor is the
+        // start of the current selection, or the caret's old place when there
+        // is none. Without it the selection is left as it is (the selection
+        // methods set it and then place the caret through here).
         void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
+            if (selecting && selectionStart.lineIndex < 0) selectionStart = cursorPosition;
             cursorPosition = pos;
+            if (selecting) selectionEnd = pos;
             isCursorMoved = true;
             RequestRedraw();
         }

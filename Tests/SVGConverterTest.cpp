@@ -482,6 +482,49 @@ int main(int argc, char** argv) {
         Check(!styleNote, "no reader note about <style>");
     }
 
+    // The selectors the HTMLReader's matcher brings, answered by the SVG
+    // tree's own traits: structural pseudo-classes, attribute operators on a
+    // camelCase attribute (the CSS parser lower-cases the name), :root.
+    {
+        const char* sel = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    g rect:nth-of-type(2) { fill: #020202; }
+    g :first-child { fill: #010101; }
+    rect[pathLength] { fill: #030303; }
+    rect[data-kind^="pri"] { fill: #040404; }
+    :root .deep { fill: #050505; }
+  </style>
+  <g>
+    <rect x="0" y="0" width="5" height="5"/>
+    <circle cx="10" cy="10" r="2"/>
+    <rect x="20" y="0" width="5" height="5"/>
+  </g>
+  <rect pathLength="10" x="30" y="0" width="5" height="5"/>
+  <rect data-kind="primary" x="40" y="0" width="5" height="5"/>
+  <g><g><circle class="deep" cx="50" cy="50" r="2"/></g></g>
+</svg>)SVG";
+        auto sdoc = converter.ImportFromString(sel, VectorConverter::ConversionOptions());
+        auto sl = (sdoc && !sdoc->Layers.empty()) ? sdoc->Layers[0] : nullptr;
+        auto fillIs = [](const std::shared_ptr<VectorElement>& e, uint8_t v) {
+            const Color* c = (e && e->Style.Fill) ? std::get_if<Color>(&*e->Style.Fill) : nullptr;
+            return c && c->r == v && c->g == v && c->b == v;
+        };
+        auto first = ChildAs<VectorGroup>(sl, 0);
+        Check(first && first->Children.size() == 3, "selectors: the first group keeps its three shapes");
+        if (first && first->Children.size() == 3) {
+            Check(fillIs(first->Children[0], 1), ":first-child matches the group's first shape");
+            Check(fillIs(first->Children[1], 0), "the circle in between matches nothing");
+            Check(fillIs(first->Children[2], 2), ":nth-of-type(2) counts the rects only");
+        }
+        Check(fillIs(ChildAs<VectorRect>(sl, 1), 3), "[pathLength] finds the camelCase attribute");
+        Check(fillIs(ChildAs<VectorRect>(sl, 2), 4), "[data-kind^=\"pri\"] matches a prefix");
+        auto outer = ChildAs<VectorGroup>(sl, 3);
+        auto inner = (outer && !outer->Children.empty())
+                         ? std::dynamic_pointer_cast<VectorGroup>(outer->Children[0]) : nullptr;
+        Check(inner && !inner->Children.empty() && fillIs(inner->Children[0], 5),
+              ":root .deep (two classes' worth) beats g :first-child on the same circle");
+    }
+
     // ===== MARKERS =====
     // Diagram connectors draw their arrowheads with <marker>; skipping it
     // left every arrow a bare line. Each marker is drawn as shapes grouped

@@ -7,7 +7,7 @@
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 2.0.1  
+**Version**: 2.0.2  
 **Last Modified**: 2026-10-07  
 **Author**: UltraCanvas Framework
 
@@ -78,6 +78,18 @@ enum class SliderState {
     Pressed,
     Focused,
     Disabled
+};
+```
+
+### SliderHandleShape
+The shape of the handle (`SliderVisualStyle::handleShape`, `SetHandleShape`).
+A scoped enum: always write `SliderHandleShape::Square`, never a bare `Square`.
+```cpp
+enum class SliderHandleShape {
+    Circle,     // the default
+    Square,
+    Triangle,
+    Diamond
 };
 ```
 
