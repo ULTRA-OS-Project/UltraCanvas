@@ -8,7 +8,7 @@
 // to those ids, and the registry "materializes" each id back into a live
 // MenuItemData (resolving the label/icon/shortcut and the correct callback).
 //
-// Version: 1.0.0
+// Version: 1.0.1 - the commented-out Input callback slot is gone (MenuItemType::Input is reserved, unimplemented)
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -35,7 +35,6 @@ namespace UltraCanvas {
         // Exactly one of these is used, chosen by `type`:
         std::function<void()> onClick;                    // Action / Submenu-less
         std::function<void(bool)> onToggle;               // Checkbox / Radio
-//        std::function<void(const std::string&)> onTextInput; // Input
 
         bool defaultChecked = false; // initial state for Checkbox / Radio
         int  radioGroup = 0;         // group id for Radio items

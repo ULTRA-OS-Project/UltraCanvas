@@ -572,6 +572,27 @@ else()
     message(STATUS "  TextInputFontTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MENU AND TAB BEHAVIOUR TEST =====
+# Menu items, the tabbed container's dropdown search and the text area's
+# cursor setters do what their declarations say, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MenuAndTabBehaviourTest...")
+    add_executable(MenuAndTabBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MenuAndTabBehaviourTest.cpp
+    )
+    target_include_directories(MenuAndTabBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MenuAndTabBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(MenuAndTabBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(MenuAndTabBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MenuAndTabBehaviourTest COMMAND MenuAndTabBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MenuAndTabBehaviourTest")
+else()
+    message(STATUS "  MenuAndTabBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT BEHAVIOUR TEST =====
 # A text field's formatter, validation, input type and undo steps, headless.
 if(TARGET UltraCanvas)

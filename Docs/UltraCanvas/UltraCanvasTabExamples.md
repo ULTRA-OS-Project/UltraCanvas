@@ -29,8 +29,10 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 ### Enhanced Dropdown Features
 - **Smart Overflow Detection:** Automatically shows dropdown when tabs don't fit
 - **Position Control:** Left or Right side dropdown positioning
-- **Search Integration:** The overflow button opens a "Search tabs..." popup
-- **Visual Markers:** Disabled tabs are listed in `[brackets]` in the dropdown
+- **Search Integration:** With search on and enough tabs, the overflow button
+  opens a "Search tabs..." popup; otherwise it opens a plain menu of the tabs
+- **Visual Markers:** Disabled tabs are listed in `[brackets]` in the search
+  popup and greyed out in the plain menu
 - **Real-time Filtering:** Instant search results as user types
 
 ## Class Definition
@@ -214,12 +216,25 @@ void SetOverflowDropdownWidth(int width);          // Overflow button width. Def
 void SetDropdownSearchEnabled(bool enabled);       // Default: true
 void SetDropdownSearchThreshold(int threshold);    // Default: 5 (min 1)
 void ClearDropdownSearch();
+bool UsesDropdownSearch() const;                   // What the overflow button opens next
 ```
 
-> **Note:** The overflow button currently always opens the search popup, which
-> lists every visible tab. `SetDropdownSearchEnabled()` and
-> `SetDropdownSearchThreshold()` store their values, but the implementation
-> does not consult them yet.
+The overflow button opens one of two lists of the visible tabs:
+
+- the **search popup** ("Search tabs..."), when search is enabled and at
+  least `GetDropdownSearchThreshold()` tabs are visible — the list is long
+  enough to be worth filtering;
+- a **plain menu** otherwise: one entry per visible tab, the active one
+  checked and the disabled ones greyed out. Choosing an entry activates its
+  tab; Escape or a click outside closes it.
+
+`UsesDropdownSearch()` says which one a click opens now.
+
+```cpp
+auto tabs = CreateTabbedContainerWithDropdown("docs", 0, 0, 800, 600,
+                                              OverflowDropdownPosition::Right);
+tabs->SetDropdownSearchThreshold(8);   // a plain menu up to 7 tabs, search from 8
+```
 
 #### New Tab Button
 ```cpp
@@ -505,7 +520,9 @@ mainTabs->AddTab("Advanced", nestedTabs);
 4. Active tab updated if necessary
 
 ### Dropdown Search
-1. User clicks the overflow button; a search popup opens listing the visible tabs
+1. User clicks the overflow button; with search enabled and at least the
+   threshold's number of visible tabs, a search popup opens listing them
+   (with fewer, or search off, a plain menu of the tabs opens instead)
 2. User types in the popup
 3. Dropdown list filtered in real-time
 4. Escape clears search, Enter selects match
@@ -533,7 +550,7 @@ The component renders in multiple layers:
 ## Best Practices
 
 1. **Limit Tab Count:** Keep under 20 tabs for best UX
-2. **Use the Overflow Dropdown:** Turn it on when many tabs are expected, so users can search them
+2. **Use the Overflow Dropdown:** Turn it on when many tabs are expected; the search threshold decides when the list becomes searchable
 3. **Meaningful Titles:** Use clear, concise tab labels
 4. **Icon Support:** Prefix titles with emoji/icons for recognition
 5. **Consistent Style:** Match tab style to application theme
@@ -555,7 +572,7 @@ The UltraCanvasTabbedContainer is **not** thread-safe. All operations should be 
 
 - UltraCanvasContainer (base class)
 - UltraCanvasButton and UltraCanvasAutoComplete (overflow button and search popup)
-- UltraCanvasMenu (tab context menu)
+- UltraCanvasMenu (plain overflow list, tab context menu)
 - UltraCanvasEvent (event handling)
 - UltraCanvasRenderContext (rendering)
 
