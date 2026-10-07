@@ -1,3 +1,38 @@
+#### 2026-10-07 *0.9.186*
+- **SVG export writes arrowheads.** The SVG writer ignored the line
+  gallery's arrowheads (`StrokeData::StartArrow` / `EndArrow`), so an arrow
+  drawn in ArtCreator lost its heads when saved as SVG. Each is now written
+  as a `<marker>` holding the outline the renderer draws
+  (`ArrowheadOutline`), in the line's units and colour, with
+  `orient="auto"` and a start head drawn pointing backwards so SVG 1.1
+  readers (no `auto-start-reverse`) place it right. They go on lines,
+  polylines and paths whose ends are open, as the renderer draws them, and
+  the same arrowhead in the same colour is written once. The markers carry
+  `data-ultracanvas-arrowhead` / `-scale` / `-end`, and the SVG reader turns
+  them back into the arrowheads themselves, so saving and reopening in
+  ArtCreator keeps them editable; any other reader simply draws them. All 14
+  kinds at both ends of a curve render the same through librsvg as through
+  the framework's renderer. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG export writes width profiles and brushes.** SVG has neither a
+  variable-width stroke nor a brush, and the writer wrote a plain
+  constant-width stroke instead: a tapered line came out uniform and a
+  brushed line as a bare stroke. A shape with a `WidthProfile` or a `Brush`
+  is now written as what the renderer draws: a group holding the shape with
+  its fill and no stroke, then the band (`VariableWidthOutline`, filled
+  even-odd in the stroke's paint) or the stamps (`<use>`s of the stamp,
+  written once in `<defs>`), then the arrowheads. The group carries the
+  stroke (`data-ultracanvas-stroke`, a style declaration list), the profile
+  and the brush, and the SVG reader gives back the shape with its stroke
+  and stamp, so it stays editable; any other reader draws the shapes. A
+  tapered curve, a thick-thin curve, a profiled ellipse and a brush turning
+  along a curve render the same through librsvg as through the renderer.
+  - `BrushStampPlacements(points, stroke)` (`UltraCanvasVectorStorage.h`):
+    where a brush stamps along a flattened subpath, as matrices from the
+    stamp's own space. It was a private copy of the renderer's loop inside
+    the XAR writer; the XAR and SVG writers now share it.
+  - `Tests/SVGConverterTest.cpp` covers the export, the round trip and the
+    librsvg rendering.
+
 #### 2026-10-07 *0.9.185*
 - **A scanner named in `ULTRACANVAS_ESCL_SCANNERS` is called what it is.**
   It has no DNS-SD instance name, so it was listed under its URL - and a
