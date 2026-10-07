@@ -1,3 +1,23 @@
+#### 2026-10-07 *1.68.0*
+- **The folder tree fits its names.** The tree on the left is now as wide as
+  the rows it shows, plus 10 px - the same as UltraMail's folder list - instead
+  of starting at 280 px whatever was in it. It fits again whenever a branch is
+  opened or closed, a drive, RAM disc or remote drive comes or goes, a folder
+  appears or is removed, a pin is added, or the tree opens a branch to follow
+  the folder display. It grows to 600 px at most, and never so wide that the
+  file display (and the preview pane, while it is up) drops below its minimum
+  width. In the split view the tree docked beside a display is fitted the
+  same way, inside its pane. Dragging the divider still resizes the tree for
+  the moment; the next fit puts it back.
+- **Settings > Display > Treeview sets the width.** *Auto* is the fitted tree
+  above and the default; *Fixed width* keeps the tree at the pixels set beside
+  it (170 to 600, 280 to start with - typing a width chooses it), which is how
+  every earlier release behaved. Saved as `tree.width.mode` / `tree.width` in
+  `config.ini`; the page's *Restore defaults* (it used to be *Restore default
+  colours*) puts the colours back and the width back to *Auto*. Measuring the
+  rows is the framework's `UltraCanvasTreeView::GetRequiredWidth`, which
+  UltraMail's folder list uses.
+
 #### 2026-10-06 *1.67.0*
 - **The host's file icons are the default.** *Settings > Display > File
   icons* now starts on **Host OS icons**, so a folder listing draws each type

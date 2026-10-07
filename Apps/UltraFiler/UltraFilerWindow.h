@@ -376,6 +376,21 @@ private:
     // Pushes the configured tree colours (drive row background, selected
     // folder highlight) into the folder tree.
     void ApplyTreeColors();
+    // Gives the folder tree the width Display > Treeview asks for: fitted to
+    // the rows on show - 10 px wider than the longest - or the fixed width
+    // set there, within the tree's limits and never so wide that the file
+    // display (and the preview pane, while it is up) drops below its minimum.
+    // The tree's own pane takes it, or, while the split view has the tree
+    // docked beside a display, the tree's share of that pane. Fitting
+    // measures the text with the window's render context: before there is
+    // one it tries once more on the next turn of the event loop (allowRetry).
+    void ApplyTreeWidth(bool allowRetry = true);
+    // The tree's rows changed - added, removed, shown, hidden, opened or
+    // closed: a fitted tree is fitted again once the current event is done,
+    // so a burst of changes (a folder's subfolders arriving one by one, a
+    // stick's several mount reports) costs one measuring pass. Nothing to do
+    // while the width is fixed.
+    void ScheduleTreeFit();
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
 
@@ -966,8 +981,16 @@ private:
     int treeDockTakenFromOther = 0;
     int treeDockTakenFromRest = 0;
     // The tree pane's width while it is out of the split, so it comes back
-    // as wide as the user had it. Starts at the start-up width.
-    int treePaneWidth = 280;
+    // as wide as the user had it. Starts at the start-up width, and follows
+    // Display > Treeview's width (ApplyTreeWidth).
+    int treePaneWidth = UltraFilerSettings::kDefaultTreeWidth;
+    // A ScheduleTreeFit is waiting for its turn of the event loop.
+    bool treeFitPosted = false;
+    // The Display > Treeview width last applied, so ApplySettings re-applies
+    // it only when it moved - an unrelated setting must not undo a divider
+    // the user dragged. 0 never matches: the first call always applies.
+    bool treeWidthAutoApplied  = false;
+    int  treeFixedWidthApplied = 0;
 
     // Tree nodes whose real children have been scanned (EnsureTreeChildren runs
     // once per node); keyed by node id, which is the folder path.

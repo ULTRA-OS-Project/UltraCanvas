@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.14.0
-// Last Modified: 2026-10-06
+// Version: 1.15.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,6 +34,14 @@ public:
     // offer "Restore defaults" without repeating the literals.
     static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
+
+    // Display > Treeview: the folder tree's width - the narrowest the tree
+    // pane goes (the divider stops there too), the widest a fitted tree grows
+    // to (a folder a dozen levels down would otherwise push the file display
+    // off the window), and the fixed width a fresh installation would use.
+    static constexpr int kMinTreeWidth     = 170;
+    static constexpr int kMaxTreeWidth     = 600;
+    static constexpr int kDefaultTreeWidth = 280;
 
     // Display > PDF Inventory: the range the thumbnail width slider offers and
     // the width the preview ships with. A thumbnail below ~32 px shows nothing
@@ -78,6 +86,12 @@ public:
     // them, and the highlight of the selected folder.
     Color treeDriveBackgroundColor = kDefaultTreeDriveBackgroundColor;
     Color treeSelectedFolderColor  = kDefaultTreeSelectedFolderColor;
+    // ... and its width: fitted to the rows on show, 10 px wider than the
+    // longest (following them as branches open and close and drives come and
+    // go), or the fixed number of pixels set beside it. Dragging the divider
+    // still resizes the tree for the moment.
+    bool treeWidthAuto  = true;
+    int  treeFixedWidth = kDefaultTreeWidth;   // pixels, when not auto
 
     // Display > Home folder: what the Home folder shows - in the folder tree
     // and in the file display alike. "Predefined only" lists the main user
@@ -347,6 +361,11 @@ public:
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
         if (it != kv.end()) ParseColor(it->second, treeSelectedFolderColor);
+        it = kv.find("tree.width.mode");
+        if (it != kv.end()) treeWidthAuto = (it->second != "fixed");
+        it = kv.find("tree.width");
+        if (it != kv.end())
+            ParseInt(it->second, treeFixedWidth, kMinTreeWidth, kMaxTreeWidth);
         it = kv.find("display.home.content");
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
         it = kv.find("display.thumbnails.kinds.off");
@@ -463,6 +482,8 @@ public:
              << FormatColor(treeDriveBackgroundColor) << "\n";
         file << "tree.selected.folder.color = "
              << FormatColor(treeSelectedFolderColor) << "\n";
+        file << "tree.width.mode = " << (treeWidthAuto ? "auto" : "fixed") << "\n";
+        file << "tree.width = " << treeFixedWidth << "\n";
         file << "display.home.content = "
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
         file << "display.thumbnails.kinds.off = "
