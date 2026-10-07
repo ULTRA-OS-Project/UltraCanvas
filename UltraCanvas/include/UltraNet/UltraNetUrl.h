@@ -28,6 +28,18 @@ UltraNetResult UltraNet_ParseUrl(
 
 std::string UltraNet_BuildUrl(const UltraNetUrlComponents& components);
 
+// The absolute URL `reference` names when read relative to `base`, as RFC
+// 3986 section 5 resolves it: "../img/a.png" against
+// "https://x.org/app/main.wasm" is "https://x.org/img/a.png", "//cdn.x.org/a"
+// keeps the base's scheme, and an absolute reference stays itself. An empty
+// reference is the base without its fragment. Fails when base is not an
+// absolute URL, the reference is malformed, or either holds a control
+// character (a CR or LF would end a request line).
+UltraNetResult UltraNet_ResolveUrl(
+    const std::string& base,
+    const std::string& reference,
+    std::string& outUrl);
+
 std::string UltraNet_UrlEncode(const std::string& input);
 std::string UltraNet_UrlDecode(const std::string& input);
 

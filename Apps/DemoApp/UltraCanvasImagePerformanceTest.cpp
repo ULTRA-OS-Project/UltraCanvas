@@ -1383,7 +1383,7 @@ namespace UltraCanvas {
         root->SetBackgroundColor(Color(255, 255, 255, 255));
         root->SetPadding(12, 12, 12, 12);
 
-        root->layout.SetFlexColumn();
+        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->layout.SetFlexGap(10);
 
         // ========== TITLE ==========
@@ -1450,7 +1450,7 @@ namespace UltraCanvas {
                 "PerfChartSection", 0, 0, 0, 420);
         chartSection->SetBackgroundColor(Color(255, 255, 255, 255));
 
-        chartSection->layout.SetFlexColumn();
+        chartSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         chartSection->layout.SetFlexGap(4);
 
         state->chartElem = std::make_shared<CodecComparisonChartElement>(
@@ -1491,7 +1491,7 @@ namespace UltraCanvas {
         auto statusRow = std::make_shared<UltraCanvasContainer>(
                 "PerfStatus", 0, 0, 0, 24);
         statusRow->SetBackgroundColor(Color(255, 255, 255, 255));
-        statusRow->layout.SetFlexRow();
+        statusRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         state->statusLabel = std::make_shared<UltraCanvasLabel>(
                 "PerfStatusLabel", 0, 0, 0, 20);

@@ -76,7 +76,7 @@ UltraCanvasEBookViewer::UltraCanvasEBookViewer(const std::string& id,
 }
 
 void UltraCanvasEBookViewer::BuildUI() {
-    layout.SetFlex(CSSLayout::FlexDirection::Column);
+    layout.SetFlex(CSSLayout::FlexDirection::Column).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     // Only the content pane scrolls; the viewer itself and its chrome rows
     // must never sprout their own scrollbars over the toolbar.
@@ -160,7 +160,7 @@ void UltraCanvasEBookViewer::BuildUI() {
 
     contentPane = bodySplit->AddPane(1.0);
     disableScrollbars(*contentPane);
-    contentPane->layout.SetFlexColumn();
+    contentPane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     contentPane->AddChild(contentScroll);
 
     if (tocVisible) AttachTocPane();
@@ -199,7 +199,7 @@ void UltraCanvasEBookViewer::AttachTocPane() {
     ContainerStyle paneStyle = tocPane->GetContainerStyle();
     paneStyle.autoShowScrollbars = false;   // the ListView scrolls itself
     tocPane->SetContainerStyle(paneStyle);
-    tocPane->layout.SetFlexColumn();
+    tocPane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     tocPane->AddChild(tocList);
     tocList->SetVisible(true);
 

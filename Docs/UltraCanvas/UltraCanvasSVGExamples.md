@@ -1,5 +1,7 @@
 # SVG in UltraCanvas — showing, rasterizing, reading and writing
 
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> document; std::shared_ptr<UltraCanvasContainer> container; std::string path; -->
+
 SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
@@ -19,12 +21,15 @@ that carried its name had been showing SVG files through
 
 ```cpp
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasMediaViewerWindow.h"
 
 auto logo = std::make_shared<UltraCanvasImageElement>("logo", 10, 10, 200, 175);
 logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/vector/SVG/robot.svg"));
 container->AddChild(logo);
 
-ShowInMediaViewer(path);   // the full viewer: zoom, the folder's other files, ESC closes
+// The full viewer in a window of its own: zoom, the folder's other files, ESC closes.
+auto viewer = std::make_shared<UltraCanvasMediaViewerWindow>();
+viewer->Show(path, UltraCanvasApplication::GetInstance()->GetFocusedWindow());
 ```
 
 The file is parsed once and the parsed document is cached by path

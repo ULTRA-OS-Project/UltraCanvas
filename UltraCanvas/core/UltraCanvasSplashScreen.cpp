@@ -1,10 +1,15 @@
 // core/UltraCanvasSplashScreen.cpp
 // Reusable splash screen component
+// Version: 1.2.1 - the text lines have no width of their own, so the window's
+//                 stretch column makes them as wide as the splash and their
+//                 centred text sits on its centre line (the 300 px they were
+//                 built with was stretched over until the layout engine began
+//                 to keep a child's set size)
 // Version: 1.2.0 - Optional release date under the version; optional
 //                 attribution block ("GUI by" / logo / name); configurable
 //                 logo sizes and type scale, for hosts that credit the
 //                 toolkit under their own branding
-// Last Modified: 2026-09-03
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplashScreen.h"
@@ -78,7 +83,7 @@ namespace UltraCanvas {
 
         // Title
         if (!config.title.empty()) {
-            auto titleLabel = std::make_shared<UltraCanvasLabel>("SplashTitle", 300,
+            auto titleLabel = std::make_shared<UltraCanvasLabel>("SplashTitle", 0,
                     SplashLabelHeight(config.titleFontSize, defaults.titleFontSize, 25.0f),
                     config.title);
             titleLabel->SetFontSize((float)config.titleFontSize);
@@ -90,7 +95,7 @@ namespace UltraCanvas {
 
         // Version
         if (!config.version.empty()) {
-            auto versionLabel = std::make_shared<UltraCanvasLabel>("SplashVersion", 300,
+            auto versionLabel = std::make_shared<UltraCanvasLabel>("SplashVersion", 0,
                     SplashLabelHeight(config.versionFontSize, defaults.versionFontSize, 20.0f),
                     "Version " + config.version);
             versionLabel->SetFontSize((float)config.versionFontSize);
@@ -104,7 +109,7 @@ namespace UltraCanvas {
 
         // Release date, under the version and in the same quiet tier.
         if (!config.versionDate.empty()) {
-            auto dateLabel = std::make_shared<UltraCanvasLabel>("SplashVersionDate", 300,
+            auto dateLabel = std::make_shared<UltraCanvasLabel>("SplashVersionDate", 0,
                     SplashLabelHeight(config.versionFontSize, defaults.versionFontSize, 20.0f),
                     config.versionDate);
             dateLabel->SetFontSize((float)config.versionFontSize);
@@ -118,7 +123,7 @@ namespace UltraCanvas {
         // "GUI by" / the UltraCanvas logo / "Ultra Canvas". Any part may be
         // omitted; omitting all three leaves the splash exactly as it was.
         if (!config.attributionText.empty()) {
-            auto attributionLabel = std::make_shared<UltraCanvasLabel>("SplashAttribution", 300,
+            auto attributionLabel = std::make_shared<UltraCanvasLabel>("SplashAttribution", 0,
                     SplashLabelHeight(config.attributionFontSize, defaults.attributionFontSize, 20.0f),
                     config.attributionText);
             attributionLabel->SetFontSize((float)config.attributionFontSize);
@@ -139,7 +144,7 @@ namespace UltraCanvas {
         }
 
         if (!config.attributionName.empty()) {
-            auto attributionName = std::make_shared<UltraCanvasLabel>("SplashAttributionName", 300,
+            auto attributionName = std::make_shared<UltraCanvasLabel>("SplashAttributionName", 0,
                     SplashLabelHeight(config.attributionNameFontSize, defaults.attributionNameFontSize, 20.0f),
                     config.attributionName);
             attributionName->SetFontSize((float)config.attributionNameFontSize);
@@ -152,7 +157,7 @@ namespace UltraCanvas {
         // Website URL
         if (!config.websiteURL.empty()) {
             std::string displayText = config.websiteDisplay.empty() ? config.websiteURL : config.websiteDisplay;
-            auto urlLabel = std::make_shared<UltraCanvasLabel>("SplashURL", 300, 20);
+            auto urlLabel = std::make_shared<UltraCanvasLabel>("SplashURL", 0, 20);
             urlLabel->SetText("<span color=\"blue\">" + displayText + "</span>");
             urlLabel->SetTextIsMarkup(true);
             urlLabel->SetFontSize(11);

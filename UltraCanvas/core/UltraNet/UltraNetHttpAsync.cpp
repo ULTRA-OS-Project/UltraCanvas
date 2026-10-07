@@ -78,6 +78,7 @@ public:
             if (cb) {
                 UltraNetResponse r;
                 r.statusMessage = "curl_easy_init() failed";
+                r.transferError = r.statusMessage;
                 cb(r);
             }
             return UltraNetInvalidHandle;
@@ -267,6 +268,7 @@ private:
         UltraNetResponse r;
         r.statusCode    = 0;
         r.statusMessage = "Cancelled";
+        r.transferError = r.statusMessage;
         if (a.onComplete) a.onComplete(r);
     }
 
@@ -297,6 +299,7 @@ UltraNetHandle UltraNet_HttpRequestAsync(
         if (onComplete) {
             UltraNetResponse r;
             r.statusMessage = "URL is empty";
+            r.transferError = r.statusMessage;
             onComplete(r);
         }
         return UltraNetInvalidHandle;

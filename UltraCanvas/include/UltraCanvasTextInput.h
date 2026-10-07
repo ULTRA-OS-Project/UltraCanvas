@@ -1,7 +1,11 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.7.0
-// Last Modified: 2026-10-05
+// Version: 1.7.1
+// Last Modified: 2026-10-07
+// V1.7.1: SetFontSize and SetStyle show the new font: they re-clamp the
+//   horizontal scroll (every character, and the caret, moves with the font),
+//   invalidate the layout and redraw. Before, the field went on drawing the
+//   old size until something else made it repaint.
 // V1.7.0: Describes itself to screen readers as a text field, and in password
 //   mode as a password field (IsAccessiblePassword), so assistive technology
 //   treats the content as private instead of as an unnamed, unknown element.
@@ -501,9 +505,9 @@ public:
     bool CanRedo() const { return !redoStack.empty(); }
     
     // ===== STYLING =====
-    void SetStyle(const TextInputStyle& inputStyle) { style = inputStyle; }
+    void SetStyle(const TextInputStyle& inputStyle);
     const TextInputStyle& GetStyle() const { return style; }
-    void SetFontSize(float size) { style.fontStyle.fontSize = size; }
+    void SetFontSize(float size);
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -538,6 +542,8 @@ private:
     void SaveState();
     
     void UpdateScrollOffset();
+    // A new font: the scroll is clamped again, the layout invalidated, a redraw.
+    void FontChanged();
 
     float GetCaretXPosition();
     float GetCaretYPosition();

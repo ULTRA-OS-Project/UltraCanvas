@@ -1083,17 +1083,16 @@ namespace UltraCanvas {
                 return nullptr;
             }
 
-            // Use system default font if family is empty
-            const char *fontFamily;
-            if (style.fontFamily.empty()) {
-                std::string resolvedFamily;
+            // Use system default font if family is empty. The resolved name
+            // lives in this scope until Pango has copied it: it used to be a
+            // string local to the `if`, handed on as a pointer that dangled
+            // by the time pango_font_description_set_family read it.
+            std::string fontFamily = style.fontFamily;
+            if (fontFamily.empty()) {
                 auto* app = UltraCanvasApplication::GetInstance();
-                resolvedFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
-                fontFamily = resolvedFamily.c_str();
-            } else {
-                fontFamily = style.fontFamily.c_str();
+                fontFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
             }
-            pango_font_description_set_family(desc, fontFamily);
+            pango_font_description_set_family(desc, fontFamily.c_str());
 
             // Ensure reasonable font size
             double fontSize = (style.fontSize > 0) ? style.fontSize : 12.0;

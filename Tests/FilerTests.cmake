@@ -79,12 +79,16 @@ endif()
 # host's, so the test asserts that asking is harmless rather than what any one
 # desktop answers; it therefore passes on a build machine with no icon theme -
 # and on Windows it asks the real shell (SHGetFileInfo) the same questions.
+# It also reads UltraFiler's saved choice back from a temporary config folder
+# (Apps/UltraFiler/UltraFilerSettings.h, header-only), which defaults to the
+# host's icons.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerHostIconsTest...")
     add_executable(FilerHostIconsTest
         ${_FT_DIR}/FilerHostIconsTest.cpp
     )
-    target_include_directories(FilerHostIconsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_include_directories(FilerHostIconsTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
     target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
     target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
     set_target_properties(FilerHostIconsTest PROPERTIES

@@ -24,6 +24,9 @@ CMakeFiles/
 Apps/Texter/build/
 /1icons/
 /Tests/build/
+# VirtualFSDeleteTest's archives, from a run before it defaulted to the temp
+# directory: they were committed once from a run in the repository root.
+/vfsdelete-test-out/
 
 # Generated binaries
 /UltraCanvasDemo

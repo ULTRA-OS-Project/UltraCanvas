@@ -261,6 +261,10 @@ void ShowAs(std::shared_ptr<UltraCanvasERDiagram> er, ERNotation notation) {
     er->AutoSizeAll();
     er->RunLayout();
 }
+
+// Toggle between Chen and crow's-foot, e.g. from a toolbar button:
+ShowAs(er, er->GetNotation() == ERNotation::CrowsFoot ? ERNotation::Chen
+                                                      : ERNotation::CrowsFoot);
 ```
 
 Nothing is lost from the model: an n-ary relationship simply has no crow's-foot

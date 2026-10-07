@@ -2,8 +2,8 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 0.11.0
-// Last Modified: 2026-09-17
+// Version: 0.12.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -14,6 +14,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
@@ -121,6 +122,10 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(
                 NormalizePath(GetResourcesDir() + "media/appicon/UltraFiler.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        // Round indicators only: a checkbox entry of any menu - the file
+        // display's own, the folder tree's, the Extras the window adds - is
+        // drawn in a circle like a radio entry, with its tick inside.
+        SetDefaultMenuCheckboxShape(MenuCheckboxShape::Round);
 
         UltraFilerWindow mainWindow;
         if (!mainWindow.Initialize(folderToOpen)) {

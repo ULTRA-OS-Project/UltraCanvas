@@ -1,3 +1,357 @@
+#### 2026-10-07 *0.9.182*
+- **`GetTextIndexForXY` no longer reads a freed font name.** With no font
+  family set (the system-default font), the Cairo backend's
+  `RenderContextCairo::CreatePangoFont` resolved the default family into a
+  string local to an `if` block and handed Pango a pointer to it after the
+  block had ended, so `pango_font_description_set_family` read stack memory
+  that was already out of scope (AddressSanitizer: stack-use-after-scope).
+  Short names such as "Sans" usually survived on the stack by luck; when they
+  did not, the hit-test measured text in an arbitrary font. The name now lives
+  until Pango has copied it, as it already did in `UCTextLayout`. Nothing in
+  this repository calls `GetTextIndexForXY` today, so only callers outside it
+  were affected.
+
+#### 2026-10-07 *0.9.181*
+- **Mobipocket and Kindle books show their cover in the file display too.**
+  `.mobi`, `.prc`, `.azw` and `.azw3` tiles were still purple type sheets
+  after EPUB got its covers in 0.9.173. `UltraCanvasFilerWidget` now shows
+  their cover the same way - thumbnail grids, the Details / List icon column,
+  folder previews, cached on disk - and `GetPreviewableFormats()` reports all
+  four as thumbnail-supported in every build. A PalmDOC `.prc` with no
+  pictures keeps its glyph.
+  - **Reading a cover does not read the book.** The new
+    `MOBIEngine::ReadCoverImageFromFile(path)` reads the record list, record 0
+    and the cover record - the first bytes of the image records in between at
+    most - and gives the picture `GetCoverImage()` gives once the book is
+    loaded: the EXTH 201 image, else the first image. It decompresses and
+    decrypts nothing, so a **DRM-protected** `.azw` and a HUFF/CDIC-compressed
+    book, whose text the engine refuses, show their cover as well (Mobipocket
+    DRM encrypts the text records only). The path is opened as UTF-8 through
+    `OpenFileUtf8`, and a cover past 64 MB is refused before it is read.
+  - `MOBIEngine::ParseRecord0` now reads the PalmDOC, MOBI and EXTH headers
+    before it refuses a DRM or HUFF/CDIC text, so the cover reader shares it;
+    what `LoadFromMemory` accepts, and the errors it reports, are unchanged.
+    `MOBIEngine` 1.3.0.
+- **Tests no longer write into the source tree.** Run without an argument,
+  four tests wrote their files into the current directory, so a run from the
+  repository root put them in the source tree: `VirtualFSDeleteTest`'s
+  archives in `vfsdelete-test-out/`, where they were committed (`bulk.zip`,
+  `bulk.tar.gz`, `manager.zip`) and every later run rewrote tracked files;
+  `WordFormatsTest`'s some fifty sample documents (`sample.odt`,
+  `edited.docx`, `mdmedia/`, ...) and `LaTeXDocumentTest`'s files loose in
+  the root; and `VirtualFSNameEncodingTest`'s archive and extracted folders
+  in `vfs-name-encoding-test-out/`, a folder it also deletes on start. All
+  four now default to a folder in the system temp directory (ctest still
+  passes one in the build tree), the three archives are removed from the
+  repository, and `.gitignore` keeps `vfsdelete-test-out/` out should an
+  older build of the test still write it.
+  - `LaTeXDocumentTest` also finds the shipped `media/LaTex` corpus from any
+    directory: its path is compiled in (`LATEXTEST_CORPUS_DIR`) instead of
+    the `../../media/LaTex` that resolved only from `build/bin`. Run from
+    anywhere else, the corpus checks were skipped and the test still reported
+    every check passed; a corpus that cannot be found is now a failure.
+- **ZIP files open by their UTF-8 name, and without locking the file.** Three
+  readers handed the path to miniz's own fopen: `UCZipPackageReader::Open`
+  (the CorelDRAW thumbnails, the ODT / DOCX / mind-map imports), the ODS
+  spreadsheet loader, and VirtualFS's fast ZIP rewrite behind deleting entries
+  from an archive. miniz turns a UTF-8 name into UTF-16 only under MSVC and
+  64-bit MinGW; with any other Windows toolchain a Thai, Cyrillic or emoji
+  name went through the ANSI code page and the file did not open. Where miniz
+  did convert the name, it opened with `_wfopen_s`, which denies every other
+  program write access while the file is open, so saving a drawing in
+  CorelDRAW could fail while the file display was reading its thumbnail. All
+  three now open the file themselves through `OpenFileUtf8` (`_wfopen`,
+  shared like every other open), hand it to miniz, and close it when done.
+  The package writer and the ODS writer already opened their files this way.
+  - `UCZipPackageReader`: a file that cannot be opened now says so ("Cannot
+    open file") instead of "Not a valid ZIP archive".
+  - VirtualFS: the raw-copy rewrite now also opens the temporary archive it
+    writes through `OpenFileUtf8`, and fails the delete when closing that file
+    fails. miniz closed it itself and ignored the answer, so a disk that
+    filled up during the last flush left a cut-off archive that was then
+    renamed over the original. `VirtualFSLibArchiveProvider` 1.3.1.
+  - Tests: the new `ZipPackageTest` writes and reads a package in a
+    Thai-and-emoji folder, and on Windows writes the file from a second handle
+    while the reader holds it; Windows CI compiles and runs it by hand next to
+    `PathUtf8Test`, on its code page 1252 runner. The new
+    `SpreadsheetOdsFileTest` saves and reloads a sheet under a Thai-and-emoji
+    name, and `VirtualFSDeleteTest` deletes entries from a ZIP with one.
+
+#### 2026-10-07 *0.9.180*
+- **The `*Examples.md` component docs describe the API that exists.** A new
+  checker, `scripts/check_doc_examples.py`, compiles the C++ in a doc
+  against the headers (clang++, Linux) and reports, at the doc's own line,
+  every example that does not compile, every listed function, field or
+  enumerator the class does not have, and every signature that differs. Run
+  over the 60 Examples docs it found 694 problems in 42 of them; all 60 pass
+  it now. The usual faults: a numeric `long id` / `uid` argument and `long`
+  coordinates on constructors and factories (they take `float`s and no id),
+  functions that were renamed or never existed (`GetButtonState`,
+  `SetAutoresize`, `Show`/`Hide` on a menu, `SetModel(IListModel*)`,
+  `SetGridEnabled`, `onOverflowChange`), style fields that are not there
+  (`hoverBackgroundColor`, `padding`, `borderWidth`), wrong return types
+  (`Point2Df` for `Point2Dd`, `Rect2Di` for `Rect2Df`), and listings written
+  as pseudo-code. `UltraCanvasLayoutExamples.md` is rewritten for the CSS
+  layout engine (the box/grid/flex layout managers it documented are gone),
+  and `UltraCanvasBasicChartsExamples.md`, which held a stale copy of the
+  demo's C++ source, is now a doc for the line, bar, scatter and area
+  charts.
+- **`CreateAdjacencyDiagram` can be called.** Its declaration took a
+  `long uid` that its only definition does not, so every call failed to
+  link; the declaration now matches.
+- Comments: `UltraCanvasSpacer.h` and `AddSpacer` no longer say the cross
+  axis stretches by default, and the usage notes in
+  `UltraCanvasJitterPlotElement.h` drop the numeric id.
+- **DemoApp gauges: the cards no longer carry a size they never had.** Every
+  gauge card, and the gauge in it, was built at 272 x 374 (`kCardW` /
+  `kCardH`) and then placed in a 1fr grid cell of about 180 x 247. The grid
+  sized them anyway, but the stale heights made the Progress, Specialized
+  and Analog tabs taller than their area, so a vertical scrollbar appeared
+  and narrowed every card. They are built without a size now; the tabs fit
+  and the scrollbar is gone. The Round Gauges tab is unchanged, pixel for
+  pixel.
+- **`Docs/UltraCanvas/UltraCanvasLabelExamples.md` documents the label that
+  exists.** It described a constructor with a numeric `long id`, `LabelStyle`
+  fields the struct does not have (padding, border, `wordWrap`,
+  `autoResize`), and functions that were never there or are gone -
+  `SetAutoResize`, `SetWordWrap`, `SetCrossAlignment`, `SetShadow`,
+  `SetBorderWidth`, `AppendText`, `ClearText`, `IsEmpty`, `CreateAutoLabel`,
+  `CreateHeaderLabel`, `CreateStatusLabel`, `CreateLabelBuilder`,
+  `onSizeChanged`. It now follows `UltraCanvasLabel.h`: the four
+  constructors, the real `LabelStyle`, text links, the factories,
+  `LabelBuilder`, and how a label sizes itself in a layout. Every example in
+  it compiles against the headers.
+- **The layout engine stretches nothing unless the layout asks for it, and a
+  container's stretch no longer overrides a child's own size.** Flex
+  `align-items` defaulted to `Stretch`, and a grid item to `justify-self` /
+  `align-self: Stretch` whatever its container said, so every child of a flex
+  or grid container was stretched across it unless someone opted out - and a
+  child with its own `width` or `height` was stretched over that too (a 200 px
+  button in a column came out full width), although `UltraCanvasUIElement.h`
+  and `Docs/CSSLayout.md` already promised the CSS rule. Now, in one place,
+  for every application, the most specific statement wins:
+  - the child's own `align-self` / `justify-self: Stretch` stretches it, also
+    over a size it carries (CSS would keep the size; here a size often comes
+    from a constructor that requires one, the request never does);
+  - otherwise a child's set width (in a column, a grid cell's width) or
+    height (in a row, a cell's height) is kept, at the start (CSS Flexbox 9.4
+    step 11, CSS Box Alignment 6.1);
+  - otherwise the container's `align-items` / `justify-items` decides, and
+    those now start at `Start` - flex `FlexLayout::alignItems`, grid
+    `GridLayout::justifyItems` / `alignItems` - with a grid item's own values
+    at `Auto`, which takes the container's; the grid code never read the
+    container's values before, so a grid's `SetGridAlignItems(Center)` takes
+    effect now.
+  - A negative width or height counts as no size (CSS rejects it; here it is
+    the "not set" -1, or a size computed before the window had one).
+  - A child that is not stretched is still measured against the container's
+    width as an upper bound, so a wrapping label still wraps.
+  - New: `Layout::SetGridJustifyItems`, and `ULTRACANVAS_LAYOUT_AUDIT=1`,
+    which prints once per element every set size that outranked its
+    container's stretch - the way to find a size given only because a
+    constructor wanted one.
+- **Every container that relied on the old default asks for it now**, so it
+  looks as it did: 72 flex containers (the CSV import and export dialogs,
+  the image export dialog, the e-book viewer; Texter's find, replace and
+  go-to dialogs and toolbar; UltraFiler's find-text, RAM-disk and Windows-app
+  dialogs; UltraAI's chat and settings dialogs; UltraMail's account bar and
+  message preview; DemoApp pages) set `SetFlexAlignItems(Stretch)`, and 10
+  grid containers (DemoApp's main window, gauges and diagram pages, Texter's
+  file statistics, UltraAI's settings modes) set both grid stretches.
+  `CreateFormGrid` asks for its horizontal stretch, so form controls still
+  fill their column - except a control given a width of its own, which now
+  keeps it (the image export dialog's 200 px file-name field, for one).
+- Tests: `Apps/CSSLayoutTests` Phase 11 (default start, the container's
+  stretch keeps a set size, the item's own stretch does not, a negative size,
+  grid start / stretch / set size); the track-sizing cases ask for the
+  stretch they read their tracks through; `Tests/CSSLayoutFormGridTest.cpp`
+  adds a sized control.
+- **A text field showed a new font only when something else repainted it.**
+  `UltraCanvasTextInput::SetFontSize` and `SetStyle` stored the new font and
+  did nothing else: no redraw, no layout invalidation, and the horizontal
+  scroll stayed clamped for the old character widths. Both now re-clamp the
+  scroll, invalidate the layout and redraw, as the `UltraCanvasLabel` and
+  `UltraCanvasButton` font setters always did. Test:
+  `Tests/TextInputFontTest.cpp` (headless, through a probe subclass).
+- **An async HTTP transfer cut off after its status line looked like a
+  success.** When a response went over `maxReceiveSize`, timed out or lost its
+  connection mid-body, `UltraNet_HttpRequestAsync` handed its callback the
+  server's status (200, say) and the bytes that had arrived, with nothing to
+  tell them from a whole response; only the synchronous calls returned the
+  error. `UltraNetResponse::transferError` now carries why the transfer did
+  not finish (also for a cancelled request), empty when the whole response
+  arrived, `IsComplete()` asks it, and `exceededReceiveLimit` marks the
+  over-the-limit case. An HTTP error status (404, 500) is a
+  finished transfer and leaves it empty.
+- **`UltraNet_ResolveUrl(base, reference, out)`** (`UltraNetUrl.h`) resolves a
+  relative URL against a base the way RFC 3986 section 5 does - `../img/a.png`,
+  `//cdn.example/x`, `?page=2` - through libcurl's URL parser. UltraWeb uses
+  it for an app's relative fetches. It refuses a URL with a control character
+  in it (a CR or LF would end the request line) itself: libcurl 8 does, but
+  libcurl 7.81 on Ubuntu 22.04 lets them through.
+- Tests: `url_resolve_*` in `Tests/UltraNet/test_url.cpp` and
+  `loopback_async_reports_an_incomplete_transfer` in
+  `Tests/UltraNet/test_loopback.cpp`.
+
+#### 2026-10-07 *0.9.179*
+- **Menus line their labels up, and a checkbox can be round.** A vertical
+  `UltraCanvasMenu` now has an indicator column (when any item is a Checkbox
+  or Radio) and an icon column (when any item has an icon), and every label
+  starts after both - an `Action` with no icon used to start its label at the
+  left edge while its neighbours' labels started one column further in. An
+  item with both a tick and an icon (a checkbox entry with an `iconPath`)
+  shows them side by side; it used to be measured for one column and drawn
+  across two, so its label ran past the menu's edge. The icon of a disabled
+  item is drawn faded with its label, as a disabled button's is.
+  `MenuStyle::checkboxShape` draws a Checkbox's tick inside a circle
+  (`MenuCheckboxShape::Round`) instead of a box, and
+  `SetDefaultMenuCheckboxShape()` sets it for every menu an application shows,
+  including the ones elements build for themselves. Square stays the default.
+  See *Checkbox Indicator Shape* and *Icon and Indicator Columns* in
+  `Docs/UltraCanvas/UltraCanvasMenuExamples.md`.
+- **The file display's context menu has icons.** Every entry of
+  `UltraCanvasFilerWidget`'s context menu and of its *Display* submenu now
+  carries an icon - a new line-icon set in `media/icons/menu/` (Open with,
+  Copy, Cut, Paste, Delete, Delete Permanently, Duplicate, Rename, New,
+  Compress, Extract, Print, Extras, Display, Settings, Sort, Type, File
+  extensions, File icons, Thumbnails, Detail view, Dataset, Icon-Menu, Folder
+  previews, Info-Bar, Hidden files). *Display > Type* shows each layout with
+  the glyph UltraFiler's view selector uses, with two new ones,
+  `media/icons/view-force-tree.svg` and `media/icons/view-3d.svg`, for the
+  force-directed tree and the 3D view. The *Display* submenu also lists
+  *Folder previews* in `UltraCanvasFilerWidget.md` now; it was in the menu
+  but missing from the documented layout.
+
+#### 2026-10-07 *0.9.178*
+- **SVG import draws markers: arrowheads on connector lines.** The Vector
+  plugin's SVG reader skipped `<marker>` ("`<marker>` is not supported,
+  skipped") and ignored `marker-start` / `-mid` / `-end`, so a diagram's
+  arrows imported as bare lines. The model has no marker-by-reference, so
+  the reader now draws each marker's content as ordinary shapes at the
+  vertices SVG 2 says (each subpath start and segment end; curves and arcs
+  by their tangents): placed by `refX`/`refY`, mapped from its `viewBox`
+  onto `markerWidth` x `markerHeight`, scaled by the stroke width unless
+  `markerUnits="userSpaceOnUse"`, turned by `orient` (`auto`,
+  `auto-start-reverse`, an angle) and clipped to its viewport when its
+  content reaches past it. The shape and its markers become one group, so
+  an arrow stays one object to select and move in ArtCreator, and the
+  marker content takes `context-fill` / `context-stroke` from the shape.
+  The properties work from attributes, `style=""` and `<style>` sheets
+  alike, and inherit (`<g marker-end="…">`); a marker that uses itself is
+  drawn once. Checked against librsvg on a diagram with single- and
+  double-ended arrows. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG import applies `<style>` sheets.** The Vector plugin's SVG reader
+  skipped every `<style>` element, so a drawing that colours its shapes by
+  class came in with all of them black (SVG's default fill), its rounded
+  corners square and its centred titles left-aligned - an architecture
+  diagram whose page background is `.container { fill: #f8f9fa; rx: 8 }`
+  imported as a black page in ArtCreator, while UltraFiler's thumbnail
+  (librsvg) drew it correctly. The reader now gathers every `<style>`,
+  inside `<defs>` or not and CDATA or not, skipping one whose `media` does
+  not match. It parses them with the HTMLReader's CSS subset
+  (`HTML::StyleSheet`) and matches the selectors against the SVG tree: type,
+  class, id, attribute and structural pseudo-classes, and descendant chains.
+  Each property cascades as SVG 2 specifies: presentation attribute, then
+  the sheets by specificity and order, then `style=""`, with `!important`
+  turning the last two round (`style=""` now honours `!important` too, which
+  it used to read as part of the value). The geometry properties `x`, `y`,
+  `width`, `height`, `rx`, `ry`, `cx`, `cy` and `r` can come from a sheet on
+  rects, circles and ellipses. The reader note "`<style>` is not supported"
+  is gone. `Tests/SVGConverterTest.cpp` covers the cascade.
+
+#### 2026-10-07 *0.9.177*
+- **A failed image save no longer leaves an empty file - or destroys the one
+  it was saving over.** A libvips writer opens its file, truncating one that
+  is there, before it has encoded a byte. When the encoder then failed - AVIF
+  on a libheif built without an AV1 encoder ("heifsave: Unsupported
+  compression"), a source that does not decode, a full disk - the save left a
+  0-byte file, and saving over an existing image that way lost it.
+  `PixelFX::FileIO`'s savers (`Save`, `SaveWithOptions` and the per-format
+  ones) now write through `WriteFileAtomically`: the image is encoded into a
+  temporary file in the same folder and moved over the target only when it is
+  complete, so a failure leaves no file and the old one as it was. The media
+  viewer's Save image as goes through them; `UCRasterDocument::SaveToFile`
+  (UltraPaint) staged its own write around `FileIO::Save` and now relies on
+  it. `UltraCanvasQRCode::ExportToImage` and its SVG export
+  (`QRCodeUtils::ExportToSVG`), which wrote straight to the target, are
+  staged the same way. Its AVIF export also crashed the whole process
+  wherever an AV1 encoder was installed: it marked its image sRGB with
+  `set("interpretation", ...)`, which leaves the header's interpretation at
+  "multiband", and libvips' heifsave double-frees on a 4-band multiband
+  image (8.12 and 8.15 alike). The image is now marked through `copy()`.
+  New test: `Tests/ImageSaveStagedTest.cpp`.
+- **The media viewer's Save image as saved nothing for an SVG.** The save
+  dialog offered the shown file's own name, so a drawing came up as
+  `diagram.svg` with "PNG image" as the type. The dialog returns the name as
+  typed, libvips picks its writer from the extension, and it has no SVG
+  writer: the save failed with `"diagram.svg" is not a known file format`,
+  reported only in the small info line at the bottom of the viewer, so it
+  looked as if Save did nothing. `UltraCanvasMediaViewer` now:
+  - offers a name the viewer can write: the file's own when it is PNG, JPEG,
+    WebP, TIFF, AVIF or BMP, otherwise its stem as a PNG (`diagram.png`);
+  - as a last resort, after the dialog has applied the chosen type
+    (`ApplySaveExtension`, 0.9.176), adds `.png` to a name that still has none of
+    those extensions - added rather than swapped in, because what follows
+    the last dot is not always a format - and asks before replacing a file
+    of that name, which the dialog could not ask about;
+  - shows an error message when a save fails, as well as the info line.
+
+#### 2026-10-06 *0.9.176*
+- **The file dialog's Up arrow sits in the middle of its button.** The button
+  was created without a label, and `UltraCanvasButton`'s constructor defaults
+  the label to "Button", so it was laid out as an icon beside text: the arrow
+  started at the left padding, 6px right of centre in the 28px button, and
+  lost the tip of its right arm to the button's edge. It is created with an
+  empty label now.
+- **The file dialog's view buttons have their glyphs in the middle.**
+  `UltraCanvasSegmentedControl` drew a segment's icon at the segment's left
+  padding even when the segment had no text, so wherever the segments are
+  wider than icon + padding - every equal-width control - the glyph sat to the
+  right: 3px in the file dialog's six view buttons. An icon-only segment now
+  centres its icon; a segment with text is laid out as before.
+- **The file dialog's listing has no hover icon menu.** The Copy / Cut /
+  Rename / Delete strip that `UltraCanvasFilerWidget` floats over the file
+  under the pointer belongs to a file manager, not to a picker, and covered
+  the names being chosen from. Every mode of the dialog (Open, Open multiple,
+  Save, Select folder) now leaves it off; `FileDialogConfig::hoverIconMenu`
+  (`FileDialogOptions::SetHoverIconMenu` through `UltraCanvasFileLoader`)
+  brings it back for a caller that wants it.
+- New test `FileDialogTest` reads the dialog's pixels back and checks all
+  three, skipping that part without a display like the other window tests.
+- **A Save dialog gives the name the chosen file type's extension.** It
+  handed back the name exactly as typed, so "photo" with JPEG chosen came
+  back without an extension. Applications pick the format from the
+  extension, and each one patched the gap with its own default: UltraPaint
+  saved that "photo" as a PNG called `photo.png`, whatever type was
+  chosen. The patch also came after the dialog had asked about replacing
+  "photo", so an existing `photo.png` was overwritten without a question.
+  The name now carries the chosen type's extension before the Replace File
+  question is asked: added when it has none ("photo" -> "photo.jpg"),
+  swapped when it has another offered type's ("photo.png" -> "photo.jpg"),
+  kept when it already fits, and left alone under All files. The new
+  `ApplySaveExtension` and `FindFilterForName` (`UltraCanvasModalDialog.h`)
+  hold the rule for every dialog:
+  - **The framework dialog** applies it on OK and shows the result in the
+    name field, rewrites the name when the type is switched, and opens on
+    the type of `defaultFileName` when the caller's type does not fit it,
+    so "holiday.jpg" offered under PNG is not saved as `holiday.png`.
+  - **The GTK chooser** applies it to the name it returns. It already swapped
+    the extension when the type changed, but it swapped any trailing
+    extension, so "Report v1.2" became "Report v1.png"; it now uses the same
+    rule. It opens on the suggested name's type, and when the corrected name
+    is an existing file it asks before replacing it - **No** leaves the
+    chooser open on that name.
+  - **The Windows dialog** is given the chosen type's extension as its
+    default (`SetDefaultExtension`), so it adds and follows the extension
+    itself and asks about the final name; it also opens on the suggested
+    name's type. A name that still does not fit, such as one ending in
+    another type's extension, is corrected afterwards, with the question
+    asked there if the corrected name exists (**No** cancels).
+  - The macOS panel already insisted on an offered extension and is
+    unchanged.
+- `FileDialogTest` (was `FileDialogLayoutTest`) checks the rule on its own,
+  which runs everywhere, and the framework dialog's Save under a display.
+
 #### 2026-10-06 *0.9.175*
 - **A long URL ran out of its tooltip's box.** UltraMail shows a link's
   address as a tooltip, and a tracking link is mostly long runs of letters and

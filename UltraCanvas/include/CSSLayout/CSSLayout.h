@@ -1,12 +1,17 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
+// Version: 4.13.0 - nothing stretches unless the layout asks for it: flex
+//                   align-items and grid justify-items / align-items start at
+//                   Start, grid items at Auto (their container decides); a
+//                   container's stretch keeps a child's set width or height,
+//                   a child's own stretch does not (Layout::SetGridJustifyItems)
 // Version: 4.12.0 - merged with main's 4.10.0 (LayoutItem::floatSide)
 // Version: 4.11.0 - Element::percentHeightBase: a block parent's set height for
 //                   percentage min-height / max-height
 // Version: 4.10.0 - Dimension::offsetPx: a length plus pixels (calc(50% - 20px))
 // Version: 4.10.0 (main) - LayoutItem::floatSide (float: left / right in block layout)
 // Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -198,11 +203,12 @@ namespace UltraCanvas {
             // TODO: repeat(auto-fill/auto-fit) — caller must pre-expand for now.
         };
 
+        // Auto: the container's justify-items / align-items decide.
         struct GridItem {
             GridLine columnStart, columnEnd;
             GridLine rowStart, rowEnd;
-            JustifySelf justifySelf = JustifySelf::Stretch;
-            AlignSelf   alignSelf   = AlignSelf::Stretch;
+            JustifySelf justifySelf = JustifySelf::Auto;
+            AlignSelf   alignSelf   = AlignSelf::Auto;
         };
 
         // ---- Flex item ----
@@ -252,12 +258,24 @@ namespace UltraCanvas {
             Overflow overflowY = Overflow::Visible;
         };
 
+        // Stretching is a decision of the layout, never a default, and the
+        // most specific statement wins: a child's own align-self /
+        // justify-self: stretch stretches it; a container's align-items /
+        // justify-items: stretch stretches each child whose size on that axis
+        // is automatic, and leaves a child with a set width or height as it
+        // is (CSS Flexbox 9.4 step 11, CSS Box Alignment 6.1); otherwise
+        // nothing is stretched. Unlike CSS the child's own stretch wins over
+        // its own size, because a size here often comes from a constructor
+        // that requires one. The CSS initial value of align-items is stretch,
+        // so a reader mapping a stylesheet sets it explicitly wherever the
+        // sheet leaves it unset (and leaves out an align-self: stretch that
+        // CSS would ignore for a sized box).
         struct FlexLayout {
             FlexDirection direction = FlexDirection::Row;
             FlexWrap wrap = FlexWrap::NoWrap;
 
             JustifyContent justifyContent = JustifyContent::Start;
-            AlignItems alignItems = AlignItems::Stretch;
+            AlignItems alignItems = AlignItems::Start;
             AlignContent alignContent = AlignContent::Stretch;
 
             Gap gap;
@@ -272,8 +290,8 @@ namespace UltraCanvas {
 
             GridAutoFlow autoFlow = GridAutoFlow::Row;
 
-            JustifyItems justifyItems = JustifyItems::Stretch;
-            AlignItems   alignItems   = AlignItems::Stretch;
+            JustifyItems justifyItems = JustifyItems::Start;   // see FlexLayout
+            AlignItems   alignItems   = AlignItems::Start;
 
             // TODO: grid-template-areas string syntax.
             // TODO: subgrid.
@@ -309,6 +327,7 @@ namespace UltraCanvas {
             Layout& SetFlexJustifyContent(JustifyContent jc);
             Layout& SetFlexAlignItems(AlignItems ai);
             Layout& SetGridAlignItems(AlignItems ai);
+            Layout& SetGridJustifyItems(JustifyItems ji);
             Layout& SetFlexAlignContent(AlignContent ac);
 
             // ---- Grid configuration (initializes data to GridLayout on first call) ----

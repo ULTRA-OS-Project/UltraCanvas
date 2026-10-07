@@ -995,6 +995,22 @@ jobs:
               Tests/PathUtf8Test.cpp -o build/PathUtf8Test.exe
           ./build/PathUtf8Test.exe
 
+      # UCZipPackageReader (CorelDRAW thumbnails, ODT/DOCX/XLSX import) opens
+      # its file through OpenFileUtf8. miniz's own open, used before, made a
+      # Thai or emoji name depend on the toolchain, and on this one opened
+      # with _wfopen_s, which locks other programs out of writing the file
+      # while it is read - the test writes it from a second handle to prove
+      # that is gone. Compiled by hand like PathUtf8Test, on code page 1252.
+      - name: Run ZipPackageTest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          clang -c UltraCanvas/third_party/miniz/miniz.c -o build/ZipPackageTest-miniz.o
+          clang++ -std=c++20 -Wall -Wextra -IUltraCanvas/include \
+              -IUltraCanvas/third_party/miniz \
+              Tests/ZipPackageTest.cpp UltraCanvas/core/UltraCanvasZipPackage.cpp \
+              build/ZipPackageTest-miniz.o -o build/ZipPackageTest.exe
+          ./build/ZipPackageTest.exe
+
       # ippeveprinter stops with "Unable to initialize DNS-SD" when no daemon is
       # running, so IODevicePrinterIPPLiveTest needs Avahi up. Installing the
       # package normally starts it; this makes sure, and fails here - where the

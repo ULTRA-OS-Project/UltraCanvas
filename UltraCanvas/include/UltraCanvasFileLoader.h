@@ -37,6 +37,9 @@ namespace UltraCanvas {
         // (FileDialogConfig::confirmOverwrite). The platforms' save dialogs
         // always ask.
         bool confirmOverwrite = true;
+        // The framework dialog's listing shows the Filer's hover icon menu
+        // (FileDialogConfig::hoverIconMenu); off by default.
+        bool hoverIconMenu = false;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
         UltraCanvasWindowBase* parentWindow = nullptr;
 
@@ -56,6 +59,7 @@ namespace UltraCanvas {
         FileDialogOptions& SetShowHidden(bool v)        { showHiddenFiles = v; return *this; }
         FileDialogOptions& SetFilterToggles(bool v)     { filterToggles = v; return *this; }
         FileDialogOptions& SetConfirmOverwrite(bool v)  { confirmOverwrite = v; return *this; }
+        FileDialogOptions& SetHoverIconMenu(bool v)     { hoverIconMenu = v; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };

@@ -35,7 +35,7 @@ eBook file ──► format engine (IEBookEngine) ──► chapters as XHTML + 
 | ZIP/DEFLATE container access (miniz) | `Plugins/Documents/eBook/EBookArchive.h` | ✅ implemented + unit-tested |
 | EPUB 2/3 engine (container/OPF/NCX/nav, cover, resources; cover-only reader for file-manager thumbnails) | `Plugins/Documents/eBook/EPUBEngine.h` | ✅ implemented + unit-tested |
 | FB2 engine (metadata, sections → chapters, base64 images, fb2.zip, windows-1251/UTF-16 input) | `Plugins/Documents/eBook/FB2Engine.h` | ✅ implemented + unit-tested |
-| MOBI / AZW engine (PDB/PalmDOC, EXTH metadata, images, page-break chapters) | `Plugins/Documents/eBook/MOBIEngine.h` | ✅ implemented + unit-tested |
+| MOBI / AZW engine (PDB/PalmDOC, EXTH metadata, images, page-break chapters; cover-only reader for file-manager thumbnails) | `Plugins/Documents/eBook/MOBIEngine.h` | ✅ implemented + unit-tested |
 | TXT engine | `Plugins/Documents/eBook/TXTEngine.h` | ✅ implemented + unit-tested |
 | Viewer widget (toolbar, TOC panel, themes, font size, keyboard nav) | `include/UltraCanvasEBookViewer.h` | ✅ implemented + smoke-tested |
 | AZW3 (KF8-only) / other legacy formats | — | 🔄 later |
@@ -79,6 +79,13 @@ applies the same rules without loading the book: `EBookArchive::OpenFromFile`
 reads only the ZIP central directory, so the call inflates container.xml,
 the package document and the cover and nothing else. UltraCanvasFilerWidget
 uses it for `.epub` thumbnails.
+
+`MOBIEngine::ReadCoverImageFromFile(path)` does the same for Mobipocket /
+Kindle files: it reads the PDB record list, record 0 (for the EXTH 201 cover
+offset and the first image record) and the cover record, and gives the
+picture `GetCoverImage()` would - the EXTH 201 image, else the first image.
+It decompresses and decrypts nothing, so DRM-protected and HUFF/CDIC books,
+whose text the engine refuses, still have their cover.
 
 The FB2 engine converts FictionBook markup to simple HTML per section
 (emphasis → em, poem/stanza/v, epigraph/cite → blockquote, empty-line,
