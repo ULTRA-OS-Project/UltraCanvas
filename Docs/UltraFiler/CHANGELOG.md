@@ -9,6 +9,10 @@
   opened. The check now passes the path as UTF-8, like every other file call
   in UltraFiler. `FilerHistoryTest` records and pins such a file, and the
   Windows CI job runs it under code page 1252.
+- **Windows: *Extras > Access > Read-only* works on a file with a Thai, CJK
+  or emoji name.** It set the attribute through the same plain-string path,
+  so on such a name it failed with "no such file" and left the file as it
+  was. The Access window now passes the path as UTF-8 on every platform.
 
 #### 2026-10-06 *1.67.0*
 - **The host's file icons are the default.** *Settings > Display > File
