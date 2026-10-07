@@ -1867,50 +1867,24 @@ PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke) {
         const double total = closed ? cum.back() + std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y)
                                     : cum.back();
         if (total <= 1e-9) continue;
-        // The profile is linear between its samples, so the band's edges are
-        // straight between the path's points only if a point also sits where
-        // each sample falls. A sample inside a segment gets a point of its
-        // own there - a straight two-point line with a mid-way peak was
-        // otherwise drawn at its end widths only. The path's own points keep
-        // the tangent they had, so corners join as before.
-        std::vector<double> samples;
-        for (const WidthSample& w : stroke.WidthProfile) {
-            if (w.T > 0.0f && w.T < 1.0f) samples.push_back(w.T * total);
-        }
-        std::sort(samples.begin(), samples.end());
-        std::vector<Point2Dd> left, right;
+        std::vector<Point2Dd> left(n), right(n);
         Point2Dd lastT(1, 0);
-        auto edge = [&](const Point2Dd& p, const Point2Dd& t, double along) {
-            const double half = stroke.WidthAt(static_cast<float>(along / total)) / 2.0;
-            left.emplace_back(p.x - t.y * half, p.y + t.x * half);
-            right.emplace_back(p.x + t.y * half, p.y - t.x * half);
-        };
         for (size_t i = 0; i < n; ++i) {
             const Point2Dd& prev = i > 0 ? pts[i - 1] : (closed ? pts[n - 1] : pts[i]);
             const Point2Dd& next = i + 1 < n ? pts[i + 1] : (closed ? pts[0] : pts[i]);
             Point2Dd t(next.x - prev.x, next.y - prev.y);
             if (std::hypot(t.x, t.y) < 1e-12) t = lastT; else t = UnitVector(t);
             lastT = t;
-            edge(pts[i], t, cum[i]);
-            // The samples inside the segment to the next point (the closing
-            // one of a closed subpath included).
-            if (i + 1 >= n && !closed) break;
-            const Point2Dd& to = i + 1 < n ? pts[i + 1] : pts[0];
-            const double from = cum[i], till = i + 1 < n ? cum[i + 1] : total, length = till - from;
-            if (length <= 1e-9) continue;
-            const Point2Dd dir = UnitVector(Point2Dd(to.x - pts[i].x, to.y - pts[i].y));
-            for (double s : samples) {
-                if (s <= from + 1e-9 || s >= till - 1e-9) continue;
-                const double u = (s - from) / length;
-                edge(Point2Dd(pts[i].x + (to.x - pts[i].x) * u, pts[i].y + (to.y - pts[i].y) * u), dir, s);
-            }
+            const double half = stroke.WidthAt(static_cast<float>(cum[i] / total)) / 2.0;
+            left[i] = Point2Dd(pts[i].x - t.y * half, pts[i].y + t.x * half);
+            right[i] = Point2Dd(pts[i].x + t.y * half, pts[i].y - t.x * half);
         }
         if (closed) {
             AppendPolyline(out, left, true);
             AppendPolyline(out, right, true);
         } else {
             std::vector<Point2Dd> ring = left;
-            for (size_t i = right.size(); i-- > 0;) ring.push_back(right[i]);
+            for (size_t i = n; i-- > 0;) ring.push_back(right[i]);
             AppendPolyline(out, ring, true);
         }
     }
