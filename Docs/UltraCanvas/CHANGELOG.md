@@ -1,3 +1,39 @@
+#### 2026-10-07 *0.9.189*
+- **VideoFX: beat detection; slideshows on the beat** (VideoFX 0.5.0).
+  `VideoFX_DetectBeats` gives a file's tempo (BPM), a confidence and its beat
+  times - VideoFX's own analysis (spectral-flux onsets, an autocorrelation
+  tempo weighted towards 120 BPM against half / double readings, and
+  dynamic-programming beat tracking), reporting no beat for speech, noise or
+  a held tone. `VideoFXSlideshowOptions::beatSync` puts every change (a cut,
+  or a transition's middle) on the beat nearest `secondsPerImage`;
+  `beatsPerImage` gives each image exactly that many beats. With a song list
+  the beats come from each song where it plays.
+  - `videofx beats FILE`; `videofx slideshow ... --beat-sync`,
+    `--beats-per-image N`.
+- **VideoFX: faces kept in shot through pan and zoom** (VideoFX 0.5.0).
+  `VideoFXSegment::keepInView` lists regions of a photo (`VideoFXRect`,
+  fractions of the image as shown, or `FromPixels`) that must stay in
+  frame: the move's zoom is capped where the view could no longer hold them
+  (with 15 % headroom), its pan narrowed around them, and every frame slid -
+  never resized - to hold them, so they stay in shot through the whole move.
+  A `Still` photo looks at them. VideoFX finds no faces itself: slideshows
+  take `keepInView` per image, or ask the app's own detector
+  (`findKeepInView` - UltraAI's vision analyser, the OS, a tap in the UI)
+  once per photo.
+  - `videofx slideshow ... --keep N:X,Y,W,H`.
+- **VideoFX: song lists with crossfades** (VideoFX 0.5.0). Background music
+  can be several songs: `VideoFXMusic::playlist` (or
+  `VideoFXMusic::FromFiles`) plays after `path`, in order, each song blending
+  into the next over `crossfade` seconds (3 by default, 0..30) with
+  equal-power gains, so the loudness holds steady and there is neither a hard
+  cut nor a gap. A song shorter than twice the crossfade gets a shorter one,
+  at most half of either song. A looping list crossfades from its last song
+  into its first; a single looping song now crossfades into its own start
+  (`crossfade = 0` keeps the 0.4 back-to-back loop).
+  - `VideoFXSlideshowOptions::matchMusicLength` fits a slideshow to the whole
+    list: the songs' lengths minus the crossfades.
+  - `videofx`: repeat `--music FILE` for a list; `--music-crossfade S`.
+
 #### 2026-10-07 *0.9.188*
 - **The path check follows a member access through the includes.**
   `scripts/check_path_string.py` already read the headers a file includes
