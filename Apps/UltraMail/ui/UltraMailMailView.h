@@ -268,6 +268,10 @@ private:
     // list should not wait for it. `markRead` as for SelectRowImpl.
     void PreviewAfterPaint(int row, bool markRead);
     uint64_t previewToken_ = 0;   // the latest PreviewAfterPaint wins
+    // The next message shown follows an account switch: the timing trace
+    // reports it with its steps however fast it was (a click on a message
+    // only when it was slow).
+    bool traceNextPreview_ = false;
     // Clear the unread ● and dim one row in place (keeps the ↩ waiting glyph).
     void MarkRowRead(int row);
     // The badge for one message, from the address book, the brand registry and

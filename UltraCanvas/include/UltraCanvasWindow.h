@@ -30,6 +30,15 @@ namespace UltraCanvas {
     using WindowOverlayRenderer = std::function<void(IRenderContext* ctx,
                                                      const Rect2Di& overlayRect)>;
 
+    // Where the time of one frame went (see onFrameRendered), in milliseconds.
+    struct WindowFrameTiming {
+        double layoutMs    = 0;   // measure and arrange; 0 when the layout was valid
+        double paintMs     = 0;   // the elements in the dirty rectangles, and popups
+        double compositeMs = 0;   // popups, caret and tooltip onto the native surface
+        int    dirtyRects  = 0;   // rectangles painted in the window's content
+        bool   laidOut     = false;
+    };
+
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, 
@@ -222,6 +231,11 @@ namespace UltraCanvas {
         std::function<void()> onWindowRestore;
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
+        // After every frame that laid out or painted anything: how long its
+        // layout, painting and compositing took. For finding a slow frame - a
+        // window that stays blank at start, or a view that is slow to appear;
+        // nothing is timed while it is unset.
+        std::function<void(const WindowFrameTiming&)> onFrameRendered;
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();

@@ -565,21 +565,41 @@ namespace UltraCanvas {
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
 
+        // Each step's time, for GetStartupTimings(): a slow start is usually
+        // one of these (a font cache rebuilt, a virus scanner reading every
+        // library), and an application cannot see inside this call.
+        startupTimings.clear();
+        auto stepStart = std::chrono::steady_clock::now();
+        auto endStep = [this, &stepStart](const char* stage) {
+            const auto now = std::chrono::steady_clock::now();
+            const double ms = std::chrono::duration<double, std::milli>(now - stepStart).count();
+            startupTimings.push_back({stage, ms});
+            debugOutput << "UltraCanvas: startup step " << stage << " took "
+                        << static_cast<long long>(ms + 0.5) << " ms" << std::endl;
+            stepStart = now;
+        };
+
         // Must run before anything can touch fontconfig - the image subsystem
         // (vips -> pango) and every native backend below do.
         SetupBundledFontconfig();
+        endStep("fontconfig setup");
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
+        endStep("image subsystem");
 
-        if (InitializeNative()) {
+        const bool nativeOk = InitializeNative();
+        endStep("native backend");
+        if (nativeOk) {
             // Register bundled DejaVu fonts before any text rendering / default
             // detection runs, so platform Detect*FontStyleNative() can return
             // the just-registered families.
             LoadBundledFontsNative();
+            endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
                 debugOutput << "UltraCanvas: Failed to initialize clipboard" << std::endl;
             }
+            endStep("clipboard");
 
             // Auto-set default window icon if available
             std::string iconPath = GetDefaultIcon();
@@ -603,6 +623,7 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: Default icon not found at: " << iconPath << std::endl;
             }
 #endif
+            endStep("default window icon");
 
             return true;
         } else {

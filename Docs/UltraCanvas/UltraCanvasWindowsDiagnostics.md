@@ -462,6 +462,56 @@ than a missing piece of the backend.
 So: if a host application hangs before its first window on Windows, check what
 it is built against before looking anywhere else.
 
+## Slow to start, or a window that stays black
+
+An application that starts but takes ten seconds to show anything - its window
+black, or its console window alone on screen - spends that time in one of
+three places: the framework's own initialisation, the application's start-up
+work, or the first frame. Two hooks tell them apart without a profiler; both
+work on every platform and in Release builds.
+
+**`UltraCanvasApplicationBase::GetStartupTimings()`** lists each step of
+`Initialize()` with its time, in the order they ran: `fontconfig setup`,
+`image subsystem`, `native backend`, `bundled and system fonts` (on Windows
+the scan of the system font folder, which takes seconds when fontconfig has
+to rebuild its cache), `clipboard`, `default window icon`. The same lines go to
+`debugOutput` ("UltraCanvas: startup step ... took N ms"), so
+`ULTRACANVAS_DEBUG_LOG` shows them too.
+
+**`UltraCanvasWindowBase::onFrameRendered`** is called after every frame that
+laid out or painted something, with a `WindowFrameTiming`: `layoutMs`
+(measure and arrange; 0 when the layout was still valid), `paintMs` (the
+elements in the dirty rectangles, and popups), `compositeMs` (popups, caret
+and tooltip onto the native surface), `dirtyRects` and `laidOut`. While it is
+unset nothing is timed.
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include <iostream>
+
+int main() {
+    UltraCanvas::UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) return 1;
+    for (const auto& step : app.GetStartupTimings())
+        std::cerr << "startup step " << step.stage << ": " << step.ms << " ms\n";
+
+    UltraCanvas::WindowConfig config;
+    auto window = UltraCanvas::CreateWindow(config);
+    window->onFrameRendered = [](const UltraCanvas::WindowFrameTiming& frame) {
+        const double total = frame.layoutMs + frame.paintMs + frame.compositeMs;
+        if (total >= 100)
+            std::cerr << "slow frame: layout " << frame.layoutMs << " ms, painting "
+                      << frame.paintMs << " ms\n";
+    };
+    window->Show();
+    app.Run();
+}
+```
+
+UltraMail prints both, with its own steps, in its timing trace
+(`Apps/UltraMail/engine/UltraMailTrace.h`, `Docs/UltraMail/CHANGELOG.md`
+0.10.35).
+
 ## "Windows cannot access the specified device, path, or file"
 
 Explorer shows this dialog (Thai: *Windows ไม่สามารถเข้าถึงอุปกรณ์ เส้นทาง หรือแฟ้มที่ระบุได้*)
@@ -616,6 +666,17 @@ Declared in `UltraCanvas/include/UltraCanvasDebug.h`:
 bool IsDebugOutputEnabled();                     // is anything reaching a sink?
 void SetDebugOutputFile(const std::string& path); // redirect; "" returns to stderr
 void SetDebugOutputEnabled(bool enabled);
+```
+
+Declared in `UltraCanvas/include/UltraCanvasApplication.h` and
+`UltraCanvasWindow.h` (every platform; see *Slow to start* above):
+
+```cpp
+struct StartupStageTiming { std::string stage; double ms; };
+const std::vector<StartupStageTiming>& UltraCanvasApplicationBase::GetStartupTimings() const;
+
+struct WindowFrameTiming { double layoutMs, paintMs, compositeMs; int dirtyRects; bool laidOut; };
+std::function<void(const WindowFrameTiming&)> UltraCanvasWindowBase::onFrameRendered;
 ```
 
 Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`

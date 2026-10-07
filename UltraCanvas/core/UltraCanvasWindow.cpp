@@ -13,6 +13,7 @@
 #include <cairo/cairo.h>
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include "UltraCanvasDebug.h"
@@ -587,6 +588,19 @@ namespace UltraCanvas {
         }
         if (!ctx) return;
 
+        // Timed only while someone listens (onFrameRendered).
+        using FrameClock = std::chrono::steady_clock;
+        const bool timed = static_cast<bool>(onFrameRendered);
+        WindowFrameTiming timing;
+        FrameClock::time_point stepStart;
+        auto stepMs = [&stepStart]() {
+            const auto now = FrameClock::now();
+            const double ms = std::chrono::duration<double, std::milli>(now - stepStart).count();
+            stepStart = now;
+            return ms;
+        };
+        if (timed) stepStart = FrameClock::now();
+
         bool isLayoutValid = IsLayoutValid();
         if (!isLayoutValid) {
             // Fit-to-content, if enabled, must run BEFORE the authoritative Exact
@@ -613,11 +627,14 @@ namespace UltraCanvas {
             // Arrange() places children and, at its tail, calls Arranged()
             // (z-order sort + scrollbar metrics) and sets arrangeValid.
             this->Arrange(finalBounds, lctx);
+            timing.laidOut = true;
         }
+        if (timed) timing.layoutMs = stepMs();
 
         // ---- Window content pass: loop once per optimised dirty rect ----
         if (dirtyRectManager.HasDirtyRects()) {
             const auto& rects = dirtyRectManager.GetOptimizedRectangles();
+            timing.dirtyRects = static_cast<int>(rects.size());
             for (const auto& rect : rects) {
                 ctx->PushState();
                 ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
@@ -663,6 +680,9 @@ namespace UltraCanvas {
                 _needsWindowComposition = true;
             }
         }
+
+        if (timed) timing.paintMs = stepMs();
+        const bool composites = _needsWindowComposition;
 
         auto& caret = UltraCanvasCaret::GetInstance();
 
@@ -775,6 +795,11 @@ namespace UltraCanvas {
         _needsPopupGeometry = false;
         _needsWindowComposition = false;
         _needsCaretComposition = false;
+
+        if (timed && (timing.laidOut || composites)) {
+            timing.compositeMs = stepMs();
+            onFrameRendered(timing);
+        }
     }
 
     void UltraCanvasWindowBase::AddDirtyRectangle(const Rect2Di& windowRect) {

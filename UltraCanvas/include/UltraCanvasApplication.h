@@ -79,6 +79,13 @@ namespace UltraCanvas {
     enum class FdWatchType { Read, Write };
     using FdWatchId = std::uint64_t;
 
+    // One step of UltraCanvasApplicationBase::Initialize() and how long it
+    // took (see GetStartupTimings).
+    struct StartupStageTiming {
+        std::string stage;
+        double ms = 0;
+    };
+
     class UltraCanvasApplicationBase {
     friend UltraCanvasWindowBase;
     protected:
@@ -86,6 +93,7 @@ namespace UltraCanvas {
         bool volatile initialized = false;
         std::string appName;
         std::string defaultWindowIconPath;
+        std::vector<StartupStageTiming> startupTimings;
 
         std::deque<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
@@ -356,6 +364,12 @@ namespace UltraCanvas {
         // calling Run(). Assumes Initialize() succeeded and the app is running.
         void RunOnce();
         bool Initialize(const std::string& app);
+        // How long each step of Initialize() took, in the order they ran:
+        // fontconfig, the image subsystem, the native backend, the bundled
+        // fonts, the clipboard and the default icon. For an application that
+        // starts slowly, to tell the framework's share of the wait from its
+        // own; the same numbers go to debugOutput.
+        const std::vector<StartupStageTiming>& GetStartupTimings() const { return startupTimings; }
         bool RequestExit();
         virtual void Exit();
         // The one call a signal handler may make. RequestExit() logs and runs

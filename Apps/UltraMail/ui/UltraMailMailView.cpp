@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.14.1 - the folder tree, the list's rebuild and the reading pane in
+//                  the timing trace, step by step (UltraMailTrace.h)
 // Version: 0.14.0 - OpenMessage
 // Version: 0.13.0 - a row whose badge has no icon asks for it when painted
 //                   (lazy sender icons); IconCached shows it when it arrives
@@ -28,6 +30,7 @@
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
 #include "UltraMailFolderNames.h"
+#include "UltraMailTrace.h"
 #include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
@@ -42,6 +45,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -827,6 +831,7 @@ SenderClass MailView::ClassFor(const MessageEnvelope& m) const {
 
 void MailView::RebuildFolderTree() {
     if (!folderTree_) return;
+    Trace::Stage trace("Folder tree", 0);
     folderNodeId_.clear();
     folderDelims_.clear();
 
@@ -844,7 +849,10 @@ void MailView::RebuildFolderTree() {
         folderNodeId_[accNode] = {accId, "INBOX"};
 
         std::vector<Folder> folders;
-        if (store_) store_->ListFolders(accId, folders);
+        {
+            Trace::Stage step("Folders of " + accId + " from the store", 0);
+            if (store_) store_->ListFolders(accId, folders);
+        }
         for (const auto& f : folders)
             folderDelims_[accId + "\n" + f.name] = FolderDelimiter(f, folders);
         std::stable_sort(folders.begin(), folders.end(),
@@ -901,6 +909,7 @@ void MailView::RebuildFolderTree() {
         }
     }
 
+    Trace::Stage step("Expand the tree, select the folder, fit its width", 0);
     folderTree_->ExpandAll();
     SelectFolderNode(curAccount_, curFolder_);
     if (folderTreeFitToText_) ApplyFolderTreeWidth();
@@ -926,6 +935,7 @@ void MailView::ShowAccount(const std::string& accountId) {
         // Another account's UID: the same number here is another message.
         selectedUid_ = -1;
         selectedFolder_.clear();
+        traceNextPreview_ = true;
     }
     RebuildFolderTree();
     // The folder on screen was deleted or renamed on the server (the folder
@@ -1263,6 +1273,8 @@ void MailView::RebuildList(bool markTopRead) {
 
 void MailView::FullRebuild(bool markTopRead) {
     if (!list_ || !model_) return;
+    Trace::Stage trace("Message list: rebuild " + curFolder_ + " of " + curAccount_, 0);
+    std::optional<Trace::Stage> step;
     // Remember the shown message so a refresh keeps it selected instead of
     // snapping to the newest row (captured before the vectors are cleared).
     const int64_t     keepUid    = selectedUid_;
@@ -1289,21 +1301,26 @@ void MailView::FullRebuild(bool markTopRead) {
 
     // The badge's two inputs that come from the store: whether this folder is
     // the junk mailbox, and the content-scan verdicts of the messages in it.
+    step.emplace("Junk folder check and scan verdicts from the store", 0);
     curFolderIsJunk_ = CurrentFolderIsJunk();
     preview_.SetJunkFolder(curFolderIsJunk_);
     store_->ListSecurity(curAccount_, curFolder_, security_);
 
+    step.emplace("Messages from the store", 0);
     store_->ListMessages(curAccount_, curFolder_, 0, messages_);
+    step.emplace("Waiting-for-reply set from the store", 0);
     std::vector<MessageEnvelope> waiting;
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    step.emplace("Filter and sort " + std::to_string(messages_.size()) + " message(s)", 0);
     ApplyFilter(messages_, waitingUids);
     SortMessages(messages_, sort_, SortText());
 
     // Every row into the model at once: added one by one, each row made the
     // view work out its geometry and scrollbar again - most of the time a
     // large mailbox took to appear.
+    step.emplace("Rows: text, badges, tooltips", 0);
     std::vector<MultiColumnListItem> items;
     items.reserve(messages_.size());
     rowStates_.reserve(messages_.size());
@@ -1316,9 +1333,11 @@ void MailView::FullRebuild(bool markTopRead) {
         rowStates_.push_back(st);
         rowBadges_.push_back(std::move(badge));
     }
+    step.emplace("Into the list", 0);
     model_->SetItems(std::move(items));
 
     UpdateListTitle();
+    step.emplace("Selection and scroll position", 0);
 
     // Default: the list is up; preview the newest message only when the reading
     // pane is on (Gmail mode waits for a click before hiding the list).
@@ -1354,12 +1373,18 @@ void MailView::FullRebuild(bool markTopRead) {
 
     loadedAccount_ = curAccount_;   // what the rows now represent (for the diff path)
     loadedFolder_  = curFolder_;
+    step.reset();
+    Trace::Line(std::to_string(messages_.size()) + " message(s) in the list, " +
+                std::to_string(shownUnread_) + " unread");
 }
 
 void MailView::DiffListFromStore(bool /*markTopRead*/) {
     // The store already holds the authoritative post-sync state (SyncMessages
     // upserted new mail, ReconcileFlags removed deleted UIDs and corrected flags).
     // Reconcile the visible rows to it in place, keeping selection and scroll.
+    Trace::Stage trace("Message list: update " + curFolder_ + " of " + curAccount_ + " in place", 0);
+    std::optional<Trace::Stage> step;
+    step.emplace("Messages, scan verdicts and waiting-for-reply set from the store", 0);
     std::vector<MessageEnvelope> fresh;
     store_->ListMessages(curAccount_, curFolder_, 0, fresh);
 
@@ -1373,8 +1398,10 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    step.emplace("Filter and sort " + std::to_string(fresh.size()) + " message(s)", 0);
     ApplyFilter(fresh, waitingUids);
     SortMessages(fresh, sort_, SortText());
+    step.emplace("Reconcile the rows", 0);
 
     // Measure the turnover; a near-total change (e.g. a UIDVALIDITY renumber) is
     // cheaper and cleaner as a full rebuild — which is what the user asked for.
@@ -1387,7 +1414,7 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     for (const auto& m : messages_) if (!freshUids.count(m.uid)) ++removed;
     for (const auto& m : fresh)     if (!curUids.count(m.uid))   ++added;
     const std::size_t maxN = std::max(messages_.size(), fresh.size());
-    if (maxN == 0 || (removed + added) * 2 > maxN) { FullRebuild(false); return; }
+    if (maxN == 0 || (removed + added) * 2 > maxN) { step.reset(); FullRebuild(false); return; }
 
     // The rows that stay must already be in the fresh order (the walk below
     // inserts around them). A row whose place changed - its badge's kind,
@@ -1396,7 +1423,7 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
         std::vector<int64_t> kept, freshKept;
         for (const auto& m : messages_) if (freshUids.count(m.uid)) kept.push_back(m.uid);
         for (const auto& m : fresh)     if (curUids.count(m.uid))   freshKept.push_back(m.uid);
-        if (kept != freshKept) { FullRebuild(false); return; }
+        if (kept != freshKept) { step.reset(); FullRebuild(false); return; }
     }
 
     // 1) Drop rows the server no longer lists (snapshot uids first — we mutate).
@@ -1505,6 +1532,11 @@ void MailView::SelectRowImpl(int row, bool markRead) {
         }
     }
     const MessageEnvelope& m = messages_[static_cast<std::size_t>(row)];
+    // After an account switch always in the timing trace, step by step; a
+    // click on a message only when it was slow.
+    Trace::Stage trace("Reading pane: message " + std::to_string(m.uid) + " of " + m.folder,
+                       traceNextPreview_ ? 0 : 50);
+    traceNextPreview_ = false;
     // Remember what is shown so a rebuild after a sync can restore this selection
     // (by uid within the same folder) rather than snapping back to the newest row.
     selectedUid_    = m.uid;

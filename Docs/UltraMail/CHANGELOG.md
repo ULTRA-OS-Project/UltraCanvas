@@ -1,3 +1,39 @@
+#### 2026-10-07 *0.10.35*
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to the console it was started with (on Windows the
+  console window that opens with it) and to `trace.log` in the data folder,
+  emptied at each start. Every line carries the time of day, the seconds
+  since the process started and the thread. `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
+
 #### 2026-10-07 *0.10.34*
 - **New mail shows a notification on the screen.** When a sync brings new
   mail into an inbox, UltraMail posts one notification through UltraMessage,
