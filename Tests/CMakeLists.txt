@@ -572,6 +572,26 @@ else()
     message(STATUS "  TextInputFontTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT BEHAVIOUR TEST =====
+# A text field's formatter, validation, input type and undo steps, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputBehaviourTest...")
+    add_executable(TextInputBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputBehaviourTest.cpp
+    )
+    target_include_directories(TextInputBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputBehaviourTest COMMAND TextInputBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputBehaviourTest")
+else()
+    message(STATUS "  TextInputBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).
