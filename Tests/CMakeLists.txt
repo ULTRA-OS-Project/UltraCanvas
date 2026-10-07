@@ -186,8 +186,10 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
     add_executable(UltraWebGuestTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebGuestTest.cpp
+        ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
-        ${_uw_dir}/host/UltraWebLoader.cpp)
+        ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebStorage.cpp)
     target_include_directories(UltraWebGuestTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebGuestTest PRIVATE cxx_std_20)
@@ -549,6 +551,27 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT FONT TEST =====
+# SetFontSize / SetStyle on a text field invalidate its layout and redraw it,
+# headless, through a probe subclass.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputFontTest...")
+    add_executable(TextInputFontTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputFontTest.cpp
+    )
+    target_include_directories(TextInputFontTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputFontTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputFontTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputFontTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputFontTest COMMAND TextInputFontTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputFontTest")
+else()
+    message(STATUS "  TextInputFontTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).
@@ -770,23 +793,30 @@ if(CLIPBOARDDIB_CAIRO_FOUND)
     message(STATUS "    Test registered: ClipboardDibTest")
 endif()
 
-# ===== HTMLREADER TEST =====
-# The HTMLReader parse/CSS/resolve layer is framework-independent, so the
-# test builds straight from the sources without linking UltraCanvas.
-message(STATUS "  Building HTMLReaderTest...")
-
-add_executable(HTMLReaderTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
+# ===== HTMLREADER CORE OBJECTS =====
+# The HTMLReader parse/CSS/resolve layer is framework-independent: std C++
+# plus Trim() from UltraCanvasTextUtils.cpp, which is platform-free too. The
+# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest)
+# link these objects instead of each listing the sources again, so the files
+# compile once and a new HTMLReader source is added in one place.
+add_library(HTMLReaderTestCore OBJECT
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
-    # Trim() lives in UltraCanvasTextUtils.cpp (platform-free); without it
-    # this target fails to link.
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
-target_include_directories(HTMLReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(HTMLReaderTest PRIVATE cxx_std_20)
+target_include_directories(HTMLReaderTestCore PUBLIC ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HTMLReaderTestCore PUBLIC cxx_std_20)
+
+# ===== HTMLREADER TEST =====
+# Parser, CSS, selector matcher and style resolver, without the UI library.
+message(STATUS "  Building HTMLReaderTest...")
+
+add_executable(HTMLReaderTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
+)
+target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore)
 set_target_properties(HTMLReaderTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -818,6 +848,27 @@ add_test(NAME EBookArchiveTest COMMAND EBookArchiveTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: EBookArchiveTest")
 
+# ===== ZIP PACKAGE TEST =====
+# UCZipPackageReader / Writer on a Thai-and-emoji path. Needs only the module
+# and miniz; Windows CI compiles the same three files by hand.
+message(STATUS "  Building ZipPackageTest...")
+add_executable(ZipPackageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZipPackageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasZipPackage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(ZipPackageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_features(ZipPackageTest PRIVATE cxx_std_20)
+set_target_properties(ZipPackageTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ZipPackageTest COMMAND ZipPackageTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ZipPackageTest")
+
 # ===== EBOOK ENGINE TEST =====
 message(STATUS "  Building EBookEngineTest...")
 
@@ -829,19 +880,13 @@ add_executable(EBookEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/TXTEngine.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/IEBookEngine.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EBookArchive.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
-    # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
+target_link_libraries(EBookEngineTest PRIVATE HTMLReaderTestCore)
 target_include_directories(EBookEngineTest PRIVATE
-    ${ULTRACANVAS_INCLUDE_DIR}
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
 )
-target_compile_features(EBookEngineTest PRIVATE cxx_std_20)
 set_target_properties(EBookEngineTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -960,16 +1005,10 @@ message(STATUS "  Building HTMLRichImportTest...")
 add_executable(HTMLRichImportTest
     ${CMAKE_CURRENT_SOURCE_DIR}/HTMLRichImportTest.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
-    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
 )
-target_include_directories(HTMLRichImportTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(HTMLRichImportTest PRIVATE cxx_std_20)
+target_link_libraries(HTMLRichImportTest PRIVATE HTMLReaderTestCore)
 set_target_properties(HTMLRichImportTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -1006,6 +1045,11 @@ if(TINYXML2_TEST_FOUND)
         ${TINYXML2_TEST_INCLUDE_DIRS}
     )
     target_link_libraries(LaTeXDocumentTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    # The shipped corpus, so a run from any directory finds it (ctest also
+    # passes it explicitly).
+    target_compile_definitions(LaTeXDocumentTest PRIVATE
+        LATEXTEST_CORPUS_DIR="${ULTRACANVAS_ROOT}/media/LaTex"
+    )
     target_compile_features(LaTeXDocumentTest PRIVATE cxx_std_20)
     set_target_properties(LaTeXDocumentTest PROPERTIES
         OUTPUT_NAME "LaTeXDocumentTest"
@@ -3341,6 +3385,28 @@ message(STATUS "")
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
 # under the preview kind of its media category - a format the file manager can
+# ===== SPREADSHEET ODS FILE TEST =====
+# SaveODS / LoadODS on a Thai-and-emoji path: the ODS reader opens the package
+# by its UTF-8 name and lets go of it afterwards. Needs the full library (the
+# spreadsheet element).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetOdsFileTest...")
+    add_executable(SpreadsheetOdsFileTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetOdsFileTest.cpp
+    )
+    target_include_directories(SpreadsheetOdsFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetOdsFileTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetOdsFileTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetOdsFileTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetOdsFileTest COMMAND SpreadsheetOdsFileTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SpreadsheetOdsFileTest")
+else()
+    message(STATUS "  SpreadsheetOdsFileTest skipped (UltraCanvas target not present)")
+endif()
+
 # open but cannot list is one whose thumbnail nobody can switch on.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerFormatListTest...")

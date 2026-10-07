@@ -13,7 +13,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.7.0
+**Version:** 1.7.1
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -65,8 +65,12 @@ derived to fill the available width.
 ### Construction & Factory
 
 ```cpp
-UltraCanvasAlbum(const std::string& id, float x, float y, float w, float h);
+UltraCanvasAlbum(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasAlbum(const std::string& identifier, float w, float h);
+explicit UltraCanvasAlbum(const std::string& identifier);
+```
 
+```cpp
 auto album = CreateAlbum("media-album", 20, 80, 940, 560);
 ```
 
@@ -78,6 +82,9 @@ struct AlbumItem {
     std::string thumbnailPath;  // explicit cover / poster (falls back to mediaPath)
     std::string title;          // primary caption line
     std::string subtitle;       // secondary line (artist, date, duration, ...)
+    std::string description;    // longer related text (full-size view)
+    std::string link;           // optional link target for the subtitle row
+    std::string linkIconPath;   // optional icon drawn before the link text
     std::string id;             // optional stable id for callbacks
     AlbumMediaType mediaType = AlbumMediaType::Photo;  // Photo | Video | Music
     Point2Df focusPoint{0.5f, 0.5f};   // 0..1 crop / zoom focus
@@ -85,8 +92,12 @@ struct AlbumItem {
     bool     featured = false;         // promoted in the Mosaic layout
 };
 
-album->AddItem({ "media/images/landscape.jpg", "", "Mountain Dawn",
-                 "Photo · 2024", "", AlbumMediaType::Photo });
+AlbumItem photo;
+photo.mediaPath = "media/images/landscape.jpg";
+photo.title     = "Mountain Dawn";
+photo.subtitle  = "Photo · 2024";
+photo.mediaType = AlbumMediaType::Photo;
+album->AddItem(photo);
 ```
 
 Video and music items draw `thumbnailPath` (cover art / poster frame) plus a
@@ -323,7 +334,7 @@ yt.linkIconPath = "media/icons/youtube.svg";
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){
-    OpenInBrowser(album->GetItems()[i].link);
+    OpenURL(album->GetItems()[i].link);    // UltraCanvasUtils.h
 };
 ```
 

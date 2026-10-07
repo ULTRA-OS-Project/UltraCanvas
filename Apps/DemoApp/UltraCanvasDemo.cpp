@@ -456,7 +456,7 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         };
 
-        categoryContainer->layout.SetFlexColumn();
+        categoryContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         // flex-grow fills the main (vertical) axis; align-self: stretch fills the
         // cross (horizontal) axis. justify-self is grid-only — adding it here would
         // convert layoutItem into a GridItem and discard the flex props above.
@@ -484,7 +484,7 @@ namespace UltraCanvas {
         // example content. Shrink is the default, but make it explicit so a future
         // edit can't silently drop it and reintroduce the overflow.
         displayContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        displayContainer->layout.SetFlexColumn();
+        displayContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         mainContainer->AddChild(displayContainer);
 
         mainWindow->layout
@@ -495,7 +495,9 @@ namespace UltraCanvas {
              // (otherwise Auto would collapse the sidebar to ~4 tree rows).
              // Row 1 = the 25-pixel status bar at the bottom.
              .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
-                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}});
+                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}})
+            .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+            .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
         categoryContainer->layoutItem.SetGridRowColSimplified(0, 0);
         mainWindow->AddChild(categoryContainer);
@@ -758,6 +760,21 @@ namespace UltraCanvas {
                 .AddVariant("alert", "Warning / Error")
                 .AddVariant("alert", "Confirm (Yes/No)")
                 .AddVariant("alert", "Rich (details / buttons)");
+
+        // The non-modal sibling of the Alert: how ULTRA OS shows a
+        // notification (the element lives with the message centre in the
+        // UltraMessageCenter target; without it the page says so).
+        basicBuilder.AddItem("notificationtoast", "Notification Toast",
+                             "Non-modal notifications in a screen corner, never focused, gone by themselves "
+                             "- how ULTRA OS shows every application's notification",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNotificationToastExamples(); },
+                             "DemoApp/UltraCanvasNotificationToastExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasNotificationToast.md")
+                .AddVariant("notificationtoast", "The element")
+                .AddVariant("notificationtoast", "On the screen (host)")
+                .AddVariant("notificationtoast", "Updates in place")
+                .AddVariant("notificationtoast", "Toast or Alert?");
 
         basicBuilder.AddItem("pagination", "Pagination",
                              "Page-navigation strip with ellipsis windowing, compact and simple modes",

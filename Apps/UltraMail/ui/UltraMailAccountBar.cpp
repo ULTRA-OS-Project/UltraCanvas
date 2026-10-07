@@ -113,7 +113,8 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
     auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(2)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeHeading));
     auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                   Theme::kSizeSecondary, Theme::kTextSecondary);
@@ -171,7 +172,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         head->AddChild(Theme::MakeAvatar("acctAvatar_" + acc, ProviderLetter(account.email),
                                          kTileAvatar));
         auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
-        who->layout.SetFlexColumn().SetFlexGap(1);
+        who->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeBody));
         who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                       Theme::kSizeSmall, Theme::kTextSecondary));

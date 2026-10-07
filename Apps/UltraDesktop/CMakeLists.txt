@@ -43,6 +43,13 @@ if(TARGET fmt::fmt)
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(UltraDesktop PRIVATE Threads::Threads)
+# The desktop draws the notifications nothing else draws (on ULTRA OS,
+# UltraMessage itself is the notification server): the toast host lives with
+# the message centre in UltraMessageCenter.
+if(TARGET UltraMessageCenter)
+    target_link_libraries(UltraDesktop PRIVATE UltraMessageCenter UltraMessage)
+    target_compile_definitions(UltraDesktop PRIVATE ULTRADESKTOP_HAVE_NOTIFICATIONS=1)
+endif()
 target_compile_features(UltraDesktop PRIVATE cxx_std_20)
 
 # UltraDesktop versions itself, independently of the framework: the number

@@ -8,7 +8,9 @@ Quick pointers:
 - Module registry: `Masterfile_modules.md`
 - Component docs (consult before using any widget): `Docs/UltraCanvas/`
 - LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`)
-- After editing docs, run `python3 scripts/generate_llms_txt.py`
+- After editing docs, run `python3 scripts/generate_llms_txt.py`; after
+  editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
+  compiles its C++ against the headers
 - File paths are UTF-8 in every application: convert with `PathToUtf8` /
   `PathFromUtf8` (`UltraCanvasPathUtf8.h`), never `p.string()` or
   `fs::path(str)` — see *Core conventions* in `AGENTS.md`

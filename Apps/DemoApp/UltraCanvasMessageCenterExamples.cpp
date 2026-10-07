@@ -95,6 +95,9 @@ struct DemoSource {
         n.actions = std::move(actions);
         UltraMsgSendOptions options;
         if (urgency == "critical") options.flags |= UltraMsgFlag_Urgent;
+        // Sample traffic for the page, not news: Silent keeps it off the
+        // desktop's screen, where the broker would otherwise present it.
+        options.flags |= UltraMsgFlag_Silent;
         UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n), options);
     }
 

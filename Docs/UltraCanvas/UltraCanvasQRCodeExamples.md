@@ -4,7 +4,7 @@
 
 `UltraCanvasQRCode` is a 2D QR code widget that encodes a string into a QR matrix and renders it through the standard `IRenderContext`. It supports all four error-correction levels, version 1–40 matrices, fully customizable module/finder shapes, solid colours and gradients, an embedded centre logo with a quiet zone, and export to SVG or raster image formats. Generation is provided by free functions in the `QRCodeUtils` namespace, and (when a decoder backend such as libzbar is available) images can be scanned back into their data.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/Plugins/QRCode/UltraCanvasQRCode.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -181,24 +181,48 @@ bool ExportToImage(const std::string& filename,
 
 ### Free Functions — `QRCodeUtils`
 
+The free functions live in the nested namespace `UltraCanvas::QRCodeUtils`:
+
 ```cpp
-QRCodeData GenerateQRCode(const std::string& text,
-                          QRErrorCorrection ecl = QRErrorCorrection::Medium);
-QRCodeData GenerateQRCode(const std::string& text,
-                          const QRGeneratorConfig& config);
+namespace QRCodeUtils {   // inside namespace UltraCanvas
 
-bool ExportToSVG(const QRCodeData& data,
-                 const std::string& filename,
-                 int moduleSize = 10,
-                 const Color& foreground = Colors::Black,
-                 const Color& background = Colors::White);
+    QRCodeData GenerateQRCode(const std::string& text,
+                              QRErrorCorrection ecl = QRErrorCorrection::Medium);
+    QRCodeData GenerateQRCode(const std::string& text,
+                              const QRGeneratorConfig& config);
 
-std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
-                                         std::string* errorMessage = nullptr);
-bool IsDecoderAvailable();
+    bool ExportToSVG(const QRCodeData& data,
+                     const std::string& filename,
+                     int moduleSize = 10,
+                     const Color& foreground = Colors::Black,
+                     const Color& background = Colors::White);
+
+    // Decoding from an image file
+    std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
+                                             std::string* errorMessage = nullptr);
+
+    // Decoding from pixels already in memory (e.g. camera frames)
+    enum class QRPixelFormat {
+        Grayscale8,   // 1 byte per pixel
+        RGB24,        // 3 bytes, R G B
+        RGBA32,       // 4 bytes, R G B A  (what UCVideoFrame carries)
+        BGRA32        // 4 bytes, B G R A
+    };
+    std::vector<QRScanResult> ScanQRCodeImage(const std::uint8_t* pixels,
+                                              int width, int height,
+                                              int stride,           // 0 = tightly packed rows
+                                              QRPixelFormat format,
+                                              std::string* errorMessage = nullptr);
+    std::vector<QRScanResult> ScanQRCodeImage(const UCVideoFrame& frame,
+                                              std::string* errorMessage = nullptr);
+
+    bool IsDecoderAvailable();
+}
 ```
 
-Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+`ScanQRCodeImage` exists so that camera frames can be scanned without writing
+them to disk; it reads the buffer only. Both scanners (`ScanQRCodeFile` and
+`ScanQRCodeImage`) come back empty in two
 distinct ways. An image with no code in it returns an empty vector and leaves
 `errorMessage` untouched; a scan that could not run at all — an unreadable
 file, no decoder built in, bad arguments — returns an empty vector with the
@@ -206,25 +230,28 @@ reason in `errorMessage`. Test the vector to report "nothing found" and the
 string to report a failure; never match the string's text.
 
 ```cpp
-// Structured-content builders
-std::string CreateURLContent(const std::string& url);
-std::string CreateEmailContent(const std::string& email,
-                               const std::string& subject = "",
-                               const std::string& body    = "");
-std::string CreateSMSContent(const std::string& phone,
-                             const std::string& message = "");
-std::string CreateTelContent(const std::string& phone);
-std::string CreateWiFiContent(const std::string& ssid,
-                              const std::string& password,
-                              const std::string& security = "WPA",
-                              bool hidden = false);
-std::string CreateVCardContent(const std::string& name,
-                               const std::string& phone,
-                               const std::string& email = "");
-std::string CreateGeoContent(double latitude, double longitude);
+namespace QRCodeUtils {   // inside namespace UltraCanvas
 
-bool IsNumeric(const std::string& text);
-bool IsAlphanumeric(const std::string& text);
+    // Structured-content builders
+    std::string CreateURLContent(const std::string& url);
+    std::string CreateEmailContent(const std::string& email,
+                                   const std::string& subject = "",
+                                   const std::string& body    = "");
+    std::string CreateSMSContent(const std::string& phone,
+                                 const std::string& message = "");
+    std::string CreateTelContent(const std::string& phone);
+    std::string CreateWiFiContent(const std::string& ssid,
+                                  const std::string& password,
+                                  const std::string& security = "WPA",
+                                  bool hidden = false);
+    std::string CreateVCardContent(const std::string& name,
+                                   const std::string& phone,
+                                   const std::string& email = "");
+    std::string CreateGeoContent(double latitude, double longitude);
+
+    bool IsNumeric(const std::string& text);
+    bool IsAlphanumeric(const std::string& text);
+}
 ```
 
 ## Examples

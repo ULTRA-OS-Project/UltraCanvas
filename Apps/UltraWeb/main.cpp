@@ -9,7 +9,7 @@
 //                               what it built or why it failed, exit 0 / 1
 //   UltraWeb --version | --help
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -59,7 +59,10 @@ void PrintUsage() {
 }
 
 // --check: the same loader and guest as the window, with a root container
-// that is never shown and deferred work run immediately.
+// that is never shown and deferred work run immediately. Storage starts
+// empty and stays in memory, timers are accepted and never fire, and
+// fetch and the clipboard are not there (UC_ERR_DENIED): uc_main runs as
+// it would on a first visit, offline.
 int RunCheck(const std::string& address) {
     UltraWeb::LoadedApp app = UltraWeb::UltraWebLoader::LoadOffline(address);
     if (!app.ok) {
@@ -72,6 +75,11 @@ int RunCheck(const std::string& address) {
     std::string failure;
     options.onFailure = [&failure](const std::string& message) { failure = message; };
     options.defer = [](std::function<void()> task) { task(); };
+    options.address = app.address;
+    options.services.storage = std::make_shared<UltraWeb::UltraWebStorage>(UltraWeb::UltraWebStorage::PartitionFor(app.address));
+    uint32_t nextTimer = 0;
+    options.services.startTimer = [&nextTimer](uint32_t, bool, std::function<void()>) { return ++nextTimer; };
+    options.services.stopTimer = [](uint32_t) {};
     std::string error;
     auto guest = UltraWeb::UltraWebGuest::Start(app.module, root, std::move(options), error);
     if (!guest) {

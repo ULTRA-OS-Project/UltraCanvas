@@ -84,7 +84,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     CreateDialog(cfg);
 
     // Root flex column.
-    layout.SetFlexColumn().SetFlexGap(8);
+    layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     SetPadding(16);
 
     // ===== Endpoint row: picker (grows) + Settings + New chat =====

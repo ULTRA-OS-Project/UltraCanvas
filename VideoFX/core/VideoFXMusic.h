@@ -2,8 +2,8 @@
 // Internal: the arithmetic of background music - its volume envelope, the
 // ducker that lowers it under the segments' own sound, and the slideshow
 // length that matches a song. Pure C++, no FFmpeg, unit-tested.
-// Version: 0.4.1
-// Last Modified: 2026-10-02
+// Version: 0.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace VideoFX {
 namespace Internal {
@@ -42,6 +43,20 @@ private:
     double gain = 1.0;
     double quiet = 1e9;                           // seconds since the sound was last present
 };
+
+// Seconds two songs of `first` and `second` seconds blend over: the asked
+// `crossfade`, but at most half of either song (a length <= 0 is unknown and
+// does not limit it), so a short song is never swallowed by its neighbours
+double CrossfadeSeconds(double crossfade, double first, double second);
+
+// How long a song list plays once through: the songs' lengths minus the
+// overlaps between them (`start` is cut from the first song). 0 when any
+// length is unknown.
+double PlaylistSeconds(const std::vector<double>& lengths, double crossfade, double start);
+
+// Gains of the outgoing and incoming song at `x` (0..1) through a crossfade:
+// equal power, so the loudness holds steady through the blend
+void CrossfadeGains(double x, double& outgoing, double& incoming);
 
 // Seconds per image so `images` photos joined by `transition`-second overlaps
 // last `musicSeconds`: n*s - (n-1)*t = music. At least 1 s and twice the

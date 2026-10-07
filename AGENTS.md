@@ -62,6 +62,25 @@ before adding cross-module code.
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
   a value, it is an element: use the framework's, or add one.
+- **HTML, CSS and HTML entities are read through the HTMLReader module
+  (`UltraCanvas/{include,core}/HTMLReader/`, always built) and nowhere else.**
+  It has the parser and DOM (`HTML::Parser`, `HTML::Document`), the CSS
+  parser with selector matching for any tree (`HTML::StyleSheet`,
+  `HTML::MatchingRules<Traits>`), the cascade (`HTML::StyleResolver`), the
+  builder of native element trees (`HTML::ElementBuilder`), the importer into
+  an editable `UCRichDocument` (`ImportHTMLToRichDocument`), and the two
+  helpers that keep being rewritten: `HTML::DecodeEntities` and
+  `HTML::ExtractPlainText`. Do not write another tag stripper, entity table,
+  `style=""` splitter or selector matcher — seven had accumulated by
+  2026-10, in the Filer preview, two places in UltraMail, EmailCleaner, the
+  rich document's paste path and two SVG readers, each with a different
+  handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
+  supplying a ten-line Traits type, not a matcher. What the module lacks is
+  added to it, so the next caller finds it. `scripts/check_html_reuse.py`
+  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  lists the sites that predate the rule and only shrinks. A site that must
+  stay says why with `// html-reuse-exempt: <why>`. Doc:
+  `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
   (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
 - **Platform separation:** platform-specific code goes only under
@@ -126,8 +145,10 @@ before adding cross-module code.
   tell a string from a path - so a class member declared in its header and a
   call to a function declared as returning `std::string`
   (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
-  whole. A string it still cannot see the type of (an `auto`, a member of a
-  class declared further away) is review's to catch.
+  whole. A member access (`env.accountId`) is looked up through the whole
+  include chain, since the struct is often a header or two further down. A
+  string it still cannot see the type of (an `auto`, a member declared two
+  different ways, a type from outside the repository) is review's to catch.
   A string that is not UTF-8 to begin with is not fixed by wrapping it in
   `PathFromUtf8`. The environment is the common case: Windows keeps the
   profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
@@ -265,6 +286,26 @@ DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
+without most of the libraries CI installs, and CMake leaves a missing optional
+library out without a word - so `.claude/settings.json` also runs
+`.claude/hooks/session-start.sh` on `SessionStart`. In the cloud only
+(`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
+that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
+Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
+builds them from source. Without it, UltraCrypt built without libsodium and
+every credential-vault test failed here while passing in CI, and VideoFX, the
+PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
+were not built at all. A cold container takes about a minute, a warm one a
+fraction of a second; it never blocks the session, and when an install fails
+it says so in one line in the session's context. The services CI starts for
+its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
+tests skip. A test that fails here but passes in CI because a library is
+missing is fixed by adding the package to that list, not by treating the
+failure as expected; re-run `cmake` on a build directory configured before
+the install. To build what CI builds, configure with the options of CI's
+*Configure CMake (macOS/Linux)* step.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -500,10 +541,17 @@ number anywhere else, and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too.
+   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
+   `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
+   entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
+   runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
-   the same change.
+   the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
+   it compiles the doc's C++ against the headers and reports each function,
+   field or signature the headers don't have (Linux, clang++). All
+   `*Examples.md` docs pass it.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and

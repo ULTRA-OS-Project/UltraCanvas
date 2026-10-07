@@ -32,7 +32,7 @@ namespace UltraCanvas {
         gb->SetVisualStyle(st);
         // A flex column, so the options get a gap below the tree (block layout
         // ignores child margins).
-        gb->layout.SetFlex(CSSLayout::FlexDirection::Column);
+        gb->layout.SetFlex(CSSLayout::FlexDirection::Column).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         gb->layout.SetFlexGap(4.0f);
         return gb;
     }

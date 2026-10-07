@@ -307,7 +307,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     gridContainer->layout.SetGrid()
                         .SetGridColumns(cols)
                         .SetGridRows(rows)
-                        .SetGridGap(1);  // 1px gaps act as grid lines via container bg color
+                        .SetGridGap(1)  // 1px gaps act as grid lines via container bg color
+                        .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                        .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
     // ----- Header row -----
     auto addHeaderCell = [&](int col, const std::string &title, TextAlignment align) {

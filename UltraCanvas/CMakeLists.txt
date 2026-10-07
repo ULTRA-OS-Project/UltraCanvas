@@ -596,8 +596,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
-        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
-        # on top of the CSSLayout engine (used by the eBook subsystem).
+        # HTMLReader: the framework's one implementation of reading HTML and
+        # CSS - parser, DOM, CSS parser and selector matcher, cascade,
+        # DOM→element builder on the CSSLayout engine, HTML→UCRichDocument
+        # importer. Always built; the eBook engines, UltraMail and the Vector
+        # plugin's SVG reader use it. Docs/UltraCanvas/UltraCanvasHTMLReader.md.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
@@ -734,7 +737,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyMatrix.cpp
 
-        #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMap.cpp
@@ -2291,7 +2293,7 @@ set_target_properties(WasmHost PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
     include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmtime.cmake")
     if(ULTRACANVAS_WASMTIME_FOUND)
-        target_link_libraries(WasmHost PRIVATE UltraCanvas::wasmtime)
+        target_link_libraries(WasmHost PRIVATE ${ULTRACANVAS_WASMTIME_PRELINK} UltraCanvas::wasmtime)
         target_compile_definitions(WasmHost PRIVATE ULTRACANVAS_HAS_WASMTIME=1)
         message(STATUS "  [✓] WasmHost - ENABLED (wasmtime ${ULTRACANVAS_WASMTIME_VERSION})")
     else()
@@ -2682,6 +2684,69 @@ if(ULTRACANVAS_ENABLE_NET)
     # directly - on Linux the UltraNetPluginHostImports test does, and on
     # Windows it also reads each DLL's import table, which catches a plug-in
     # that was given a core import library to link against.
+    #
+    # Linking the core *statically* into a plug-in is the other way to get
+    # it wrong, and neither check sees it: nothing is left undefined and
+    # nothing is imported - the plug-in carries its own copy of the core, with
+    # its own globals (the plug-in registry, the HTTP session pool, the TLS
+    # trust store), next to the host's. So a plug-in target that links a core
+    # library, directly or through another target, stops the configure here.
+    function(_ultranet_plugin_links_core target out)
+        set(_core ${ULTRACANVAS_LIB_NAME} UltraNet UltraCanvasTextUtils UltraCanvasAllFormats)
+        set(_queue ${target})
+        set(_seen "")
+        set(_found "")
+        while(_queue)
+            list(POP_FRONT _queue _t)
+            if(_t IN_LIST _seen OR NOT TARGET ${_t})
+                continue()
+            endif()
+            list(APPEND _seen ${_t})
+            get_target_property(_aliased ${_t} ALIASED_TARGET)
+            if(_aliased)
+                set(_t ${_aliased})
+            endif()
+            set(_libs "")
+            foreach(_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+                get_target_property(_v ${_t} ${_prop})
+                if(_v)
+                    list(APPEND _libs ${_v})
+                endif()
+            endforeach()
+            foreach(_lib IN LISTS _libs)
+                # $<LINK_ONLY:x> and similar wrappers name the target last
+                string(REGEX REPLACE "^\\$<[A-Z_]+:(.*)>$" "\\1" _lib "${_lib}")
+                if(_lib IN_LIST _core)
+                    list(APPEND _found "${_t} -> ${_lib}")
+                elseif(TARGET ${_lib})
+                    list(APPEND _queue ${_lib})
+                endif()
+            endforeach()
+        endwhile()
+        set(${out} "${_found}" PARENT_SCOPE)
+    endfunction()
+    get_property(_ultranet_dirs DIRECTORY PROPERTY SUBDIRECTORIES)
+    foreach(_dir IN LISTS _ultranet_dirs)
+        if(NOT _dir MATCHES "/Plugins/UltraNet/")
+            continue()
+        endif()
+        get_property(_targets DIRECTORY ${_dir} PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_plugin IN LISTS _targets)
+            get_target_property(_type ${_plugin} TYPE)
+            if(NOT _type STREQUAL "MODULE_LIBRARY" AND NOT _type STREQUAL "SHARED_LIBRARY")
+                continue()
+            endif()
+            _ultranet_plugin_links_core(${_plugin} _links)
+            if(_links)
+                message(FATAL_ERROR
+                    "UltraNet plug-in ${_plugin} links the core (${_links}). A plug-in "
+                    "reaches the core only through the UltraNetPluginHost table "
+                    "(Plugins/UltraNet/common/UltraNetPluginHostShim.cpp); linking it "
+                    "gives the plug-in a second copy of the core's state. Add what it "
+                    "needs to the host table instead.")
+            endif()
+        endforeach()
+    endforeach()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()
@@ -2916,7 +2981,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_GIO_FOUND)
             set(_um_gio_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp)
         endif()
     endif()
     # The Windows notification listener adapter reads the Action Center
@@ -2924,6 +2990,10 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     # package or the Windows SDK). Skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
+        # The presenter puts applications' notifications on screen as tray
+        # balloons (Shell_NotifyIconW), which every Windows build has.
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
         set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
         if(MSVC)
@@ -2938,6 +3008,18 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             list(APPEND ULTRAMESSAGE_SOURCES
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
+    endif()
+    # The macOS presenter puts applications' notifications in Notification
+    # Center (UserNotifications), or shows them through osascript where the
+    # broker runs outside an application bundle; every macOS build has it.
+    set(_um_macos_presenter FALSE)
+    if(APPLE AND NOT IOS)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND ULTRAMESSAGE_SOURCES ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
@@ -2965,6 +3047,13 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PRIVATE uc-yyjson)
     endif()
     target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    if(WIN32)
+        target_link_libraries(UltraMessage PUBLIC shell32 user32)
+    endif()
+    if(_um_macos_presenter)
+        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+    endif()
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
         # itself and takes gio and the switch from this target.
@@ -2972,7 +3061,7 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
         target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
-        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter and presenter via gio ${UM_GIO_VERSION})")
     elseif(_um_winrt_found)
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
         if(MSVC)
@@ -2983,9 +3072,11 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             # ole32, BSTRs in oleaut32.
             target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+    elseif(_um_macos_presenter)
+        message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()
@@ -3002,7 +3093,8 @@ endif()
 # it is its own target rather than part of either.
 if(TARGET UltraMessage)
     add_library(UltraMessageCenter STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp)
     set_target_properties(UltraMessageCenter PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessagecenter")

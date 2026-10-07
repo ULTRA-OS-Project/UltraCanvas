@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasArcDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.2
+**Version:** 1.0.3
 
 ## Class Hierarchy
 
@@ -193,7 +193,7 @@ struct ArcDiagramStyle {
 
 ```cpp
 UltraCanvasArcDiagram(const std::string& id,
-                      long x, long y, long w, long h);
+                      float x, float y, float w, float h);
 ```
 
 ### Factory Function
@@ -201,7 +201,7 @@ UltraCanvasArcDiagram(const std::string& id,
 ```cpp
 std::shared_ptr<UltraCanvasArcDiagram> CreateArcDiagram(
         const std::string& id,
-        long x, long y, long width, long height);
+        float x, float y, float width, float height);
 ```
 
 ### Node API
