@@ -2143,8 +2143,11 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom and one-call slideshows,
-background music (fades, looping, ducking under the segments' own sound),
+frame, still images with sub-pixel pan and zoom (keeping given faces in
+shot) and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound,
+song lists crossfading into each other), beat detection and slideshows
+changing on the beat,
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
@@ -2158,7 +2161,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
-  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXBeatInfo`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2169,7 +2174,7 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
-  `VideoFX_GenerateTestClip`
+  `VideoFX_DetectBeats`, `VideoFX_GenerateTestClip`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2191,8 +2196,12 @@ automatically (VideoToolbox, Media Foundation), project files.
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
-  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
-  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
+  MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
+  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
+  FocusBounds, FitMotionToFocus, KeepFocusInView}`
+  (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
+  have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -74563,6 +74572,40 @@ at sub-pixel positions, so the camera glides — without the stepping FFmpeg's
 own `zoompan` shows. A large photo is shrunk once to what the closest zoom
 needs, and each photo is loaded only when its segment plays.
 
+**Keeping faces in shot.** A pan or a zoom can carry a face out of frame —
+a zoom into the middle of a group photo, a pan down a portrait that crops
+heads off. `keepInView` lists the regions that must stay in shot, as
+fractions of the photo as it is shown (after its EXIF rotation):
+
+```cpp
+VideoFXSegment photo = VideoFXSegment::FromImage("family.jpg", 5.0);
+photo.keepInView = { VideoFXRect::FromPixels(1210, 380, 240, 300, 4000, 3000),   // a face, in pixels
+                     VideoFXRect::Make(0.62, 0.15, 0.06, 0.09) };               // or as fractions
+```
+
+The move keeps its character but is fitted around them. The zoom goes no
+closer than the view that holds every region, with 15 % headroom round each,
+and the pan is narrowed so it stays around them. Every frame is then slid,
+never resized, to hold them, so the faces stay in shot through the whole move
+and not just at its ends. A `Still` photo stays still but looks at them —
+the band of a tall photo a `Cover` crop shows is the one with the faces.
+
+VideoFX does not find faces itself. An application plugs its own detector
+into the slideshow: UltraAI's vision analyser (`VisionTask::FaceDetection`),
+the operating system's (Vision on macOS, `Windows.Media.FaceAnalysis`), or a
+tap in its own UI. It is asked once per photo that has no regions given:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.findKeepInView = [&](const VideoFXFrame& photo, size_t index) {
+    std::vector<VideoFXRect> faces;
+    for (const auto& box : myDetector.Faces(photo.pixels.data(), photo.width, photo.height))
+        faces.push_back(VideoFXRect::FromPixels(box.x, box.y, box.w, box.h, photo.width, photo.height));
+    return faces;
+};
+// or, known in advance: options.keepInView = { {faceA}, {}, {faceB, faceC} };
+```
+
 **A slideshow in one call:**
 
 ```cpp
@@ -74600,9 +74643,11 @@ VideoFX_Export(timeline, "holiday.mp4", settings);
 | Field | Default | Meaning |
 |---|---|---|
 | `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `playlist` | — | Further songs, played after `path` in order (see *Song lists* below) |
+| `crossfade` | 3 s | Seconds each song blends into the next, 0..30; 0 = back to back |
 | `volume` | 0.8 | Linear gain, 0..4 |
-| `start` | 0 | Seconds into the song to begin at |
-| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `start` | 0 | Seconds into the first song to begin at |
+| `loop` | true | Repeat music shorter than the video (a list from its first song); `false` = silence after it ends |
 | `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
 | `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
 | `duckingThresholdDb` | −36.5 | The segments' sound counts as present above this RMS level, dBFS, −90..0 |
@@ -74649,6 +74694,30 @@ settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
 `videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
 values refine it whichever comes first on the command line.
 
+**Song lists.** Several songs play one after another, each **crossfading**
+into the next: over the last `crossfade` seconds of a song it fades out while
+the next one fades in, so there is no hard cut and no gap of silence.
+
+```
+Song A  ██████████████▓▓▒▒░░
+Song B                ░░▒▒▓▓██████████████
+                      └─ 3 s ─┘
+```
+
+```cpp
+settings.music = VideoFXMusic::FromFiles({"summer.mp3", "beach.mp3", "sunset.mp3"});
+settings.music.crossfade = 4.0;       // seconds of overlap between songs
+```
+
+The blend is equal-power (cosine / sine gains), so the loudness holds steady
+through it. A song shorter than twice the crossfade gets a shorter one — at
+most half of either song — so no song is swallowed by its neighbours. A
+looping list crossfades from its last song back into its first, and a single
+looping song crossfades into its own start; set `crossfade = 0` for the old
+back-to-back joins. Fades, volume and ducking apply to the whole bed, as for
+one song. `videofx` takes a list as repeated `--music FILE` and the overlap
+as `--music-crossfade S`.
+
 **Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
 `VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
 photo so the show ends with it:
@@ -74659,6 +74728,46 @@ options.music = VideoFXMusic::FromFile("song.mp3");
 options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
 VideoFX_CreateSlideshow(photos, "show.mp4", options);
 ```
+
+With a song list the show lasts as long as the list plays once: the songs'
+lengths minus the crossfades between them.
+
+**On the beat.** `beatSync` moves every change — the cut, or the middle of a
+transition — onto a beat of the music: the beat nearest `secondsPerImage`
+after the change before, never less than a second (or two transitions)
+later. `beatsPerImage` instead gives every image exactly that many beats;
+4 is one bar of a song in 4/4. With a song list the beats come from each
+song where it plays, handing over in the middle of each crossfade.
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.beatSync = true;              // changes on the beat, about every 4 s
+options.beatsPerImage = 8;            // or: exactly two bars per photo
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+The beat finder is VideoFX's own and needs nothing beyond FFmpeg to decode.
+It reads the sound's spectral flux (how sharply the spectrum rises — drum
+hits, plucked notes), takes the tempo from the strongest repetition between
+40 and 240 BPM (weighted towards 120 so a song is not read at half or double
+speed), and picks the chain of onsets that best fits that tempo. It is tuned
+for music with a steady pulse; for speech, noise or a held chord it reports
+no beat, and the slideshow falls back to plain `secondsPerImage`.
+
+`VideoFX_DetectBeats` gives the analysis itself:
+
+```cpp
+VideoFXBeatInfo beats;
+if (VideoFX_DetectBeats("song.mp3", beats) == VideoFXResult::Ok && beats.HasBeat())
+    std::printf("%.1f BPM, first beat at %.2f s\n", beats.bpm, beats.beats.front());
+```
+
+| `VideoFXBeatInfo` | Meaning |
+|---|---|
+| `bpm` | Tempo in beats per minute; 0 = no steady beat |
+| `confidence` | 0..1, how clearly the sound repeats at that tempo |
+| `beats` | Beat times in seconds from the start of the file |
 
 Sound-only outputs work too: photos plus music into `.mp3` is a valid,
 correctly timed (if unusual) export, and so is music under silent clips.
@@ -74892,6 +75001,11 @@ videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --cap
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4 --fit-music
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
+videofx beats song.mp3                                   # tempo and beat times
+videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -74926,6 +75040,9 @@ generates its own clips, so it needs no media files.
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
 | 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3b | Song lists, each song crossfading into the next | **Done** |
+| 3c | Beat detection; slideshows changing on the beat | **Done** |
+| 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
