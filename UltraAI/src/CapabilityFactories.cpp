@@ -13,6 +13,7 @@
 #include "UltraAIImageGen.h"
 #include "UltraAIVisionAnalyzer.h"
 #include "UltraAITranslator.h"
+#include "UltraAITextLLMTranslator.h"
 #include "UltraAIVideoGen.h"
 #include "UltraAIMusicGen.h"
 #include "UltraAICodeAssist.h"
@@ -295,6 +296,18 @@ Registry<ITranslator, TranslatorConfig>& TrReg() {
                 };
             }
 #endif
+            // Every text-LLM provider translates through the text-LLM
+            // translator (UltraAITextLLMTranslator.h), under its own id, so
+            // "anthropic", "qwen" or "llama-cpp" name a translator as they
+            // name a chat model. Re-scanned on every call so a provider
+            // registered at runtime appears too; the mock keeps its own
+            // translator, and an id registered explicitly is never replaced.
+            for (const std::string& id : ListTextLLMProviders()) {
+                if (id == "mock" || r.providers.count(id)) continue;
+                r.providers[id] = [](const TranslatorConfig& cfg, Error* err) {
+                    return CreateTextLLMTranslator(cfg, err);
+                };
+            }
         };
     });
     return r;
