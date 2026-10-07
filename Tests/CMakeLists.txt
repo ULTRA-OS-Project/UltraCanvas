@@ -634,6 +634,27 @@ else()
     message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== IMAGE AND RADIO BEHAVIOUR TEST =====
+# The image element's error and tint, and radio groups that free their
+# buttons, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageAndRadioBehaviourTest...")
+    add_executable(ImageAndRadioBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageAndRadioBehaviourTest.cpp
+    )
+    target_include_directories(ImageAndRadioBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageAndRadioBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageAndRadioBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(ImageAndRadioBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageAndRadioBehaviourTest COMMAND ImageAndRadioBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageAndRadioBehaviourTest")
+else()
+    message(STATUS "  ImageAndRadioBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).
