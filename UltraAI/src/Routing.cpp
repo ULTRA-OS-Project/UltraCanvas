@@ -34,6 +34,7 @@ bool Contains(const std::vector<std::string>& registered,
 std::vector<std::string> KnownLocalProviders(const std::string& capability) {
     if (capability == "textllm")      return {"llama-cpp", "qwen"};
     if (capability == "embeddings")   return {"llama-cpp", "qwen"};
+    if (capability == "translator")   return {"llama-cpp", "qwen"};   // text-LLM translator
     if (capability == "speechtotext") return {"whisper-cpp"};
     if (capability == "texttospeech") return {"piper"};
     if (capability == "imagegen")     return {"comfyui", "stable-diffusion-cpp"};

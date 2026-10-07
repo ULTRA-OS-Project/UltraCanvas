@@ -1,7 +1,9 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
+//                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,6 +11,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -57,7 +60,7 @@ namespace UltraCanvas {
         Checkbox,
         Radio,
         Submenu,
-        Input,
+        Input,      // Reserved: no text-input item is implemented, and there is no factory for one
         Custom,
         Header
     };
@@ -90,7 +93,6 @@ namespace UltraCanvas {
         // submenu entry only opens its list.
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
-//        std::function<void(const std::string&)> onTextInput;
 
         // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
         // If subItemsProvider is set, it is invoked each time the submenu opens,
@@ -145,8 +147,6 @@ namespace UltraCanvas {
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback);
 
         bool HasSubmenu() const { return type == MenuItemType::Submenu; }
     };
@@ -214,7 +214,10 @@ namespace UltraCanvas {
         // Submenu
         int submenuDelay = 300;  // milliseconds
 
-        // Animation
+        // Animation. When enabled, a popup or submenu fades its entries in over
+        // animationDuration seconds as it opens; the panel itself (background
+        // and border) appears at once, because popups are composited onto the
+        // window as opaque blocks and cannot fade over what lies beneath.
         bool enableAnimations = false;
         float animationDuration = 0.15f;
 
@@ -267,9 +270,13 @@ namespace UltraCanvas {
         int clampedMenuHeight = 0;
         bool needsScrollbar = false;
 
-        // Animation
+        // Opening fade (MenuStyle::enableAnimations). Progress runs 0 -> 1 over
+        // style.animationDuration from OpenMenu(); 1 means fully drawn. The
+        // timer only asks for repaints while it runs: Render() reads the clock,
+        // so the fade follows real time however late a tick is.
         std::chrono::steady_clock::time_point animationStartTime;
-        float animationProgress = 0.0f;
+        float animationProgress = 1.0f;
+        TimerId animationTimerId = InvalidTimerId;
 
         // Events
     public:
@@ -291,6 +298,7 @@ namespace UltraCanvas {
                 : UltraCanvasMenu(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasMenu() {
+            StopAnimation();   // its timer captures `this`
             CloseAllSubmenus();
         }
 
@@ -448,6 +456,7 @@ namespace UltraCanvas {
         void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
+        void StopAnimation();
     };
 
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
@@ -810,22 +819,5 @@ namespace UltraCanvas {
         item.subItemsProvider = std::move(provider);
         return item;
     }
-
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.onTextInput = callback;
-//        return item;
-//    }
-//
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.font = font;
-//        item.onTextInput = callback;
-//        return item;
-//    }
 
 } // namespace UltraCanvas

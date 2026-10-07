@@ -18,12 +18,13 @@
 // (RFC 6763) uses it: within a label, `\.` is a literal dot, `\\` a literal
 // backslash, `\123` the byte with that decimal value, and `\X` for any other
 // X is just X.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -90,6 +91,20 @@ std::string TxtPair(const std::string& key, const char* value);
 // groups - two or more - collapsed to "::", preferring the leftmost run.
 std::string IPv4ToString(uint32_t networkOrderAddress);
 std::string IPv6ToString(const uint8_t bytes[16]);
+
+// Adds `address` to the "ip" list unless it is there already. IPv4 addresses
+// go ahead of IPv6 ones, so the first entry is the one a caller that takes
+// only one has always got, whichever family answered first.
+void AddAddress(std::vector<std::string>& addresses, const std::string& address);
+
+// A service is answered more than once: Avahi reports it once per interface
+// and per IP version, each with one address, and a printer on both IPv4 and
+// IPv6 is the ordinary case. This folds a later answer into the first one's
+// attributes: every address it brings joins the "ip" list, and a host, port
+// or TXT the first answer lacked is taken from it. What the first answer did
+// say is kept.
+using Attributes = std::map<std::string, std::vector<std::string>>;
+void MergeAnswer(Attributes& into, const Attributes& from);
 
 } // namespace Mdns
 } // namespace UltraCanvas

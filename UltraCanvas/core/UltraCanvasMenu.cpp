@@ -1,7 +1,10 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.10.0 - enableAnimations fades the entries in when a popup opens (the
+//                  progress was computed and never drawn); activating an item
+//                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -17,6 +20,19 @@ namespace UltraCanvas {
 // ===== APPLICATION-WIDE CHECKBOX SHAPE =====
     namespace {
         MenuCheckboxShape g_defaultMenuCheckboxShape = MenuCheckboxShape::Square;
+
+        // Reports an activated item to the application's event queue. A menu
+        // used before the application exists (a test, a tool) has no queue;
+        // its item's callbacks have run already.
+        void PostMenuClick(UltraCanvasUIElement* menu, MenuItemData& item) {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            UCEvent ev;
+            ev.type = UCEventType::MenuClick;
+            ev.targetElement = menu;
+            ev.userDataPtr = &item;
+            app->PushEvent(ev);
+        }
     }
 
     void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape) {
@@ -99,10 +115,12 @@ namespace UltraCanvas {
             }
 
         } else { // submenu or popup
-//            if (style.enableAnimations &&
-//                (currentState == MenuState::Opening || currentState == MenuState::Closing)) {
-//                UpdateAnimation();
-//            }
+            // Opening fade: the entries are drawn as one group and painted at
+            // the animation's progress, over a panel that is drawn in full at
+            // once (see MenuStyle::enableAnimations for why the panel cannot
+            // fade too). Once complete they are drawn directly again.
+            if (style.enableAnimations && animationProgress < 1.0f) UpdateAnimation();
+            const bool fading = style.enableAnimations && animationProgress < 1.0f;
 
             // Shadow draws intentionally outside bounds — must be before clip is set
             if (style.showShadow &&
@@ -131,12 +149,13 @@ namespace UltraCanvas {
                                   finalBounds.width - bw * 2 - sbWidth,
                                   finalBounds.height - bw * 2));
 
+            if (fading) ctx->BeginGroup();
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
                     RenderItem(i, items[i], ctx);
                 }
             }
-
+            if (fading) ctx->EndGroup(animationProgress);
 
             ctx->PopState();  // releases the clip region
 
@@ -956,6 +975,7 @@ namespace UltraCanvas {
         }
         InvalidateLayout();
         scrollAnim.Cancel();
+        StopAnimation();
         scrollOffsetPixels = 0;
         needsScrollbar = false;
         if (onMenuClosed) onMenuClosed();
@@ -1114,11 +1134,9 @@ namespace UltraCanvas {
                 }
                 return true;
 
-//            case UCKeys::Escape:
-//                if (closeByEscapeKey) {
-//                    Hide();
-//                    return true;
-//                }
+            // Escape is not handled here: the application closes the topmost
+            // popup on Escape before the key reaches any element, when its
+            // PopupElementSettings::closeByEscapeKey is set (the default).
 
             default:
                 break;
@@ -1188,11 +1206,7 @@ namespace UltraCanvas {
                 if (item.onClick) {
                     item.onClick();
                 }
-                UCEvent ev;
-                ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
-                ev.userDataPtr = &item;
-                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                PostMenuClick(this, item);
                 break;
             }
 
@@ -1213,11 +1227,7 @@ namespace UltraCanvas {
                 if (item.onToggle) {
                     item.onToggle(item.checked);
                 }
-                UCEvent ev;
-                ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
-                ev.userDataPtr = &item;
-                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                PostMenuClick(this, item);
                 break;
             }
 
@@ -1245,11 +1255,7 @@ namespace UltraCanvas {
                 if (item.onClick) {
                     item.onClick();
                 }
-                UCEvent ev;
-                ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
-                ev.userDataPtr = &item;
-                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                PostMenuClick(this, item);
                 break;
             }
 
@@ -1258,11 +1264,7 @@ namespace UltraCanvas {
                 // already opened the child list, so both stay reachable.
                 if (submenuAction) {
                     item.onClick();
-                    UCEvent ev;
-                    ev.type = UCEventType::MenuClick;
-                    ev.targetElement = this;
-                    ev.userDataPtr = &item;
-                    UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                    PostMenuClick(this, item);
                 } else {
                     OpenSubmenu(index);
                 }
@@ -1443,29 +1445,37 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::StartAnimation() {
+        StopAnimation();
+        if (style.animationDuration <= 0.0f) return;   // nothing to fade: drawn in full
         animationStartTime = std::chrono::steady_clock::now();
         animationProgress = 0.0f;
+        // Repaint about every frame until the fade is complete. Without an
+        // application (headless) there is no timer, and each Render() still
+        // draws the fade as far as the clock has got.
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            animationTimerId = app->StartTimer(16, true, [this](TimerId) {
+                UpdateAnimation();
+                RequestRedraw();
+                if (animationProgress >= 1.0f) StopAnimation();
+            });
+        }
     }
 
     void UltraCanvasMenu::UpdateAnimation() {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - animationStartTime);
-        float elapsedSeconds = elapsed.count() / 1000.0f;
+        if (style.animationDuration <= 0.0f) {
+            animationProgress = 1.0f;
+            return;
+        }
+        const float elapsedSeconds = std::chrono::duration<float>(
+                std::chrono::steady_clock::now() - animationStartTime).count();
+        animationProgress = std::clamp(elapsedSeconds / style.animationDuration, 0.0f, 1.0f);
+    }
 
-        animationProgress = std::min(1.0f, elapsedSeconds / style.animationDuration);
-
-//        if (animationProgress >= 1.0f) {
-//            // Animation complete
-//            if (currentState == MenuState::Opening) {
-//                currentState = MenuState::Visible;
-//            } else if (currentState == MenuState::Closing) {
-//                currentState = MenuState::Hidden;
-//                SetVisible(false);
-//            }
-//        }
-
-        // Apply animation effects (scale, fade, etc.)
-        // This would modify the rendering parameters based on animationProgress
+    void UltraCanvasMenu::StopAnimation() {
+        animationProgress = 1.0f;
+        if (animationTimerId == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(animationTimerId);
+        animationTimerId = InvalidTimerId;
     }
 
     void UltraCanvasMenu::AddItem(const MenuItemData &item) {

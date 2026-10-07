@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.9.0 - notify_new_mail (a notification on screen when new mail arrives)
 // Version: 0.8.0 - fetch_site_icons (website icons of other senders)
 // Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
 // Version: 0.6.0 - list_sort (the message list's order)
@@ -55,6 +56,7 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "notify_new_mail")    notifyNewMail    = ParseBool(value);
         if (key == "fetch_site_icons")   fetchSiteIcons   = ParseBool(value);
         if (key == "remote_images") {
             const std::string v = Trim(value);
@@ -153,6 +155,7 @@ bool Preferences::Save(const std::string& path) const {
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
     file << "list_sort = " << listSort.ToString() << "\n";
     file << "check_mail_every_sec = " << checkMailEverySec << "\n";
+    file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
     return static_cast<bool>(file);
 }
 

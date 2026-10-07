@@ -806,6 +806,14 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
 bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
                                   const UCImageSave::ImageExportOptions* options) {
     if (IsProjectFile(path)) return SaveProject(path, error);
+    // The extension picks the format, so a name without one (saved under
+    // "All files") has none to pick; libvips would only say it is "not a
+    // known file format".
+    if (LowerExt(path).empty()) {
+        error = "The file name has no extension, so there is no format to save it in. "
+                "Add one, such as .png, or choose the file type.";
+        return false;
+    }
 #ifdef HAS_LIBVIPS
     try {
         auto flat = Flatten();

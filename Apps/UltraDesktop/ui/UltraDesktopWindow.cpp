@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.2.0 - the notification toasts (StartNotifications, PlaceNotifications)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -27,6 +28,9 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWaveSeparator.h"
 #include "UltraCanvasWindow.h"
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+#include "Plugins/UltraMessage/UltraCanvasNotificationToast.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -94,6 +98,7 @@ std::string Shorten(const std::string& text, size_t max) {
 UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
+    toasts_.reset();   // its windows, its bus connection
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
     StopDevicePoll();
@@ -129,6 +134,7 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     if (!window_) return false;
 
     BuildLayout();
+    StartNotifications();
 
     // The clipboard history the button shows: recorded here, kept on disk.
     StartClipboardHistory();
@@ -560,6 +566,36 @@ void UltraDesktopWindow::ApplySettings() {
     BuildLayout();
     requestedDesktops_ = 0;
     RefreshDesktops();
+    PlaceNotifications();   // the taskbar may have moved
+}
+
+// ===== NOTIFICATIONS =====
+
+void UltraDesktopWindow::StartNotifications() {
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    // The desktop is the first to start in an ULTRA OS session, so it usually
+    // hosts the UltraMessage broker too - and with it the adapter that serves
+    // org.freedesktop.Notifications for every application.
+    toasts_ = std::make_unique<UltraCanvasNotificationToastHost>();
+    PlaceNotifications();
+    if (!toasts_->Connect()) {
+        debugOutput << "UltraDesktop: notifications are not shown: " << toasts_->LastError() << std::endl;
+    }
+#endif
+}
+
+void UltraDesktopWindow::PlaceNotifications() {
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    if (!toasts_) return;
+    // Top right, beside the right bar, and below the taskbar when it runs
+    // along the top.
+    const TaskbarEdge edge = settings_.taskbarEdge;
+    toasts_->SetCorner(NotificationToastCorner::TopRight);
+    toasts_->SetScreenMargins(edge == TaskbarEdge::Left ? kBarThickness : 0,
+                              edge == TaskbarEdge::Top ? kBarThickness : 0,
+                              kInfoPanelWidth,
+                              edge == TaskbarEdge::Bottom ? kBarThickness : 0);
+#endif
 }
 
 void UltraDesktopWindow::SaveSettings() {

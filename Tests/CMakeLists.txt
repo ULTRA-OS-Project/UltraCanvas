@@ -572,6 +572,89 @@ else()
     message(STATUS "  TextInputFontTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MENU AND TAB BEHAVIOUR TEST =====
+# Menu items, the tabbed container's dropdown search and the text area's
+# cursor setters do what their declarations say, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MenuAndTabBehaviourTest...")
+    add_executable(MenuAndTabBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MenuAndTabBehaviourTest.cpp
+    )
+    target_include_directories(MenuAndTabBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MenuAndTabBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(MenuAndTabBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(MenuAndTabBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MenuAndTabBehaviourTest COMMAND MenuAndTabBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MenuAndTabBehaviourTest")
+else()
+    message(STATUS "  MenuAndTabBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TEXT INPUT BEHAVIOUR TEST =====
+# A text field's formatter, validation, input type and undo steps, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputBehaviourTest...")
+    add_executable(TextInputBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputBehaviourTest.cpp
+    )
+    target_include_directories(TextInputBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputBehaviourTest COMMAND TextInputBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputBehaviourTest")
+else()
+    message(STATUS "  TextInputBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== CHART ELEMENT BEHAVIOUR TEST =====
+# The basic chart elements: point radius, zoom and pan, the plot area after a
+# resize, CSV headers, the bar baseline, the waterfall chart's loaders.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ChartElementBehaviourTest...")
+    add_executable(ChartElementBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ChartElementBehaviourTest.cpp
+    )
+    target_include_directories(ChartElementBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ChartElementBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(ChartElementBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(ChartElementBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ChartElementBehaviourTest COMMAND ChartElementBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ChartElementBehaviourTest")
+else()
+    message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE AND RADIO BEHAVIOUR TEST =====
+# The image element's error and tint, and radio groups that free their
+# buttons, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageAndRadioBehaviourTest...")
+    add_executable(ImageAndRadioBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageAndRadioBehaviourTest.cpp
+    )
+    target_include_directories(ImageAndRadioBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageAndRadioBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageAndRadioBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(ImageAndRadioBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageAndRadioBehaviourTest COMMAND ImageAndRadioBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageAndRadioBehaviourTest")
+else()
+    message(STATUS "  ImageAndRadioBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).
@@ -793,23 +876,30 @@ if(CLIPBOARDDIB_CAIRO_FOUND)
     message(STATUS "    Test registered: ClipboardDibTest")
 endif()
 
-# ===== HTMLREADER TEST =====
-# The HTMLReader parse/CSS/resolve layer is framework-independent, so the
-# test builds straight from the sources without linking UltraCanvas.
-message(STATUS "  Building HTMLReaderTest...")
-
-add_executable(HTMLReaderTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
+# ===== HTMLREADER CORE OBJECTS =====
+# The HTMLReader parse/CSS/resolve layer is framework-independent: std C++
+# plus Trim() from UltraCanvasTextUtils.cpp, which is platform-free too. The
+# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest)
+# link these objects instead of each listing the sources again, so the files
+# compile once and a new HTMLReader source is added in one place.
+add_library(HTMLReaderTestCore OBJECT
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
-    # Trim() lives in UltraCanvasTextUtils.cpp (platform-free); without it
-    # this target fails to link.
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
-target_include_directories(HTMLReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(HTMLReaderTest PRIVATE cxx_std_20)
+target_include_directories(HTMLReaderTestCore PUBLIC ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HTMLReaderTestCore PUBLIC cxx_std_20)
+
+# ===== HTMLREADER TEST =====
+# Parser, CSS, selector matcher and style resolver, without the UI library.
+message(STATUS "  Building HTMLReaderTest...")
+
+add_executable(HTMLReaderTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
+)
+target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore)
 set_target_properties(HTMLReaderTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -873,19 +963,13 @@ add_executable(EBookEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/TXTEngine.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/IEBookEngine.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EBookArchive.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
-    # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
+target_link_libraries(EBookEngineTest PRIVATE HTMLReaderTestCore)
 target_include_directories(EBookEngineTest PRIVATE
-    ${ULTRACANVAS_INCLUDE_DIR}
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
 )
-target_compile_features(EBookEngineTest PRIVATE cxx_std_20)
 set_target_properties(EBookEngineTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -1004,16 +1088,10 @@ message(STATUS "  Building HTMLRichImportTest...")
 add_executable(HTMLRichImportTest
     ${CMAKE_CURRENT_SOURCE_DIR}/HTMLRichImportTest.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
-    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
 )
-target_include_directories(HTMLRichImportTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(HTMLRichImportTest PRIVATE cxx_std_20)
+target_link_libraries(HTMLRichImportTest PRIVATE HTMLReaderTestCore)
 set_target_properties(HTMLRichImportTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
