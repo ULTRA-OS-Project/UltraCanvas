@@ -330,6 +330,9 @@ namespace UltraCanvas {
         FileDialogType dialogType = FileDialogType::Open;
         std::string initialDirectory;
         std::string defaultFileName;
+        // Save: the extension ("png", undotted) a name gets when it still
+        // has none after the chosen type's (ApplySaveExtension) - under All
+        // files, or with no filters. Empty: such a name stays bare.
         std::string defaultExtension;
         std::vector<FileFilter> filters;
         int selectedFilterIndex = 0;

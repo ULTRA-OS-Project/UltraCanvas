@@ -78,6 +78,7 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
+| `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
@@ -141,10 +142,14 @@ offered:
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
 - Under All files a name without an extension stays without one, so there
-  is no format to pick. Don't add a default extension of your own after the
-  dialog - it would bypass the Replace File question; the framework's savers
+  is no format to pick - unless the config names a `defaultExtension`, which
+  such a name then gets ("photo" -> "photo.png"), before the Replace File
+  question like the rest. Don't add a default extension of your own after
+  the dialog: it would bypass that question. The framework's savers
   (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
-  refuse such a name with a message asking for an extension.
+  refuse a name without one with a message asking for an extension.
+  `FileDialogOptions` has no `defaultExtension`: it is the framework
+  dialog's, for a caller that builds the dialog itself.
 - The native dialogs follow the same rule. Windows is given the chosen
   type's extension as its default (`SetDefaultExtension`) and the result is
   checked as above; the GTK chooser rewrites the name when the type changes
