@@ -891,6 +891,15 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Styled List")
                 .AddVariant("listview", "Icon List");
 
+        // The old "Templates demo" (a container of elements per row), ported
+        // to the list view: one delegate paints every row.
+        extendedBuilder.AddItem("listviewdashboard", "Domain Dashboard",
+                                "A list view with a custom delegate: links, actions, sparklines, sorting and a row menu",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateListViewDashboardExamples(); },
+                                "DemoApp/UltraCanvasListViewDashboardExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasListViewExamples.md");
+
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 

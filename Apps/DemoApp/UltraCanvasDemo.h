@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.4 - CreateListViewDashboardExamples: the domain dashboard, ported to
+//                 the list view
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
@@ -264,6 +266,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateListViewDashboardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
