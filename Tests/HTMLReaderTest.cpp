@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.19.0 - foreign content: inline <svg> / <math> keep their vocabulary's case
 // Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
 // Version: 1.17.0 - the !important cascade: inline !important beats a style
 //                  sheet's !important (a newsletter's white button text)
@@ -189,6 +190,78 @@ static void TestParserUnquotedAttributes() {
         CHECK_EQ(a->GetAttribute("href"), std::string("https://c.gle/x?a=b"));
         CHECK_EQ(a->TextContent(), std::string("here"));
     }
+}
+
+// Inline <svg> and <math> in a page are foreign content: their names keep the
+// case their vocabulary spells them in, whatever case the source used (the
+// standard's adjustment tables), and HTML resumes inside foreignObject and
+// the MathML text elements. A CSS type selector, lower-cased by the parser,
+// still matches them; an attribute is found by either spelling.
+static void TestParserForeignContent() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<p>a <svg viewbox=\"0 0 2 2\" preserveAspectRatio=\"none\" xmlns:xlink=\"x\">"
+        "<defs><lineargradient id=\"g\" gradientunits=\"userSpaceOnUse\"><stop offset=\"0\"/>"
+        "</linearGradient></defs>"
+        "<foreignObject><DIV CLASS=\"x\">t</DIV></foreignObject><text>T</text></svg> b</p>"
+        "<math><mi>x</mi><annotation-xml><DIV>h</DIV></annotation-xml>"
+        "<semantics definitionurl=\"u\"/></math>");
+    Node* p = doc.Body()->FindFirst("p");
+    CHECK(p != nullptr);
+    Node* svg = p ? p->FindFirst("svg") : nullptr;
+    CHECK(svg != nullptr);
+    if (!svg) return;
+
+    // The <svg> element's own attributes are already SVG's.
+    bool storedAsViewBox = false;
+    for (const auto& [name, value] : svg->attributes) storedAsViewBox = storedAsViewBox || name == "viewBox";
+    CHECK(storedAsViewBox);
+    CHECK(svg->HasAttribute("viewBox"));
+    CHECK(svg->HasAttribute("viewbox"));                 // found by either spelling
+    CHECK_EQ(svg->GetAttribute("viewbox"), std::string("0 0 2 2"));
+    CHECK(svg->HasAttribute("preserveAspectRatio"));
+    CHECK(svg->HasAttribute("xmlns:xlink"));
+
+    // A lower-cased source name is put back in its vocabulary's case, and the
+    // end tag written in that case closes it.
+    Node* grad = svg->FindFirst("linearGradient");
+    CHECK(grad != nullptr);
+    if (grad) {
+        CHECK_EQ(grad->GetAttribute("gradientUnits"), std::string("userSpaceOnUse"));
+        CHECK(grad->children.size() == 1 && grad->children[0]->IsElement("stop"));
+        CHECK(grad->parent && grad->parent->IsElement("defs"));
+    }
+    CHECK(svg->FindFirst("text") != nullptr);
+
+    // HTML again inside foreignObject: lower-cased as HTML is.
+    Node* fo = svg->FindFirst("foreignObject");
+    CHECK(fo != nullptr);
+    CHECK(fo && fo->children.size() == 1 && fo->children[0]->IsElement("div") &&
+          fo->children[0]->HasClass("x"));
+
+    // After </svg> the text belongs to the paragraph again.
+    CHECK(p && !p->children.empty() && p->children.back()->IsText() &&
+          p->children.back()->text.find('b') != std::string::npos);
+
+    // MathML: its one adjusted attribute, and HTML inside annotation-xml.
+    Node* math = doc.Body()->FindFirst("math");
+    CHECK(math != nullptr);
+    if (math) {
+        Node* ann = math->FindFirst("annotation-xml");
+        CHECK(ann && ann->children.size() == 1 && ann->children[0]->IsElement("div"));
+        Node* sem = math->FindFirst("semantics");
+        CHECK(sem && sem->HasAttribute("definitionURL"));
+    }
+
+    // Selectors, lower-cased by the CSS parser, match the foreign names.
+    StyleSheet sheet;
+    sheet.ParseAppend("linearGradient stop { stop-color: red } svg[viewBox='0 0 2 2'] { x: 1 } "
+                      "lineargradient { y: 2 } foreignObject div.x { z: 3 }");
+    CHECK(grad && Matches(sheet.rules[0].selectors[0], *grad->children[0]));
+    CHECK(Matches(sheet.rules[1].selectors[0], *svg));
+    CHECK(grad && Matches(sheet.rules[2].selectors[0], *grad));
+    CHECK(fo && Matches(sheet.rules[3].selectors[0], *fo->children[0]));
+    CHECK(!Matches(sheet.rules[3].selectors[0], *svg));
 }
 
 static void TestExtractPlainText() {
@@ -1265,6 +1338,7 @@ int main() {
     TestParserFragmentAndRecovery();
     TestParserXhtmlAndEntities();
     TestParserUnquotedAttributes();
+    TestParserForeignContent();
     TestExtractPlainText();
     TestCssColor();
     TestCssLength();
