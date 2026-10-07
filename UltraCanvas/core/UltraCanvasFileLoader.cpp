@@ -447,8 +447,13 @@ namespace UltraCanvas {
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         const auto writable = SavableVectorExtensions();
         if (std::find(writable.begin(), writable.end(), ext) == writable.end()) {
+            // The extension picks the format, so a name without one (saved
+            // under "All files") has none to pick.
             outError = writable.empty()
                        ? "No vector file writers are installed (RegisterVectorFormatsPlugin was not called)."
+                       : ext.empty()
+                       ? "The file name has no extension, so there is no format to save it in. "
+                         "Add one, such as .svg, or choose the file type."
                        : "No writer for ." + ext;
             return false;
         }

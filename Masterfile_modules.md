@@ -1109,7 +1109,11 @@ engine; these classes hold the pixels being edited and hand them to it.
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
 image / video / music generation, translation, code assist). See
-`Docs/Modules/UltraAI/README.md`.
+`Docs/Modules/UltraAI/README.md`. Translation (`ITranslator`) is served
+through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
+`BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
+`ParseDetectionReply`), registered under each text-LLM provider's id;
+`Docs/Modules/UltraAI/Adapters.md` has the option keys.
 
 ### **3. FileLoader**
 

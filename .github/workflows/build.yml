@@ -392,7 +392,9 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           sudo apt-get install -y libudev-dev libcups2-dev libsane-dev
-          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest,
+          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
+          # over ipp://, and over ipps:// with the self-signed certificate it makes,
+          # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
           # and the DNS-SD daemon it needs to start at all (even with -r off).
           # The test skips without them, and "Run unit tests" turns that skip
           # into a failure, so it cannot quietly stop running.

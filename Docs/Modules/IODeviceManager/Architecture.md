@@ -941,7 +941,11 @@ Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
 `ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
 computes for the certificate, a changed certificate is refused with the key
 file untouched, and the first-contact server saw only `HEAD /` before the
-pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
+pinned request. `IODevicePrinterIPPLiveTest` checks the same against
+`ippeveprinter` over `ipps://` on every Linux CI run: first contact, a print
+through the pinned connection, a changed key refused and not overwritten,
+relearning after forgetting, and learning switched off. Not yet run on
+Schannel (Windows) or Apple's TLS.
 
 ---
 

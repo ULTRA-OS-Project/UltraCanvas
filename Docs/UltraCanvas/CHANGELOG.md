@@ -1,3 +1,79 @@
+#### 2026-10-07 *0.9.195*
+- **A button made without a label has none.** `UltraCanvasButton`'s
+  constructors and `CreateButton` defaulted the label to "Button". An
+  icon-only button that left the label out carried it and was laid out as
+  icon + text, so its icon sat at the left padding instead of in the middle
+  (the file dialog's Up arrow, until the fix in 0.9.176 passed `""`). The
+  default is now empty. Of the 291 buttons in the repository made without a
+  label, 288 are given one right after; the other three are UltraTexter's
+  search-bar *First match*, *Previous* and *Search options* icon buttons,
+  whose icons now sit in the middle like *Next*'s, which already passed
+  `""`.
+- **`FileDialogConfig::defaultExtension` is used.** It was declared and never
+  read. A Save name that still has no extension after the chosen type's -
+  under All files, or with no filters - now gets it ("photo" -> "photo.png"),
+  before the Replace File question like the rest of the Save naming. Empty
+  (the default) leaves such a name bare, as before. It belongs to the
+  framework dialog; `FileDialogOptions` has no counterpart.
+- **Saving under a name without an extension says what is wrong.** The
+  extension picks the format, so a name saved under "All files" without one
+  has none to pick. `UCRasterDocument::SaveToFile` passed such a name to
+  libvips, which answered only that it was "not a known file format", and
+  `UltraCanvasFileLoader::SaveVectorDocument` answered "No writer for .".
+  Both now say the name has no extension and to add one or choose the file
+  type, and write nothing. UltraPaint and ArtCreator relied on adding a
+  default extension of their own instead; they no longer do (see their
+  changelogs), since the save dialog adds the chosen type's.
+
+#### 2026-10-07 *0.9.194*
+- **Windows: a WSD print queue gets its printer's address, and a printer
+  that is already a queue is no longer listed twice.**
+  - A WSD port carries no address the spooler gives out. The spooler backend
+    now reads it from Plug and Play: the queue's device node and the WSD
+    device it prints to share a device container, and the WSD device's PnP-X
+    `IpAddress` (or the hosts of its WS-Discovery `XAddrs` or location) name
+    the printer. A queue in the computer's own container gives none.
+  - So the IPP supply-level fallback now covers WSD queues too, tried at
+    `/ipp/print`, `/ipp` and `/` on 631 like a Standard TCP/IP port.
+  - The IPP backend skips a printer it finds over DNS-SD when a Windows
+    queue already prints to that host, the way it defers to CUPS on Linux and
+    macOS. A new `Internal::WindowsQueuePrinterHosts()` lists those hosts
+    (IPP, Standard TCP/IP and WSD ports). The match is on the mDNS host name
+    and every address the printer answered from.
+  - The matching is the new platform-neutral `IppHostsForWindowsQueue()`,
+    `IppPrinterIsWindowsQueue()`, `IppUriHost()` and `IppNormalizeHost()`.
+    `IODevicePrinterIPPTest` covers them with 19 new checks. The SetupAPI walk
+    only runs on Windows and is cross-compiled, not yet run on real hardware.
+- **IODeviceManager README: the *Printer Status* example compiles.** It used
+  `printer` without declaring it, which `check_doc_examples.py` reported. It
+  now gets the printer the way the printing example above it does.
+- **The mDNS plugin reports every address a service answers from**, not
+  only the first (plugin 0.3.0). `attributes["ip"]` now lists all of them,
+  IPv4 first, and a service answered more than once is one entry.
+  - Avahi reported a service once per interface and IP version, as separate
+    entries, each with one address. Each is now resolved to its own family's
+    address, and the answers are merged into one entry.
+  - Win32 reported the IPv6 address only when there was no IPv4 one. It now
+    reports both.
+  - Bonjour reported no address at all. It now asks for both families
+    (`DNSServiceGetAddrInfo`), waiting at most a second for the first answer
+    and 150 ms more for the other family.
+  - The merging is the new `Mdns::AddAddress()` and `Mdns::MergeAnswer()`,
+    tested in `MdnsNamesTest`. The Bonjour branch was only syntax-checked
+    here; macOS CI compiles it.
+
+#### 2026-10-07 *0.9.193*
+- **Trusting a printer on first use is tested on every Linux CI run.**
+  `IODevicePrinterIPPLiveTest` already printed to CUPS's reference printer
+  (`ippeveprinter`, from `cups-ipp-utils`, which CI installs) over `ipp://`;
+  it now reaches the same printer over `ipps://` too, where it presents the
+  self-signed certificate it made itself. It checks that the printer's key is
+  learned on first contact and kept under its name, that a document prints
+  through the pinned connection, that a key differing from the one kept is
+  refused and does not replace it, that forgetting the key lets the same key
+  be learned again, and that with learning switched off the printer is
+  refused. The keys go to a file of the test's own, never the user's.
+
 #### 2026-10-07 *0.9.192*
 - **Charts: zoom and pan of the line, area and scatter charts work, and are
   off by default.** `SetEnableZoom` / `SetEnablePan` did nothing visible (the

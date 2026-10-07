@@ -1288,7 +1288,11 @@ engine; these classes hold the pixels being edited and hand them to it.
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
 image / video / music generation, translation, code assist). See
-`Docs/Modules/UltraAI/README.md`.
+`Docs/Modules/UltraAI/README.md`. Translation (`ITranslator`) is served
+through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
+`BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
+`ParseDetectionReply`), registered under each text-LLM provider's id;
+`Docs/Modules/UltraAI/Adapters.md` has the option keys.
 
 ### **3. FileLoader**
 
@@ -12623,20 +12627,25 @@ string, and a button placed by a layout needs no position at all.
 ```cpp
 UltraCanvasButton(const std::string& identifier,
                   float x, float y, float w, float h,
-                  const std::string& buttonText = "Button");
+                  const std::string& buttonText = "");
 UltraCanvasButton(const std::string& identifier,
                   float w, float h,
-                  const std::string& buttonText = "Button");   // positioned by a layout
+                  const std::string& buttonText = "");         // positioned by a layout
 UltraCanvasButton(const std::string& identifier,
                   const std::string& buttonText);               // sized by a layout too
 ```
+
+A button made without a label has none, so an icon-only button needs no
+`""` argument: its icon is centred (`SetIcon` without text). The default
+used to be `"Button"`, which such a button carried and laid out as icon +
+text, its icon at the left padding instead of in the middle.
 
 ### Factories
 
 ```cpp
 std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
                                                 float x, float y, float w, float h,
-                                                const std::string& text = "Button");
+                                                const std::string& text = "");
 std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
                                                     float x, float y, float w, float h,
                                                     const std::string& iconPath,
@@ -22035,6 +22044,7 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
+| `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
@@ -22097,6 +22107,15 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- Under All files a name without an extension stays without one, so there
+  is no format to pick - unless the config names a `defaultExtension`, which
+  such a name then gets ("photo" -> "photo.png"), before the Replace File
+  question like the rest. Don't add a default extension of your own after
+  the dialog: it would bypass that question. The framework's savers
+  (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
+  refuse a name without one with a message asking for an extension.
+  `FileDialogOptions` has no `defaultExtension`: it is the framework
+  dialog's, for a caller that builds the dialog itself.
 - The native dialogs follow the same rule. Windows is given the chosen
   type's extension as its default (`SetDefaultExtension`) and the result is
   checked as above; the GTK chooser rewrites the name when the type changes
@@ -67558,7 +67577,11 @@ Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
 `ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
 computes for the certificate, a changed certificate is refused with the key
 file untouched, and the first-contact server saw only `HEAD /` before the
-pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
+pinned request. `IODevicePrinterIPPLiveTest` checks the same against
+`ippeveprinter` over `ipps://` on every Linux CI run: first contact, a print
+through the pinned connection, a changed key refused and not overwritten,
+relearning after forgetting, and learning switched off. Not yet run on
+Schannel (Windows) or Apple's TLS.
 
 ---
 
@@ -67747,7 +67770,7 @@ absent.
 | GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
 | GutenPrint: per-model options beyond the PPD defaults | 🔨 media, resolution, colour mode and page size reach the raster header; the cartridge and inkset parameters in `IOPrintOptions` are resolved but not yet passed through as PPD options. |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
-| Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, or a Standard TCP/IP port's `HostAddress`). The parsing and the port-to-address guesses are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. WSD ports carry no address the spooler gives out, so a WSD queue gets bidi only. |
+| Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, a Standard TCP/IP port's `HostAddress`, or for a WSD port the PnP-X `IpAddress` of the WSD device in the queue's device container). The parsing, the port-to-address guesses and the container matching are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
 | Windows GDI renderer: PDF and other documents | ⚠️ a PDF on its own is still refused by name with `NotSupported`, not half-printed - laying one out needs the PDF plugin. A PDF that comes with its pages (`IOPrintJob::pages`, as a formatted document's does: `CreateRichDocumentPrintPages`) prints: the pages are drawn. |
@@ -67762,7 +67785,7 @@ absent.
 | IPP: DNS-SD discovery | ✅ its own browse, no longer only what CUPS already knew. With CUPS compiled in, a printer a CUPS queue already reaches is left to CUPS rather than listed twice. |
 | IPP: `Get-Printer-Attributes` parsing | ✅ the full RFC 8010 decoder - every value type, collections to any sane depth, and a malformed reply refused rather than read past. Capabilities, status, supplies (`marker-*` and PWG's `printer-supply`) and jobs are read from it. |
 | IPP: device ids never matched CUPS's | ✅ found and worked around. The CUPS backend keys on `printer-uuid`, which `cupsGetDests2` does not return (checked, CUPS 2.4.7), so the registry could never collapse a printer found both ways. The IPP backend matches CUPS queues itself instead - see [Architecture.md](Architecture.md#enumeration-double-counting). |
-| IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
+| IPP: the same printer twice on Windows | ✅ a DNS-SD printer at a host a spooler queue prints to (IPP, Standard TCP/IP or WSD port) is left to the queue (`IppPrinterIsWindowsQueue`, tested on every platform). Matched on the mDNS host name and every address the printer answered from: the mDNS plugin reports them all, IPv4 and IPv6, on every backend. Not yet verified against real Windows hardware. |
 | IPP: `ipps://` with a self-signed certificate | ✅ trust on first use, as for eSCL scanners. Checked against CUPS's `ippeveprinter` over `ipps://` on Linux (connect, status, six jobs); not yet on Windows or macOS TLS. One offering both is still reached over `ipp://`. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
 | IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
@@ -67994,6 +68017,10 @@ IPP Everywhere, AirPrint and Mopria printers need no driver: they are found
 through mDNS, and a document the printer renders itself (PDF, JPEG) is sent
 as it is, while text and other images are drawn as PWG raster. On Linux and
 macOS a printer CUPS already offers is left to CUPS rather than listed twice.
+On Windows the same goes for a printer the machine already has a print queue
+for: the IPP backend skips a DNS-SD printer whose address or host name is one
+a queue prints to — through an IPP port, a Standard TCP/IP port, or a WSD
+port (see below).
 A printer on another subnet is named in `ULTRACANVAS_IPP_PRINTERS`, a
 comma-separated list of `ipp://`, `ipps://`, `http://` or `https://`
 addresses:
@@ -68011,7 +68038,9 @@ where the printer gives one. Both need an open session and return nothing
 otherwise:
 
 ```cpp
-if (printer->Connect()) {
+auto printer = std::dynamic_pointer_cast<PrinterDevice>(
+    manager.GetDevice(IODeviceCategory::Printer, 0));
+if (printer && printer->Connect()) {
     IOPrinterStatus status = printer->GetStatus();
     for (const IOSupplyLevel& supply : printer->GetSupplyLevels()) {
         if (supply.IsLow()) { /* supply.description, supply.percentRemaining */ }
@@ -68028,13 +68057,19 @@ the spooler itself has no levels, so the backend asks in two steps:
    `\Printer.Consumables`), which drivers with a status monitor answer.
 2. If the driver says nothing and the queue prints to a network address, the
    printer itself over IPP (builds with UltraNet). The address comes from the
-   queue's port: an IPP port's URL, or a Standard TCP/IP port's host, tried at
-   `/ipp/print`, `/ipp` and `/` on port 631. A printer that does not answer
-   is left alone for a minute, so a switched-off printer costs the connect
-   timeout (5 s) once, not on every call.
+   queue's port, and is tried at `/ipp/print`, `/ipp` and `/` on port 631:
+   - an IPP port: its URL;
+   - a Standard TCP/IP port: its host;
+   - a WSD port, which carries no address: the WSD device Plug and Play keeps
+     in the same device container as the queue, whose PnP-X `IpAddress` (or
+     WS-Discovery URLs) name the printer.
 
-A USB or WSD queue whose driver keeps quiet, or a printer that answers
-neither, gives an empty list rather than zero. DeviceExplorer shows both for
+   A printer that does not answer is left alone for a minute, so a
+   switched-off printer costs the connect timeout (5 s) once, not on every
+   call.
+
+A USB queue whose driver keeps quiet, or a printer that answers neither,
+gives an empty list rather than zero. DeviceExplorer shows both for
 the selected printer.
 
 ### Your Own Devices
@@ -69732,7 +69767,7 @@ FILE: Docs/Modules/UltraAI/Adapters.md
 # UltraAI Adapters
 
 **Version:** 0.1.0
-**Last Modified:** 2026-08-24
+**Last Modified:** 2026-10-07
 
 ## Overview
 
@@ -69768,6 +69803,7 @@ and friends report what this build actually has.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
+| *text-LLM translator* | `ITranslator` through any of the `ITextLLM` providers above, under the same id | wherever that LLM runs |
 
 ---
 
@@ -70219,6 +70255,89 @@ remote and the video is large.
 
 ---
 
+## Text-LLM translator — `ITranslator` through any chat model
+
+Header: `UltraAITextLLMTranslator.h`. Not a provider of its own: it serves
+`ITranslator` with whatever `ITextLLM` it is given, and the registry knows
+one translator provider for every text-LLM provider except `mock`, under
+the same id. Always built — it has no dependency beyond the interfaces.
+
+```cpp
+TranslatorConfig cfg;
+cfg.providerId = "qwen";             // or "anthropic", "openai", "llama-cpp"
+                                     // empty -> routing: local LLMs first
+auto tr = CreateTranslator(cfg);
+
+TranslateRequest req;
+req.texts = { "Guten Morgen", "<b>Speichern</b> Sie die Datei." };
+req.targetLanguage = "en";           // required, BCP-47
+req.formality = TranslationFormality::Formal;
+TranslateResponse resp = tr->Translate(req);
+for (const auto& r : resp.results)
+    std::cout << r.detectedSourceLanguage << ": " << r.text << '\n';
+```
+
+**How it works.** Each batch goes to the model as one chat: a system
+message with the task and the rules (register, domain, glossary, keep
+markup and placeholders, report the source language) and a user message
+holding the texts as a JSON object of numbered segments. The reply is asked
+for as JSON (`ResponseFormat::JsonObject`, which every shipped text-LLM
+adapter enforces) in the same numbering, so a batch comes back in order
+whatever the model does with it; a reply wrapped in a code fence or a
+sentence is still read, and a single text answered with the bare
+translation is accepted as it is. `DetectLanguage` is the same exchange
+with a detection prompt and up to `topN` guesses per text. The prompts and
+the parsers are public (`BuildTranslationPrompt`, `ParseTranslationReply`,
+`BuildDetectionPrompt`, `ParseDetectionReply`) so a test or an application
+can see exactly what is sent.
+
+**Configuration.** `apiKey`, `apiKeyVaultRef`, `baseUrl`, `defaultModel`,
+`timeoutMs` and `providerOptions` go to the text LLM unchanged, so whatever
+configures the chat provider configures the translator; `TranslateRequest::
+model` names the chat model per call. The translator reads these keys of
+`providerOptions` itself (and strips `textllm.*` from the per-request
+`options` before they reach the LLM):
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `textllm.provider` | string | the translator's `providerId` | the text-LLM provider to translate with; `CreateTextLLMTranslator(config)` with this set and an empty `providerId` follows the `textllm` route |
+| `textllm.batchSize` | int | 20 | texts per chat request; longer lists are split and the usage summed |
+| `textllm.temperature` | double | 0 | sampling temperature |
+| `textllm.maxOutputTokens` | int | none | cap on each reply |
+| `textllm.glossary` (per-request `options`) | string | — | `source = translation` lines the model is told to use |
+
+To wrap a chat model the application already holds — a mock in a test, or
+an instance with vendor settings applied through `RawProvider()` — use
+`CreateTextLLMTranslator(std::move(llm), config)`; the translator owns it,
+and its own `RawProvider()` returns that `ITextLLM*`.
+
+**What comes back.** `TranslateResult::detectedSourceLanguage` is what the
+model reports, or the request's `sourceLanguage` when it reports none;
+`confidence` is 0 unless the model volunteers one. `usage` holds the chat
+tokens summed over the batches and the input's character count in `units`.
+A reply the model cut off (`FinishReason::Length`) is
+`ErrorCode::ContextLengthExceeded` and says to lower `textllm.batchSize`
+or raise `textllm.maxOutputTokens`; a refusal is `ContentFiltered`; a reply
+that is not the expected JSON, or misses segments, is `ProviderError` with
+the count. `GetCapabilities()` lists the LLM's models with `runsLocally`
+carried over, every one marked as auto-detecting, batching and
+formality-aware; `supportedLanguages` is left empty, as a chat model takes
+any language it was trained on, and `maxBatchSize` is 0 because batches
+are split internally.
+
+**Routing.** `KnownLocalProviders("translator")` is `llama-cpp` then
+`qwen`, so an empty `providerId` translates through a local model when one
+is registered and goes to a cloud LLM only when cloud fallback is allowed
+or `ULTRAAI_DEFAULT_TRANSLATOR` names it.
+
+**Limits.** Translation quality, speed and cost are the chosen model's; a
+small local model may paraphrase or drop a placeholder where a translation
+service would not. `glossaryId` (a vendor glossary) is ignored — use
+`textllm.glossary`. A provider registered with `RegisterTranslatorProvider`
+under a text-LLM provider's id replaces the LLM-backed one for that id.
+
+---
+
 ## Related documents
 
 * [`README.md`](README.md) — the module, its interfaces and architecture.
@@ -70287,6 +70406,7 @@ tests run without any network or external model.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
+| *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
@@ -70333,6 +70453,7 @@ UltraAI/
 │   ├── UltraAIImageGen.h
 │   ├── UltraAIVisionAnalyzer.h
 │   ├── UltraAITranslator.h
+│   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
@@ -70422,7 +70543,8 @@ cmake -S UltraAI -B build \
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
-| Unit tests | Complete (11 executables, all passing) |
+| Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
+| Unit tests | Complete (12 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -72138,6 +72260,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
+| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
 | Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
@@ -76693,6 +76816,16 @@ The desktop's quick panel starts UltraClipboard for what does not fit in it:
 The desktop looks for `UltraClipboard` next to its own executable first, then
 on `PATH`.
 
+There is one UltraClipboard at a time. A start while it is open - from the
+panel, the app starter or the command line - hands its search or its entry
+to the open window, which comes forward, and quits. A dialog already open
+there comes forward instead and keeps what is typed in it. The hand-off goes
+over UltraMessage, the per-user message bus: a request on the topic
+`org.ultraos.ultraclipboard.show` (`search`, `editId`) to the running
+instance, which answers before it acts; the first instance hosts the bus when
+nothing else does. Without the bus (a build without UltraDatabase, a bus that
+cannot be reached) every start opens its own window.
+
 ## Command line
 
 ```
@@ -76967,7 +77100,8 @@ Network scanners and printers are found over DNS-SD. One DNS-SD cannot reach
 — on another subnet — is named in `ULTRACANVAS_ESCL_SCANNERS` or
 `ULTRACANVAS_IPP_PRINTERS` (a comma-separated list of addresses) before
 DeviceExplorer starts. A driverless printer that a CUPS queue already reaches
-is listed once, under CUPS.
+is listed once, under CUPS; on Windows, one the machine already has a print
+queue for is listed once, under the Windows spooler.
 
 Planned categories (microphones, speakers, storage, serial, Bluetooth, GPIO …)
 appear in the tree automatically once IODeviceManager has a backend for them;
@@ -77040,7 +77174,7 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
-| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
 
 ==============================================================================
 FILE: Docs/UltraDesktop/README.md

@@ -18,15 +18,18 @@
 //   dn                   = "<instance>.<type>.<domain>", instance unescaped
 //   attributes["host"]   = resolved hostname
 //   attributes["port"]   = TCP/UDP port
-//   attributes["ip"]     = first-seen address (when resolution succeeds)
+//   attributes["ip"]     = every address the service answered from, IPv4
+//                          first (empty when resolution found none). A
+//                          service answered on several interfaces or over
+//                          both IP versions is one entry with all of them.
 //   attributes["txt"]    = TXT record key=value entries (one per push_back)
 //
 // Browsing alone is not discovery. It returns names; a caller needs a host
 // and a port, which is a second query on every platform. The Windows branch
 // used to stop after the first one and hand back names nothing could connect
 // to, so eSCL scanners were discoverable everywhere except there.
-// Version: 0.2.0
-// Last Modified: 2026-09-20
+// Version: 0.3.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -57,6 +60,8 @@
 #elif defined(__APPLE__)
   #include <dns_sd.h>
   #include <arpa/inet.h>
+  #include <netinet/in.h>
+  #include <sys/socket.h>
   #include <sys/select.h>
 #elif defined(_WIN32) || defined(_WIN64)
   #ifndef WIN32_LEAN_AND_MEAN
@@ -77,6 +82,33 @@ struct BrowseState {
     int  sizeLimit = 0;
     bool stop = false;
 };
+
+// Adds one answer. A service answered before - on another interface, or over
+// the other IP version - is not a second service: its addresses join the
+// first answer's (Mdns::MergeAnswer), so a caller sees every address one
+// service has. The caller holds state.mu.
+void AddAnswer(BrowseState& state, UltraNetDirectoryEntry&& entry) {
+    if (!entry.dn.empty()) {
+        auto same = std::find_if(state.entries.begin(), state.entries.end(),
+                                 [&](const UltraNetDirectoryEntry& e) { return e.dn == entry.dn; });
+        if (same != state.entries.end()) {
+            UltraCanvas::Mdns::MergeAnswer(same->attributes, entry.attributes);
+            return;
+        }
+    }
+    auto ip = entry.attributes.find("ip");
+    if (ip != entry.attributes.end()) {
+        std::vector<std::string> ordered;
+        for (const std::string& address : ip->second) {
+            UltraCanvas::Mdns::AddAddress(ordered, address);
+        }
+        ip->second = std::move(ordered);
+    }
+    state.entries.push_back(std::move(entry));
+    if (state.sizeLimit > 0 && static_cast<int>(state.entries.size()) >= state.sizeLimit) {
+        state.stop = true;
+    }
+}
 
 #if defined(__linux__)
 // ============================================================================
@@ -114,11 +146,7 @@ void OnResolved(AvahiServiceResolver* r, AvahiIfIndex, AvahiProtocol,
             }
         }
         std::lock_guard<std::mutex> lk(st->mu);
-        st->entries.push_back(std::move(e));
-        if (st->sizeLimit > 0 &&
-            static_cast<int>(st->entries.size()) >= st->sizeLimit) {
-            st->stop = true;
-        }
+        AddAnswer(*st, std::move(e));
     }
     avahi_service_resolver_free(r);
 }
@@ -128,9 +156,14 @@ void OnBrowse(AvahiServiceBrowser*, AvahiIfIndex ifx, AvahiProtocol proto,
               const char* domain, AvahiLookupResultFlags, void* userdata) {
     auto* ctx = static_cast<AvahiCtx*>(userdata);
     if (event == AVAHI_BROWSER_NEW) {
+        // The address asked for is the one of the protocol the service was
+        // seen over: Avahi reports a service once per interface and IP
+        // version, so a printer on both gets an A and an AAAA lookup and
+        // AddAnswer folds the two into one entry. Asking for either family
+        // (AVAHI_PROTO_UNSPEC) would give the same address twice.
         avahi_service_resolver_new(ctx->client, ifx, proto,
                                    name, type, domain,
-                                   AVAHI_PROTO_UNSPEC, static_cast<AvahiLookupFlags>(0),
+                                   proto, static_cast<AvahiLookupFlags>(0),
                                    &OnResolved, ctx->state);
     }
 }
@@ -180,8 +213,64 @@ struct BonjourPending {
     std::string  type;
 };
 
+// The addresses behind a resolved host. A resolve gives a host name and no
+// address, so this asks for both families with one DNSServiceGetAddrInfo.
+struct AddressLookup {
+    std::vector<std::string> addresses;
+    bool moreComing = true;
+};
+
+void DNSSD_API OnAddressReply(DNSServiceRef, DNSServiceFlags flags, uint32_t,
+                              DNSServiceErrorType err, const char*,
+                              const struct sockaddr* address, uint32_t, void* ctx) {
+    auto* lookup = static_cast<AddressLookup*>(ctx);
+    lookup->moreComing = (flags & kDNSServiceFlagsMoreComing) != 0;
+    if (err != kDNSServiceErr_NoError || !address || !(flags & kDNSServiceFlagsAdd)) return;
+    char text[INET6_ADDRSTRLEN] = {};
+    if (address->sa_family == AF_INET) {
+        inet_ntop(AF_INET, &reinterpret_cast<const sockaddr_in*>(address)->sin_addr,
+                  text, sizeof text);
+    } else if (address->sa_family == AF_INET6) {
+        inet_ntop(AF_INET6, &reinterpret_cast<const sockaddr_in6*>(address)->sin6_addr,
+                  text, sizeof text);
+    }
+    if (text[0]) UltraCanvas::Mdns::AddAddress(lookup->addresses, text);
+}
+
+std::vector<std::string> LookUpAddresses(uint32_t interfaceIndex, const char* host) {
+    if (!host || !*host) return {};
+    AddressLookup lookup;
+    DNSServiceRef ref = nullptr;
+    if (DNSServiceGetAddrInfo(&ref, 0, interfaceIndex,
+                              kDNSServiceProtocol_IPv4 | kDNSServiceProtocol_IPv6, host,
+                              &OnAddressReply, &lookup) != kDNSServiceErr_NoError) {
+        return {};
+    }
+    // At most a second for the first address, then a short grace for the
+    // other family: a responder answers A and AAAA from the same cache, and a
+    // host with no IPv6 never sends the second, so waiting it out in full
+    // would cost every IPv4-only printer the whole second.
+    const int fd = DNSServiceRefSockFD(ref);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    bool graceSet = false;
+    while (std::chrono::steady_clock::now() < deadline) {
+        fd_set fds; FD_ZERO(&fds); FD_SET(fd, &fds);
+        timeval tv{0, 50000};
+        if (select(fd + 1, &fds, nullptr, nullptr, &tv) > 0) {
+            if (DNSServiceProcessResult(ref) != kDNSServiceErr_NoError) break;
+        }
+        if (!lookup.addresses.empty() && !graceSet) {
+            deadline = std::min(deadline, std::chrono::steady_clock::now() +
+                                              std::chrono::milliseconds(150));
+            graceSet = true;
+        }
+    }
+    DNSServiceRefDeallocate(ref);
+    return lookup.addresses;
+}
+
 void DNSSD_API OnResolveReply(DNSServiceRef r, DNSServiceFlags,
-                              uint32_t, DNSServiceErrorType err,
+                              uint32_t interfaceIndex, DNSServiceErrorType err,
                               const char* fullname, const char* hosttarget,
                               uint16_t portNet, uint16_t txtLen,
                               const unsigned char* txt, void* ctx) {
@@ -199,12 +288,13 @@ void DNSSD_API OnResolveReply(DNSServiceRef r, DNSServiceFlags,
                 reinterpret_cast<const char*>(txt + i), segLen);
             i += segLen;
         }
-        std::lock_guard<std::mutex> lk(p->state->mu);
-        p->state->entries.push_back(std::move(e));
-        if (p->state->sizeLimit > 0 &&
-            static_cast<int>(p->state->entries.size()) >= p->state->sizeLimit) {
-            p->state->stop = true;
+        // This backend used to report no address at all, so a caller could
+        // compare nothing but the host name.
+        for (const std::string& address : LookUpAddresses(interfaceIndex, hosttarget)) {
+            e.attributes["ip"].push_back(address);
         }
+        std::lock_guard<std::mutex> lk(p->state->mu);
+        AddAnswer(*p->state, std::move(e));
     }
     DNSServiceRefDeallocate(r);
 }
@@ -390,7 +480,7 @@ struct WinResolveCtx {
     std::string host;
     uint16_t    port = 0;
     std::vector<std::string> txt;
-    std::string ip;
+    std::vector<std::string> ips;
     HANDLE      done = nullptr;
 };
 
@@ -415,14 +505,16 @@ void WINAPI OnWindowsResolve(DWORD status, PVOID context,
                 ctx->txt.push_back(Mdns::TxtPair(key, nullptr));
             }
         }
-        // IPv4 first, to match what the other two backends report when a
-        // device answers on both.
+        // Both, when the device answered on both: a caller matching a
+        // printer against an address it knows by one family must not miss it
+        // because the other was reported. AddAddress puts IPv4 first.
         if (instance->ip4Address) {
-            ctx->ip = Mdns::IPv4ToString(
-                static_cast<uint32_t>(*instance->ip4Address));
-        } else if (instance->ip6Address) {
-            ctx->ip = Mdns::IPv6ToString(
-                reinterpret_cast<const uint8_t*>(instance->ip6Address));
+            Mdns::AddAddress(ctx->ips, Mdns::IPv4ToString(
+                static_cast<uint32_t>(*instance->ip4Address)));
+        }
+        if (instance->ip6Address) {
+            Mdns::AddAddress(ctx->ips, Mdns::IPv6ToString(
+                reinterpret_cast<const uint8_t*>(instance->ip6Address)));
         }
         ctx->resolved = true;
     }
@@ -577,15 +669,14 @@ bool RunWindowsBrowse(const std::string& serviceType, BrowseState& state,
         }
         e.attributes["host"].push_back(resolved.host);
         e.attributes["port"].push_back(std::to_string(resolved.port));
-        if (!resolved.ip.empty()) e.attributes["ip"].push_back(resolved.ip);
+        for (const std::string& address : resolved.ips) e.attributes["ip"].push_back(address);
         for (std::string& record : resolved.txt) {
             e.attributes["txt"].push_back(std::move(record));
         }
 
         std::lock_guard<std::mutex> lk(state.mu);
-        state.entries.push_back(std::move(e));
-        if (state.sizeLimit > 0 &&
-            static_cast<int>(state.entries.size()) >= state.sizeLimit) break;
+        AddAnswer(state, std::move(e));
+        if (state.stop) break;
     }
     return true;
 }
@@ -596,7 +687,7 @@ bool RunWindowsBrowse(const std::string& serviceType, BrowseState& state,
 class MdnsPlugin : public IDirectoryProtocolPlugin {
 public:
     std::string GetName() const override { return "UltraNet-mDNS"; }
-    std::string GetVersion() const override { return "0.2.0"; }
+    std::string GetVersion() const override { return "0.3.0"; }
     std::vector<std::string> GetSupportedSchemes() const override {
         return {"mdns", "dns-sd"};
     }
