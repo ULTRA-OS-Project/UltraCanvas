@@ -1,6 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
+// Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
 // Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
@@ -160,6 +162,12 @@ namespace UltraCanvas {
                 break;
             case WindowType::Fullscreen:
                 style = WS_POPUP;
+                break;
+            case WindowType::Notification:
+                // A toast: above everything, out of the taskbar and Alt+Tab,
+                // never activated (shown with SW_SHOWNOACTIVATE below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
                 break;
             default: // Standard
                 break;
@@ -561,7 +569,7 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsWindow::Show() {
         if (!_created || _windowVisible) return;
-        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(hwnd);
 
         _windowVisible = true;

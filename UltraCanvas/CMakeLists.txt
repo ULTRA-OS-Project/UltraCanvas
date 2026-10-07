@@ -2293,7 +2293,7 @@ set_target_properties(WasmHost PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
     include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmtime.cmake")
     if(ULTRACANVAS_WASMTIME_FOUND)
-        target_link_libraries(WasmHost PRIVATE UltraCanvas::wasmtime)
+        target_link_libraries(WasmHost PRIVATE ${ULTRACANVAS_WASMTIME_PRELINK} UltraCanvas::wasmtime)
         target_compile_definitions(WasmHost PRIVATE ULTRACANVAS_HAS_WASMTIME=1)
         message(STATUS "  [✓] WasmHost - ENABLED (wasmtime ${ULTRACANVAS_WASMTIME_VERSION})")
     else()
@@ -2918,7 +2918,8 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         if(UM_GIO_FOUND)
             set(_um_gio_found TRUE)
             list(APPEND ULTRAMESSAGE_SOURCES
-                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp)
         endif()
     endif()
     # The Windows notification listener adapter reads the Action Center
@@ -2926,6 +2927,10 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     # package or the Windows SDK). Skipped where the headers are absent.
     set(_um_winrt_found FALSE)
     if(WIN32)
+        # The presenter puts applications' notifications on screen as tray
+        # balloons (Shell_NotifyIconW), which every Windows build has.
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
         set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
         if(MSVC)
@@ -2940,6 +2945,18 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             list(APPEND ULTRAMESSAGE_SOURCES
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
+    endif()
+    # The macOS presenter puts applications' notifications in Notification
+    # Center (UserNotifications), or shows them through osascript where the
+    # broker runs outside an application bundle; every macOS build has it.
+    set(_um_macos_presenter FALSE)
+    if(APPLE AND NOT IOS)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND ULTRAMESSAGE_SOURCES ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
@@ -2967,6 +2984,13 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PRIVATE uc-yyjson)
     endif()
     target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    if(WIN32)
+        target_link_libraries(UltraMessage PUBLIC shell32 user32)
+    endif()
+    if(_um_macos_presenter)
+        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+    endif()
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
         # itself and takes gio and the switch from this target.
@@ -2974,7 +2998,7 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
         target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
-        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter and presenter via gio ${UM_GIO_VERSION})")
     elseif(_um_winrt_found)
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
         if(MSVC)
@@ -2985,9 +3009,11 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
             # ole32, BSTRs in oleaut32.
             target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
         endif()
-        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
-        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
+        message(STATUS "  [✓] UltraMessage - ENABLED (tray presenter; no C++/WinRT headers: no notification listener)")
+    elseif(_um_macos_presenter)
+        message(STATUS "  [✓] UltraMessage - ENABLED (Notification Center presenter)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()
@@ -3004,7 +3030,8 @@ endif()
 # it is its own target rather than part of either.
 if(TARGET UltraMessage)
     add_library(UltraMessageCenter STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp)
     set_target_properties(UltraMessageCenter PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessagecenter")
