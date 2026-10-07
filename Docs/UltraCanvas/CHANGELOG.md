@@ -1,3 +1,40 @@
+#### 2026-10-07 *0.9.178*
+- **SVG import draws markers: arrowheads on connector lines.** The Vector
+  plugin's SVG reader skipped `<marker>` ("`<marker>` is not supported,
+  skipped") and ignored `marker-start` / `-mid` / `-end`, so a diagram's
+  arrows imported as bare lines. The model has no marker-by-reference, so
+  the reader now draws each marker's content as ordinary shapes at the
+  vertices SVG 2 says (each subpath start and segment end; curves and arcs
+  by their tangents): placed by `refX`/`refY`, mapped from its `viewBox`
+  onto `markerWidth` x `markerHeight`, scaled by the stroke width unless
+  `markerUnits="userSpaceOnUse"`, turned by `orient` (`auto`,
+  `auto-start-reverse`, an angle) and clipped to its viewport when its
+  content reaches past it. The shape and its markers become one group, so
+  an arrow stays one object to select and move in ArtCreator, and the
+  marker content takes `context-fill` / `context-stroke` from the shape.
+  The properties work from attributes, `style=""` and `<style>` sheets
+  alike, and inherit (`<g marker-end="…">`); a marker that uses itself is
+  drawn once. Checked against librsvg on a diagram with single- and
+  double-ended arrows. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG import applies `<style>` sheets.** The Vector plugin's SVG reader
+  skipped every `<style>` element, so a drawing that colours its shapes by
+  class came in with all of them black (SVG's default fill), its rounded
+  corners square and its centred titles left-aligned - an architecture
+  diagram whose page background is `.container { fill: #f8f9fa; rx: 8 }`
+  imported as a black page in ArtCreator, while UltraFiler's thumbnail
+  (librsvg) drew it correctly. The reader now gathers every `<style>`,
+  inside `<defs>` or not and CDATA or not, skipping one whose `media` does
+  not match. It parses them with the HTMLReader's CSS subset
+  (`HTML::StyleSheet`) and matches the selectors against the SVG tree: type,
+  class, id, attribute and structural pseudo-classes, and descendant chains.
+  Each property cascades as SVG 2 specifies: presentation attribute, then
+  the sheets by specificity and order, then `style=""`, with `!important`
+  turning the last two round (`style=""` now honours `!important` too, which
+  it used to read as part of the value). The geometry properties `x`, `y`,
+  `width`, `height`, `rx`, `ry`, `cx`, `cy` and `r` can come from a sheet on
+  rects, circles and ellipses. The reader note "`<style>` is not supported"
+  is gone. `Tests/SVGConverterTest.cpp` covers the cascade.
+
 #### 2026-10-07 *0.9.177*
 - **A failed image save no longer leaves an empty file - or destroys the one
   it was saving over.** A libvips writer opens its file, truncating one that
