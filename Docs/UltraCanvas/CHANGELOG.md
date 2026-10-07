@@ -1,3 +1,40 @@
+#### 2026-10-07 *0.9.177*
+- **A failed image save no longer leaves an empty file - or destroys the one
+  it was saving over.** A libvips writer opens its file, truncating one that
+  is there, before it has encoded a byte. When the encoder then failed - AVIF
+  on a libheif built without an AV1 encoder ("heifsave: Unsupported
+  compression"), a source that does not decode, a full disk - the save left a
+  0-byte file, and saving over an existing image that way lost it.
+  `PixelFX::FileIO`'s savers (`Save`, `SaveWithOptions` and the per-format
+  ones) now write through `WriteFileAtomically`: the image is encoded into a
+  temporary file in the same folder and moved over the target only when it is
+  complete, so a failure leaves no file and the old one as it was. The media
+  viewer's Save image as goes through them; `UCRasterDocument::SaveToFile`
+  (UltraPaint) staged its own write around `FileIO::Save` and now relies on
+  it. `UltraCanvasQRCode::ExportToImage` and its SVG export
+  (`QRCodeUtils::ExportToSVG`), which wrote straight to the target, are
+  staged the same way. Its AVIF export also crashed the whole process
+  wherever an AV1 encoder was installed: it marked its image sRGB with
+  `set("interpretation", ...)`, which leaves the header's interpretation at
+  "multiband", and libvips' heifsave double-frees on a 4-band multiband
+  image (8.12 and 8.15 alike). The image is now marked through `copy()`.
+  New test: `Tests/ImageSaveStagedTest.cpp`.
+- **The media viewer's Save image as saved nothing for an SVG.** The save
+  dialog offered the shown file's own name, so a drawing came up as
+  `diagram.svg` with "PNG image" as the type. The dialog returns the name as
+  typed, libvips picks its writer from the extension, and it has no SVG
+  writer: the save failed with `"diagram.svg" is not a known file format`,
+  reported only in the small info line at the bottom of the viewer, so it
+  looked as if Save did nothing. `UltraCanvasMediaViewer` now:
+  - offers a name the viewer can write: the file's own when it is PNG, JPEG,
+    WebP, TIFF, AVIF or BMP, otherwise its stem as a PNG (`diagram.png`);
+  - as a last resort, after the dialog has applied the chosen type
+    (`ApplySaveExtension`, 0.9.176), adds `.png` to a name that still has none of
+    those extensions - added rather than swapped in, because what follows
+    the last dot is not always a format - and asks before replacing a file
+    of that name, which the dialog could not ask about;
+  - shows an error message when a save fails, as well as the info line.
+
 #### 2026-10-06 *0.9.176*
 - **The file dialog's Up arrow sits in the middle of its button.** The button
   was created without a label, and `UltraCanvasButton`'s constructor defaults
