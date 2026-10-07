@@ -9,11 +9,14 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.3.1 - <style> sheets match through the HTMLReader's selector
+//                  matcher (HTML::MatchingRules over SelectorTraits); the copy
+//                  of it that lived here is gone
 // Version: 1.3.0 - <marker>: marker-start/-mid/-end drawn as grouped shapes
 // Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
 //                  with presentation attributes and style="" (SVG 2 order)
 // Version: 1.1.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -888,25 +891,10 @@ private:
     const std::map<std::string, HTML::Declaration>& SheetValues(const tinyxml2::XMLElement* e) {
         auto [it, inserted] = sheetValues.try_emplace(e);
         if (!inserted) return it->second;
-        struct Match {
-            int specificity;
-            int order;
-            const HTML::Rule* rule;
-        };
-        std::vector<Match> matches;
-        for (const auto& rule : styleSheet.rules) {
-            int best = -1;
-            for (const auto& selector : rule.selectors) {
-                if (SelectorMatches(selector, e)) best = std::max(best, selector.Specificity());
-            }
-            if (best >= 0) matches.push_back({best, rule.sourceOrder, &rule});
-        }
-        std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
-            return a.specificity != b.specificity ? a.specificity < b.specificity : a.order < b.order;
-        });
+        const std::vector<const HTML::Rule*> rules = HTML::MatchingRules<SelectorTraits>(styleSheet, *e);
         for (bool important : {false, true}) {
-            for (const auto& m : matches) {
-                for (const auto& d : m.rule->declarations) {
+            for (const HTML::Rule* rule : rules) {
+                for (const auto& d : rule->declarations) {
                     if (d.important == important) it->second[d.property] = d;
                 }
             }
@@ -919,105 +907,62 @@ private:
         return s;
     }
 
-    // The last compound matches `e`, the ones before it ancestors in order.
-    // The parser reads `a > b` as `a b`, and drops sibling combinators and
-    // dynamic pseudo-classes (:hover) - nothing is hovered in a file.
-    static bool SelectorMatches(const HTML::Selector& selector, const tinyxml2::XMLElement* e) {
-        if (selector.path.empty() || !CompoundMatches(selector.path.back(), e)) return false;
-        int index = static_cast<int>(selector.path.size()) - 2;
-        for (const tinyxml2::XMLNode* n = e->Parent(); n && index >= 0; n = n->Parent()) {
-            const tinyxml2::XMLElement* ancestor = n->ToElement();
-            if (ancestor && CompoundMatches(selector.path[static_cast<size_t>(index)], ancestor)) --index;
+    // The tinyxml2 tree as the HTMLReader's selector matcher sees it
+    // (CSSStyleSheet.h, "Matching"), so a <style> sheet matches here exactly
+    // as it does in the HTML style resolver. The parser lower-cases type
+    // selectors and attribute names; SVG's are camelCase (linearGradient,
+    // viewBox), so those compare case-insensitively.
+    struct SelectorTraits {
+        using Element = tinyxml2::XMLElement;
+        static bool TagIs(const Element& e, const std::string& tag) { return Lower(StripNs(e.Name())) == tag; }
+        static bool IdIs(const Element& e, const std::string& id) {
+            const char* value = e.Attribute("id");
+            return value && id == value;
         }
-        return index < 0;
-    }
-
-    static bool CompoundMatches(const HTML::SimpleSelector& part, const tinyxml2::XMLElement* e) {
-        // The parser lower-cases type selectors; SVG's names are camelCase.
-        if (!part.tag.empty() && part.tag != "*" && Lower(StripNs(e->Name())) != part.tag) return false;
-        if (!part.id.empty()) {
-            const char* id = e->Attribute("id");
-            if (!id || part.id != id) return false;
-        }
-        if (!part.classes.empty()) {
-            std::set<std::string> have;
-            if (const char* cls = e->Attribute("class")) {
-                std::istringstream iss(cls);
-                std::string c;
-                while (iss >> c) have.insert(c);
+        static bool HasClass(const Element& e, const std::string& name) {
+            const char* cls = e.Attribute("class");
+            if (!cls) return false;
+            std::istringstream words(cls);
+            std::string word;
+            while (words >> word) {
+                if (word == name) return true;
             }
-            for (const auto& c : part.classes) {
-                if (!have.count(c)) return false;
+            return false;
+        }
+        static bool GetAttribute(const Element& e, const std::string& name, std::string& value) {
+            for (const tinyxml2::XMLAttribute* a = e.FirstAttribute(); a; a = a->Next()) {
+                if (Lower(a->Name()) == name) {
+                    value = a->Value();
+                    return true;
+                }
             }
+            return false;
         }
-        if (part.link && !(std::strcmp(StripNs(e->Name()), "a") == 0 &&
-                           (e->Attribute("href") || e->Attribute("xlink:href")))) return false;
-        for (const auto& pc : part.pseudos) {
-            if (!PseudoMatches(pc, e)) return false;
+        static bool IsLink(const Element& e) {
+            return std::strcmp(StripNs(e.Name()), "a") == 0 && (e.Attribute("href") || e.Attribute("xlink:href"));
         }
-        for (const auto& attr : part.attributes) {
-            if (!AttributeMatches(attr, e)) return false;
-        }
-        return true;
-    }
-
-    static bool PseudoMatches(const HTML::PseudoClass& pc, const tinyxml2::XMLElement* e) {
-        if (pc.kind == HTML::PseudoClass::Kind::Root) return e->Parent() && e->Parent()->ToDocument();
-        if (pc.kind == HTML::PseudoClass::Kind::Empty) {
-            for (const tinyxml2::XMLNode* n = e->FirstChild(); n; n = n->NextSibling()) {
+        static bool IsRoot(const Element& e) { return e.Parent() && e.Parent()->ToDocument(); }
+        static bool IsEmpty(const Element& e) {
+            for (const tinyxml2::XMLNode* n = e.FirstChild(); n; n = n->NextSibling()) {
                 if (n->ToElement() || (n->ToText() && *n->Value())) return false;
             }
             return true;
         }
-        // The 1-based position among the element siblings (of the same name
-        // for -of-type), from the first or the last, is a*n + b for an n >= 0.
-        const tinyxml2::XMLNode* parent = e->Parent();
-        if (!parent) return false;
-        int index = 0, count = 0;
-        for (const tinyxml2::XMLElement* sib = parent->FirstChildElement(); sib;
-             sib = sib->NextSiblingElement()) {
-            if (pc.ofType && std::strcmp(sib->Name(), e->Name()) != 0) continue;
-            ++count;
-            if (sib == e) index = count;
-        }
-        if (index == 0) return false;
-        const int pos = pc.fromEnd ? count - index + 1 : index;
-        if (pc.a == 0) return pos == pc.b;
-        const int diff = pos - pc.b;
-        return diff % pc.a == 0 && diff / pc.a >= 0;
-    }
-
-    static bool AttributeMatches(const HTML::AttributeSelector& attr, const tinyxml2::XMLElement* e) {
-        // The parser lower-cases the name; SVG's attributes are camelCase.
-        const char* value = nullptr;
-        for (const tinyxml2::XMLAttribute* a = e->FirstAttribute(); a && !value; a = a->Next()) {
-            if (Lower(a->Name()) == attr.name) value = a->Value();
-        }
-        if (!value) return false;
-        if (attr.op == 0) return true;
-        std::string have = value, want = attr.value;
-        if (attr.ignoreCase) {
-            have = Lower(have);
-            want = Lower(want);
-        }
-        switch (attr.op) {
-            case '=': return have == want;
-            case '^': return !want.empty() && have.compare(0, want.size(), want) == 0;
-            case '$': return !want.empty() && have.size() >= want.size() &&
-                             have.compare(have.size() - want.size(), want.size(), want) == 0;
-            case '*': return !want.empty() && have.find(want) != std::string::npos;
-            case '|': return have == want || have.compare(0, want.size() + 1, want + "-") == 0;
-            case '~': {
-                std::istringstream iss(have);
-                std::string word;
-                while (iss >> word) {
-                    if (word == want) return true;
-                }
-                return false;
+        static bool SiblingPosition(const Element& e, bool ofType, int& index, int& count) {
+            const tinyxml2::XMLNode* parent = e.Parent();
+            if (!parent) return false;
+            index = 0;
+            count = 0;
+            for (const tinyxml2::XMLElement* sib = parent->FirstChildElement(); sib; sib = sib->NextSiblingElement()) {
+                if (ofType && std::strcmp(sib->Name(), e.Name()) != 0) continue;
+                ++count;
+                if (sib == &e) index = count;
             }
+            return index > 0;
         }
-        return false;
-    }
+        // The document above the root <svg> ends the walk.
+        static const Element* Parent(const Element& e) { return e.Parent() ? e.Parent()->ToElement() : nullptr; }
+    };
 
     // ===== GRADIENTS =====
 

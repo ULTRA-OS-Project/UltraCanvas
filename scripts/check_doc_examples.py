@@ -969,7 +969,10 @@ class Doc:
         assumed = []
         for m in re.finditer(r"<!--\s*doc-check:(.*?)-->", self.text, re.S):
             for st in statements(m.group(1)):
-                f = parse_field(st) if "(" not in st else None
+                # A type (`struct Message { ... };`) is declared as written;
+                # only `Type name;` gives a variable.
+                is_type = re.match(r"^\s*(struct|class|enum|union|using|typedef|template|namespace)\b", st)
+                f = parse_field(st) if "(" not in st and not is_type else None
                 if f:
                     body = st.rstrip(";").strip()
                     declared[f["name"]] = body[:body.rfind(f["name"])].strip()
