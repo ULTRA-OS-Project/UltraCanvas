@@ -58,3 +58,23 @@ endif()
 
 include(CTest)
 add_test(NAME UltraMailEngine COMMAND UltraMailEngineTests)
+
+# A click anywhere on an account tile selects its account: the account bar in a
+# real window, clicked through the application's own dispatch. Opens a window,
+# so it runs under Xvfb and skips itself without a DISPLAY. Linked like the
+# UltraMail app: the engine (EmailDomain / EmailLocalPart) before the core.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailAccountBarTest
+        AccountBarClickTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailAccountBar.cpp
+    )
+    target_compile_features(UltraMailAccountBarTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailAccountBarTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailAccountBarTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailAccountBarTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailAccountBar COMMAND UltraMailAccountBarTest)
+endif()

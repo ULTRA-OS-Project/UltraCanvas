@@ -1,3 +1,21 @@
+#### 2026-10-07 *0.10.34*
+- **A click anywhere on an account tile switches to that account.** Clicking
+  the other account's tile mostly did nothing: the window gives a click to
+  the innermost element under the pointer and to no other, and the tile's
+  name, address, avatar and counters are elements of their own that ignore a
+  click. The rows holding them stretch across the tile, so only its padding
+  and the strip between the two rows switched the account - on a tile in a
+  real window, 1 of 14 spots (the centre of each part of the tile) answered.
+  A click that missed looked like a switch that never came, or a slow one
+  when a later click happened to land on the padding; 0.10.21, 0.10.30 and
+  0.10.32 made the switch itself faster, which cannot help a click that never
+  reaches the tile. The tile is now one click target and all 14 spots switch.
+  The counters' captions moved from each counter's tooltip into the tile's:
+  the address, then *New today*, *Unread (before today)* and *Waiting for
+  reply* with their numbers (`ClickSurface::PassPointerThroughContent`). Tests:
+  `Tests/UltraMail/AccountBarClickTest.cpp` (`UltraMailAccountBarTest`, a
+  window under Xvfb; it skips without a display).
+
 #### 2026-10-06 *0.10.33*
 - **The account wizard explains how to set up iCloud mail.** Apple takes only
   an app-specific password in other mail programs, made on account.apple.com -

@@ -208,9 +208,12 @@ address; the full address is the tooltip), and three counters, each an
 
 **Several accounts — a row of square tiles** (the design's second
 image): each tile carries the same initial, name and three badges (the
-captions move into the badges' tooltips). Clicking a tile selects the
-account: the tile gets the selection-blue frame and the Inbox / Message
-boxes below switch to that account.
+captions move into the tile's tooltip, under the full address). Clicking
+anywhere on a tile - its name and badges included - selects the account:
+the tile gets the selection-blue frame and the Inbox / Message boxes below
+switch to that account. The tile is one click target: its content is marked
+non-interactive (`ClickSurface::PassPointerThroughContent`), because the
+window gives a click only to the innermost element under the pointer.
 
 The counts come from `LocalStore::GetAccountStatus`, one query for all
 accounts (`unreadToday` / `unreadOlder` / `needsAnswer`), refreshed
