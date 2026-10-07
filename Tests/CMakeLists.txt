@@ -2584,6 +2584,9 @@ if(TARGET VideoFX)
         ${ULTRACANVAS_INCLUDE_DIR}                # UltraCanvasPathUtf8.h (header-only)
     )
     target_link_libraries(VideoFXTest PRIVATE VideoFX::VideoFX)
+    # A real face for the face detector's test (public domain, see its README)
+    target_compile_definitions(VideoFXTest PRIVATE
+        VIDEOFX_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/videofx")
     set_target_properties(VideoFXTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

@@ -12,7 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
@@ -20,6 +20,7 @@
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
 #include "VideoFXBeats.h"
+#include "VideoFXFaces.h"
 #include "VideoFXMusic.h"
 #include "VideoFX/VideoFX.h"
 
@@ -1688,7 +1689,9 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
     const VideoFXImageFit fit = ResolveImageFit(plan.segment.imageFit, image.width, image.height, width, height);
     // Faces (or whatever the segment asks to keep) stay in shot: the ends of
     // the move are fitted to them here, every frame between is slid below
-    const VideoFXRect focus = FocusBounds(plan.segment.keepInView);
+    std::vector<VideoFXRect> keep = plan.segment.keepInView;
+    if (keep.empty() && plan.segment.keepFacesInView) keep = DetectFaces(image);   // before any shrinking
+    const VideoFXRect focus = FocusBounds(keep);
     const VideoFXImageMotion motion = FitMotionToFocus(
         ResolveMotion(plan.segment.motion, image.width, image.height, width, height, index), focus,
         image.width, image.height, width, height, fit);
@@ -2330,6 +2333,7 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
             }
             s.keepInView = options.findKeepInView(shown, i);
         }
+        s.keepFacesInView = options.keepFacesInView && s.keepInView.empty();
         if (i > 0) s.transitionIn = options.transition;
         if (i < options.captions.size() && !options.captions[i].empty()) {
             VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);
@@ -2353,6 +2357,14 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (s.frameRate <= 0.0) s.frameRate = 30.0;
     s.music = music;
     return VideoFX_Export(segments, outputPath, s, progress);
+}
+
+VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
+    ClearError();
+    faces.clear();
+    if (!image.IsValid()) return Fail(VideoFXResult::InvalidArgument, "Not a valid RGBA image");
+    faces = DetectFaces(image);
+    return VideoFXResult::Ok;
 }
 
 VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info) {
