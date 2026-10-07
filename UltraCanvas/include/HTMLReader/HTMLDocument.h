@@ -3,8 +3,10 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
+//                  is exact, then ASCII case-insensitive
 // Version: 1.1.0 - doctype and quirksMode
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,7 +34,13 @@ using NodePtr = std::shared_ptr<Node>;
 struct Node {
     NodeType type = NodeType::Element;
 
-    // Element fields. Tag and attribute names are stored lowercase.
+    // Element fields. Tag and attribute names are stored lower-case for HTML
+    // elements. Inside <svg> and <math> (foreign content) they carry the case
+    // their vocabulary defines - linearGradient, viewBox, definitionURL - as
+    // the HTML standard adjusts them, whatever case the source used; HTML
+    // resumes inside foreignObject, desc, title and the MathML text elements.
+    // HasAttribute / GetAttribute / SetAttribute find a name exactly first
+    // and then in any ASCII case, so GetAttribute("viewbox") finds viewBox.
     std::string tag;
     std::vector<std::pair<std::string, std::string>> attributes;
 

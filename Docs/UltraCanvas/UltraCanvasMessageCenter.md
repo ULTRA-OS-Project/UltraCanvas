@@ -1,9 +1,9 @@
 # UltraCanvasMessageCenter — The Desktop Message Centre
 
 **Status:** Phase 2 of UltraMessage (first UI consumer of the feed)
-**Version:** 0.1.0
+**Version:** 0.1.1
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-23
+**Last Modified:** 2026-10-05
 
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
@@ -65,7 +65,10 @@ A row is one of:
 A chat or mail row an adapter *mirrored* from a notification (its body has
 `mirrorOf`) replaces the notification's own row, so a Telegram toast is listed
 once, as a chat; dismissing it also closes the toast. A message that
-`replaces` another takes its row.
+`replaces` another takes its row. A notice sent with `UltraMsgFlag_NoJournal`
+is no row at all: it is a passing alert (UltraMail's new-mail notification,
+whose messages are rows already as `mail.message`), and the centre lists only
+what the journal holds, so every row is one it can find again.
 
 ## 2. Quick start
 

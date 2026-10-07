@@ -49,11 +49,10 @@ An Open or Save that succeeds is added to the recent-files list unless the
 options say `SetRegisterAsRecent(false)`.
 
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
-`SetDefaultFileName`, `SetDefaultExtension` (Save: what a name typed without
-one gets when the file type supplies none - see [Save names](#save-names)),
-the filters (`AddFilter(description, extension or extensions)`, undotted,
-`"*"` for everything), `SetShowHidden`, `SetFilterToggles`,
-`SetConfirmOverwrite`, `SetHoverIconMenu` and the parent window.
+`SetDefaultFileName`, the filters (`AddFilter(description, extension or
+extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
+window.
 
 ### Building it yourself
 
@@ -79,7 +78,7 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
-| `defaultExtension` | Save: added (undotted) to a typed name that has none when the chosen type supplies none; never swaps an extension the name has |
+| `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
@@ -134,14 +133,7 @@ offered:
 | `photo.png` | JPEG | `photo.jpg` - another offered type's extension is swapped |
 | `Report v1.2` | PNG | `Report v1.2.png` - an extension no type offers is kept |
 | anything | All files (`*`) | as typed |
-| `notes` | All files (`*`), `defaultExtension` `txt` | `notes.txt` - the default fills in a missing extension |
-| `notes.md` | All files (`*`), `defaultExtension` `txt` | as typed - the default never swaps one |
 
-- `FileDialogConfig::defaultExtension` (`SetDefaultExtension` through
-  `UltraCanvasFileLoader`) is the fallback when the type filter gives the name
-  nothing: no filters, "All files" chosen, or a type without an extension. It
-  only fills in a missing extension (`.profile` counts as having none), and it
-  goes on after the type's rule, so the chosen type always wins.
 - The extension goes on **before** the Replace File question, so the question
   names the file that will be written: "picture" with PNG chosen asks about
   `picture.png`. The name field shows the name as it will be saved.
@@ -152,6 +144,15 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- Under All files a name without an extension stays without one, so there
+  is no format to pick - unless the config names a `defaultExtension`, which
+  such a name then gets ("photo" -> "photo.png"), before the Replace File
+  question like the rest. Don't add a default extension of your own after
+  the dialog: it would bypass that question. The framework's savers
+  (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
+  refuse a name without one with a message asking for an extension.
+  `FileDialogOptions` has no `defaultExtension`: it is the framework
+  dialog's, for a caller that builds the dialog itself.
 - The native dialogs follow the same rule. Windows is given the chosen
   type's extension as its default (`SetDefaultExtension`) and the result is
   checked as above; the GTK chooser rewrites the name when the type changes

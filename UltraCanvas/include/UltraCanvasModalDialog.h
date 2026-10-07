@@ -330,9 +330,9 @@ namespace UltraCanvas {
         FileDialogType dialogType = FileDialogType::Open;
         std::string initialDirectory;
         std::string defaultFileName;
-        // Save: the extension (undotted) given to a typed name that has none
-        // when the chosen file type supplies none - no filters, "All files"
-        // chosen. A name with an extension of its own is left as typed.
+        // Save: the extension ("png", undotted) a name gets when it still
+        // has none after the chosen type's (ApplySaveExtension) - under All
+        // files, or with no filters. Empty: such a name stays bare.
         std::string defaultExtension;
         std::vector<FileFilter> filters;
         int selectedFilterIndex = 0;
@@ -878,9 +878,6 @@ namespace UltraCanvas {
         // A Save name with the chosen type's extension (ApplySaveExtension):
         // the selected dropdown entry, or the first toggle that is on.
         std::string WithSaveExtension(const std::string& name) const;
-        // Adds FileDialogConfig::defaultExtension to a name that has none
-        // (after the type filter has had its say); never swaps one.
-        std::string WithDefaultExtension(const std::string& name) const;
 
         // ===== FOLDER TREE =====
         void PopulateFolderTree();

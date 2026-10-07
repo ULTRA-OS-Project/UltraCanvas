@@ -1,3 +1,29 @@
+#### 2026-10-07 *0.6.8*
+- **Save as and Export keep the file type you chose.** Both added an
+  extension of their own to a name typed without one - `.xar` on Save as,
+  `.pdf` on Export - whatever type was chosen, so "drawing" with SVG chosen
+  was saved as Xara, after the dialog had asked about replacing "drawing"
+  rather than that file. The save dialog now gives the name the chosen
+  type's extension itself (UltraCanvas 0.9.176, PR #694), so ArtCreator saves
+  the name it hands back as it is. A name without an extension saved under
+  "All files" is refused with a message saying it needs one.
+
+#### 2026-10-07 *0.6.7*
+- **Arrowheads are saved in SVG files.** An arrow drawn with the line
+  gallery's arrowheads lost them when saved as SVG: every other program, and
+  ArtCreator itself on reopening, showed a bare line. They are now saved as
+  SVG markers, so browsers, Inkscape and UltraFiler's thumbnails draw them,
+  and reopening the file in ArtCreator gives back the arrowheads you chose,
+  still editable in the line panel. The fix is in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-arrowheads.md`).
+- **Tapered lines and brushes are saved in SVG files.** A line with a width
+  profile (taper, thick-thin, ...) was saved with an even width, and a
+  brushed line as a plain stroke. Both are now saved as the shapes they
+  draw, so other programs show them as ArtCreator does, and reopening the
+  file in ArtCreator gives back the line with its profile or brush, still
+  editable. Also in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-width-profiles-brushes.md`).
+
 #### 2026-10-06 *0.6.6*
 - **SVG files styled with CSS open in their colours.** A drawing that sets
   its fills, strokes, corner radii and text styles from a `<style>` block

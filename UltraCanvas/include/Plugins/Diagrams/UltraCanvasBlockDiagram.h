@@ -1,7 +1,9 @@
 // include/Plugins/Diagrams/UltraCanvasBlockDiagram.h
 // Interactive block diagram component with 3D isometric rendering
+// Version: 2.4.0 - the connection-style enum is BlockConnectionStyle: as
+//                  ConnectionStyle it clashed with UltraCanvasConnectionRenderer.h's struct
 // Version: 2.3.1
-// Last Modified: 2026-05-09
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 //
 // Changelog 2.3.0:
@@ -74,7 +76,7 @@ enum class BlockShape {
     Actor              // Stick figure
 };
 
-enum class ConnectionStyle {
+enum class BlockConnectionStyle {
     Straight,          // Direct line
     Orthogonal,        // Right-angle bends
     Curved,            // Smooth curve
@@ -125,7 +127,7 @@ struct BlockConnection {
     std::string sourceId;
     std::string targetId;
     
-    ConnectionStyle style = ConnectionStyle::Straight;
+    BlockConnectionStyle style = BlockConnectionStyle::Straight;
     ArrowStyle arrowStyle = ArrowStyle::Forward;
     LineStyle lineStyle = LineStyle::Solid;
     
@@ -214,8 +216,8 @@ public:
     // =============================================================================
     
     void AddConnection(const std::string& id, const std::string& sourceId, const std::string& targetId);
-    void AddConnection(const std::string& id, const std::string& sourceId, const std::string& targetId, ConnectionStyle style);
-    void AddConnection(const std::string& id, const std::string& sourceId, const std::string& targetId, ConnectionStyle style, ArrowStyle arrowStyle);
+    void AddConnection(const std::string& id, const std::string& sourceId, const std::string& targetId, BlockConnectionStyle style);
+    void AddConnection(const std::string& id, const std::string& sourceId, const std::string& targetId, BlockConnectionStyle style, ArrowStyle arrowStyle);
     void RemoveConnection(const std::string& id);
     BlockConnection* GetConnection(const std::string& id);
     
@@ -223,7 +225,7 @@ public:
     void SetConnectionColor(const std::string& id, const Color& color);
     void SetConnectionWidth(const std::string& id, float width);
     void SetConnectionLabel(const std::string& id, const std::string& label);
-    void SetConnectionStyle(const std::string& id, ConnectionStyle style);
+    void SetConnectionStyle(const std::string& id, BlockConnectionStyle style);
     void SetConnectionLineStyle(const std::string& id, LineStyle lineStyle);
     
     // =============================================================================

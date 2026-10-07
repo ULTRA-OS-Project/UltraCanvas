@@ -245,11 +245,20 @@ Moves cursor to end of document.
 void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false);
 ```
 Sets the cursor to a line and column (`pos.lineIndex`, `pos.columnIndex`, both
-0-based; the column counts codepoints).
+0-based; the column counts codepoints). With `selecting` set, the selection is
+extended to `pos` from its anchor, as Shift+arrow does: the anchor is the start
+of the current selection, or the cursor's previous place when nothing is
+selected. Without it the selection is left unchanged; call `ClearSelection()`
+to drop it.
+
+```cpp
+textArea->SetCursorPosition({0, 2});           // caret after "he" in "hello"
+textArea->SetCursorPosition({0, 5}, true);     // selects "llo"
+```
 
 #### GetCursorPosition
 ```cpp
-LineColumnIndex GetCursorPosition();
+LineColumnIndex GetCursorPosition() const;
 ```
 Returns the current cursor position as a line / column pair.
 

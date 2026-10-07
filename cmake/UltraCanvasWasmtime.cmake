@@ -15,12 +15,15 @@
 # plugin builds its crate - not done yet, so WasmHost builds without an
 # engine there (Docs/UltraWeb/UltraWebProposal.md §4.1, §14).
 #
+# Version: 1.1.0 - the system zstd ahead of the archive's own on Linux
 # Version: 1.0.0
-# Last Modified: 2026-10-06
+# Last Modified: 2026-10-07
 # Author: UltraCanvas Framework / ULTRA OS
 
 set(ULTRACANVAS_WASMTIME_VERSION "49.0.2")
 set(ULTRACANVAS_WASMTIME_FOUND FALSE)
+# Linked ahead of UltraCanvas::wasmtime by its users (see the Linux branch).
+set(ULTRACANVAS_WASMTIME_PRELINK "")
 set(ULTRACANVAS_WASMTIME_DIR "" CACHE PATH "An unpacked wasmtime C API (include/, lib/); empty downloads the release")
 
 # The release asset for this platform, and its SHA-256 (v49.0.2).
@@ -95,6 +98,25 @@ if(_uc_wt_root)
         else()
             set_property(TARGET UltraCanvas::wasmtime PROPERTY INTERFACE_LINK_LIBRARIES
                 Threads::Threads ${CMAKE_DL_LIBS} m)
+            # The release library carries its own zstd, with hidden symbols.
+            # Where another shared library on the link line uses the system
+            # zstd - libarchive does on Ubuntu 24.04, where libvips-dev pulls
+            # it in and VirtualFS links it - GNU ld refuses the executable:
+            # "hidden symbol `ZSTD_freeCStream' ... is referenced by DSO".
+            # Linked ahead of the archive, the system zstd answers wasmtime's
+            # calls and the archive's copy is never pulled in. Only a zstd as
+            # new as the one wasmtime bundles (1.5); otherwise nothing changes.
+            find_package(PkgConfig QUIET)
+            if(PkgConfig_FOUND)
+                pkg_check_modules(_UC_WT_ZSTD QUIET libzstd>=1.5)
+                if(_UC_WT_ZSTD_FOUND)
+                    find_library(_uc_wt_zstd_lib NAMES zstd
+                                 HINTS ${_UC_WT_ZSTD_LIBRARY_DIRS} NO_CACHE)
+                    if(_uc_wt_zstd_lib)
+                        set(ULTRACANVAS_WASMTIME_PRELINK "${_uc_wt_zstd_lib}")
+                    endif()
+                endif()
+            endif()
         endif()
         set(ULTRACANVAS_WASMTIME_FOUND TRUE)
     else()

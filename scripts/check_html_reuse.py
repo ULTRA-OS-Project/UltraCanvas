@@ -20,8 +20,10 @@ Two shapes are reported, in code outside the module:
       such code takes: DecodeEntities, DecodeHtmlEntities, UnescapeHtml,
       StripTags, StripHtml, HtmlToText, HtmlToPlainText, TokenizeHtml,
       ParseHtml, ApplyCss, ParseCss, ParseStyleAttribute, ParseInlineStyle,
-      ParseFromStyle. Calls and bare declarations are not reported: calling
-      HTML::DecodeEntities is the point.
+      ParseFromStyle, and a CSS selector matcher (SelectorMatches,
+      CompoundMatches, MatchSelector): a tree other than the DOM supplies a
+      Traits type to HTML::MatchingRules instead. Calls and bare declarations
+      are not reported: calling HTML::DecodeEntities is the point.
 
   html-reuse-entity-table
       A file holds a literal table of HTML entities: "nbsp" (or "&nbsp;") as
@@ -88,6 +90,7 @@ DEFINITION_NAMES = (
     "HtmlToPlainText", "HtmlToPlain", "TokenizeHtml", "TokenizeHTML", "ParseHtml",
     "ParseHTML", "ApplyCss", "ApplyCSS", "ParseCss", "ParseCSS", "ParseStyleAttribute",
     "ParseInlineStyle", "ParseFromStyle",
+    "SelectorMatches", "CompoundMatches", "MatchSelector", "MatchesSelector",
 )
 # A return type is required, so `for (x : TokenizeHtml(s)) {` and
 # `return StripHtml(s)` - calls - are not definitions.

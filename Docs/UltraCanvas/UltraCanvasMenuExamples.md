@@ -67,7 +67,7 @@ enum class MenuItemType {
     Checkbox,       // Toggle item with checkbox
     Radio,          // Radio button (mutually exclusive within group)
     Submenu,        // Item with cascading submenu
-    Input,          // Reserved: no text-input item is implemented yet
+    Input,          // Reserved: no text-input item is implemented, and there is no factory for one
     Custom,         // Reserved: drawn like a plain item
     Header          // Non-clickable section title
 };
@@ -164,8 +164,9 @@ MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
 openWith.onClick = [] { OpenWithDefaultApplication(); };
 ```
 
-`MenuItemData::Input()` is declared in the header, but its definition is
-commented out, so a call does not link: there is no text-input menu item yet.
+There is no text-input menu item: `MenuItemType::Input` is reserved, and
+`MenuItemData` has no `Input()` factory. (One used to be declared without a
+definition, so a call compiled and then failed to link; it was removed.)
 
 ## Menu Styling
 
@@ -210,8 +211,8 @@ struct MenuStyle {
     int submenuDelay;        // Hover delay before opening (ms)
 
     // Animation
-    bool enableAnimations;   // Enable open/close animations
-    float animationDuration; // Animation duration (seconds)
+    bool enableAnimations;   // Fade a popup's entries in as it opens (default false)
+    float animationDuration; // Length of the fade (seconds)
     
     // Shadow
     bool showShadow;         // Display drop shadow
@@ -384,7 +385,9 @@ The menu system handles the following events:
 - **Up/Down Arrows**: Navigate vertical menus
 - **Left/Right Arrows**: Navigate horizontal menus or open/close submenus
 - **Enter/Space**: Execute selected item
-- **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default)
+- **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
+  The application closes the topmost popup before the key reaches any element,
+  so an open submenu closes first and its parent stays open.
 
 ## Usage Examples
 
@@ -573,18 +576,22 @@ menu->SetStyle(customStyle);
 
 ## Animation Support
 
-`MenuStyle` carries animation settings:
+With `enableAnimations` set, a popup menu or submenu fades its entries in
+over `animationDuration` seconds when it opens:
 
 ```cpp
-// Enable animations
+auto menu = CreateMenu("ContextMenu", 0, 0, 200, 0);
 MenuStyle style = MenuStyle::Default();
 style.enableAnimations = true;
 style.animationDuration = 0.2f;  // 200ms
 menu->SetStyle(style);
 ```
 
-In this version the menu only tracks the progress of an opening animation;
-drawing does not change with it yet, so a menu appears at once either way.
+The panel itself (background and border) appears at once and the entries
+fade in over it: popups are composited onto the window as opaque blocks, so
+the panel has nothing beneath it to fade over. The menu bar does not
+animate, and closing is immediate. Animations are off by default; an
+`animationDuration` of 0 or less draws the entries in full at once.
 
 ## Performance Considerations
 
@@ -618,7 +625,7 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 1. Maximum submenu depth is implementation-defined (typically 10 levels)
 2. `Custom` and `Input` items have no special drawing or behaviour yet
 3. Touch gesture support varies by platform
-4. Open/close animation is not drawn yet (see Animation Support)
+4. Only opening animates, and only the entries fade (see Animation Support)
 
 ## Best Practices
 

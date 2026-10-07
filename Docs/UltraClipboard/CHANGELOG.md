@@ -1,3 +1,15 @@
+#### 2026-10-07 *0.1.1*
+- **One UltraClipboard at a time.** Starting it while it is already open -
+  from the desktop's quick panel (F2 or Ctrl+E on an entry, *Open
+  UltraClipboard*), the app starter or the command line - brings the open
+  window forward instead of opening a second one. The search the panel
+  carried over is applied there, and an entry asked to be edited opens in
+  that window's edit dialog, shown in the list behind it. A dialog that is
+  already open comes forward and keeps what is typed in it. The request
+  travels over UltraMessage, the per-user message bus
+  (`org.ultraos.ultraclipboard.show`); where there is no bus, every start
+  opens its own window as before.
+
 #### 2026-10-06 *0.1.0*
 - **First release of UltraClipboard, the clipboard history of ULTRA OS.**
   Every copy the desktop records is listed with a thumbnail by kind - text,

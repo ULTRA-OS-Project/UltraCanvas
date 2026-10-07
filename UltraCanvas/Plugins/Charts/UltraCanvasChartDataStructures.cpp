@@ -1,7 +1,9 @@
 // Plugins/Charts/UltraCanvasChartDataStructures.cpp
 // Essential data structures for chart rendering
+// Version: 1.0.2 - a CSV's first line is a header only when its x and y columns
+//                  are not numbers ("5,120,0,May" is data)
 // Version: 1.0.1
-// Last Modified: 2025-09-10
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include <sstream>
@@ -10,6 +12,22 @@
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
+
+    namespace {
+        // A CSV line is a data row when its first two columns (x and y) read
+        // as numbers; anything else on the first line ("x,y", "Month,Sales")
+        // is a header. Looking for the letters x or y anywhere dropped a first
+        // row labelled "May" or "July".
+        bool IsCSVDataLine(const std::string& line) {
+            std::stringstream ss(line);
+            std::string cell;
+            double value = 0.0;
+            for (int column = 0; column < 2; ++column) {
+                if (!std::getline(ss, cell, ',') || !TryParseFloat(cell, value)) return false;
+            }
+            return true;
+        }
+    }
 
     // ChartDataVector
     void ChartDataVector::LoadFromCSV(const std::string &filePath) {
@@ -20,16 +38,10 @@ namespace UltraCanvas {
 
         data.clear();
         std::string line;
-        bool skipHeader = false;
 
-        // Check for header
-        if (std::getline(file, line)) {
-            if (line.find("x") != std::string::npos || line.find("y") != std::string::npos) {
-                skipHeader = true;
-            } else {
-                // Process first line as data
-                data.push_back(ParseCSVLine(line));
-            }
+        // The first line is data unless it is a header
+        if (std::getline(file, line) && IsCSVDataLine(line)) {
+            data.push_back(ParseCSVLine(line));
         }
 
         while (std::getline(file, line)) {
@@ -116,13 +128,8 @@ namespace UltraCanvas {
         totalPoints = 0;
 
         // Skip header if present
-        if (std::getline(file, line)) {
-            // Check if first line looks like a header
-            if (line.find("x") != std::string::npos || line.find("y") != std::string::npos) {
-                // Skip header
-            } else {
-                totalPoints = 1;  // First line is data
-            }
+        if (std::getline(file, line) && IsCSVDataLine(line)) {
+            totalPoints = 1;  // First line is data
         }
 
         while (std::getline(file, line)) {
@@ -144,7 +151,7 @@ namespace UltraCanvas {
 
         // Skip header if present
         if (std::getline(file, line)) {
-            if (line.find("x") == std::string::npos && line.find("y") == std::string::npos) {
+            if (IsCSVDataLine(line)) {
                 // First line is data, process it
                 if (currentIndex >= cacheStartIndex && cache.size() < CHUNK_SIZE) {
                     cache.push_back(ParseCSVLine(line));

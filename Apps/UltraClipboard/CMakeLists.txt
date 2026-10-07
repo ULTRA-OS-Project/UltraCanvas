@@ -13,9 +13,17 @@ endif()
 
 add_executable(UltraClipboard
     main.cpp
+    SingleInstance.cpp
     ui/UltraClipboardWindow.cpp
     ui/ClipboardDialogs.cpp
 )
+
+# One instance per user: a second start hands its request to the running one
+# over UltraMessage (SingleInstance.h). Without the bus every start runs alone.
+if(TARGET UltraMessage)
+    target_link_libraries(UltraClipboard PRIVATE UltraMessage)
+    target_compile_definitions(UltraClipboard PRIVATE ULTRACLIPBOARD_HAVE_ULTRAMESSAGE=1)
+endif()
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.

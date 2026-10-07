@@ -887,6 +887,12 @@ plugin reports the full service name, so the instance is cut out of it
 name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
 the `mdns-name` attribute.
 
+A scanner named in `ULTRACANVAS_ESCL_SCANNERS` has no instance name: it is
+listed under its URL until it has described itself. Once its
+`ScannerCapabilities` are read, it takes the `MakeAndModel` they report as its
+name (`FillInEsclIdentity`), as an IPP printer configured by address takes its
+`printer-name` - and so does a certificate trusted for it.
+
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
 
@@ -935,7 +941,11 @@ Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
 `ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
 computes for the certificate, a changed certificate is refused with the key
 file untouched, and the first-contact server saw only `HEAD /` before the
-pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
+pinned request. `IODevicePrinterIPPLiveTest` checks the same against
+`ippeveprinter` over `ipps://` on every Linux CI run: first contact, a print
+through the pinned connection, a changed key refused and not overwritten,
+relearning after forgetting, and learning switched off. Not yet run on
+Schannel (Windows) or Apple's TLS.
 
 ---
 

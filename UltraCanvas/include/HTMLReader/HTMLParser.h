@@ -3,8 +3,11 @@
 // Handles real-world eBook markup: unclosed <p>/<li>, void elements,
 // self-closing XHTML syntax, comments, CDATA, doctype, entities, and
 // raw-text elements (<style>, <script>). Framework-independent.
+// Version: 1.2.0 - foreign content: inside <svg> and <math>, tag and attribute
+//                  names take the case their vocabulary defines (linearGradient,
+//                  viewBox), as the HTML standard adjusts them
 // Version: 1.1.0 - records the doctype (Document::doctype / quirksMode)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,11 +46,20 @@ private:
     bool Match(const char* s) const;
     void SkipUntil(const char* s);
 
+    // What the open elements say the next tag is: HTML, or foreign content
+    // (HTML standard 13.2.6.5) inside <svg> or <math>, up to an HTML
+    // integration point (foreignObject, desc, title; mi, mo, mn, ms, mtext,
+    // annotation-xml), where names are case-adjusted to the SVG / MathML
+    // vocabulary (linearGradient, viewBox, definitionURL) instead of
+    // lower-cased.
+    enum class Content { Html, Svg, MathMl };
+    static Content ContentOf(const std::vector<Node*>& openStack);
+
     void ParseNodes(Node* parent, std::vector<Node*>& openStack);
     void ParseTag(Node* parent, std::vector<Node*>& openStack);
     void ParseComment();
     std::string ParseTagName();
-    void ParseAttributes(Node& element);
+    void ParseAttributes(Node& element, Content content);
     std::string ParseAttributeValue();
     void ParseRawText(Node& element); // <style>/<script> content up to end tag
 

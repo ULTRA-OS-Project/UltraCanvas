@@ -116,6 +116,12 @@ Apps/UltraMail/
                                   OfflineGrace holds back a not-yet-online failure
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
+    UltraMailFeedPublisher.{h,cpp} UltraMail on UltraMessage: new mail to the
+                                  desktop feed (mail.message), and Notify - the
+                                  new-mail notification on screen, its click
+    UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
+                                  highest UID before the sync) and the
+                                  notification's words
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
@@ -159,7 +165,8 @@ Apps/UltraMail/
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
                                   UltraFiler): Mail > New mail, Reading >
                                   Layout / Messages, Privacy > Images /
-                                  Sender icons
+                                  Sender icons, Display > Links /
+                                  Notifications
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -189,6 +196,8 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   and whether other senders get their website's icon (the home page of the
   domain they write from is read for its icon, only for mail that passed the
   scam check). Icons are fetched in the background for the rows on screen.
+- *Display > Notifications* — whether new mail puts a notification on the
+  screen (on by default).
 
 An account's servers and sign-in stay in its own *Account Settings*.
 

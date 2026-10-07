@@ -1,7 +1,9 @@
 // Plugins/Charts/UltraCanvasSpecificChartElements.cpp
 // Specific chart element implementations with aligned X-axis positioning
+// Version: 1.2.0 - zoomed line/area/scatter clip to the plot and hover only
+//                  points in view; bars rise from the zero line
 // Version: 1.1.0
-// Last Modified: 2025-01-27
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
@@ -32,6 +34,8 @@ namespace UltraCanvas {
             linePoints.push_back(screenPos);
         }
 
+        bool clipped = PushXAxisViewClip(ctx);
+
         // Draw the line
         if (enableSmoothing && linePoints.size() > 2) {
             DrawSmoothLine(ctx, linePoints);
@@ -54,6 +58,8 @@ namespace UltraCanvas {
         if (showValueLabels) {
             RenderValueLabels(ctx, linePoints);
         }
+
+        if (clipped) ctx->PopState();
     }
 
     void UltraCanvasLineChartElement::DrawSmoothLine(IRenderContext* ctx, const std::vector<Point2Dd>& points) {
@@ -108,6 +114,7 @@ namespace UltraCanvas {
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Dd screenPos = GetDataPointScreenPosition(i, point);
+            if (!IsScreenXInView(screenPos.x)) continue;   // zoomed out of the plot
 
             double dx = mousePos.x - screenPos.x;
             double dy = mousePos.y - screenPos.y;
@@ -153,10 +160,10 @@ namespace UltraCanvas {
 
                 barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
 
-                // Calculate Y position for the bar top
+                // Calculate Y position for the bar top; the bar starts at 0
                 ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
                 auto topPos = transform.DataToScreen(point.x, point.y);
-                auto bottomPos = transform.DataToScreen(point.x, cachedDataBounds.minY);
+                auto bottomPos = transform.DataToScreen(point.x, 0.0);
 
                 barY = topPos.y;
                 barHeight = bottomPos.y - topPos.y;
@@ -186,7 +193,7 @@ namespace UltraCanvas {
                 barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
 
                 auto topPos = transform.DataToScreen(point.x, point.y);
-                auto bottomPos = transform.DataToScreen(point.x, cachedDataBounds.minY);
+                auto bottomPos = transform.DataToScreen(point.x, 0.0);   // the zero line
 
                 barHeight = bottomPos.y - topPos.y;
                 if (barHeight < 0) {
@@ -230,6 +237,19 @@ namespace UltraCanvas {
         return false;
     }
 
+    ChartDataBounds UltraCanvasBarChartElement::CalculateDataBounds() {
+        ChartDataBounds bounds = UltraCanvasChartElementBase::CalculateDataBounds();
+        if (!dataSource || dataSource->GetPointCount() == 0) return bounds;
+
+        // A bar's length is its value, so the value axis must reach 0: all
+        // positive data starts at 0, all negative data ends at 0 (the 5 %
+        // padding stays on the far side only).
+        if (bounds.minY > 0.0) bounds.minY = 0.0;
+        if (bounds.maxY < 0.0) bounds.maxY = 0.0;
+        if (bounds.minY == bounds.maxY) bounds.maxY = bounds.minY + 1.0;   // every value 0
+        return bounds;
+    }
+
     double UltraCanvasBarChartElement::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
         // For bar charts, center the label under each bar
         double barWidth = cachedPlotArea.width / totalPoints;
@@ -242,6 +262,8 @@ namespace UltraCanvas {
 
     void UltraCanvasScatterPlotElement::RenderChart(IRenderContext* ctx) {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
+
+        bool clipped = PushXAxisViewClip(ctx);
 
         if (showTrendLine) {
             RenderTrendLine(ctx);
@@ -296,6 +318,8 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        if (clipped) ctx->PopState();
     }
 
     bool UltraCanvasScatterPlotElement::ComputeLinearRegression(double& slope, double& intercept) const {
@@ -432,6 +456,7 @@ namespace UltraCanvas {
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Dd screenPos = GetDataPointScreenPosition(i, point);
+            if (!IsScreenXInView(screenPos.x)) continue;   // zoomed out of the plot
 
             double dx = mousePos.x - screenPos.x;
             double dy = mousePos.y - screenPos.y;
@@ -528,6 +553,8 @@ namespace UltraCanvas {
         // Add bottom-left corner
         smoothedAreaPoints.push_back(Point2Dd(areaPoints.front().x, bottomY));
 
+        bool clipped = PushXAxisViewClip(ctx);
+
         // Fill the area
         if (enableGradientFill) {
             // Create gradient
@@ -571,6 +598,8 @@ namespace UltraCanvas {
         if (showValueLabels) {
             RenderValueLabels(ctx, areaPoints);
         }
+
+        if (clipped) ctx->PopState();
     }
 
     bool UltraCanvasAreaChartElement::HandleChartMouseMove(const Point2Di& mousePos) {
@@ -584,6 +613,7 @@ namespace UltraCanvas {
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Dd screenPos = GetDataPointScreenPosition(i, point);
+            if (!IsScreenXInView(screenPos.x)) continue;   // zoomed out of the plot
 
             double dx = std::abs(mousePos.x - screenPos.x);
             double dy = std::abs(mousePos.y - screenPos.y);

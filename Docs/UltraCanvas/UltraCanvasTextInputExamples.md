@@ -4,7 +4,7 @@
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options. It is a single-line field; for multi-line text use `UltraCanvasTextArea`.
 
-**Version:** 1.3.1  
+**Version:** 1.4.0  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -98,8 +98,14 @@ Automatically configures validation and formatting based on the selected type:
 - **Currency**: Applies `TextFormatter::Currency()` and adds `ValidationRule::Numeric()`
 - **Date**: Applies `TextFormatter::Date()`
 
-The rules are added to any already on the field; `ClearValidationRules()`
-removes them.
+The rules a type brings are replaced when the type changes: switching Email
+to Text drops the email check, and setting a type twice does not check twice.
+Rules added with `AddValidationRule()` stay through any type change, whether
+they were added before or after it. `ClearValidationRules()` removes both.
+
+Phone, Currency and Date set their formatter through `SetFormatter()`, so a
+field without a placeholder gets the formatter's (see
+[Using Formatters](#using-formatters)).
 
 ## Text Management
 
@@ -264,8 +270,21 @@ const ValidationResult& last = textInput->GetLastValidationResult();
 textInput->SetShowValidationState(false);
 ```
 
-`Validate()` runs the rules in priority order and stops at the first one that
-fails, so a result carries at most one message.
+`Validate()` runs the rules in priority order (rules of equal priority in the
+order they were added) and stops at the first one that fails, so a result
+carries at most one message.
+
+The rules run on every edit and again when the field loses the focus, before
+`onFocusLost` is called: a required field the user tabs through without typing
+shows its error. A field that loses the focus because it is being hidden or
+disabled is not validated.
+
+A format rule - `Email()`, `Phone()`, `Numeric()`, `Range()`, `Pattern()` -
+accepts an empty value: it checks what was typed, not whether something was.
+An optional Email field left empty is fine; add `ValidationRule::Required()`
+to make it mandatory, as with `required` on an HTML form field.
+(`MinLength()` does count an empty value as too short, which is what a
+password checklist shows.)
 
 ### ValidationResult Structure
 
@@ -348,6 +367,16 @@ textInput->SetFormatter(TextFormatter::Custom("upper",
 The formatter only changes what is shown (`GetDisplayText()`); `GetText()`
 returns the text as typed.
 
+The field never turns formatted text back into raw text - it keeps the typed
+text and formats a copy for display - so it does not call `unformatFunction`.
+That function is for the caller holding formatted text, such as the display
+text, who wants the raw value:
+
+```cpp
+// "(555) 123-4567" on screen -> "5551234567"
+std::string digits = textInput->GetFormatter().unformatFunction(textInput->GetDisplayText());
+```
+
 ### Using Formatters
 
 ```cpp
@@ -357,6 +386,10 @@ textInput->SetFormatter(TextFormatter::Phone());
 // Get current formatter
 const TextFormatter& formatter = textInput->GetFormatter();
 ```
+
+A formatter's `placeholder` ("(555) 123-4567", "$0.00", "MM/DD/YYYY") is a
+default: `SetFormatter()` uses it only when the field has no placeholder, and
+keeps one you set.
 
 ## Selection and Cursor Management
 
@@ -591,6 +624,10 @@ The undo system keeps the last 50 states and automatically saves state before:
 - Paste operations
 - `SetText()` and the clear button
 
+One key press is one undo step, including a character, Space or paste that
+replaces a selection, and Backspace or Delete on a selection. A key press the
+length limit refuses changes nothing and leaves no step.
+
 ## Clear Button
 
 ```cpp
@@ -680,6 +717,9 @@ Windows (UI Automation `IsPassword`) and Linux (AT-SPI password text) then say
 
 ### Convenience Creation Functions
 
+Every factory takes the identifier first and float geometry, like the
+constructor: `(const std::string& identifier, float x, float y, float w, float h)`.
+
 ```cpp
 // Create basic text input
 auto textInput = CreateTextInput("myInput", 10, 10, 200, 30);
@@ -719,6 +759,7 @@ auto textInput = TextInputBuilder()
     .Build();
 ```
 
+`SetPosition()` and `SetSize()` take floats and keep fractions.
 The builder also has `SetText()`, `SetFormatter()`, `SetReadOnly()` and
 shortcuts that add a rule: `Required()`, `MinLength()`, `MaxLength()`,
 `Email()`, `Phone()` and `Numeric()`.
@@ -881,6 +922,7 @@ bool AcceptsFocus() const override { return true; }
 
 ## Version History
 
+- **1.4.0** (2026-10-07): `SetFormatter` keeps a placeholder you set and fills an empty one; the rules a type adds are replaced when the type changes; losing the focus validates; one key press is one undo step; float geometry for every factory and the builder; when to use `unformatFunction`
 - **1.3.1** (2026-10-07): Matched the API to the header: constructors, validation and formatter members, callbacks, builder; removed members that do not exist (Multiline type, auto-complete setters, history settings)
 - **1.1.0** (2025-01-06): Enhanced validation, formatting, and multiline support
 - **1.0.0** (2024-12-15): Initial release with basic text input functionality

@@ -1,7 +1,9 @@
 // UltraCanvasRadio.cpp
 // Radio button rendering and exclusive-selection group.
+// Version: 1.2.0 - the group's onChecked handler no longer owns its radio, and the group
+//                 takes it back when it is destroyed or the radio is removed
 // Version: 1.1.1
-// Last Modified: 2026-08-23
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRadio.h"
@@ -72,13 +74,78 @@ namespace UltraCanvas {
     }
 
 // ===== RADIO GROUP =====
+    // A click checks the radio, which lands here: select it by the shared_ptr
+    // the group holds.
+    void UltraCanvasRadioGroup::CheckedHandler::operator()() const {
+        for (const auto& member : group->radioButtons) {
+            if (member.get() == radio) {
+                group->SelectButton(member);
+                return;
+            }
+        }
+    }
+
+    void UltraCanvasRadioGroup::Detach(UltraCanvasRadio& radio) {
+        const auto* handler = radio.onChecked.target<CheckedHandler>();
+        if (handler && handler->group == this) radio.onChecked = nullptr;
+    }
+
+    void UltraCanvasRadioGroup::DetachAll() {
+        for (auto& radio : radioButtons) {
+            if (radio) Detach(*radio);
+        }
+    }
+
+    // After a move: the handlers still name the group the radios came from.
+    void UltraCanvasRadioGroup::TakeOverHandlersFrom(const UltraCanvasRadioGroup* previous) {
+        for (auto& radio : radioButtons) {
+            auto* handler = radio ? radio->onChecked.target<CheckedHandler>() : nullptr;
+            if (handler && handler->group == previous) handler->group = this;
+        }
+    }
+
+    UltraCanvasRadioGroup::~UltraCanvasRadioGroup() {
+        DetachAll();
+    }
+
+    UltraCanvasRadioGroup& UltraCanvasRadioGroup::operator=(const UltraCanvasRadioGroup& other) {
+        if (this != &other) {
+            DetachAll();   // the radios this group had would otherwise keep a handler naming it
+            radioButtons = other.radioButtons;
+            selectedButton = other.selectedButton;
+            onSelectionChanged = other.onSelectionChanged;
+        }
+        return *this;
+    }
+
+    UltraCanvasRadioGroup::UltraCanvasRadioGroup(UltraCanvasRadioGroup&& other) noexcept
+            : radioButtons(std::move(other.radioButtons)),
+              selectedButton(std::move(other.selectedButton)),
+              onSelectionChanged(std::move(other.onSelectionChanged)) {
+        other.radioButtons.clear();
+        TakeOverHandlersFrom(&other);
+    }
+
+    UltraCanvasRadioGroup& UltraCanvasRadioGroup::operator=(UltraCanvasRadioGroup&& other) noexcept {
+        if (this != &other) {
+            DetachAll();
+            radioButtons = std::move(other.radioButtons);
+            selectedButton = std::move(other.selectedButton);
+            onSelectionChanged = std::move(other.onSelectionChanged);
+            other.radioButtons.clear();
+            TakeOverHandlersFrom(&other);
+        }
+        return *this;
+    }
+
     void UltraCanvasRadioGroup::AddRadioButton(std::shared_ptr<UltraCanvasRadio> button) {
         if (!button) return;
         radioButtons.push_back(button);
-        button->onChecked = [this, button]() { SelectButton(button); };
+        button->onChecked = CheckedHandler{ this, button.get() };
     }
 
     void UltraCanvasRadioGroup::RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button) {
+        if (button) Detach(*button);
         radioButtons.erase(std::remove(radioButtons.begin(), radioButtons.end(), button),
                            radioButtons.end());
         if (selectedButton == button) selectedButton = nullptr;

@@ -1211,6 +1211,23 @@ namespace UltraCanvas {
             }
             return false;
         }
+
+        // `name` with `extension` added when its last component has none
+        // (FileDialogConfig::defaultExtension). Trailing dots are dropped
+        // first; a leading dot (".profile") is part of the name.
+        std::string WithDefaultExtension(const std::string& name, const std::string& extension) {
+            size_t start = 0;
+            while (start < extension.size() && extension[start] == '.') ++start;
+            if (start == extension.size()) return name;
+            const size_t sep = name.find_last_of("/\\");
+            const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
+            std::string result = name;
+            while (result.size() > leafStart && result.back() == '.') result.pop_back();
+            if (result.size() == leafStart) return name;   // no file name to extend
+            const size_t dot = result.find_last_of('.');
+            if (dot != std::string::npos && dot > leafStart) return result;
+            return result + "." + extension.substr(start);
+        }
     }
 
     std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
@@ -1462,9 +1479,7 @@ namespace UltraCanvas {
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         pathRow->layoutItem.SetFlexShrink(0);
 
-        // No text: the constructor's default is "Button", which would lay the
-        // arrow out as an icon beside a label and leave it at the left padding.
-        upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight, "");
+        upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight);
         upButton->SetIcon(FileDialogIconPath("arrow-up.svg"));
         upButton->SetTooltip("Up one level");
         upButton->layoutItem.SetFlexShrink(0);
@@ -2281,44 +2296,23 @@ namespace UltraCanvas {
             // Several types can be on: a name of any of them stands, any
             // other takes the first one's extension.
             int first = -1;
-            bool stands = false;
+            bool fits = false;
             for (int i : activeFilters) {
                 if (i < 0 || i >= count) continue;
-                if (ApplySaveExtension(name, filters[i], filters) == name) { stands = true; break; }
+                if (ApplySaveExtension(name, filters[i], filters) == name) { fits = true; break; }
                 if (first < 0) first = i;
             }
-            if (!stands && first >= 0) named = ApplySaveExtension(name, filters[first], filters);
+            if (!fits && first >= 0) named = ApplySaveExtension(name, filters[first], filters);
         } else {
             const int chosen = fileConfig.selectedFilterIndex;
-            if (chosen >= 0 && chosen < count) {
-                named = ApplySaveExtension(name, filters[chosen], filters);
-            }
+            if (chosen >= 0 && chosen < count) named = ApplySaveExtension(name, filters[chosen], filters);
         }
-        return WithDefaultExtension(named);
-    }
-
-    std::string UltraCanvasFileDialog::WithDefaultExtension(const std::string& name) const {
-        // The caller's default extension is what a name gets when the type
-        // filter gave it none: no filters, "All files" chosen, or a type with
-        // no extension of its own. It only ever fills in a missing extension
-        // - a name that already has one, of any type, is left as typed - the
-        // way the Windows save dialog treats its default extension.
-        std::string ext = fileConfig.defaultExtension;
-        size_t start = 0;
-        while (start < ext.size() && ext[start] == '.') ++start;
-        ext.erase(0, start);
-        if (ext.empty() || ext == "*") return name;
-
-        const size_t sep = name.find_last_of("/\\");
-        const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
-        std::string result = name;
-        while (result.size() > leafStart && result.back() == '.') result.pop_back();
-        if (result.size() == leafStart) return name;   // no file name to extend
-        // A leading dot names a hidden file, not an extension: ".profile"
-        // gets the extension, "notes.txt" keeps its own.
-        const size_t dot = result.find_last_of('.');
-        if (dot != std::string::npos && dot > leafStart) return result;
-        return result + "." + ext;
+        // A type that names no extension (All files) leaves a bare name
+        // bare: the caller's default extension, if it gave one, goes on.
+        if (!fileConfig.defaultExtension.empty()) {
+            named = WithDefaultExtension(named, fileConfig.defaultExtension);
+        }
+        return named;
     }
 
     bool UltraCanvasFileDialog::IsFileMatchingFilter(const std::string& fileName) const {
