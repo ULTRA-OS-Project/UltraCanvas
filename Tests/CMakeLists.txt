@@ -660,6 +660,29 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MOUSE CLICK BUBBLING TEST =====
+# A press the element under the pointer does not take climbs to the elements
+# around it (a label inside a clickable card), stops at the one that takes it,
+# never leaves a popup, and reaches the window once. Opens a window, so it
+# skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MouseClickBubblingTest...")
+    add_executable(MouseClickBubblingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MouseClickBubblingTest.cpp
+    )
+    target_include_directories(MouseClickBubblingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MouseClickBubblingTest PRIVATE cxx_std_20)
+    target_link_libraries(MouseClickBubblingTest PRIVATE UltraCanvas)
+    set_target_properties(MouseClickBubblingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MouseClickBubblingTest COMMAND MouseClickBubblingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MouseClickBubblingTest")
+else()
+    message(STATUS "  MouseClickBubblingTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,

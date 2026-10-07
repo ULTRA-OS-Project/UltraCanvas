@@ -211,9 +211,10 @@ image): each tile carries the same initial, name and three badges (the
 captions move into the tile's tooltip, under the full address). Clicking
 anywhere on a tile - its name and badges included - selects the account:
 the tile gets the selection-blue frame and the Inbox / Message boxes below
-switch to that account. The tile is one click target: its content is marked
-non-interactive (`ClickSurface::PassPointerThroughContent`), because the
-window gives a click only to the innermost element under the pointer.
+switch to that account. The tile is one target for the pointer: its content
+is marked non-interactive (`ClickSurface::PassPointerThroughContent`), so a
+click lands on the tile and the hover shows the tile's tooltip wherever the
+pointer is on it.
 
 The counts come from `LocalStore::GetAccountStatus`, one query for all
 accounts (`unreadToday` / `unreadOlder` / `needsAnswer`), refreshed

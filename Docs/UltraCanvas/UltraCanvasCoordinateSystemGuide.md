@@ -146,6 +146,42 @@ Rect2Di MyElement::SidebarArea() const {
 Drag deltas (`pointer - anchor`) are frame‑independent, so panning logic that
 only uses differences is safe in any frame.
 
+### Which element gets a press
+
+A mouse press (`MouseDown`, `MouseUp`, `MouseDoubleClick`) goes first to the
+innermost interactive element under the pointer. If its `OnEvent` returns
+`false`, the press climbs to that element's parent, then the grandparent, and
+so on — each one gets it with `event.pointer` mapped into *its own* local
+space — until one returns `true`. The climb stops below the window, which
+still gets a press nobody took, once, at the end. A popup is a child of the
+window, so a press inside a popup never reaches what lies under it.
+
+So a container that acts on clicks — a clickable card, a row, a tile — hears
+a click on the label or icon inside it without any extra work, and:
+
+- **Return `true` for a press you acted on**, `false` for one you did not.
+  A press you used but report as untaken goes on to your parents, which may
+  act on it again.
+- **A container gets the presses its children did not take**, with the
+  pointer over that child. A view that hit‑tests its own painted content
+  must not treat such a press as a click on whatever is painted under the
+  child.
+- A press whose element left the tree while handling it (a click that
+  closed its row) stops there; the elements it left do not get it.
+- Hit‑testing skips an element that is not interactive
+  (`SetInteractive(false)`) together with everything inside it: the press
+  lands on the element around it directly, and so does the hover — and with
+  it the tooltip.
+- A window event filter (`InstallEventFilter`) sees every step of the climb,
+  `event.targetElement` set to the element of that step — as it already did
+  for the wheel — so a filter that acts on a press must act once, or return
+  `true` to stop the press.
+
+Before October 2026 a press went to the innermost element and then straight
+to the window, so a card answered only on its padding - UltraMail's account
+tiles switched the account from 1 of 14 spots (framework changelog: "A mouse
+press the element under the pointer does not take climbs to its parents").
+
 ---
 
 ## 4. Setting an element's position & size

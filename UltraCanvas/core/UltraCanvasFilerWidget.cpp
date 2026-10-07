@@ -15159,12 +15159,38 @@ namespace UltraCanvas {
         return false;
     }
 
+    // Whether a press landed on one of the widget's own child elements - the
+    // ones hit-testing hands a press to before the widget: interactive and
+    // visible.
+    static bool PressOnChildElement(UltraCanvasContainer& widget, const UCEvent& event) {
+        const Point2Df at(static_cast<float>(event.pointerWindow.x),
+                          static_cast<float>(event.pointerWindow.y));
+        for (const auto& child : widget.GetChildren()) {
+            if (child->IsVisible() && child->IsInteractive() && child->ContainsInWindow(at)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
         // The compress dialog is a modal in-widget overlay: while it is up it
         // consumes every event and nothing behind it reacts.
         if (compressDlg.active) return HandleCompressDialogEvent(event);
+
+        // A press one of the widget's own elements (the filter's "clear"
+        // button, the hidden-files notice, the rename field) did not take
+        // climbs here, but it is not a press on the files painted under that
+        // element: a right-click on "clear" took the keyboard from the search
+        // field, committed an open rename and opened the folder's menu. A
+        // release is not filtered - a drag the widget captured ends on it,
+        // over a button or not.
+        if ((event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) &&
+            PressOnChildElement(*this, event)) {
+            return false;
+        }
 
         switch (event.type) {
             case UCEventType::MouseLeave: {

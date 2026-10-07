@@ -202,10 +202,8 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
                                     Theme::kWaitingTint, Theme::kWaitingText, kTilePill));
         tile->AddChild(counters);
 
-        // A click on the name, the avatar or a counter is a click on the
-        // tile. Without this the label or row under the pointer took the
-        // click and dropped it: the head and counter rows stretch across the
-        // tile, so only its padding switched the account.
+        // A click or hover on the name, the avatar or a counter is the
+        // tile's: one target, with one tooltip that names the counters.
         tile->PassPointerThroughContent();
 
         root_->AddChild(tile);

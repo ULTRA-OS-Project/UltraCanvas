@@ -326,22 +326,22 @@ MakeAvatar(const std::string& id, const std::string& initial, float side = kAvat
 // A container that fires onActivate on a left click anywhere inside it
 // (account tiles).
 //
-// "Anywhere" needs PassPointerThroughContent() once the content is built. The
-// window hands a click to the innermost element under the pointer and to no
-// other: a click on a label inside the surface went to the label, which
-// ignores it, and the surface never heard of it - on an account tile only the
-// padding round the text and the counters answered, so most clicks on a tile
-// did nothing.
+// A click on a label inside it reaches it either way: the window hands a
+// press the label does not take on to the elements around it. (It did not
+// until October 2026, and on an account tile only the padding answered.)
+// PassPointerThroughContent() goes further and makes the surface one target
+// for the pointer, hover included, so its own tooltip is the one shown.
 class ClickSurface : public UltraCanvas::UltraCanvasContainer {
 public:
     ClickSurface(const std::string& id, std::function<void()> onActivate)
         : UltraCanvas::UltraCanvasContainer(id, 0, 0, 0, 0), onActivate_(std::move(onActivate)) {}
 
     // Make the content transparent to the pointer, as an attachment chip's
-    // labels are, so every click and hover over the surface is the surface's.
-    // Hit-testing skips a non-interactive element with everything inside it,
-    // so the direct children are enough. Their own tooltips are no longer
-    // reached: the surface's tooltip has to say what they said.
+    // labels are, so every click and hover over the surface is the surface's
+    // and lands on it directly. Hit-testing skips a non-interactive element
+    // with everything inside it, so the direct children are enough. Their own
+    // tooltips are no longer reached: the surface's tooltip has to say what
+    // they said.
     void PassPointerThroughContent() {
         for (const auto& child : GetChildren()) child->SetInteractive(false);
     }

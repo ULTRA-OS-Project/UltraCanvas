@@ -1,7 +1,7 @@
 // Tests/UltraMail/AccountBarClickTest.cpp
 // A click anywhere on an account tile selects that account.
 //
-// The window hands a click to the innermost element under the pointer and to
+// The window handed a click to the innermost element under the pointer and to
 // no other. The tile's name, avatar and counters are elements of their own,
 // and the rows holding them stretch across the tile, so a click on any of
 // them went to a label or a row that ignores it: only the tile's padding

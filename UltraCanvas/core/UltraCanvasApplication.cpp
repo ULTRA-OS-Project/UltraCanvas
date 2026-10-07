@@ -1,7 +1,9 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.6.0 - a mouse press the element under the pointer does not take
+//                  climbs to the elements around it (DispatchPressToAncestors)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-07-21
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -42,6 +44,38 @@
 
 
 namespace UltraCanvas {
+    namespace {
+        // The element a mouse press landed on and the ones around it, below
+        // the window, while that press is handed out. A stack, because a
+        // handler can run a nested event loop (a modal dialog) that hands out
+        // presses of its own. ~UltraCanvasUIElement nulls its entries
+        // (CleanupElementReferences), so a press never reaches an element a
+        // handler before it destroyed.
+        std::vector<std::vector<UltraCanvasUIElement*>*>& PressChains() {
+            static std::vector<std::vector<UltraCanvasUIElement*>*> chains;
+            return chains;
+        }
+
+        // A press the element under the pointer did not take, handed to the
+        // elements around it, innermost first, until one takes it. `chain`
+        // is that element followed by its ancestors below the window.
+        bool DispatchPressToAncestors(UltraCanvasApplicationBase& app,
+                                      const std::vector<UltraCanvasUIElement*>& chain,
+                                      const UCEvent& event) {
+            for (size_t i = 1; i < chain.size(); ++i) {
+                UltraCanvasUIElement* below = chain[i - 1];
+                UltraCanvasUIElement* ancestor = chain[i];
+                // Destroyed by a handler so far (CleanupElementReferences
+                // nulled it), or no longer where the press found it - a click
+                // that closed its row, say: the press has done what it was
+                // for, and the elements it left must not act on it too.
+                if (!below || !ancestor || below->GetParentContainer() != ancestor) return false;
+                if (app.DispatchEventToElement(ancestor, event)) return true;
+            }
+            return false;
+        }
+    }
+
 
     // ===== Singleton accessor for cross-thread PostToUIThread =====
     namespace {
@@ -844,6 +878,9 @@ namespace UltraCanvas {
         if (hoveredElement == elem) {
             hoveredElement = nullptr;
         }
+        for (auto* chain : PressChains()) {
+            std::replace(chain->begin(), chain->end(), elem, static_cast<UltraCanvasUIElement*>(nullptr));
+        }
         auto win = elem->GetWindow();
         if (win && win->_focusedElement == elem) {
             win->_focusedElement = nullptr;
@@ -1404,7 +1441,40 @@ namespace UltraCanvas {
                             event.pointerWindow);
                     }
 
+                    // A press the element does not take climbs to the
+                    // elements around it, as wheel, drag, touch and keys do:
+                    // a click on the label inside a clickable card is the
+                    // card's. It used to go to the window and nowhere else,
+                    // so such a card answered only on its padding. The chain
+                    // is taken before the element runs, because a press can
+                    // rebuild the tree under the pointer; it stops below the
+                    // window, which still gets an untaken press once, below -
+                    // and so never leaves a popup, a child of the window.
+                    std::vector<UltraCanvasUIElement*> pressChain;
+                    const bool climbs = event.IsMouseClickEvent();
+                    if (climbs) {
+                        pressChain.push_back(elementUnderPointer);
+                        for (UltraCanvasUIElement* up = elementUnderPointer->GetParentContainer();
+                             up && up != targetWindow; up = up->GetParentContainer()) {
+                            pressChain.push_back(up);
+                        }
+                    }
+                    struct PressChainScope {
+                        std::vector<std::vector<UltraCanvasUIElement*>*>& chains;
+                        std::vector<UltraCanvasUIElement*>* chain;
+                        PressChainScope(std::vector<std::vector<UltraCanvasUIElement*>*>& cs,
+                                        std::vector<UltraCanvasUIElement*>* c) : chains(cs), chain(c) {
+                            chains.push_back(chain);
+                        }
+                        ~PressChainScope() {
+                            chains.erase(std::find(chains.begin(), chains.end(), chain));
+                        }
+                    } pressChainScope(PressChains(), &pressChain);
+
                     if (DispatchEventToElement(elementUnderPointer, event)) {
+                        goto finish;
+                    }
+                    if (climbs && DispatchPressToAncestors(*this, pressChain, event)) {
                         goto finish;
                     }
                 }
