@@ -512,6 +512,8 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
                 return Fail(VideoFXResult::InvalidArgument, "Image segments last 0..24 hours");
             std::string motionError;
             if (!ValidateMotion(seg.motion, motionError)) return Fail(VideoFXResult::InvalidArgument, motionError);
+            if (!ValidateKeepInView(seg.keepInView, motionError))
+                return Fail(VideoFXResult::InvalidArgument, motionError);
             if (seg.image.IsValid()) {
                 p.displayWidth = seg.image.width;
                 p.displayHeight = seg.image.height;
@@ -1683,9 +1685,13 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         return Fail(r, "Image " + plan.segment.path + ": " + reason);
     }
 
-    const VideoFXImageMotion motion = ResolveMotion(plan.segment.motion, image.width, image.height,
-                                                    width, height, index);
     const VideoFXImageFit fit = ResolveImageFit(plan.segment.imageFit, image.width, image.height, width, height);
+    // Faces (or whatever the segment asks to keep) stay in shot: the ends of
+    // the move are fitted to them here, every frame between is slid below
+    const VideoFXRect focus = FocusBounds(plan.segment.keepInView);
+    const VideoFXImageMotion motion = FitMotionToFocus(
+        ResolveMotion(plan.segment.motion, image.width, image.height, width, height, index), focus,
+        image.width, image.height, width, height, fit);
     // Shrink once so that at the closest zoom the image is still about one
     // image pixel per output pixel: sharp, no aliasing, little memory
     const double closest = motion.style == VideoFXMotionStyle::Still
@@ -1728,6 +1734,7 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         const KenBurnsView view = ViewAt(motion, frames > 1 ? static_cast<double>(k) / (frames - 1) : 0.0);
         if (fit == VideoFXImageFit::Cover) ViewRect(view, image.width, image.height, width, height, x, y, w, h);
         else ContainViewRect(view, image.width, image.height, width, height, x, y, w, h);
+        KeepFocusInView(focus, image.width, image.height, x, y, w, h);
         RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads,
                    backdrop.empty() ? nullptr : backdrop.data());
         f->pts = k;
@@ -2313,6 +2320,16 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     for (size_t i = 0; i < n; ++i) {
         VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], seconds[i], options.motion);
         s.imageFit = options.imageFit;
+        if (i < options.keepInView.size()) s.keepInView = options.keepInView[i];
+        if (s.keepInView.empty() && options.findKeepInView) {
+            VideoFXFrame shown;             // as it is shown: the finder's coordinates are the segment's
+            VideoFXResult r = VideoFX_ExtractFrame(imagePaths[i], 0.0, shown);
+            if (r != VideoFXResult::Ok) {
+                const std::string reason = VideoFX_GetLastError();
+                return Fail(r, "Image " + imagePaths[i] + ": " + reason);
+            }
+            s.keepInView = options.findKeepInView(shown, i);
+        }
         if (i > 0) s.transitionIn = options.transition;
         if (i < options.captions.size() && !options.captions[i].empty()) {
             VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);

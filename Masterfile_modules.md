@@ -1952,7 +1952,8 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom and one-call slideshows,
+frame, still images with sub-pixel pan and zoom (keeping given faces in
+shot) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
 changing on the beat,
@@ -1970,7 +1971,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
-  `VideoFXBeatInfo`
+  `VideoFXBeatInfo`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2005,7 +2007,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
   CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
-  TrackBeats, AnalyseBeats, BeatAlignedChanges}`
+  TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
+  FocusBounds, FitMotionToFocus, KeepFocusInView}`
   (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
   have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version

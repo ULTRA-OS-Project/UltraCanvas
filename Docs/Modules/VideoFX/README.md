@@ -182,6 +182,40 @@ at sub-pixel positions, so the camera glides — without the stepping FFmpeg's
 own `zoompan` shows. A large photo is shrunk once to what the closest zoom
 needs, and each photo is loaded only when its segment plays.
 
+**Keeping faces in shot.** A pan or a zoom can carry a face out of frame —
+a zoom into the middle of a group photo, a pan down a portrait that crops
+heads off. `keepInView` lists the regions that must stay in shot, as
+fractions of the photo as it is shown (after its EXIF rotation):
+
+```cpp
+VideoFXSegment photo = VideoFXSegment::FromImage("family.jpg", 5.0);
+photo.keepInView = { VideoFXRect::FromPixels(1210, 380, 240, 300, 4000, 3000),   // a face, in pixels
+                     VideoFXRect::Make(0.62, 0.15, 0.06, 0.09) };               // or as fractions
+```
+
+The move keeps its character but is fitted around them. The zoom goes no
+closer than the view that holds every region, with 15 % headroom round each,
+and the pan is narrowed so it stays around them. Every frame is then slid,
+never resized, to hold them, so the faces stay in shot through the whole move
+and not just at its ends. A `Still` photo stays still but looks at them —
+the band of a tall photo a `Cover` crop shows is the one with the faces.
+
+VideoFX does not find faces itself. An application plugs its own detector
+into the slideshow: UltraAI's vision analyser (`VisionTask::FaceDetection`),
+the operating system's (Vision on macOS, `Windows.Media.FaceAnalysis`), or a
+tap in its own UI. It is asked once per photo that has no regions given:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.findKeepInView = [&](const VideoFXFrame& photo, size_t index) {
+    std::vector<VideoFXRect> faces;
+    for (const auto& box : myDetector.Faces(photo.pixels.data(), photo.width, photo.height))
+        faces.push_back(VideoFXRect::FromPixels(box.x, box.y, box.w, box.h, photo.width, photo.height));
+    return faces;
+};
+// or, known in advance: options.keepInView = { {faceA}, {}, {faceB, faceC} };
+```
+
 **A slideshow in one call:**
 
 ```cpp
@@ -581,6 +615,7 @@ videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
+videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -617,6 +652,7 @@ generates its own clips, so it needs no media files.
 | 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
 | 3b | Song lists, each song crossfading into the next | **Done** |
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
+| 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

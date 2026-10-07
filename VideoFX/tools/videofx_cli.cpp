@@ -32,6 +32,8 @@
 //          --fit-music                   slideshow: seconds per image chosen to end with the music
 //          --beat-sync                   slideshow: change images on the music's beats
 //          --beats-per-image N           slideshow: every image exactly N beats (implies --beat-sync)
+//          --keep N:X,Y,W,H              slideshow: keep this region of image N (1 = the first) in
+//                                        shot - a face; fractions of the image; repeatable
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -49,6 +51,7 @@
 
 #include <VideoFX/VideoFX.h>
 
+#include <cmath>
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
@@ -100,7 +103,7 @@ int Usage() {
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --music FILE [--music FILE2 ...] [--music-crossfade S]\n"
         "         [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
-        "         [--beat-sync] [--beats-per-image N]\n"
+        "         [--beat-sync] [--beats-per-image N] [--keep N:X,Y,W,H]...\n"
         "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -170,6 +173,25 @@ bool ParseDuckingPreset(const std::string& s, VideoFXMusic& m) {
         if (s == n.first) { m.SetDuckingPreset(n.second); return true; }
     }
     return false;
+}
+
+// "N:X,Y,W,H" - image N (1-based) and a region of it, as fractions
+bool ParseKeep(const std::string& spec, std::vector<std::vector<VideoFXRect>>& keep) {
+    const size_t colon = spec.find(':');
+    if (colon == std::string::npos) return false;
+    double n = 0.0;
+    if (!ParseNumber(spec.substr(0, colon), n) || n < 1.0 || n > 100000.0 || n != std::floor(n)) return false;
+    double v[4];
+    size_t from = colon + 1;
+    for (int i = 0; i < 4; ++i) {
+        const size_t comma = i < 3 ? spec.find(',', from) : spec.size();
+        if (comma == std::string::npos || !ParseNumber(spec.substr(from, comma - from), v[i])) return false;
+        from = comma + 1;
+    }
+    const size_t index = static_cast<size_t>(n) - 1;
+    if (keep.size() <= index) keep.resize(index + 1);
+    keep[index].push_back(VideoFXRect::Make(v[0], v[1], v[2], v[3]));
+    return true;
 }
 
 bool ParseTransition(const std::string& spec, VideoFXTransition& t) {
@@ -256,6 +278,7 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--no-loop") settings.music.loop = false;
         else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--beat-sync") o.slideshow.beatSync = true;
+        else if (a == "--keep" && next(v)) { if (!ParseKeep(v, o.slideshow.keepInView)) return false; }
         else if (a == "--beats-per-image" && next(v)) o.slideshow.beatsPerImage = static_cast<int>(NumberOr(v, -1.0));
         else if (a == "--fit" && next(v)) {
             if (v == "auto") o.slideshow.imageFit = VideoFXImageFit::Auto;

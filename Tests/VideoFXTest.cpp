@@ -322,6 +322,66 @@ static void TestKenBurnsMath() {
     std::vector<uint8_t> c(32 * 8 * 4);
     RenderView(ramp, 10.0, 0, 32, 8, 32, 8, c.data(), 32 * 4, 4);
     CHECK(c == a, "threaded rendering matches single-threaded");
+
+    // ---- keeping faces in shot ----
+    CHECK(ValidateKeepInView({VideoFXRect::Make(0.4, 0.4, 0.2, 0.2)}, error), "a face region is valid");
+    CHECK(!ValidateKeepInView({VideoFXRect::Make(0.9, 0.4, 0.2, 0.2)}, error), "a region past the edge refused");
+    CHECK(!ValidateKeepInView({VideoFXRect::Make(0.4, 0.4, 0.0, 0.2)}, error), "an empty region refused");
+    VideoFXRect box = FocusBounds({VideoFXRect::Make(0.4, 0.4, 0.2, 0.2)});
+    CHECK(Near(box.x, 0.37, 1e-9) && Near(box.w, 0.26, 1e-9), "headroom: 15 % of the face each side");
+    box = FocusBounds({VideoFXRect::Make(0.0, 0.1, 0.1, 0.1), VideoFXRect::Make(0.5, 0.6, 0.1, 0.1)});
+    CHECK(Near(box.x, 0.0, 1e-9) && Near(box.y, 0.085, 1e-9) && Near(box.x + box.w, 0.615, 1e-9) &&
+          Near(box.y + box.h, 0.715, 1e-9), "two faces: one box round both, clipped at the edge");
+    CHECK(FocusBounds({}).IsEmpty(), "no regions: no box");
+
+    // Does the view at `fraction` - ends fitted, every frame slid - hold `focus`?
+    auto holds = [](const VideoFXImageMotion& m, const VideoFXRect& focus, int iw, int ih, int ow, int oh,
+                    VideoFXImageFit fit, bool slide) {
+        for (int k = 0; k <= 40; ++k) {
+            double x, y, w, h;
+            const KenBurnsView v = ViewAt(m, k / 40.0);
+            if (fit == VideoFXImageFit::Cover) ViewRect(v, iw, ih, ow, oh, x, y, w, h);
+            else ContainViewRect(v, iw, ih, ow, oh, x, y, w, h);
+            if (slide) KeepFocusInView(focus, iw, ih, x, y, w, h);
+            const double e = 1e-6;
+            if (x > focus.x * iw + e || y > focus.y * ih + e || x + w < (focus.x + focus.w) * iw - e ||
+                y + h < (focus.y + focus.h) * ih - e)
+                return false;
+        }
+        return true;
+    };
+    const VideoFXRect face = FocusBounds({VideoFXRect::Make(0.8, 0.3, 0.1, 0.13)});
+    const VideoFXImageMotion zoomIn = ResolveMotion(VideoFXImageMotion::Make(VideoFXMotionStyle::ZoomIn),
+                                                    4000, 3000, 1920, 1080, 0);
+    CHECK(!holds(zoomIn, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, false),
+          "a face near the edge: a plain zoom-in loses it");
+    VideoFXImageMotion fitted = FitMotionToFocus(zoomIn, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(Near(fitted.endZoom, zoomIn.endZoom, 1e-9) && fitted.endX > 0.5, "fitted: same zoom, moved towards the face");
+    CHECK(holds(fitted, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, true), "and it holds the face throughout");
+    const VideoFXRect group = FocusBounds({VideoFXRect::Make(0.1, 0.2, 0.8, 0.5)});
+    fitted = FitMotionToFocus(zoomIn, group, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(Near(fitted.endZoom, 1.0, 1e-9), "a wide group: no closer than holds them all");
+    const VideoFXImageMotion panRight = ResolveMotion(VideoFXImageMotion::Make(VideoFXMotionStyle::PanRight),
+                                                      4000, 3000, 1920, 1080, 0);
+    fitted = FitMotionToFocus(panRight, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(fitted.startX > 0.0 && fitted.endX > fitted.startX, "a pan: narrowed round the face, still a pan");
+    CHECK(holds(fitted, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, true), "holding it all the way");
+    const VideoFXRect top = FocusBounds({VideoFXRect::Make(0.4, 0.05, 0.2, 0.07)});
+    fitted = FitMotionToFocus(VideoFXImageMotion::Make(VideoFXMotionStyle::Still), top, 1200, 4800, 1600, 1200,
+                              VideoFXImageFit::Cover);
+    CHECK(Near(fitted.startZoom, 1.0, 1e-9) && Near(fitted.endZoom, 1.0, 1e-9) && fitted.startY < 0.2 &&
+          Near(fitted.startY, fitted.endY, 1e-9), "Still on a tall photo: still, but looking at the face");
+    // Any motion, any face that fits: held in every frame
+    bool always = true;
+    for (int i = 0; i < 200 && always; ++i) {
+        const double fx = (i * 37 % 90) / 100.0, fy = (i * 53 % 90) / 100.0;
+        const VideoFXRect f = FocusBounds({VideoFXRect::Make(fx, fy, 0.08, 0.08)});
+        const VideoFXImageMotion m = VideoFXImageMotion::Custom(1.0 + (i % 7) * 0.4, (i % 5) / 4.0, (i % 3) / 2.0,
+                                                                1.0 + (i % 4) * 0.5, (i % 2), ((i + 1) % 5) / 4.0);
+        const VideoFXImageFit fit = i % 2 ? VideoFXImageFit::Cover : VideoFXImageFit::BlurredBackground;
+        always = holds(FitMotionToFocus(m, f, 3000, 2000, 1280, 720, fit), f, 3000, 2000, 1280, 720, fit, true);
+    }
+    CHECK(always, "200 motions and faces: the face in every frame");
 }
 
 static void TestMusicMath() {
@@ -1086,6 +1146,63 @@ static void TestStillImages(const VideoFXExportSettings& base) {
     VideoFX_ExtractFrame(portrait, 0.5, f);
     PixelAt(f, 4, f.height / 2, pr, pg, pb);
     CHECK(pr > 200, "Cover: fills the frame");
+
+    // ---- faces kept in shot: a tall photo with a red "face" near its top ----
+    VideoFXFrame person = SolidFrame(120, 480, 90, 90, 90);
+    for (int yy = 24; yy < 58; ++yy)
+        for (int xx = 48; xx < 72; ++xx) {
+            uint8_t* p = &person.pixels[(static_cast<size_t>(yy) * 120 + xx) * 4];
+            p[0] = 230; p[1] = 20; p[2] = 20;
+        }
+    const VideoFXRect faceBox = VideoFXRect::FromPixels(48, 24, 24, 34, 120, 480);
+    auto redPixels = [](const std::string& file, double t) {
+        VideoFXFrame fr;
+        if (VideoFX_ExtractFrame(file, t, fr) != VideoFXResult::Ok) return -1;
+        int n = 0;
+        for (size_t i = 0; i + 3 < fr.pixels.size(); i += 4)
+            if (fr.pixels[i] > 170 && fr.pixels[i + 1] < 90 && fr.pixels[i + 2] < 90) ++n;
+        return n;
+    };
+    VideoFXSegment pan = VideoFXSegment::FromImageFrame(person, 2.0,
+                                                        VideoFXImageMotion::Custom(1.2, 0.5, 0.0, 1.2, 0.5, 1.0));
+    pan.imageFit = VideoFXImageFit::Cover;
+    const std::string lost = TempPath("face-lost.mkv");
+    CHECK_OK(VideoFX_Export({pan}, lost, s), "a pan down a tall photo");
+    CHECK(redPixels(lost, 0.05) > 20 && redPixels(lost, 1.9) == 0, "without: the face scrolls out of shot");
+    pan.keepInView = {faceBox};
+    const std::string kept = TempPath("face-kept.mkv");
+    CHECK_OK(VideoFX_Export({pan}, kept, s), "the same, keeping the face in view");
+    CHECK(redPixels(kept, 0.05) > 20 && redPixels(kept, 1.0) > 20 && redPixels(kept, 1.9) > 20,
+          "with: the face in shot at the start, middle and end");
+    VideoFXSegment closer = VideoFXSegment::FromImageFrame(person, 2.0,
+                                                           VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 3.0, 0.5, 0.9));
+    closer.imageFit = VideoFXImageFit::Cover;
+    closer.keepInView = {faceBox};
+    const std::string zoomed = TempPath("face-zoom.mkv");
+    CHECK_OK(VideoFX_Export({closer}, zoomed, s), "a zoom aimed away from the face");
+    CHECK(redPixels(zoomed, 1.9) > 20, "ends on the face instead");
+
+    const std::string personPng = TempPath("person.png");
+    CHECK_OK(VideoFX_SaveFrameImage(person, personPng), "save the tall photo");
+    VideoFXSlideshowOptions faces;
+    faces.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+    faces.secondsPerImage = 1.5;
+    faces.imageFit = VideoFXImageFit::Cover;
+    faces.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::PanDown);
+    faces.fadeInOut = false;
+    int asked = 0;
+    faces.findKeepInView = [&](const VideoFXFrame& shown, size_t) {
+        ++asked;
+        return std::vector<VideoFXRect>{VideoFXRect::FromPixels(48, 24, 24, 34, shown.width, shown.height)};
+    };
+    const std::string faceShow = TempPath("face-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow({personPng, personPng}, faceShow, faces, s), "slideshow with a face finder");
+    CHECK(asked == 2, "the finder asked once per image");
+    CHECK(redPixels(faceShow, 1.4) > 20 && redPixels(faceShow, 2.9) > 20, "each image ends with its face in shot");
+    VideoFXSegment outside = VideoFXSegment::FromImageFrame(person, 1.0);
+    outside.keepInView = {VideoFXRect::Make(0.9, 0.1, 0.2, 0.1)};
+    CHECK(VideoFX_Export({outside}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument,
+          "a region past the image edge refused");
 
     // ---- errors ----
     CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");

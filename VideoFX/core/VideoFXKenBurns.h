@@ -1,8 +1,8 @@
 // VideoFX/core/VideoFXKenBurns.h
 // Internal: the camera over a still image - motion presets, the view at a
 // point in time, and the frame renderer. Pure C++, no FFmpeg, unit-tested.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -39,6 +39,28 @@ KenBurnsView ViewAt(const VideoFXImageMotion& resolved, double fraction);
 // centred on the view's centre and kept inside the image
 void ViewRect(const KenBurnsView& view, int imageW, int imageH, int outW, int outH,
               double& x, double& y, double& w, double& h);
+
+// ---- keeping regions (faces) in shot ----
+
+// Check keep-in-view regions: inside the image (0..1), not empty
+bool ValidateKeepInView(const std::vector<VideoFXRect>& regions, std::string& error);
+
+// The box around every region plus headroom (15 % of its size each side,
+// faces need room), as fractions, clipped to the image; empty for none
+VideoFXRect FocusBounds(const std::vector<VideoFXRect>& regions);
+
+// `resolved` (a Custom or Still motion) fitted so the view can hold `focus`
+// at both ends: each zoom capped where the view would grow narrower than the
+// box, each centre moved just far enough that the view holds it. `fit` is the
+// resolved Cover / Contain / BlurredBackground.
+VideoFXImageMotion FitMotionToFocus(const VideoFXImageMotion& resolved, const VideoFXRect& focus,
+                                    int imageW, int imageH, int outW, int outH, VideoFXImageFit fit);
+
+// A view rectangle (image pixels) slid, never resized, to hold `focus`
+// wherever it is big enough - centred on it where it is not - and kept
+// inside the image along each side where it is smaller than the image.
+// Applied to every frame, so the move between the ends holds it too.
+void KeepFocusInView(const VideoFXRect& focus, int imageW, int imageH, double& x, double& y, double w, double h);
 
 // Auto turned into Cover or BlurredBackground for this image and frame
 VideoFXImageFit ResolveImageFit(VideoFXImageFit fit, int imageW, int imageH, int outW, int outH);

@@ -304,6 +304,21 @@ struct VideoFXImageMotion {
     }
 };
 
+// A region of a still image - a face, a person, whatever must stay in shot -
+// as fractions of the image as it is shown (after its EXIF rotation):
+// x, y the top-left corner, w, h the size, all 0..1
+struct VideoFXRect {
+    double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
+
+    static VideoFXRect Make(double x, double y, double w, double h) { return VideoFXRect{x, y, w, h}; }
+    // From pixels of an image `imageW` x `imageH` (what a face detector reports)
+    static VideoFXRect FromPixels(double x, double y, double w, double h, int imageW, int imageH) {
+        if (imageW <= 0 || imageH <= 0) return {};
+        return VideoFXRect{x / imageW, y / imageH, w / imageW, h / imageH};
+    }
+    bool IsEmpty() const { return !(w > 0.0 && h > 0.0); }
+};
+
 // How a still image whose shape differs from the frame's is framed
 enum class VideoFXImageFit {
     Auto,                           // Cover; BlurredBackground for an image much taller than
@@ -337,6 +352,10 @@ struct VideoFXSegment {
     VideoFXImageMotion motion;              // Image: camera movement over the still
     VideoFXImageFit imageFit = VideoFXImageFit::Auto;   // Image: framing when its shape differs
     VideoFXFrame image;                     // Image: pixels in memory, used instead of `path` when valid
+    // Image: regions the pan and zoom keep in shot all the way through -
+    // faces, typically. The zoom goes no closer than holds them all (with a
+    // little headroom) and the pan stays around them.
+    std::vector<VideoFXRect> keepInView;
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
     // A photo / PNG / any image FFmpeg decodes, shown for `seconds`; JPEG
@@ -511,6 +530,12 @@ struct VideoFXSlideshowOptions {
     // Change images on the music's beats: each change (a cut, or the middle of
     // a transition) moves to the beat nearest secondsPerImage after the last
     bool beatSync = false;
+    // Regions to keep in shot, per image (see VideoFXSegment::keepInView)...
+    std::vector<std::vector<VideoFXRect>> keepInView;
+    // ...or found by the app's own detector - faces from UltraAI's vision
+    // analyser, the operating system, or a tap in the UI - asked once per
+    // image that has none above. Gets the image as it is shown and its index.
+    std::function<std::vector<VideoFXRect>(const VideoFXFrame& image, size_t index)> findKeepInView;
     int beatsPerImage = 0;                      // > 0: every image lasts exactly this many beats (4 = a bar
                                                 // in 4/4); implies beatSync. 0..64
 };
