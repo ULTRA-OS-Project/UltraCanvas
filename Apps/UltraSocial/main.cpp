@@ -2,11 +2,15 @@
 // UltraSocial application entry point. Creates the UltraCanvas application,
 // opens the store under the user data directory, shows the compose window
 // and runs the main loop.
+// Version: 0.2.0 - the app icon on the window and the taskbar
 // Version: 0.1.0 (Phase 1)
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraSocialApp.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
 
@@ -30,6 +34,11 @@ int main() {
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraSocial"))
         return EXIT_FAILURE;
+    // The application's own mark: the window icon, the taskbar/dock entry the
+    // window manager takes from it, and the start page and toolbar logos all
+    // read this same file.
+    app.SetDefaultWindowIcon(
+        UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraSocial.png"));
 
     UltraNet_Initialize();   // connectors speak HTTPS
 

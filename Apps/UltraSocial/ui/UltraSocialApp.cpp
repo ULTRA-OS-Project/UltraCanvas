@@ -1,11 +1,16 @@
 // Apps/UltraSocial/ui/UltraSocialApp.cpp
+// Version: 0.2.0 - UltraMail's first-run start page; the compose view fills
+//                  and follows the window; the account wizard's client id
+//                  reaches the connector
 // Version: 0.1.0 (Phase 1)
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialApp.h"
 
 #include "UltraSocialComposer.h"
 #include "UltraSocialConnector.h"
 #include "UltraSocialPublisher.h"
+#include "UltraSocialTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -60,12 +65,17 @@ bool UltraSocialApp::Initialize(const std::string& dataDir) {
 std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     WindowConfig config;
     config.title  = "UltraSocial " ULTRASOCIAL_VERSION;
-    config.width  = 990;
+    config.width  = 1000;
     config.height = 700;
+    config.backgroundColor = Theme::kPageBackground;
     window_ = CreateWindow(config);
 
-    window_->AddChild(CreateLabel("usTitle", 16, 8, 400, 28, "UltraSocial"));
+    // Start page - the only thing on screen until the first account exists:
+    // logo, app name and the "Add social account" button, as in UltraMail.
+    window_->AddChild(startPage_.Build());
+    startPage_.onAddAccount = [this]() { HandleAddAccount(); };
 
+    // Compose view - toolbar and cards, once an account exists.
     window_->AddChild(composeView_.Build());
     composeView_.onAddAccount = [this]() { HandleAddAccount(); };
     composeView_.onAddMedia   = [this]() { HandleAddMedia(); };
@@ -74,6 +84,14 @@ std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     composeView_.onCancelScheduled = [this](int64_t id) {
         store_.RemoveOutbox(id);
         RefreshScheduled();
+    };
+    composeView_.onOpenUrl = [](const std::string& url) { OpenURL(url); };
+
+    // Both views are sized to the client area so their layouts follow the
+    // window.
+    ResizeViews(static_cast<float>(config.width), static_cast<float>(config.height));
+    window_->onWindowResize = [this](int width, int height) {
+        ResizeViews(static_cast<float>(width), static_cast<float>(height));
     };
 
     Refresh();
@@ -97,7 +115,45 @@ void UltraSocialApp::Refresh() {
     composeView_.SetAccounts(accounts_);
     RefreshHistory();
     RefreshScheduled();
+
+    // No account yet -> only the start page; otherwise only the compose view.
+    const bool firstRun = accounts_.empty();
+    if (auto page = startPage_.Container()) page->SetVisible(firstRun);
+    if (auto view = composeView_.Container()) view->SetVisible(!firstRun);
 }
+
+void UltraSocialApp::ResizeViews(float width, float height) {
+    startPage_.Resize(width, height);
+    composeView_.Resize(width, height);
+}
+
+std::string UltraSocialApp::HandleFor(const std::string& accountId) const {
+    for (const auto& account : accounts_) {
+        if (account.accountId == accountId) return account.handle;
+    }
+    return accountId;
+}
+
+namespace {
+
+std::tm LocalTime(int64_t epochSeconds) {
+    std::tm local{};
+    std::time_t at = static_cast<std::time_t>(epochSeconds);
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &at);
+#else
+    localtime_r(&at, &local);
+#endif
+    return local;
+}
+
+std::string FormatTime(const std::tm& when, const char* format) {
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, format, &when);
+    return stamp;
+}
+
+} // namespace
 
 void UltraSocialApp::RefreshScheduled() {
     std::vector<OutboxEntry> entries;
@@ -105,27 +161,14 @@ void UltraSocialApp::RefreshScheduled() {
 
     std::vector<ComposeView::ScheduledItem> items;
     for (const auto& entry : entries) {
-        std::string handle = entry.accountId;
-        for (const auto& account : accounts_) {
-            if (account.accountId == entry.accountId) {
-                handle = account.handle;
-                break;
-            }
-        }
-        std::tm when{};
-        std::time_t at = static_cast<std::time_t>(entry.scheduledAt);
-#if defined(_WIN32) || defined(_WIN64)
-        localtime_s(&when, &at);
-#else
-        localtime_r(&at, &when);
-#endif
-        char stamp[24];
-        std::strftime(stamp, sizeof stamp, "%d.%m. %H:%M", &when);
-        std::string label = handle + " · " + stamp;
-        if (entry.attempts > 0) {
-            label += " · retry " + std::to_string(entry.attempts);
-        }
-        items.push_back({entry.id, label});
+        ComposeView::ScheduledItem item;
+        item.id       = entry.id;
+        item.network  = entry.network;
+        item.handle   = HandleFor(entry.accountId);
+        item.when     = FormatTime(LocalTime(entry.scheduledAt), "%d.%m. %H:%M");
+        item.attempts = entry.attempts;
+        item.lastError = entry.lastError;
+        items.push_back(item);
     }
     composeView_.SetScheduled(items);
 }
@@ -134,25 +177,29 @@ void UltraSocialApp::RefreshHistory() {
     std::vector<HistoryEntry> entries;
     store_.ListHistory("", 6, entries);
 
-    std::vector<std::string> lines;
+    // Today's posts say when; older ones say which day.
+    const std::tm today = LocalTime(static_cast<int64_t>(std::time(nullptr)));
+
+    std::vector<ComposeView::HistoryItem> items;
     for (const auto& entry : entries) {
-        std::string handle = entry.accountId;
-        for (const auto& account : accounts_) {
-            if (account.accountId == entry.accountId) {
-                handle = account.handle;
-                break;
-            }
+        ComposeView::HistoryItem item;
+        item.succeeded = entry.succeeded;
+        item.network   = entry.network;
+        item.handle    = HandleFor(entry.accountId);
+        // Cut on a code point (and a word, where one is near), never inside
+        // a UTF-8 sequence.
+        item.text      = TruncateToPoints(entry.text, 90);
+        item.url       = entry.url;
+        item.error     = entry.error;
+        if (entry.createdAt > 0) {
+            const std::tm when = LocalTime(entry.createdAt);
+            const bool sameDay = when.tm_year == today.tm_year &&
+                                 when.tm_yday == today.tm_yday;
+            item.when = FormatTime(when, sameDay ? "%H:%M" : "%d.%m.");
         }
-        std::string text = entry.text.substr(0, 60);
-        if (entry.text.size() > 60) text += "…";
-        if (entry.succeeded) {
-            lines.push_back("✓  " + handle + " — “" + text + "”" +
-                            (entry.url.empty() ? "" : "  " + entry.url));
-        } else {
-            lines.push_back("✗  " + handle + " — " + entry.error);
-        }
+        items.push_back(item);
     }
-    composeView_.SetHistoryLines(lines);
+    composeView_.SetHistory(items);
 }
 
 void UltraSocialApp::RunOnUiThread(std::function<void()> action) {
@@ -185,6 +232,11 @@ void UltraSocialApp::HandleWizardSubmit(const WizardInput& input) {
         auth.server     = input.server;
         auth.identifier = input.identifier;
         auth.secret     = input.secret;
+        // Reddit, X and LinkedIn sign in with the user's own app's client id.
+        // The wizard asked for it but it was never passed on, so all three
+        // refused with "sign-in needs your app's client id" however it was
+        // filled in.
+        auth.clientId   = input.clientId;
         auth.onOpenUrl  = [](const std::string& url) { OpenURL(url); };
 
         Account account;
@@ -339,6 +391,7 @@ void UltraSocialApp::HandlePostLater() {
                                  local.tm_mday));
     row->AddChild(date);
     auto time = CreateTextInput("plTime", 0, 0, 90, 28);
+    Theme::StyleInput(time);
     char hhmm[8];
     std::snprintf(hhmm, sizeof hhmm, "%02d:%02d",
                   (local.tm_hour + 1) % 24, 0);   // suggest the next full hour
@@ -347,10 +400,9 @@ void UltraSocialApp::HandlePostLater() {
     dialog->AddChild(row);
     row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto hintLabel = CreateLabel("plHint", 0, 0, 360, 40,
+    auto hintLabel = Theme::MakeWrapped("plHint",
         "The post goes out when UltraSocial is running at (or after) "
         "this local time.");
-    hintLabel->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(hintLabel);
 
     auto buttonRow = CreateContainer("plButtons", 0, 0, 0, 36);
@@ -358,10 +410,11 @@ void UltraSocialApp::HandlePostLater() {
                      .SetFlexGap(10)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
-    auto scheduleBtn = CreateButton("plSchedule", 0, 0, 110, 28, "Schedule");
+    auto scheduleBtn = Theme::MakeButton("plSchedule", "Schedule", true, "clock-five.svg",
+                                         110.0f, 28.0f);
     scheduleBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(scheduleBtn);
-    auto cancelBtn = CreateButton("plCancel", 0, 0, 80, 28, "Cancel");
+    auto cancelBtn = Theme::MakeButton("plCancel", "Cancel", false, "", 80.0f, 28.0f);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
     dialog->AddChild(buttonRow);

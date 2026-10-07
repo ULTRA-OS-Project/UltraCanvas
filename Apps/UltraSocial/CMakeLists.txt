@@ -87,6 +87,7 @@ set(ULTRASOCIAL_UI_SOURCES
     ui/UltraSocialApp.cpp
     ui/UltraSocialAccountWizard.cpp
     ui/UltraSocialComposeView.cpp
+    ui/UltraSocialStartPage.cpp
 )
 
 add_executable(UltraSocial main.cpp ${ULTRASOCIAL_UI_SOURCES})
@@ -105,5 +106,29 @@ target_compile_features(UltraSocial PRIVATE cxx_std_20)
 # The version shown in the window title: the first line of
 # Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
-target_compile_definitions(UltraSocial PRIVATE ULTRASOCIAL_VERSION="${ULTRASOCIAL_VERSION}")
+# One icon everywhere the app is drawn: main.cpp names this same file for the
+# window and taskbar icon; UCAPP_ICON_PATH is the fallback the core applies
+# when an app sets no icon of its own. The PNG is the 256 px render of
+# media/appicon/UltraSocial.svg.
+target_compile_definitions(UltraSocial PRIVATE
+        ULTRASOCIAL_VERSION="${ULTRASOCIAL_VERSION}"
+        UCAPP_ICON_PATH="media/appicon/UltraSocial.png")
+
+# Embed the app icon in the .exe (Windows only): Explorer and the Windows
+# taskbar read it off the binary, not from the window.
+ultracanvas_embed_app_icon(UltraSocial
+        "${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.png")
+
+# The freedesktop shortcut and the icon it names (`Icon=UltraSocial` is
+# resolved through the installed icon themes).
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    install(TARGETS UltraSocial RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraSocial.desktop
+            DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.png
+            DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraSocial.svg
+            DESTINATION share/icons/hicolor/scalable/apps)
+endif()
+
 message(STATUS "  [✓] UltraSocial GUI app - ENABLED (target: UltraSocial)")
