@@ -1,5 +1,6 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
+// Version: 1.4.0 - AddRadioButton adopts a radio that is already checked
 // Version: 1.3.0 - the group's onChecked handler holds its radio raw (it kept the radio
 //                 alive forever) and is taken back when the group goes or the radio leaves it
 // Version: 1.2.0
@@ -126,6 +127,8 @@ namespace UltraCanvas {
         UltraCanvasRadioGroup(UltraCanvasRadioGroup&& other) noexcept;
         UltraCanvasRadioGroup& operator=(UltraCanvasRadioGroup&& other) noexcept;
 
+        // A radio added already checked becomes the selection (the last such
+        // radio wins; the others are cleared), without onSelectionChanged.
         void AddRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void SelectButton(std::shared_ptr<UltraCanvasRadio> button);

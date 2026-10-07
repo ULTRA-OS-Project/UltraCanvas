@@ -1,8 +1,10 @@
 // UltraCanvasLabeledToggleBase.h
 // Abstract base for labeled toggle controls (checkbox, radio, switch).
 // Owns label/layout/event/state plumbing; subclasses provide indicator drawing.
+// Version: 1.1.0 - toggles take the keyboard focus (Tab reaches them, Space activates
+//                 them, a click focuses them); SetAcceptsFocus(false) opts one out
 // Version: 1.0.0
-// Last Modified: 2026-05-07
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,6 +51,7 @@ namespace UltraCanvas {
         // Core state
         std::string text;
         CheckedState checkState = CheckedState::Unchecked;
+        bool acceptsFocus = true;
 
         // Layout
         bool layoutDirty = true;
@@ -98,6 +101,13 @@ namespace UltraCanvas {
                                   const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
+        // ===== FOCUS =====
+        // A toggle takes the keyboard focus like a button: Tab reaches it, a
+        // click focuses it, and Space then activates it. Enter is left to the
+        // window, so in a dialog it still presses the default button.
+        bool AcceptsFocus() const override { return acceptsFocus; }
+        void SetAcceptsFocus(bool accept) { acceptsFocus = accept; }
 
         // ===== RENDER/EVENT =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;

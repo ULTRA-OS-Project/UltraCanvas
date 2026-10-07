@@ -1,5 +1,6 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.4.1 - IsWindowFocused() without an application is false, not a crash
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
@@ -41,7 +42,10 @@ namespace UltraCanvas {
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
     bool UltraCanvasWindowBase::IsWindowFocused() const {
-        return UltraCanvasApplication::GetInstance()->GetFocusedWindow() == this;
+        // Without an application (a test, a tool) no window has the focus;
+        // asking used to call through a null pointer from any IsFocused().
+        auto* app = UltraCanvasApplication::GetInstance();
+        return app && app->GetFocusedWindow() == this;
     }
 
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {

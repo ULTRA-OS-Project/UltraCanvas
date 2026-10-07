@@ -1,7 +1,9 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
+// Version: 1.2.0 - a press focuses the toggle; Space activates it and Enter is left
+//                 to the window (a dialog's default button)
 // Version: 1.1.0
-// Last Modified: 2026-06-02
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabeledToggleBase.h"
@@ -176,6 +178,7 @@ namespace UltraCanvas {
             case UCEventType::MouseDoubleClick:
                 if (totalBounds.Contains(event.pointer)) {
                     SetPressed(true);
+                    SetFocus(true);   // no-op when focus is refused
                     handled = true;
                 }
                 break;
@@ -201,8 +204,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::KeyDown:
-                if (IsFocused()
-                    && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Enter)) {
+                // Space only, as in HTML and the native toolkits: Enter goes on
+                // to the window, where a dialog presses its default button.
+                if (IsFocused() && event.virtualKey == UCKeys::Space &&
+                    !event.ctrl && !event.alt && !event.meta) {
                     OnActivate();
                     handled = true;
                 }
