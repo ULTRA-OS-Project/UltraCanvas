@@ -1,3 +1,206 @@
+#### 2026-10-07 *0.9.192*
+- **Charts: zoom and pan of the line, area and scatter charts work, and are
+  off by default.** `SetEnableZoom` / `SetEnablePan` did nothing visible (the
+  zoom level was never read, pan was an empty stub), yet these three charts
+  switched both on in their constructors, so they swallowed the mouse wheel
+  and a scrolling page around them could not scroll. Now, once enabled, the
+  wheel zooms the x axis around the pointer (up to 50x, in both x-axis label
+  modes) and a drag pans a zoomed axis; `ResetZoom()` and `IsZoomed()` are
+  new. A wheel turn or drag that changes nothing - over the margins, zooming
+  out of the whole range, on a chart that does not zoom such as the bar
+  chart - is left to the parent.
+- **Charts: the plot area follows a resize.** The chart base worked out its
+  plot rectangle only when the data source or label mode was set, so a chart
+  the layout resized kept its old plot area. `SetBounds` and `Arrange` now
+  make it be worked out again.
+- **Charts: the line chart's dots follow `SetPointRadius`.** The line chart
+  had a radius of its own (4 px) that hid the base class's; it is still 4 by
+  default.
+- **Charts: a chart's background is the element's own.** The chart base kept
+  a second `backgroundColor` and `SetBackgroundColor` beside
+  `UltraCanvasUIElement`'s, so a colour set through one was not seen by the
+  other. There is one colour now, white by default for charts.
+- **Charts: bar charts rise from zero.** The value axis ran from the smallest
+  to the largest value plus 5 %, so bars stood on the smallest value; it now
+  always includes 0, and negative values hang below the zero line.
+- **Charts: a CSV's first row labelled "May" or "July" is kept.**
+  `ChartDataVector` and `ChartDataStream` took the first line for a header
+  when it contained an `x` or a `y` anywhere; it is a header now only when its
+  x and y columns are not numbers.
+- **Waterfall chart:** `WaterfallChartDataVector::LoadFromCSV` (lines
+  `label,change[,type]`) and `LoadFromArray(std::vector<ChartDataPoint>)` load
+  steps instead of nothing; the running totals are worked out when the steps
+  change instead of on every `GetPoint`; and the chart no longer re-declares
+  `showValueLabels`, so `SetShowValueLabels` through the base class reaches
+  it.
+- **`CreatePopulationPyramid` lays out its `rowLabels`** as empty rows in
+  that order, and `AddDataRow` with a label that is already a row fills that
+  row instead of adding a second one.
+- **The block diagram's and the chart renderer's connection styles can be used
+  in one program.** Both declared `UltraCanvas::ConnectionStyle` - an enum in
+  `UltraCanvasBlockDiagram.h`, a struct in `UltraCanvasConnectionRenderer.h`
+  (pulled in by the chord chart and the circular infographic) - so a file
+  that included both did not compile. The block diagram's enum is
+  `BlockConnectionStyle` now, beside the existing `FlowChartConnectionStyle`;
+  code that names `ConnectionStyle::Orthogonal` for a block diagram changes
+  to `BlockConnectionStyle::Orthogonal`.
+- **DemoApp: a CorelDRAW file saves as XAR.** The CDR page offered "Xara
+  drawing (not finished yet)" and called `UltraCanvasCDRPlugin::ExportToXAR`,
+  which always failed, saying there was no CorelDRAW reader into the vector
+  document model. There is one - the Vector plugin's `CDRConverter` - and its
+  `XARConverter` writes that model, so the page saves the first page through
+  them. `ExportToXAR` cannot reach them (the Vector plugin builds on the CDR
+  plugin, not the other way round); it still fails, and its error now names
+  that path.
+- `UltraCanvasCairoDebugExtension.h` is gone: nothing included it, it called
+  a `GetRenderContext()` that no longer exists, so it did not compile, and it
+  defined functions in a header without `inline`.
+- DemoApp: `UltraCanvasTableDemo.cpp` is gone. It was in no build (not in the
+  DemoApp's source list), nothing called its `CreateDomainTableDemo`, and it
+  no longer compiled: it called an `UltraCanvasMenu::ShowAt` that does not
+  exist.
+- **A radio added to an `UltraCanvasRadioGroup` was never freed, and a radio
+  clicked after its group was gone called into freed memory.** The `onChecked`
+  handler `AddRadioButton` installs held a `shared_ptr` to the radio it was
+  stored on, and a raw pointer to the group. It now holds the radio raw, and
+  the group takes the handler back when it is destroyed or the radio is
+  removed (`RemoveRadioButton`), leaving any `onChecked` the application set
+  itself alone. Moving a group now hands its radios' clicks to the new object;
+  before, they still went to the moved-from one. The public API is unchanged.
+- **An `UltraCanvasImageElement` whose `LoadFromFile` failed drew nothing.**
+  `SetError` replaced the image, and `Render` looked for the error message on
+  the replacement, so the error placeholder never appeared. It is drawn again,
+  with the reason, into the context `Render` was given (it used the window's,
+  which an offscreen or print render does not have).
+- `UltraCanvasImageElement::SetTintColor` tints the picture: its colours are
+  multiplied by the tint, inside the picture only (white, the default, leaves
+  it unchanged; the colour's alpha sets the strength). It used to be stored
+  and never drawn.
+- `UltraCanvasImageElement::LoadFromImage` reports like `LoadFromFile`: it
+  fires `onImageLoaded` for a valid image, and for one whose decode failed it
+  fires `onImageLoadFailed`, sets `GetLastError()` and shows the error
+  placeholder. A null or empty image still clears the element. It returns
+  true only for a valid image (it returned true for any non-null one).
+- `CreateImageFromMemory`'s `format` argument is documented as unused: the
+  loader detects the format from the bytes and takes no hint. The argument
+  stays, so existing calls compile.
+- **`SliderHandleShape` is an `enum class`.** As a plain enum it put
+  `Circle`, `Square`, `Triangle` and `Diamond` into namespace `UltraCanvas`,
+  where they clashed with any other name of that spelling in the namespace or
+  brought in beside it by `using namespace UltraCanvas`. Code that
+  writes `SliderHandleShape::Square` is unaffected; a bare `Square` or an
+  implicit conversion to `int` must now be spelled out.
+- `ImageAndRadioBehaviourTest` covers the above headless, with a check that
+  fails without each fix. The documentation pages for the image element and
+  the slider follow the changes.
+- **`MenuStyle::enableAnimations` animates.** `UltraCanvasMenu` computed an
+  opening progress in `UpdateAnimation()` that nothing drew, so the setting
+  had no visible effect. A popup menu or submenu now fades its entries in over
+  `animationDuration` when it opens, painting them as one group at the
+  progress (`IRenderContext::BeginGroup` / `EndGroup(opacity)`) and asking for
+  repaints on a timer until the fade is complete. The panel itself appears at
+  once: popups are composited onto the window as opaque blocks, so there is
+  nothing beneath it to fade over. Animations stay off by default.
+- **`MenuItemData::Input()` is gone.** Both overloads were declared with their
+  definitions commented out, so a call compiled and failed to link. Nothing
+  called them; `MenuItemType::Input` stays, reserved. Escape was checked as
+  well: it closes an open menu through the popup system (the application
+  closes the topmost popup when `closeByEscapeKey` is set), so the
+  commented-out Escape case in `HandleKeyDown` is replaced by a note saying so.
+- **The tabbed container's overflow button honours the search settings.**
+  `SetDropdownSearchEnabled()` and `SetDropdownSearchThreshold()` were stored
+  and never read: the button always opened the "Search tabs..." popup. It now
+  opens the search popup only when search is enabled and the visible tabs
+  reach the threshold, and otherwise a plain menu of the tabs (the active one
+  checked, disabled ones greyed out). `UsesDropdownSearch()` says which.
+  Turning search off on a container that is in no window yet - which
+  `CreateTabbedContainerWithDropdown(..., false, ...)` does - called
+  `ClosePopup` through the null window pointer (undefined behaviour that
+  happened not to crash); `HideSearchAutoComplete` checks the window now.
+- **`UltraCanvasTextArea::SetCursorPosition(pos, true)` selects.** The
+  `selecting` flag was ignored; it now extends the selection from its anchor
+  (the start of the current selection, or the caret's old place), as
+  Shift+arrow does. `GetCursorPosition()` is `const`.
+- **Activating a menu item before the application exists no longer
+  crashes.** `UltraCanvasMenu` posted the `MenuClick` event through
+  `UltraCanvasApplication::GetInstance()` without checking it, so choosing an
+  item in a test or a tool with no application ran the item and then called
+  through a null pointer. It runs the item and posts nothing. The
+  commented-out `onTextInput` slot in `UltraCanvasMenuRegistry` is gone too.
+- `Tests/MenuAndTabBehaviourTest.cpp` covers all of the above headless, with
+  popups opened in a window stand-in and the menu drawn offscreen.
+- **The SVG reader matches `<style>` selectors through the HTMLReader's
+  matcher.** 0.9.183 moved selector matching into `CSSStyleSheet.h` so that
+  the Vector plugin's SVG reader would stop carrying its own copy, but the
+  reader still matched with that copy (`SelectorMatches`, `CompoundMatches`,
+  `PseudoMatches`, `AttributeMatches` in `UltraCanvasSVGConverter.cpp`). It
+  now supplies a traits type for tinyxml2 elements to `HTML::MatchingRules`,
+  and the copy is gone. `SVGConverterTest` covers what the traits decide:
+  `:first-child`, `:nth-of-type`, an attribute selector on a camelCase
+  attribute (`[pathLength]`), `^=`, and `:root`.
+- `scripts/check_html_reuse.py` also reports a selector matcher written
+  outside the module (`SelectorMatches`, `CompoundMatches`, `MatchSelector`),
+  so a copy like that one is caught.
+- `UltraCanvasHTMLReader.md`: the style-sheet example named a variable
+  `inline`, a C++ keyword, so it did not compile; it is `declarations` now,
+  and the matcher listing shows its namespace. Every example on the page
+  compiles against the headers (`scripts/check_doc_examples.py`).
+- **A text input's formatter replaced the placeholder you set, and left an
+  empty one empty.** `UltraCanvasTextInput::SetFormatter` had the test
+  inverted. The formatter's placeholder ("(555) 123-4567", "$0.00",
+  "MM/DD/YYYY") now fills a field that has none and never replaces one you
+  set, so `CreatePhoneInput` and a field set to Currency or Date show it by
+  default.
+- **Changing a text input's type stacked validation rules.** `SetInputType`
+  only ever added rules, so switching Email to Text kept the email check and
+  Number to Email checked both. The rules a type brings are now replaced when
+  the type changes. Rules added with `AddValidationRule` stay, whether they
+  were added before or after the type.
+- **Leaving a text input now validates it.** `validateOnBlur` was set but never
+  read, so a required field the user tabbed through without typing never
+  showed its error. The rules run when the field loses the focus, before
+  `onFocusLost`, but not when it loses the focus because it is being hidden or
+  disabled.
+- **An empty optional Email, Phone or Number field is not an error.** The
+  format rules (`Email`, `Phone`, `Numeric`, `Range`, `Pattern`) rejected an
+  empty value, so once leaving a field validated, every optional field of
+  those types showed an error. They accept it now; `Required` is what makes a
+  field mandatory, as in HTML forms. `MinLength` still counts empty as too
+  short.
+- **A text input's type no longer leaves its formatter behind, and the
+  builder no longer takes it away.** Phone -> Text stayed phone-formatted with
+  the phone placeholder; the type's formatter and the placeholder it brought
+  are replaced now (a formatter or placeholder the caller set stays).
+  `TextInputBuilder::Build` applied `NoFormat` and an empty placeholder even
+  when it was given neither, so a built Phone, Currency or Date field lost its
+  formatting.
+- **Backspace and Delete report a change once, and validate.** On a selection
+  they reported it twice; at the start or end of the field they reported a
+  change that was not one; and erasing one character did not validate, so
+  emptying a required field showed no error until the next edit.
+- **One key press is one undo step in a text input.** A typed character or
+  Space saved two undo states, and typing over a selection, Backspace or
+  Delete on a selection, or a paste over a selection saved two or three, so
+  one Space took two Ctrl+Z. A key press the length limit refused also left an
+  empty step and cleared the redo stack. Typing over a selection in a full
+  field still works.
+- `TextFormatter::Currency()`'s unformat function read `front()` of an empty
+  string, which is undefined behaviour; it returns an empty string now. The
+  field itself never calls `unformatFunction`: it keeps the typed text and
+  formats a copy for display. The function is for callers that hold formatted
+  text and want the raw value (`UltraCanvasTextInputExamples.md` shows how).
+- `CreateTextInput`, `CreatePasswordInput` and `CreateRevealablePasswordInput`
+  take float geometry like the email, phone and number factories, and
+  `TextInputBuilder` keeps its position and size as floats. The builder stored
+  them as `long`, so a size of 150.5 became 150.
+- `Tests/TextInputBehaviourTest.cpp` checks all of these. Each check fails
+  without its fix.
+- Tests: `VectorFormatsPluginTest` expects `.xar` to be readable, previewable
+  and loadable only when the XAR plugin is built (`ULTRACANVAS_PLUGIN_XAR`),
+  as it already did for `.cdr` and the CDR plugin. A build with the Vector
+  plugin and without the XAR plugin failed two checks; it now checks that XAR
+  is not claimed for reading there.
+
 #### 2026-10-07 *0.9.191*
 - **Width profiles follow straight segments.** `VariableWidthOutline`
   (`UltraCanvasVectorStorage.cpp`) built a width-profiled stroke's band from
