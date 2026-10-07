@@ -8641,28 +8641,26 @@ namespace UltraCanvas {
 ### Header Information
 - **File**: `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`
 - **Implementation**: `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`
-- **Version**: 1.0.0
-- **Last Modified**: 2025-09-10
+- **Version**: 1.1.0
+- **Last Modified**: 2026-10-07
 - **Author**: UltraCanvas Framework
 
 ## Constructor
 
 ```cpp
-UltraCanvasAreaChartElement(const std::string &id, long uid, 
-                            int x, int y, int width, int height)
+UltraCanvasAreaChartElement(const std::string &id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 - `id`: Unique string identifier for the element
-- `uid`: Unique numeric identifier
 - `x`: X coordinate position
 - `y`: Y coordinate position  
 - `width`: Width of the chart area
 - `height`: Height of the chart area
 
 ### Default Settings
-- Zoom enabled by default
-- Pan enabled by default
+- Zoom off by default (`SetEnableZoom(true)` turns it on)
+- Pan off by default (`SetEnablePan(true)` turns it on)
 - Semi-transparent blue fill color (0, 102, 204, 128)
 - Solid blue line color (0, 102, 204, 255)
 - Line width: 2.0f
@@ -8721,7 +8719,7 @@ Sets the color of the line drawn along the top edge of the area.
 
 #### SetLineWidth
 ```cpp
-void SetLineWidth(float width)
+void SetLineWidth(double width)
 ```
 Sets the width of the top edge line in pixels.
 
@@ -8776,25 +8774,11 @@ Handles mouse movement for interactive features like tooltips. Finds the closest
 
 **Returns:** `true` if the event was handled, `false` otherwise
 
-## Helper Methods
+## Helper Steps
 
-### SmoothAreaPoints (Private)
-```cpp
-std::vector<Point2Df> SmoothAreaPoints(const std::vector<Point2Df> &points) const
-```
-Applies interpolation to create smoother curves between data points.
-
-### RenderDataPoints (Private)
-```cpp
-void RenderDataPoints(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const
-```
-Renders circular markers at each data point position with optional white border.
-
-### RenderGradientFill (Private)
-```cpp
-void RenderGradientFill(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const
-```
-Creates and applies a vertical gradient fill from the top to bottom of the area.
+`RenderChart` does the smoothing (a Catmull-Rom curve through the points),
+the data point markers and the gradient fill (a vertical gradient from the
+highest to the lowest point) itself; there are no separate helper methods.
 
 ## Factory Function
 
@@ -8850,9 +8834,13 @@ The area chart inherits numerous features from its base class:
 
 ### Interactive Features
 - **Tooltips**: Display data values on hover
-- **Zoom**: Mouse wheel zoom in/out
-- **Pan**: Click and drag to pan the view
-- **Keyboard shortcuts**: R (reset), +/- (zoom)
+- **Zoom**: with `SetEnableZoom(true)`, wheel up over the plot zooms the x
+  axis in around the pointer and wheel down zooms back out (up to 50x). A
+  wheel turn that changes nothing - over the margins, or out of the whole
+  range - is left to the parent, so a scrolling container still scrolls.
+  `ResetZoom()` shows the whole range again
+- **Pan**: with `SetEnablePan(true)`, dragging a zoomed plot sideways moves
+  the view; a drag over a chart that is not zoomed is left to the parent
 
 ### Visual Configuration
 - Chart title display
@@ -9834,7 +9822,8 @@ FILE: Docs/UltraCanvas/UltraCanvasBarChartElement.md
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
+**Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Namespace:** `UltraCanvas`
@@ -9850,14 +9839,12 @@ UltraCanvasUIElement
 ## Constructor
 
 ```cpp
-UltraCanvasBarChartElement(const std::string& id, long uid, 
-                           int x, int y, int width, int height)
+UltraCanvasBarChartElement(const std::string& id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 
 - **id** - Unique string identifier for the chart element
-- **uid** - Unique numeric identifier
 - **x** - X coordinate position  
 - **y** - Y coordinate position
 - **width** - Width of the chart area
@@ -9867,7 +9854,7 @@ UltraCanvasBarChartElement(const std::string& id, long uid,
 
 ```cpp
 auto barChart = std::make_shared<UltraCanvasBarChartElement>(
-    "salesChart", 1001, 50, 100, 600, 400
+    "salesChart", 50, 100, 600, 400
 );
 ```
 
@@ -9882,18 +9869,25 @@ auto barChart = std::make_shared<UltraCanvasBarChartElement>(
 | barBorderWidth | float | 1.0f | Width of bar borders in pixels |
 | barSpacing | float | 0.1f | Spacing between bars as percentage (0.0-0.9) |
 
+### Value axis
+
+The value (y) axis always includes 0: bars rise from the zero line, and
+negative values hang below it. With all-positive data the axis runs from 0 to
+the largest value plus 5 %; with all-negative data, from the smallest value
+minus 5 % to 0.
+
 ### Inherited Properties from Base Class
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | chartTitle | std::string | "" | Chart title displayed above the plot area |
-| backgroundColor | Color | Color(255, 255, 255, 255) | Background color of entire chart |
+| backgroundColor | Color | Color(255, 255, 255, 255) | Background color of entire chart - the element's own (`SetBackgroundColor` / `GetBackgroundColor` of `UltraCanvasUIElement`) |
 | plotAreaColor | Color | Color(250, 250, 250, 255) | Background color of plot area |
 | showGrid | bool | true | Whether to display grid lines |
 | gridColor | Color | Color(220, 220, 220, 255) | Color of grid lines |
 | enableTooltips | bool | true | Enable interactive tooltips |
-| enableZoom | bool | false | Enable zoom functionality |
-| enablePan | bool | false | Enable pan functionality |
+| enableZoom | bool | false | Kept, but the bar chart does not zoom: the wheel goes to the parent |
+| enablePan | bool | false | Kept, but the bar chart does not pan |
 | enableSelection | bool | false | Enable data point selection |
 | animationEnabled | bool | true | Enable chart animations |
 | animationDuration | float | 1.0f | Animation duration in seconds |
@@ -9932,7 +9926,7 @@ barChart->SetBarBorderColor(Color(34, 139, 34, 255)); // Forest green
 
 #### SetBarBorderWidth
 ```cpp
-void SetBarBorderWidth(float width)
+void SetBarBorderWidth(double width)
 ```
 Sets the width of bar borders in pixels.
 
@@ -9946,7 +9940,7 @@ barChart->SetBarBorderWidth(2.0f);
 
 #### SetBarSpacing
 ```cpp
-void SetBarSpacing(float spacing)
+void SetBarSpacing(double spacing)
 ```
 Sets the spacing between bars as a percentage of bar width.
 
@@ -10007,13 +10001,16 @@ Enables or disables interactive tooltips on hover.
 ```cpp
 void SetEnableZoom(bool enabled)
 ```
-Enables or disables zoom functionality.
+Stores the flag. The bar chart has no zoom of its own (the line, area and
+scatter charts zoom their x axis), so the mouse wheel over a bar chart is
+always left to the parent - a scrolling container around it scrolls.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enabled)
 ```
-Enables or disables pan functionality.
+Stores the flag; the bar chart does not pan, and drags over it are left to
+the parent.
 
 ## Factory Functions
 
@@ -10032,22 +10029,12 @@ Factory function to create a new bar chart element.
 auto barChart = CreateBarChartElement("myChart", 50, 50, 600, 400);
 ```
 
-### CreateThemedBarChart (Helper Function)
-```cpp
-std::shared_ptr<UltraCanvasBarChartElement> CreateThemedBarChart(
-    const std::string& id, int x, int y, 
-    int width, int height, const Color& barColor, 
-    const Color& borderColor)
-```
-Helper function to create a pre-styled bar chart.
+A pre-styled chart is the factory plus the colour setters:
 
-**Example:**
 ```cpp
-auto themedChart = CreateThemedBarChart(
-    "themedChart", 1002, 50, 50, 600, 400,
-    Color(60, 179, 113, 255),  // Bar color
-    Color(34, 139, 34, 255)     // Border color
-);
+auto themedChart = CreateBarChartElement("themedChart", 50, 50, 600, 400);
+themedChart->SetBarColor(Color(60, 179, 113, 255));        // Bar color
+themedChart->SetBarBorderColor(Color(34, 139, 34, 255));   // Border color
 ```
 
 ## Rendering Process
@@ -10058,7 +10045,7 @@ The bar chart rendering process follows these steps:
 2. **Coordinate Transform** - Creates transformation from data to screen coordinates
 3. **Bar Calculation** - Calculates bar width based on number of data points
 4. **Bar Rendering** - For each data point:
-   - Calculates bar position and height
+   - Calculates bar position and height, from the zero line to the value
    - Fills rectangle with bar color
    - Draws border if border width > 0
 5. **Grid and Axes** - Renders grid lines and axis labels (inherited)
@@ -10078,9 +10065,8 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` - Initiates dragging for pan
-- `HandleMouseUp` - Ends dragging
-- `HandleMouseWheel` - Handles zoom with mouse wheel
+- `HandleMouseDown` / `HandleMouseUp` - track the left button
+- `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples
 
@@ -10125,11 +10111,7 @@ perfChart->SetBarSpacing(0.25f);                       // 25% spacing
 // Set data and labels
 perfChart->SetDataSource(performanceData);
 perfChart->SetChartTitle("Team Performance Metrics");
-perfChart->SetEnableTooltips(true);
-
-// Enable interaction
-perfChart->SetEnableZoom(true);
-perfChart->SetEnablePan(true);
+perfChart->SetEnableTooltips(true);   // the bar chart's interaction; it does not zoom or pan
 ```
 
 ### Dynamic Data Update
@@ -10212,7 +10194,8 @@ barChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index
 ## Performance Considerations
 
 - **Data Points**: Optimized for up to 100 bars
-- **Rendering**: Uses cached plot area calculations
+- **Rendering**: Uses cached plot area calculations, worked out again when the
+  data source is set or the size changes
 - **Redraw**: Only triggered when properties change via `RequestRedraw()`
 - **Memory**: Uses shared_ptr for data management
 
@@ -10470,7 +10453,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBasicChartsExamples.md
 
 # Basic Chart Elements: Examples
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Last Modified:** 2026-10-07
 
 The basic chart elements are four ready-made XY charts — line, bar, scatter
@@ -10535,7 +10518,8 @@ fromFile->LoadFromCSV("/data/sales.csv");     // lines "x,y[,z[,label]]"; throws
   order and the axis shows each point's **label** — the right choice for
   months, quarters, regions.
 - **y** is the plotted value. The y axis runs from the smallest to the largest y
-  plus 5 % on each side; it does not start at 0 unless the data does.
+  plus 5 % on each side; for the line, area and scatter charts it does not
+  start at 0 unless the data does. The bar chart's axis always includes 0.
 - **color** is honoured by the scatter plot: a point with a non-transparent
   colour is drawn in it instead of the marker colour.
 - **z**, **value** and **category** are carried along for other chart types;
@@ -10544,10 +10528,11 @@ fromFile->LoadFromCSV("/data/sales.csv");     // lines "x,y[,z[,label]]"; throws
   works out the axis ranges only when the data source is set. After changing
   the vector (`AddPoint`, `Clear`, `LoadFromArray`), call
   `SetDataSource(data)` again.
-- A CSV file is read with dot decimals. Its first line is skipped as a header
-  if it contains an `x` or a `y` anywhere, so do not start a header-less file
-  with a labelled row such as `1,45000,0,May`. For files too large to hold in
-  memory, `ChartDataStream` reads the points in chunks.
+- A CSV file is read with dot decimals. Its first line is a header, and
+  skipped, when its first two columns (x and y) are not both numbers - `x,y`
+  or `Month,Sales`; a first row such as `1,45000,0,May` is data. For files
+  too large to hold in memory, `ChartDataStream` reads the points in chunks,
+  with the same rule.
 
 ## Size and placement
 
@@ -10555,7 +10540,8 @@ The constructors and factories take `(id, x, y, width, height)` as integers,
 and the charts have no content size of their own, so always give a width and
 a height. A non-zero x or y pins the chart at that point; inside a flex or grid
 container pass `0, 0` and let the container place it
-([UltraCanvasLayoutExamples.md](UltraCanvasLayoutExamples.md)).
+([UltraCanvasLayoutExamples.md](UltraCanvasLayoutExamples.md)). When the
+layout gives a chart a new size, the plot area follows it on the next paint.
 
 ```cpp
 auto chartRow = std::make_shared<UltraCanvasContainer>("chart-row");
@@ -10579,9 +10565,10 @@ window->AddChild(chartRow);
 | `SetRotateXAxisLabels(true, 45.0f)` | slanted x labels, for long or many labels |
 | `SetShowGrid(bool)`, `SetGridColor(color)` | the grid lines (on by default) |
 | `SetShowAxes(bool)` | the axes and their labels (on by default) |
-| `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element, and the plot rectangle |
+| `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
-| `SetPointRadius(radius)` | the dot radius of the area chart and the offset of value labels |
+| `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
+| `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
 | `SetEnableTooltips(bool)` | hover tooltip with X and Y (on by default) |
 | `SetSeriesName(text)` | a first line for the tooltip |
 | `SetCustomTooltipGenerator(fn)` | your own tooltip text, from the point and its index |
@@ -10630,8 +10617,8 @@ regionChart->SetBarBorderWidth(1.0);                         // 0 for no border
 regionChart->SetBarSpacing(0.25);                            // 25 % of each slot left empty (0 to 0.9)
 ```
 
-Every bar has the same colour, and bars rise from the bottom of the plotted y
-range (see *Feeding data*), not from 0.
+Every bar has the same colour. The value axis always includes 0: bars rise
+from the zero line and negative values hang below it.
 
 ## Scatter plot
 
@@ -10698,6 +10685,32 @@ revenueChart->SetPointRadius(4.0f);
 revenueChart->SetSmoothingEnabled(true);
 ```
 
+## Zoom and pan
+
+The line, area and scatter charts zoom and pan their x axis once asked to;
+both are off by default, so the mouse wheel over a chart scrolls the page
+around it.
+
+```cpp
+salesChart->SetEnableZoom(true);   // wheel up over the plot zooms in around the pointer, down zooms out (up to 50x)
+salesChart->SetEnablePan(true);    // drag a zoomed plot sideways with the left button
+if (salesChart->IsZoomed()) {
+    salesChart->ResetZoom();       // the whole range again
+}
+```
+
+- With zoom on, a wheel turn the chart does nothing with - over the axis
+  margins, or zooming out of the whole range - still goes to the parent, so
+  a scrolling container keeps scrolling. A drag over a chart that is not
+  zoomed in is left to the parent as well.
+- In `XAxisLabelMode::NumericValue` the axis numbers follow the zoom; in
+  `XAxisLabelMode::DataLabel` the evenly spaced points spread apart and the
+  labels follow them. Points scrolled out of the plot are clipped and are
+  not hovered.
+- Turning zoom off or setting a data source shows the whole range again.
+- The bar chart does not zoom or pan: the wheel and drags over it always go
+  to the parent.
+
 ## Switching data at run time
 
 A chart can show any data source at any time; this is what the demo's
@@ -10721,16 +10734,8 @@ addMonth->SetOnClick([salesChart, monthlySales]() {
 
 - **One series per element.** Overlaying two series means two elements or the
   chart engine.
-- **Zoom and pan do nothing visible.** `SetEnableZoom` and `SetEnablePan` are
-  accepted, and the line, area and scatter charts switch both on in their
-  constructors, but nothing rescales or moves. With zoom on, the chart takes
-  the mouse wheel for itself, so inside a scrolling container call
-  `SetEnableZoom(false)` to let the wheel scroll the container.
-- **The plot area is worked out when the data is set.** A chart whose size the
-  layout changes later keeps its old plot rectangle until `SetDataSource` is
-  called again, so give charts a fixed width and height.
-- **The line chart's dots are always 4 px.** `SetPointRadius` reaches the area
-  chart's dots, but the line chart draws its dots with a radius of its own.
+- **Zoom is x only.** The y axis keeps the whole data range while the x axis
+  is zoomed.
 
 ## See also
 
@@ -10752,7 +10757,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBitmapExamples.md
 
 **UltraCanvasImageElement** is a versatile image display component in the UltraCanvas framework that provides comprehensive image loading, caching, transformation, and interaction capabilities. It supports multiple image formats and offers various scaling modes for flexible image presentation.
 
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Header:** `include/UltraCanvasImageElement.h`  
@@ -10763,7 +10768,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBitmapExamples.md
 - **Multi-format Support**: every format the image loader reads (`UCImageLoadFormat`: PNG, JPEG, GIF, WebP, TIFF, BMP, SVG, ICO, AVIF, HEIF, JPEG XL and more)
 - **Flexible Loading**: Load from a file, or show an already-decoded `UCImage` (for example one decoded from memory)
 - **Fit Modes**: CSS-style `object-fit` (`ImageFitMode`), `object-position` and background repeat
-- **Transformations**: Rotation, scaling, offset, opacity
+- **Transformations**: Rotation, scaling, offset, opacity, tint
 - **Animation**: Animated GIF and WebP play automatically
 - **Interaction**: Click, hover and drag support
 - **Error Handling**: The reason for a failed load, and an error placeholder
@@ -10844,15 +10849,18 @@ Images are cached by path; `forceLoad = true` evicts the cached copy first
 bool LoadFromImage(std::shared_ptr<UCImage> img);
 ```
 Shows an image that is already decoded, for example one from
-`UCImage::LoadFromMemory()`. Returns false for a null image. It does not fire
-`onImageLoaded`.
+`UCImage::LoadFromMemory()`. It reports like `LoadFromFile()`: a valid image
+returns true and fires `onImageLoaded`; an image whose decode failed returns
+false, fires `onImageLoadFailed` with the reason and shows the error
+placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
+element and fires neither.
 
 ### GetLastError
 ```cpp
 const std::string& GetLastError() const;
 ```
-The reason the last `LoadFromFile()` failed (missing, locked, unsupported
-format); empty on success.
+The reason the last `LoadFromFile()` or `LoadFromImage()` failed (missing,
+locked, unsupported format, undecodable data); empty on success.
 
 ## Display Properties
 
@@ -10879,13 +10887,18 @@ Rect2Df ImageDrawRect() const;
 
 ### Visual Effects
 ```cpp
-void SetTintColor(const Color& color);         // Stored; the current renderer does not apply it
+void SetTintColor(const Color& color);         // Multiply the picture's colours (white = untinted)
 void SetOpacity(float alpha);                  // Set transparency (0.0-1.0)
 float GetOpacity() const;
 void SetRotation(float degrees);               // Rotate around the center
 void SetScale(float sx, float sy);             // Scale transformation
 void SetOffset(float ox, float oy);            // Position offset
 ```
+
+`SetTintColor` multiplies every pixel of the picture by the colour, inside the
+picture only: white (the default) leaves it unchanged, `Color(255, 0, 0)`
+keeps only its red, and the colour's alpha sets the strength. It is drawn with
+render-context groups; a context without groups draws the picture untinted.
 
 ## Image Information
 
@@ -10927,7 +10940,7 @@ step through `onImageDragged`.
 ## Event Callbacks
 
 ```cpp
-std::function<void()> onImageLoaded;                        // LoadFromFile succeeded
+std::function<void()> onImageLoaded;                        // LoadFromFile / LoadFromImage succeeded
 std::function<void(const std::string&)> onImageLoadFailed;  // Load failed with the reason
 std::function<void()> onClick;                              // Clicked (needs SetClickable(true))
 std::function<void()> onHoverEnter;                         // Pointer came onto the image
@@ -10961,8 +10974,10 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
     const std::vector<uint8_t>& imageData,
     UCImageLoadFormat format = UCImageLoadFormat::Autodetect);
 ```
-Creates an element and decodes the image from memory. The format is always
-detected from the data; the `format` argument is currently not used.
+Creates an element and decodes the image from memory. The loader detects the
+format from the data and takes no hint, so `format` is not used; it stays for
+source compatibility. Data that does not decode leaves the element showing the
+error placeholder, with the reason in `GetLastError()`.
 
 ### CreateScaledImage
 ```cpp
@@ -10987,8 +11002,9 @@ void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 ```
 
 1. **Loaded**: Draws the image (or the current animation frame) into the
-   content box with the fit mode, position, repeat, opacity and transformations
-2. **Failed**: Draws an "ERR" error placeholder
+   content box with the fit mode, position, repeat, tint, opacity and
+   transformations
+2. **Failed**: Draws the error placeholder: "ERR" and the reason
 3. **Nothing loaded**: Draws nothing beyond the element's own background and border
 
 Rounded corners (border radius) clip the picture as well.
@@ -11074,6 +11090,10 @@ auto logo = CreateImageFromFile("logo", 200, 200, 100, 100, "logo.svg");
 logo->SetRotation(45.0f);          // Rotate 45 degrees
 logo->SetScale(1.5f, 1.5f);        // Scale 150%
 logo->SetOpacity(0.8f);            // 80% opacity
+
+// Tint a white icon with the accent colour
+auto star = CreateImageFromFile("star", 10, 10, 32, 32, "icons/star-white.png");
+star->SetTintColor(Color(0, 120, 215));
 ```
 
 ### Positioned and Tiled Images
@@ -11122,7 +11142,7 @@ The reason for a failed load is passed to `onImageLoadFailed` and returned by `G
 2. **Preload critical images** before display
 3. **Handle loading errors** with appropriate fallbacks
 4. **Optimize image sizes** for target display dimensions
-5. **Set the callbacks before loading**: `LoadFromFile()` fires them before it returns
+5. **Set the callbacks before loading**: `LoadFromFile()` and `LoadFromImage()` fire them before they return
 6. **Use `forceLoad`** only when the file on disk changed: it bypasses the cache
 
 ## See Also
@@ -19107,7 +19127,7 @@ FILE: Docs/UltraCanvas/UltraCanvasDivergingChartExamples.md
 
 The `UltraCanvasDivergingBarChart` is a specialized chart component in the UltraCanvas framework designed for displaying multi-valued categorical data that diverges from a central axis. This chart type is ideal for visualizing data with opposing or contrasting values, such as population pyramids, Likert scale survey responses, tornado charts, and other comparative visualizations.
 
-**Version:** 1.1.1  
+**Version:** 1.2.0  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Namespace:** `UltraCanvas`
@@ -19221,7 +19241,10 @@ Sets the categories for the diverging chart. Categories define the segments that
 void AddDataRow(const std::string& rowLabel, 
                 const std::map<std::string, float>& values)
 ```
-Adds a single data row with values for each category.
+Adds a single data row with values for each category. When a row with this
+label is already there - such as one `CreatePopulationPyramid` laid out - its
+values are replaced and it keeps its place, rather than a second row being
+added.
 
 **Parameters:**
 - `rowLabel`: Label for the row (appears on Y-axis)
@@ -19324,8 +19347,10 @@ std::shared_ptr<UltraCanvasDivergingBarChart> CreatePopulationPyramid(
     const std::vector<std::string>& rowLabels,
     const std::vector<DivergingCategory>& categories)
 ```
-Creates a pre-configured population pyramid chart. `rowLabels` is currently
-not used: the rows come from `AddDataRow` calls.
+Creates a pre-configured population pyramid chart with one empty row per
+entry of `rowLabels`, in that order (the first at the top). `AddDataRow` with
+one of those labels then fills that row, so the rows keep the order given here
+whatever order the data arrives in; a label not in the list adds a row below.
 
 ### CreateLikertChart
 ```cpp
@@ -19412,7 +19437,7 @@ auto pyramid = CreatePopulationPyramid("pyramid", 50, 50, 600, 500,
                                         {"0-9", "10-19", "20-29", "30-39", "40-49"},
                                         categories);
 
-// Add population data
+// Fill the rows laid out above, by label
 pyramid->AddDataRow("0-9", {{"Male", 1200}, {"Female", 1150}});
 pyramid->AddDataRow("10-19", {{"Male", 1350}, {"Female", 1300}});
 pyramid->AddDataRow("20-29", {{"Male", 1500}, {"Female", 1450}});
@@ -34090,8 +34115,8 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.0.0  
-**Last Modified:** 2025-09-10  
+**Version:** 1.1.0  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -34108,7 +34133,7 @@ UltraCanvasUIElement
 - **Line Rendering:** High-quality line drawing with customizable colors and widths
 - **Data Point Display:** Optional visualization of individual data points with customizable appearance
 - **Smooth Curves:** Bezier curve smoothing for more aesthetic line representation
-- **Interactive Features:** Built-in support for zoom, pan, and data point tooltips
+- **Interactive Features:** Data point tooltips, and wheel zoom and drag pan of the x axis (off until enabled)
 - **Animation:** Smooth animated transitions when data changes
 - **Grid & Axes:** Automatic grid lines and axis labels with smart formatting
 
@@ -34121,28 +34146,26 @@ UltraCanvasUIElement
 
 ### Interactivity
 - Hover tooltips showing data point values
-- Mouse-based panning and zooming
+- Wheel zoom and drag pan of the x axis, once `SetEnableZoom(true)` / `SetEnablePan(true)`
 - Selection indicators for data points
 - Custom tooltip content generation
 
 ## Constructor
 
 ```cpp
-UltraCanvasLineChartElement(const std::string &id, long uid, 
-                            int x, int y, int width, int height)
+UltraCanvasLineChartElement(const std::string &id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 - **id:** Unique string identifier for the chart element
-- **uid:** Unique numeric identifier
 - **x:** X-coordinate position
 - **y:** Y-coordinate position
 - **width:** Width of the chart
 - **height:** Height of the chart
 
 ### Default Settings
-- Zoom enabled: `true`
-- Pan enabled: `true`
+- Zoom enabled: `false`
+- Pan enabled: `false`
 - Line color: Blue (RGB: 0, 102, 204)
 - Line width: 2.0f
 - Show data points: `false`
@@ -34189,7 +34212,8 @@ Sets the color of data point markers.
 ```cpp
 void SetPointRadius(float radius)
 ```
-Sets the radius of data point markers in pixels.
+Sets the radius of data point markers in pixels (4 by default for the line
+chart). It also sets how far the value labels sit from the points.
 
 ### Inherited Methods from Base Class
 
@@ -34215,13 +34239,21 @@ Enables or disables interactive tooltips.
 ```cpp
 void SetEnableZoom(bool enable)
 ```
-Enables or disables mouse wheel zoom functionality.
+Turns wheel zoom of the x axis on or off (off by default). Wheel up over the
+plot zooms in around the pointer, wheel down zooms back out, up to 50x. A
+wheel turn that changes nothing - over the axis margins, or zooming out of
+the whole range - is left to the parent, so a scrolling container around the
+chart still scrolls. Works in both x-axis label modes: with
+`XAxisLabelMode::DataLabel` the evenly spaced points spread apart. Turning
+zoom off, or setting a new data source, shows the whole range again; so does
+`ResetZoom()`, and `IsZoomed()` tells whether the view is narrowed.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enable)
 ```
-Enables or disables mouse drag panning.
+Turns dragging a zoomed x axis sideways with the left button on or off (off by
+default). A drag over a chart that is not zoomed in is left to the parent.
 
 ## Usage Examples
 
@@ -34229,8 +34261,7 @@ Enables or disables mouse drag panning.
 
 ```cpp
 // Create a line chart element
-auto lineChart = CreateLineChartElement("salesChart", 1001, 
-                                       50, 50, 600, 400);
+auto lineChart = CreateLineChartElement("salesChart", 50, 50, 600, 400);
 
 // Configure appearance
 lineChart->SetLineColor(Color(0, 102, 204, 255));  // Blue
@@ -34254,8 +34285,7 @@ container->AddChild(lineChart);
 
 ```cpp
 // Create smoothed line chart
-auto smoothChart = CreateLineChartElement("revenueChart", 2001,
-                                         100, 100, 800, 500);
+auto smoothChart = CreateLineChartElement("revenueChart", 100, 100, 800, 500);
 
 // Enable advanced features
 smoothChart->SetSmoothingEnabled(true);
@@ -34279,8 +34309,7 @@ smoothChart->SetGridColor(Color(220, 220, 220, 255));
 
 ```cpp
 // Create chart with initial data
-auto dynamicChart = CreateLineChartElement("liveData", 3001,
-                                          50, 50, 700, 450);
+auto dynamicChart = CreateLineChartElement("liveData", 50, 50, 700, 450);
 
 // Initial setup
 auto initialData = std::make_shared<ChartDataVector>();
@@ -34299,8 +34328,7 @@ void updateChartData() {
 
 ```cpp
 // Create highly interactive chart
-auto interactiveChart = CreateLineChartElement("analytics", 4001,
-                                              0, 0, 1024, 600);
+auto interactiveChart = CreateLineChartElement("analytics", 0, 0, 1024, 600);
 
 // Enable all interactive features
 interactiveChart->SetEnableTooltips(true);
@@ -34362,15 +34390,15 @@ The line chart follows this rendering sequence:
 
 ### Supported Events
 
-- **MouseMove:** Updates tooltips and hover states
-- **MouseDown:** Initiates pan operation
-- **MouseUp:** Completes pan operation
-- **MouseWheel:** Zooms in/out around cursor position
+- **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
+- **MouseUp:** Ends the pan
+- **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior
 
 Tooltips appear when:
-- Mouse hovers within 2× point radius of a data point
+- Mouse hovers within 20 px of a data point that is in view
 - Tooltips are enabled via `SetEnableTooltips(true)`
 - A valid data source is connected
 
@@ -34381,7 +34409,9 @@ Tooltips appear when:
 - **Render Caching:** Plot area and data bounds are cached
 - **Animation Throttling:** Smooth animations at 60 FPS
 - **Clipping:** Rendering is clipped to element bounds
-- **Lazy Evaluation:** Recalculations only on data/size changes
+- **Lazy Evaluation:** The plot area and ranges are worked out again when the
+  data source is set, the size changes (SetBounds or the layout), the label
+  mode changes or the view is zoomed or panned
 
 ### Best Practices
 
@@ -34396,9 +34426,7 @@ The recommended way to create line chart instances:
 
 ```cpp
 std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
-    const std::string &id, long uid, 
-    int x, int y, int width, int height
-)
+    const std::string &id, int x, int y, int width, int height)
 ```
 
 ## Integration with UltraCanvas
@@ -34408,12 +34436,11 @@ std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
 Line charts can be added to any UltraCanvas container:
 
 ```cpp
-auto mainWindow = std::make_shared<UltraCanvasWindow>();
-auto container = std::make_shared<UltraCanvasContainer>();
+auto chartArea = std::make_shared<UltraCanvasContainer>("chart-area");
 auto lineChart = CreateLineChartElement("chart1", 0, 0, 800, 600);
 
-container->AddChild(lineChart);
-mainWindow->SetContent(container);
+chartArea->AddChild(lineChart);
+window->AddChild(chartArea);
 ```
 
 ### Event Propagation
@@ -34447,6 +34474,12 @@ Events flow through the standard UltraCanvas event system:
 - **UltraCanvasAreaChartElement:** Area chart implementation
 
 ## Version History
+
+- **1.1.0** (2026-10-07):
+  - `SetPointRadius` sizes the line's dots (it used to reach only the area chart)
+  - Zoom and pan of the x axis work; both are off by default, and a wheel turn
+    or drag that does nothing is left to the parent
+  - The plot area follows a resize by the layout
 
 - **1.0.0** (2025-09-10): Initial release with full feature set
   - Line rendering with customizable style
@@ -37126,7 +37159,7 @@ enum class MenuItemType {
     Checkbox,       // Toggle item with checkbox
     Radio,          // Radio button (mutually exclusive within group)
     Submenu,        // Item with cascading submenu
-    Input,          // Reserved: no text-input item is implemented yet
+    Input,          // Reserved: no text-input item is implemented, and there is no factory for one
     Custom,         // Reserved: drawn like a plain item
     Header          // Non-clickable section title
 };
@@ -37223,8 +37256,9 @@ MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
 openWith.onClick = [] { OpenWithDefaultApplication(); };
 ```
 
-`MenuItemData::Input()` is declared in the header, but its definition is
-commented out, so a call does not link: there is no text-input menu item yet.
+There is no text-input menu item: `MenuItemType::Input` is reserved, and
+`MenuItemData` has no `Input()` factory. (One used to be declared without a
+definition, so a call compiled and then failed to link; it was removed.)
 
 ## Menu Styling
 
@@ -37269,8 +37303,8 @@ struct MenuStyle {
     int submenuDelay;        // Hover delay before opening (ms)
 
     // Animation
-    bool enableAnimations;   // Enable open/close animations
-    float animationDuration; // Animation duration (seconds)
+    bool enableAnimations;   // Fade a popup's entries in as it opens (default false)
+    float animationDuration; // Length of the fade (seconds)
     
     // Shadow
     bool showShadow;         // Display drop shadow
@@ -37443,7 +37477,9 @@ The menu system handles the following events:
 - **Up/Down Arrows**: Navigate vertical menus
 - **Left/Right Arrows**: Navigate horizontal menus or open/close submenus
 - **Enter/Space**: Execute selected item
-- **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default)
+- **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
+  The application closes the topmost popup before the key reaches any element,
+  so an open submenu closes first and its parent stays open.
 
 ## Usage Examples
 
@@ -37632,18 +37668,22 @@ menu->SetStyle(customStyle);
 
 ## Animation Support
 
-`MenuStyle` carries animation settings:
+With `enableAnimations` set, a popup menu or submenu fades its entries in
+over `animationDuration` seconds when it opens:
 
 ```cpp
-// Enable animations
+auto menu = CreateMenu("ContextMenu", 0, 0, 200, 0);
 MenuStyle style = MenuStyle::Default();
 style.enableAnimations = true;
 style.animationDuration = 0.2f;  // 200ms
 menu->SetStyle(style);
 ```
 
-In this version the menu only tracks the progress of an opening animation;
-drawing does not change with it yet, so a menu appears at once either way.
+The panel itself (background and border) appears at once and the entries
+fade in over it: popups are composited onto the window as opaque blocks, so
+the panel has nothing beneath it to fade over. The menu bar does not
+animate, and closing is immediate. Animations are off by default; an
+`animationDuration` of 0 or less draws the entries in full at once.
 
 ## Performance Considerations
 
@@ -37677,7 +37717,7 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 1. Maximum submenu depth is implementation-defined (typically 10 levels)
 2. `Custom` and `Input` items have no special drawing or behaviour yet
 3. Touch gesture support varies by platform
-4. Open/close animation is not drawn yet (see Animation Support)
+4. Only opening animates, and only the entries fade (see Animation Support)
 
 ## Best Practices
 
@@ -49560,8 +49600,8 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.0  
-**Last Modified:** 2026-07-29  
+**Version:** 1.1.1  
+**Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
 > [`UltraCanvasScatterPlot3DElement`](UltraCanvasScatterPlot3D.md).
@@ -49594,8 +49634,8 @@ UltraCanvasScatterPlotElement(const std::string& id, long uid,
 - `height` - Height of the chart
 
 ### Default Settings
-- `enableZoom` = true
-- `enablePan` = true
+- `enableZoom` = false
+- `enablePan` = false
 - `enableSelection` = true
 - `pointShape` = PointShape::Circle
 - `pointColor` = Color(0, 102, 204, 255) // Blue
@@ -49788,13 +49828,19 @@ Enables/disables tooltips when hovering over data points.
 ```cpp
 void SetEnableZoom(bool enable)
 ```
-Enables/disables zoom functionality using mouse wheel.
+Wheel zoom of the x axis around the pointer: wheel up zooms in, wheel down
+zooms out, up to 50x. Off by default. A wheel turn that changes nothing (over
+the margins, or zooming out of the whole range) goes to the parent, so a
+scrolling container around the chart still scrolls. Turning it off shows the
+whole range again; `ResetZoom()` does that too, and `IsZoomed()` says whether
+the view is narrowed.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enable)
 ```
-Enables/disables panning by dragging the mouse.
+Dragging sideways with the left button moves a zoomed-in x axis. Off by
+default; it does nothing while the whole range is shown.
 
 #### SetEnableSelection
 ```cpp
@@ -50077,6 +50123,8 @@ Integrates with the UltraCanvas event system:
 
 ## Version History
 
+- **1.1.1** (2026-10-07): zoom and pan are off by default, and work when
+  turned on (the wheel zooms the x axis, a drag pans it)
 - **1.1.0** (2026-07-29): Correlation line and per-point colors
   - Least-squares trend line with solid/dashed/dotted styles
   - `y = ax + b`, r and r² readout (`SetShowCorrelationInfo`)
@@ -51346,7 +51394,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 2.0.1  
+**Version**: 2.0.2  
 **Last Modified**: 2026-10-07  
 **Author**: UltraCanvas Framework
 
@@ -51417,6 +51465,18 @@ enum class SliderState {
     Pressed,
     Focused,
     Disabled
+};
+```
+
+### SliderHandleShape
+The shape of the handle (`SliderVisualStyle::handleShape`, `SetHandleShape`).
+A scoped enum: always write `SliderHandleShape::Square`, never a bare `Square`.
+```cpp
+enum class SliderHandleShape {
+    Circle,     // the default
+    Square,
+    Triangle,
+    Diamond
 };
 ```
 
@@ -55253,8 +55313,10 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 ### Enhanced Dropdown Features
 - **Smart Overflow Detection:** Automatically shows dropdown when tabs don't fit
 - **Position Control:** Left or Right side dropdown positioning
-- **Search Integration:** The overflow button opens a "Search tabs..." popup
-- **Visual Markers:** Disabled tabs are listed in `[brackets]` in the dropdown
+- **Search Integration:** With search on and enough tabs, the overflow button
+  opens a "Search tabs..." popup; otherwise it opens a plain menu of the tabs
+- **Visual Markers:** Disabled tabs are listed in `[brackets]` in the search
+  popup and greyed out in the plain menu
 - **Real-time Filtering:** Instant search results as user types
 
 ## Class Definition
@@ -55438,12 +55500,25 @@ void SetOverflowDropdownWidth(int width);          // Overflow button width. Def
 void SetDropdownSearchEnabled(bool enabled);       // Default: true
 void SetDropdownSearchThreshold(int threshold);    // Default: 5 (min 1)
 void ClearDropdownSearch();
+bool UsesDropdownSearch() const;                   // What the overflow button opens next
 ```
 
-> **Note:** The overflow button currently always opens the search popup, which
-> lists every visible tab. `SetDropdownSearchEnabled()` and
-> `SetDropdownSearchThreshold()` store their values, but the implementation
-> does not consult them yet.
+The overflow button opens one of two lists of the visible tabs:
+
+- the **search popup** ("Search tabs..."), when search is enabled and at
+  least `GetDropdownSearchThreshold()` tabs are visible — the list is long
+  enough to be worth filtering;
+- a **plain menu** otherwise: one entry per visible tab, the active one
+  checked and the disabled ones greyed out. Choosing an entry activates its
+  tab; Escape or a click outside closes it.
+
+`UsesDropdownSearch()` says which one a click opens now.
+
+```cpp
+auto tabs = CreateTabbedContainerWithDropdown("docs", 0, 0, 800, 600,
+                                              OverflowDropdownPosition::Right);
+tabs->SetDropdownSearchThreshold(8);   // a plain menu up to 7 tabs, search from 8
+```
 
 #### New Tab Button
 ```cpp
@@ -55729,7 +55804,9 @@ mainTabs->AddTab("Advanced", nestedTabs);
 4. Active tab updated if necessary
 
 ### Dropdown Search
-1. User clicks the overflow button; a search popup opens listing the visible tabs
+1. User clicks the overflow button; with search enabled and at least the
+   threshold's number of visible tabs, a search popup opens listing them
+   (with fewer, or search off, a plain menu of the tabs opens instead)
 2. User types in the popup
 3. Dropdown list filtered in real-time
 4. Escape clears search, Enter selects match
@@ -55757,7 +55834,7 @@ The component renders in multiple layers:
 ## Best Practices
 
 1. **Limit Tab Count:** Keep under 20 tabs for best UX
-2. **Use the Overflow Dropdown:** Turn it on when many tabs are expected, so users can search them
+2. **Use the Overflow Dropdown:** Turn it on when many tabs are expected; the search threshold decides when the list becomes searchable
 3. **Meaningful Titles:** Use clear, concise tab labels
 4. **Icon Support:** Prefix titles with emoji/icons for recognition
 5. **Consistent Style:** Match tab style to application theme
@@ -55779,7 +55856,7 @@ The UltraCanvasTabbedContainer is **not** thread-safe. All operations should be 
 
 - UltraCanvasContainer (base class)
 - UltraCanvasButton and UltraCanvasAutoComplete (overflow button and search popup)
-- UltraCanvasMenu (tab context menu)
+- UltraCanvasMenu (plain overflow list, tab context menu)
 - UltraCanvasEvent (event handling)
 - UltraCanvasRenderContext (rendering)
 
@@ -56041,11 +56118,20 @@ Moves cursor to end of document.
 void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false);
 ```
 Sets the cursor to a line and column (`pos.lineIndex`, `pos.columnIndex`, both
-0-based; the column counts codepoints).
+0-based; the column counts codepoints). With `selecting` set, the selection is
+extended to `pos` from its anchor, as Shift+arrow does: the anchor is the start
+of the current selection, or the cursor's previous place when nothing is
+selected. Without it the selection is left unchanged; call `ClearSelection()`
+to drop it.
+
+```cpp
+textArea->SetCursorPosition({0, 2});           // caret after "he" in "hello"
+textArea->SetCursorPosition({0, 5}, true);     // selects "llo"
+```
 
 #### GetCursorPosition
 ```cpp
-LineColumnIndex GetCursorPosition();
+LineColumnIndex GetCursorPosition() const;
 ```
 Returns the current cursor position as a line / column pair.
 
@@ -56699,7 +56785,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options. It is a single-line field; for multi-line text use `UltraCanvasTextArea`.
 
-**Version:** 1.3.1  
+**Version:** 1.4.0  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -56793,8 +56879,14 @@ Automatically configures validation and formatting based on the selected type:
 - **Currency**: Applies `TextFormatter::Currency()` and adds `ValidationRule::Numeric()`
 - **Date**: Applies `TextFormatter::Date()`
 
-The rules are added to any already on the field; `ClearValidationRules()`
-removes them.
+The rules a type brings are replaced when the type changes: switching Email
+to Text drops the email check, and setting a type twice does not check twice.
+Rules added with `AddValidationRule()` stay through any type change, whether
+they were added before or after it. `ClearValidationRules()` removes both.
+
+Phone, Currency and Date set their formatter through `SetFormatter()`, so a
+field without a placeholder gets the formatter's (see
+[Using Formatters](#using-formatters)).
 
 ## Text Management
 
@@ -56959,8 +57051,21 @@ const ValidationResult& last = textInput->GetLastValidationResult();
 textInput->SetShowValidationState(false);
 ```
 
-`Validate()` runs the rules in priority order and stops at the first one that
-fails, so a result carries at most one message.
+`Validate()` runs the rules in priority order (rules of equal priority in the
+order they were added) and stops at the first one that fails, so a result
+carries at most one message.
+
+The rules run on every edit and again when the field loses the focus, before
+`onFocusLost` is called: a required field the user tabs through without typing
+shows its error. A field that loses the focus because it is being hidden or
+disabled is not validated.
+
+A format rule - `Email()`, `Phone()`, `Numeric()`, `Range()`, `Pattern()` -
+accepts an empty value: it checks what was typed, not whether something was.
+An optional Email field left empty is fine; add `ValidationRule::Required()`
+to make it mandatory, as with `required` on an HTML form field.
+(`MinLength()` does count an empty value as too short, which is what a
+password checklist shows.)
 
 ### ValidationResult Structure
 
@@ -57043,6 +57148,16 @@ textInput->SetFormatter(TextFormatter::Custom("upper",
 The formatter only changes what is shown (`GetDisplayText()`); `GetText()`
 returns the text as typed.
 
+The field never turns formatted text back into raw text - it keeps the typed
+text and formats a copy for display - so it does not call `unformatFunction`.
+That function is for the caller holding formatted text, such as the display
+text, who wants the raw value:
+
+```cpp
+// "(555) 123-4567" on screen -> "5551234567"
+std::string digits = textInput->GetFormatter().unformatFunction(textInput->GetDisplayText());
+```
+
 ### Using Formatters
 
 ```cpp
@@ -57052,6 +57167,10 @@ textInput->SetFormatter(TextFormatter::Phone());
 // Get current formatter
 const TextFormatter& formatter = textInput->GetFormatter();
 ```
+
+A formatter's `placeholder` ("(555) 123-4567", "$0.00", "MM/DD/YYYY") is a
+default: `SetFormatter()` uses it only when the field has no placeholder, and
+keeps one you set.
 
 ## Selection and Cursor Management
 
@@ -57286,6 +57405,10 @@ The undo system keeps the last 50 states and automatically saves state before:
 - Paste operations
 - `SetText()` and the clear button
 
+One key press is one undo step, including a character, Space or paste that
+replaces a selection, and Backspace or Delete on a selection. A key press the
+length limit refuses changes nothing and leaves no step.
+
 ## Clear Button
 
 ```cpp
@@ -57375,6 +57498,9 @@ Windows (UI Automation `IsPassword`) and Linux (AT-SPI password text) then say
 
 ### Convenience Creation Functions
 
+Every factory takes the identifier first and float geometry, like the
+constructor: `(const std::string& identifier, float x, float y, float w, float h)`.
+
 ```cpp
 // Create basic text input
 auto textInput = CreateTextInput("myInput", 10, 10, 200, 30);
@@ -57414,6 +57540,7 @@ auto textInput = TextInputBuilder()
     .Build();
 ```
 
+`SetPosition()` and `SetSize()` take floats and keep fractions.
 The builder also has `SetText()`, `SetFormatter()`, `SetReadOnly()` and
 shortcuts that add a rule: `Required()`, `MinLength()`, `MaxLength()`,
 `Email()`, `Phone()` and `Numeric()`.
@@ -57576,6 +57703,7 @@ bool AcceptsFocus() const override { return true; }
 
 ## Version History
 
+- **1.4.0** (2026-10-07): `SetFormatter` keeps a placeholder you set and fills an empty one; the rules a type adds are replaced when the type changes; losing the focus validates; one key press is one undo step; float geometry for every factory and the builder; when to use `unformatFunction`
 - **1.3.1** (2026-10-07): Matched the API to the header: constructors, validation and formatter members, callbacks, builder; removed members that do not exist (Multiline type, auto-complete setters, history settings)
 - **1.1.0** (2025-01-06): Enhanced validation, formatting, and multiline support
 - **1.0.0** (2024-12-15): Initial release with basic text input functionality
@@ -62802,7 +62930,7 @@ FILE: Docs/UltraCanvas/UltraCanvasWatefallChartExamples.md
 
 The **UltraCanvasWaterfallChart** is a sophisticated data visualization component within the UltraCanvas framework that displays cumulative data flow through a series of positive and negative changes. It's particularly effective for showing how an initial value is affected by a series of intermediate values, leading to a final result.
 
-**Version:** 1.0.2  
+**Version:** 1.1.0  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Location:** `Plugins/Charts/`
@@ -62868,10 +62996,25 @@ class WaterfallChartDataVector : public IChartDataSource {
     const WaterfallChartDataPoint& GetWaterfallPoint(size_t index) const;
     double GetFinalValue() const;
     
-    // Data loading
+    // Data loading (each replaces the steps)
     void LoadFromArray(const std::vector<std::pair<std::string, double>>& data);
+    void LoadFromArray(const std::vector<ChartDataPoint>& data);
+    void LoadFromCSV(const std::string& filePath);
 };
 ```
+
+The running totals (`cumulativeValue`) are worked out when the steps change -
+by `AddWaterfallPoint` or a load - not on every read.
+
+- `LoadFromArray(pairs)` adds one change step per (label, change) pair.
+- `LoadFromArray(points)` adds one change step per `ChartDataPoint`: its
+  `label`, its `y` as the change, its `category`, and its `color` when not
+  transparent. Add totals and subtotals with `AddWaterfallPoint`.
+- `LoadFromCSV(path)` reads lines `label,change[,type]` with dot decimals;
+  `type` is `total` or `subtotal` for those bars, and their change may be
+  left empty. Other lines without a number for the change - a header, a blank
+  line - are skipped. It throws `std::runtime_error` when the file cannot be
+  opened.
 
 ## Enumerations
 
@@ -62925,7 +63068,7 @@ void SetBarBorder(const Color& color, float width);
 void SetBarStyle(BarStyle style);
 void SetBarSpacing(float spacing);  // 0.0-0.8 ratio
 
-// Labels
+// Labels (SetShowValueLabels is UltraCanvasChartElementBase's, on by default)
 void SetShowValueLabels(bool show);
 void SetShowCumulativeLabels(bool show);
 void SetLabelStyle(const Color& textColor, float fontSize);
@@ -62999,6 +63142,29 @@ chart->SetBarStyle(WaterfallChart::BarStyle::Rounded);
 chart->SetShowCumulativeLabels(true);
 ```
 
+### Loading Steps
+
+```cpp
+auto quarters = std::make_shared<WaterfallChartDataVector>();
+quarters->LoadFromArray(std::vector<std::pair<std::string, double>>{
+    {"Q1", 150.0}, {"Q2", 120.0}, {"Q3", -30.0}});
+quarters->AddWaterfallPoint("Year", 0.0, false, true);   // total bar
+
+auto fromPoints = std::make_shared<WaterfallChartDataVector>();
+fromPoints->LoadFromArray(std::vector<ChartDataPoint>{
+    ChartDataPoint(0, 1000.0, 0, "Opening"),
+    ChartDataPoint(1, -250.0, 0, "Refunds")});
+
+// budget.csv:
+//   Step,Change,Type
+//   Opening,1000
+//   Refunds,-250
+//   Net,,total
+auto fromFile = std::make_shared<WaterfallChartDataVector>();
+fromFile->LoadFromCSV("/data/budget.csv");
+chart->SetWaterfallDataSource(fromFile);
+```
+
 ### Factory Functions
 
 ```cpp
@@ -63023,7 +63189,9 @@ void RenderChart(IRenderContext* ctx) override;
 
 `UltraCanvasChartElementBase::Render()` draws the empty state when there is
 no data; otherwise it updates the rendering cache, draws the common
-background and then calls `RenderChart()`, which:
+background - the plot rectangle, the grid (`SetShowGrid`), the axes
+(`SetShowAxes`) and the value-axis labels, which the waterfall's
+`RenderAxisLabels` override formats - and then calls `RenderChart()`, which:
 
 1. draws the waterfall bars;
 2. draws the connecting lines, when connector lines are enabled and the
@@ -63162,6 +63330,7 @@ The WaterfallChartElement integrates seamlessly with:
 | 1.0.0 | 2025-09-20 | Initial implementation |
 | 1.0.1 | 2025-09-29 | Added tooltip support, improved rendering cache |
 | 1.0.2 | 2026-10-07 | Docs: nested enum names (`NoneStyle`), real factory signature, private helpers removed from the API listing |
+| 1.1.0 | 2026-10-07 | `LoadFromArray(ChartDataPoint)` and `LoadFromCSV` load steps (they did nothing); running totals worked out once per change instead of on every `GetPoint`; `SetShowValueLabels` through the base class reaches the chart |
 
 ## Dependencies
 
