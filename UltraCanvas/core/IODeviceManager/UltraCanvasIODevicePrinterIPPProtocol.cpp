@@ -1,7 +1,7 @@
 // core/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
 // IPP encoding, decoding and the mapping between IPP attributes and this
 // module's printer vocabulary. See the header for what is here and why.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
@@ -1122,6 +1122,85 @@ std::vector<std::string> IppUrisForWindowsPort(const std::string& portName,
     if (host.find(':') != std::string::npos && host.front() != '[') host = "[" + host + "]";
     const std::string base = "ipp://" + host + ":631";
     return {base + "/ipp/print", base + "/ipp", base + "/"};
+}
+
+std::string IppNormalizeHost(const std::string& host) {
+    std::string text = Lower(host);
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front()))) text.erase(0, 1);
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back()))) text.pop_back();
+    if (text.size() >= 2 && text.front() == '[' && text.back() == ']') {
+        text = text.substr(1, text.size() - 2);
+    }
+    while (!text.empty() && text.back() == '.') text.pop_back();
+    return text;
+}
+
+std::string IppUriHost(const std::string& uri) {
+    UriParts parts;
+    if (!SplitUri(uri, parts)) return std::string();
+    return IppNormalizeHost(parts.host);
+}
+
+std::vector<std::string> IppHostsForWindowsQueue(const std::string& queueName,
+                                                 const std::vector<IppWindowsDeviceNode>& nodes) {
+    // The computer's own container holds every built-in device, so a queue
+    // in it says nothing about where its printer is.
+    auto meaningful = [](const std::string& container) {
+        std::string id = Lower(container);
+        id.erase(std::remove(id.begin(), id.end(), '{'), id.end());
+        id.erase(std::remove(id.begin(), id.end(), '}'), id.end());
+        return !id.empty() && id != "00000000-0000-0000-0000-000000000000" &&
+               id != "00000000-0000-0000-ffff-ffffffffffff";
+    };
+
+    std::vector<std::string> containers;
+    for (const IppWindowsDeviceNode& node : nodes) {
+        if (node.isPrintQueue && EqualsIgnoreCase(node.friendlyName, queueName) &&
+            meaningful(node.containerId)) {
+            containers.push_back(Lower(node.containerId));
+        }
+    }
+
+    std::vector<std::string> v4;
+    std::vector<std::string> other;
+    auto add = [&](const std::string& raw) {
+        const std::string host = IppNormalizeHost(raw);
+        if (host.empty()) return;
+        if (std::find(v4.begin(), v4.end(), host) != v4.end() ||
+            std::find(other.begin(), other.end(), host) != other.end()) {
+            return;
+        }
+        (IsDottedIPv4(host) ? v4 : other).push_back(host);
+    };
+
+    for (const IppWindowsDeviceNode& node : nodes) {
+        if (node.isPrintQueue) continue;
+        if (std::find(containers.begin(), containers.end(), Lower(node.containerId)) ==
+            containers.end()) {
+            continue;
+        }
+        if (!node.ipAddresses.empty()) {
+            for (const std::string& address : node.ipAddresses) add(address);
+            continue;
+        }
+        for (const std::string& url : node.xAddrs) add(IppUriHost(url));
+        add(IppUriHost(node.location));
+    }
+
+    v4.insert(v4.end(), other.begin(), other.end());
+    return v4;
+}
+
+bool IppPrinterIsWindowsQueue(const std::vector<std::string>& queueHosts,
+                              const std::string& mdnsHost, const std::string& mdnsIp) {
+    const std::string host = IppNormalizeHost(mdnsHost);
+    const std::string ip = IppNormalizeHost(mdnsIp);
+    for (const std::string& queueHost : queueHosts) {
+        const std::string candidate = IppNormalizeHost(queueHost);
+        if (candidate.empty()) continue;
+        if (candidate == host || candidate == ip) return true;
+    }
+    return false;
 }
 
 std::string IppTxtValue(const std::vector<std::string>& txt, const std::string& key) {

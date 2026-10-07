@@ -145,6 +145,10 @@ IPP Everywhere, AirPrint and Mopria printers need no driver: they are found
 through mDNS, and a document the printer renders itself (PDF, JPEG) is sent
 as it is, while text and other images are drawn as PWG raster. On Linux and
 macOS a printer CUPS already offers is left to CUPS rather than listed twice.
+On Windows the same goes for a printer the machine already has a print queue
+for: the IPP backend skips a DNS-SD printer whose address or host name is one
+a queue prints to — through an IPP port, a Standard TCP/IP port, or a WSD
+port (see below).
 A printer on another subnet is named in `ULTRACANVAS_IPP_PRINTERS`, a
 comma-separated list of `ipp://`, `ipps://`, `http://` or `https://`
 addresses:
@@ -162,7 +166,9 @@ where the printer gives one. Both need an open session and return nothing
 otherwise:
 
 ```cpp
-if (printer->Connect()) {
+auto printer = std::dynamic_pointer_cast<PrinterDevice>(
+    manager.GetDevice(IODeviceCategory::Printer, 0));
+if (printer && printer->Connect()) {
     IOPrinterStatus status = printer->GetStatus();
     for (const IOSupplyLevel& supply : printer->GetSupplyLevels()) {
         if (supply.IsLow()) { /* supply.description, supply.percentRemaining */ }
@@ -179,13 +185,19 @@ the spooler itself has no levels, so the backend asks in two steps:
    `\Printer.Consumables`), which drivers with a status monitor answer.
 2. If the driver says nothing and the queue prints to a network address, the
    printer itself over IPP (builds with UltraNet). The address comes from the
-   queue's port: an IPP port's URL, or a Standard TCP/IP port's host, tried at
-   `/ipp/print`, `/ipp` and `/` on port 631. A printer that does not answer
-   is left alone for a minute, so a switched-off printer costs the connect
-   timeout (5 s) once, not on every call.
+   queue's port, and is tried at `/ipp/print`, `/ipp` and `/` on port 631:
+   - an IPP port: its URL;
+   - a Standard TCP/IP port: its host;
+   - a WSD port, which carries no address: the WSD device Plug and Play keeps
+     in the same device container as the queue, whose PnP-X `IpAddress` (or
+     WS-Discovery URLs) name the printer.
 
-A USB or WSD queue whose driver keeps quiet, or a printer that answers
-neither, gives an empty list rather than zero. DeviceExplorer shows both for
+   A printer that does not answer is left alone for a minute, so a
+   switched-off printer costs the connect timeout (5 s) once, not on every
+   call.
+
+A USB queue whose driver keeps quiet, or a printer that answers neither,
+gives an empty list rather than zero. DeviceExplorer shows both for
 the selected printer.
 
 ### Your Own Devices

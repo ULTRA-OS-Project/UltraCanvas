@@ -12,7 +12,8 @@
 // Linux or macOS build may have no CUPS - and it reaches a printer CUPS does
 // not know about. Where CUPS is present and already offers a printer, the
 // printer is left to CUPS rather than listed twice (see
-// IppCupsQueueReachesPrinter).
+// IppCupsQueueReachesPrinter). On Windows the same goes for a printer that is
+// already a print queue there (IppPrinterIsWindowsQueue).
 //
 // The protocol arithmetic lives next door in ...IPPProtocol.cpp and the page
 // format in ...PwgRaster.cpp, so both can be tested without a network; this
@@ -21,7 +22,7 @@
 // The Windows spooler backend borrows one piece of it: when a queue's driver
 // keeps its ink levels to itself, QueryIppSupplyLevels asks the printer
 // behind the queue directly.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
@@ -815,6 +816,12 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
     // seconds that a network with no printers should not spend.
     std::vector<std::string> cupsQueues;
     bool cupsAsked = false;
+#if defined(_WIN32)
+    // The same for the Windows spooler: a printer the machine already has a
+    // queue for is reached through that queue and its driver.
+    std::vector<std::string> windowsQueueHosts;
+    bool windowsAsked = false;
+#endif
 
     // Plain IPP first. A printer offering both is used over plain IPP: its
     // certificate is self-signed in all but a few cases, and TLS verification
@@ -871,6 +878,17 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
                     return IppCupsQueueReachesPrinter(queue, entry.dn, uuid, uri);
                 });
             if (cupsHasIt) continue;
+
+#if defined(_WIN32)
+            if (!windowsAsked) {
+                windowsQueueHosts = Internal::WindowsQueuePrinterHosts();
+                windowsAsked = true;
+            }
+            auto ip = entry.attributes.find("ip");
+            const std::string address =
+                ip != entry.attributes.end() && !ip->second.empty() ? ip->second[0] : std::string();
+            if (IppPrinterIsWindowsQueue(windowsQueueHosts, host->second[0], address)) continue;
+#endif
 
             IODeviceInfo info;
             info.deviceId = deviceId;

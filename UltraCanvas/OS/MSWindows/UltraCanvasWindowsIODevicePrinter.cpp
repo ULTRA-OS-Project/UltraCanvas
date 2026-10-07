@@ -11,8 +11,11 @@
 // Supply levels come from the driver's bidirectional channel (IBidiSpl), which
 // the spooler itself does not expose. When the driver says nothing and the
 // queue prints to a network address, the printer behind it is asked directly
-// over IPP (builds with UltraNet only).
-// Version: 0.3.0
+// over IPP (builds with UltraNet only). A WSD port has no address of its own;
+// the printer's is read from the WSD device Plug and Play keeps beside the
+// queue. The same addresses tell the IPP backend which printers it found
+// over DNS-SD are already queues here, so it does not list them twice.
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef _WIN32
@@ -30,6 +33,7 @@
 #include <winspool.h>
 #include <objbase.h>
 #include <bidispl.h>
+#include <setupapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -287,21 +291,119 @@ std::string TcpPortHostAddress(const std::wstring& port) {
     return host;
 }
 
-// The IPP addresses a queue's printer might answer at, from the ports it
-// prints to - several, comma-separated, for a pooled queue.
-std::vector<std::string> IppUrisForQueue(const std::wstring& printerName) {
-    PrinterHandle handle(printerName);
-    if (!handle.IsOpen()) {
-        return {};
-    }
-    std::vector<uint8_t> buffer = QueryPrinterInfo(handle.Get(), 2);
-    if (buffer.empty()) {
-        return {};
-    }
-    const PRINTER_INFO_2W* info = reinterpret_cast<const PRINTER_INFO_2W*>(buffer.data());
-    const std::wstring ports = info->pPortName ? info->pPortName : L"";
+// Plug and Play property keys and the print-queue device class, spelled out
+// for the same reason as the bidi IDs above. Values as in devpkey.h,
+// functiondiscoverykeys.h (PnP-X) and devguid.h.
+const DEVPROPKEY kDevpkeyFriendlyName = {
+    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
+const DEVPROPKEY kDevpkeyLocationInfo = {
+    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 15};
+const DEVPROPKEY kDevpkeyContainerId = {
+    {0x8c7ed206, 0x3f8a, 0x4827, {0xb3, 0xab, 0xae, 0x9e, 0x1f, 0xae, 0xfc, 0x6c}}, 2};
+const DEVPROPKEY kPnpxXAddrs = {
+    {0x656a3bb3, 0xecc0, 0x43fd, {0x84, 0x77, 0x4a, 0xe0, 0x40, 0x4a, 0x96, 0xcd}}, 0x1003};
+const DEVPROPKEY kPnpxIpAddress = {
+    {0x656a3bb3, 0xecc0, 0x43fd, {0x84, 0x77, 0x4a, 0xe0, 0x40, 0x4a, 0x96, 0xcd}}, 0x3009};
+const GUID kClassPrintQueue = {0x1ed2bbf9, 0x11f0, 0x4084,
+                               {0xb2, 0x1f, 0xad, 0x83, 0xa8, 0xe6, 0xdc, 0xdc}};
 
-    std::vector<std::string> uris;
+// SetupDiGetDevicePropertyW is a two-call API like GetPrinterW.
+bool ReadDeviceProperty(HDEVINFO set, SP_DEVINFO_DATA& device, const DEVPROPKEY& key,
+                        DEVPROPTYPE& type, std::vector<BYTE>& out) {
+    DWORD needed = 0;
+    type = DEVPROP_TYPE_EMPTY;
+    SetupDiGetDevicePropertyW(set, &device, &key, &type, nullptr, 0, &needed, 0);
+    if (needed == 0) {
+        return false;
+    }
+    out.assign(needed, 0);
+    return SetupDiGetDevicePropertyW(set, &device, &key, &type, out.data(), needed, &needed,
+                                     0) != FALSE;
+}
+
+// A string or string-list property as UTF-8, one entry per string.
+std::vector<std::string> DeviceStrings(HDEVINFO set, SP_DEVINFO_DATA& device,
+                                       const DEVPROPKEY& key) {
+    DEVPROPTYPE type = DEVPROP_TYPE_EMPTY;
+    std::vector<BYTE> data;
+    if (!ReadDeviceProperty(set, device, key, type, data) ||
+        (type != DEVPROP_TYPE_STRING && type != DEVPROP_TYPE_STRING_LIST)) {
+        return {};
+    }
+    std::vector<std::string> strings;
+    const wchar_t* text = reinterpret_cast<const wchar_t*>(data.data());
+    const size_t length = data.size() / sizeof(wchar_t);
+    size_t at = 0;
+    while (at < length && text[at] != L'\0') {
+        const std::wstring one(text + at);
+        strings.push_back(WideToUtf8(one));
+        at += one.size() + 1;
+        if (type == DEVPROP_TYPE_STRING) {
+            break;
+        }
+    }
+    return strings;
+}
+
+// Every present device node that is in a container, with what
+// IppHostsForWindowsQueue reads. Plug and Play has no index from a queue to
+// its WSD device, so this is a walk over the machine's devices - once per
+// call, not once per port.
+std::vector<IppWindowsDeviceNode> ReadDeviceNodes() {
+    std::vector<IppWindowsDeviceNode> nodes;
+    HDEVINFO set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr,
+                                        DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) {
+        return nodes;
+    }
+    SP_DEVINFO_DATA device{};
+    device.cbSize = sizeof(device);
+    for (DWORD index = 0; SetupDiEnumDeviceInfo(set, index, &device); ++index) {
+        DEVPROPTYPE type = DEVPROP_TYPE_EMPTY;
+        std::vector<BYTE> data;
+        if (!ReadDeviceProperty(set, device, kDevpkeyContainerId, type, data) ||
+            type != DEVPROP_TYPE_GUID || data.size() < sizeof(GUID)) {
+            continue;
+        }
+        GUID container{};
+        std::memcpy(&container, data.data(), sizeof(container));
+        wchar_t containerText[40] = {};
+        if (StringFromGUID2(container, containerText, 40) == 0) {
+            continue;
+        }
+
+        IppWindowsDeviceNode node;
+        node.containerId = FromWide(containerText);
+        node.isPrintQueue = IsEqualGUID(device.ClassGuid, kClassPrintQueue) != FALSE;
+        if (node.isPrintQueue) {
+            const std::vector<std::string> name =
+                DeviceStrings(set, device, kDevpkeyFriendlyName);
+            if (!name.empty()) {
+                node.friendlyName = name.front();
+            }
+        } else {
+            node.ipAddresses = DeviceStrings(set, device, kPnpxIpAddress);
+            node.xAddrs = DeviceStrings(set, device, kPnpxXAddrs);
+            const std::vector<std::string> location =
+                DeviceStrings(set, device, kDevpkeyLocationInfo);
+            if (!location.empty()) {
+                node.location = location.front();
+            }
+            if (node.ipAddresses.empty() && node.xAddrs.empty() &&
+                IppUriHost(node.location).empty()) {
+                continue;  // nothing here that names a network address
+            }
+        }
+        nodes.push_back(std::move(node));
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return nodes;
+}
+
+// The ports a queue prints to - several, comma-separated, for a pooled queue.
+std::vector<std::wstring> SplitPorts(const wchar_t* portList) {
+    const std::wstring ports = portList ? portList : L"";
+    std::vector<std::wstring> split;
     size_t at = 0;
     while (at <= ports.size()) {
         size_t end = ports.find(L',', at);
@@ -313,14 +415,64 @@ std::vector<std::string> IppUrisForQueue(const std::wstring& printerName) {
             port.erase(0, 1);
         }
         if (!port.empty()) {
-            for (const std::string& uri :
-                 IppUrisForWindowsPort(WideToUtf8(port), TcpPortHostAddress(port))) {
-                if (std::find(uris.begin(), uris.end(), uri) == uris.end()) {
-                    uris.push_back(uri);
-                }
-            }
+            split.push_back(port);
         }
         at = end + 1;
+    }
+    return split;
+}
+
+bool IsWsdPort(const std::wstring& port) {
+    return port.size() >= 3 && _wcsnicmp(port.c_str(), L"WSD", 3) == 0;
+}
+
+// The IPP addresses one port of queue `queueName` might reach its printer at.
+// `nodes` is read on first need and kept for the caller's other ports.
+std::vector<std::string> IppUrisForQueuePort(const std::wstring& queueName,
+                                             const std::wstring& port,
+                                             std::vector<IppWindowsDeviceNode>& nodes,
+                                             bool& nodesRead) {
+    const std::string portName = WideToUtf8(port);
+    std::vector<std::string> uris = IppUrisForWindowsPort(portName, TcpPortHostAddress(port));
+    if (!uris.empty() || !IsWsdPort(port)) {
+        return uris;
+    }
+    if (!nodesRead) {
+        nodes = ReadDeviceNodes();
+        nodesRead = true;
+    }
+    for (const std::string& host : IppHostsForWindowsQueue(WideToUtf8(queueName), nodes)) {
+        for (const std::string& uri : IppUrisForWindowsPort(portName, host)) {
+            if (std::find(uris.begin(), uris.end(), uri) == uris.end()) {
+                uris.push_back(uri);
+            }
+        }
+    }
+    return uris;
+}
+
+// The IPP addresses a queue's printer might answer at, from the ports it
+// prints to.
+std::vector<std::string> IppUrisForQueue(const std::wstring& printerName) {
+    PrinterHandle handle(printerName);
+    if (!handle.IsOpen()) {
+        return {};
+    }
+    std::vector<uint8_t> buffer = QueryPrinterInfo(handle.Get(), 2);
+    if (buffer.empty()) {
+        return {};
+    }
+    const PRINTER_INFO_2W* info = reinterpret_cast<const PRINTER_INFO_2W*>(buffer.data());
+
+    std::vector<IppWindowsDeviceNode> nodes;
+    bool nodesRead = false;
+    std::vector<std::string> uris;
+    for (const std::wstring& port : SplitPorts(info->pPortName)) {
+        for (const std::string& uri : IppUrisForQueuePort(printerName, port, nodes, nodesRead)) {
+            if (std::find(uris.begin(), uris.end(), uri) == uris.end()) {
+                uris.push_back(uri);
+            }
+        }
     }
     return uris;
 }
@@ -915,6 +1067,43 @@ std::vector<IODevicePtr> EnumerateWindowsPrinters() {
 }  // namespace
 
 namespace Internal {
+
+#if defined(ULTRACANVAS_HAS_NET)
+std::vector<std::string> WindowsQueuePrinterHosts() {
+    std::vector<std::string> hosts;
+
+    const DWORD flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
+    DWORD needed = 0;
+    DWORD returned = 0;
+    EnumPrintersW(flags, nullptr, 2, nullptr, 0, &needed, &returned);
+    if (needed == 0) {
+        return hosts;
+    }
+    std::vector<uint8_t> buffer(needed);
+    if (!EnumPrintersW(flags, nullptr, 2, buffer.data(), needed, &needed, &returned)) {
+        return hosts;
+    }
+    const PRINTER_INFO_2W* entries = reinterpret_cast<const PRINTER_INFO_2W*>(buffer.data());
+
+    std::vector<IppWindowsDeviceNode> nodes;
+    bool nodesRead = false;
+    for (DWORD i = 0; i < returned; ++i) {
+        if (!entries[i].pPrinterName) {
+            continue;
+        }
+        const std::wstring queue = entries[i].pPrinterName;
+        for (const std::wstring& port : SplitPorts(entries[i].pPortName)) {
+            for (const std::string& uri : IppUrisForQueuePort(queue, port, nodes, nodesRead)) {
+                const std::string host = IppUriHost(uri);
+                if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end()) {
+                    hosts.push_back(host);
+                }
+            }
+        }
+    }
+    return hosts;
+}
+#endif
 
 void RegisterWindowsPrinterBackend(IODeviceManager& manager) {
     manager.RegisterEnumerator(IODeviceCategory::Printer, "WindowsSpooler",
