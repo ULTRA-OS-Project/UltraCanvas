@@ -1,3 +1,155 @@
+#### 2026-10-07 *0.9.187*
+- **Notifications are drawn where nothing else draws them.** Where
+  UltraMessage itself serves `org.freedesktop.Notifications` - on ULTRA OS,
+  and on any Linux session with no notification daemon installed - every
+  application's notification arrived on the bus and reached the message feed
+  only; nothing put it on screen. The new `UltraCanvasNotificationToastHost`
+  (`include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, target
+  `UltraMessageCenter`) is the screen of last resort: a client of the bus that
+  draws each live `system.notification` nothing else shows as a toast,
+  stacked in a corner of the screen clear of the desktop's bars, and sends
+  what the user does back - a click or an action button as
+  `system.notification.action`, the close button as
+  `system.notification.dismissed`, which the freedesktop adapter turns into
+  `ActionInvoked` / `NotificationClosed` for the application. A toast goes
+  after 8 s (5 s for low urgency; a critical one stays until closed; the
+  pointer resting on it holds it), when it is dismissed or acted on anywhere
+  on the bus, and a replacement updates it. The ULTRA OS desktop hosts it
+  (UltraDesktop 0.2.0).
+  - **For the desktop shell, not applications.** An application posts a
+    `system.notification` and the message system decides who shows it; the
+    host is the desktop's, one per bus - a second `Connect` is refused so
+    nothing is drawn twice.
+  - **`UltraCanvasNotificationToast`**, the toast as an element: the
+    application's icon and name, summary, body, the notification's action
+    buttons and a close button, from catalogue elements. In the element
+    catalogue and documented in `Docs/UltraCanvas/UltraCanvasNotificationToast.md`.
+  - **`WindowType::Notification`**: undecorated, above other windows, on
+    every virtual desktop, out of taskbars and pagers, and never given the
+    keyboard focus (`_NET_WM_WINDOW_TYPE_NOTIFICATION` with the input hint
+    off on X11; `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, shown
+    without activating, on Windows; borderless on macOS).
+  - **Every notification says whether it is on screen.** The broker hands an
+    application's notification to the presenters before it journals and
+    delivers it and writes the presenter that took it into the body's
+    `displayed` (an application's own value is removed); the
+    `freedesktop-notifications` adapter in monitor mode and the
+    `windows-notification-listener` write it on what the platform drew. A
+    toast host draws only what carries none, so on GNOME, Plasma, dunst or
+    Windows nothing is shown twice.
+  - DemoApp: a *Notification Toast* page next to *Alert / Message Box* - the
+    element on the page, real toasts at the screen corner (mail, a chat with
+    Reply, a critical one, a download updating in place, six at once against
+    the limit of four), what the clicks report, and when to use a toast
+    rather than an Alert; the Alert page points at it.
+  - The `freedesktop-presenter`'s state names the toast host for the case no
+    notification server runs.
+  - The Alert's documentation pointed transient messages at a "Toast
+    (`UltraCanvasToast`)" that did not exist; it now names this element, and
+    a critical toast takes the Error alert's red. A toast is not built on the
+    Alert: that one is modal, centred, focused and answered by a button.
+  - `core/UltraCanvasToast.cpp`, an unfinished in-app toast draft that never
+    compiled (its header was never committed, and it called a rendering API
+    that no longer exists), is removed: the element above replaces it.
+  - Tests: six toast-host cases (which notifications it draws, update and
+    replace, the visible limit, expiry and the pointer's hold, the controls,
+    and a round trip on the private bus); `displayed` in the adapter and
+    presenter tests. Checked by hand under Xvfb with no notification daemon:
+    UltraDesktop drawing a native application's `Notify`, an UltraMail
+    notification and a critical one, the clicks answering on both buses, and
+    nothing drawn twice where dunst runs.
+- **macOS: UltraMessage puts applications' notifications in Notification
+  Center.** The new `macos-presenter` adapter
+  (`OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm`, in every macOS build)
+  hands a `system.notification` an application posts on the bus to
+  Notification Center through the UserNotifications framework, so UltraMail's
+  new-mail notification now shows on macOS as it does on Linux and Windows.
+  Until now there was no presenter on macOS and such a notification reached
+  the message feed only.
+  - A banner that stays in the Notification Center list. The notification's
+    other actions become buttons (up to three). On macOS 12 and later
+    `critical` is time-sensitive and `low` is passive and silent. An icon
+    that names a PNG, JPEG or GIF file becomes the notification's picture,
+    and one application's notifications are grouped. An update
+    (`UltraMsgFlag_Replace`) changes the notification in place.
+  - What the user does comes back on the bus naming the notification: a
+    click as the `default` action where the notification has one, a button
+    as its action, a dismissal as `system.notification.dismissed`. A
+    dismissal or action posted on the bus removes it from Notification
+    Center. Each notification carries its bus id, so a click on one shown
+    before the broker last started is still reported.
+  - macOS names the notification after the application bundle that hosts the
+    broker and asks the user once to allow it. Another application's
+    notification names that application in its subtitle. Where the user did
+    not allow notifications, the adapter's state is `needs-permission` and
+    names the place in System Settings.
+  - **Outside an application bundle** (an executable started from the build
+    tree, `ultramsgd`, a test), or where macOS refuses the bundle, the
+    adapter shows notifications through `osascript`'s
+    `display notification` (mode `script`): under Script Editor's name,
+    without buttons, and a click on one opens nothing. The texts are passed
+    as script arguments, never inside the script.
+  - **The presenters' shared half** moves into `UltraMessageAdapter.h` and is
+    tested on every platform: `ReadPresentedContent` (what a notification
+    says, its buttons, its icon file), `ButtonSetKey`, `PresentedNotifications`
+    (which update shows where) and `PublishPresenterResponse` (what a click,
+    a button or a dismissal publishes).
+  - `UltraMessage` links the Foundation and UserNotifications frameworks on
+    macOS and exports `ULTRAMESSAGE_HAVE_MACOS_PRESENTER`. Tests: five cases
+    for the shared half on every platform (41 in the suite on Linux), and on
+    macOS one that lists the adapter and switches it off and on.
+- **UltraMessage puts applications' notifications on screen.** A
+  `system.notification` an application posts on the bus is now handed by the
+  broker to a *presenter* adapter, which shows it with the desktop's own
+  notification service - so it looks, sounds and obeys do-not-disturb like
+  every other program's - and reports what the user does with it back on the
+  bus: a click as `system.notification.action` (`actionId` `"default"` for
+  the body), a close as `system.notification.dismissed`, both naming the
+  notification. A dismissal posted on the bus withdraws it from the screen,
+  and `UltraMsgFlag_Replace` updates it; `UltraMsgFlag_Silent` keeps it off
+  screen, and what adapters publish (it came from the screen) is never
+  presented. Until now the feed was the only place such a notification
+  appeared. New hook: `Internal::IAdapter::Present`.
+  - **Linux: `freedesktop-presenter`** calls `Notify` on whatever owns
+    `org.freedesktop.Notifications` (GNOME Shell, Plasma, XFCE, dunst, mako),
+    with the hints `category`, `urgency`, `desktop-entry` (the body's new
+    optional `desktopEntry`), `sender-pid` and `x-ultramessage-id`, and turns
+    `ActionInvoked` and a close by the user into the bus notices above. Where
+    UltraMessage itself serves the name nothing draws notifications; the
+    presenter then declines and its state says so, with the remedy.
+  - **Windows: `windows-presenter`** shows a notification-area balloon
+    (`Shell_NotifyIconW`), which Windows 10 and 11 present as a toast and keep
+    in the Action Center - no package identity, shortcut or registration
+    needed, so every desktop build has it. Focus assist is respected. The
+    `windows-notification-listener` no longer reads those toasts back as a
+    second notification.
+  - **The `freedesktop-notifications` adapter no longer takes the name from
+    an installed notification server.** dunst, mako and xfce4-notifyd start
+    by D-Bus activation on the first `Notify`; the adapter used to claim the
+    free name first, and from then on no application's notification was drawn
+    on those desktops. It now starts such a server and watches it in monitor
+    mode. It also skips the presenter's own `Notify` calls.
+  - `UltraCanvasMessageCenter` lists only what the journal holds: a notice
+    sent with `UltraMsgFlag_NoJournal` - a passing alert such as UltraMail's
+    new-mail notification, whose messages are rows already - is no row.
+  - The DemoApp's *Ultra Message* page sends its sample notifications Silent,
+    so they stay on the page instead of popping up on the desktop.
+  - `UltraMessage` links `shell32` and `user32` on Windows. Tests: two
+    presenter cases against a fake desktop notification server on the private
+    D-Bus session (36 in the suite); the message centre's NoJournal rule.
+    UltraMail uses all this for its new-mail notification (UltraMail 0.10.34).
+- **UltraWeb links on Ubuntu 24.04.** wasmtime's prebuilt library carries
+  its own zstd with hidden symbols, and on Ubuntu 24.04 `libvips-dev` pulls
+  in `libarchive-dev`, so VirtualFS links the system libarchive, which uses
+  the system zstd. GNU ld then refused `UltraWeb` and `UltraWebGuestTest`:
+  "hidden symbol `ZSTD_freeCStream' ... is referenced by DSO". CI's Ubuntu
+  22.04 has no libarchive and never saw it; a 24.04 machine and every cloud
+  session did. Where the system zstd is 1.5 or newer, `WasmHost` now links it
+  ahead of the wasmtime archive (`ULTRACANVAS_WASMTIME_PRELINK`,
+  `cmake/UltraCanvasWasmtime.cmake`), so wasmtime binds to it and the
+  archive's copy is never pulled in; with an older zstd or none, nothing
+  changes. `WasmHostTest` and `UltraWebGuestTest` pass against it.
+
 #### 2026-10-07 *0.9.186*
 - **SVG export writes arrowheads.** The SVG writer ignored the line
   gallery's arrowheads (`StrokeData::StartArrow` / `EndArrow`), so an arrow
