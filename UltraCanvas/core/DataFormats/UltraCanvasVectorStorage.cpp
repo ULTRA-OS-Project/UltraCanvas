@@ -2182,14 +2182,20 @@ std::string SerializeTransform(const Matrix3x3& transform) {
         return "";
     }
     
-    // Output as matrix
-    return "matrix(" + 
-           std::to_string(transform.m[0][0]) + "," +
-           std::to_string(transform.m[1][0]) + "," +
-           std::to_string(transform.m[0][1]) + "," +
-           std::to_string(transform.m[1][1]) + "," +
-           std::to_string(transform.m[0][2]) + "," +
-           std::to_string(transform.m[1][2]) + ")";
+    // Output as matrix. Dot-decimal whatever the locale: std::to_string
+    // rendered through LC_NUMERIC, and on a comma-decimal desktop wrote
+    // `matrix(0,866025,0,500000,...)`, whose commas are also the separators -
+    // a saved drawing reopened with its transformed groups moved. Twelve
+    // significant digits keep what "%f" kept for anything under a million
+    // (a CAD drawing's 250000.5 stays 250000.5) without its trailing zeros.
+    auto n = [](double v) { return FormatFloatClassic(v, 12); };
+    return "matrix(" +
+           n(transform.m[0][0]) + "," +
+           n(transform.m[1][0]) + "," +
+           n(transform.m[0][1]) + "," +
+           n(transform.m[1][1]) + "," +
+           n(transform.m[0][2]) + "," +
+           n(transform.m[1][2]) + ")";
 }
 
 Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const VectorTextStyle& style) {
