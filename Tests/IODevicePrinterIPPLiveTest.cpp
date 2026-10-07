@@ -23,7 +23,15 @@
 // container without IPv6 skips here however it is set up. CI's Linux rows
 // install it, start Avahi, and set ULTRACANVAS_TEST_IPP_REQUIRED, which turns
 // a skip into a failure.
-// Version: 1.2.0
+//
+// The same printer is also reached over ipps://, where it presents the
+// self-signed certificate it made itself (-K), the way real printers do: the
+// device trust (UltraCanvasIODeviceTlsTrust.h) learns its key on first
+// contact, prints through the pinned connection, refuses a key that differs
+// from the one kept, and learns again once the old key is forgotten. The keys
+// go to a file of the test's own (ULTRACANVAS_DEVICE_CERTIFICATES), never the
+// user's.
+// Version: 1.3.0
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -34,6 +42,7 @@
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
+#include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -105,8 +114,8 @@ class ReferencePrinter {
 public:
     ~ReferencePrinter() { Stop(); }
 
-    bool Start(const std::string& program, const std::string& spool, int port,
-               const std::string& log) {
+    bool Start(const std::string& program, const std::string& spool, const std::string& keys,
+               int port, const std::string& log) {
         posix_spawn_file_actions_t actions;
         posix_spawn_file_actions_init(&actions);
         posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, log.c_str(),
@@ -117,8 +126,10 @@ public:
         // Two-sided, keeping every job's document (-k) in the spool, taking
         // PDF and JPEG as they are and PWG raster for everything else; fast
         // (-s), so a job is done in a moment; and not advertised on the
-        // network (-r off), so running the test publishes no printer.
-        std::vector<std::string> args = {program, "-2", "-k", "-d", spool,
+        // network (-r off), so running the test publishes no printer. Its
+        // self-signed certificate is made in a directory of the test's own
+        // (-K), and it answers TLS on the same port, as ipps://.
+        std::vector<std::string> args = {program, "-2", "-k", "-d", spool, "-K", keys,
                                          "-f", "image/pwg-raster,image/jpeg,application/pdf",
                                          "-s", "600", "-r", "off", "-p", portText,
                                          "UltraCanvas Live Test"};
@@ -270,6 +281,12 @@ int main() {
     const std::string root = pattern;
     const std::string spool = root + "/spool";
     fs::create_directories(PathFromUtf8(spool));
+    const std::string keys = root + "/keys";
+    fs::create_directories(PathFromUtf8(keys));
+    // The device keys this test learns go to its own file, never the user's.
+    const std::string trustFile = root + "/DeviceCertificates.conf";
+    setenv("ULTRACANVAS_DEVICE_CERTIFICATES", trustFile.c_str(), 1);
+    unsetenv("ULTRACANVAS_DEVICE_TLS_TOFU");
     const std::string log = root + "/ippeveprinter.log";
 
     // Documents: text long enough for several pages, and a PDF, which
@@ -288,23 +305,29 @@ int main() {
 
     const int port = 20000 + static_cast<int>(getpid() % 20000);
     ReferencePrinter reference;
-    if (!reference.Start(program, spool, port, log)) {
+    if (!reference.Start(program, spool, keys, port, log)) {
         std::cout << "SKIPPED: ippeveprinter would not start\n";
         fs::remove_all(PathFromUtf8(root));
         return SkipOrFail();
     }
 
     const std::string uri = "ipp://localhost:" + std::to_string(port) + "/ipp/print";
-    setenv("ULTRACANVAS_IPP_PRINTERS", uri.c_str(), 1);
+    // The same printer over TLS, listed apart: see "Over ipps://" below.
+    const std::string tlsUri = "ipps://localhost:" + std::to_string(port) + "/ipp/print";
+    const std::string tlsAddress = "localhost:" + std::to_string(port);
+    setenv("ULTRACANVAS_IPP_PRINTERS", (uri + "," + tlsUri).c_str(), 1);
 
     IODeviceManager& manager = IODeviceManager::GetInstance();
     manager.Initialize();
     manager.EnumerateDevices(IODeviceCategory::Printer);
 
     PrinterDevicePtr printer;
+    PrinterDevicePtr tlsPrinter;
     for (const IODevicePtr& device : manager.GetDevices(IODeviceCategory::Printer)) {
         if (device->GetDeviceInfo().connectionPath == uri) {
             printer = std::dynamic_pointer_cast<PrinterDevice>(device);
+        } else if (device->GetDeviceInfo().connectionPath == tlsUri) {
+            tlsPrinter = std::dynamic_pointer_cast<PrinterDevice>(device);
         }
     }
     Check(printer != nullptr, "a printer named in ULTRACANVAS_IPP_PRINTERS is listed");
@@ -451,6 +474,75 @@ int main() {
     }
     const IODeviceResult cancelMissing = printer->CancelJob(987654);
     Check(!cancelMissing.success, "cancelling a job the printer never had fails: " + cancelMissing.message);
+
+    // --- Over ipps://, trusted on first use ------------------------------------
+    // The printer's certificate is one it signed itself, which ordinary
+    // verification refuses; the device trust learns its key the first time
+    // and pins every later connection to it.
+    Check(tlsPrinter != nullptr, "the same printer is listed again under its ipps:// address");
+    Check(IODeviceTrustedCertificates().empty(), "  with no device key kept yet");
+    if (tlsPrinter) {
+        const IODeviceResult tlsConnected = tlsPrinter->Connect();
+        Check(tlsConnected.success,
+              "over ipps:// it connects, its self-signed certificate trusted on first use: " +
+                  tlsConnected.message);
+
+        std::string learnedPin;
+        for (const IODeviceTrustedCertificate& kept : IODeviceTrustedCertificates()) {
+            if (kept.address == tlsAddress) {
+                learnedPin = kept.pin;
+                Check(kept.name == "UltraCanvas Live Test",
+                      "  its key is kept under the name it gives itself, '" + kept.name + "'");
+            }
+        }
+        Check(learnedPin.rfind("sha256//", 0) == 0 && learnedPin.size() > 8,
+              "  and its key was kept for " + tlsAddress + ": " + learnedPin);
+
+        IOPrintJob tlsDocument;
+        tlsDocument.jobName = "document over tls";
+        tlsDocument.filePath = pdfPath;
+        const IODeviceResult tlsPrinted = tlsPrinter->Print(tlsDocument);
+        Check(tlsPrinted.success, "a PDF prints over the pinned connection: " + tlsPrinted.message);
+        if (tlsPrinted.success) {
+            const std::string file = WaitForSpoolFile(spool, tlsPrinted.backendCode, ".pdf");
+            Check(!file.empty() && ReadBytes(file) == ReadBytes(pdfPath),
+                  "  and arrives byte for byte");
+            WaitUntilFinished(tlsPrinter, tlsPrinted.backendCode);
+        }
+
+        // Another key on file for the address - as if a different machine
+        // had answered there the first time. The printer's real key must be
+        // refused, and must not replace the one kept.
+        const std::string otherPin = "sha256//EXZWCU5rn8MYG8MMbem9Op0MlXkL0YcPAEjXh0kPAOM=";
+        {
+            std::ofstream file(UltraCanvas::PathFromUtf8(trustFile), std::ios::binary | std::ios::trunc);
+            file << tlsAddress << "=" << otherPin << "\n";
+        }
+        std::vector<IOSupplyLevel> supplies;
+        const IODeviceResult refusedKey = Internal::QueryIppSupplyLevels(tlsUri, supplies);
+        Check(!refusedKey.success &&
+                  refusedKey.message.find("different certificate") != std::string::npos,
+              "a printer whose key differs from the one kept is refused: " + refusedKey.message);
+        const std::vector<IODeviceTrustedCertificate> afterRefusal = IODeviceTrustedCertificates();
+        Check(afterRefusal.size() == 1 && afterRefusal.front().pin == otherPin,
+              "  and the key kept is not replaced by the one it presented");
+
+        Check(IODeviceForgetCertificate(tlsAddress), "forgetting the key kept for it");
+        const IODeviceResult relearned = Internal::QueryIppSupplyLevels(tlsUri, supplies);
+        const std::vector<IODeviceTrustedCertificate> afterForget = IODeviceTrustedCertificates();
+        Check(relearned.success && afterForget.size() == 1 && afterForget.front().pin == learnedPin,
+              "  lets the next connection learn its key again - the same key as the first time: " +
+                  relearned.message);
+
+        IODeviceForgetCertificate(tlsAddress);
+        setenv("ULTRACANVAS_DEVICE_TLS_TOFU", "0", 1);
+        const IODeviceResult notLearned = Internal::QueryIppSupplyLevels(tlsUri, supplies);
+        Check(!notLearned.success && IODeviceTrustedCertificates().empty(),
+              "with learning switched off, a printer whose key is not kept is refused: " +
+                  notLearned.message);
+        unsetenv("ULTRACANVAS_DEVICE_TLS_TOFU");
+        tlsPrinter->Disconnect();
+    }
 
     printer->Disconnect();
     manager.Shutdown();
