@@ -884,10 +884,13 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
                 windowsQueueHosts = Internal::WindowsQueuePrinterHosts();
                 windowsAsked = true;
             }
+            // Every address the printer answered from, not only the first:
+            // a queue set up by IPv4 address must still match a printer whose
+            // IPv6 answer arrived first.
             auto ip = entry.attributes.find("ip");
-            const std::string address =
-                ip != entry.attributes.end() && !ip->second.empty() ? ip->second[0] : std::string();
-            if (IppPrinterIsWindowsQueue(windowsQueueHosts, host->second[0], address)) continue;
+            const std::vector<std::string> addresses =
+                ip != entry.attributes.end() ? ip->second : std::vector<std::string>();
+            if (IppPrinterIsWindowsQueue(windowsQueueHosts, host->second[0], addresses)) continue;
 #endif
 
             IODeviceInfo info;

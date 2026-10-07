@@ -574,16 +574,21 @@ void TestWindowsWsdQueues() {
     CheckEqual(IppUriHost("USB001"), std::string(), "  and nothing from what is not a URL");
 
     const std::vector<std::string> queued = {"192.168.1.20", "printer.local", "fe80::1"};
-    Check(IppPrinterIsWindowsQueue(queued, "HP1234.local.", "192.168.1.20"),
+    using Addresses = std::vector<std::string>;
+    Check(IppPrinterIsWindowsQueue(queued, "HP1234.local.", Addresses{"192.168.1.20"}),
           "a printer at a queue's address is that queue");
-    Check(IppPrinterIsWindowsQueue(queued, "Printer.local.", ""),
+    Check(IppPrinterIsWindowsQueue(queued, "Printer.local.", Addresses{}),
           "  so is one at a queue's host name, whatever its spelling");
-    Check(IppPrinterIsWindowsQueue(queued, "x.local", "FE80::1"), "  and at its IPv6 address");
-    Check(!IppPrinterIsWindowsQueue(queued, "other.local.", "192.168.1.21"),
+    Check(IppPrinterIsWindowsQueue(queued, "x.local", Addresses{"FE80::1"}),
+          "  and at its IPv6 address");
+    Check(IppPrinterIsWindowsQueue(queued, "x.local", Addresses{"fe80::99", "192.168.1.20"}),
+          "  and when the queue's IPv4 address is not the first the printer answered from");
+    Check(!IppPrinterIsWindowsQueue(queued, "other.local.", Addresses{"192.168.1.21", "fe80::2"}),
           "a printer at no queue's address is not");
-    Check(!IppPrinterIsWindowsQueue({}, "printer.local", "192.168.1.20"),
+    Check(!IppPrinterIsWindowsQueue({}, "printer.local", Addresses{"192.168.1.20"}),
           "  nor is any printer when there are no queues");
-    Check(!IppPrinterIsWindowsQueue({""}, "", ""), "  and an empty address matches nothing");
+    Check(!IppPrinterIsWindowsQueue({""}, "", Addresses{""}),
+          "  and an empty address matches nothing");
 }
 
 void TestInstanceNames() {

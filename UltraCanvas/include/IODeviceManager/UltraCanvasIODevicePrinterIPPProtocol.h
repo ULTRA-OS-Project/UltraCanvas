@@ -323,13 +323,17 @@ struct IppWindowsDeviceNode {
 std::vector<std::string> IppHostsForWindowsQueue(const std::string& queueName,
                                                  const std::vector<IppWindowsDeviceNode>& nodes);
 
-// Whether a printer found under DNS-SD - at `mdnsHost`, answering at
-// `mdnsIp` - is one a Windows queue already reaches, given the hosts the
-// queues print to. The Windows counterpart of IppCupsQueueReachesPrinter: the
+// Whether a printer found under DNS-SD - at `mdnsHost`, answering at every
+// address in `mdnsAddresses` (the mDNS plugin's "ip" list: IPv4 and IPv6,
+// from every interface) - is one a Windows queue already reaches, given the
+// hosts the queues print to. Any one address matching is enough, so a queue
+// set up by IPv4 address is matched even when the printer's IPv6 answer came
+// first. The Windows counterpart of IppCupsQueueReachesPrinter: the
 // queue is the system's own way to the printer, so the IPP backend leaves it
 // to the spooler rather than listing it twice.
 bool IppPrinterIsWindowsQueue(const std::vector<std::string>& queueHosts,
-                              const std::string& mdnsHost, const std::string& mdnsIp);
+                              const std::string& mdnsHost,
+                              const std::vector<std::string>& mdnsAddresses);
 
 // The printer URI a DNS-SD advertisement describes. `rp` in the TXT record is
 // the resource path ("ipp/print"); absent, the printer is at the root, which

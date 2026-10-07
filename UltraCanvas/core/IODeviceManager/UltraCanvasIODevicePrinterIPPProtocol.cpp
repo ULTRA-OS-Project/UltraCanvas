@@ -1192,13 +1192,14 @@ std::vector<std::string> IppHostsForWindowsQueue(const std::string& queueName,
 }
 
 bool IppPrinterIsWindowsQueue(const std::vector<std::string>& queueHosts,
-                              const std::string& mdnsHost, const std::string& mdnsIp) {
-    const std::string host = IppNormalizeHost(mdnsHost);
-    const std::string ip = IppNormalizeHost(mdnsIp);
+                              const std::string& mdnsHost,
+                              const std::vector<std::string>& mdnsAddresses) {
+    std::vector<std::string> printer = {IppNormalizeHost(mdnsHost)};
+    for (const std::string& address : mdnsAddresses) printer.push_back(IppNormalizeHost(address));
     for (const std::string& queueHost : queueHosts) {
         const std::string candidate = IppNormalizeHost(queueHost);
         if (candidate.empty()) continue;
-        if (candidate == host || candidate == ip) return true;
+        if (std::find(printer.begin(), printer.end(), candidate) != printer.end()) return true;
     }
     return false;
 }
