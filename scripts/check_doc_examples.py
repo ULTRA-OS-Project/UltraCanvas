@@ -63,19 +63,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INCLUDE = ROOT / "UltraCanvas" / "include"
 
-# Headers that don't compile on their own, or clash with another header
-# (UltraCanvasConnectionRenderer's struct ConnectionStyle and the block
-# diagram's enum class ConnectionStyle): left out of the shared header, and
-# the block diagram gets a second one without the chart side.
+# Headers that don't compile on their own: left out of the shared header.
 STANDALONE_EXCLUDED = {
     "Plugins/LaTeX/UltraCanvasLaTeXBackend.h",
-    "UltraCanvasCairoDebugExtension.h",
-}
-CLASH_A = {"Plugins/Diagrams/UltraCanvasBlockDiagram.h"}
-CLASH_B = {
-    "Plugins/Charts/UltraCanvasConnectionRenderer.h",
-    "Plugins/Charts/UltraCanvasCircularInfoGraphic.h",
-    "Plugins/Charts/UltraCanvasChordChart.h",
 }
 
 SYSTEM_HEADERS = [
@@ -140,8 +130,8 @@ def public_headers():
     return sorted(str(p.relative_to(INCLUDE)).replace(os.sep, "/") for p in INCLUDE.rglob("*.h"))
 
 
-def build_pch(work, name, excluded, flags, clang):
-    headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED and h not in excluded]
+def build_pch(work, name, flags, clang):
+    headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED]
     text = "".join('#include "%s"\n' % (INCLUDE / h) for h in headers)
     text += "".join("#include <%s>\n" % h for h in SYSTEM_HEADERS)
     text += "using namespace UltraCanvas;\n"
@@ -747,7 +737,7 @@ class Doc:
         self.index = index
         self.args = args
         self.flags = flags
-        self.pch = pch["B"] if "BlockDiagram" in path.name else pch["A"]
+        self.pch = pch
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
         self.tag = re.sub(r"\W", "_", path.stem) + "_" + hashlib.sha1(str(path).encode()).hexdigest()[:6]
@@ -1293,10 +1283,7 @@ def main():
     args.work.mkdir(parents=True, exist_ok=True)
 
     flags = base_flags()
-    with concurrent.futures.ThreadPoolExecutor(2) as pool:
-        fa = pool.submit(build_pch, args.work, "umbrellaA", CLASH_A, flags, args.clang)
-        fb = pool.submit(build_pch, args.work, "umbrellaB", CLASH_B, flags, args.clang)
-        pch = {"A": fa.result(), "B": fb.result()}
+    pch = build_pch(args.work, "umbrella", flags, args.clang)
     index = HeaderIndex()
 
     total = 0
