@@ -11,3 +11,8 @@
   passes one in the build tree), the three archives are removed from the
   repository, and `.gitignore` keeps `vfsdelete-test-out/` out should an
   older build of the test still write it.
+  - `LaTeXDocumentTest` also finds the shipped `media/LaTex` corpus from any
+    directory: its path is compiled in (`LATEXTEST_CORPUS_DIR`) instead of
+    the `../../media/LaTex` that resolved only from `build/bin`. Run from
+    anywhere else, the corpus checks were skipped and the test still reported
+    every check passed; a corpus that cannot be found is now a failure.

@@ -1027,6 +1027,11 @@ if(TINYXML2_TEST_FOUND)
         ${TINYXML2_TEST_INCLUDE_DIRS}
     )
     target_link_libraries(LaTeXDocumentTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    # The shipped corpus, so a run from any directory finds it (ctest also
+    # passes it explicitly).
+    target_compile_definitions(LaTeXDocumentTest PRIVATE
+        LATEXTEST_CORPUS_DIR="${ULTRACANVAS_ROOT}/media/LaTex"
+    )
     target_compile_features(LaTeXDocumentTest PRIVATE cxx_std_20)
     set_target_properties(LaTeXDocumentTest PROPERTIES
         OUTPUT_NAME "LaTeXDocumentTest"

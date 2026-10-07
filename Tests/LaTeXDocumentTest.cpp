@@ -11,6 +11,11 @@
 //   output-dir defaults to latexdocument-test-out in the system temp
 //   directory - never the current directory, where a run from the repository
 //   root left its files in the source tree; ctest passes one in the build tree.
+//   The corpus directory defaults to the repository's media/LaTex, whose path
+//   the build compiles in (LATEXTEST_CORPUS_DIR): the old "../../media/LaTex"
+//   resolved only from build/bin, and from anywhere else the corpus part was
+//   skipped while the test still reported every check passed. A corpus that
+//   cannot be found is now a failure.
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -569,8 +574,11 @@ static void TestDetection() {
 // ===== 9. The shipped corpus =====
 static void TestCorpus(const std::string& dir) {
     std::error_code ec;
-    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) {
-        std::cout << "  (corpus directory not found, skipped: " << dir << ")\n";
+    if (dir.empty() || !std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) {
+        // The corpus is part of the repository: not finding it is a wrong
+        // path, not a reason to report the test passed.
+        CHECK_MSG(false, "corpus directory not found: " +
+                         (dir.empty() ? std::string("(none given)") : dir));
         return;
     }
     int files = 0, formulaOnly = 0;
@@ -605,7 +613,12 @@ int main(int argc, char** argv) {
                                   "latexdocument-test-out");
     std::error_code ec;
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir), ec);
-    std::string corpus = (argc > 2) ? argv[2] : "../../media/LaTex";
+#ifdef LATEXTEST_CORPUS_DIR
+    const std::string corpusDefault = LATEXTEST_CORPUS_DIR;
+#else
+    const std::string corpusDefault;   // built by hand: pass the directory
+#endif
+    std::string corpus = (argc > 2) ? std::string(argv[2]) : corpusDefault;
 
     std::cout << "LaTeXDocumentTest\n";
     TestArticleStructure();
