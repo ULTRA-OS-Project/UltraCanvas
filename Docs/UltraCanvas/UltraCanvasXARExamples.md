@@ -648,5 +648,5 @@ if (element->LoadFromFile(path)) {
 - `Plugins/Vector/XAR/UltraCanvasXARPlugin.h` — element, plugin, node tree, attribute and builder declarations
 - `Plugins/Vector/UltraCanvasXARConverter.h` — the `VectorConverter::XARConverter` import/export converter, tag tables and conversion utilities
 - [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — sibling CorelDRAW vector plugin
-- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin
+- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG: showing, rasterizing, reading and writing
 - [UltraCanvasBitmapExamples](UltraCanvasBitmapExamples.md) — Raster image display

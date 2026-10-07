@@ -84,7 +84,13 @@ body->ForEachElement([](HTML::Node& n) {
 
 `HTML::Node` is one struct for every node; `type` says whether `tag` and
 `attributes` or `text` are meaningful. **Tag and attribute names are stored
-lower-case**; attribute values, text, class names and ids keep their case.
+lower-case for HTML elements**; attribute values, text, class names and ids
+keep their case. Inside an inline `<svg>` or `<math>` (foreign content, HTML
+standard 13.2.6.5) names carry the case their vocabulary defines -
+`linearGradient`, `viewBox`, `definitionURL` - whatever case the source
+used, and HTML resumes inside `foreignObject`, `desc`, `title` and the MathML
+text elements. Attribute lookup is exact first and then ASCII
+case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
@@ -120,8 +126,9 @@ the selector, since nothing is hovered in a document.
 names and pseudo-class names. Class names and ids are kept as written, as CSS
 requires: `.Hot` and `.hot` are different classes. A tree with camelCase
 element names (SVG's `linearGradient`) therefore compares type selectors
-case-insensitively in its traits (below); the HTML DOM, already lower-case,
-compares directly.
+case-insensitively in its traits (below); the HTML DOM's traits do the same
+for a foreign element inside a page, and compare its lower-case HTML names
+directly.
 
 Values: `HTML::CssColor::Parse` (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`,
 `rgba()`, named colours), `HTML::CssLength::Parse` with `ToPx(em, rem,
@@ -297,15 +304,15 @@ and the check blocks new ones:
 | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
 | `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
 | `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp` (`SVGStyle::ParseFromStyle`) | a `style=""` splitter; not in the build | `HTML::StyleSheet::ParseDeclarationList` |
 | `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
 
 ## Limits
 
 - Not the HTML5 tree-construction algorithm: adoption-agency cases and
   misnested formatting elements are repaired heuristically.
-- No foreign content: an inline `<svg>` or `<math>` in a page is parsed as
-  HTML, lower-casing its names. The SVG file readers do not go through
+- Foreign content is parsed and named correctly, not rendered: the element
+  builder shows an inline `<svg>`'s first raster `<image>` (EPUB cover pages)
+  and skips its vector content. The SVG file readers do not go through
   `HTML::Parser`.
 - `>` is a descendant combinator; sibling combinators and `:hover`-style
   pseudo-classes are not matched.
