@@ -8,6 +8,9 @@
 // Builds without the UI stack: the reader, the rich-document model and the
 // Word module sources (see Tests/CMakeLists.txt).
 // Usage: LaTeXDocumentTest [output-dir] [media/LaTex dir]
+//   output-dir defaults to latexdocument-test-out in the system temp
+//   directory - never the current directory, where a run from the repository
+//   root left its files in the source tree; ctest passes one in the build tree.
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -596,7 +599,10 @@ static void TestCorpus(const std::string& dir) {
 }
 
 int main(int argc, char** argv) {
-    gTmpDir = (argc > 1) ? argv[1] : ".";
+    gTmpDir = (argc > 1)
+        ? std::string(argv[1])
+        : UltraCanvas::PathToUtf8(std::filesystem::temp_directory_path() /
+                                  "latexdocument-test-out");
     std::error_code ec;
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir), ec);
     std::string corpus = (argc > 2) ? argv[2] : "../../media/LaTex";
