@@ -575,7 +575,7 @@ cdr.Export(*document, "drawing.cdr");          // document is a VectorStorage::V
 
 ## See Also
 
-- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin
+- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG: showing, rasterizing, reading and writing
 - [UltraCanvasBitmapExamples](UltraCanvasBitmapExamples.md) — Raster image display
 - [UltraCanvasPieChartExamples](UltraCanvasPieChartExamples.md) — Pie / donut / 3D chart
 - [UltraCanvasPopulationChartExamples](UltraCanvasPopulationChartExamples.md) — Population pyramid charts
