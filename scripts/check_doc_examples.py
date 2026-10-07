@@ -53,7 +53,21 @@ builds a precompiled header of all public headers in --work (about 1 min).
     python3 scripts/check_doc_examples.py --show-context  # also untyped names
 
 Exit status 1 when a doc has findings.
+
+CI (.github/workflows/doc-examples.yml) checks every component doc - all of
+Docs/UltraCanvas/*.md but the changelog and the design documents (a name
+with Proposal, Plan or Investigation in it: their code is of APIs not
+written yet) - and fails only on findings that are not in
+scripts/doc_examples_baseline.txt, the ones that predate the check:
+
+    python3 scripts/check_doc_examples.py --all --strict
+    python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
+
+A baseline entry is the doc and the message, without the line, so editing
+elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
+findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.2.0 - --all, --strict and the baseline, for CI
 # Version: 1.1.1 - a copied type is checked against every type of its name, judged by
 #                  the best match (BlendMode is three enums)
 # Version: 1.1.0 - a snippet's #if blocks and #defines are kept in place, a
@@ -65,6 +79,7 @@ Exit status 1 when a doc has findings.
 # Author: UltraCanvas Framework
 
 import argparse
+import collections
 import concurrent.futures
 import hashlib
 import os
@@ -1349,6 +1364,46 @@ class Doc:
                         self.add(i, "prose names `%s(`, which no header declares" % name)
 
 
+BASELINE = ROOT / "scripts" / "doc_examples_baseline.txt"
+DESIGN_DOC = re.compile(r"Proposal|Plan|Investigation")
+BASELINE_HEADER = """\
+# Findings of scripts/check_doc_examples.py --all that predate its CI check
+# (.github/workflows/doc-examples.yml), so CI can block *new* ones while
+# these are worked off. Each line is <doc>::<message>; a message that occurs
+# twice in a doc is listed twice.
+#
+# These are debt, not exceptions: each is a snippet that would not compile,
+# or a function, field or signature the headers do not have. Do not add to
+# this file to let a new finding through - fix the doc, or declare what its
+# snippets assume in a <!-- doc-check: ... --> comment. After fixing some,
+# rewrite it:
+#     python3 scripts/check_doc_examples.py --all --update-baseline
+"""
+
+
+def component_docs():
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog and
+    the design documents, whose code is of APIs not written yet."""
+    return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
+                  if p.name != "CHANGELOG.md" and not DESIGN_DOC.search(p.stem))
+
+
+def finding_key(doc, message):
+    rel = Path(doc)
+    if rel.is_absolute() and ROOT in rel.parents:
+        rel = rel.relative_to(ROOT)
+    return "%s::%s" % (rel.as_posix(), message.replace(str(ROOT) + os.sep, ""))
+
+
+def load_baseline(path):
+    keys = collections.Counter()
+    if path.exists():
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            if raw.strip() and not raw.lstrip().startswith("#"):
+                keys[raw.strip()] += 1
+    return keys
+
+
 def check_doc(path, args, index, flags, pch):
     try:
         return Doc(path, index, args, flags, pch).check()
@@ -1366,8 +1421,21 @@ def main():
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     parser.add_argument("--show-context", action="store_true",
                         help="also list the names a doc's snippets use without declaring")
+    parser.add_argument("--all", action="store_true",
+                        help="every component doc, not only the Examples docs (what CI checks)")
+    parser.add_argument("--strict", action="store_true",
+                        help="fail only on findings not in the baseline (CI gate)")
+    parser.add_argument("--baseline", type=Path, default=BASELINE,
+                        help="findings that predate the CI check")
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="rewrite the baseline from the docs checked and exit")
     args = parser.parse_args()
-    docs = args.docs or sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
+    if args.docs:
+        docs = args.docs
+    elif args.all:
+        docs = component_docs()
+    else:
+        docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
     docs = [d.resolve() for d in docs]
     args.work.mkdir(parents=True, exist_ok=True)
 
@@ -1375,9 +1443,18 @@ def main():
     pch = build_pch(args.work, "umbrella", flags, args.clang)
     index = HeaderIndex()
 
-    total = 0
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         results = list(pool.map(lambda d: check_doc(d, args, index, flags, pch), docs))
+
+    if args.update_baseline:
+        keys = sorted(finding_key(r["doc"], msg) for r in results for _, msg in r["findings"])
+        args.baseline.write_text(BASELINE_HEADER + "".join(k + "\n" for k in keys), encoding="utf-8")
+        print("check_doc_examples: wrote %d entries to %s" % (len(keys), args.baseline.relative_to(ROOT)))
+        return 0
+    if args.strict:
+        return report_against_baseline(results, load_baseline(args.baseline))
+
+    total = 0
     for r in results:
         total += len(r["findings"])
         status = "ok" if not r["findings"] else "%d finding(s)" % len(r["findings"])
@@ -1391,6 +1468,40 @@ def main():
                 "%s@%s" % (k, ",".join(map(str, v[:3]))) for k, v in sorted(r["context"].items())))
     print("%d doc(s), %d finding(s)" % (len(results), total))
     return 1 if total else 0
+
+
+def report_against_baseline(results, baseline):
+    """CI: print and fail on the findings beyond the baseline; name the
+    baseline entries no longer found, so the file can shrink."""
+    left = collections.Counter(baseline)
+    fresh = []
+    known = 0
+    for r in results:
+        for line, msg in r["findings"]:
+            key = finding_key(r["doc"], msg)
+            if left[key] > 0:
+                left[key] -= 1
+                known += 1
+            else:
+                fresh.append((r["doc"], line, msg))
+    checked = {finding_key(r["doc"], "") for r in results}
+    gone = sorted(k for k, n in left.items() if n > 0 and k.split("::", 1)[0] + "::" in checked)
+    for doc, line, msg in fresh:
+        print("%s:%d: %s" % (doc, line, msg) if line else "%s: %s" % (doc, msg))
+    if gone:
+        print("\n%d baseline entr%s no longer found - fixed, so remove %s "
+              "(--all --update-baseline):" % (len(gone), "y is" if len(gone) == 1 else "ies are",
+                                                "it" if len(gone) == 1 else "them"))
+        for key in gone:
+            print("  " + key)
+    if fresh:
+        print("\n%d new finding(s) in %d doc(s). Fix the snippet, or declare what it assumes in a "
+              "<!-- doc-check: ... --> comment (see the top of scripts/check_doc_examples.py)."
+              % (len(fresh), len(results)))
+        return 1
+    print("check_doc_examples: no new findings (%d doc(s); %d baselined finding(s) still to fix - "
+          "see %s)." % (len(results), known, BASELINE.name))
+    return 0
 
 
 if __name__ == "__main__":
