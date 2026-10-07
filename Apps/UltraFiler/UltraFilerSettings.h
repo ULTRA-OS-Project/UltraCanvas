@@ -36,10 +36,12 @@ public:
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
 
     // Display > Treeview: the folder tree's width - the narrowest the tree
-    // pane goes (the divider stops there too), the widest a fitted tree grows
-    // to (a folder a dozen levels down would otherwise push the file display
-    // off the window), and the fixed width a fresh installation would use.
-    static constexpr int kMinTreeWidth     = 170;
+    // pane goes (the divider stops there too; low enough that a tree of a few
+    // short names really is fitted to them, as UltraMail's folder list is),
+    // the widest a fitted tree grows to (a folder a dozen levels down would
+    // otherwise push the file display off the window), and the fixed width a
+    // fresh installation would use.
+    static constexpr int kMinTreeWidth     = 100;
     static constexpr int kMaxTreeWidth     = 600;
     static constexpr int kDefaultTreeWidth = 280;
 
