@@ -1,3 +1,42 @@
+#### 2026-10-06 *1.67.0*
+- **The host's file icons are the default.** *Settings > Display > File
+  icons* now starts on **Host OS icons**, so a folder listing draws each type
+  with the icon the rest of the desktop uses for it - the shell's on Windows,
+  Finder's on macOS, the installed icon theme's on Linux and BSD - instead of
+  UltraFiler's own folder shape and coloured sheet. **UltraFiler simple** is
+  still one click away on the same page, or under *Display > File icons* in
+  a file display's context menu. Nothing else about the choice changed: a
+  file that shows a thumbnail of its own content keeps showing it, a program
+  or shortcut keeps the icon it carries, and a type the system has no icon
+  for keeps the simple one.
+
+  Existing installations change too. Every save of 1.66.1 and earlier wrote
+  `display.file.icons = simple` into the config file, whether or not anyone
+  had chosen it, so the choice is now saved under
+  `display.file.icons.style` and the old key is no longer read - otherwise
+  every config written before today would have kept the simple icons for
+  good. Someone who had picked the simple icons on purpose picks them again
+  once. A system with no desktop to ask (WebAssembly, Android) draws the
+  simple icons whatever the setting says, and the settings page now ticks
+  that choice there rather than the greyed-out one.
+- **The context menu has icons, and every tick is round.** Each entry of a
+  file display's right-click menu - Open with, Copy, Cut, Paste, Delete,
+  Delete Permanently, Duplicate, Rename, New, Compress, Extract, Print,
+  Extras, Display, Settings - and of its *Display* submenu now has an icon,
+  and *Display > Type* shows each layout with the same picture as the view
+  selector in the toolbar. The labels line up behind the icons: the switches
+  at the foot of *Display* (Icon-Menu, Folder previews, Info-Bar, Hidden
+  files) used to start one column to the right of the submenus above them.
+  A disabled entry's icon is greyed with its label.
+
+  Every on/off entry in UltraFiler's menus - those switches, the
+  *Thumbnails*, *Detail view* and *Dataset* lists, *Show in names*, the
+  *Pin / Unpin* entries under *Extras* and in the folder tree's menu - is now
+  drawn as a circle with its tick inside, like the round choice entries
+  (*Sort*, *Type*, *File icons*) beside them, instead of a square box. Both
+  are framework changes - see
+  `Docs/UltraCanvas/changelog.d/menu-icons-round-checkboxes.md`.
+
 #### 2026-10-06 *1.66.1*
 - **Windows: Paste of a picture copied in another program writes a picture.**
   It wrote the clipboard's raw bitmap block as `Pasted image.bmp`, a file

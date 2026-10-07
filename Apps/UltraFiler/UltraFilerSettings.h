@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.13.0
-// Last Modified: 2026-09-17
+// Version: 1.14.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -117,12 +117,13 @@ public:
     // Display > File icons: whose icons an entry with no picture of its own
     // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
     // or the icon this desktop uses for the type (the shell's on Windows,
-    // Finder's on macOS, the icon theme's on Linux/BSD). The simple icons by
-    // default: they are what every earlier release drew, they look the same
-    // on every platform, and they need nothing installed. Files that show a
+    // Finder's on macOS, the icon theme's on Linux/BSD). The host's icons by
+    // default, so a folder listing looks like the rest of the desktop; a
+    // system with no desktop to ask draws the simple icons whatever this
+    // says, and so does any type the host has no icon for. Files that show a
     // thumbnail of their own content, and programs and shortcuts that carry
     // an icon inside them, are drawn the same way under both.
-    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
+    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::HostOperatingSystem;
 
     // Display > Files: whether the file display lists what the platform
     // calls hidden - the dot names everywhere, plus the hidden attribute on
@@ -362,7 +363,12 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
-        it = kv.find("display.file.icons");
+        // Not "display.file.icons", the key UltraFiler 1.66.1 and earlier
+        // wrote: every save put "simple" there whether or not anyone chose
+        // it, so it cannot tell a choice from the old default, and reading
+        // it would keep every existing installation on the simple icons.
+        // Its only other value, "host", is the default now anyway.
+        it = kv.find("display.file.icons.style");
         if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
@@ -471,7 +477,7 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
-        file << "display.file.icons = "
+        file << "display.file.icons.style = "
              << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
