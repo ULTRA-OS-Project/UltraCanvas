@@ -3,6 +3,7 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
+// Version: 0.6.1 - says whether the system fonts were ready at the start
 // Version: 0.6.0 - the timing trace: each step of the start, with its time, on
 //                  the console and in trace.log (UltraMailTrace.h)
 // Version: 0.5.2 - the data folder's location is read as UTF-8
@@ -75,6 +76,21 @@ int main() {
     step.reset();
     for (const auto& timing : app.GetStartupTimings())
         Trace::Line("  framework step " + timing.stage + ": " + Trace::FormatMs(timing.ms));
+    // Windows scans the system fonts on a thread: in use from the start when
+    // the font cache was warm, else the window starts with the bundled fonts
+    // and switches when the scan ends (UltraCanvas::AdoptSystemFontsWithin).
+    if (const UltraCanvas::SystemFontScanStatus fonts = UltraCanvas::GetSystemFontScanStatus(); fonts.started) {
+        if (fonts.adoptedAtStart)
+            Trace::Line("  system fonts: scanned in the background in " + Trace::FormatMs(fonts.ms) +
+                        ", in use from the start");
+        else
+            Trace::Line("  system fonts: still being scanned (a cold font cache) - the window "
+                        "starts with the bundled fonts and switches when they are ready");
+        UltraCanvas::SetSystemFontsSwitchedHandler([](const UltraCanvas::SystemFontScanStatus& done) {
+            Trace::Line("System fonts ready after " + Trace::FormatMs(done.ms) +
+                        " of scanning: every window now uses them");
+        });
+    }
     if (!initialised) {
         // There is no UI to alert with yet — this is the one failure that has
         // to go to the console.

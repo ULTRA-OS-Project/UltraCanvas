@@ -21,6 +21,15 @@
     before the window appears, and a window's surface starts in its
     background colour instead of black (framework changelog, "Windows: a
     window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
 - **A timing trace of the start and of every account switch.** Switching
   accounts still takes ten seconds and more on Windows, and the window stays
   black for ten to fifteen seconds after the start, while the switch measured

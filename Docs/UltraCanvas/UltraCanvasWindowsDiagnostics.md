@@ -474,6 +474,19 @@ why the window is late, and an application can help itself by doing before
 `Show()` only what its first frame shows, and the rest after it (UltraMail's
 `FinishStartup`).
 
+Nor does a cold font cache hold the first window any longer. The generated
+`fonts.conf` names `C:\Windows\Fonts` and the user's font folder; with a cold
+fontconfig cache (the first start on a computer, after Windows changed its
+fonts, after the cache was cleaned) fontconfig opens every font file in them
+before any text can be laid out - many seconds. So fontconfig starts with the
+bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
+scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
+(`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
+set is used from the start. Otherwise the application starts with the bundled
+fonts and Windows' two symbol fonts, and every window switches to the full set
+when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+`SetSystemFontsSwitchedHandler()` hears of the switch.
+
 An application that starts but takes ten seconds to show anything - its
 console window alone on screen, or nothing - spends that time in one of
 three places: the framework's own initialisation, the application's start-up
@@ -683,6 +696,9 @@ Declared in `UltraCanvas/include/UltraCanvasApplication.h` and
 
 ```cpp
 void UltraCanvasWindowBase::RenderBeforeShow();   // a backend's Show() draws the first frame first
+bool AdoptSystemFontsWithin(int waitMs);           // Windows: the background font scan, if it ends in time
+SystemFontScanStatus GetSystemFontScanStatus();    // started, finished, succeeded, adoptedAtStart, ms
+void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler);
 struct StartupStageTiming { std::string stage; double ms; };
 const std::vector<StartupStageTiming>& UltraCanvasApplicationBase::GetStartupTimings() const;
 

@@ -1,7 +1,10 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.6.0 - Windows: the system fonts are scanned on a thread; the start uses
+//                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
+//                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-07-21
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -28,6 +31,12 @@
 #endif
 #include <pango/pangocairo.h>
 #include "UltraCanvasPathUtf8.h"
+#if !defined(__APPLE__)
+#include "../libspecific/Cairo/RenderContextCairo.h"   // the text caches, after the font set changed
+#endif
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -315,7 +324,9 @@ namespace UltraCanvas {
         // Deliberately free of rendering rules (antialias/hinting/lcdfilter):
         // this config only replaces a *missing* one, so it must not change how
         // text looks compared to a system that has its own fonts.conf.
-        std::string GenerateFontsConf() {
+        // `withSystemFonts` false (Windows only): the bundled fonts alone, for
+        // the start while the system fonts are scanned in the background.
+        std::string GenerateFontsConf(bool withSystemFonts = true) {
             std::string bundledDir;
             {
                 const std::string dir = GetBundledFontsDir();
@@ -337,9 +348,11 @@ namespace UltraCanvas {
 #if defined(_WIN32) || defined(_WIN64)
             // WINDOWSFONTDIR / WINDOWSUSERFONTDIR / LOCAL_APPDATA_FONTCONFIG_CACHE
             // are fontconfig's built-in Windows keywords.
-            conf << "  <dir>WINDOWSFONTDIR</dir>\n"
-                    "  <dir>WINDOWSUSERFONTDIR</dir>\n"
-                    "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
+            if (withSystemFonts) {
+                conf << "  <dir>WINDOWSFONTDIR</dir>\n"
+                        "  <dir>WINDOWSUSERFONTDIR</dir>\n";
+            }
+            conf << "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
             const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
             const char* const kSerif[] = { "Times New Roman", "Georgia" };
             const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
@@ -397,6 +410,181 @@ namespace UltraCanvas {
     } // namespace
 #endif // !__APPLE__
 
+#if !defined(__APPLE__)
+    namespace {
+        // The system fonts' scan (SetupBundledFontconfig, Windows): one per process,
+        // on a thread of its own. Leaked on purpose - the thread may still be
+        // scanning when the process ends.
+        struct SystemFontScan {
+            std::mutex              mutex;
+            std::condition_variable ended;
+            SystemFontScanStatus    status;
+            FcConfig*               config = nullptr;   // the full set, until it is made current
+            bool                    switchWhenDone = false;   // the start went on without it
+            std::function<void(const SystemFontScanStatus&)> onSwitched;
+        };
+
+        SystemFontScan& FontScan() {
+            static SystemFontScan* scan = new SystemFontScan();
+            return *scan;
+        }
+
+        // Layout and text caches of every element of a window: the next
+        // frame measures all text again, in the fonts now available.
+        void InvalidateLayoutTree(UltraCanvasUIElement* element) {
+            if (!element) return;
+            element->InvalidateLayout();
+            if (auto* container = dynamic_cast<UltraCanvasContainer*>(element)) {
+                for (const auto& child : container->GetChildren()) InvalidateLayoutTree(child.get());
+            }
+        }
+
+        // UI thread: the full set becomes the current one and every window is
+        // laid out and drawn again with it.
+        void SwitchToSystemFonts() {
+            SystemFontScan& scan = FontScan();
+            FcConfig* config = nullptr;
+            SystemFontScanStatus status;
+            std::function<void(const SystemFontScanStatus&)> onSwitched;
+            {
+                std::lock_guard<std::mutex> lock(scan.mutex);
+                config = scan.config;
+                scan.config = nullptr;
+                status = scan.status;
+                onSwitched = scan.onSwitched;
+            }
+            if (!config) {
+                debugOutput << "UltraCanvas: the system font scan failed; the bundled fonts stay"
+                            << std::endl;
+                return;
+            }
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            // Fonts registered at run time are application fonts of the set in
+            // use; the new set gets them too (the bundled fonts are a <dir> of it).
+            if (app) {
+                for (const std::string& fontFile : app->GetRegisteredFontFiles())
+                    FcConfigAppFontAddFile(config, reinterpret_cast<const FcChar8*>(fontFile.c_str()));
+            }
+            FcConfigSetCurrent(config);
+            FcConfigDestroy(config);   // the current-config reference keeps it
+#if defined(ULTRACANVAS_HAS_PANGOFT2)
+            PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+            if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {
+                pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(fontMap), FcConfigGetCurrent());
+            } else {
+                RefreshFontConfiguration();
+            }
+#else
+            RefreshFontConfiguration();
+#endif
+            RenderContextCairo::InvalidateAllFontMetricsCaches();
+            if (app) {
+                for (const auto& window : app->GetWindows()) InvalidateLayoutTree(window.get());
+            }
+            debugOutput << "UltraCanvas: system fonts ready after "
+                        << static_cast<long long>(status.ms + 0.5)
+                        << " ms; the windows now use them" << std::endl;
+            if (onSwitched) onSwitched(status);
+        }
+
+        // The scan itself, on its thread: the full config parsed from memory
+        // (no path for a code page to get wrong) and its fonts read - from
+        // fontconfig's cache when it is warm, from every font file when not.
+        [[maybe_unused]] void StartSystemFontScan(const std::string& fullConf) {
+            SystemFontScan& scan = FontScan();
+            {
+                std::lock_guard<std::mutex> lock(scan.mutex);
+                if (scan.status.started) return;
+                scan.status.started = true;
+            }
+            std::thread([fullConf]() {
+                const auto start = std::chrono::steady_clock::now();
+                FcConfig* config = FcConfigCreate();
+                const bool ok = config &&
+                    FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(fullConf.c_str()),
+                                                   FcTrue) &&
+                    FcConfigBuildFonts(config);
+                if (!ok && config) {
+                    FcConfigDestroy(config);
+                    config = nullptr;
+                }
+                SystemFontScan& scan = FontScan();
+                bool post = false;
+                {
+                    std::lock_guard<std::mutex> lock(scan.mutex);
+                    scan.config = config;
+                    scan.status.finished = true;
+                    scan.status.succeeded = ok;
+                    scan.status.ms = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - start).count();
+                    post = scan.switchWhenDone;
+                }
+                scan.ended.notify_all();
+                if (!post) return;   // the start waits for it, or has not asked yet
+                if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+                    app->PostToUIThread([]() { SwitchToSystemFonts(); });
+                }
+            }).detach();
+        }
+    } // namespace
+#endif
+
+    bool AdoptSystemFontsWithin(int waitMs) {
+#if !defined(__APPLE__)
+        SystemFontScan& scan = FontScan();
+        FcConfig* config = nullptr;
+        {
+            std::unique_lock<std::mutex> lock(scan.mutex);
+            if (!scan.status.started) return true;
+            if (scan.status.adoptedAtStart || scan.switchWhenDone) return scan.status.adoptedAtStart;
+            scan.ended.wait_for(lock, std::chrono::milliseconds(waitMs > 0 ? waitMs : 0),
+                                [&scan]() { return scan.status.finished; });
+            if (!scan.status.finished) {
+                // The start goes on with the bundled fonts; the scan's end
+                // switches the windows over.
+                scan.switchWhenDone = true;
+                debugOutput << "UltraCanvas: the system fonts are still being scanned; "
+                               "starting with the bundled fonts" << std::endl;
+                return false;
+            }
+            config = scan.config;
+            scan.config = nullptr;
+            scan.status.adoptedAtStart = config != nullptr;
+        }
+        if (!config) {
+            debugOutput << "UltraCanvas: the system font scan failed; starting with the "
+                           "bundled fonts" << std::endl;
+            return false;
+        }
+        FcConfigSetCurrent(config);
+        FcConfigDestroy(config);   // the current-config reference keeps it
+        return true;
+#else
+        (void)waitMs;
+        return true;
+#endif
+    }
+
+    SystemFontScanStatus GetSystemFontScanStatus() {
+#if !defined(__APPLE__)
+        SystemFontScan& scan = FontScan();
+        std::lock_guard<std::mutex> lock(scan.mutex);
+        return scan.status;
+#else
+        return {};
+#endif
+    }
+
+    void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler) {
+#if !defined(__APPLE__)
+        SystemFontScan& scan = FontScan();
+        std::lock_guard<std::mutex> lock(scan.mutex);
+        scan.onSwitched = std::move(handler);
+#else
+        (void)handler;
+#endif
+    }
+
     void SetupBundledFontconfig() {
 #if defined(__APPLE__)
         // macOS renders text through CoreText - fontconfig is not in the stack.
@@ -418,35 +606,54 @@ namespace UltraCanvas {
             return;
         }
 
-        const std::string file = dir + "/fonts.conf";
-        const std::string contents = GenerateFontsConf();
-
         // Rewrite only when stale - the baked-in bundled-fonts path changes
         // whenever the application is moved, and rewriting invalidates
         // fontconfig's cache for that config.
-        bool needsWrite = true;
-        {
-            std::ifstream existing(UltraCanvas::PathFromUtf8(file), std::ios::binary);
-            if (existing) {
-                std::ostringstream current;
-                current << existing.rdbuf();
-                needsWrite = (current.str() != contents);
+        auto writeConf = [](const std::string& file, const std::string& contents) {
+            bool needsWrite = true;
+            {
+                std::ifstream existing(UltraCanvas::PathFromUtf8(file), std::ios::binary);
+                if (existing) {
+                    std::ostringstream current;
+                    current << existing.rdbuf();
+                    needsWrite = (current.str() != contents);
+                }
             }
-        }
-        if (needsWrite) {
+            if (!needsWrite) return true;
             std::ofstream out(UltraCanvas::PathFromUtf8(file), std::ios::binary | std::ios::trunc);
             if (!out) {
                 debugOutput << "UltraCanvas: cannot write runtime fonts.conf to "
                             << file << std::endl;
-                return;
+                return false;
             }
             out << contents;
             if (!out) {
                 debugOutput << "UltraCanvas: failed writing runtime fonts.conf to "
                             << file << std::endl;
-                return;
+                return false;
+            }
+            return true;
+        };
+
+        std::string file = dir + "/fonts.conf";
+        const std::string contents = GenerateFontsConf();
+        if (!writeConf(file, contents)) return;
+
+#if defined(_WIN32) || defined(_WIN64)
+        // The bundled fonts alone for the start, the system fonts scanned on
+        // a thread (see AdoptSystemFontsWithin) - only with bundled fonts to
+        // start with: without them the start would have no font at all.
+        {
+            std::error_code fontsEc;
+            if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(GetBundledFontsDir()), fontsEc)) {
+                const std::string startupFile = dir + "/fonts-startup.conf";
+                if (writeConf(startupFile, GenerateFontsConf(/*withSystemFonts=*/false))) {
+                    file = startupFile;
+                    StartSystemFontScan(contents);
+                }
             }
         }
+#endif
 
         // fontconfig reads FONTCONFIG_FILE through the narrow CRT getenv(), so
         // set it through the CRT (not SetEnvironmentVariable) and keep it UTF-8

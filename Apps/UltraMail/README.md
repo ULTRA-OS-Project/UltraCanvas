@@ -331,7 +331,9 @@ process started and the thread (`ui`, or `w<n>` for a worker):
 
 - **The start:** the time before `main()` (loading the program and its
   libraries), the framework's initialisation with each of its steps (fonts,
-  images, the windowing backend, the clipboard), opening the mailbox,
+  images, the windowing backend, the clipboard), whether Windows' system
+  fonts were ready or are still being scanned in the background (and when
+  they arrive), opening the mailbox,
   building and filling the window with the list and the selected message,
   the first frames with their layout and painting times, each timed from the
   start of the process - and then what follows once the window is on screen
