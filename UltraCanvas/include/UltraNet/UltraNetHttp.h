@@ -115,11 +115,21 @@ struct UltraNetResponse {
     int64_t contentLength = -1;
     double elapsedTime = 0;
     UltraNetTlsInfo tlsInfo;
+    // Why the transfer did not finish - timed out, connection lost, over
+    // maxReceiveSize, cancelled - or empty when the whole response arrived.
+    // A transfer can fail after the status line: statusCode is then the
+    // server's (200, say) and body only what came before the failure, so an
+    // async caller checks this before trusting body. An HTTP error status
+    // (404, 500) is a finished transfer and leaves this empty.
+    std::string transferError;
+    // The body went over maxReceiveSize (transferError says so as well).
+    bool exceededReceiveLimit = false;
 
     std::string GetBodyAsString() const {
         return std::string(body.begin(), body.end());
     }
     bool IsSuccess() const { return statusCode >= 200 && statusCode < 300; }
+    bool IsComplete() const { return transferError.empty(); }
 };
 
 // ============================================================================

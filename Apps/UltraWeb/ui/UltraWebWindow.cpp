@@ -1,12 +1,16 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebWindow.h"
 
+#include "../host/UltraWebFetch.h"
+#include "../host/UltraWebStorage.h"
+
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <algorithm>
@@ -29,6 +33,30 @@ constexpr float kMargin = 8;
 
 void PostToUi(std::function<void()> task) {
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(std::move(task));
+}
+
+void AppLog(const std::string& line) { std::fprintf(stderr, "[UltraWeb app] %s\n", line.c_str()); }
+
+// The services an app reaches beside its elements (GuestServices), real
+// ones: the application's timers, UltraNet, a store on disk per origin,
+// the system clipboard.
+GuestServices RealServices(const std::string& address) {
+    GuestServices services;
+    services.startTimer = [](uint32_t ms, bool repeat, std::function<void()> fire) -> uint32_t {
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return 0;
+        return app->StartTimer(ms, repeat, [fire](TimerId) { fire(); });
+    };
+    services.stopTimer = [](uint32_t id) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(id);
+    };
+    services.fetch = MakeNetworkFetch(PostToUi);
+    std::string problem;
+    services.storage = UltraWebStorage::Open(UltraWebStorage::DefaultDirectory(),
+                                             UltraWebStorage::PartitionFor(address), problem);
+    if (!problem.empty()) AppLog("UltraWeb: storage kept in memory only: " + problem);
+    services.writeClipboard = [](const std::string& text) { return SetClipboardText(text); };
+    return services;
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
@@ -87,9 +115,10 @@ bool UltraWebWindow::Initialize() {
     toolbar->AddChild(reloadButton_);
     page_->AddChild(toolbar);
 
-    // UC_ROOT_HANDLE: a flex column the app fills.
+    // UC_ROOT_HANDLE: a flex column the app fills; how its children sit
+    // across it is the app's to say (UC_PROP_ALIGN), start until then.
     appArea_ = CreateContainer("uwAppArea", 0, 0, 0, 0);
-    appArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    appArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
     appArea_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     appArea_->layoutItem.SetFlexGrow(1);
     appArea_->layoutItem.SetFlexShrink(1);
@@ -144,7 +173,9 @@ void UltraWebWindow::ShowApp(const LoadedApp& app) {
     }
 
     GuestOptions options;
-    options.onLog = [](const std::string& line) { std::fprintf(stderr, "[UltraWeb app] %s\n", line.c_str()); };
+    options.onLog = AppLog;
+    options.address = app.address;
+    options.services = RealServices(app.address);
     std::weak_ptr<bool> alive = alive_;
     options.onFailure = [this, alive](const std::string& message) {
         if (alive.expired()) return;

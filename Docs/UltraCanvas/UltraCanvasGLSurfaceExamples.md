@@ -1,10 +1,14 @@
 # UltraCanvasGLSurface Documentation
 
+<!-- doc-check: struct GLResources { unsigned int program = 0; unsigned int vao = 0; unsigned int vbo = 0; int modelViewLoc = -1; int projectionLoc = -1; int colorLoc = -1; bool initialized = false; void UploadCube(); void DrawCube(const float* modelView, const float* projection) const; };
+struct CubeState { Color clearColor = Color(30, 30, 40, 255); bool spinning = true; float rotationX = 0.0f; float rotationY = 0.0f; float rotationSpeed = 1.0f; };
+unsigned int CreateShaderProgram(); void ClearFrame(const Color& color); void MatrixPerspective(float* m, float fovY, float aspect, float zNear, float zFar); void MatrixIdentity(float* m); void MatrixTranslate(float* m, float x, float y, float z); void MatrixRotateX(float* m, float angle); void MatrixRotateY(float* m, float angle); -->
+
 ## Overview
 
 **UltraCanvasGLSurface** is a UI element that hosts a real OpenGL rendering context inside the UltraCanvas widget tree. It owns an EGL/OpenGL context, renders to an offscreen framebuffer (FBO), and composites the result into the surrounding Cairo surface, letting hardware-accelerated 3D content live side-by-side with regular UltraCanvas widgets.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasGLSurface.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -41,12 +45,13 @@
 ### Constructors
 
 ```cpp
-UltraCanvasGLSurface(const std::string& identifier = "GLSurface",
-                     int x = 0, int y = 0, int width = 300, int height = 300);
+UltraCanvasGLSurface(const std::string& identifier, float x, float y, float width, float height);
+UltraCanvasGLSurface(const std::string& identifier, float width, float height);   // size only
+explicit UltraCanvasGLSurface(const std::string& identifier = "GLSurface");
 
 UltraCanvasGLSurface(const GLSurfaceConfig& config,
                      const std::string& identifier = "GLSurface",
-                     int x = 0, int y = 0, int width = 300, int height = 300);
+                     float x = 0, float y = 0, float width = 300, float height = 300);
 ```
 
 The class is non-copyable but movable.
@@ -81,6 +86,11 @@ struct GLSurfaceConfig {
     static GLSurfaceConfig WithMSAA(int sampleCount);
     static GLSurfaceConfig NoDepthStencil();
 };
+```
+
+```cpp
+void SetConfig(const GLSurfaceConfig& config);
+const GLSurfaceConfig& GetConfig() const;
 ```
 
 `SetConfig()` must be called before the first render; once the GL context is created the config is locked.
@@ -199,8 +209,48 @@ header-only `Apps/DemoApp/UltraCanvasGLDemoSupport.h`. The model meshes are gene
 
 ## Usage Examples
 
-The snippets below come from the original single-surface spinning-cube example and remain
-the simplest end-to-end illustration of the `UltraCanvasGLSurface` callback lifecycle.
+The snippets below build a spinning cube — the simplest end-to-end illustration of the
+`UltraCanvasGLSurface` callback lifecycle. The bulk of the raw OpenGL work lives in a few
+helpers of the application's own (bodies not shown); the snippets show where each of them
+belongs in the surface's lifecycle:
+
+| Application helper | What it does (plain OpenGL) |
+|--------------------|-----------------------------|
+| `CreateShaderProgram` | Compiles and links the cube's vertex/fragment shaders; returns the program, or 0 on failure |
+| `GLResources::UploadCube` | Creates the VAO and VBO, uploads the 24 cube vertices (`GL_STATIC_DRAW`), sets vertex attribute 0 and enables `GL_DEPTH_TEST` |
+| `ClearFrame` | `glClearColor` from an UltraCanvas `Color`, then clears the color and depth buffers |
+| `GLResources::DrawCube` | Binds the program and VAO, uploads both matrices, draws the six faces as `GL_TRIANGLE_FAN`s, each in its own `uColor`, then unbinds the VAO and program |
+| `MatrixPerspective`, `MatrixIdentity`, `MatrixTranslate`, `MatrixRotateX`, `MatrixRotateY` | Column-major 4×4 matrix math on `float[16]` |
+
+### Application state
+
+```cpp
+// GL handles shared by the callbacks (created in Init, freed in Cleanup)
+struct GLResources {
+    unsigned int program = 0;     // GLuint
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    int modelViewLoc  = -1;       // GLint uniform locations
+    int projectionLoc = -1;
+    int colorLoc      = -1;
+    bool initialized = false;
+
+    void UploadCube();                                                     // VAO + VBO, depth test on
+    void DrawCube(const float* modelView, const float* projection) const;  // six faces, then unbinds
+};
+
+// Animation state, changed by the UltraCanvas widgets below
+struct CubeState {
+    Color clearColor = Color(30, 30, 40, 255);
+    bool spinning = true;
+    float rotationX = 0.0f;
+    float rotationY = 0.0f;
+    float rotationSpeed = 1.0f;   // radians per second
+};
+
+auto glResources = std::make_shared<GLResources>();
+auto cubeState   = std::make_shared<CubeState>();
+```
 
 ### Configuring and creating the surface
 
@@ -211,7 +261,7 @@ config.glVersionMinor = 3;
 config.coreProfile = true;
 config.depthBits   = 24;
 config.stencilBits = 0;
-config.samples     = 1;   // No MSAA for simplicity
+config.samples     = 0;   // No MSAA for simplicity
 
 auto glSurface = std::make_shared<UltraCanvasGLSurface>(
     config, "SpinningCube", 20, 70, 600, 500);
@@ -220,9 +270,9 @@ glSurface->SetRenderMode(RenderMode::Continuous);  // Animate continuously
 
 ### Init callback — create GL resources
 
-```cpp
-auto glResources = std::make_shared<GLResources>();  // shader, VAO, VBO, uniform locations
+The context is current when the init callback runs, so GL objects are created here:
 
+```cpp
 glSurface->SetInitCallback([glResources]() {
     glResources->program = CreateShaderProgram();
     if (!glResources->program) {
@@ -234,20 +284,7 @@ glSurface->SetInitCallback([glResources]() {
     glResources->projectionLoc = glGetUniformLocation(glResources->program, "uProjection");
     glResources->colorLoc      = glGetUniformLocation(glResources->program, "uColor");
 
-    glGenVertexArrays(1, &glResources->vao);
-    glGenBuffers(1, &glResources->vbo);
-
-    glBindVertexArray(glResources->vao);
-    glBindBuffer(GL_ARRAY_BUFFER, glResources->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    glEnable(GL_DEPTH_TEST);
+    glResources->UploadCube();
     glResources->initialized = true;
 });
 ```
@@ -260,11 +297,7 @@ glSurface->SetInitCallback([glResources]() {
 glSurface->SetRenderCallback([glResources, cubeState](const RenderSurfaceInfo& info) {
     if (!glResources->initialized) return;
 
-    glClearColor(cubeState->clearColor.r / 255.0f,
-                 cubeState->clearColor.g / 255.0f,
-                 cubeState->clearColor.b / 255.0f,
-                 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    ClearFrame(cubeState->clearColor);
 
     if (cubeState->spinning) {
         cubeState->rotationY += static_cast<float>(info.deltaTime) * cubeState->rotationSpeed;
@@ -280,21 +313,13 @@ glSurface->SetRenderCallback([glResources, cubeState](const RenderSurfaceInfo& i
     MatrixRotateX(modelView, cubeState->rotationX);
     MatrixRotateY(modelView, cubeState->rotationY);
 
-    glUseProgram(glResources->program);
-    glUniformMatrix4fv(glResources->modelViewLoc,  1, GL_FALSE, modelView);
-    glUniformMatrix4fv(glResources->projectionLoc, 1, GL_FALSE, projection);
-
-    glBindVertexArray(glResources->vao);
-    for (int face = 0; face < 6; face++) {
-        glUniform4fv(glResources->colorLoc, 1, &faceColors[face * 4]);
-        glDrawArrays(GL_TRIANGLE_FAN, face * 4, 4);
-    }
-    glBindVertexArray(0);
-    glUseProgram(0);
+    glResources->DrawCube(modelView, projection);
 });
 ```
 
 ### Cleanup callback — release GL resources
+
+The context is still current here, so the GL objects can be deleted:
 
 ```cpp
 glSurface->SetCleanupCallback([glResources]() {
@@ -333,7 +358,7 @@ When the scene only changes in response to user input, prefer `OnDemand` to avoi
 auto surface = std::make_shared<UltraCanvasGLSurface>(config, "Viewer", x, y, w, h);
 surface->SetRenderMode(RenderMode::OnDemand);
 
-// ... after mutating scene state:
+// After mutating scene state:
 surface->RequestRender();
 ```
 

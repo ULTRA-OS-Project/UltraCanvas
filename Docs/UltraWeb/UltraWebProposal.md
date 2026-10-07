@@ -1,9 +1,10 @@
 # UltraWeb — WebAssembly Apps on UltraCanvas, Then the Web
 
-**Status:** Proposal, with Phase 1 started. UltraWeb 0.1.0 runs WebAssembly
-apps on Linux ([`UltraWeb.md`](UltraWeb.md)). Everything else in this
-document — the feasibility study, the architecture and the phase plan — is
-not implemented yet.
+**Status:** Proposal, with Phase 1 under way. UltraWeb 0.2.0 runs WebAssembly
+apps on Linux, with timers, fetch, storage and the clipboard
+([`UltraWeb.md`](UltraWeb.md)). Everything else in this document — the
+feasibility study, the architecture and the phase plan — is not implemented
+yet.
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-10-06
 
@@ -54,8 +55,8 @@ native DOM work is (§7.3).
 | Capability | Phase | Basis |
 |---|---|---|
 | Load a `.wasm` app from a file or URL and run it sandboxed | 1 | wasmtime behind `UltraCanvasWasmHost`, §4.1 — **started** |
-| App UI from UltraCanvas elements through the element ABI | 1 | element ABI v1 and guest SDK, §4.2 — **started** |
-| fetch, timers, storage, clipboard for apps; per-app permissions | 1 | UltraNet and new host services, §4.3 |
+| App UI from UltraCanvas elements through the element ABI | 1 | element ABI v2 and guest SDK, §4.2 — **started** |
+| fetch, timers, storage, clipboard for apps; per-app permissions | 1 | UltraNet and new host services, §4.3 — **done but permissions** |
 | Fetch and render HTML + CSS pages; links, images, history, downloads | 2 | HTMLReader + CSSLayout + `HTML::PageLoader`, §5 |
 | Flex, grid, `position`, viewport units, `calc()` | 3 | CSSLayout has the layouts; the resolver does not map them, §6.2 |
 | Live DOM, incremental patching, layout queries, DOM events | 4 | new, §7.3 |
@@ -269,11 +270,14 @@ int32_t  uc_abi_version(void);                                // optional: the A
   every browser. The host calls the exported `uc_main` once, then
   `uc_event` for events and timers. Completions from other threads (fetch)
   come back through `PostToUIThread`.
-- **Imports beyond elements:**
-  - `uc_fetch`: UltraNet, same-origin and CORS rules, TLS verification on.
-  - Timers.
-  - Text clipboard, gated by a user gesture.
-  - Per-origin key-value storage in the profile.
+- **Imports beyond elements** (element ABI v2, in UltraWeb 0.2.0):
+  - `uc_fetch`: UltraNet, same-origin and CORS rules, TLS verification on,
+    no cookies; simple requests only to another origin until preflight
+    exists. The rules are in [`UltraWeb.md`](UltraWeb.md#the-fetch-rules).
+  - Timers, delivered through `uc_event` with handle 0.
+  - Text clipboard, written only while a user action is handled; reading
+    waits for permissions.
+  - Per-origin key-value storage in the settings folder, 5 MB a store.
   - A console that goes to UltraWeb's log.
 
   WASI preview 1 provides clocks, randomness and stdout/stderr only.
@@ -702,10 +706,21 @@ Done in UltraWeb 0.1.0 ([`UltraWeb.md`](UltraWeb.md)):
 - **Tests:** `WasmHostTest` and `UltraWebGuestTest`, plus the window driven
   under Xvfb by hand.
 
+Done in UltraWeb 0.2.0:
+- **Element ABI v2**, the host services of §4.3: timers, `uc_fetch` with the
+  browser's origin, mixed-content and CORS rules (`UltraWebFetch`),
+  per-origin storage on disk (`UltraWebStorage`), and clipboard writes
+  during a user action. `about:demo` uses all but fetch; the tests run the
+  services against fakes, the rules and the store directly.
+- In the framework: `UltraNet_ResolveUrl` (RFC 3986), and
+  `UltraNetResponse::transferError`, without which an async transfer cut
+  off midway looked like a whole one.
+
 Next:
-- `uc_fetch`, timers, storage and the clipboard for apps.
 - Manifests, `<link rel="ultraweb-app">` and `.ucpkg` packages.
-- A compiled-module cache and a permissions UI.
+- A compiled-module cache and a permissions UI (clipboard reads, fetches
+  beyond CORS, larger stores, private-network addresses), and CORS
+  preflight.
 - C++ proxies generated from the element headers.
 - The macOS and Windows builds (§4.1), and packaging.
 

@@ -120,7 +120,7 @@ namespace UltraCanvas {
 
     void InfoWindow::CreateInfoContent() {
         // Create title label
-        layout.SetFlexColumn();
+        layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // Example code icon and label
         auto exampleAppIcon = CreateImageElement("AppIcon", 130, 130);
@@ -179,7 +179,7 @@ namespace UltraCanvas {
 
         // Programmers guide icon and label
         auto doccontainer = CreateContainer("doccont1");
-        doccontainer->layout.SetFlexRow();
+        doccontainer->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         doccontainer->SetMargin(10,20,10,20);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
         programmersGuideIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
@@ -198,7 +198,7 @@ namespace UltraCanvas {
 
         // Example code icon and label
         auto codeContainer = CreateContainer("codecont1");
-        codeContainer->layout.SetFlexRow();
+        codeContainer->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         codeContainer->SetMargin(0,20,10,20);
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);

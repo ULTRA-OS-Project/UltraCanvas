@@ -61,7 +61,7 @@ std::shared_ptr<UltraCanvasContainer> FieldColumn(
     const std::string& id, const std::string& label, const std::string& placeholder,
     std::shared_ptr<UltraCanvasTextInput>& out) {
     auto col = std::make_shared<UltraCanvasContainer>(id + "-grp");
-    col->layout.SetFlexColumn().SetFlexGap(4);
+    col->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     col->size.height = Dimension::Px(52);
     col->layoutItem.SetFlexShrink(0);
     col->AddChild(FlexLabel(id + "-lbl", label, 18));
@@ -92,7 +92,7 @@ void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpoi
     CreateDialog(cfg);
 
     // The dialog itself is the root flex column.
-    layout.SetFlexColumn().SetFlexGap(10);
+    layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     SetPadding(16);
 
     // ===== Header =====
@@ -124,7 +124,7 @@ void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpoi
 
     // ===== Scrollable editor form (grows to fill; footer stays pinned) =====
     auto form = std::make_shared<UltraCanvasContainer>("set-form");
-    form->layout.SetFlexColumn().SetFlexGap(8);
+    form->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     form->layoutItem.SetFlexGrow(1);
 
     form->AddChild(FieldColumn("set-name", "Name", "e.g. My OpenAI account",
@@ -132,7 +132,7 @@ void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpoi
 
     // Provider row.
     auto provCol = std::make_shared<UltraCanvasContainer>("set-prov-grp");
-    provCol->layout.SetFlexColumn().SetFlexGap(4);
+    provCol->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     provCol->size.height = Dimension::Px(52);
     provCol->layoutItem.SetFlexShrink(0);
     provCol->AddChild(FlexLabel("set-prov-lbl", "Provider", 18));
@@ -175,7 +175,9 @@ void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpoi
     modesCol->layout.SetGrid()
                     .SetGridColumns(colTracks)
                     .SetGridRows(rowTracks)
-                    .SetGridGap(kRowGap, 8);   // rowGap, columnGap
+                    .SetGridGap(kRowGap, 8)   // rowGap, columnGap
+                    .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                    .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
     modesCol->size.height =
         Dimension::Px(static_cast<float>(rows * kRowH + std::max(0, rows - 1) * kRowGap));
     modesCol->layoutItem.SetFlexShrink(0);

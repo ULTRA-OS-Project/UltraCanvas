@@ -1,8 +1,8 @@
 # UltraWeb
 
-The ULTRA OS browser. Version 0.1.0 runs WebAssembly apps that build their
-UI out of UltraCanvas elements through the element ABI
-(`UltraWeb/guest/ultraweb.h`).
+The ULTRA OS browser. It runs WebAssembly apps that build their UI out of
+UltraCanvas elements through the element ABI (`UltraWeb/guest/ultraweb.h`),
+and gives them timers, fetch, per-origin storage and clipboard writes.
 
 - What it does, how to run it, and how to write an app:
   [`Docs/UltraWeb/UltraWeb.md`](../../Docs/UltraWeb/UltraWeb.md)

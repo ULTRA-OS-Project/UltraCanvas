@@ -4,8 +4,8 @@
 
 The **UltraCanvasWaterfallChart** is a sophisticated data visualization component within the UltraCanvas framework that displays cumulative data flow through a series of positive and negative changes. It's particularly effective for showing how an initial value is affected by a series of intermediate values, leading to a final result.
 
-**Version:** 1.0.1  
-**Last Modified:** 2025-09-29  
+**Version:** 1.0.2  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Location:** `Plugins/Charts/`
 
@@ -18,7 +18,6 @@ The **UltraCanvasWaterfallChart** is a sophisticated data visualization componen
 - **Interactive Tooltips** - Rich hover information for each data point
 - **Value Labels** - Display change values and cumulative totals
 - **Responsive Layout** - Automatic scaling and positioning
-- **Animation Support** - Smooth transitions (when enabled)
 
 ## Architecture
 
@@ -34,7 +33,7 @@ UltraCanvas/
 
 ### Class Hierarchy
 
-```cpp
+```
 UltraCanvasUIElement
     └── UltraCanvasChartElementBase
         └── UltraCanvasWaterfallChartElement
@@ -65,8 +64,8 @@ Manages the collection of waterfall data points:
 ```cpp
 class WaterfallChartDataVector : public IChartDataSource {
     // Core methods
-    void AddWaterfallPoint(const std::string& label, double value, 
-                           bool isSubtotal = false, bool isTotal = false);
+    void AddWaterfallPoint(const WaterfallChartDataPoint& point);
+    void AddWaterfallPoint(const std::string& label, double value, bool isSubtotal = false, bool isTotal = false);
     void ClearData();
     const WaterfallChartDataPoint& GetWaterfallPoint(size_t index) const;
     double GetFinalValue() const;
@@ -78,28 +77,27 @@ class WaterfallChartDataVector : public IChartDataSource {
 
 ## Enumerations
 
-### ConnectionStyle
-
-Defines the style of connecting lines between bars:
-
-```cpp
-enum class ConnectionStyle {
-    None,       // No connecting lines
-    Dotted,     // Dotted connecting lines
-    Solid,      // Solid connecting lines  
-    Dashed      // Dashed connecting lines
-};
-```
-
-### BarStyle
-
-Defines the visual style of the bars:
+Both enumerations are nested in `UltraCanvasWaterfallChartElement`, so code
+outside the class qualifies them, e.g.
+`UltraCanvasWaterfallChartElement::ConnectionStyle::Dotted`.
 
 ```cpp
-enum class BarStyle {
-    Standard,   // Standard rectangular bars
-    Rounded,    // Rounded corner bars
-    Gradient    // Gradient fill bars
+class UltraCanvasWaterfallChartElement : public UltraCanvasChartElementBase {
+public:
+    // Style of the connecting lines between bars
+    enum class ConnectionStyle {
+        NoneStyle,  // No connecting lines
+        Dotted,     // Dotted connecting lines
+        Solid,      // Solid connecting lines
+        Dashed      // Dashed connecting lines
+    };
+
+    // Visual style of the bars
+    enum class BarStyle {
+        Standard,   // Standard rectangular bars
+        Rounded,    // Rounded corner bars
+        Gradient    // Gradient fill bars
+    };
 };
 ```
 
@@ -116,9 +114,7 @@ void SetTotalBarColor(const Color& color);       // Blue default: (25, 118, 210)
 void SetStartingBarColor(const Color& color);    // Blue-gray default: (96, 125, 139)
 
 // Connection lines
-void SetConnectionLineStyle(ConnectionStyle style, 
-                           const Color& color = Color(117, 117, 117), 
-                           float width = 1.5f);
+void SetConnectionLineStyle(ConnectionStyle style, const Color& color = Color(117, 117, 117, 255), float width = 1.5f);
 
 // Bar borders
 void SetBarBorder(const Color& color, float width);
@@ -195,12 +191,13 @@ cashFlow->AddWaterfallPoint("Expense Subtotal", 0.0, true, false);  // Subtotal
 // Final
 cashFlow->AddWaterfallPoint("Net Cash", 0.0, false, true);  // Total
 
-auto chart = CreateWaterfallChartWithData("cash_flow", 2001, 10, 10, 700, 450, 
+auto chart = CreateWaterfallChartWithData("cash_flow", 10, 10, 700, 450,
                                           cashFlow, "Monthly Cash Flow Analysis");
 
 // Configure appearance
-chart->SetConnectionLineStyle(ConnectionStyle::Dotted);
-chart->SetBarStyle(BarStyle::Rounded);
+using WaterfallChart = UltraCanvasWaterfallChartElement;
+chart->SetConnectionLineStyle(WaterfallChart::ConnectionStyle::Dotted);
+chart->SetBarStyle(WaterfallChart::BarStyle::Rounded);
 chart->SetShowCumulativeLabels(true);
 ```
 
@@ -223,30 +220,22 @@ std::shared_ptr<UltraCanvasWaterfallChartElement> CreateWaterfallChartWithData(
 ### Main Render Method
 
 ```cpp
-void RenderChart(IRenderContext* ctx) override {
-    // 1. Draw background and grid
-    DrawCommonBackground(ctx);
-    if (showGrid) DrawGrid(ctx);
-    DrawAxes(ctx);
-    
-    // 2. Draw waterfall bars
-    DrawWaterfallBars(ctx);
-    
-    // 3. Draw connecting lines
-    if (enableConnectorLines) {
-        DrawConnectionLines(ctx);
-    }
-    
-    // 4. Draw value labels
-    if (showValueLabels || showCumulativeLabels) {
-        DrawValueLabels(ctx);
-    }
-}
+void RenderChart(IRenderContext* ctx) override;
 ```
+
+`UltraCanvasChartElementBase::Render()` draws the empty state when there is
+no data; otherwise it updates the rendering cache, draws the common
+background and then calls `RenderChart()`, which:
+
+1. draws the waterfall bars;
+2. draws the connecting lines, when connector lines are enabled and the
+   connection style is not `ConnectionStyle::NoneStyle`;
+3. draws the value labels, when value or cumulative labels are shown.
 
 ### Rendering Cache
 
-The chart maintains an internal cache for optimized rendering:
+The chart keeps a private cache (not part of the public API) for optimized
+rendering:
 
 ```cpp
 struct WaterfallRenderData {
@@ -264,37 +253,35 @@ struct WaterfallRenderData {
 
 ### Tooltips
 
-Automatic tooltip generation on hover:
+Automatic tooltip generation on hover. The tooltip shows:
 
-```cpp
-// Tooltip content includes:
-- Label/category name
-- Change value (with +/- sign)
-- Cumulative total
-- Category (if specified)
-- Special labels for totals/subtotals
-```
+- the bar's label;
+- for a regular bar, the change value (with a `+` sign when positive) and
+  the cumulative total;
+- for a subtotal or total bar, `Subtotal:` or `Total:` with the cumulative
+  value;
+- the category, when the data point has one.
 
 ### Mouse Interaction
 
 ```cpp
 bool HandleChartMouseMove(const Point2Di& mousePos) override;
-size_t GetBarIndexAtPosition(const Point2Di& mousePos) const;
-std::string GenerateWaterfallTooltip(size_t index) const;
 ```
+
+The override finds the bar under the mouse, builds the tooltip text and
+shows it through `UltraCanvasTooltipManager`; it hides the tooltip when the
+mouse leaves the bars. Hit testing and tooltip text are private helpers.
 
 ## Value Formatting
 
-The chart includes intelligent value formatting:
+Value labels and tooltips format numbers with a private helper:
 
-```cpp
-std::string FormatValue(double value) const {
-    // Values >= 1M: "1.5M"
-    // Values >= 1K: "1.5K"  
-    // Integers: "100"
-    // Decimals: "10.5"
-}
-```
+| Value | Shown as |
+|-------|----------|
+| 1,000,000 or more (absolute) | `1.5M` |
+| 1,000 or more (absolute) | `1.5K` |
+| Whole number | `100` |
+| Other | `10.5` (one decimal) |
 
 ## Default Styling
 
@@ -376,6 +363,7 @@ The WaterfallChartElement integrates seamlessly with:
 |---------|------|---------|
 | 1.0.0 | 2025-09-20 | Initial implementation |
 | 1.0.1 | 2025-09-29 | Added tooltip support, improved rendering cache |
+| 1.0.2 | 2026-10-07 | Docs: nested enum names (`NoneStyle`), real factory signature, private helpers removed from the API listing |
 
 ## Dependencies
 
