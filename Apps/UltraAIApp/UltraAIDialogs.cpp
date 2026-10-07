@@ -532,7 +532,10 @@ TranslatorDialog::TranslatorDialog()
         "supports it.") {}
 
 long TranslatorDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListTranslatorProviders());
+    AddProviderAndModelRow(y, "tr", ListTranslatorProviders(),
+                           "Model (optional; the provider's chat model)",
+                           "e.g. claude-sonnet-4-5 or qwen2.5:7b",
+                           modelInput_);
 
     AddDialogElement(MakeLabel("tr-text-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
@@ -581,6 +584,9 @@ long TranslatorDialog::BuildForm(long y) {
 void TranslatorDialog::RunCapability() {
     TranslatorConfig cfg;
     cfg.providerId = SelectedProviderId();
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
 
     TranslateRequest req;
     req.texts = SplitLines(input1_ ? input1_->GetText() : "");

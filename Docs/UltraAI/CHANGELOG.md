@@ -6,6 +6,10 @@
   and a Default / Formal / Informal picker, and the run happens off the UI
   thread like the other dialogs, since a chat model behind the translator
   takes seconds per batch where the mock answered at once.
+- **The Translation dialog names the model.** The provider row carries a
+  model field, as the image, video and speech dialogs do: the translator
+  providers translate through their chat models, and until now only the
+  provider's default model could be used.
 
 #### 2026-10-07 *0.1.10*
 - **Translation works through every chat model.** `ITranslator` had only the
