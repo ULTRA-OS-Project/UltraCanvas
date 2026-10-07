@@ -123,7 +123,7 @@ namespace UltraCanvas {
 // ===== MAIN BUTTON CLASS =====
     class UltraCanvasButton : public UltraCanvasUIElement {
     private:
-        std::string text = "Button";
+        std::string text;
         // Byte offset in `text` of the underlined mnemonic character, -1 = none.
         int mnemonicIndex = -1;
         std::shared_ptr<UCImage> icon;
@@ -148,13 +148,17 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
+        // The label defaults to none. It used to be "Button", which an
+        // icon-only button left out of its arguments then carried: laid out
+        // as icon + text, its icon sat at the left padding instead of in the
+        // middle.
         UltraCanvasButton(const std::string& identifier,
                           float x, float y, float w, float h,
-                          const std::string& buttonText = "Button");
+                          const std::string& buttonText = "");
 
         UltraCanvasButton(const std::string& identifier,
                           float w, float h,
-                          const std::string& buttonText = "Button")
+                          const std::string& buttonText = "")
             : UltraCanvasButton(identifier, -1, -1, w, h, buttonText) {};
 
         UltraCanvasButton(const std::string& identifier, const std::string& buttonText)
@@ -300,7 +304,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
             const std::string& identifier, float x, float y, float w, float h,
-            const std::string& text = "Button") {
+            const std::string& text = "") {
         return std::make_shared<UltraCanvasButton>(identifier, x, y, w, h, text);
     }
 

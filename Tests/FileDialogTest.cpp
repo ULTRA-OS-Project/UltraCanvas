@@ -23,8 +23,8 @@
 // The naming rule is checked on its own and always runs; the dialog itself
 // is read back from the composited pixels, so that part runs under Xvfb and
 // skips - rather than fails - without a display.
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.2.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -156,12 +156,14 @@ struct SaveRun {
     std::shared_ptr<std::string> accepted = std::make_shared<std::string>();
 };
 
-SaveRun ShowSave(const std::string& folder, const std::string& defaultName, int selectedType = 0) {
+SaveRun ShowSave(const std::string& folder, const std::string& defaultName, int selectedType = 0,
+                 const std::string& defaultExtension = "") {
     FileDialogConfig config;
     config.title = "Save test";
     config.dialogType = FileDialogType::Save;
     config.initialDirectory = folder;
     config.defaultFileName = defaultName;
+    config.defaultExtension = defaultExtension;
     config.filters = ImageTypes();
     config.selectedFilterIndex = selectedType;
     SaveRun run;
@@ -207,6 +209,15 @@ int main() {
         TEST("A JPEG name finds the JPEG type", FindFilterForName("holiday.JPEG", types) == 1);
         TEST("A name of no offered type finds none", FindFilterForName("notes.txt", types) == -1);
         TEST("The all-files type is never the one found", FindFilterForName("notes", types) == -1);
+    }
+
+    std::cerr << "\n--- Icon buttons ---" << std::endl;
+    {
+        // The Up button is made without a label; it used to default to
+        // "Button", which laid its arrow out beside text, off centre.
+        UltraCanvasButton plain("plain", 0, 0, 28, 28);
+        TEST("A button made without a label has none", plain.GetText().empty());
+        TEST("... nor one from CreateButton", CreateButton("made", 0, 0, 28, 28)->GetText().empty());
     }
 
     if (!std::getenv("DISPLAY")) {
@@ -341,6 +352,21 @@ int main() {
         PressEnter(run, "photo.png");
         TEST("An extension of another type gives way to the chosen one's",
              *run.accepted == expect("photo.jpg"));
+
+        // All files names no extension: a bare name stays bare, unless the
+        // caller gave a default extension (FileDialogConfig::defaultExtension).
+        run = ShowSave(folder, "untitled", 3);
+        PressEnter(run, "photo");
+        TEST("All files leaves a bare name bare", *run.accepted == expect("photo"));
+        run = ShowSave(folder, "untitled", 3, "png");
+        PressEnter(run, "photo");
+        TEST("... unless the dialog has a default extension", *run.accepted == expect("photo.png"));
+        run = ShowSave(folder, "untitled", 3, "png");
+        PressEnter(run, "notes.txt");
+        TEST("... which a name with an extension does not get", *run.accepted == expect("notes.txt"));
+        run = ShowSave(folder, "untitled", 1, "png");
+        PressEnter(run, "photo");
+        TEST("... nor one the chosen type gave one", *run.accepted == expect("photo.jpg"));
 
         run = ShowSave(folder, "holiday.jpg");
         TEST("The dialog opens on the type of the name it suggests",

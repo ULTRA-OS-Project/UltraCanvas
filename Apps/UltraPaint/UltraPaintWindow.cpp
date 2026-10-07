@@ -1282,10 +1282,9 @@ void UltraPaintWindow::CmdSaveAs() {
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        std::string p = path;
-        if (PathFromUtf8(p).extension().empty()) p += ".png";
-        SaveToPath(p);
+        SaveToPath(path);
     });
 }
 
