@@ -13,6 +13,11 @@
   file in ArtCreator gives back the line with its profile or brush, still
   editable. Also in the framework's SVG writer
   (`Docs/UltraCanvas/changelog.d/svg-export-width-profiles-brushes.md`).
+- **A width profile shows on a straight line.** A taper or thick-thin
+  profile on a line drawn as a single straight segment was drawn at its end
+  widths only - a mid-way bulge came out as an even thin line, on screen and
+  in every export. The framework now follows the profile along the segment
+  (`Docs/UltraCanvas/changelog.d/width-profile-straight-segments.md`).
 
 #### 2026-10-06 *0.6.6*
 - **SVG files styled with CSS open in their colours.** A drawing that sets

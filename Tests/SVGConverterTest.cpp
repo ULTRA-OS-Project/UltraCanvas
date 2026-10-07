@@ -663,9 +663,7 @@ int main(int argc, char** argv) {
         gdoc->Size = Size2Dd{400, 300};
         auto gl = gdoc->AddLayer("Gallery");
         auto taper = std::make_shared<VectorPath>();
-        // A vertex mid-way: the band follows the profile at the vertices of
-        // the flattened path (VariableWidthOutline), as the renderer draws it.
-        taper->Path = ParsePathString("M 40 60 L 200 60 L 360 60");
+        taper->Path = ParsePathString("M 40 60 L 360 60");
         StrokeData taperStroke;
         taperStroke.Fill = Color(255, 0, 0, 255);
         taperStroke.Width = 6.0f;
