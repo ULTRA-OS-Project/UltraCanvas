@@ -1,7 +1,9 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
+// Version: 3.4.0 - SliderHandleShape is an enum class: Circle, Square, Triangle and
+//                 Diamond no longer land in namespace UltraCanvas
 // Version: 3.3.1
-// Last Modified: 2026-07-02
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -54,7 +56,7 @@ namespace UltraCanvas {
         Both            // Both handles (for special operations)
     };
 
-    enum SliderHandleShape {
+    enum class SliderHandleShape {
         Circle,
         Square,
         Triangle,

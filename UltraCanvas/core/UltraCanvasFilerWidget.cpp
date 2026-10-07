@@ -106,7 +106,8 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
-#include "Documents/eBook/EPUBEngine.h"     // EPUB covers for the thumbnails
+#include "Documents/eBook/EPUBEngine.h"     // e-book covers for the thumbnails
+#include "Documents/eBook/MOBIEngine.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
@@ -927,8 +928,8 @@ namespace UltraCanvas {
         // unpacks: reading their head yields a few bytes of container magic,
         // which is neither a page of text nor an honest "no preview". Naming
         // them in one place keeps the format lists' "this build cannot render
-        // it" and the extractor's answer the same fact. (An EPUB's tile is
-        // its cover instead - EBookCoverReadable below.)
+        // it" and the extractor's answer the same fact. (An EPUB's or a
+        // Kindle book's tile is its cover instead - EBookCoverReadable below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
                 "xls",      // OLE2 workbook (the reader covers xlsx / ods)
@@ -940,13 +941,18 @@ namespace UltraCanvas {
 
         // ===== E-BOOK COVERS =====
         // A book shows its cover, the way Finder shows a folder of books: the
-        // picture the book's package declares, which the EPUB engine reads
-        // out of the archive without unpacking a chapter - container.xml, the
-        // package document and the cover, three entries whatever the size of
-        // the book. EPUB only: the Mobipocket / Kindle files keep their type
-        // glyph, and FB2 its page of text.
+        // picture the book declares, which the e-book engines read without
+        // unpacking a chapter. An EPUB costs three archive entries
+        // (container.xml, the package document, the cover), a Mobipocket /
+        // Kindle book its record list, record 0 and the cover record -
+        // whatever the size of the book, and whether or not its text is
+        // DRM-protected. FB2 keeps its page of text.
+        bool IsKindleExtension(const std::string& ext) {
+            return ext == "mobi" || ext == "prc" || ext == "azw" || ext == "azw3";
+        }
+
         bool EBookCoverReadable(const std::string& ext) {
-            return ext == "epub";
+            return ext == "epub" || IsKindleExtension(ext);
         }
 
         // A cover is drawn as it is, but a white one would melt into the
@@ -1110,16 +1116,19 @@ namespace UltraCanvas {
             return img->GetPixmap(w, h, fit, scale);
         }
 
-        // ===== E-BOOK COVER (EPUB) =====
+        // ===== E-BOOK COVER (EPUB, MOBI / KINDLE) =====
         // The cover the book declares, decoded like any other picture. Runs
-        // on the thumbnail workers: ReadCoverImageFromFile owns its archive
+        // on the thumbnail workers: each ReadCoverImageFromFile owns its file
         // and parser, so any number of books can be read at once.
         std::shared_ptr<UCPixmap> RenderEBookCoverPixmap(const std::string& path,
                                                          int w, int h,
                                                          ImageFitMode fit,
                                                          float scale) {
-            if (!EBookCoverReadable(LowerExtension(path))) return nullptr;
-            std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(path);
+            const std::string ext = LowerExtension(path);
+            if (!EBookCoverReadable(ext)) return nullptr;
+            std::vector<uint8_t> bytes = IsKindleExtension(ext)
+                    ? MOBIEngine::ReadCoverImageFromFile(path)
+                    : EPUBEngine::ReadCoverImageFromFile(path);
             if (bytes.empty()) return nullptr;
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
@@ -10651,8 +10660,8 @@ namespace UltraCanvas {
             // once and the tile keeps its glyph.
             case FilerPreviewType::Fonts:
                 return e.path;
-            // A book's cover, read out of the EPUB. The other documents have
-            // no image to decode.
+            // A book's cover, read out of the EPUB or Kindle file. The other
+            // documents have no image to decode.
             case FilerPreviewType::Docs:
                 return EBookCoverReadable(NormalizedFormatExtension(e.extension))
                                ? e.path : std::string{};

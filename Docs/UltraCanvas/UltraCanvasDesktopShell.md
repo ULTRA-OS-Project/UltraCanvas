@@ -165,4 +165,7 @@ fallback when it is absent.
   [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
   elements the desktop's bars are made of.
 - `WindowType::Desktop` in `UltraCanvasWindow.h` — the screen-sized window at
-  the bottom of the stack a desktop draws into.
+  the bottom of the stack a desktop draws into; `WindowType::Notification`
+  the toast above everything that never takes the focus, which
+  [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
+  notifications in.

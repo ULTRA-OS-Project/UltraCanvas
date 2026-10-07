@@ -1,7 +1,8 @@
 // include/UltraCanvasPasswordStrengthMeter.h
 // Visual password strength indicator component
+// Version: 1.1.1 - the usage notes drop the numeric id the factories do not take
 // Version: 1.1.0
-// Last Modified: 2026-05-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -168,15 +169,15 @@ namespace UltraCanvas {
 === USAGE EXAMPLES ===
 
 // Create password input
-auto passwordInput = CreatePasswordInput("password", 1001, 10, 10, 300, 30);
+auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
 
 // Create bar-style strength meter
-auto strengthMeter = CreateBarStrengthMeter("strength", 1002, 10, 50, 300, 20);
+auto strengthMeter = CreateBarStrengthMeter("strength", 10, 50, 300, 20);
 strengthMeter->LinkToInput(passwordInput.get());
 strengthMeter->SetShowLabel(true);
 
 // Create circular strength meter
-auto circularMeter = CreateCircularStrengthMeter("circular", 1004, 320, 10, 80);
+auto circularMeter = CreateCircularStrengthMeter("circular", 320, 10, 80);
 circularMeter->LinkToInput(passwordInput.get());
 
 // Custom configuration

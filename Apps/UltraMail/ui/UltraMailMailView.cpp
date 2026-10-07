@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.14.0 - OpenMessage
 // Version: 0.13.0 - a row whose badge has no icon asks for it when painted
 //                   (lazy sender icons); IconCached shows it when it arrives
 // Version: 0.12.0 - folders by the server's own separator ("INBOX.Drafts" is
@@ -955,6 +956,23 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
 
 void MailView::Reload() {
     RebuildList();
+}
+
+bool MailView::OpenMessage(const std::string& accountId, const std::string& folder, int64_t uid) {
+    if (accountId != curAccount_) ShowAccount(accountId);
+    if (folder != curFolder_) ShowFolder(accountId, folder);
+    if (!list_) return false;
+    for (std::size_t i = 0; i < messages_.size(); ++i) {
+        if (messages_[i].uid != uid || messages_[i].folder != folder) continue;
+        const int row = static_cast<int>(i);
+        programmaticSelection_ = true;
+        if (auto sel = list_->GetSelection()) sel->Select(row);
+        programmaticSelection_ = false;
+        list_->EnsureRowVisible(row);
+        SelectRowImpl(row, /*markRead=*/true);
+        return true;
+    }
+    return false;
 }
 
 void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,

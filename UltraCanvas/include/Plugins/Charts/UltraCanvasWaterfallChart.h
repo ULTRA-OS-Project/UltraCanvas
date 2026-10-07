@@ -1,7 +1,10 @@
 // include/Plugins/Charts/UltraCanvasWaterfallChart.h
 // Waterfall chart element with cumulative flow visualization and customizable styling
+// Version: 1.1.0 - LoadFromArray(ChartDataPoint) and LoadFromCSV load steps; the
+//                  running totals are worked out once per change, not per read;
+//                  SetShowValueLabels is the base class's
 // Version: 1.0.0
-// Last Modified: 2025-09-20
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,11 +91,22 @@ namespace UltraCanvas {
         }
 
         bool SupportsStreaming() const override { return false; }
-        void LoadFromCSV(const std::string& filePath) override {}
-        void LoadFromArray(const std::vector<ChartDataPoint>& data) override {}
+
+        // Lines "label,change[,type]", type being "total" or "subtotal" for
+        // those bars (empty for a change; a total's change may be left
+        // empty). Other lines without a number for the change - a header, a
+        // blank line - are skipped. Dot decimals. Throws std::runtime_error
+        // when the file cannot be opened, as ChartDataVector::LoadFromCSV does.
+        void LoadFromCSV(const std::string& filePath) override;
+
+        // One change step per point: its label, y as the change, and its
+        // category and colour (when not transparent). Add totals and
+        // subtotals with AddWaterfallPoint.
+        void LoadFromArray(const std::vector<ChartDataPoint>& data) override;
 
     private:
         void RecalculateCumulativeValues() {
+            isNeedCalculateCumulative = false;
             double cumulative = 0.0;
             for (auto& point : waterfallData) {
                 if (point.isTotal) {
@@ -143,8 +157,8 @@ namespace UltraCanvas {
         float barSpacing = 0.2f;        // Space between bars as ratio of bar width
         BarStyle barStyle = BarStyle::Standard;
 
-        // Labels and text
-        bool showValueLabels = true;
+        // Labels and text (the change labels are the base class's
+        // showValueLabels / SetShowValueLabels, on by default)
         bool showCumulativeLabels = false;
         Color labelTextColor = Color(33, 33, 33, 255);
         float labelFontSize = 10.0f;
@@ -226,11 +240,6 @@ namespace UltraCanvas {
         void SetBarSpacing(float spacing) {
             barSpacing = std::clamp(spacing, 0.0f, 0.8f);
             renderCache.isValid = false;
-            RequestRedraw();
-        }
-
-        void SetShowValueLabels(bool show) {
-            showValueLabels = show;
             RequestRedraw();
         }
 

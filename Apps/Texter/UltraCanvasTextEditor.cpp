@@ -835,7 +835,7 @@ namespace {
             cs.forceShowHorizontalScrollbar = false;
             toolbarContainer->SetContainerStyle(cs);
         }
-        toolbarContainer->layout.SetFlexRow();
+        toolbarContainer->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         toolbarContainer->layout.SetFlexGap(0);
         toolbarContainer->AddChild(toolbar); toolbar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -4142,7 +4142,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
         // Replace default layout with custom vertical layout
-        aboutDialog->layout.SetFlexColumn();
+        aboutDialog->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         aboutDialog->layout.SetFlexGap(4);
         aboutDialog->SetPadding(20);
 

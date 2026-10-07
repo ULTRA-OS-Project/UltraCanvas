@@ -277,7 +277,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
-  unread badges on the Toolbox tiles
+  unread badges on the Toolbox tiles. *Built:* the system notification -
+  posted through UltraMessage and drawn by the desktop's own notification
+  service, a click opens the mail (Settings > Display > Notifications)
 - Keyboard shortcuts (N new, R reply, Del delete, Ctrl+Enter send, …)
 - Dark/light theme following the framework theme, HiDPI-ready
 

@@ -392,7 +392,9 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           sudo apt-get install -y libudev-dev libcups2-dev libsane-dev
-          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest,
+          # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
+          # over ipp://, and over ipps:// with the self-signed certificate it makes,
+          # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
           # and the DNS-SD daemon it needs to start at all (even with -r off).
           # The test skips without them, and "Run unit tests" turns that skip
           # into a failure, so it cannot quietly stop running.
@@ -943,13 +945,14 @@ jobs:
       # through UltraCanvasFilerWidget, which on Windows goes through the
       # UTF-16 file APIs - and through the runner's code page 1252 wherever a
       # conversion was missed. The host-icons test asks the real shell for
-      # its icons, and the shortcut test reads .lnk files on the system they
-      # come from. ULTRACANVAS_BUILD_FILER_TESTS builds the four without the
-      # Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # its icons, the shortcut test reads .lnk files on the system they
+      # come from, and the history test keeps UltraFiler's recently-used lists
+      # under %APPDATA%. ULTRACANVAS_BUILD_FILER_TESTS builds the five without
+      # the Linux-only BUILD_TESTS; Linux runs them in the full pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux
@@ -994,6 +997,22 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -IUltraCanvas/include \
               Tests/PathUtf8Test.cpp -o build/PathUtf8Test.exe
           ./build/PathUtf8Test.exe
+
+      # UCZipPackageReader (CorelDRAW thumbnails, ODT/DOCX/XLSX import) opens
+      # its file through OpenFileUtf8. miniz's own open, used before, made a
+      # Thai or emoji name depend on the toolchain, and on this one opened
+      # with _wfopen_s, which locks other programs out of writing the file
+      # while it is read - the test writes it from a second handle to prove
+      # that is gone. Compiled by hand like PathUtf8Test, on code page 1252.
+      - name: Run ZipPackageTest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          clang -c UltraCanvas/third_party/miniz/miniz.c -o build/ZipPackageTest-miniz.o
+          clang++ -std=c++20 -Wall -Wextra -IUltraCanvas/include \
+              -IUltraCanvas/third_party/miniz \
+              Tests/ZipPackageTest.cpp UltraCanvas/core/UltraCanvasZipPackage.cpp \
+              build/ZipPackageTest-miniz.o -o build/ZipPackageTest.exe
+          ./build/ZipPackageTest.exe
 
       # ippeveprinter stops with "Unable to initialize DNS-SD" when no daemon is
       # running, so IODevicePrinterIPPLiveTest needs Avahi up. Installing the

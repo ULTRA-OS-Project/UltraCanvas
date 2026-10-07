@@ -1,7 +1,7 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV)
-// Version: 1.0.0
-// Last Modified: 2026-01-09
+// Version: 1.0.1
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include <stdexcept>   // predeclare std::runtime_error for libspecific/Cairo/ImageCairo.h
@@ -16,6 +16,7 @@
 #include <iomanip>
 #include <locale>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <cctype>
 #include <ctime>
@@ -232,6 +233,8 @@ class ODSLoader {
 private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
+    // Ours: miniz reads the archive through it but never closes it.
+    std::FILE* file_ = nullptr;
     std::map<std::string, CellStyle> styles_;
     // Number/currency/date/percentage formats keyed by their ODF data-style
     // name (e.g. "N110"), referenced from a cell style's style:data-style-name.
@@ -260,6 +263,7 @@ public:
 
     ~ODSLoader() {
         mz_zip_reader_end(&zip_);
+        if (file_) std::fclose(file_);
     }
 
     const std::string& GetError() const { return error_; }
@@ -268,7 +272,11 @@ public:
         // Open ZIP archive. ODS files are ZIP containers, so a failure here is
         // either a file-access problem (locked / no permission / missing) or the
         // file simply is not a valid OpenDocument archive — tell them which.
-        if (!mz_zip_reader_init_file(&zip_, filePath.c_str(), 0)) {
+        // Opened through OpenFileUtf8, not miniz's own fopen: that converts a
+        // UTF-8 name only under MSVC and 64-bit MinGW, and there opens with
+        // _wfopen_s, which locks other programs out of writing the file.
+        file_ = OpenFileUtf8(filePath, "rb");
+        if (!file_ || !mz_zip_reader_init_cfile(&zip_, file_, 0, 0)) {
             std::string openError = CSVDescribeOpenError(filePath);
             error_ = openError.empty()
                 ? "The file is not a valid OpenDocument spreadsheet (.ods): " + filePath

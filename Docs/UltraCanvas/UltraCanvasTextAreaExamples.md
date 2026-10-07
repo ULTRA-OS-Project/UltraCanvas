@@ -5,9 +5,11 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.0  
-**Last Modified:** 2024-12-20  
+**Version:** 2.0.1  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
+
+<!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
 
 ## Class Hierarchy
 ```
@@ -32,12 +34,13 @@ UltraCanvasUIElement
 
 ## Constructor
 ```cpp
-UltraCanvasTextArea(const std::string& name, int id, int x, int y, int width, int height)
+UltraCanvasTextArea(const std::string& name, float x, float y, float width, float height);
+UltraCanvasTextArea(const std::string& name, float width, float height);   // position -1, -1
+explicit UltraCanvasTextArea(const std::string& name);                     // size -1, -1 (layout decides);
 ```
 
 ### Parameters
 - `name`: Unique identifier name for the text area
-- `id`: Numeric identifier for the control
 - `x`: X-coordinate position
 - `y`: Y-coordinate position
 - `width`: Width of the text area
@@ -52,23 +55,25 @@ The `TextAreaStyle` structure encapsulates all visual properties:
 struct TextAreaStyle {
     // Font properties
     FontStyle fontStyle;
-    int lineHeight;
+    FontStyle fixedFontStyle;
+    float lineHeight;
     Color fontColor;
     
     // Background and borders
     Color backgroundColor;
     Color borderColor;
-    int borderWidth;
-    int padding;
+    float textPadding;
     
     // Selection and cursor
     Color selectionColor;
     Color currentLineHighlightColor;
     Color cursorColor;
+
+    // Placeholder hint shown when the document is empty
+    Color placeholderColor = Color(150, 150, 150, 255);
     
     // Line numbers
     bool showLineNumbers;
-    int lineNumbersWidth;
     Color lineNumbersColor;
     Color lineNumbersBackgroundColor;
     
@@ -110,10 +115,13 @@ struct TextAreaStyle {
 ### TokenStyle Structure
 ```cpp
 struct TokenStyle {
-    Color color;
-    bool bold;
-    bool italic;
-    bool underline;
+    Color color = Color(0, 0, 0);
+    bool bold = false;
+    bool italic = false;
+    bool underline = false;
+
+    TokenStyle() = default;
+    TokenStyle(const Color &c, bool b = false, bool i = false, bool u = false);
 };
 ```
 
@@ -123,61 +131,62 @@ struct TokenStyle {
 
 #### SetText
 ```cpp
-void SetText(const std::string& text)
+void SetText(const std::string& text, bool runNotifications = true);
 ```
-Sets the entire content of the text area.
+Sets the entire content of the text area. Pass `runNotifications = false` to
+skip the change callbacks.
 
 #### GetText
 ```cpp
-std::string GetText() const
+std::string GetText() const;
 ```
 Returns the complete text content.
 
 #### InsertText
 ```cpp
-void InsertText(const std::string& text)
+void InsertText(const std::string& text);
 ```
 Inserts text at the current cursor position.
 
-#### InsertCharacter
+#### InsertCodepoint
 ```cpp
-void InsertCharacter(char ch)
+void InsertCodepoint(char32_t codepoint);
 ```
-Inserts a single character at cursor position.
+Inserts a single Unicode character at cursor position.
 
 #### InsertNewLine
 ```cpp
-void InsertNewLine()
+void InsertNewLine();
 ```
 Inserts a line break at cursor position.
 
 #### InsertTab
 ```cpp
-void InsertTab()
+void InsertTab();
 ```
 Inserts a tab character or spaces based on tab settings.
 
 #### DeleteCharacterBackward
 ```cpp
-void DeleteCharacterBackward()
+void DeleteCharacterBackward();
 ```
 Deletes character before cursor (backspace behavior).
 
 #### DeleteCharacterForward
 ```cpp
-void DeleteCharacterForward()
+void DeleteCharacterForward();
 ```
 Deletes character after cursor (delete key behavior).
 
 #### DeleteSelection
 ```cpp
-void DeleteSelection()
+void DeleteSelection();
 ```
 Removes currently selected text.
 
 #### Clear
 ```cpp
-void Clear()
+void Clear();
 ```
 Removes all text content.
 
@@ -185,105 +194,116 @@ Removes all text content.
 
 #### MoveCursorLeft
 ```cpp
-void MoveCursorLeft(bool selecting = false)
+void MoveCursorLeft(bool selecting = false);
 ```
 Moves cursor one character left, optionally selecting text.
 
 #### MoveCursorRight
 ```cpp
-void MoveCursorRight(bool selecting = false)
+void MoveCursorRight(bool selecting = false);
 ```
 Moves cursor one character right, optionally selecting text.
 
 #### MoveCursorUp
 ```cpp
-void MoveCursorUp(bool selecting = false)
+void MoveCursorUp(bool selecting = false);
 ```
 Moves cursor one line up, maintaining column position.
 
 #### MoveCursorDown
 ```cpp
-void MoveCursorDown(bool selecting = false)
+void MoveCursorDown(bool selecting = false);
 ```
 Moves cursor one line down, maintaining column position.
 
 #### MoveCursorToLineStart
 ```cpp
-void MoveCursorToLineStart(bool selecting = false)
+void MoveCursorToLineStart(bool selecting = false);
 ```
 Moves cursor to beginning of current line.
 
 #### MoveCursorToLineEnd
 ```cpp
-void MoveCursorToLineEnd(bool selecting = false)
+void MoveCursorToLineEnd(bool selecting = false);
 ```
 Moves cursor to end of current line.
 
 #### MoveCursorToStart
 ```cpp
-void MoveCursorToStart(bool selecting = false)
+void MoveCursorToStart(bool selecting = false);
 ```
 Moves cursor to beginning of document.
 
 #### MoveCursorToEnd
 ```cpp
-void MoveCursorToEnd(bool selecting = false)
+void MoveCursorToEnd(bool selecting = false);
 ```
 Moves cursor to end of document.
 
 #### SetCursorPosition
 ```cpp
-void SetCursorPosition(int position)
+void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false);
 ```
-Sets cursor to specific character position.
+Sets the cursor to a line and column (`pos.lineIndex`, `pos.columnIndex`, both
+0-based; the column counts codepoints). With `selecting` set, the selection is
+extended to `pos` from its anchor, as Shift+arrow does: the anchor is the start
+of the current selection, or the cursor's previous place when nothing is
+selected. Without it the selection is left unchanged; call `ClearSelection()`
+to drop it.
+
+```cpp
+textArea->SetCursorPosition({0, 2});           // caret after "he" in "hello"
+textArea->SetCursorPosition({0, 5}, true);     // selects "llo"
+```
 
 #### GetCursorPosition
 ```cpp
-int GetCursorPosition() const
+LineColumnIndex GetCursorPosition() const;
 ```
-Returns current cursor position as character index.
+Returns the current cursor position as a line / column pair.
 
 ### Selection Management
 
 #### SelectAll
 ```cpp
-void SelectAll()
+void SelectAll();
 ```
 Selects entire text content.
 
 #### SelectLine
 ```cpp
-void SelectLine(int lineIndex)
+void SelectLine(int lineIndex);
 ```
 Selects specified line by index.
 
 #### SelectWord
 ```cpp
-void SelectWord()
+void SelectWord();
 ```
 Selects word at cursor position.
 
 #### SetSelection
 ```cpp
-void SetSelection(int start, int end)
+void SetSelection(int startGrapheme, int endGrapheme);
+void SetSelection(const LineColumnIndex& start, const LineColumnIndex& end);
 ```
-Sets selection range by character indices.
+Sets the selection range by grapheme indices, or by line / column positions.
 
 #### ClearSelection
 ```cpp
-void ClearSelection()
+void ClearSelection();
 ```
 Removes current selection.
 
 #### HasSelection
 ```cpp
-bool HasSelection() const
+bool HasSelection() const;
 ```
 Returns true if text is selected.
 
 #### GetSelectedText
 ```cpp
-std::string GetSelectedText() const
+std::string GetSelectedText() const;
 ```
 Returns currently selected text.
 
@@ -291,19 +311,19 @@ Returns currently selected text.
 
 #### CopySelection
 ```cpp
-void CopySelection()
+void CopySelection();
 ```
 Copies selected text to clipboard.
 
 #### CutSelection
 ```cpp
-void CutSelection()
+void CutSelection();
 ```
 Cuts selected text to clipboard.
 
 #### PasteClipboard
 ```cpp
-void PasteClipboard()
+void PasteClipboard();
 ```
 Pastes clipboard content at cursor position.
 
@@ -311,25 +331,26 @@ Pastes clipboard content at cursor position.
 
 #### SetHighlightSyntax
 ```cpp
-void SetHighlightSyntax(bool on)
+void SetHighlightSyntax(bool on);
 ```
 Enables or disables syntax highlighting.
 
 #### SetProgrammingLanguage
 ```cpp
-void SetProgrammingLanguage(const std::string& language)
+void SetProgrammingLanguage(const std::string& language);
 ```
 Sets language for syntax highlighting (e.g., "cpp", "python", "javascript").
 
 #### SetProgrammingLanguageByExtension
 ```cpp
-void SetProgrammingLanguageByExtension(const std::string& extension)
+bool SetProgrammingLanguageByExtension(const std::string& extension);
 ```
 Auto-detects language from file extension (e.g., ".cpp", ".py", ".js").
+Returns whether a language was found.
 
 #### SetProgrammingLanguageForFile
 ```cpp
-bool SetProgrammingLanguageForFile(const std::string& filename, const std::string& text)
+bool SetProgrammingLanguageForFile(const std::string& filename, const std::string& text);
 ```
 Picks the language for a file being opened: a full-filename match first
 (`pom.xml`), then the extension. An extension two languages share - `.cls`
@@ -344,14 +365,14 @@ whether a language was set.
 
 #### SetReadOnly
 ```cpp
-void SetReadOnly(bool readOnly)
+void SetReadOnly(bool readOnly);
 ```
 Enables or disables read-only mode.
 
 #### SetDisplayOnly
 ```cpp
-void SetDisplayOnly(bool displayOnlyMode)
-bool IsDisplayOnly() const
+void SetDisplayOnly(bool displayOnlyMode);
+bool IsDisplayOnly() const;
 ```
 Turns the area into a pure viewer. Display-only implies read-only and, on top of
 that, takes the area out of the keyboard focus chain: `AcceptsFocus()` returns
@@ -369,25 +390,25 @@ viewer->SetText(logContents);
 
 #### SetWordWrap
 ```cpp
-void SetWordWrap(bool wrap)
+void SetWordWrap(bool wrap);
 ```
 Enables or disables word wrapping.
 
 #### SetHighlightCurrentLine
 ```cpp
-void SetHighlightCurrentLine(bool highlight)
+void SetHighlightCurrentLine(bool highlight);
 ```
 Enables or disables current line highlighting.
 
 #### SetShowLineNumbers
 ```cpp
-void SetShowLineNumbers(bool show)
+void SetShowLineNumbers(bool show);
 ```
 Shows or hides line numbers.
 
 #### SetTabSize
 ```cpp
-void SetTabSize(int size)
+void SetTabSize(int size);
 ```
 Sets number of spaces for tab character.
 
@@ -395,47 +416,47 @@ Sets number of spaces for tab character.
 
 #### SetStyle
 ```cpp
-void SetStyle(const TextAreaStyle& newStyle)
+void SetStyle(const TextAreaStyle& newStyle);
 ```
 Applies complete style configuration.
 
 #### SetFont
 ```cpp
-void SetFont(const std::string& family, float size)
+void SetFont(const std::string& family, float size);
 ```
 Sets font family and size.
 
 #### SetFontFamily
 ```cpp
-void SetFontFamily(const std::string& family)
+void SetFontFamily(const std::string& family);
 ```
 Sets font family name.
 
 #### SetFontSize
 ```cpp
-void SetFontSize(float size)
+void SetFontSize(float size);
 ```
 Sets font size in points.
 
 #### Color Settings
 ```cpp
-void SetTextColor(const Color& color)
-void SetBackgroundColor(const Color& color)
-void SetSelectionColor(const Color& color)
-void SetCursorColor(const Color& color)
+void SetTextColor(const Color& color);
+void SetBackgroundColor(const Color& color);   // inherited from UltraCanvasUIElement
+void SetSelectionColor(const Color& color);
+void SetCursorColor(const Color& color);
 ```
 
 ### Theme Application
 
 #### ApplyDarkTheme
 ```cpp
-void ApplyDarkTheme()
+void ApplyDarkTheme();
 ```
 Applies dark color scheme with syntax highlighting.
 
 #### ApplyLightTheme
 ```cpp
-void ApplyLightTheme()
+void ApplyLightTheme();
 ```
 Applies light color scheme with syntax highlighting.
 
@@ -443,27 +464,27 @@ Applies light color scheme with syntax highlighting.
 
 #### ScrollTo
 ```cpp
-void ScrollTo(int line)
+void ScrollTo(int line);
 ```
 Scrolls to specific line number.
 
 #### ScrollUp/ScrollDown
 ```cpp
-void ScrollUp(int lines = 1)
-void ScrollDown(int lines = 1)
+void ScrollUp(int lines = 1);
+void ScrollDown(int lines = 1);
 ```
 Scrolls vertically by specified number of lines.
 
 #### ScrollLeft/ScrollRight
 ```cpp
-void ScrollLeft(int chars = 1)
-void ScrollRight(int chars = 1)
+void ScrollLeft(int chars = 1);
+void ScrollRight(int chars = 1);
 ```
 Scrolls horizontally by specified number of characters.
 
 #### EnsureCursorVisible
 ```cpp
-void EnsureCursorVisible()
+void EnsureCursorVisible();
 ```
 Automatically scrolls to make cursor visible.
 
@@ -477,7 +498,7 @@ using TextChangedCallback = std::function<void(const std::string&)>;
 void SetOnTextChanged(TextChangedCallback callback);
 
 // Cursor position change
-using CursorPositionChangedCallback = std::function<void(int line, int column)>;
+using CursorPositionChangedCallback = std::function<void(const LineColumnIndex& pos)>;
 void SetOnCursorPositionChanged(CursorPositionChangedCallback callback);
 
 // Selection change
@@ -538,15 +559,14 @@ The text area handles the following events:
 - **Double-click**: Select word
 - **Triple-click**: Select line
 - **Drag**: Text selection
-- **Wheel**: Vertical scrolling
-- **Shift+Wheel**: Horizontal scrolling
+- **Wheel**: Vertical scrolling (3 lines per notch)
 
 ## Usage Example
 
 ```cpp
 // Create text area
 auto textArea = std::make_shared<UltraCanvasTextArea>(
-    "codeEditor", 1001, 10, 10, 800, 600
+    "codeEditor", 10, 10, 800, 600
 );
 
 // Configure for code editing
@@ -565,12 +585,12 @@ textArea->SetOnTextChanged([](const std::string& text) {
 });
 
 // Add cursor position callback
-textArea->SetOnCursorPositionChanged([](int line, int column) {
-    std::cerr << "Cursor at line " << line << ", column " << column << std::endl;
+textArea->SetOnCursorPositionChanged([](const LineColumnIndex& pos) {
+    std::cerr << "Cursor at line " << pos.lineIndex << ", column " << pos.columnIndex << std::endl;
 });
 
 // Add to window
-window->AddElement(textArea);
+window->AddChild(textArea);
 ```
 
 ## Advanced Features
@@ -642,14 +662,8 @@ strings and Python's triple-quoted strings are still coloured on their first
 line only. Fenced code blocks in Markdown mode are highlighted line by line
 without state.
 
-### Multiple Selection Support
-While the current implementation supports single selection, the architecture allows for future multi-cursor editing:
-
-```cpp
-// Future API (planned)
-textArea->AddCursor(position);
-textArea->AddSelection(start, end);
-```
+### Single Selection
+The text area has one cursor and one selection; there is no multi-cursor API.
 
 ### Performance Optimization
 The text area includes several optimizations:
@@ -663,14 +677,16 @@ The text area includes several optimizations:
 The text area can be integrated with other UltraCanvas components:
 
 ```cpp
-// Create with scrollbar
-auto scrollContainer = std::make_shared<UltraCanvasScrollContainer>();
-scrollContainer->SetContent(textArea);
+// The text area draws its own scrollbars, so it needs no scroll container.
+// Editor beside a preview, with a draggable divider:
+auto splitView = CreateHorizontalSplitPane("EditorSplit", 0, 0, 1000, 600);
+auto editorPane  = splitView->AddPane(1.0);
+auto previewPane = splitView->AddPane(1.0);
 
-// Add to split view
-auto splitView = std::make_shared<UltraCanvasSplitContainer>();
-splitView->SetLeftPane(textArea);
-splitView->SetRightPane(previewPanel);
+editorPane->layout.SetFlexColumn();
+editorPane->AddChild(textArea);
+textArea->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+previewPane->AddChild(previewPanel);
 ```
 
 ## Spell Checking
@@ -703,10 +719,17 @@ module knowing any markdown. **The hook runs on the worker thread** — capture 
 immutable snapshot rather than reading live element state:
 
 ```cpp
-options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) {
-    return snapshot->IsInsideCodeOrLinkOrMath(startByte, byteLength);
+// An immutable snapshot, taken on the UI thread and shared with the worker
+auto skip = std::make_shared<const std::vector<std::pair<size_t, size_t>>>(
+        FindNoSpellRanges(textArea->GetText()));
+options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+    return RangesOverlap(*skip, startByte, byteLength);
 };
 ```
+
+`FindNoSpellRanges` and `RangesOverlap` stand for your own markdown scanner
+(byte ranges of code, links and math) and an overlap test; UltraTexter's
+scanner is in `Apps/Texter/UltraCanvasMarkdownSpellRanges.h`.
 
 Those are byte ranges of the text being checked, so they go stale on the first
 edit. `onPrepareSpellCheck` is called with the exact text about to be checked,
@@ -715,9 +738,9 @@ which is where a content-dependent hook belongs:
 
 ```cpp
 textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
-    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    auto skip = std::make_shared<const std::vector<std::pair<size_t, size_t>>>(FindNoSpellRanges(text));
     options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
-        return SpanCoversRange(*skip, startByte, byteLength);
+        return RangesOverlap(*skip, startByte, byteLength);
     };
 };
 ```
@@ -730,9 +753,10 @@ right-click before the built-in popup; return `true` when handled, `false` to
 fall through to it:
 
 ```cpp
-textArea->onContextMenu = [this](const UCEvent& event) -> bool {
-    const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
-                                                              event.pointer.y);
+UltraCanvasTextArea* area = textArea.get();   // the area owns the hook: no shared_ptr cycle
+textArea->onContextMenu = [area](const UCEvent& event) -> bool {
+    const SpellError* hit = area->GetSpellErrorAtPosition(event.pointer.x,
+                                                          event.pointer.y);
     // ... build one menu: UltraCanvasSpellChecker::BuildSuggestionMenuItems(*hit, ...)
     //     first when hit is non-null, then Cut / Copy / Paste ...
     return true;
@@ -862,9 +886,9 @@ unescaped, and the document view typesets them.
 
 ## Related Components
 - **UltraCanvasTextInput**: Single-line text input
-- **UltraCanvasStyledText**: Rich text with formatting
-- **UltraCanvasCodeEditor**: Enhanced code editing features
-- **UltraCanvasFormulaEditor**: Mathematical formula editing
+- **UltraCanvasMarkdownDisplay**: Read-only markdown rendering (`Plugins/Text/UltraCanvasMarkdown.h`)
+- **SyntaxTokenizer**: The highlighter behind the text area (`UltraCanvasSyntaxTokenizer.h`)
+- **UltraCanvasSpellChecker**: The shared spell-check service
 
 ## Platform-Specific Notes
 - **Linux**: Uses X11/Wayland clipboard integration

@@ -1,4 +1,4 @@
-#### 2026-10-07 *0.10.34*
+#### 2026-10-07 *0.10.35*
 - **A click anywhere on an account tile switches to that account.** Clicking
   the other account's tile mostly did nothing: the window gave a click to
   the innermost element under the pointer and to no other, and the tile's
@@ -26,6 +26,33 @@
   the row's edges and its count answered. Fixed by the same framework change
   (a press nobody under the pointer took goes on to the row), with no change
   in UltraMail's code.
+
+#### 2026-10-07 *0.10.34*
+- **New mail shows a notification on the screen.** When a sync brings new
+  mail into an inbox, UltraMail posts one notification through UltraMessage,
+  the desktop's message channel, and the desktop's own notification service
+  draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
+  Action Center on Windows, Notification Center on macOS - with its look, its
+  sound and do-not-disturb. One
+  message names its sender and subject ("New mail from Ada Lovelace" / "The
+  engine notes"); several are counted, with the newest three listed ("3 new
+  messages": "Grace: Moth" ...). With more than one account it says which.
+  A click on it brings UltraMail to the front with the message open - or the
+  account's inbox, for several. Until now new mail only reached the desktop's
+  message feed, where nothing showed it on screen.
+  - Only news counts: unread mail the sync stored above the highest UID the
+    inbox held before it. An account's first download, mail already read on
+    another computer, a gap repaired in an old part of the mailbox and an inbox
+    fetched again from scratch raise no notification, and overlapping syncs
+    of one account (a timer sync while the inbox is opened) announce once.
+  - The notification is not added to the desktop's message centre: each
+    message is listed there already.
+  - Settings > Display > Notifications switches it off.
+  - Needs the framework's UltraMessage presenters (the changes pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md` and
+    `ultramessage-macos-presenter.md`). On macOS the notification carries
+    UltraMail's name and icon when UltraMail hosts the message channel and
+    runs from its bundle; macOS asks once to allow it.
 
 #### 2026-10-06 *0.10.33*
 - **The account wizard explains how to set up iCloud mail.** Apple takes only

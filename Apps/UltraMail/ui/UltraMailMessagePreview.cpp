@@ -386,13 +386,14 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     }
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
-    avatarHost_->layout.SetFlexRow();
+    avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(1)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     // Auto-height labels so each sizes to its own glyph line — a fixed-height
     // box cropped the second line regardless of the row height.
     from_ = Theme::MakeText("prevFrom", "", Theme::kSizeBody,
@@ -429,7 +430,8 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // what and why — never "blocked", because the message is still readable.
     warning_ = CreateContainer("prevWarning", 0, 0, 0, 0);
     warning_->layout.SetFlexColumn()
-                    .SetFlexGap(2);
+                    .SetFlexGap(2)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     warning_->SetPadding(8.0f, 10.0f);
     warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::kSizeBody,
                                     Theme::kTrustScam, FontWeight::Bold);

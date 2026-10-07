@@ -20,6 +20,13 @@
 // or Super+V anywhere - opens the quick panel on that history. The
 // UltraClipboard application edits the same history. Without a database in
 // the build the button shows the framework's in-memory list instead.
+//
+// It is also the screen for notifications: an UltraCanvasNotificationToastHost
+// on the UltraMessage bus draws, in the top-right corner beside the right bar,
+// every notification that nothing else draws - on ULTRA OS UltraMessage
+// itself is the notification server, so every application's notifications
+// (and UltraMail's new mail) would otherwise reach the message feed only.
+// Version: 0.2.0 - the notification toasts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -44,6 +51,7 @@
 #include <vector>
 
 namespace UltraCanvas {
+    class UltraCanvasNotificationToastHost;
     class UltraCanvasClipboardHistory;
     class UltraCanvasClipboardRecorder;
     class UltraCanvasContainer;
@@ -127,6 +135,10 @@ private:
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);
     void ApplyNotices();
+    // The toasts: connected at start, kept clear of the bars wherever the
+    // taskbar is.
+    void StartNotifications();
+    void PlaceNotifications();
     void StartDevicePoll();
     void StopDevicePoll();
 
@@ -166,6 +178,7 @@ private:
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
+    std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
 
     // The clipboard history; null when the build has no database.
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;

@@ -1,6 +1,7 @@
 // Plugins/Diagrams/UltraCanvasBlockDiagram.cpp
 // Interactive block diagram component - Complete implementation with 3D isometric rendering
-// Version: 2.3.5 - a press on the empty canvas (deselect) is the diagram's
+// Version: 2.4.1 - a press on the empty canvas (deselect) is the diagram's
+// Version: 2.4.0 - BlockConnectionStyle (was ConnectionStyle)
 // Version: 2.3.4
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
@@ -197,20 +198,20 @@ void UltraCanvasBlockDiagram::SetNodeBorderWidth(const std::string& nodeId, floa
 void UltraCanvasBlockDiagram::AddConnection(const std::string& connId, 
                                               const std::string& sourceId, 
                                               const std::string& targetId) {
-    AddConnection(connId, sourceId, targetId, ConnectionStyle::Straight, ArrowStyle::Forward);
+    AddConnection(connId, sourceId, targetId, BlockConnectionStyle::Straight, ArrowStyle::Forward);
 }
 
 void UltraCanvasBlockDiagram::AddConnection(const std::string& connId, 
                                               const std::string& sourceId, 
                                               const std::string& targetId,
-                                              ConnectionStyle style) {
+                                              BlockConnectionStyle style) {
     AddConnection(connId, sourceId, targetId, style, ArrowStyle::Forward);
 }
 
 void UltraCanvasBlockDiagram::AddConnection(const std::string& connId, 
                                               const std::string& sourceId, 
                                               const std::string& targetId,
-                                              ConnectionStyle style, 
+                                              BlockConnectionStyle style, 
                                               ArrowStyle arrowStyle) {
     BlockConnection conn;
     conn.id = connId;
@@ -272,7 +273,7 @@ void UltraCanvasBlockDiagram::SetConnectionLabel(const std::string& connId, cons
     }
 }
 
-void UltraCanvasBlockDiagram::SetConnectionStyle(const std::string& connId, ConnectionStyle style) {
+void UltraCanvasBlockDiagram::SetConnectionStyle(const std::string& connId, BlockConnectionStyle style) {
     auto* conn = GetConnection(connId);
     if (conn) {
         conn->style = style;
@@ -1052,10 +1053,10 @@ void UltraCanvasBlockDiagram::RenderConnection(IRenderContext* ctx, const BlockC
     float backwardDirY = -forwardDirY;
     
     // Draw connection line based on style
-    if (conn.style == ConnectionStyle::Straight) {
+    if (conn.style == BlockConnectionStyle::Straight) {
         ctx->DrawLine({x1, y1}, {x2, y2});
     }
-    else if (conn.style == ConnectionStyle::Orthogonal) {
+    else if (conn.style == BlockConnectionStyle::Orthogonal) {
         // Choose the routing pattern based on the face orientations of the
         // two endpoints. Goal: every segment is axis-aligned and the last
         // segment is perpendicular to the target face.
@@ -1107,7 +1108,7 @@ void UltraCanvasBlockDiagram::RenderConnection(IRenderContext* ctx, const BlockC
             backwardDirY = -(y2 - y1);
         }
     }
-    else if (conn.style == ConnectionStyle::Curved) {
+    else if (conn.style == BlockConnectionStyle::Curved) {
         float dx = x2 - x1;
         float dy = y2 - y1;
         float dist = std::sqrt(dx * dx + dy * dy);

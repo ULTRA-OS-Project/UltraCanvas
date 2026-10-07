@@ -7,8 +7,8 @@ The `UltraCanvasPopulationChart` is a specialized demographic visualization comp
 **Namespace:** `UltraCanvas`  
 **Header:** `include/Plugins/Charts/UltraCanvasPopulationChart.h`  
 **Base Class:** `UltraCanvasUIElement`  
-**Version:** 1.0.0  
-**Last Modified:** 2025-01-19  
+**Version:** 1.0.1  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 > A population pyramid is a demographic chart, not a hierarchy diagram. For
@@ -206,7 +206,7 @@ double GetAverageFemaleAge() const;
 ### Rendering & Events (Overrides)
 
 ```cpp
-void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 bool OnEvent(const UCEvent& event) override;
 ```
 
@@ -231,6 +231,7 @@ namespace PopulationChartUtils {
     double CalculateAverageAge(
             const std::vector<PopulationAgeGroup>& ageGroups, bool males);
 
+    struct DemographicStats;          // fields listed above
     DemographicStats CalculateStatistics(
             const std::vector<PopulationAgeGroup>& ageGroups);
     Color InterpolateGenderColor(const Color& baseColor,

@@ -144,7 +144,17 @@ req.body   = SerializeJson(payload);
 UltraNetHandle h = UltraNet_HttpRequestAsync(req,
     [](const UltraNetResponse& resp) {
         // runs on libcurl multi worker thread — marshal to UI thread if needed
+        // A transfer cut off mid-body (timeout, lost connection, over
+        // maxReceiveSize, cancelled) keeps the server's status line:
+        // check IsComplete() / transferError before trusting resp.body.
+        if (!resp.IsComplete()) { /* resp.transferError says why */ }
     });
+
+// A relative reference against a base URL (RFC 3986 section 5)
+std::string url;
+UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
+// url == "https://x.org/data/a.json"; a URL with a control character in it
+// (a CR or LF that would end the request line) is refused
 
 // File download streamed straight to disk
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",

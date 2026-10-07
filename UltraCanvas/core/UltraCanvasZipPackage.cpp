@@ -5,8 +5,9 @@
 // writer, local file headers carry the real sizes and NO data-descriptor
 // flag — the ODF package readers in LibreOffice/OpenOffice reject archives
 // whose "mimetype" entry uses a data descriptor (general-purpose bit 3).
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Both ends open their file through OpenFileUtf8, never miniz's own fopen.
+// Version: 1.0.1
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasZipPackage.h"
@@ -24,6 +25,8 @@ namespace UltraCanvas {
 
 struct UCZipPackageReader::Impl {
     mz_zip_archive zip{};
+    // Ours: miniz reads through a FILE* it is handed but never closes it.
+    std::FILE* file = nullptr;
     bool open = false;
 };
 
@@ -37,18 +40,38 @@ bool UCZipPackageReader::Open(const std::string& filePath) {
     Close();
     lastError_.clear();
     std::memset(&impl_->zip, 0, sizeof(impl_->zip));
-    if (!mz_zip_reader_init_file(&impl_->zip, filePath.c_str(), 0)) {
+    // OpenFileUtf8 rather than mz_zip_reader_init_file. miniz turns a UTF-8
+    // name into UTF-16 only under MSVC and 64-bit MinGW - any other Windows
+    // toolchain hands it to the ANSI fopen, which misses a name outside the
+    // code page - and where it does convert, it opens with _wfopen_s, which
+    // denies other programs write access for as long as the archive is open
+    // (a CorelDRAW save failing while the file display reads the drawing's
+    // thumbnail). _wfopen shares the file like every other open here.
+    std::FILE* f = OpenFileUtf8(filePath, "rb");
+    if (!f) {
+        lastError_ = "Cannot open file: " + filePath;
+        return false;
+    }
+    // Size 0: miniz measures the file itself.
+    if (!mz_zip_reader_init_cfile(&impl_->zip, f, 0, 0)) {
+        std::fclose(f);
         lastError_ = "Not a valid ZIP archive: " + filePath;
         return false;
     }
+    impl_->file = f;
     impl_->open = true;
     return true;
 }
 
 void UCZipPackageReader::Close() {
-    if (impl_ && impl_->open) {
+    if (!impl_) return;
+    if (impl_->open) {
         mz_zip_reader_end(&impl_->zip);
         impl_->open = false;
+    }
+    if (impl_->file) {
+        std::fclose(impl_->file);
+        impl_->file = nullptr;
     }
 }
 

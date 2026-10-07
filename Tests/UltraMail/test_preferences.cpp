@@ -58,6 +58,7 @@ TEST(preferences_round_trip) {
     out.listSort.key = MessageSortKey::Subject;
     out.listSort.ascending = true;
     out.checkMailEverySec = 40;
+    out.notifyNewMail = false;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -74,6 +75,7 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == out.listSort);
     REQUIRE_EQ(in.checkMailEverySec, 40);
+    REQUIRE(!in.notifyNewMail);
     std::remove(path.c_str());
 }
 
@@ -96,6 +98,7 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == MessageSort{});                        // newest first
     REQUIRE_EQ(in.checkMailEverySec, 300);                        // every 5 minutes
+    REQUIRE(in.notifyNewMail);                                    // on until switched off
     std::remove(path.c_str());
 }
 

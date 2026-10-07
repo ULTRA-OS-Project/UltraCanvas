@@ -475,7 +475,7 @@ namespace UltraCanvas {
 // ============================================================================
 
     void UltraCanvasImageExportDialog::BuildLayout() {
-        this->layout.SetFlexColumn();
+        this->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         this->layout.SetFlexGap(static_cast<int>(style.spacing));
 
         formGrid = CreateFormGrid("ExportForm", style.rowGap, style.columnGap);
