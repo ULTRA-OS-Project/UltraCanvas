@@ -4,7 +4,7 @@
 
 The **UltraCanvasWaterfallChart** is a sophisticated data visualization component within the UltraCanvas framework that displays cumulative data flow through a series of positive and negative changes. It's particularly effective for showing how an initial value is affected by a series of intermediate values, leading to a final result.
 
-**Version:** 1.0.2  
+**Version:** 1.1.0  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Location:** `Plugins/Charts/`
@@ -70,10 +70,25 @@ class WaterfallChartDataVector : public IChartDataSource {
     const WaterfallChartDataPoint& GetWaterfallPoint(size_t index) const;
     double GetFinalValue() const;
     
-    // Data loading
+    // Data loading (each replaces the steps)
     void LoadFromArray(const std::vector<std::pair<std::string, double>>& data);
+    void LoadFromArray(const std::vector<ChartDataPoint>& data);
+    void LoadFromCSV(const std::string& filePath);
 };
 ```
+
+The running totals (`cumulativeValue`) are worked out when the steps change -
+by `AddWaterfallPoint` or a load - not on every read.
+
+- `LoadFromArray(pairs)` adds one change step per (label, change) pair.
+- `LoadFromArray(points)` adds one change step per `ChartDataPoint`: its
+  `label`, its `y` as the change, its `category`, and its `color` when not
+  transparent. Add totals and subtotals with `AddWaterfallPoint`.
+- `LoadFromCSV(path)` reads lines `label,change[,type]` with dot decimals;
+  `type` is `total` or `subtotal` for those bars, and their change may be
+  left empty. Other lines without a number for the change - a header, a blank
+  line - are skipped. It throws `std::runtime_error` when the file cannot be
+  opened.
 
 ## Enumerations
 
@@ -127,7 +142,7 @@ void SetBarBorder(const Color& color, float width);
 void SetBarStyle(BarStyle style);
 void SetBarSpacing(float spacing);  // 0.0-0.8 ratio
 
-// Labels
+// Labels (SetShowValueLabels is UltraCanvasChartElementBase's, on by default)
 void SetShowValueLabels(bool show);
 void SetShowCumulativeLabels(bool show);
 void SetLabelStyle(const Color& textColor, float fontSize);
@@ -201,6 +216,29 @@ chart->SetBarStyle(WaterfallChart::BarStyle::Rounded);
 chart->SetShowCumulativeLabels(true);
 ```
 
+### Loading Steps
+
+```cpp
+auto quarters = std::make_shared<WaterfallChartDataVector>();
+quarters->LoadFromArray(std::vector<std::pair<std::string, double>>{
+    {"Q1", 150.0}, {"Q2", 120.0}, {"Q3", -30.0}});
+quarters->AddWaterfallPoint("Year", 0.0, false, true);   // total bar
+
+auto fromPoints = std::make_shared<WaterfallChartDataVector>();
+fromPoints->LoadFromArray(std::vector<ChartDataPoint>{
+    ChartDataPoint(0, 1000.0, 0, "Opening"),
+    ChartDataPoint(1, -250.0, 0, "Refunds")});
+
+// budget.csv:
+//   Step,Change,Type
+//   Opening,1000
+//   Refunds,-250
+//   Net,,total
+auto fromFile = std::make_shared<WaterfallChartDataVector>();
+fromFile->LoadFromCSV("/data/budget.csv");
+chart->SetWaterfallDataSource(fromFile);
+```
+
 ### Factory Functions
 
 ```cpp
@@ -225,7 +263,9 @@ void RenderChart(IRenderContext* ctx) override;
 
 `UltraCanvasChartElementBase::Render()` draws the empty state when there is
 no data; otherwise it updates the rendering cache, draws the common
-background and then calls `RenderChart()`, which:
+background - the plot rectangle, the grid (`SetShowGrid`), the axes
+(`SetShowAxes`) and the value-axis labels, which the waterfall's
+`RenderAxisLabels` override formats - and then calls `RenderChart()`, which:
 
 1. draws the waterfall bars;
 2. draws the connecting lines, when connector lines are enabled and the
@@ -364,6 +404,7 @@ The WaterfallChartElement integrates seamlessly with:
 | 1.0.0 | 2025-09-20 | Initial implementation |
 | 1.0.1 | 2025-09-29 | Added tooltip support, improved rendering cache |
 | 1.0.2 | 2026-10-07 | Docs: nested enum names (`NoneStyle`), real factory signature, private helpers removed from the API listing |
+| 1.1.0 | 2026-10-07 | `LoadFromArray(ChartDataPoint)` and `LoadFromCSV` load steps (they did nothing); running totals worked out once per change instead of on every `GetPoint`; `SetShowValueLabels` through the base class reaches the chart |
 
 ## Dependencies
 

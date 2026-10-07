@@ -1,18 +1,81 @@
 // UltraCanvasWaterfallChart.cpp
 // Waterfall chart element implementation with cumulative flow visualization
+// Version: 1.1.0 - WaterfallChartDataVector::LoadFromCSV and
+//                  LoadFromArray(ChartDataPoint) load steps instead of nothing
 // Version: 1.0.1
-// Last Modified: 2025-09-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasWaterfallChart.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
+#include "UltraCanvasPathUtf8.h"
 #include <algorithm>
+#include <fstream>
+#include <stdexcept>
+#include <cctype>
 #include <limits>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
 
 namespace UltraCanvas {
+
+// =============================================================================
+// WATERFALL DATA LOADING
+// =============================================================================
+
+    void WaterfallChartDataVector::LoadFromArray(const std::vector<ChartDataPoint>& data) {
+        waterfallData.clear();
+        for (const auto& source : data) {
+            WaterfallChartDataPoint step(source.label, source.y);
+            step.category = source.category;
+            if (source.color.a > 0) step.customColor = source.color;
+            waterfallData.push_back(step);
+        }
+        RecalculateCumulativeValues();
+    }
+
+    void WaterfallChartDataVector::LoadFromCSV(const std::string& filePath) {
+        std::ifstream file(PathFromUtf8(filePath));
+        if (!file.is_open()) {
+            throw std::runtime_error("Cannot open CSV file: " + filePath);
+        }
+
+        auto trim = [](std::string text) {
+            text.erase(0, text.find_first_not_of(" \t\r"));
+            text.erase(text.find_last_not_of(" \t\r") + 1);
+            if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+                text = text.substr(1, text.size() - 2);
+            }
+            return text;
+        };
+
+        waterfallData.clear();
+        std::string line;
+        while (std::getline(file, line)) {
+            std::vector<std::string> cells;
+            std::stringstream ss(line);
+            std::string cell;
+            while (std::getline(ss, cell, ',')) cells.push_back(trim(cell));
+            if (cells.empty()) continue;
+
+            std::string type = cells.size() >= 3 ? cells[2] : "";
+            std::transform(type.begin(), type.end(), type.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            bool isTotal = type == "total";
+            bool isSubtotal = type == "subtotal";
+
+            // A total or subtotal may leave its change empty; any other line
+            // without a number there (the header, a blank line) is skipped.
+            double change = 0.0;
+            bool hasChange = cells.size() >= 2 && TryParseFloat(cells[1], change);
+            if (!hasChange && !isTotal && !isSubtotal) continue;
+
+            waterfallData.emplace_back(cells[0], hasChange ? change : 0.0, isSubtotal, isTotal);
+        }
+        RecalculateCumulativeValues();
+    }
 
 // =============================================================================
 // COMMON BACKGROUND AND GRID METHODS (OVERRIDES FROM BASE)
@@ -124,6 +187,12 @@ namespace UltraCanvas {
 // =============================================================================
 
     void UltraCanvasWaterfallChartElement::RenderChart(IRenderContext* ctx) {
+        // The background, grid, axes and value-axis labels are drawn before
+        // this by the base class's Render (RenderCommonBackground, which calls
+        // the RenderAxisLabels override above). The block below is this
+        // file's first draft of the same, commented out when the chart was
+        // moved onto the base class (2025-10-01); enabling it would draw them
+        // twice.
 //        if (!ctx || !dataSource || dataSource->GetPointCount() == 0) {
 //            return;
 //        }

@@ -613,6 +613,27 @@ else()
     message(STATUS "  TextInputBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== CHART ELEMENT BEHAVIOUR TEST =====
+# The basic chart elements: point radius, zoom and pan, the plot area after a
+# resize, CSV headers, the bar baseline, the waterfall chart's loaders.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ChartElementBehaviourTest...")
+    add_executable(ChartElementBehaviourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ChartElementBehaviourTest.cpp
+    )
+    target_include_directories(ChartElementBehaviourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ChartElementBehaviourTest PRIVATE cxx_std_20)
+    target_link_libraries(ChartElementBehaviourTest PRIVATE UltraCanvas)
+    set_target_properties(ChartElementBehaviourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ChartElementBehaviourTest COMMAND ChartElementBehaviourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ChartElementBehaviourTest")
+else()
+    message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).

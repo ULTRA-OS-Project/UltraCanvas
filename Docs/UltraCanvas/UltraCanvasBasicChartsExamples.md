@@ -1,6 +1,6 @@
 # Basic Chart Elements: Examples
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Last Modified:** 2026-10-07
 
 The basic chart elements are four ready-made XY charts — line, bar, scatter
@@ -65,7 +65,8 @@ fromFile->LoadFromCSV("/data/sales.csv");     // lines "x,y[,z[,label]]"; throws
   order and the axis shows each point's **label** — the right choice for
   months, quarters, regions.
 - **y** is the plotted value. The y axis runs from the smallest to the largest y
-  plus 5 % on each side; it does not start at 0 unless the data does.
+  plus 5 % on each side; for the line, area and scatter charts it does not
+  start at 0 unless the data does. The bar chart's axis always includes 0.
 - **color** is honoured by the scatter plot: a point with a non-transparent
   colour is drawn in it instead of the marker colour.
 - **z**, **value** and **category** are carried along for other chart types;
@@ -74,10 +75,11 @@ fromFile->LoadFromCSV("/data/sales.csv");     // lines "x,y[,z[,label]]"; throws
   works out the axis ranges only when the data source is set. After changing
   the vector (`AddPoint`, `Clear`, `LoadFromArray`), call
   `SetDataSource(data)` again.
-- A CSV file is read with dot decimals. Its first line is skipped as a header
-  if it contains an `x` or a `y` anywhere, so do not start a header-less file
-  with a labelled row such as `1,45000,0,May`. For files too large to hold in
-  memory, `ChartDataStream` reads the points in chunks.
+- A CSV file is read with dot decimals. Its first line is a header, and
+  skipped, when its first two columns (x and y) are not both numbers - `x,y`
+  or `Month,Sales`; a first row such as `1,45000,0,May` is data. For files
+  too large to hold in memory, `ChartDataStream` reads the points in chunks,
+  with the same rule.
 
 ## Size and placement
 
@@ -85,7 +87,8 @@ The constructors and factories take `(id, x, y, width, height)` as integers,
 and the charts have no content size of their own, so always give a width and
 a height. A non-zero x or y pins the chart at that point; inside a flex or grid
 container pass `0, 0` and let the container place it
-([UltraCanvasLayoutExamples.md](UltraCanvasLayoutExamples.md)).
+([UltraCanvasLayoutExamples.md](UltraCanvasLayoutExamples.md)). When the
+layout gives a chart a new size, the plot area follows it on the next paint.
 
 ```cpp
 auto chartRow = std::make_shared<UltraCanvasContainer>("chart-row");
@@ -109,9 +112,10 @@ window->AddChild(chartRow);
 | `SetRotateXAxisLabels(true, 45.0f)` | slanted x labels, for long or many labels |
 | `SetShowGrid(bool)`, `SetGridColor(color)` | the grid lines (on by default) |
 | `SetShowAxes(bool)` | the axes and their labels (on by default) |
-| `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element, and the plot rectangle |
+| `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
-| `SetPointRadius(radius)` | the dot radius of the area chart and the offset of value labels |
+| `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
+| `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
 | `SetEnableTooltips(bool)` | hover tooltip with X and Y (on by default) |
 | `SetSeriesName(text)` | a first line for the tooltip |
 | `SetCustomTooltipGenerator(fn)` | your own tooltip text, from the point and its index |
@@ -160,8 +164,8 @@ regionChart->SetBarBorderWidth(1.0);                         // 0 for no border
 regionChart->SetBarSpacing(0.25);                            // 25 % of each slot left empty (0 to 0.9)
 ```
 
-Every bar has the same colour, and bars rise from the bottom of the plotted y
-range (see *Feeding data*), not from 0.
+Every bar has the same colour. The value axis always includes 0: bars rise
+from the zero line and negative values hang below it.
 
 ## Scatter plot
 
@@ -228,6 +232,32 @@ revenueChart->SetPointRadius(4.0f);
 revenueChart->SetSmoothingEnabled(true);
 ```
 
+## Zoom and pan
+
+The line, area and scatter charts zoom and pan their x axis once asked to;
+both are off by default, so the mouse wheel over a chart scrolls the page
+around it.
+
+```cpp
+salesChart->SetEnableZoom(true);   // wheel up over the plot zooms in around the pointer, down zooms out (up to 50x)
+salesChart->SetEnablePan(true);    // drag a zoomed plot sideways with the left button
+if (salesChart->IsZoomed()) {
+    salesChart->ResetZoom();       // the whole range again
+}
+```
+
+- With zoom on, a wheel turn the chart does nothing with - over the axis
+  margins, or zooming out of the whole range - still goes to the parent, so
+  a scrolling container keeps scrolling. A drag over a chart that is not
+  zoomed in is left to the parent as well.
+- In `XAxisLabelMode::NumericValue` the axis numbers follow the zoom; in
+  `XAxisLabelMode::DataLabel` the evenly spaced points spread apart and the
+  labels follow them. Points scrolled out of the plot are clipped and are
+  not hovered.
+- Turning zoom off or setting a data source shows the whole range again.
+- The bar chart does not zoom or pan: the wheel and drags over it always go
+  to the parent.
+
 ## Switching data at run time
 
 A chart can show any data source at any time; this is what the demo's
@@ -251,16 +281,8 @@ addMonth->SetOnClick([salesChart, monthlySales]() {
 
 - **One series per element.** Overlaying two series means two elements or the
   chart engine.
-- **Zoom and pan do nothing visible.** `SetEnableZoom` and `SetEnablePan` are
-  accepted, and the line, area and scatter charts switch both on in their
-  constructors, but nothing rescales or moves. With zoom on, the chart takes
-  the mouse wheel for itself, so inside a scrolling container call
-  `SetEnableZoom(false)` to let the wheel scroll the container.
-- **The plot area is worked out when the data is set.** A chart whose size the
-  layout changes later keeps its old plot rectangle until `SetDataSource` is
-  called again, so give charts a fixed width and height.
-- **The line chart's dots are always 4 px.** `SetPointRadius` reaches the area
-  chart's dots, but the line chart draws its dots with a radius of its own.
+- **Zoom is x only.** The y axis keeps the whole data range while the x axis
+  is zoomed.
 
 ## See also
 
