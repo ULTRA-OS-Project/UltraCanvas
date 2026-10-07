@@ -399,7 +399,7 @@ namespace UltraCanvas {
             // extension to a name typed without one, follows the type as the
             // user switches it, and asks about replacing the file so named.
             // Without one it adds nothing. The chosen type's first extension,
-            // else the first any type names.
+            // else the first any type names, else the caller's own default.
             std::string defaultExtension;
             auto firstExtension = [](const FileFilter& filter) {
                 for (const std::string& ext : filter.extensions) {
@@ -411,6 +411,8 @@ namespace UltraCanvas {
             for (size_t i = 0; defaultExtension.empty() && i < options.filters.size(); ++i) {
                 defaultExtension = firstExtension(options.filters[i]);
             }
+            if (defaultExtension.empty()) defaultExtension = options.defaultExtension;
+            while (!defaultExtension.empty() && defaultExtension.front() == '.') defaultExtension.erase(0, 1);
             if (!defaultExtension.empty()) {
                 const std::wstring wext = UltraCanvasWindowsApplication::Utf8ToUtf16(defaultExtension);
                 pDialog->SetDefaultExtension(wext.c_str());

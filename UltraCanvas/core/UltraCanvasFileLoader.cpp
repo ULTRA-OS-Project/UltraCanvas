@@ -158,6 +158,7 @@ namespace UltraCanvas {
         config.dialogType       = type;
         config.initialDirectory = opts.initialDirectory;
         config.defaultFileName  = opts.defaultFileName;
+        config.defaultExtension = opts.defaultExtension;
         config.showHiddenFiles  = opts.showHiddenFiles;
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;

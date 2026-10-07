@@ -26,6 +26,11 @@ namespace UltraCanvas {
         std::string title;
         std::string initialDirectory;
         std::string defaultFileName;
+        // Save: the extension (undotted) a typed name gets when it has none
+        // and the chosen file type supplies none (FileDialogConfig::
+        // defaultExtension). The Windows dialog takes it as its default
+        // extension too; the chosen type's extension comes first everywhere.
+        std::string defaultExtension;
         std::vector<FileFilter> filters;
         bool showHiddenFiles = false;
         // The framework dialog shows the filters as toggle buttons rather than
@@ -48,6 +53,7 @@ namespace UltraCanvas {
         FileDialogOptions& SetTitle(const std::string& t)            { title = t; return *this; }
         FileDialogOptions& SetInitialDirectory(const std::string& d) { initialDirectory = d; return *this; }
         FileDialogOptions& SetDefaultFileName(const std::string& n)  { defaultFileName = n; return *this; }
+        FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& AddFilter(const std::string& desc, const std::string& ext) {
             filters.emplace_back(desc, ext);
             return *this;
