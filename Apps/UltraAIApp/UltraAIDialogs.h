@@ -86,7 +86,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  workflowInput_;
 };
 ULTRAAI_DECLARE_DIALOG(VisionDialog)
-// Translation: a multi-line source text plus a target-language field.
+// Translation: a multi-line source text, the target language, the source
+// language (empty: the provider detects it) and the formality register.
 class TranslatorDialog : public UltraAIServiceDialog {
 public:
     TranslatorDialog();
@@ -96,7 +97,8 @@ protected:
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>   input1_;   // source text (multi-line)
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input2_;   // target language
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  input3_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  sourceInput_;        // source language
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>   formalityDropdown_;  // Default / Formal / Informal
 };
 // Video generation: prompt, size and duration, plus the model (a checkpoint
 // file name for ComfyUI) and a credential for cloud providers.
