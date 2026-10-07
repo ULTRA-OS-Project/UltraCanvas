@@ -63,7 +63,12 @@ What is reported:
       the file's own and those of the repository headers it includes
       directly - where a class declares its members (`std::string dir_;`)
       and its functions - with the bodies of inline functions left out, so a
-      header's locals lend their types to nothing. A call that runs on over
+      header's locals lend their types to nothing. A member access
+      (`env.accountId`, `msg->folder`) is also looked up in the headers
+      those headers include, transitively: the struct is usually declared a
+      header or two further down. There a header is also found by its file
+      name when exactly one header in the repository has it, and a member
+      name the headers declare two different ways is left alone. A call that runs on over
       several lines is read whole. (PathFromUtf8 also takes a path, a C
       string and a string_view, so wrapping is never wrong.)
 
@@ -461,14 +466,118 @@ def included_headers(path: Path, text: str) -> tuple[str, ...]:
     return tuple(found)
 
 
+MAX_MEMBER_HEADERS = 400      # per file: a deep include chain is cut here
+# The declaration rules, in DeclaredTypes' order (None = neither a string nor
+# a path, True = std::string, False = path)
+DECL_RULES = [(rx, None) for rx in OTHER_DECL_RES] + [
+    (STRING_DECL_RE, True), (RANGE_FOR_STRING_RE, True),
+    (PATH_DECL_RE, False), (AUTO_PATH_DECL_RE, False)]
+_header_index: dict[str, list[Path]] | None = None
+_header_includes: dict[Path, list[str]] = {}
+_header_members: dict[Path, dict[str, frozenset]] = {}
+_closure_cache: dict[tuple, tuple] = {}
+
+
+def _unique_header(name: str) -> Path | None:
+    """The one repository header called `Path(name).name` whose path ends in
+    `name` - None when there is none or more than one."""
+    global _header_index
+    if _header_index is None:
+        _header_index = {}
+        for root in SEARCH_ROOTS:
+            base = REPO_ROOT / root
+            if not base.exists():
+                continue
+            for f in base.rglob("*.h*"):
+                if f.suffix in (".h", ".hpp") and not (SKIP_PARTS & set(f.parts)):
+                    _header_index.setdefault(f.name, []).append(f)
+    want = "/" + name.replace("\\", "/").lstrip("./")
+    hits = [f for f in _header_index.get(Path(name).name, ())
+            if ("/" + f.as_posix()).endswith(want)]
+    return hits[0].resolve() if len(hits) == 1 else None
+
+
+_resolved: dict[tuple, Path | None] = {}
+
+
+def _member_header(path: Path, name: str) -> Path | None:
+    key = (path.parent, name, path.name)
+    if key not in _resolved:
+        _resolved[key] = _resolve_member_header(path, name)
+    return _resolved[key]
+
+
+def _resolve_member_header(path: Path, name: str) -> Path | None:
+    candidates = [path.parent / name] + [REPO_ROOT / root / name for root in INCLUDE_ROOTS]
+    target = next((c for c in candidates if c.is_file()), None)
+    target = target.resolve() if target is not None else _unique_header(name)
+    if target is None or target == path.resolve():
+        return None
+    if SKIP_PARTS & set(target.parts) or target.name in SKIP_NAMES:
+        return None
+    return target
+
+
+def _members_of(target: Path) -> dict[str, frozenset]:
+    """name -> the kinds `target` declares it as (read once per run)."""
+    if target not in _header_members:
+        kinds: dict[str, set] = {}
+        for rx, kind in DECL_RULES:
+            for m in rx.finditer(_header_cache[target]):
+                kinds.setdefault(m.group(1), set()).add(kind)
+        _header_members[target] = {n: frozenset(k) for n, k in kinds.items()}
+    return _header_members[target]
+
+
+def member_headers(path: Path, text: str) -> dict[str, frozenset]:
+    """What the repository headers `text` includes, directly or through
+    other headers, declare (name -> every kind given) - read only for member
+    accesses (`env.accountId`), whose struct is often a few includes away.
+    Merged once per set of includes and shared, not copied."""
+    key = (path.parent, tuple(INCLUDE_RE.findall(text)))
+    if key in _closure_cache:
+        return _closure_cache[key]
+    queue = [(path, n) for n in INCLUDE_RE.findall(text)]
+    seen: set[Path] = set()
+    found = []
+    while queue and len(found) < MAX_MEMBER_HEADERS:
+        source, name = queue.pop(0)
+        target = _member_header(source, name)
+        if target is None or target in seen:
+            continue
+        seen.add(target)
+        if target not in _header_cache or target not in _header_includes:
+            try:
+                raw = target.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                raw = ""
+            _header_includes[target] = INCLUDE_RE.findall(raw)
+            if target not in _header_cache:
+                _header_cache[target] = _strip_function_bodies(
+                        "\n".join(clean_lines(raw.splitlines())))
+        found.append(_members_of(target))
+        queue.extend((target, n) for n in _header_includes[target])
+    merged: dict[str, frozenset] = {}
+    for declared in found:
+        for name, kinds in declared.items():
+            merged[name] = merged.get(name, frozenset()) | kinds
+    _closure_cache[key] = merged
+    return merged
+
+
 class DeclaredTypes:
     """Which names the file declares as std::string and which as a path, by
     line. A name means whatever its nearest declaration above the use says:
     `path` can be a std::string parameter in one function and an fs::path
     member or local in the next, and only the nearer one is in scope."""
 
-    def __init__(self, text: str, headers: tuple[str, ...] = ()):
+    def __init__(self, text: str, headers: tuple[str, ...] = (),
+                 members: dict | None = None):
         self.decls: dict[str, list[tuple[int, bool]]] = {}
+        # Member names -> every kind the headers (all the way down) give them,
+        # shared between files; the file's own kinds are kept beside it.
+        self.members: dict[str, frozenset] = members or {}
+        self.own_kinds: dict[str, set] = {}
         starts = [0]
         for m in re.finditer("\n", text):
             starts.append(m.end())
@@ -498,7 +607,16 @@ class DeclaredTypes:
         for name, v in self.decls.items():
             v.sort()
             self.decls[name] = [(line, kind) for line, _, kind in v]
+            self.own_kinds[name] = {k for _, k in self.decls[name]}
         self.line = 0
+
+    def member_is_string(self, name: str) -> bool:
+        """A member access `x.name`: every declaration of `name` the headers
+        or the file hold is a std::string."""
+        return set(self.members.get(name, ())) | self.own_kinds.get(name, set()) == {True}
+
+    def member_is_path(self, name: str) -> bool:
+        return set(self.members.get(name, ())) | self.own_kinds.get(name, set()) == {False}
 
     def is_path(self, name: str) -> bool:
         """Whether `name`'s nearest declaration above the use is a path."""
@@ -539,7 +657,11 @@ def _is_utf8_string(arg: str, strings, raw: str) -> bool:
             return any(_is_utf8_string(b, strings, b)
                        for b in (a[q + 1:q + 1 + c], a[q + 2 + c:]))
     if ID_CHAIN_RE.match(a):
-        return re.split(r"\.|->", a)[-1] in strings
+        last = re.split(r"\.|->", a)[-1]
+        if last in strings:
+            return True
+        return ("." in a or "->" in a) and hasattr(strings, "member_is_string") \
+            and strings.member_is_string(last)
     if a.startswith(("std::string(", "PathToUtf8(")):
         return True
     m = CALL_RE.match(a)
@@ -612,7 +734,9 @@ def _operand_after(code: str, i: int) -> int:
 def _is_path_operand(op: str, strings) -> bool:
     op = op.strip()
     if ID_CHAIN_RE.match(op):
-        return strings.is_path(re.split(r"\.|->", op)[-1])
+        last = re.split(r"\.|->", op)[-1]
+        return strings.is_path(last) or (("." in op or "->" in op)
+                                          and strings.member_is_path(last))
     m = CALL_RE.match(op)
     if m:
         return re.split(r"::|\.|->", m.group("name"))[-1] in PATH_CALLS
@@ -839,7 +963,8 @@ def check_file(path: Path) -> list[Finding]:
 
     findings: list[Finding] = []
     implicit = not (UTF8_NATIVE_OS & set(path.parts))
-    strings = DeclaredTypes(text, included_headers(path, text)) if implicit else set()
+    strings = (DeclaredTypes(text, included_headers(path, text), member_headers(path, text))
+               if implicit else set())
     streams = set(STREAM_DECL_RE.findall(text)) if implicit else set()
 
     # Each line with its literals blanked and its comments removed, first, so
@@ -922,10 +1047,20 @@ def iter_sources(paths: list[Path]):
 # ending in "// expect" has to be flagged; every other line must not be. The
 # header's inline function keeps a std::string local that must not leak into
 # the .cpp (`fs::exists(local, ec)`), and a path member stays a path.
+SELF_TEST_TYPES = """\
+#pragma once
+#include <filesystem>
+#include <string>
+struct Envelope {
+    std::string accountId;
+    std::filesystem::path root;
+};
+"""
 SELF_TEST_HEADER = """\
 #pragma once
 #include <filesystem>
 #include <string>
+#include "Types.h"
 class Store {
 public:
     std::string ConfigPath() const;
@@ -972,6 +1107,12 @@ std::string WindowsOnly(const char* name) {
     return std::getenv(name) ? "" : "";                   // expect
 }
 #else
+void Members(const Envelope& env, std::error_code& ec) {
+    fs::exists(env.accountId, ec);                        // expect
+    fs::exists(PathFromUtf8(env.accountId), ec);
+    fs::exists(env.root, ec);
+    const fs::path p = PathFromUtf8("cache") / env.accountId; // expect
+}
 std::string PosixOnly(const char* name) { return std::getenv(name); }
 #endif
 """
@@ -985,6 +1126,7 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "Store.h").write_text(SELF_TEST_HEADER, encoding="utf-8")
+        (root / "Types.h").write_text(SELF_TEST_TYPES, encoding="utf-8")
         source = root / "Store.cpp"
         source.write_text(SELF_TEST_SOURCE, encoding="utf-8")
         got = sorted({f.line for f in check_file(source)})

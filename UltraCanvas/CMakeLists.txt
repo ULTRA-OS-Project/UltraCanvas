@@ -2684,6 +2684,69 @@ if(ULTRACANVAS_ENABLE_NET)
     # directly - on Linux the UltraNetPluginHostImports test does, and on
     # Windows it also reads each DLL's import table, which catches a plug-in
     # that was given a core import library to link against.
+    #
+    # Linking the core *statically* into a plug-in is the other way to get
+    # it wrong, and neither check sees it: nothing is left undefined and
+    # nothing is imported - the plug-in carries its own copy of the core, with
+    # its own globals (the plug-in registry, the HTTP session pool, the TLS
+    # trust store), next to the host's. So a plug-in target that links a core
+    # library, directly or through another target, stops the configure here.
+    function(_ultranet_plugin_links_core target out)
+        set(_core ${ULTRACANVAS_LIB_NAME} UltraNet UltraCanvasTextUtils UltraCanvasAllFormats)
+        set(_queue ${target})
+        set(_seen "")
+        set(_found "")
+        while(_queue)
+            list(POP_FRONT _queue _t)
+            if(_t IN_LIST _seen OR NOT TARGET ${_t})
+                continue()
+            endif()
+            list(APPEND _seen ${_t})
+            get_target_property(_aliased ${_t} ALIASED_TARGET)
+            if(_aliased)
+                set(_t ${_aliased})
+            endif()
+            set(_libs "")
+            foreach(_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+                get_target_property(_v ${_t} ${_prop})
+                if(_v)
+                    list(APPEND _libs ${_v})
+                endif()
+            endforeach()
+            foreach(_lib IN LISTS _libs)
+                # $<LINK_ONLY:x> and similar wrappers name the target last
+                string(REGEX REPLACE "^\\$<[A-Z_]+:(.*)>$" "\\1" _lib "${_lib}")
+                if(_lib IN_LIST _core)
+                    list(APPEND _found "${_t} -> ${_lib}")
+                elseif(TARGET ${_lib})
+                    list(APPEND _queue ${_lib})
+                endif()
+            endforeach()
+        endwhile()
+        set(${out} "${_found}" PARENT_SCOPE)
+    endfunction()
+    get_property(_ultranet_dirs DIRECTORY PROPERTY SUBDIRECTORIES)
+    foreach(_dir IN LISTS _ultranet_dirs)
+        if(NOT _dir MATCHES "/Plugins/UltraNet/")
+            continue()
+        endif()
+        get_property(_targets DIRECTORY ${_dir} PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_plugin IN LISTS _targets)
+            get_target_property(_type ${_plugin} TYPE)
+            if(NOT _type STREQUAL "MODULE_LIBRARY" AND NOT _type STREQUAL "SHARED_LIBRARY")
+                continue()
+            endif()
+            _ultranet_plugin_links_core(${_plugin} _links)
+            if(_links)
+                message(FATAL_ERROR
+                    "UltraNet plug-in ${_plugin} links the core (${_links}). A plug-in "
+                    "reaches the core only through the UltraNetPluginHost table "
+                    "(Plugins/UltraNet/common/UltraNetPluginHostShim.cpp); linking it "
+                    "gives the plug-in a second copy of the core's state. Add what it "
+                    "needs to the host table instead.")
+            endif()
+        endforeach()
+    endforeach()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()
