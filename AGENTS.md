@@ -503,7 +503,10 @@ number anywhere else, and never introduce a new literal copy of one:
    CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
-   the same change.
+   the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
+   it compiles the doc's C++ against the headers and reports each function,
+   field or signature the headers don't have (Linux, clang++). All
+   `*Examples.md` docs pass it.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
