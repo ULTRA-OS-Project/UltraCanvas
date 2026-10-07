@@ -161,7 +161,11 @@ a click on the label or icon inside it without any extra work, and:
 
 - **Return `true` for a press you acted on**, `false` for one you did not.
   A press you used but report as untaken goes on to your parents, which may
-  act on it again.
+  act on it again — clearing a selection or taking the focus is acting on
+  it. A press you have no use for (a middle press on an editor) is better
+  left alone entirely: do not take the focus first, and return `false`.
+  A right press you have no menu for goes on on purpose, so the menu of the
+  element around you can open (a button does this).
 - **A container gets the presses its children did not take**, with the
   pointer over that child. A view that hit‑tests its own painted content
   must not treat such a press as a click on whatever is painted under the

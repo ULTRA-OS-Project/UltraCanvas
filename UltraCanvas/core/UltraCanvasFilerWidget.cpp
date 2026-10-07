@@ -15160,17 +15160,14 @@ namespace UltraCanvas {
     }
 
     // Whether a press landed on one of the widget's own child elements - the
-    // ones hit-testing hands a press to before the widget: interactive and
-    // visible.
+    // element the window hands a press to before the widget. Hit-tested as the
+    // window does it (visible, interactive, scrolling, clipping), from the
+    // parent's frame, where FindElementAtPoint starts.
     static bool PressOnChildElement(UltraCanvasContainer& widget, const UCEvent& event) {
-        const Point2Df at(static_cast<float>(event.pointerWindow.x),
-                          static_cast<float>(event.pointerWindow.y));
-        for (const auto& child : widget.GetChildren()) {
-            if (child->IsVisible() && child->IsInteractive() && child->ContainsInWindow(at)) {
-                return true;
-            }
-        }
-        return false;
+        const Rect2Df bounds = widget.GetBounds();
+        UltraCanvasUIElement* hit = widget.FindElementAtPoint(
+                Point2Df(bounds.x + event.pointer.x, bounds.y + event.pointer.y), true);
+        return hit && hit != &widget;
     }
 
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {

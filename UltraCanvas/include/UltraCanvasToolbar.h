@@ -393,8 +393,11 @@ namespace UltraCanvas {
                    toolbarDragMode == ToolbarDragMode::Both;
         }
         bool IsReorderingItem() const { return reorderActive; }
-        void BeginDrag(const Point2Di& startPos);
-        void UpdateDrag(const Point2Di& currentPos);
+        // Moving the bar itself (ToolbarDragMode::Movable / Both). Positions
+        // are in window coordinates: the bar moves under the pointer, so one
+        // local to it would shift with every step.
+        void BeginDrag(const Point2Di& startPosInWindow);
+        void UpdateDrag(const Point2Di& currentPosInWindow);
         void EndDrag();
 
         // ===== CALLBACKS =====
@@ -408,6 +411,9 @@ namespace UltraCanvas {
     private:
         // Internal helpers
         void CreateLayout();
+        // Whether a press landed on one of the bar's items rather than on the
+        // bar's own surface (a movable bar is dragged by the latter only).
+        bool PressOnItem(const UCEvent& event);
         // The height a horizontal toolbar was constructed with (the width of a
         // vertical one) becomes a FLOOR rather than a fixed size, so a host
         // that guesses low gets a toolbar that still fits its buttons instead

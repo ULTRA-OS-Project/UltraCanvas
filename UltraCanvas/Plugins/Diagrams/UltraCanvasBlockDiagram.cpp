@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasBlockDiagram.cpp
 // Interactive block diagram component - Complete implementation with 3D isometric rendering
+// Version: 2.3.5 - a press on the empty canvas (deselect) is the diagram's
 // Version: 2.3.4
-// Last Modified: 2026-05-09
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 //
 // Changelog 2.3.3:
@@ -438,7 +439,10 @@ bool UltraCanvasBlockDiagram::OnEvent(const UCEvent& event) {
                 dragOffsetY = worldY - node->y;
                 return true;
             } else {
+                // A press on the empty canvas cleared the selection: it was
+                // the diagram's, not one for the elements around it.
                 DeselectAll();
+                return true;
             }
         }
         else if (currentMode == EditMode::CreateNode) {

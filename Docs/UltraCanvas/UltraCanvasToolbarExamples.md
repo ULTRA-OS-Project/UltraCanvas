@@ -142,6 +142,15 @@ this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
 
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
+
 ## Enumerations
 
 ### ToolbarOrientation

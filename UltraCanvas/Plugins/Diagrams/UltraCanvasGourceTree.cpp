@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasGourceTree.cpp
 // Gource-style radial tree diagram for storage/filesystem visualization
+// Version: 1.0.2 - a press on empty space (deselect) is the tree's
 // Version: 1.0.1
-// Last Modified: 2026-05-09
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
@@ -1611,11 +1612,13 @@ bool UltraCanvasGourceTree::HandleMouseDown(const UCEvent& event) {
             
             return true;
         } else {
-            // Clicked on empty space - clear selection
+            // Clicked on empty space - clear selection. The press was the
+            // tree's, so it does not go on to the elements around it.
             ClearSelection();
+            return true;
         }
     }
-    
+
     return false;
 }
 

@@ -1,7 +1,10 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.6.1 - a movable bar is dragged by its own surface only, in window
+//                  coordinates, with the mouse captured, and stays where it
+//                  is dropped (its CSS position moves, not just its bounds)
 // Version: 1.6.0
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -588,11 +591,21 @@ namespace UltraCanvas {
         // it is driven by the window-level watch (HandleReorderEvent), because
         // the item's own button consumes the press before it could bubble here.
         if (toolbarDragMode == ToolbarDragMode::Movable || toolbarDragMode == ToolbarDragMode::Both) {
-            if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
-                BeginDrag(Point2Di(event.pointer.x, event.pointer.y));
+            // The bar is grabbed by its own surface - the padding and the gaps
+            // between items. A press an item did not take (a label, a
+            // separator, a disabled button) climbs here as well, and must not
+            // carry the whole bar off.
+            if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left &&
+                !PressOnItem(event)) {
+                // Window coordinates: the bar moves under the pointer, so a
+                // position local to it shifts with every step of the drag.
+                BeginDrag(event.pointerWindow);
+                // Captured, the moves and the release arrive however far the
+                // pointer leaves the bar; uncaptured, the drag stuck on.
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
                 return true;
             } else if (event.type == UCEventType::MouseMove && isDragging) {
-                UpdateDrag(Point2Di(event.pointer.x, event.pointer.y));
+                UpdateDrag(event.pointerWindow);
                 return true;
             } else if (event.type == UCEventType::MouseUp && isDragging) {
                 EndDrag();
@@ -868,6 +881,16 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasToolbar::PressOnItem(const UCEvent& event) {
+        // Hit-tested as the window hit-tests the press (scrolling, clipping,
+        // the bar's own scroll area), from the parent's frame, where
+        // FindElementAtPoint starts.
+        const Rect2Df bounds = GetBounds();
+        UltraCanvasUIElement* hit = FindElementAtPoint(
+                Point2Df(bounds.x + event.pointer.x, bounds.y + event.pointer.y), true);
+        return hit && hit != this;
+    }
+
     void UltraCanvasToolbar::BeginDrag(const Point2Di& startPos) {
         isDragging = true;
         dragStartPos = startPos;
@@ -880,7 +903,13 @@ namespace UltraCanvas {
         int deltaX = currentPos.x - dragStartPos.x;
         int deltaY = currentPos.y - dragStartPos.y;
 
-        SetPosition(originalPos.x + deltaX, originalPos.y + deltaY);
+        // The CSS position, which the layout resolves from: SetPosition only
+        // wrote the laid-out bounds, and the next layout pass put the bar
+        // back where it was. A bar that sat in its parent's flow floats from
+        // here on, where it was dropped.
+        SetElementAbsolutePosition(Point2Df(static_cast<float>(originalPos.x + deltaX),
+                                            static_cast<float>(originalPos.y + deltaY)));
+        RequestRedraw();
     }
 
     void UltraCanvasToolbar::EndDrag() {
