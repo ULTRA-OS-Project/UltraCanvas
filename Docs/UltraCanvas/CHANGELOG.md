@@ -1,3 +1,341 @@
+#### 2026-10-07 *0.9.190*
+- **Transforms are written dot-decimal whatever the desktop's locale.**
+  `SerializeTransform` (`UltraCanvasVectorStorage.cpp`) formatted with
+  `std::to_string(double)`, which renders through `LC_NUMERIC` - and the
+  Linux backend sets that from the environment for XIM. On a comma-decimal
+  desktop (German, French, Russian, Brazilian Portuguese, ...) every
+  transform the SVG writer saved, on groups, gradients and patterns, came
+  out as `matrix(0,866025,0,500000,...)`, whose commas are also the
+  separators, so a saved drawing reopened with its rotated and moved groups
+  somewhere else. It now formats through `FormatFloatClassic` at twelve
+  significant digits, which keeps everything `"%f"` kept below a million (a
+  CAD drawing's 250000.5 stays 250000.5) without the trailing zeros.
+  `scripts/check_locale_numbers.py` did not flag it because it cannot see
+  that the matrix entries are doubles. `Tests/SVGLocaleTest.cpp` now checks
+  transforms, and a rotated group saved and reopened, under "C" and a
+  comma-decimal locale.
+
+#### 2026-10-07 *0.9.189*
+- **VideoFX: beat detection; slideshows on the beat** (VideoFX 0.5.0).
+  `VideoFX_DetectBeats` gives a file's tempo (BPM), a confidence and its beat
+  times - VideoFX's own analysis (spectral-flux onsets, an autocorrelation
+  tempo weighted towards 120 BPM against half / double readings, and
+  dynamic-programming beat tracking), reporting no beat for speech, noise or
+  a held tone. `VideoFXSlideshowOptions::beatSync` puts every change (a cut,
+  or a transition's middle) on the beat nearest `secondsPerImage`;
+  `beatsPerImage` gives each image exactly that many beats. With a song list
+  the beats come from each song where it plays.
+  - `videofx beats FILE`; `videofx slideshow ... --beat-sync`,
+    `--beats-per-image N`.
+- **VideoFX: faces kept in shot through pan and zoom** (VideoFX 0.5.0).
+  `VideoFXSegment::keepInView` lists regions of a photo (`VideoFXRect`,
+  fractions of the image as shown, or `FromPixels`) that must stay in
+  frame: the move's zoom is capped where the view could no longer hold them
+  (with 15 % headroom), its pan narrowed around them, and every frame slid -
+  never resized - to hold them, so they stay in shot through the whole move.
+  A `Still` photo looks at them. VideoFX finds no faces itself: slideshows
+  take `keepInView` per image, or ask the app's own detector
+  (`findKeepInView` - UltraAI's vision analyser, the OS, a tap in the UI)
+  once per photo.
+  - `videofx slideshow ... --keep N:X,Y,W,H`.
+- **VideoFX: song lists with crossfades** (VideoFX 0.5.0). Background music
+  can be several songs: `VideoFXMusic::playlist` (or
+  `VideoFXMusic::FromFiles`) plays after `path`, in order, each song blending
+  into the next over `crossfade` seconds (3 by default, 0..30) with
+  equal-power gains, so the loudness holds steady and there is neither a hard
+  cut nor a gap. A song shorter than twice the crossfade gets a shorter one,
+  at most half of either song. A looping list crossfades from its last song
+  into its first; a single looping song now crossfades into its own start
+  (`crossfade = 0` keeps the 0.4 back-to-back loop).
+  - `VideoFXSlideshowOptions::matchMusicLength` fits a slideshow to the whole
+    list: the songs' lengths minus the crossfades.
+  - `videofx`: repeat `--music FILE` for a list; `--music-crossfade S`.
+
+#### 2026-10-07 *0.9.188*
+- **The path check follows a member access through the includes.**
+  `scripts/check_path_string.py` already read the headers a file includes
+  directly; a member access such as `PathFromUtf8(mailDir_) / env.accountId`
+  in UltraMail's preview still slipped through, because the struct
+  (`UltraMailTypes.h`) is two includes away. A member access (`x.name`,
+  `x->name`) is now looked up in every repository header the file includes,
+  transitively (up to 400), a header that the include roots do not reach
+  being found by its file name when exactly one header in the repository
+  has it; a member name the headers declare two different ways is left
+  alone. Bare names keep the direct-include rule. Each header's
+  declarations and each include are read once per run, so a full run takes
+  about as long as before (36 s against 34 s). The self-test gains a struct
+  included through another header, and against the pre-fix UltraMail /
+  EmailCleaner sources the check now reports all eight wrong operands.
+  Five more sites are wrapped in `PathFromUtf8`: UltraWin's environment
+  listing and prefix check, VirtualFS's cached-archive cleanup, UltraSocial's
+  attachment check, and an AnchorPoint test.
+- **A plug-in carrying a copy of the core is caught.** Linking a core
+  library *statically* into an UltraNet plug-in leaves nothing undefined
+  and nothing imported, so neither import check saw it - but the plug-in
+  then has its own copy of the core's globals (the plug-in registry, the
+  HTTP session pool, the TLS trust store) beside the host's.
+  - `UltraCanvas/CMakeLists.txt` now stops the configure when a plug-in
+    target links `UltraCanvas`, `UltraNet`, `UltraCanvasTextUtils` or
+    `UltraCanvasAllFormats`, directly or through another target (followed
+    through `LINK_LIBRARIES` / `INTERFACE_LINK_LIBRARIES` and
+    `$<LINK_ONLY:...>`). Tried with a direct link and with one through an
+    interface target: both stop the configure.
+  - `scripts/check_ultranet_plugin_imports.py` also reads each plug-in's
+    exports - `nm -D` on Linux, `nm -gUm` on macOS, the DLL export table on
+    Windows - and fails on a core function exported as a strong definition
+    (a plug-in exports `UltraNet_PluginInit`; the weak inline functions and
+    type information of the headers are not counted). A test plug-in linked
+    against the real `libultranet.a` is reported with the five URL
+    functions it pulled in; a DLL exporting `UltraNet_ParseUrl` is
+    reported; the 12 real plug-ins are clean. The core marks nothing
+    `dllexport`, so a static copy inside a Windows DLL exports nothing -
+    that case is the configure guard's. The self-test covers the export
+    parsers of all three platforms.
+
+#### 2026-10-07 *0.9.187*
+- **Notifications are drawn where nothing else draws them.** Where
+  UltraMessage itself serves `org.freedesktop.Notifications` - on ULTRA OS,
+  and on any Linux session with no notification daemon installed - every
+  application's notification arrived on the bus and reached the message feed
+  only; nothing put it on screen. The new `UltraCanvasNotificationToastHost`
+  (`include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, target
+  `UltraMessageCenter`) is the screen of last resort: a client of the bus that
+  draws each live `system.notification` nothing else shows as a toast,
+  stacked in a corner of the screen clear of the desktop's bars, and sends
+  what the user does back - a click or an action button as
+  `system.notification.action`, the close button as
+  `system.notification.dismissed`, which the freedesktop adapter turns into
+  `ActionInvoked` / `NotificationClosed` for the application. A toast goes
+  after 8 s (5 s for low urgency; a critical one stays until closed; the
+  pointer resting on it holds it), when it is dismissed or acted on anywhere
+  on the bus, and a replacement updates it. The ULTRA OS desktop hosts it
+  (UltraDesktop 0.2.0).
+  - **For the desktop shell, not applications.** An application posts a
+    `system.notification` and the message system decides who shows it; the
+    host is the desktop's, one per bus - a second `Connect` is refused so
+    nothing is drawn twice.
+  - **`UltraCanvasNotificationToast`**, the toast as an element: the
+    application's icon and name, summary, body, the notification's action
+    buttons and a close button, from catalogue elements. In the element
+    catalogue and documented in `Docs/UltraCanvas/UltraCanvasNotificationToast.md`.
+  - **`WindowType::Notification`**: undecorated, above other windows, on
+    every virtual desktop, out of taskbars and pagers, and never given the
+    keyboard focus (`_NET_WM_WINDOW_TYPE_NOTIFICATION` with the input hint
+    off on X11; `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, shown
+    without activating, on Windows; borderless on macOS).
+  - **Every notification says whether it is on screen.** The broker hands an
+    application's notification to the presenters before it journals and
+    delivers it and writes the presenter that took it into the body's
+    `displayed` (an application's own value is removed); the
+    `freedesktop-notifications` adapter in monitor mode and the
+    `windows-notification-listener` write it on what the platform drew. A
+    toast host draws only what carries none, so on GNOME, Plasma, dunst or
+    Windows nothing is shown twice.
+  - DemoApp: a *Notification Toast* page next to *Alert / Message Box* - the
+    element on the page, real toasts at the screen corner (mail, a chat with
+    Reply, a critical one, a download updating in place, six at once against
+    the limit of four), what the clicks report, and when to use a toast
+    rather than an Alert; the Alert page points at it.
+  - The `freedesktop-presenter`'s state names the toast host for the case no
+    notification server runs.
+  - The Alert's documentation pointed transient messages at a "Toast
+    (`UltraCanvasToast`)" that did not exist; it now names this element, and
+    a critical toast takes the Error alert's red. A toast is not built on the
+    Alert: that one is modal, centred, focused and answered by a button.
+  - `core/UltraCanvasToast.cpp`, an unfinished in-app toast draft that never
+    compiled (its header was never committed, and it called a rendering API
+    that no longer exists), is removed: the element above replaces it.
+  - Tests: six toast-host cases (which notifications it draws, update and
+    replace, the visible limit, expiry and the pointer's hold, the controls,
+    and a round trip on the private bus); `displayed` in the adapter and
+    presenter tests. Checked by hand under Xvfb with no notification daemon:
+    UltraDesktop drawing a native application's `Notify`, an UltraMail
+    notification and a critical one, the clicks answering on both buses, and
+    nothing drawn twice where dunst runs.
+- **macOS: UltraMessage puts applications' notifications in Notification
+  Center.** The new `macos-presenter` adapter
+  (`OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm`, in every macOS build)
+  hands a `system.notification` an application posts on the bus to
+  Notification Center through the UserNotifications framework, so UltraMail's
+  new-mail notification now shows on macOS as it does on Linux and Windows.
+  Until now there was no presenter on macOS and such a notification reached
+  the message feed only.
+  - A banner that stays in the Notification Center list. The notification's
+    other actions become buttons (up to three). On macOS 12 and later
+    `critical` is time-sensitive and `low` is passive and silent. An icon
+    that names a PNG, JPEG or GIF file becomes the notification's picture,
+    and one application's notifications are grouped. An update
+    (`UltraMsgFlag_Replace`) changes the notification in place.
+  - What the user does comes back on the bus naming the notification: a
+    click as the `default` action where the notification has one, a button
+    as its action, a dismissal as `system.notification.dismissed`. A
+    dismissal or action posted on the bus removes it from Notification
+    Center. Each notification carries its bus id, so a click on one shown
+    before the broker last started is still reported.
+  - macOS names the notification after the application bundle that hosts the
+    broker and asks the user once to allow it. Another application's
+    notification names that application in its subtitle. Where the user did
+    not allow notifications, the adapter's state is `needs-permission` and
+    names the place in System Settings.
+  - **Outside an application bundle** (an executable started from the build
+    tree, `ultramsgd`, a test), or where macOS refuses the bundle, the
+    adapter shows notifications through `osascript`'s
+    `display notification` (mode `script`): under Script Editor's name,
+    without buttons, and a click on one opens nothing. The texts are passed
+    as script arguments, never inside the script.
+  - **The presenters' shared half** moves into `UltraMessageAdapter.h` and is
+    tested on every platform: `ReadPresentedContent` (what a notification
+    says, its buttons, its icon file), `ButtonSetKey`, `PresentedNotifications`
+    (which update shows where) and `PublishPresenterResponse` (what a click,
+    a button or a dismissal publishes).
+  - `UltraMessage` links the Foundation and UserNotifications frameworks on
+    macOS and exports `ULTRAMESSAGE_HAVE_MACOS_PRESENTER`. Tests: five cases
+    for the shared half on every platform (41 in the suite on Linux), and on
+    macOS one that lists the adapter and switches it off and on.
+- **UltraMessage puts applications' notifications on screen.** A
+  `system.notification` an application posts on the bus is now handed by the
+  broker to a *presenter* adapter, which shows it with the desktop's own
+  notification service - so it looks, sounds and obeys do-not-disturb like
+  every other program's - and reports what the user does with it back on the
+  bus: a click as `system.notification.action` (`actionId` `"default"` for
+  the body), a close as `system.notification.dismissed`, both naming the
+  notification. A dismissal posted on the bus withdraws it from the screen,
+  and `UltraMsgFlag_Replace` updates it; `UltraMsgFlag_Silent` keeps it off
+  screen, and what adapters publish (it came from the screen) is never
+  presented. Until now the feed was the only place such a notification
+  appeared. New hook: `Internal::IAdapter::Present`.
+  - **Linux: `freedesktop-presenter`** calls `Notify` on whatever owns
+    `org.freedesktop.Notifications` (GNOME Shell, Plasma, XFCE, dunst, mako),
+    with the hints `category`, `urgency`, `desktop-entry` (the body's new
+    optional `desktopEntry`), `sender-pid` and `x-ultramessage-id`, and turns
+    `ActionInvoked` and a close by the user into the bus notices above. Where
+    UltraMessage itself serves the name nothing draws notifications; the
+    presenter then declines and its state says so, with the remedy.
+  - **Windows: `windows-presenter`** shows a notification-area balloon
+    (`Shell_NotifyIconW`), which Windows 10 and 11 present as a toast and keep
+    in the Action Center - no package identity, shortcut or registration
+    needed, so every desktop build has it. Focus assist is respected. The
+    `windows-notification-listener` no longer reads those toasts back as a
+    second notification.
+  - **The `freedesktop-notifications` adapter no longer takes the name from
+    an installed notification server.** dunst, mako and xfce4-notifyd start
+    by D-Bus activation on the first `Notify`; the adapter used to claim the
+    free name first, and from then on no application's notification was drawn
+    on those desktops. It now starts such a server and watches it in monitor
+    mode. It also skips the presenter's own `Notify` calls.
+  - `UltraCanvasMessageCenter` lists only what the journal holds: a notice
+    sent with `UltraMsgFlag_NoJournal` - a passing alert such as UltraMail's
+    new-mail notification, whose messages are rows already - is no row.
+  - The DemoApp's *Ultra Message* page sends its sample notifications Silent,
+    so they stay on the page instead of popping up on the desktop.
+  - `UltraMessage` links `shell32` and `user32` on Windows. Tests: two
+    presenter cases against a fake desktop notification server on the private
+    D-Bus session (36 in the suite); the message centre's NoJournal rule.
+    UltraMail uses all this for its new-mail notification (UltraMail 0.10.34).
+- **UltraWeb links on Ubuntu 24.04.** wasmtime's prebuilt library carries
+  its own zstd with hidden symbols, and on Ubuntu 24.04 `libvips-dev` pulls
+  in `libarchive-dev`, so VirtualFS links the system libarchive, which uses
+  the system zstd. GNU ld then refused `UltraWeb` and `UltraWebGuestTest`:
+  "hidden symbol `ZSTD_freeCStream' ... is referenced by DSO". CI's Ubuntu
+  22.04 has no libarchive and never saw it; a 24.04 machine and every cloud
+  session did. Where the system zstd is 1.5 or newer, `WasmHost` now links it
+  ahead of the wasmtime archive (`ULTRACANVAS_WASMTIME_PRELINK`,
+  `cmake/UltraCanvasWasmtime.cmake`), so wasmtime binds to it and the
+  archive's copy is never pulled in; with an older zstd or none, nothing
+  changes. `WasmHostTest` and `UltraWebGuestTest` pass against it.
+
+#### 2026-10-07 *0.9.186*
+- **SVG export writes arrowheads.** The SVG writer ignored the line
+  gallery's arrowheads (`StrokeData::StartArrow` / `EndArrow`), so an arrow
+  drawn in ArtCreator lost its heads when saved as SVG. Each is now written
+  as a `<marker>` holding the outline the renderer draws
+  (`ArrowheadOutline`), in the line's units and colour, with
+  `orient="auto"` and a start head drawn pointing backwards so SVG 1.1
+  readers (no `auto-start-reverse`) place it right. They go on lines,
+  polylines and paths whose ends are open, as the renderer draws them, and
+  the same arrowhead in the same colour is written once. The markers carry
+  `data-ultracanvas-arrowhead` / `-scale` / `-end`, and the SVG reader turns
+  them back into the arrowheads themselves, so saving and reopening in
+  ArtCreator keeps them editable; any other reader simply draws them. All 14
+  kinds at both ends of a curve render the same through librsvg as through
+  the framework's renderer. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG export writes width profiles and brushes.** SVG has neither a
+  variable-width stroke nor a brush, and the writer wrote a plain
+  constant-width stroke instead: a tapered line came out uniform and a
+  brushed line as a bare stroke. A shape with a `WidthProfile` or a `Brush`
+  is now written as what the renderer draws: a group holding the shape with
+  its fill and no stroke, then the band (`VariableWidthOutline`, filled
+  even-odd in the stroke's paint) or the stamps (`<use>`s of the stamp,
+  written once in `<defs>`), then the arrowheads. The group carries the
+  stroke (`data-ultracanvas-stroke`, a style declaration list), the profile
+  and the brush, and the SVG reader gives back the shape with its stroke
+  and stamp, so it stays editable; any other reader draws the shapes. A
+  tapered curve, a thick-thin curve, a profiled ellipse and a brush turning
+  along a curve render the same through librsvg as through the renderer.
+  - `BrushStampPlacements(points, stroke)` (`UltraCanvasVectorStorage.h`):
+    where a brush stamps along a flattened subpath, as matrices from the
+    stamp's own space. It was a private copy of the renderer's loop inside
+    the XAR writer; the XAR and SVG writers now share it.
+  - `Tests/SVGConverterTest.cpp` covers the export, the round trip and the
+    librsvg rendering.
+
+#### 2026-10-07 *0.9.185*
+- **A scanner named in `ULTRACANVAS_ESCL_SCANNERS` is called what it is.**
+  It has no DNS-SD instance name, so it was listed under its URL - and a
+  certificate trusted for it read *(name not known)* in UOS-Settings. Once its
+  `ScannerCapabilities` are read it takes the make and model they report
+  ("Acme MegaScan 42") as its name, and its model and serial number are filled
+  in, as an IPP printer configured by address already took its
+  `printer-name`. A scanner found by DNS-SD keeps its instance name.
+
+#### 2026-10-07 *0.9.184*
+- **`FilerHistoryTest` runs.** The test of UltraFiler's recently-used lists
+  (`Tests/FilerHistoryTest.cpp` - the Files / Folders / Apps lists survive a
+  restart and keep the History & Favorites limit while recording, on reading
+  the file back and when the limit is lowered) was written in September but
+  never added to any CMake file, so no build compiled it and CI never ran it.
+  It is in `Tests/FilerTests.cmake` now, so Linux runs it in the full test
+  pass and the Windows job runs it with the other Filer tests, where
+  UltraFiler keeps its history under `%APPDATA%`. For Windows its paths now go
+  through `PathToUtf8` / `PathFromUtf8` and its config folder is redirected
+  with the wide environment API, and `scripts/check_path_string.py` scans it,
+  as it does every test that runs on Windows.
+- **Inline `<svg>` and `<math>` in a page keep their names' case.** The HTML
+  parser lower-cased every tag and attribute name, so an SVG drawn inside a
+  page came out as `lineargradient` with a `viewbox`, which no SVG consumer
+  recognises. Inside `<svg>` and `<math>` the parser now applies the HTML
+  standard's foreign-content tables: the vocabulary's own spelling
+  (`linearGradient`, `viewBox`, `preserveAspectRatio`, `definitionURL`)
+  whatever case the source used, HTML again inside `foreignObject`, `desc`,
+  `title` and the MathML text elements, no HTML implicit closes or void
+  elements in between. `Node::GetAttribute` finds a name exactly, then in any
+  ASCII case, and a CSS type selector matches a foreign element's camelCase
+  name, as in a browser. Needed before UltraWeb renders pages; harmless for
+  mail and eBooks, whose SVG cover wrappers still show their raster image.
+- **The tests compile the HTMLReader core once.** `Tests/CMakeLists.txt`
+  listed the parser, CSS and resolver sources in three test targets; they are
+  one object library, `HTMLReaderTestCore`, that the three link.
+- **The unbuilt SVG plugin is gone.** `Plugins/SVG/UltraCanvasSVGPlugin`
+  (a separate `UltraCanvasSVGElement` with its own SVG model, renderer and
+  `style=""` parser, 1,850 lines) was commented out of the build and named
+  only by the demo page, which has shown SVG files through
+  `UltraCanvasImageElement` all along. An SVG is a picture: the image
+  element and the media viewer show it (librsvg), `UltraCanvasVectorRaster`
+  rasterizes it, the Vector plugin's `SVGConverter` reads and writes it.
+  `Docs/UltraCanvas/UltraCanvasSVGExamples.md` now says so instead of
+  documenting the removed element.
+- **The Filer tests that run on Windows are checked for code-page path
+  conversions.** `scripts/check_path_string.py` scans only the tests that run
+  on Windows, and of the five Filer tests the Windows job runs it covered
+  none until `FilerHistoryTest` - so a `.string()` or `fs::path(std::string)`
+  added to `FilerFolderPreviewTest`, `FilerHostIconsTest`,
+  `FilerNameEncodingTest` or `FilerShortcutEntryTest` would have passed the
+  check and failed only on a Windows machine with a name its code page cannot
+  hold. All five are scanned now, and `path-strings.yml` runs when one of
+  them changes - before, a change to a test file alone never started it. The
+  two sites in `FilerNameEncodingTest` that write a raw Latin-1 file name on
+  POSIX on purpose say so with `// path-string-ok`.
+
 #### 2026-10-07 *0.9.183*
 - **CSS selector matching is one piece of code for every tree.** The HTML
   style resolver matched selectors with a private method typed on the HTML

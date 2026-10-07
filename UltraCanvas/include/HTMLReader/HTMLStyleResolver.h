@@ -3,6 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.19.0 - NodeSelectorTraits::TagIs matches a foreign element's camelCase
+//                  name (inline <svg>) against the lower-cased type selector
 // Version: 1.18.0 - selector matching moved to CSSStyleSheet.h; NodeSelectorTraits
 //                  is the DOM's view of it, Matches() the stand-alone test
 // Version: 1.17.0 - merged with main's 1.4.0-1.6.0 (float / clear, box-sizing as
@@ -34,6 +36,7 @@
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/CSSStyleSheet.h"
 
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -251,12 +254,23 @@ struct ResolverOptions {
 };
 
 // The HTML DOM as the selector matcher sees it (CSSStyleSheet.h, "Matching"):
-// tag and attribute names are stored lower-case by the parser, so they
-// compare directly; class names and ids compare exactly. The matcher itself
-// is shared with every other tree that is styled by CSS (the SVG reader).
+// HTML tag names are stored lower-case by the parser and compare directly;
+// a foreign element's name (linearGradient inside an inline <svg>) keeps its
+// case and compares case-insensitively with the parser's lower-cased type
+// selector, as a browser does for SVG in HTML. Attribute names go through
+// Node's own lookup, exact then case-insensitive. Class names and ids compare
+// exactly. The matcher itself is shared with every other tree that is styled
+// by CSS (the SVG reader).
 struct NodeSelectorTraits {
     using Element = Node;
-    static bool TagIs(const Node& n, const std::string& tag) { return n.tag == tag; }
+    static bool TagIs(const Node& n, const std::string& tag) {
+        if (n.tag == tag) return true;
+        if (n.tag.size() != tag.size()) return false;
+        for (size_t i = 0; i < tag.size(); ++i) {
+            if (std::tolower(static_cast<unsigned char>(n.tag[i])) != tag[i]) return false;
+        }
+        return true;
+    }
     static bool IdIs(const Node& n, const std::string& id) { return n.GetId() == id; }
     static bool HasClass(const Node& n, const std::string& name) { return n.HasClass(name); }
     static bool GetAttribute(const Node& n, const std::string& name, std::string& value) {

@@ -145,8 +145,10 @@ before adding cross-module code.
   tell a string from a path - so a class member declared in its header and a
   call to a function declared as returning `std::string`
   (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
-  whole. A string it still cannot see the type of (an `auto`, a member of a
-  class declared further away) is review's to catch.
+  whole. A member access (`env.accountId`) is looked up through the whole
+  include chain, since the struct is often a header or two further down. A
+  string it still cannot see the type of (an `auto`, a member declared two
+  different ways, a type from outside the repository) is review's to catch.
   A string that is not UTF-8 to begin with is not fixed by wrapping it in
   `PathFromUtf8`. The environment is the common case: Windows keeps the
   profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
@@ -284,6 +286,26 @@ DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
+without most of the libraries CI installs, and CMake leaves a missing optional
+library out without a word - so `.claude/settings.json` also runs
+`.claude/hooks/session-start.sh` on `SessionStart`. In the cloud only
+(`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
+that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
+Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
+builds them from source. Without it, UltraCrypt built without libsodium and
+every credential-vault test failed here while passing in CI, and VideoFX, the
+PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
+were not built at all. A cold container takes about a minute, a warm one a
+fraction of a second; it never blocks the session, and when an install fails
+it says so in one line in the session's context. The services CI starts for
+its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
+tests skip. A test that fails here but passes in CI because a library is
+missing is fixed by adding the package to that list, not by treating the
+failure as expected; re-run `cmake` on a build directory configured before
+the install. To build what CI builds, configure with the options of CI's
+*Configure CMake (macOS/Linux)* step.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,

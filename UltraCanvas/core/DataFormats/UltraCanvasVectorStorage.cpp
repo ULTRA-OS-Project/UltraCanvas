@@ -1,7 +1,7 @@
 // UltraCanvasVectorStorage.cpp
 // Implementation of the Vector Graphics Storage System for UltraCanvas
-// Version: 1.1.1
-// Last Modified: 2026-09-26
+// Version: 1.1.2
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -1824,6 +1824,34 @@ PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const
     return out;
 }
 
+std::vector<Matrix3x3> BrushStampPlacements(const std::vector<Point2Dd>& pts, const StrokeData& st) {
+    std::vector<Matrix3x3> out;
+    if (!st.Brush || !st.Brush->Stamp || pts.size() < 2) return out;
+    const BrushData& b = *st.Brush;
+    const Rect2Dd sb = b.Stamp->GetBoundingBox();
+    if (sb.width <= 0 || sb.height <= 0) return out;
+    const double k = (std::max(0.5f, st.Width) * std::max(0.01f, b.Scale)) / sb.height;
+    const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
+    std::vector<double> cum(pts.size(), 0.0);
+    for (size_t i = 1; i < pts.size(); ++i)
+        cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    const double total = cum.back();
+    if (total <= 1e-9) return out;
+    size_t seg = 1;
+    int stamps = 0;
+    for (double dist = 0; dist <= total + 1e-9 && stamps < 4000; dist += step, ++stamps) {
+        while (seg + 1 < pts.size() && cum[seg] < dist) ++seg;
+        const double segLen = cum[seg] - cum[seg - 1];
+        const double u = segLen > 1e-12 ? std::min(1.0, std::max(0.0, (dist - cum[seg - 1]) / segLen)) : 0.0;
+        const Point2Dd p(pts[seg - 1].x + (pts[seg].x - pts[seg - 1].x) * u,
+                         pts[seg - 1].y + (pts[seg].y - pts[seg - 1].y) * u);
+        const double angle = b.Rotate ? std::atan2(pts[seg].y - pts[seg - 1].y, pts[seg].x - pts[seg - 1].x) : 0.0;
+        out.push_back(Matrix3x3::Translate(p.x, p.y) * Matrix3x3::Rotate(angle) * Matrix3x3::Scale(k, k) *
+                      Matrix3x3::Translate(-(sb.x + sb.width / 2), -(sb.y + sb.height / 2)));
+    }
+    return out;
+}
+
 PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke) {
     PathData out;
     for (const FlatSubpath& sub : FlattenPathData(path)) {
@@ -2182,14 +2210,20 @@ std::string SerializeTransform(const Matrix3x3& transform) {
         return "";
     }
     
-    // Output as matrix
-    return "matrix(" + 
-           std::to_string(transform.m[0][0]) + "," +
-           std::to_string(transform.m[1][0]) + "," +
-           std::to_string(transform.m[0][1]) + "," +
-           std::to_string(transform.m[1][1]) + "," +
-           std::to_string(transform.m[0][2]) + "," +
-           std::to_string(transform.m[1][2]) + ")";
+    // Output as matrix. Dot-decimal whatever the locale: std::to_string
+    // rendered through LC_NUMERIC, and on a comma-decimal desktop wrote
+    // `matrix(0,866025,0,500000,...)`, whose commas are also the separators -
+    // a saved drawing reopened with its transformed groups moved. Twelve
+    // significant digits keep what "%f" kept for anything under a million
+    // (a CAD drawing's 250000.5 stays 250000.5) without its trailing zeros.
+    auto n = [](double v) { return FormatFloatClassic(v, 12); };
+    return "matrix(" +
+           n(transform.m[0][0]) + "," +
+           n(transform.m[1][0]) + "," +
+           n(transform.m[0][1]) + "," +
+           n(transform.m[1][1]) + "," +
+           n(transform.m[0][2]) + "," +
+           n(transform.m[1][2]) + ")";
 }
 
 Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const VectorTextStyle& style) {

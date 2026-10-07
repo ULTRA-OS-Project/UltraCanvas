@@ -390,6 +390,41 @@ void TestTheNameFromDiscovery() {
     Check(EsclInstanceFromServiceName("").empty(), "nothing gives nothing");
 }
 
+void TestTheNameFromTheScannerItself() {
+    std::cout << "\n=== The name, when only the scanner itself can say ===\n";
+    EsclScannerDescription described;
+    if (!ParseEsclCapabilities(kCapabilities, described).success) {
+        Check(false, "the fixture parses");
+        return;
+    }
+
+    // Named in ULTRACANVAS_ESCL_SCANNERS: listed under its address until it
+    // has described itself.
+    IODeviceInfo configured;
+    configured.name = "https://10.0.0.7/eSCL";
+    configured.connectionPath = "https://10.0.0.7/eSCL";
+    Check(FillInEsclIdentity(configured, described), "a scanner named by its address changes");
+    Check(configured.name == "Acme MegaScan 42", "  to the make and model it reports");
+    Check(configured.model == "Acme MegaScan 42" && configured.serialNumber == "SN-0001",
+          "  and its model and serial number are filled in");
+    Check(!FillInEsclIdentity(configured, described), "  once, not again");
+
+    // Found by DNS-SD: its instance name is the one a person gave it.
+    IODeviceInfo discovered;
+    discovered.name = "Office Scanner";
+    discovered.connectionPath = "http://scanner.local/eSCL";
+    discovered.model = "Acme MegaScan 42";
+    FillInEsclIdentity(discovered, described);
+    Check(discovered.name == "Office Scanner", "a discovered scanner keeps its instance name");
+
+    IODeviceInfo silent;
+    silent.name = "https://10.0.0.8/eSCL";
+    silent.connectionPath = silent.name;
+    EsclScannerDescription nothing;
+    Check(!FillInEsclIdentity(silent, nothing) && silent.name == "https://10.0.0.8/eSCL",
+          "a scanner that gives no make and model keeps its address as its name");
+}
+
 }  // namespace
 
 int main() {
@@ -405,6 +440,7 @@ int main() {
     TestFindingTheJob();
     TestTheAddressFromDiscovery();
     TestTheNameFromDiscovery();
+    TestTheNameFromTheScannerItself();
 
     std::cout << "\n";
     if (g_failures == 0) {

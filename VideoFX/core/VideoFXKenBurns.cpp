@@ -5,8 +5,8 @@
 // fractional coordinates, so the camera glides. FFmpeg's zoompan rounds its
 // window to whole pixels each frame, which shows as the familiar Ken Burns
 // jitter - this is why the frames are made here and not in a filter.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFXKenBurns.h"
@@ -95,6 +95,90 @@ void ViewRect(const KenBurnsView& view, int imageW, int imageH, int outW, int ou
     // Centre on the view's point; slide back inside the image
     x = std::clamp(view.centerX * imageW - w / 2.0, 0.0, imageW - w);
     y = std::clamp(view.centerY * imageH - h / 2.0, 0.0, imageH - h);
+}
+
+bool ValidateKeepInView(const std::vector<VideoFXRect>& regions, std::string& error) {
+    for (const VideoFXRect& r : regions) {
+        if (!InRange(r.x, 0.0, 1.0) || !InRange(r.y, 0.0, 1.0) || !(r.w > 0.0) || !(r.h > 0.0) ||
+            r.x + r.w > 1.0 + 1e-6 || r.y + r.h > 1.0 + 1e-6) {
+            error = "Keep-in-view regions must be inside the image (fractions 0..1) and not empty";
+            return false;
+        }
+    }
+    return true;
+}
+
+VideoFXRect FocusBounds(const std::vector<VideoFXRect>& regions) {
+    if (regions.empty()) return {};
+    double l = 1.0, t = 1.0, r = 0.0, b = 0.0;
+    for (const VideoFXRect& f : regions) {
+        if (f.IsEmpty()) continue;
+        // Headroom: 15 % of the region's own size on each side
+        const double mx = f.w * 0.15, my = f.h * 0.15;
+        l = std::min(l, f.x - mx);
+        t = std::min(t, f.y - my);
+        r = std::max(r, f.x + f.w + mx);
+        b = std::max(b, f.y + f.h + my);
+    }
+    l = std::max(0.0, l); t = std::max(0.0, t); r = std::min(1.0, r); b = std::min(1.0, b);
+    if (!(r > l && b > t)) return {};
+    return VideoFXRect{l, t, r - l, b - t};
+}
+
+namespace {
+// The view rectangle a fit gives a view
+void FitRect(VideoFXImageFit fit, const KenBurnsView& view, int imageW, int imageH, int outW, int outH,
+             double& x, double& y, double& w, double& h) {
+    if (fit == VideoFXImageFit::Cover) ViewRect(view, imageW, imageH, outW, outH, x, y, w, h);
+    else ContainViewRect(view, imageW, imageH, outW, outH, x, y, w, h);
+}
+
+// The centre (fraction) nearest `centre` whose window of `size` along a side
+// of `length` holds [lo, hi] (fractions); `centre` itself when it already does
+double HoldCentre(double centre, double size, double length, double lo, double hi) {
+    if (size >= length) return centre;              // the window spans the side: centred anyway
+    const double s = size / length;                 // as a fraction
+    if (s <= hi - lo) return (lo + hi) / 2.0;        // too small to hold it: centre on it
+    return std::clamp(centre, hi - s / 2.0, lo + s / 2.0);
+}
+} // namespace
+
+VideoFXImageMotion FitMotionToFocus(const VideoFXImageMotion& resolved, const VideoFXRect& focus,
+                                    int imageW, int imageH, int outW, int outH, VideoFXImageFit fit) {
+    if (focus.IsEmpty() || imageW <= 0 || imageH <= 0 || outW <= 0 || outH <= 0) return resolved;
+    VideoFXImageMotion m = resolved;
+    if (m.style == VideoFXMotionStyle::Still) {
+        // Still keeps zoom 1; only where it looks moves to the focus
+        m = VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 1.0, 0.5, 0.5);
+        m.easeInOut = resolved.easeInOut;
+    }
+    double x, y, baseW, baseH;
+    FitRect(fit, KenBurnsView{}, imageW, imageH, outW, outH, x, y, baseW, baseH);
+    // Closest zoom at which the view still holds the box
+    const double fw = focus.w * imageW, fh = focus.h * imageH;
+    const double maxZoom = std::max(1.0, std::min(baseW / fw, baseH / fh));
+    auto fitEnd = [&](double& zoom, double& cx, double& cy) {
+        zoom = std::clamp(zoom, 1.0, std::max(1.0, maxZoom));
+        const double w = baseW / zoom, h = baseH / zoom;
+        cx = HoldCentre(cx, w, imageW, focus.x, focus.x + focus.w);
+        cy = HoldCentre(cy, h, imageH, focus.y, focus.y + focus.h);
+    };
+    fitEnd(m.startZoom, m.startX, m.startY);
+    fitEnd(m.endZoom, m.endX, m.endY);
+    return m;
+}
+
+void KeepFocusInView(const VideoFXRect& focus, int imageW, int imageH, double& x, double& y, double w, double h) {
+    if (focus.IsEmpty()) return;
+    auto slide = [](double& pos, double size, double length, double lo, double hi) {
+        lo *= length;
+        hi *= length;
+        if (size >= hi - lo) pos = std::clamp(pos, hi - size, lo);
+        else pos = (lo + hi - size) / 2.0;
+        if (size < length) pos = std::clamp(pos, 0.0, length - size);
+    };
+    slide(x, w, imageW, focus.x, focus.x + focus.w);
+    slide(y, h, imageH, focus.y, focus.y + focus.h);
 }
 
 VideoFXImageFit ResolveImageFit(VideoFXImageFit fit, int imageW, int imageH, int outW, int outH) {

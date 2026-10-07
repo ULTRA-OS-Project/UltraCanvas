@@ -943,13 +943,14 @@ jobs:
       # through UltraCanvasFilerWidget, which on Windows goes through the
       # UTF-16 file APIs - and through the runner's code page 1252 wherever a
       # conversion was missed. The host-icons test asks the real shell for
-      # its icons, and the shortcut test reads .lnk files on the system they
-      # come from. ULTRACANVAS_BUILD_FILER_TESTS builds the four without the
-      # Linux-only BUILD_TESTS; Linux runs them in the full pass.
+      # its icons, the shortcut test reads .lnk files on the system they
+      # come from, and the history test keeps UltraFiler's recently-used lists
+      # under %APPDATA%. ULTRACANVAS_BUILD_FILER_TESTS builds the five without
+      # the Linux-only BUILD_TESTS; Linux runs them in the full pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux
