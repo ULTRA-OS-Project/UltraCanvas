@@ -55,11 +55,12 @@ std::string StemOf(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).stem());
 }
 
-// Where save and open dialogs start: the user's home folder.
+// Where save and open dialogs start: the user's home folder, in UTF-8 like
+// every path the dialogs take (on Windows a narrow getenv would answer in
+// the ANSI code page).
 std::string HomeDirectory() {
-    if (const char* home = std::getenv("HOME"); home && *home) return home;
-    if (const char* profile = std::getenv("USERPROFILE"); profile && *profile) return profile;
-    return {};
+    if (std::string home = GetEnvUtf8("HOME"); !home.empty()) return home;
+    return GetEnvUtf8("USERPROFILE");
 }
 
 std::string Plural(size_t n, const char* one, const char* many) {
@@ -889,11 +890,15 @@ void PasswordApp::ChangeMasterPassword() {
 
 void PasswordApp::CopyToClipboard(const std::string& text, const std::string& what) {
     if (text.empty()) return;
-    if (!SetClipboardText(text)) {
+    // A password goes out marked secret, so no clipboard history keeps it -
+    // the desktop's included. The 30-second clear only empties the clipboard;
+    // a history that had recorded it would keep it.
+    const bool isPassword = what == "Password";
+    if (!SetClipboardText(text, isPassword ? ClipboardHint::Secret : ClipboardHint::Normal)) {
         SetStatus("The clipboard is not available.", true);
         return;
     }
-    if (what == "Password") {
+    if (isPassword) {
         WipeString(clipboardText_);
         clipboardText_ = text;
         clipboardClearAt_ = NowSeconds() + kClipboardSeconds;

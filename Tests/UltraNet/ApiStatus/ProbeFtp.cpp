@@ -378,3 +378,39 @@ ULTRANET_PROBE(kArea, UltraNet_FtpRemoveDirectory) {
     }
     return Working("RMD removed the directory (it is gone from the listing)");
 }
+
+ULTRANET_PROBE(kArea, UltraNet_SetThreadFtpLog) {
+    // The session log needs no server: a closed port still resolves, tries to
+    // connect and fails, and each of those is a line. The thread's sink hears
+    // a call that brings no onLog; a call that does goes to its own instead.
+    std::vector<UltraNetFtpLogLine> threadLines;
+    UltraNetFtpLogCallback previous = UltraNet_SetThreadFtpLog(
+            [&threadLines](const UltraNetFtpLogLine& l) { threadLines.push_back(l); });
+
+    UltraNetFtpOptions fast;
+    fast.connectTimeoutMs = 1500;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult viaThread = UltraNet_FtpListDirectory(kDeadDirUrl, entries, fast);
+
+    std::vector<UltraNetFtpLogLine> ownLines;
+    UltraNetFtpOptions own = fast;
+    own.onLog = [&ownLines](const UltraNetFtpLogLine& l) { ownLines.push_back(l); };
+    const std::size_t threadBefore = threadLines.size();
+    (void)UltraNet_FtpListDirectory(kDeadDirUrl, entries, own);
+    UltraNet_SetThreadFtpLog(std::move(previous));
+
+    if (viaThread.code == UltraNetResultCode::UnsupportedScheme)
+        return NotImplemented("the linked libcurl has no ftp:// support");
+    PROBE_EXPECT_MSG(!threadLines.empty(), "the thread's sink heard nothing");
+    PROBE_EXPECT_MSG(threadLines.front().kind == UltraNetFtpLogKind::Step,
+                     "the log does not start with a step");
+    PROBE_EXPECT_MSG(threadLines.back().kind == UltraNetFtpLogKind::Error &&
+                             threadLines.back().text == viaThread.message,
+                     "the log does not end with the call's error");
+    PROBE_EXPECT_MSG(threadLines.size() == threadBefore,
+                     "a call with its own onLog also reached the thread's sink");
+    PROBE_EXPECT_MSG(!ownLines.empty(), "onLog heard nothing");
+    return Working("a call against a closed port logged " +
+                   std::to_string(threadLines.size()) + " lines, ending \"" +
+                   threadLines.back().text + "\"; onLog takes precedence");
+}

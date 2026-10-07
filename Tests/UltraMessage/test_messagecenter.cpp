@@ -13,6 +13,7 @@
 #include "Plugins/UltraMessage/UltraCanvasMessageCenter.h"
 
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -353,4 +354,32 @@ TEST(message_center_on_the_bus_receives_reads_and_answers) {
 
     center->Disconnect();
     REQUIRE(!center->IsConnected());
+}
+
+// The demo page's crash. The element is replaced (here: destroyed) while the
+// messages it just subscribed to are still queued for the UI thread. Those
+// deliveries must be dropped; they used to run Ingest() on the freed element
+// and crash a moment after the Ultra Message page opened.
+TEST(message_center_destroyed_with_deliveries_queued) {
+    ultramsg_test::HeldDispatcher ui;
+    Scoped source{Connect("org.test.mc.source", "Source")};
+    auto center = MakeCenter("mc-gone");
+    UltraMsgConnectOptions options = UltraCanvasMessageCenter::DefaultConnectOptions();
+    options.busPath = TestBusPath();
+    options.journalPath = ":memory:";
+    REQUIRE(center->Connect(options));
+
+    const size_t before = ui.Count();
+    UltraMsgSendOptions chatOptions;
+    chatOptions.conversation = "telegram:Ada";
+    REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MessagingMessage, Chat("telegram", "Ada", "Ada", "queued one"), chatOptions));
+    REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::MailMessage, Mail("erika@example.org", "Konrad", "queued two")));
+    REQUIRE(UltraMsg_Post(source.handle, UltraMsgTopics::SystemNotification,
+                          Toast("Downloads", "org.ultraos.filer", "queued three", "", {})));
+    REQUIRE(ui.WaitForCount(before + 3));
+
+    std::weak_ptr<UltraCanvasMessageCenter> gone = center;
+    center.reset();              // the destructor disconnects
+    REQUIRE(gone.expired());
+    ui.RunAll();                 // must not reach the freed element
 }

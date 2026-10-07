@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
-// Version: 1.4.0
-// Last Modified: 2026-05-10
+// Version: 1.5.0 - image cursors kept per screen scaling
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -13,6 +13,7 @@
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
+#include "../../include/UltraCanvasImageCursorCache.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -64,7 +65,15 @@ namespace UltraCanvas {
         Colormap colormap;
         int depth;
 
+        // System (font and theme) cursors.
         std::unordered_map<UCMouseCursor, Cursor> cursors;
+        // Cursors drawn from a picture: one per screen scaling, so a window on
+        // a screen with other scaling gets one of its own size.
+        UCImageCursorCache<Cursor> imageCursors{
+                [this](const std::string& file, int hotspotX, int hotspotY, float scale) {
+                    return LoadCursorFromImage(file, hotspotX, hotspotY, scale);
+                },
+                [this](Cursor cursor) { if (display) XFreeCursor(display, cursor); }};
 
         // ===== OPENGL CONTEXT =====
         bool glxSupported;

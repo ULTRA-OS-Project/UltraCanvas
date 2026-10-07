@@ -2,7 +2,7 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
-// Version: 1.0.0
+// Version: 1.0.1 - the name field holds what the system can keep
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDiskDialog.h"
@@ -62,20 +62,21 @@ void UltraFilerRamDiskDialog::Initialize() {
     cfg.dialogType = DialogType::Custom;
     CreateDialog(cfg);
 
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     auto content = std::make_shared<UltraCanvasContainer>(
         "uf-ramdisk-content", 0, 0, kContentWidth, 236);
-    content->layout.SetFlexColumn();
+    content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layout.SetFlexGap(6);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
         "uf-ramdisk-name-label", 0, 0, kContentWidth, 20, "Name:"));
     nameInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-ramdisk-name", 0, 0, kContentWidth, 30.0f);
-    nameInput_->SetMaxLength(64);
+    // 23 on Windows, where the name has to fit the disc's volume label.
+    nameInput_->SetMaxLength(static_cast<int>(UltraFilerRamDisks::MaxNameLength()));
     nameInput_->SetText(UltraFilerRamDisks::SuggestName());
     nameInput_->onEnterPressed = [this](const std::string&) {
         Accept();
@@ -117,7 +118,7 @@ void UltraFilerRamDiskDialog::Initialize() {
 
     auto buttons = std::make_shared<UltraCanvasContainer>(
         "uf-ramdisk-buttons", 0, 0, kContentWidth, 34);
-    buttons->layout.SetFlexRow();
+    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttons->layout.SetFlexGap(8);
     auto createBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-create", 0, 0, 100, 30);
@@ -143,10 +144,14 @@ void UltraFilerRamDiskDialog::FocusInitialElement() {
 void UltraFilerRamDiskDialog::Accept() {
     const std::string name = nameInput_ ? nameInput_->GetText() : std::string();
     if (!UltraFilerRamDisks::IsValidName(name)) {
-        if (errorLabel_)
+        if (errorLabel_) {
+            const std::size_t maxLength = UltraFilerRamDisks::MaxNameLength();
             errorLabel_->SetText(name.empty()
-                    ? "Give the disc a name."
-                    : "Use letters, digits, '.', '_' and '-' only.");
+                    ? std::string("Give the disc a name.")
+                    : name.size() > maxLength
+                    ? "At most " + std::to_string(maxLength) + " characters."
+                    : std::string("Use letters, digits, '.', '_' and '-' only."));
+        }
         return;
     }
     const int index = sizeDropdown_ ? sizeDropdown_->GetSelectedIndex() : -1;

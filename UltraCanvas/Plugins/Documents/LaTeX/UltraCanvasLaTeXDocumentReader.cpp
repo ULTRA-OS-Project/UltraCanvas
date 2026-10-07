@@ -2402,7 +2402,7 @@ bool Reader::HandleCommand(const std::string& name, Stop stop, StopReason& reaso
             while (i < paths.size()) {
                 std::string dir;
                 if (paths[i] == '{' && ReadRawGroupAt(paths, i, dir)) {
-                    std::filesystem::path p(TrimCopy(dir));
+                    std::filesystem::path p = PathFromUtf8(TrimCopy(dir));
                     if (p.is_relative()) p = PathFromUtf8(options_.baseDirectory) / p;
                     graphicsPaths_.push_back(PathToUtf8(p));
                 } else {

@@ -318,6 +318,11 @@ endif()
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xrandr: per-monitor DPI query for HiDPI scaling (XRRGetMonitors).
     pkg_check_modules(X11 REQUIRED x11 xcursor xrandr)
+    # XFixes: the clipboard backend hears of every new clipboard owner (an
+    # image or a file copy as much as a text) instead of comparing the text.
+    # libXcursor depends on it, so it is installed wherever xcursor is;
+    # optional all the same.
+    pkg_check_modules(XFIXES xfixes)
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
@@ -410,6 +415,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboardDib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibilityBridge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
@@ -542,6 +548,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
@@ -589,8 +596,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
-        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
-        # on top of the CSSLayout engine (used by the eBook subsystem).
+        # HTMLReader: the framework's one implementation of reading HTML and
+        # CSS - parser, DOM, CSS parser and selector matcher, cascade,
+        # DOM→element builder on the CSSLayout engine, HTML→UCRichDocument
+        # importer. Always built; the eBook engines, UltraMail and the Vector
+        # plugin's SVG reader use it. Docs/UltraCanvas/UltraCanvasHTMLReader.md.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
@@ -640,6 +650,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceDnsSd.cpp
+        # Trust on first use for devices reached over HTTPS with the
+        # self-signed certificate nearly all of them have.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceTlsTrust.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCL.cpp
         # IPP driverless printing: the encoding and the page format are pure
@@ -1772,6 +1785,15 @@ endif()
 
 # Platform-specific libraries
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    if(XFIXES_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${XFIXES_INCLUDE_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${XFIXES_LIBRARIES})
+        set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxClipboard.cpp
+            APPEND PROPERTY COMPILE_DEFINITIONS ULTRACANVAS_HAS_XFIXES=1)
+        message(STATUS "  XFixes: ${XFIXES_VERSION} (clipboard change notification)")
+    else()
+        message(STATUS "  XFixes: not found - clipboard changes are noticed by comparing the text")
+    endif()
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${X11_LIBRARIES}
             ${GTK3_LIBRARIES}
@@ -2247,6 +2269,39 @@ if(WIN32)
     # core library, since this target does not inherit it.
     target_link_libraries(NetworkMonitor PUBLIC iphlpapi ws2_32 advapi32)
     target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
+
+# WebAssembly modules for applications (UltraWeb, Docs/UltraWeb/UltraWeb.md):
+# compile, link host functions, run with a memory cap and a per-call time
+# limit. UI-free like NetworkMonitor. The engine is wasmtime's prebuilt C
+# API (cmake/UltraCanvasWasmtime.cmake), private to this library: no
+# wasmtime header reaches its users. Without an engine - the option off, or
+# a platform with no prebuilt library - the library still builds and every
+# call reports that there is no engine, so its users link everywhere.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_uc_wasm_host_default ON)
+else()
+    # Not yet built in CI on macOS or Windows; see UltraCanvasWasmtime.cmake.
+    set(_uc_wasm_host_default OFF)
+endif()
+option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
+add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+target_include_directories(WasmHost PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(WasmHost PUBLIC cxx_std_20)
+set_target_properties(WasmHost PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmtime.cmake")
+    if(ULTRACANVAS_WASMTIME_FOUND)
+        target_link_libraries(WasmHost PRIVATE UltraCanvas::wasmtime)
+        target_compile_definitions(WasmHost PRIVATE ULTRACANVAS_HAS_WASMTIME=1)
+        message(STATUS "  [✓] WasmHost - ENABLED (wasmtime ${ULTRACANVAS_WASMTIME_VERSION})")
+    else()
+        message(STATUS "  [−] WasmHost - no engine (no wasmtime C API for this platform; set ULTRACANVAS_WASMTIME_DIR)")
+    endif()
+else()
+    message(STATUS "  [−] WasmHost - no engine (ULTRACANVAS_ENABLE_WASM_HOST=OFF)")
 endif()
 
 if(ULTRACANVAS_ENABLE_NET)
@@ -2807,6 +2862,31 @@ if(ULTRACANVAS_ENABLE_DATABASE)
     endif()
 else()
     message(STATUS "  [−] UltraDatabase - DISABLED")
+endif()
+
+# ===== CLIPBOARD HISTORY =====
+# The persistent clipboard history (include/UltraCanvasClipboardHistory.h):
+# UltraDesktop records into it and shows it in its quick panel, the
+# UltraClipboard application shows and edits it. SQLite through UltraDatabase
+# (which the UltraCanvas library carries), payloads encrypted with UltraCrypt.
+# Built everywhere UltraCrypt is (always): without libsqlite3 the history
+# reports itself unavailable (IsAvailable) and the desktop shows the
+# framework's in-memory list instead.
+if(TARGET UltraCrypt)
+    add_library(UltraClipboardHistory STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp)
+    set_target_properties(UltraClipboardHistory PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraClipboardHistory PUBLIC cxx_std_20)
+    target_include_directories(UltraClipboardHistory PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(UltraClipboardHistory PUBLIC ${ULTRACANVAS_LIB_NAME} UltraCrypt)
+    if(TARGET UltraDatabase)
+        message(STATUS "  [✓] UltraClipboardHistory - ENABLED")
+    else()
+        message(STATUS "  [~] UltraClipboardHistory - built without a database: no history is kept")
+    endif()
 endif()
 
 # ===== BUILD ULTRAMESSAGE LIBRARY (Phase 1: channel + journal) =====

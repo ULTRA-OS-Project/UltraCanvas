@@ -1,17 +1,20 @@
 // Plugins/Documents/eBook/MOBIEngine.cpp
 // Mobipocket / Kindle engine: PDB records → PalmDOC-decompressed HTML →
 // chapters + images, fed to HTML::ElementBuilder like every other engine.
-// Version: 1.2.0
-// Last Modified: 2026-07-23
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "MOBIEngine.h"
 
 #include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
+#include "UltraCanvasPathUtf8.h"       // OpenFileUtf8
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <memory>
 
 namespace UltraCanvas {
 
@@ -58,6 +61,36 @@ std::string LowerCopy(std::string s) {
         return static_cast<char>(std::tolower(c));
     });
     return s;
+}
+
+// A PDB whose type/creator say Mobipocket (BOOK/MOBI) or PalmDOC (TEXt/REAd).
+// `header` is the 78-byte database header.
+bool IsMobiDatabase(const uint8_t* header) {
+    return (std::memcmp(header + 60, "BOOK", 4) == 0 &&
+            std::memcmp(header + 64, "MOBI", 4) == 0) ||
+           (std::memcmp(header + 60, "TEXt", 4) == 0 &&
+            std::memcmp(header + 64, "REAd", 4) == 0);
+}
+
+// An image record of the run that starts at firstImageIndex: JPEG, PNG, GIF
+// or BMP data, recognised by its first bytes.
+bool IsImageRecord(const uint8_t* rec, size_t size) {
+    return size >= 4 &&
+        ((rec[0] == 0xFF && rec[1] == 0xD8) ||                          // JPEG
+         (rec[0] == 0x89 && rec[1] == 'P' && rec[2] == 'N' && rec[3] == 'G') ||
+         (rec[0] == 'G' && rec[1] == 'I' && rec[2] == 'F') ||          // GIF
+         (rec[0] == 'B' && rec[1] == 'M'));                             // BMP
+}
+
+// The trailing metadata records (FLIS/FCIS/SRCS/...) that end the image run.
+bool EndsImageRun(const uint8_t* rec, size_t size) {
+    if (size < 4) return false;
+    static const char* const kTrailing[] = {"FLIS", "FCIS", "SRCS",
+                                            "DATP", "FDST", "BOUN"};
+    for (const char* sig : kTrailing) {
+        if (std::memcmp(rec, sig, 4) == 0) return true;
+    }
+    return false;
 }
 
 // Case-insensitive substring search from `from`.
@@ -317,6 +350,7 @@ void MOBIEngine::Close() {
     fullName.clear();
     coverImageNumber = -1;
     compression = 1;
+    encryption = 0;
     textRecordCount = 0;
     firstImageIndex = 0;
     textEncoding = 1252;
@@ -343,10 +377,9 @@ bool MOBIEngine::ParseRecords(const uint8_t* data, size_t size) {
         return false;
     }
 
-    std::string type(reinterpret_cast<const char*>(data + 60), 4);
-    std::string creator(reinterpret_cast<const char*>(data + 64), 4);
-    if (!((type == "BOOK" && creator == "MOBI") ||
-          (type == "TEXt" && creator == "REAd"))) {
+    if (!IsMobiDatabase(data)) {
+        std::string type(reinterpret_cast<const char*>(data + 60), 4);
+        std::string creator(reinterpret_cast<const char*>(data + 64), 4);
         Fail("Not a MOBI file (type '" + type + "', creator '" + creator + "')");
         return false;
     }
@@ -387,15 +420,11 @@ bool MOBIEngine::ParseRecords(const uint8_t* data, size_t size) {
 }
 
 bool MOBIEngine::ParseRecord0() {
-    const std::vector<uint8_t>& r0 = records[0];
-    if (r0.size() < 16) {
-        Fail("MOBI record 0 too small");
-        return false;
-    }
+    if (!ParseRecord0Header()) return false;
 
-    compression = ReadBE16(r0.data());
-    textRecordCount = ReadBE16(r0.data() + 8);
-    uint16_t encryption = ReadBE16(r0.data() + 12);
+    // The text is what these refuse; the headers above are read regardless,
+    // because the images - the cover among them - are neither encrypted nor
+    // compressed (ReadCoverImageFromFile relies on that).
     if (encryption != 0) {
         Fail("MOBI file is DRM-encrypted");
         return false;
@@ -408,6 +437,19 @@ bool MOBIEngine::ParseRecord0() {
         Fail("Unknown MOBI compression type");
         return false;
     }
+    return true;
+}
+
+bool MOBIEngine::ParseRecord0Header() {
+    const std::vector<uint8_t>& r0 = records[0];
+    if (r0.size() < 16) {
+        Fail("MOBI record 0 too small");
+        return false;
+    }
+
+    compression = ReadBE16(r0.data());
+    textRecordCount = ReadBE16(r0.data() + 8);
+    encryption = ReadBE16(r0.data() + 12);
 
     // MOBI header at offset 16 (older PalmDOC-only files omit it). All field
     // offsets below are relative to the "MOBI" magic (record-0 offset − 16),
@@ -523,20 +565,9 @@ void MOBIEngine::ExtractImages() {
 
     for (size_t i = firstImageIndex; i < records.size(); ++i) {
         const std::vector<uint8_t>& rec = records[i];
-        bool isImage = rec.size() >= 4 &&
-            ((rec[0] == 0xFF && rec[1] == 0xD8) ||                       // JPEG
-             (rec[0] == 0x89 && rec[1] == 'P' && rec[2] == 'N' && rec[3] == 'G') ||
-             (rec[0] == 'G' && rec[1] == 'I' && rec[2] == 'F') ||       // GIF
-             (rec[0] == 'B' && rec[1] == 'M'));                          // BMP
-        // Trailing metadata records (FLIS/FCIS/SRCS/...) stop the image run.
-        if (!isImage) {
-            if (rec.size() >= 4) {
-                std::string sig(reinterpret_cast<const char*>(rec.data()), 4);
-                if (sig == "FLIS" || sig == "FCIS" || sig == "SRCS" ||
-                    sig == "DATP" || sig == "FDST" || sig == "BOUN") {
-                    break;
-                }
-            }
+        if (!IsImageRecord(rec.data(), rec.size())) {
+            // Trailing metadata records (FLIS/FCIS/SRCS/...) stop the image run.
+            if (EndsImageRun(rec.data(), rec.size())) break;
             images.emplace_back();   // keep 1-based indexing aligned with recindex
             continue;
         }
@@ -1177,6 +1208,88 @@ std::vector<uint8_t> MOBIEngine::GetCoverImage() const {
         if (!img.empty()) return img;
     }
     return {};
+}
+
+std::vector<uint8_t> MOBIEngine::ReadCoverImageFromFile(const std::string& filePath) {
+    // Past these a record is not a header or a picture but a broken or
+    // hostile file; nothing is read for it.
+    constexpr uint64_t kMaxRecord0Bytes = 16ull << 20;
+    constexpr uint64_t kMaxCoverBytes = 64ull << 20;
+    try {
+        std::unique_ptr<std::FILE, int (*)(std::FILE*)> file(
+            OpenFileUtf8(filePath, "rb"), &std::fclose);
+        std::FILE* f = file.get();
+        if (!f || std::fseek(f, 0, SEEK_END) != 0) return {};
+        const long end = std::ftell(f);
+        if (end < 78) return {};
+        const uint64_t fileSize = static_cast<uint64_t>(end);
+
+        auto readAt = [f](uint64_t offset, size_t length, std::vector<uint8_t>& out) {
+            out.assign(length, 0);
+            if (length == 0) return true;
+            return std::fseek(f, static_cast<long>(offset), SEEK_SET) == 0 &&
+                   std::fread(out.data(), 1, length, f) == length;
+        };
+
+        // Database header and record list.
+        std::vector<uint8_t> header;
+        if (!readAt(0, 78, header) || !IsMobiDatabase(header.data())) return {};
+        const size_t recordCount = ReadBE16(header.data() + 76);
+        std::vector<uint8_t> list;
+        if (recordCount == 0 || !readAt(78, recordCount * 8, list)) return {};
+        auto recordSpan = [&](size_t i, uint64_t& start, uint64_t& size) {
+            start = ReadBE32(list.data() + i * 8);
+            const uint64_t stop = i + 1 < recordCount
+                                      ? ReadBE32(list.data() + (i + 1) * 8)
+                                      : fileSize;
+            if (start > fileSize || stop > fileSize || stop < start) return false;
+            size = stop - start;
+            return true;
+        };
+        // Up to `limit` bytes of record i: empty for a bad span, as
+        // ParseRecords would make it, or past the limit.
+        auto readRecord = [&](size_t i, uint64_t limit, bool whole) {
+            std::vector<uint8_t> rec;
+            uint64_t start = 0, size = 0;
+            if (!recordSpan(i, start, size)) return rec;
+            if (whole && size > limit) return rec;
+            if (!readAt(start, static_cast<size_t>(std::min(size, limit)), rec)) rec.clear();
+            return rec;
+        };
+
+        // Record 0's headers: where the images start, and the EXTH cover.
+        MOBIEngine engine;
+        engine.records.push_back(readRecord(0, kMaxRecord0Bytes, true));
+        if (!engine.ParseRecord0Header()) return {};
+        const size_t first = engine.firstImageIndex;
+        if (first == 0 || first >= recordCount) return {};
+
+        // The same cover GetCoverImage picks once the book is loaded - the
+        // EXTH 201 image when it is one, else the first image of the run -
+        // found by reading the first bytes of each record up to it rather
+        // than every picture in the book.
+        const size_t declared =
+            engine.exthCoverOffset < recordCount - first
+                ? first + engine.exthCoverOffset
+                : recordCount;   // none, or past the end: never reached
+        size_t firstImage = recordCount;
+        for (size_t i = first; i < recordCount; ++i) {
+            const std::vector<uint8_t> head = readRecord(i, 4, false);
+            if (!IsImageRecord(head.data(), head.size())) {
+                if (EndsImageRun(head.data(), head.size())) break;
+                continue;
+            }
+            if (i == declared) return readRecord(i, kMaxCoverBytes, true);
+            if (firstImage == recordCount) firstImage = i;
+            if (declared == recordCount || i > declared) break;
+        }
+        if (firstImage == recordCount) return {};
+        return readRecord(firstImage, kMaxCoverBytes, true);
+    } catch (...) {
+        // A damaged book costs that book its cover, nothing more: the callers
+        // are background workers going through a folder.
+        return {};
+    }
 }
 
 // ============================================================================

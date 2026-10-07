@@ -1,7 +1,12 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.4.1 - long words wrap between characters when they must, so a
+//                  URL or a path stays inside the tooltip's box
+// Version: 2.4.0 - the tooltip sits above and to the right of the pointer,
+//                  clear of the line under it (below the pointer's arrow only
+//                  when there is no room above)
 // Version: 2.3.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTooltipManager.h"
@@ -182,6 +187,17 @@ namespace UltraCanvas {
             case TooltipColumnAlign::Left:
             default:                         return boxX;
         }
+    }
+
+    // Wrap a layout to `width` pixels: at word boundaries first, then between
+    // any two characters. A URL or a path has long runs with no break
+    // opportunity, and with Pango's default word-only wrap those ran on past
+    // `width` - out of the box that had been sized for it. Returns the width
+    // the wrapped text actually takes, which is what the box has to hold.
+    static int WrapToWidth(ITextLayout& layout, int width) {
+        layout.SetWrap(TextWrap::WrapWordChar);
+        layout.SetExplicitWidth(width);
+        return static_cast<int>(std::ceil(layout.GetLayoutSize().width));
     }
 
     static std::string EscapeMarkup(const std::string& s) {
@@ -640,8 +656,7 @@ namespace UltraCanvas {
                 case TooltipBlockType::PlainText: {
                     int w = static_cast<int>(bl.textLayout->GetLayoutSize().width);
                     if (w > innerMax) {
-                        bl.textLayout->SetExplicitWidth(innerMax);
-                        w = innerMax;
+                        w = WrapToWidth(*bl.textLayout, innerMax);
                     }
                     maxBlockWidth = std::max(maxBlockWidth, w);
                     break;
@@ -649,8 +664,7 @@ namespace UltraCanvas {
                 case TooltipBlockType::Bullet: {
                     int w = static_cast<int>(bl.textLayout->GetLayoutSize().width);
                     if (w > innerMax - kBulletIndent) {
-                        bl.textLayout->SetExplicitWidth(innerMax - kBulletIndent);
-                        w = innerMax - kBulletIndent;
+                        w = WrapToWidth(*bl.textLayout, innerMax - kBulletIndent);
                     }
                     maxBlockWidth = std::max(maxBlockWidth, kBulletIndent + w);
                     break;
@@ -663,8 +677,9 @@ namespace UltraCanvas {
                         int w = static_cast<int>(bl.cells[i]->GetLayoutSize().width);
                         if (w > colWidth[i]) {
                             // Cell wraps inside its column: its own lines follow
-                            // the column alignment too, not just the cell box.
-                            bl.cells[i]->SetExplicitWidth(colWidth[i]);
+                            // the column alignment too, not just the cell box,
+                            // so the cell is as wide as the column it fills.
+                            WrapToWidth(*bl.cells[i], colWidth[i]);
                             bl.cells[i]->SetAlignment(ToTextAlignment(align[i]));
                             w = colWidth[i];
                         }
@@ -716,23 +731,31 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::UpdateTooltipPosition(const Point2Di &cursorPosition) {
-        // Basic positioning relative to cursor
         int windowWidth = targetWindow->GetWidth();
         int windowHeight = targetWindow->GetHeight();
 
+        // Above and to the right of the pointer, with a gap: the line the
+        // pointer is on - the text being read - stays in view, and so does
+        // the pointer's arrow, which hangs down and right from its tip. Below
+        // the pointer the tooltip covered the lower half of that line, and
+        // its shadow the rest. The gap is measured from the tooltip's body;
+        // its soft shadow, mostly below it, fades out inside the gap.
         tooltipRect.x = cursorPosition.x + style.offsetX;
-        tooltipRect.y = cursorPosition.y + style.offsetY;
+        tooltipRect.y = cursorPosition.y - style.offsetY - tooltipRect.height;
 
-        // Keep tooltip on screen
         if (windowWidth > 0 && windowHeight > 0) {
-            // Adjust horizontal position
+            // No room on the right: to the left of the pointer instead.
             if (tooltipRect.x + tooltipRect.width > windowWidth) {
                 tooltipRect.x = cursorPosition.x - style.offsetX - tooltipRect.width;
             }
-
-            // Adjust vertical position
-            if (tooltipRect.y + tooltipRect.height > windowHeight) {
-                tooltipRect.y = cursorPosition.y - style.offsetY - tooltipRect.height;
+            // No room above (near the top of the window): below the pointer,
+            // under its arrow rather than over it.
+            if (tooltipRect.y < 0) {
+                constexpr int kPointerArrowHeight = 22;
+                tooltipRect.y = cursorPosition.y + kPointerArrowHeight;
+                if (tooltipRect.y + tooltipRect.height > windowHeight) {
+                    tooltipRect.y = windowHeight - tooltipRect.height;
+                }
             }
 
             // Ensure tooltip is not off-screen

@@ -10,11 +10,14 @@
 //   3. The reported backing is honest: on Linux it must be true RAM, and
 //      the mount must actually be tmpfs.
 //   4. Destroy is idempotent and takes the contents with it.
-//   5. Name validation rejects paths that could escape the mount root.
+//   5. Name validation rejects paths that could escape the mount root, and
+//      names longer than the back end can keep - 23 characters on Windows,
+//      where the name lives in an NTFS volume label - while a name of the
+//      longest length is made and listed under its whole name.
 //   6. VirtualFS_UseRamDiskForTemp() redirects the manager, and destroying
 //      the disc moves the temp directory back off it.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - the name length limit
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
@@ -152,6 +155,36 @@ int main() {
     CHECK(VirtualFS_CreateRamDisk("zerosize", 0, bad) ==
               VirtualFSResult::InvalidArgument,
           "a zero size is rejected");
+
+    // The name is limited to what the back end can keep. On Windows an
+    // ImDisk disc carries "ultravfs-<name>" as its NTFS volume label, 32
+    // characters at most; a longer name could not be stamped on the volume
+    // and the disc was then neither found nor listed.
+    const std::size_t maxName = VirtualFS_GetMaxRamDiskNameLength();
+#if defined(_WIN32)
+    CHECK(maxName == 23, "on Windows a name is at most 23 characters");
+#else
+    CHECK(maxName == 64, "a name is at most 64 characters");
+#endif
+    CHECK(VirtualFS_CreateRamDisk(std::string(maxName + 1, 'n'), 1024, bad) ==
+              VirtualFSResult::InvalidArgument,
+          "a name one character too long is rejected");
+    {
+        const std::string longestName(maxName, 'n');
+        VirtualFSRamDisk longest;
+        CHECK(VirtualFS_CreateRamDisk(longestName, 1024 * 1024, longest) ==
+                  VirtualFSResult::Success,
+              "a name of the longest length is accepted");
+        bool listedWhole = false;
+        for (const VirtualFSRamDisk& d : VirtualFS_ListRamDisks()) {
+            if (d.name == longestName) {
+                listedWhole = true;
+            }
+        }
+        CHECK(listedWhole, "and the disc is listed under its whole name");
+        CHECK(VirtualFS_DestroyRamDisk(longest) == VirtualFSResult::Success,
+              "and destroyed");
+    }
 
     VirtualFSRamDisk duplicate;
     CHECK(VirtualFS_CreateRamDisk("unittest", 1024 * 1024, duplicate) ==

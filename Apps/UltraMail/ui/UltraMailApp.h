@@ -409,6 +409,9 @@ private:
     // call again after an account was added: accounts already registered keep
     // their last-sync time and the timer is started once.
     void StartBackgroundSync();
+    // Every account's check interval from the preferences (Settings > Mail >
+    // New mail): the next tick of the sync timer follows it.
+    void ApplyCheckMailInterval();
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
@@ -482,9 +485,10 @@ private:
     // Under WAL (LocalStore::Open) the UI's reads never wait for these writes.
     LocalStore workerStore_;
     ContactStore contacts_;
-    // Icons of the known services in the sender registry, under
-    // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
-    // the sync worker; the class is internally locked for exactly that.
+    // Sender icons (the registry's services, and other senders' websites),
+    // under <cacheDir>/sender-icons. Read by the badge on the UI thread,
+    // filled by the cache's own loader threads when the list asks for a row
+    // it paints; the class is internally locked for exactly that.
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
@@ -603,6 +607,10 @@ private:
     int                                                statusReceived_ = 0;
     std::string     selectedAccount_;   // the account the mail view shows
     int             syncsInFlight_ = 0;
+    // The accounts whose sync (SyncAccounts) is running: a check that falls
+    // due while the last one has not finished - a short interval, a slow
+    // server, a first download - is skipped, not run a second time beside it.
+    std::set<std::string> accountSyncsInFlight_;
     StartPage       startPage_;
     AccountBar      accountBar_;
     MailView        mailView_;

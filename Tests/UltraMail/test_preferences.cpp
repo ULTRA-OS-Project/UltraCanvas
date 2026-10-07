@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraMail;
@@ -56,6 +57,7 @@ TEST(preferences_round_trip) {
     out.needsAnswerOnlyWrittenTo = false;
     out.listSort.key = MessageSortKey::Subject;
     out.listSort.ascending = true;
+    out.checkMailEverySec = 40;
     out.notifyNewMail = false;
     REQUIRE(out.Save(path));
 
@@ -72,6 +74,7 @@ TEST(preferences_round_trip) {
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == out.listSort);
+    REQUIRE_EQ(in.checkMailEverySec, 40);
     REQUIRE(!in.notifyNewMail);
     std::remove(path.c_str());
 }
@@ -94,6 +97,46 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 14);                     // the defaults
     REQUIRE(in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == MessageSort{});                        // newest first
+    REQUIRE_EQ(in.checkMailEverySec, 300);                        // every 5 minutes
     REQUIRE(in.notifyNewMail);                                    // on until switched off
+    std::remove(path.c_str());
+}
+
+// Settings > Mail > New mail offers ten intervals; a number edited into the
+// file by hand comes back as the nearest of them.
+TEST(preferences_check_mail_interval_choices) {
+    const std::vector<int> expected = { 20, 30, 40, 50, 60, 120, 180, 240, 300, 600 };
+    REQUIRE(Preferences::CheckMailChoices() == expected);
+    REQUIRE_EQ(Preferences::kDefaultCheckMailSec, 300);
+
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(20), 20);
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(7), 20);      // below the shortest
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(-5), 20);
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(25), 20);     // a tie: the shorter
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(44), 40);
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(100), 120);
+    REQUIRE_EQ(Preferences::NearestCheckMailChoice(3600), 600);  // above the longest
+
+    REQUIRE_EQ(Preferences::CheckMailLabel(20), std::string("20 seconds"));
+    REQUIRE_EQ(Preferences::CheckMailLabel(60), std::string("1 minute"));
+    REQUIRE_EQ(Preferences::CheckMailLabel(180), std::string("3 minutes"));
+    REQUIRE_EQ(Preferences::CheckMailLabel(600), std::string("10 minutes"));
+
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "ultramail_prefs_interval.ini").string();
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "check_mail_every_sec = 75\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE_EQ(in.checkMailEverySec, 60);
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "check_mail_every_sec = often\n";
+    }
+    Preferences bad;
+    REQUIRE(bad.Load(path));
+    REQUIRE_EQ(bad.checkMailEverySec, 300);                      // keeps the default
     std::remove(path.c_str());
 }

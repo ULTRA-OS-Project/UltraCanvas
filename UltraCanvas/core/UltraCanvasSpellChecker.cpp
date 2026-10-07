@@ -870,10 +870,10 @@ std::string UltraCanvasSpellChecker::ResolveDefaultUserDictionaryPath() const {
     std::string base;
 
 #if defined(_WIN32)
-    if (const char* appData = std::getenv("APPDATA")) base = appData;
-    if (base.empty()) {
-        if (const char* profile = std::getenv("USERPROFILE")) base = profile;
-    }
+    // UTF-8 from the wide environment: the file is opened through
+    // PathFromUtf8, and getenv would answer in the ANSI code page.
+    base = UltraCanvas::GetEnvUtf8("APPDATA");
+    if (base.empty()) base = UltraCanvas::GetEnvUtf8("USERPROFILE");
     const std::string separator = "\\";
     const std::string folder = "UltraCanvas";
 #else

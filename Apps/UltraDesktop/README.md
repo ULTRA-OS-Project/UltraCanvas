@@ -16,7 +16,8 @@ Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDeskto
 | Path | What is in it |
 |---|---|
 | `ui/UltraDesktopSettings.*` | No UI: the settings (taskbar edge, wallpaper, RAM disc, file manager, virtual desktops, the sticky notes) as JSON in `~/.config/ultraos/desktop.json`, through `UltraCanvasJSON` |
-| `ui/UltraDesktopWindow.*` | The desktop window: the bars (`UltraCanvasToolbar` groups joined by `UltraCanvasWaveSeparator`), the wallpaper (`UltraCanvasImageElement`), the running-apps list fed by the shell monitor, the info panel fed by the device poll thread and the notices, the window and clipboard menus, and the notification toasts (`UltraCanvasNotificationToastHost`, top right beside the right bar) |
+| `ui/UltraDesktopWindow.*` | The desktop window: the bars (`UltraCanvasToolbar` groups joined by `UltraCanvasWaveSeparator`), the wallpaper (`UltraCanvasImageElement`), the running-apps list fed by the shell monitor, the info panel fed by the device poll thread and the notices, the window menu, the clipboard history's recorder and `Super+V`, and the notification toasts (`UltraCanvasNotificationToastHost`, top right beside the right bar) |
+| `ui/UltraDesktopClipboardPanel.*` | The clipboard quick panel: an undecorated window beside the bar (centred for `Super+V`) with the history's search, list and recording switch, closed on blur, Escape and after a copy |
 | `ui/UltraDesktopStickerboard.*` | Sticky notes over the wallpaper: an `UltraCanvasTextArea` on a coloured card, dragged by its bar, persisted in the settings |
 | `ui/UltraDesktopAppStarter.*` | The Apps window: tiles from `UltraCanvasDesktopShell::ListApplications` with a filter box |
 | `ui/UltraDesktopTasksWindow.*` | The Task Manager: the open windows with Activate and Close, and the machine on `UltraCanvasHardwareInfoPanel` |

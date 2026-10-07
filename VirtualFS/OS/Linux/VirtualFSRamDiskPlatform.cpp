@@ -10,8 +10,8 @@
 // limit, so a per-disc quota is not available without root. capacityBytes
 // therefore reports the space free on the tmpfs, and the requested size is
 // only checked for feasibility up front.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+// Version: 1.1.0 - PlatformMaxNameLength
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -156,6 +156,11 @@ std::vector<VirtualFSRamDisk> PlatformList() {
         discs.push_back(disk);
     }
     return discs;
+}
+
+// A directory name on tmpfs: the general limit is the only one.
+std::size_t PlatformMaxNameLength() {
+    return kMaxNameLength;
 }
 
 } // namespace RamDiskDetail

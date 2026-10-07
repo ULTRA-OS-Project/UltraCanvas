@@ -1,7 +1,7 @@
 // include/UltraCanvasClipboard.h
 // Platform-independent clipboard core functionality
-// Version: 1.0.0
-// Last Modified: 2025-08-13
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -85,6 +85,18 @@ struct ClipboardData {
     }
 };
 
+// ===== WHAT THE SOURCE SAYS ABOUT A COPY =====
+// Secret: a password or a key. The copy carries each platform's marker
+// (x-kde-passwordManagerHint on X11; ExcludeClipboardContentFromMonitorProcessing,
+// CanIncludeInClipboardHistory = 0 and CanUploadToCloudClipboard = 0 on
+// Windows; org.nspasteboard.ConcealedType on macOS), so clipboard histories
+// - this framework's and every other that honours the markers - leave it out.
+// It still pastes like any other text.
+enum class ClipboardHint {
+    Normal,
+    Secret
+};
+
 // ===== PLATFORM-INDEPENDENT CLIPBOARD INTERFACE =====
 class UltraCanvasClipboardBackend {
 public:
@@ -108,6 +120,24 @@ public:
     virtual bool GetClipboardHtml(std::string& html) {
         (void)html;
         return false;
+    }
+
+    // Secret text (see ClipboardHint): the text plus the platform's
+    // "leave this out of the history" marker. A backend without markers puts
+    // the plain text.
+    virtual bool SetClipboardSecretText(const std::string& text) {
+        return SetClipboardText(text);
+    }
+    // True when whoever owns the clipboard now - this process or another -
+    // marked its content secret or transient. A clipboard history skips it.
+    virtual bool IsClipboardMarkedSecret() {
+        return false;
+    }
+    // False when no program holds the clipboard any more: on X11 the content
+    // leaves with the program that copied it. Systems that keep the content
+    // themselves always answer true.
+    virtual bool HasClipboardOwner() {
+        return true;
     }
 
     // Cut/copy-aware file clipboard operations. File managers mark a "cut"
@@ -158,13 +188,19 @@ public:
     ~UltraCanvasClipboard();
     
     // ===== INITIALIZATION =====
+    // Initialize() picks the platform's backend; InitializeWithBackend takes
+    // one from the caller (a platform the framework has none for, or a test).
     bool Initialize();
+    bool InitializeWithBackend(std::unique_ptr<UltraCanvasClipboardBackend> clipboardBackend);
     void Shutdown();
     UltraCanvasClipboardBackend* GetBackend() { return backend.get(); }
 
     // ===== CLIPBOARD OPERATIONS =====
     bool GetText(std::string& text);
     bool SetText(const std::string& text);
+    // ClipboardHint::Secret for passwords and keys: never recorded in a
+    // clipboard history, this process's or another's.
+    bool SetText(const std::string& text, ClipboardHint hint);
     // HTML with its plain text (see UltraCanvasClipboardBackend).
     bool GetHtml(std::string& html);
     bool SetHtml(const std::string& html, const std::string& plainText);
@@ -177,6 +213,10 @@ public:
     bool SetFiles(const std::vector<std::string>& filePaths, bool cutOperation);
     
     // ===== HISTORY MANAGEMENT =====
+    // Newest first: AddEntry puts an entry at index 0, and copying something
+    // already in the history moves it back there. Content the source marked
+    // secret (ClipboardHint::Secret, or another program's marker) is never
+    // recorded.
     void AddEntry(const ClipboardData& entry);
     void RemoveEntry(size_t index);
     void ClearHistory();
@@ -218,6 +258,7 @@ UltraCanvasClipboard* GetClipboard();
 // Convenience functions for quick access
 bool GetClipboardText(std::string& text);
 bool SetClipboardText(const std::string& text);
+bool SetClipboardText(const std::string& text, ClipboardHint hint);
 bool GetClipboardHtml(std::string& html);
 bool SetClipboardHtml(const std::string& html, const std::string& plainText);
 void AddClipboardEntry(const ClipboardData& entry);

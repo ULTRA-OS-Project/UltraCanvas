@@ -62,6 +62,25 @@ before adding cross-module code.
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
   a value, it is an element: use the framework's, or add one.
+- **HTML, CSS and HTML entities are read through the HTMLReader module
+  (`UltraCanvas/{include,core}/HTMLReader/`, always built) and nowhere else.**
+  It has the parser and DOM (`HTML::Parser`, `HTML::Document`), the CSS
+  parser with selector matching for any tree (`HTML::StyleSheet`,
+  `HTML::MatchingRules<Traits>`), the cascade (`HTML::StyleResolver`), the
+  builder of native element trees (`HTML::ElementBuilder`), the importer into
+  an editable `UCRichDocument` (`ImportHTMLToRichDocument`), and the two
+  helpers that keep being rewritten: `HTML::DecodeEntities` and
+  `HTML::ExtractPlainText`. Do not write another tag stripper, entity table,
+  `style=""` splitter or selector matcher — seven had accumulated by
+  2026-10, in the Filer preview, two places in UltraMail, EmailCleaner, the
+  rich document's paste path and two SVG readers, each with a different
+  handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
+  supplying a ten-line Traits type, not a matcher. What the module lacks is
+  added to it, so the next caller finds it. `scripts/check_html_reuse.py`
+  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  lists the sites that predate the rule and only shrinks. A site that must
+  stay says why with `// html-reuse-exempt: <why>`. Doc:
+  `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
   (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
 - **Platform separation:** platform-specific code goes only under
@@ -122,8 +141,25 @@ before adding cross-module code.
   `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
   `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
   through), so wrapping is never wrong. The check reads the file's own
-  declarations to tell a string from a path, so a string it cannot see the
-  type of (an `auto`, a getter's result) is still review's to catch.
+  declarations and those of the repository headers it includes directly to
+  tell a string from a path - so a class member declared in its header and a
+  call to a function declared as returning `std::string`
+  (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
+  whole. A string it still cannot see the type of (an `auto`, a member of a
+  class declared further away) is review's to catch.
+  A string that is not UTF-8 to begin with is not fixed by wrapping it in
+  `PathFromUtf8`. The environment is the common case: Windows keeps the
+  profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
+  `USERPROFILE`, `TEMP`, `USERNAME` ...), and the narrow `getenv` /
+  `_dupenv_s` answers in the ANSI code page. Read every variable with
+  `GetEnvUtf8(name)` (`UltraCanvasPathUtf8.h`): UTF-8 on every platform, from
+  `GetEnvironmentVariableW` on Windows. The check reports a narrow read
+  (`env-narrow`) - of one of those names, anywhere in Windows-only code, or
+  through a helper of the same file that reads narrowly - except for a
+  deliberate one that says why (`// path-string-ok: ASCII 0/1 flag`). An
+  `...A` Win32 call (`GetVolumeInformationA`, `GetTempPathA`) has the same
+  problem and is review's to catch: call the `...W` one and convert with
+  `PathToUtf8` or `PathUtf8Detail::Utf16ToUtf8`.
   `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
   folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
@@ -362,6 +398,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
+| `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
@@ -370,6 +407,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
+| `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under
@@ -501,10 +539,17 @@ number anywhere else, and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too.
+   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
+   `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
+   entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
+   runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
-   the same change.
+   the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
+   it compiles the doc's C++ against the headers and reports each function,
+   field or signature the headers don't have (Linux, clang++). All
+   `*Examples.md` docs pass it.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and

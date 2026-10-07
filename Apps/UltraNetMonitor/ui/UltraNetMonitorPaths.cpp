@@ -1,8 +1,8 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorPaths.cpp
-// Version: 0.5.0
+// Version: 0.5.1 - %LOCALAPPDATA% read as UTF-8
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorPaths.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 
 #include <cstdlib>
 #include <filesystem>
@@ -22,7 +22,10 @@ std::string DefaultStorePath() {
     fs::path root;
     const char* home = std::getenv("HOME");
 #if defined(_WIN32)
-    if (const char* local = std::getenv("LOCALAPPDATA"); local && *local) root = local;
+    // UTF-8 from the wide environment (GetEnvUtf8): getenv answers in the
+    // ANSI code page, which turns a profile folder named outside it into '?'.
+    if (const std::string local = UltraCanvas::GetEnvUtf8("LOCALAPPDATA"); !local.empty())
+        root = PathFromUtf8(local);
 #elif defined(__APPLE__)
     if (home && *home) root = PathFromUtf8(home) / "Library" / "Application Support";
 #else

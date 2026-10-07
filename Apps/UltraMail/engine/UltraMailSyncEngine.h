@@ -9,6 +9,7 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.4.0 - RescanStaleVerdicts (verdicts of older rules scanned again)
 // Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
 //                  longer lists dropped
 // Version: 0.2.0 - RefreshFolder: new mail, the reconcile with the server's
@@ -182,6 +183,13 @@ public:
     // Runs at the end of SyncMessages. Returns how many were counted.
     int CountStoredAttachments(const std::string& accountId, const std::string& folder,
                                int limit = 300);
+
+    // Scan again the cached bodies whose verdict came from older rules
+    // (kThreatRulesRevision; at most `limit`, newest first), so the list's
+    // badges follow the current rules without each message being opened.
+    // Runs beside CountStoredAttachments. Returns how many were re-scanned.
+    int RescanStaleVerdicts(const std::string& accountId, const std::string& folder,
+                            int limit = 300);
 
     // Set/clear a flag on the server (UID STORE) and in the local index.
     SyncOutcome SetFlag(const std::string& accountId, const std::string& folder,

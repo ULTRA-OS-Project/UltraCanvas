@@ -1,15 +1,17 @@
 // Tests/EBookArchiveTest.cpp
 // Unit tests for EBookArchive (ZIP access + DEFLATE helpers on miniz).
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "EBookArchive.h"
 
+#include "UltraCanvasPathUtf8.h"
 #include "miniz.h"
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -74,6 +76,54 @@ static void TestZipReading() {
     CHECK(!archive.IsOpen());
 }
 
+// The same archive read from a file: only the entries asked for are read,
+// the name is UTF-8 (Thai and an emoji here), and Close() lets the file go.
+static void TestZipFromFile() {
+    std::vector<uint8_t> zipData = MakeTestZip();
+    const std::filesystem::path path = std::filesystem::temp_directory_path() /
+        UltraCanvas::PathFromUtf8("\xE0\xB8\x8B\xE0\xB8\xB4\xE0\xB8\x9B "
+                                  "\xF0\x9F\x93\xA6 archive-test.zip");
+    std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(path), "wb");
+    CHECK(f != nullptr);
+    if (!f) return;
+    std::fwrite(zipData.data(), 1, zipData.size(), f);
+    std::fclose(f);
+
+    EBookArchive archive;
+    CHECK(archive.OpenFromFile(UltraCanvas::PathToUtf8(path)));
+    CHECK(archive.IsOpen());
+    CHECK(archive.FileNames().size() == 2);
+    CHECK(archive.ReadTextFile("mimetype") == "application/epub+zip");
+    CHECK(archive.ReadTextFile("oebps/CHAPTER1.xhtml").find("Hello archive") !=
+          std::string::npos);
+    CHECK(archive.FileSize("OEBPS/chapter1.xhtml") ==
+          std::strlen("<html><body><p>Hello archive</p></body></html>"));
+    CHECK(archive.FileSize("missing.txt") == 0);
+
+    // Reopening from memory replaces the file-backed archive cleanly.
+    CHECK(archive.OpenFromMemory(zipData));
+    CHECK(archive.ReadTextFile("mimetype") == "application/epub+zip");
+    archive.Close();
+    CHECK(!archive.IsOpen());
+
+    std::error_code ec;
+    CHECK(std::filesystem::remove(path, ec));
+
+    // A file that is not a ZIP, and one that does not exist.
+    const std::filesystem::path junkPath =
+        std::filesystem::temp_directory_path() / "ebook-archive-junk.zip";
+    f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(junkPath), "wb");
+    if (f) {
+        std::fputs("PK but not really an archive", f);
+        std::fclose(f);
+    }
+    CHECK(!archive.OpenFromFile(UltraCanvas::PathToUtf8(junkPath)));
+    CHECK(!archive.IsOpen());
+    CHECK(!archive.GetLastError().empty());
+    std::filesystem::remove(junkPath, ec);
+    CHECK(!archive.OpenFromFile(UltraCanvas::PathToUtf8(junkPath)));
+}
+
 static void TestNotAZip() {
     EBookArchive archive;
     std::vector<uint8_t> junk = {'n', 'o', 't', 'a', 'z', 'i', 'p'};
@@ -108,6 +158,7 @@ static void TestInflate() {
 
 int main() {
     TestZipReading();
+    TestZipFromFile();
     TestNotAZip();
     TestInflate();
 

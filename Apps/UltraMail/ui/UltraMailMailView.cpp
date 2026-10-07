@@ -1,5 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
-// Version: 0.13.0 - OpenMessage
+// Version: 0.14.0 - OpenMessage
+// Version: 0.13.0 - a row whose badge has no icon asks for it when painted
+//                   (lazy sender icons); IconCached shows it when it arrives
 // Version: 0.12.0 - folders by the server's own separator ("INBOX.Drafts" is
 //                   Drafts under Inbox); a folder gone from the server falls
 //                   back to the inbox
@@ -186,6 +188,9 @@ public:
     // The subject column, which ends in a paperclip for mail with attachments.
     int   subjectColumn = 2;
     std::string clipIcon;
+    // Asked for the icon a painted badge lacks: only rows on screen are
+    // painted, so only their senders' icons are fetched.
+    std::function<void(const std::string& key)> wantIcon;
     float badgeSide   = 18.0f;
     Color unreadColor;
     Color readColor;
@@ -205,10 +210,13 @@ public:
             const double side = badgeSide < option.rect.height ? badgeSide
                                                                : option.rect.height - 2;
             if (side <= 0) return;
+            const SenderBadge& badge = (*badges)[row];
+            if (badge.iconPath.empty() && !badge.iconKey.empty() && wantIcon)
+                wantIcon(badge.iconKey);
             DrawSenderBadge(ctx, Rect2Dd(option.columnX + (option.columnWidth - side) / 2.0,
                                          option.rect.y + (option.rect.height - side) / 2.0,
                                          side, side),
-                            (*badges)[row]);
+                            badge);
             return;
         }
 
@@ -377,6 +385,7 @@ void MailView::BuildListBox() {
     d->fontSize    = Theme::kSizeBody;
     d->rowHeight   = kRowHeight;
     d->clipIcon    = NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg");
+    d->wantIcon    = [this](const std::string& key) { if (iconRequester_) iconRequester_(key); };
     delegate_ = d;
     list_->SetDelegate(delegate_);
 
@@ -748,8 +757,33 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
 }
 
 void MailView::SetIconCache(const SenderIconCache* cache) {
+    icons_ = cache;
     badges_.SetIconCache(cache);
     preview_.SetIconCache(cache);
+}
+
+void MailView::SetIconRequester(std::function<void(const std::string& key)> request) {
+    iconRequester_ = request;
+    preview_.SetIconRequester(std::move(request));
+}
+
+void MailView::IconCached(const std::string& key) {
+    if (!icons_ || key.empty()) return;
+    bool changed = false;
+    for (SenderBadge& badge : rowBadges_) {
+        if (badge.iconKey != key) continue;
+        badge.iconPath = icons_->IconForKey(key);
+        badge.iconKey.clear();
+        changed = true;
+    }
+    if (changed && list_) list_->RequestRedraw();
+    preview_.IconCached(key);
+}
+
+void MailView::RefreshBadges() {
+    for (std::size_t row = 0; row < messages_.size() && row < rowBadges_.size(); ++row)
+        rowBadges_[row] = BadgeFor(messages_[row]);
+    if (list_) list_->RequestRedraw();
 }
 
 bool MailView::CurrentFolderIsJunk() const {
@@ -783,6 +817,12 @@ SenderBadge MailView::BadgeFor(const MessageEnvelope& m) const {
     const auto it = security_.find(m.uid);
     if (it != security_.end()) sec = it->second;
     return badges_.Resolve(m, sec, curFolderIsJunk_);
+}
+
+SenderClass MailView::ClassFor(const MessageEnvelope& m) const {
+    MessageSecurity sec;
+    if (const auto it = security_.find(m.uid); it != security_.end()) sec = it->second;
+    return badges_.Classify(m, sec, curFolderIsJunk_).cls;
 }
 
 void MailView::RebuildFolderTree() {
@@ -985,8 +1025,10 @@ MessageSortText MailView::SortText() const {
     text.subject = [](const MessageEnvelope& m) { return DisplayHeader(m.subject); };
     // Contacts first, then business contacts, new senders, advertising,
     // spam and scams (SenderClass's order).
+    // The classification alone: the whole badge (its icon, its tooltip) is
+    // not needed to sort by it.
     text.kindRank = [this](const MessageEnvelope& m) {
-        return static_cast<int>(BadgeFor(m).cls);
+        return static_cast<int>(ClassFor(m));
     };
     return text;
 }
@@ -1162,7 +1204,7 @@ MessageFacts MailView::FactsFor(const MessageEnvelope& m,
     MessageFacts facts;
     facts.unread = (m.flags & Flag_Seen) == 0;
     facts.needsAnswer = waitingUids.count(m.uid) > 0;
-    const SenderClass cls = BadgeFor(m).cls;
+    const SenderClass cls = ClassFor(m);
     facts.spam = cls == SenderClass::Spam || cls == SenderClass::Scam;
     if (const SenderBrand* brand = BrandForAddress(m.fromAddr)) facts.brand = brand->category;
     return facts;

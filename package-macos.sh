@@ -7,7 +7,10 @@
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
 #   --dmg              Also create a DMG disk image (signed, and notarized with --notarize)
-#   --no-sign          Skip code signing
+#   --no-sign          Sign ad hoc instead of with the Developer ID: no certificate
+#                      and no call to Apple, but every binary and bundle still carries
+#                      a valid, sealed signature. The DMG is named *-unsigned.dmg and
+#                      says how to open it (see "Unsigned builds" below)
 #   --notarize         Notarize the suite folder (one submission) and staple each app
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
 #
@@ -32,11 +35,7 @@ DO_SIGN=true
 NOTARIZE=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
-# The company is now ULTRA OS Development GmbH, but this has to be the common
-# name inside the Developer ID certificate in the keychain, and Apple issued
-# that one under the old name. Change it only together with a reissued
-# certificate (and the MACOS_CERTIFICATE / APPLE_SIGN_ID secrets in CI).
-IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: Cloverleaf RISCOS Computer UG (haftungsbeschrankt) (29638T25M9)}"
+IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (29638T25M9)}"
 
 # ── Suite layout ─────────────────────────────────────────────────────────────
 #
@@ -129,7 +128,7 @@ echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Dependencies:    $DEPS_PREFIX"
 echo "  Minimum macOS:   ${MIN_MACOS:-measured per app (MACOSX_DEPLOYMENT_TARGET unset)}"
-echo "  Code signing:    $DO_SIGN"
+echo "  Code signing:    $($DO_SIGN && echo "Developer ID" || echo "ad hoc (--no-sign)")"
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
 echo ""
@@ -143,8 +142,9 @@ for tool in sips iconutil otool install_name_tool; do
     fi
 done
 
-if $DO_SIGN && ! command -v codesign &>/dev/null; then
-    echo "Error: codesign not found. Install Xcode command-line tools or use --no-sign."
+# Needed with --no-sign too, which signs ad hoc (sign_code).
+if ! command -v codesign &>/dev/null; then
+    echo "Error: codesign not found. Install Xcode command-line tools."
     exit 1
 fi
 
@@ -561,6 +561,37 @@ check_min_macos() {
 }
 
 # ── Helper: Code sign ────────────────────────────────────────────────────────
+#
+# Unsigned builds. --no-sign (every pull request and manual CI run) used to
+# skip codesign altogether. That left an arm64 app with the linker's
+# signature on its executable and nothing else: no sealed Info.plist or
+# resources, and on the dylibs whatever install_name_tool and strip had left
+# of their signatures - and Apple silicon runs no code without a valid one.
+# It also meant a signing failure (a stray file in a bundle, a broken seal)
+# could only show up on main, in the release build. So --no-sign signs ad
+# hoc, with the same options and entitlements as the Developer ID signature
+# and in the same order, but without --timestamp: ad hoc needs no
+# certificate and asks Apple nothing, so it brings back none of the network
+# failures that took signing out of pull requests (0.8.31).
+#
+# Gatekeeper still refuses an ad-hoc app once a browser has downloaded it -
+# on Apple silicon with "<app> is damaged and can't be opened". Only the
+# Developer ID and notarization change that, and those stay on main. So the
+# image says what it is in its name (UCDemo-MacOS-<version>-<arch>-unsigned.dmg)
+# and carries a read-me with the command that opens it. Before, a pull
+# request's image had exactly the release's name, UCDemo-MacOS-0.9.147-arm64
+# came both signed and unsigned, and nothing told the two apart until macOS
+# refused one.
+
+# sign_code [codesign options] PATH... - sign with the Developer ID and a
+# secure timestamp, or ad hoc and offline with --no-sign.
+sign_code() {
+    if $DO_SIGN; then
+        codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@"
+    else
+        codesign --force --timestamp=none --options runtime --sign - "$@"
+    fi
+}
 
 codesign_bundle() {
     local app_bundle="$1"
@@ -575,18 +606,15 @@ codesign_bundle() {
     # the frameworks: inside-out, before the executable and the bundle.
     for dylib in "$app_bundle/Contents/PlugIns/"*.dylib; do
         if [ -f "$dylib" ]; then
-            codesign --force --timestamp --options runtime \
-                --sign "$IDENTITY" "$dylib"
+            sign_code "$dylib"
         fi
     done
 
     # Sign the main executable with hardened runtime + secure timestamp
-    codesign --force --timestamp --options runtime \
-        --sign "$IDENTITY" "$app_bundle/Contents/MacOS/"*
+    sign_code "$app_bundle/Contents/MacOS/"*
 
     # Sign the outer bundle with hardened runtime, secure timestamp, and entitlements
-    codesign --force --timestamp --options runtime \
-        --sign "$IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$app_bundle"
+    sign_code --entitlements "$ENTITLEMENTS_PATH" "$app_bundle"
 
     # Verify the final bundle
     codesign --verify --verbose=4 --strict "$app_bundle"
@@ -898,19 +926,16 @@ build_cli_tool() {
     strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
     check_min_macos "$exe_name" "" "" "$tool_dir/bin" "$tool_dir/Frameworks"
 
-    if $DO_SIGN; then
-        echo "  Signing tool..."
-        for dylib in "$tool_dir/Frameworks/"*.dylib; do
-            if [ -f "$dylib" ]; then
-                codesign --force --timestamp --options runtime \
-                    --sign "$IDENTITY" "$dylib"
-            fi
-        done
-        codesign --force --timestamp --options runtime \
-            --sign "$IDENTITY" "$tool_dir/bin/$exe_name"
-        codesign --verify --verbose=4 --strict "$tool_dir/bin/$exe_name"
-        echo "  Tool signed"
-    fi
+    # Ad hoc with --no-sign (sign_code).
+    echo "  Signing tool..."
+    for dylib in "$tool_dir/Frameworks/"*.dylib; do
+        if [ -f "$dylib" ]; then
+            sign_code "$dylib"
+        fi
+    done
+    sign_code "$tool_dir/bin/$exe_name"
+    codesign --verify --verbose=4 --strict "$tool_dir/bin/$exe_name"
+    echo "  Tool signed"
 
     # Notarized with the rest of the suite folder (finish_suite).
 
@@ -970,8 +995,7 @@ sign_shared_frameworks() {
     local dylib
     for dylib in "$SHARED_FW/"*.dylib; do
         if [ -f "$dylib" ]; then
-            codesign --force --timestamp --options runtime \
-                --sign "$IDENTITY" "$dylib"
+            sign_code "$dylib"
         fi
     done
 }
@@ -998,14 +1022,12 @@ finish_suite() {
         check_min_macos "$(basename "$app")" "$app/Contents/Info.plist" "$shared_min" "${own[@]}"
     done
 
-    if $DO_SIGN; then
-        sign_shared_frameworks
-        local app
-        for app in "${BUILT_APPS[@]}"; do
-            echo "── Signing $(basename "$app") ──"
-            codesign_bundle "$app"
-        done
-    fi
+    # Ad hoc with --no-sign (sign_code).
+    sign_shared_frameworks
+    for app in "${BUILT_APPS[@]}"; do
+        echo "── Signing $(basename "$app") ──"
+        codesign_bundle "$app"
+    done
 
     if $NOTARIZE; then
         notarize_bundle "$SUITE_DIR" false
@@ -1145,6 +1167,15 @@ package_if_built "UltraPassword" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraClipboard, the clipboard history (it records while it is open)
+package_if_built "UltraClipboard" build_app_bundle \
+    "UltraClipboard" \
+    "UltraClipboard" \
+    "com.cloverleaf.UltraClipboard" \
+    "media/appicon/UltraClipboard.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
@@ -1167,7 +1198,16 @@ finish_suite
 
 if $CREATE_DMG; then
     echo "── Creating DMG ──"
-    DMG_NAME="UCDemo-MacOS-${VERSION}-$(uname -m).dmg"
+    # An ad-hoc build says so in its file and volume name: Gatekeeper refuses
+    # it once downloaded, and it must not pass for the notarized release of
+    # the same version (see "Unsigned builds" above sign_code).
+    DMG_SUFFIX=""
+    DMG_VOLNAME="UltraCanvas $VERSION"
+    if ! $DO_SIGN; then
+        DMG_SUFFIX="-unsigned"
+        DMG_VOLNAME="UltraCanvas $VERSION (unsigned)"
+    fi
+    DMG_NAME="UCDemo-MacOS-${VERSION}-$(uname -m)${DMG_SUFFIX}.dmg"
     DMG_STAGING="$OUTPUT_DIR/.dmg_staging"
 
     mkdir -p "$DMG_STAGING"
@@ -1179,6 +1219,39 @@ if $CREATE_DMG; then
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
 
+    # Beside the folder, the first thing seen on opening the image: why macOS
+    # calls the apps damaged, and the command that lets them run.
+    if ! $DO_SIGN; then
+        cat > "$DMG_STAGING/Unsigned build - read me.txt" <<README
+UltraCanvas $VERSION ($(uname -m)) - unsigned build
+
+This disk image comes from a pull request or a manual build. Its apps are
+signed ad hoc, not with the project's Developer ID, and Apple has not
+notarized them. Only the builds made on main are signed and notarized.
+
+So macOS refuses to open these apps once a browser has downloaded the image.
+On a Mac with Apple silicon it says:
+
+    "UltraFiler.app" is damaged and can't be opened.
+    You should move it to the Trash.
+
+Nothing is damaged: that is how macOS refuses a downloaded app that no
+registered developer has signed. To run the apps anyway:
+
+1. Copy the whole UltraCanvas folder to Applications. The apps share the
+   Frameworks folder inside it and do not start when moved out on their own.
+
+2. In Terminal, remove the download quarantine from the copy:
+
+       xattr -dr com.apple.quarantine /Applications/UltraCanvas
+
+3. Open the apps from /Applications/UltraCanvas.
+
+For a signed and notarized build, download the macOS artifact of a build run
+on main: its name does not end in "-unsigned".
+README
+    fi
+
     # Create the compressed DMG. ULMO (LZMA) is the tightest format hdiutil
     # has: measured on CI on 2026-10-02 (arm64), ULFO (LZFSE) came to 523 MB
     # against 503 MB for the zip of the same .app folders, so only LZMA beats
@@ -1188,7 +1261,7 @@ if $CREATE_DMG; then
     # gets three tries.
     dmg_try=1
     until hdiutil create \
-            -volname "UltraCanvas $VERSION" \
+            -volname "$DMG_VOLNAME" \
             -srcfolder "$DMG_STAGING" \
             -ov -format ULMO \
             "$OUTPUT_DIR/$DMG_NAME"; do
@@ -1206,6 +1279,8 @@ if $CREATE_DMG; then
     # The image is what a user downloads and opens, so it carries the same
     # Developer ID signature as the apps inside it and, on a notarized run, its
     # own stapled ticket - Gatekeeper then checks it once, offline, on open.
+    # An ad-hoc signature on the image would tell Gatekeeper nothing, so an
+    # unsigned build's image stays unsigned.
     if $DO_SIGN; then
         echo "  Signing DMG..."
         codesign --force --timestamp --sign "$IDENTITY" "$OUTPUT_DIR/$DMG_NAME"

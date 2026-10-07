@@ -20,6 +20,23 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## wasmtime (WebAssembly engine)
+
+- **Used by:** the WasmHost module (`UltraCanvas/core/WasmHost/`), and through
+  it UltraWeb, which runs WebAssembly apps.
+- **Upstream:** https://github.com/bytecodealliance/wasmtime
+- **Downloaded, not vendored:** `cmake/UltraCanvasWasmtime.cmake` fetches the
+  v49.0.2 prebuilt C API for the build platform and checks its SHA-256 (or
+  uses `ULTRACANVAS_WASMTIME_DIR`), and links `libwasmtime` statically into
+  the applications that use WasmHost. No wasmtime source is carried in this
+  repository, and no wasmtime type appears in any UltraCanvas public header.
+  Binary distributions carry wasmtime's `LICENSE`, which the archive ships.
+- **License:** Apache License 2.0 with the LLVM exception
+  (`Apache-2.0 WITH LLVM-exception`) — Copyright the Bytecode Alliance
+  contributors.
+
+---
+
 ## mbedTLS (crypto backend for the Smart Home protocol SDKs)
 
 - **Used by:** the Smart Home module's Matter and Thread backends (both

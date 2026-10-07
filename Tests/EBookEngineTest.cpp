@@ -2,9 +2,11 @@
 // Unit tests for the EPUB, FB2, MOBI and TXT engines: builds synthetic books
 // in memory (miniz writer for the EPUB, a hand-assembled PDB for the MOBI)
 // and exercises metadata, spine, TOC, resources, cover, text extraction,
-// search, and the engine registry.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// search, and the engine registry - plus the EPUB cover rules and the
+// cover-only file readers (EPUB, MOBI / Kindle) a file manager's thumbnails
+// use.
+// Version: 1.2.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "EPUBEngine.h"
@@ -12,13 +14,16 @@
 #include "MOBIEngine.h"
 #include "TXTEngine.h"
 
+#include "UltraCanvasPathUtf8.h"
 #include "miniz.h"
 
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -261,6 +266,194 @@ static void TestEPUBErrors() {
 
     CHECK(!engine.LoadFromMemory(notEpub));
     CHECK(engine.GetLastError().find("container.xml") != std::string::npos);
+}
+
+// ============================================================================
+// EPUB COVER
+// ============================================================================
+// Real books declare their cover in four different ways, and a file manager
+// that knows only one shows the plain type glyph for most of a library.
+
+static const std::string kCoverJpeg = "\xFF\xD8\xFF\xE0 a stand-in for a JPEG";
+static const std::string kOtherPng = "\x89PNG\r\n\x1A\n not the cover";
+
+static const char* kContainerXml =
+    "<?xml version=\"1.0\"?>\n"
+    "<container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">\n"
+    "  <rootfiles>\n"
+    "    <rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>\n"
+    "  </rootfiles>\n"
+    "</container>";
+
+// An EPUB whose package carries `metadata`, `manifest` and `guide` (the
+// inner markup of each), with one chapter and the given extra files.
+static std::vector<uint8_t> MakeCoverEPUB(const std::string& metadata,
+                                          const std::string& manifest,
+                                          const std::string& guide,
+                                          const std::map<std::string, std::string>& files) {
+    mz_zip_archive zip;
+    std::memset(&zip, 0, sizeof(zip));
+    mz_zip_writer_init_heap(&zip, 0, 0);
+    AddFile(zip, "mimetype", "application/epub+zip", MZ_NO_COMPRESSION);
+    AddFile(zip, "META-INF/container.xml", kContainerXml);
+    AddFile(zip, "OEBPS/content.opf",
+        "<?xml version=\"1.0\"?>\n"
+        "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\">\n"
+        "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n"
+        "    <dc:title>Cover test</dc:title>\n" + metadata +
+        "  </metadata>\n"
+        "  <manifest>\n"
+        "    <item id=\"ch1\" href=\"text/ch1.xhtml\" media-type=\"application/xhtml+xml\"/>\n" +
+        manifest +
+        "  </manifest>\n"
+        "  <spine><itemref idref=\"ch1\"/></spine>\n"
+        "  <guide>" + guide + "</guide>\n"
+        "</package>");
+    AddFile(zip, "OEBPS/text/ch1.xhtml",
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>Text.</p></body></html>");
+    for (const auto& [name, data] : files) AddFile(zip, name.c_str(), data);
+
+    void* buffer = nullptr;
+    size_t size = 0;
+    mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+    std::vector<uint8_t> result(static_cast<uint8_t*>(buffer),
+                                static_cast<uint8_t*>(buffer) + size);
+    mz_zip_writer_end(&zip);
+    mz_free(buffer);
+    return result;
+}
+
+static std::string AsString(const std::vector<uint8_t>& bytes) {
+    return std::string(bytes.begin(), bytes.end());
+}
+
+// The cover the loaded engine reports, which is what the viewer shows.
+static std::string LoadedCover(const std::vector<uint8_t>& epub) {
+    EPUBEngine engine;
+    if (!engine.LoadFromMemory(epub)) return "<load failed>";
+    if (engine.GetMetadata().hasCover != !engine.GetCoverImage().empty()) {
+        return "<hasCover disagrees>";
+    }
+    return AsString(engine.GetCoverImage());
+}
+
+static void TestEPUBCoverRules() {
+    // EPUB 3: properties="cover-image".
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"c\" href=\"images/c.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // EPUB 2: <meta name="cover"> naming the image's id.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"pic\"/>\n",
+        "<item id=\"pic\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // ... naming the image's href instead, as some producers write it.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta content=\"images/c.jpg\" name=\"cover\"/>\n",
+        "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // ... naming a cover PAGE: the picture on that page is the cover, not
+    // the page's own markup.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"cpage\"/>\n",
+        "<item id=\"cpage\" href=\"text/cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+        "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/text/cover.xhtml",
+              "<html><body><div><img src=\"../images/c.jpg\" alt=\"\"/></div></body></html>"},
+             {"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // EPUB 2 guide: <reference type="cover"> to the SVG-wrapped cover page
+    // Calibre writes (<image xlink:href>). Nothing here is named "cover", so
+    // only the guide can find it.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"titlepage\" href=\"titlepage.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+        "<item id=\"img01\" href=\"img-0001.jpeg\" media-type=\"image/jpeg\"/>\n",
+        "<reference type=\"Cover\" title=\"Cover\" href=\"titlepage.xhtml\"/>",
+        {{"OEBPS/titlepage.xhtml",
+          "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>"
+          "<svg:svg xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">"
+          "<svg:image width=\"600\" height=\"800\" xlink:href=\"img-0001.jpeg\"/></svg:svg>"
+          "</body></html>"},
+         {"OEBPS/img-0001.jpeg", kCoverJpeg}})), kCoverJpeg);
+
+    // Nothing declared: an image whose file name says "cover".
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"img00\" href=\"images/map.png\" media-type=\"image/png\"/>\n"
+        "<item id=\"img01\" href=\"images/Cover.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/map.png", kOtherPng},
+             {"OEBPS/images/Cover.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // A declared cover missing from the archive falls through to the next
+    // declaration instead of yielding nothing.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB(
+        "<meta name=\"cover\" content=\"pic\"/>\n",
+        "<item id=\"gone\" href=\"images/gone.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n"
+        "<item id=\"pic\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+        "", {{"OEBPS/images/c.jpg", kCoverJpeg}})), kCoverJpeg);
+
+    // No cover anywhere: the first picture of the book is not one.
+    CHECK_EQ(LoadedCover(MakeCoverEPUB("",
+        "<item id=\"img00\" href=\"images/map.png\" media-type=\"image/png\"/>\n",
+        "", {{"OEBPS/images/map.png", kOtherPng}})), std::string());
+}
+
+static std::filesystem::path WriteTempFile(const std::string& utf8Name,
+                                           const std::vector<uint8_t>& bytes) {
+    std::filesystem::path path =
+        std::filesystem::temp_directory_path() / PathFromUtf8(utf8Name);
+    std::FILE* f = OpenFileUtf8(PathToUtf8(path), "wb");
+    if (f) {
+        std::fwrite(bytes.data(), 1, bytes.size(), f);
+        std::fclose(f);
+    }
+    return path;
+}
+
+static void TestEPUBCoverFromFile() {
+    // A Thai-and-emoji file name: the reader opens UTF-8 paths on every
+    // platform, which is what a folder of real books needs.
+    std::filesystem::path book = WriteTempFile(
+        "\xE0\xB8\xAB\xE0\xB8\x99\xE0\xB8\xB1\xE0\xB8\x87\xE0\xB8\xAA\xE0\xB8\xB7\xE0\xB8\xAD "
+        "\xF0\x9F\x93\x9A cover-test.epub",
+        MakeCoverEPUB("<meta name=\"cover\" content=\"cpage\"/>\n",
+            "<item id=\"cpage\" href=\"text/cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+            "<item id=\"img01\" href=\"images/c.jpg\" media-type=\"image/jpeg\"/>\n",
+            "", {{"OEBPS/text/cover.xhtml",
+                  "<html><body><img src=\"../images/c.jpg\"/></body></html>"},
+                 {"OEBPS/images/c.jpg", kCoverJpeg}}));
+    CHECK_EQ(AsString(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(book))), kCoverJpeg);
+
+    // The bundled test book: the same cover the loaded engine reports.
+    std::filesystem::path plain = WriteTempFile("ebook-cover-test.epub", MakeTestEPUB());
+    std::vector<uint8_t> cover = EPUBEngine::ReadCoverImageFromFile(PathToUtf8(plain));
+    CHECK_EQ(cover.size(), size_t(45));
+    {
+        EPUBEngine engine;
+        CHECK(engine.LoadFromMemory(MakeTestEPUB()));
+        CHECK(cover == engine.GetCoverImage());
+    }
+
+    // Everything that is not a book with a cover reads as "no cover", and
+    // none of it throws.
+    std::filesystem::path noCover = WriteTempFile("ebook-no-cover.epub",
+        MakeCoverEPUB("", "", "", {}));
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(noCover)).empty());
+    std::filesystem::path junk = WriteTempFile("ebook-junk.epub",
+        std::vector<uint8_t>{'n', 'o', 't', ' ', 'a', ' ', 'z', 'i', 'p'});
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(junk)).empty());
+    std::filesystem::path empty = WriteTempFile("ebook-empty.epub", {});
+    CHECK(EPUBEngine::ReadCoverImageFromFile(PathToUtf8(empty)).empty());
+    CHECK(EPUBEngine::ReadCoverImageFromFile(
+        PathToUtf8(std::filesystem::temp_directory_path() / "ebook-missing.epub")).empty());
+    CHECK(EPUBEngine::ReadCoverImageFromFile("").empty());
+
+    std::error_code ec;
+    for (const auto& p : {book, plain, noCover, junk, empty}) {
+        std::filesystem::remove(p, ec);
+    }
 }
 
 // ============================================================================
@@ -560,12 +753,24 @@ static void PutBE16At(std::vector<uint8_t>& v, size_t at, uint16_t x) {
     v[at + 1] = static_cast<uint8_t>(x & 0xFF);
 }
 
-// Assemble a minimal but valid MOBI6 file: PDB header + 3 records
-// (record 0 with PalmDOC/MOBI/EXTH headers, one ASCII text record, one image).
-// `text` is the book's HTML; ASCII HTML decodes to itself under PalmDOC (all
-// bytes are 0x20..0x7E literals), so compression=2 exercises the decompressor
-// without needing a compressor here.
-static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
+// What a synthetic MOBI6 file carries besides its text. The defaults are the
+// test book: one 10-byte PNG, declared the cover by EXTH 201.
+struct MobiOptions {
+    std::vector<std::vector<uint8_t>> images = {
+        {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'i', 'm'}};
+    uint32_t coverOffset = 0;            // EXTH 201; 0xFFFFFFFF = no record
+    uint16_t compression = 2;            // PalmDOC
+    uint16_t encryption = 0;             // 2 = Mobipocket DRM
+    std::vector<std::vector<uint8_t>> trailing;   // FLIS / FCIS / ...
+};
+
+// Assemble a minimal but valid MOBI6 file: PDB header + records (record 0
+// with PalmDOC/MOBI/EXTH headers, one ASCII text record, then the images and
+// any trailing records). `text` is the book's HTML; ASCII HTML decodes to
+// itself under PalmDOC (all bytes are 0x20..0x7E literals), so
+// compression=2 exercises the decompressor without needing a compressor here.
+static std::vector<uint8_t> MakeMOBI6(const std::string& text,
+                                      const MobiOptions& options = {}) {
     // --- MOBI header (232 bytes) --- (field offsets relative to "MOBI")
     std::vector<uint8_t> mobi(232, 0);
     std::memcpy(&mobi[0], "MOBI", 4);
@@ -590,11 +795,14 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
     addExth(104, "978-0-00-000000-0");
     addExth(106, "2021");
     addExth(524, "en");
+    uint32_t exthCount = 5;
     // Cover offset (type 201): BE32 = 0 → first image record is the cover.
-    PutBE32(exthRecs, 201);
-    PutBE32(exthRecs, 12);
-    PutBE32(exthRecs, 0);
-    uint32_t exthCount = 6;
+    if (options.coverOffset != 0xFFFFFFFF) {
+        PutBE32(exthRecs, 201);
+        PutBE32(exthRecs, 12);
+        PutBE32(exthRecs, options.coverOffset);
+        ++exthCount;
+    }
 
     std::vector<uint8_t> exth;
     exth.insert(exth.end(), {'E', 'X', 'T', 'H'});
@@ -607,12 +815,13 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
 
     // --- record 0 = PalmDOC(16) + MOBI(232) + EXTH + fullName ---
     std::vector<uint8_t> rec0;
-    PutBE16(rec0, 2);                                   // compression = PalmDOC
+    PutBE16(rec0, options.compression);                 // 2 = PalmDOC
     PutBE16(rec0, 0);                                   // unused
     PutBE32(rec0, static_cast<uint32_t>(text.size()));  // text length
     PutBE16(rec0, 1);                                   // text record count
     PutBE16(rec0, 4096);                               // record size
-    PutBE32(rec0, 0);                                   // encryption + unused
+    PutBE16(rec0, options.encryption);                  // encryption
+    PutBE16(rec0, 0);                                   // unused
 
     uint32_t fullNameOffset = static_cast<uint32_t>(16 + mobi.size() + exth.size());
     SetBE32(mobi, 68, fullNameOffset);
@@ -623,17 +832,17 @@ static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
     rec0.insert(rec0.end(), fullName.begin(), fullName.end());
 
     std::vector<uint8_t> rec1(text.begin(), text.end());
-    std::vector<uint8_t> rec2 = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'i', 'm'};
 
-    std::vector<std::vector<uint8_t>> recs = {rec0, rec1, rec2};
+    std::vector<std::vector<uint8_t>> recs = {rec0, rec1};
+    recs.insert(recs.end(), options.images.begin(), options.images.end());
+    recs.insert(recs.end(), options.trailing.begin(), options.trailing.end());
 
     // --- PDB header (78 bytes) + record list ---
     std::vector<uint8_t> file(78, 0);
     std::memcpy(&file[0], "TestBook", 8);
     std::memcpy(&file[60], "BOOK", 4);
     std::memcpy(&file[64], "MOBI", 4);
-    file[76] = 0;
-    file[77] = static_cast<uint8_t>(recs.size());   // record count = 3
+    PutBE16At(file, 76, static_cast<uint16_t>(recs.size()));   // record count
 
     size_t listSize = recs.size() * 8;
     size_t dataStart = 78 + listSize;
@@ -912,6 +1121,160 @@ static void TestKF8() {
     CHECK(!engine.IsLoaded());
 }
 
+// ============================================================================
+// MOBI / KINDLE COVER
+// ============================================================================
+// The file reader must give the picture the loaded engine gives (EXTH 201,
+// else the first image of the run), reading only record 0 and the cover -
+// and must give it for DRM and HUFF/CDIC books too, whose text the engine
+// refuses but whose images are stored plainly.
+
+static std::vector<uint8_t> Picture(const char* kind, const std::string& tag) {
+    std::vector<uint8_t> bytes;
+    if (std::strcmp(kind, "jpeg") == 0) bytes = {0xFF, 0xD8, 0xFF, 0xE0};
+    else bytes = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    bytes.insert(bytes.end(), tag.begin(), tag.end());
+    return bytes;
+}
+
+static std::vector<uint8_t> Record(const std::string& s) {
+    return std::vector<uint8_t>(s.begin(), s.end());
+}
+
+static const std::string kKindleText =
+    "<html><body><h1>One</h1><p>Text.</p></body></html>";
+
+// Writes `book` to a file, reads its cover back through the file reader and
+// says whether that is `expected` - and, when the engine can load the book,
+// also what the loaded engine reports as the cover.
+static bool KindleCoverIs(const std::vector<uint8_t>& book,
+                          const std::vector<uint8_t>& expected,
+                          bool engineLoads = true) {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "ebook-kindle-cover-test.mobi";
+    std::FILE* f = OpenFileUtf8(PathToUtf8(path), "wb");
+    if (!f) return false;
+    std::fwrite(book.data(), 1, book.size(), f);
+    std::fclose(f);
+    const std::vector<uint8_t> fromFile =
+        MOBIEngine::ReadCoverImageFromFile(PathToUtf8(path));
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    MOBIEngine engine;
+    const bool loaded = engine.LoadFromMemory(book);
+    if (loaded != engineLoads) return false;
+    if (loaded && engine.GetCoverImage() != fromFile) return false;
+    return fromFile == expected;
+}
+
+static void TestMOBICoverFromFile() {
+    const auto logo = Picture("png", "publisher logo");
+    const auto cover = Picture("jpeg", "the cover");
+    const auto map = Picture("png", "a map");
+    const auto resc = Record("RESC not a picture");
+
+    // The test book: EXTH 201 = image 0.
+    CHECK(KindleCoverIs(MakeTestMOBI(), Picture("png", "im")));
+
+    // EXTH 201 naming the third record of the run, past a logo and a record
+    // that is no picture.
+    MobiOptions declared;
+    declared.images = {logo, resc, cover, map};
+    declared.coverOffset = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, declared), cover));
+
+    // No EXTH 201: the first picture of the run, skipping what is none.
+    MobiOptions undeclared;
+    undeclared.images = {resc, cover, map};
+    undeclared.coverOffset = 0xFFFFFFFF;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, undeclared), cover));
+
+    // EXTH 201 naming a record that is no picture: the first picture.
+    MobiOptions notAPicture;
+    notAPicture.images = {cover, resc, map};
+    notAPicture.coverOffset = 1;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, notAPicture), cover));
+
+    // EXTH 201 naming a record past the trailing FLIS, which ends the run:
+    // the first picture.
+    MobiOptions pastTheRun;
+    pastTheRun.images = {cover};
+    pastTheRun.trailing = {Record("FLIS"), map};
+    pastTheRun.coverOffset = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, pastTheRun), cover));
+
+    // EXTH 201 far past the end of the file.
+    MobiOptions pastTheEnd;
+    pastTheEnd.images = {cover, map};
+    pastTheEnd.coverOffset = 4000;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, pastTheEnd), cover));
+
+    // A book with no picture at all.
+    MobiOptions noPictures;
+    noPictures.images = {resc};
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, noPictures), {}));
+
+    // DRM and HUFF/CDIC: the engine refuses the text (and says why), the
+    // cover is read all the same.
+    MobiOptions drm;
+    drm.images = {logo, cover};
+    drm.coverOffset = 1;
+    drm.encryption = 2;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, drm), cover, /*engineLoads=*/false));
+    {
+        MOBIEngine engine;
+        CHECK(!engine.LoadFromMemory(MakeMOBI6(kKindleText, drm)));
+        CHECK(engine.GetLastError().find("DRM") != std::string::npos);
+    }
+    MobiOptions huff = drm;
+    huff.encryption = 0;
+    huff.compression = 17480;
+    CHECK(KindleCoverIs(MakeMOBI6(kKindleText, huff), cover, /*engineLoads=*/false));
+
+    // KF8 (AZW3): the same picture the loaded engine reports.
+    {
+        MOBIEngine engine;
+        CHECK(engine.LoadFromMemory(MakeTestKF8()));
+        CHECK(!engine.GetCoverImage().empty());
+        CHECK(KindleCoverIs(MakeTestKF8(), engine.GetCoverImage()));
+    }
+
+    // A Thai-and-emoji file name.
+    const std::filesystem::path named = std::filesystem::temp_directory_path() /
+        PathFromUtf8("\xE0\xB8\xAB\xE0\xB8\x99\xE0\xB8\xB1\xE0\xB8\x87\xE0\xB8\xAA\xE0\xB8\xB7\xE0\xB8\xAD "
+                     "\xF0\x9F\x93\x9A kindle.azw3");
+    const std::vector<uint8_t> book = MakeMOBI6(kKindleText, declared);
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(named), "wb")) {
+        std::fwrite(book.data(), 1, book.size(), f);
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(named)) == cover);
+
+    // Not a book, a cut-off one, and none at all: no cover, no throw.
+    const std::filesystem::path junk =
+        std::filesystem::temp_directory_path() / "ebook-kindle-junk.mobi";
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(junk), "wb")) {
+        std::vector<uint8_t> zeros(200, 0);
+        std::fwrite(zeros.data(), 1, zeros.size(), f);
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(junk)).empty());
+    const std::filesystem::path cut =
+        std::filesystem::temp_directory_path() / "ebook-kindle-cut.mobi";
+    if (std::FILE* f = OpenFileUtf8(PathToUtf8(cut), "wb")) {
+        std::fwrite(book.data(), 1, 100, f);   // header and part of the list
+        std::fclose(f);
+    }
+    CHECK(MOBIEngine::ReadCoverImageFromFile(PathToUtf8(cut)).empty());
+    CHECK(MOBIEngine::ReadCoverImageFromFile(
+        PathToUtf8(std::filesystem::temp_directory_path() / "ebook-kindle-missing.mobi")).empty());
+    CHECK(MOBIEngine::ReadCoverImageFromFile("").empty());
+
+    std::error_code ec;
+    for (const auto& p : {named, junk, cut}) std::filesystem::remove(p, ec);
+}
+
 static void TestMOBIErrors() {
     MOBIEngine engine;
     std::vector<uint8_t> junk(200, 0);
@@ -1003,6 +1366,8 @@ int main() {
     TestPathUtilities();
     TestEPUB();
     TestEPUBErrors();
+    TestEPUBCoverRules();
+    TestEPUBCoverFromFile();
     TestFB2();
     TestFB2SingleWrapperSection();
     TestFB2Zip();
@@ -1013,6 +1378,7 @@ int main() {
     TestMOBIDropCapsAndToc();
     TestKF8();
     TestMOBIErrors();
+    TestMOBICoverFromFile();
     TestTXT();
     TestRegistry();
 

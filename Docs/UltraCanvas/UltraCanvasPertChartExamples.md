@@ -1,6 +1,6 @@
 # UltraCanvasPertChart Documentation
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -45,8 +45,11 @@ UltraCanvasUIElement
 
 ```cpp
 UltraCanvasPertChart(const std::string& id, int x, int y, int width, int height);
+```
 
-// Factory helpers
+Factory helpers:
+
+```cpp
 auto chart = CreatePertChart("pert", 0, 0, 1200, 700);
 auto styled = CreatePertChart("pert2", 0, 0, 1200, 700,
                               PertNodeDesign::Compact,
@@ -166,7 +169,6 @@ const PertNodeTemplate& GetNodeTemplate() const;
 void SetActivityNodeTemplate(const std::string& id,
                              const PertNodeTemplate& tpl);  // per-node override
 void ClearActivityNodeTemplate(const std::string& id);
-static PertNodeTemplate PertNodeTemplate::CpmMatrix();      // built-in analysis node
 ```
 
 A template is a list of `PertNodeRow`s, each holding `PertNodeCell`s:
@@ -183,7 +185,10 @@ struct PertNodeCell {
     Color background, textColor;
 };
 struct PertNodeRow      { std::vector<PertNodeCell> cells; double heightWeight; };
-struct PertNodeTemplate { std::vector<PertNodeRow> rows; };
+struct PertNodeTemplate {
+    std::vector<PertNodeRow> rows;
+    static PertNodeTemplate CpmMatrix();                     // built-in analysis node
+};
 ```
 
 Field-bound cells resolve against the activity and the computed schedule at
@@ -231,7 +236,15 @@ chart->SetActivityNodeTemplate("test", matrix);     // only this node
 void SetPalette(PertChartPaletteKind kind);          // one of the 8 built-ins
 void SetCustomPalette(const PertChartPalette& p);    // any color scheme
 const PertChartPalette& GetPalette() const;
-static PertChartPalette PertChartPalette::BuiltIn(PertChartPaletteKind kind);
+```
+
+The built-in palettes are static copies on `PertChartPalette`:
+
+```cpp
+struct PertChartPalette {
+    // color fields, described below
+    static PertChartPalette BuiltIn(PertChartPaletteKind kind);
+};
 ```
 
 `PertChartPalette` exposes every color the renderer uses: background, grid,

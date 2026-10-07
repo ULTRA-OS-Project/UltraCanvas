@@ -1,4 +1,9 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.15.0 - [DMARC] [DKIM] [SPF] in the header: the sender checks the
+//                   receiving server made, a bordered label each, details as
+//                   tooltips; a verified sender in the sender's tooltip
+// Version: 0.14.0 - the sender badge's icon is asked for, and shown when it
+//                   arrives (IconCached)
 // Version: 0.13.0 - the HTML body is laid out beside the vertical scrollbar (no
 //                 text under the bar, no stray horizontal bar); thin, round
 //                 scrollbars as in the message list
@@ -62,6 +67,20 @@ constexpr float kDateWidth    = 110.0f;
 // The header row holds two stacked auto-height text lines (from / to) plus the
 // 1px gap, and must be tall enough for both so neither is cropped.
 constexpr float kHeaderHeight = 44.0f;
+
+// One sender check as a small bordered label: the method's name, in the
+// colour of its result, the details as its tooltip.
+std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthCheck& check) {
+    const Color color = check.state == AuthCheckState::Passed ? Theme::kTrustFriend
+                      : check.state == AuthCheckState::Failed ? Theme::kTrustScam
+                                                              : Theme::kTextMuted;
+    auto tag = Theme::MakeText(id, check.label, Theme::kSizeSmall, color, FontWeight::Bold);
+    tag->SetBorders(1.0f, color, 3.0f);
+    tag->SetPadding(1.0f, 4.0f);
+    tag->SetTooltip(check.tooltip);
+    tag->layoutItem.SetFlexShrink(0);
+    return tag;
+}
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -367,13 +386,14 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     }
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
-    avatarHost_->layout.SetFlexRow();
+    avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(1)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     // Auto-height labels so each sizes to its own glyph line — a fixed-height
     // box cropped the second line regardless of the row height.
     from_ = Theme::MakeText("prevFrom", "", Theme::kSizeBody,
@@ -384,6 +404,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     who->AddChild(to_);
     header->AddChild(who);
     who->layoutItem.SetFlexGrow(1);
+
+    authRow_ = CreateContainer("prevAuth", 0, 0, 0, 0);
+    authRow_->layout.SetFlexRow()
+                    .SetFlexGap(4)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    header->AddChild(authRow_);
+    authRow_->layoutItem.SetFlexShrink(0);
 
     date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::kSizeSecondary,
                             Theme::kTextSecondary);
@@ -403,7 +430,8 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // what and why — never "blocked", because the message is still readable.
     warning_ = CreateContainer("prevWarning", 0, 0, 0, 0);
     warning_->layout.SetFlexColumn()
-                    .SetFlexGap(2);
+                    .SetFlexGap(2)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     warning_->SetPadding(8.0f, 10.0f);
     warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::kSizeBody,
                                     Theme::kTrustScam, FontWeight::Bold);
@@ -746,6 +774,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.verifiedDomain = report.verifiedDomain;
+        sec.verifiedBy     = report.verifiedBy;
         sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
@@ -859,8 +889,19 @@ void MessagePreview::Clear() {
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");
     if (avatarHost_) avatarHost_->ClearChildren();
+    if (authRow_) authRow_->ClearChildren();
+    shownBadge_ = SenderBadge{};
     if (bodyHost_) bodyHost_->ClearChildren();
     attachmentStrip_.SetAttachments({});
+}
+
+void MessagePreview::IconCached(const std::string& key) {
+    if (!hasMessage_ || !avatarHost_ || !icons_ || key.empty() || shownBadge_.iconKey != key)
+        return;
+    shownBadge_.iconPath = icons_->IconForKey(key);
+    shownBadge_.iconKey.clear();
+    avatarHost_->ClearChildren();
+    avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
 }
 
 void MessagePreview::Show(const MessageEnvelope& env) {
@@ -958,17 +999,32 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     const MessageSecurity security = SecurityFor(env, raw);
     const SenderStatus    status   = badges_.Classify(env, security, junkFolder_);
     if (avatarHost_) {
+        shownBadge_ = badges_.Resolve(env, security, junkFolder_);
         avatarHost_->ClearChildren();
-        avatarHost_->AddChild(MakeSenderBadgeElement(
-            "prevBadge", badges_.Resolve(env, security, junkFolder_), kAvatarSide));
+        avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
+        if (shownBadge_.iconPath.empty() && !shownBadge_.iconKey.empty() && requestIcon_)
+            requestIcon_(shownBadge_.iconKey);
     }
     if (from_) {
         // The sender line carries the verdict in words, so the badge's colour
         // is never the only place it is said.
         std::string tip = sender + "\n" + DisplayName(status.cls);
         if (!status.reason.empty()) tip += " \xE2\x80\x94 " + status.reason;
+        if (!security.verifiedDomain.empty())
+            tip += "\n\xE2\x9C\x93 Verified sender: " + security.verifiedDomain + " (" +
+                   security.verifiedBy + ")";
         if (!security.reason.empty()) tip += "\n" + security.reason;
         from_->SetTooltip(tip);
+    }
+    // [DMARC] [DKIM] [SPF]: read from the message itself (the receiving
+    // server's topmost Authentication-Results); none until its body is here.
+    if (authRow_) {
+        authRow_->ClearChildren();
+        if (!raw.empty()) {
+            int n = 0;
+            for (const AuthCheck& check : DescribeMessageAuthentication(raw))
+                authRow_->AddChild(MakeAuthTag("prevAuth" + std::to_string(n++), check));
+        }
     }
     ShowSecurityWarning(status, security, raw);
 

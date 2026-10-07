@@ -3,13 +3,20 @@
 // streaming download/upload uses constant memory (libcurl write/read callbacks
 // to/from FILE*). Mutating operations (DELE / RNFR-RNTO / MKD / RMD) ride on
 // CURLOPT_QUOTE so libcurl handles connection setup and authentication for us.
-// Version: 0.3.2 (Stage 3)
-// Last Modified: 2026-09-27
+//
+// Every handle runs with libcurl's debug stream switched on and read by an
+// ftplog::Transcript (UltraNetFtpLog.h): it is what feeds the caller's session
+// log, and what lets a failure quote the server's last reply even when nobody
+// is listening to the log.
+// Version: 0.4.0 - session log, specific failure messages, inactivity timeout
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
+#include "UltraNet/UltraNetCurlError.h"   // error buffer detail + diagnostics chain
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
 #include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
+#include "UltraNetFtpLog.h"     // the session log
 
 #include <curl/curl.h>
 
@@ -21,6 +28,16 @@
 #include "../../include/UltraCanvasPathUtf8.h"
 
 namespace {
+
+using ultranet_internal::ftplog::Channel;
+using ultranet_internal::ftplog::Transcript;
+
+// What the diagnostics chain names as the component that failed.
+constexpr const char* kComponent = "UltraNet FTP 0.4.0";
+
+// The log sink of calls made on this thread without an onLog of their own
+// (UltraNet_SetThreadFtpLog).
+thread_local UltraNetFtpLogCallback t_threadLog;
 
 std::size_t WriteToFile(char* data, std::size_t size, std::size_t nmemb, void* ud) {
     std::FILE* fp = static_cast<std::FILE*>(ud);
@@ -36,6 +53,21 @@ std::size_t WriteToString(char* data, std::size_t size, std::size_t nmemb, void*
     std::string* s = static_cast<std::string*>(ud);
     s->append(data, size * nmemb);
     return size * nmemb;
+}
+
+bool IsSftpUrl(const std::string& url) {
+    return ultranet_internal::ftplog::Upper(url.substr(0, 7)) == "SFTP://";
+}
+
+// The inactivity limit in the whole seconds libcurl counts in; 0 for none.
+int InactivitySeconds(const UltraNetFtpOptions& opt) {
+    if (opt.inactivityTimeoutMs <= 0) return 0;
+    return opt.inactivityTimeoutMs < 1000 ? 1 : (opt.inactivityTimeoutMs + 999) / 1000;
+}
+
+// The log of one public call: the caller's onLog, else this thread's sink.
+Transcript MakeTranscript(const UltraNetFtpOptions& opt, const std::string& url) {
+    return Transcript(opt.onLog ? opt.onLog : t_threadLog, IsSftpUrl(url));
 }
 
 void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
@@ -55,6 +87,22 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
     if (opt.transferTimeoutMs > 0) {
         curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,
                          static_cast<long>(opt.transferTimeoutMs));
+    }
+    // A server that goes quiet. Two limits, because libcurl has two places to
+    // wait: for the reply to a command (the server response timeout; libcurl
+    // alone waits two minutes) and for the bytes of a listing or a file (the
+    // low-speed limit: under one byte a second for that long). Without the
+    // second a data connection that opened and then sent nothing - a firewall
+    // that lets PASV through and drops the data - held the call for ever.
+    if (const int seconds = InactivitySeconds(opt); seconds > 0) {
+        curl_easy_setopt(h, CURLOPT_LOW_SPEED_LIMIT, 1L);
+        curl_easy_setopt(h, CURLOPT_LOW_SPEED_TIME, static_cast<long>(seconds));
+#if LIBCURL_VERSION_NUM >= 0x080600
+        curl_easy_setopt(h, CURLOPT_SERVER_RESPONSE_TIMEOUT_MS,
+                         static_cast<long>(seconds) * 1000L);
+#else
+        curl_easy_setopt(h, CURLOPT_SERVER_RESPONSE_TIMEOUT, static_cast<long>(seconds));
+#endif
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
 }
@@ -92,22 +140,141 @@ void ApplyProgressCallback(CURL* h) {
     curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
 }
 
-UltraNetResult Perform(CURL* h, const std::string& url) {
-    CURLcode rc = curl_easy_perform(h);
+// libcurl's debug stream into the call's transcript. The payload (DATA_IN /
+// DATA_OUT: the listing, the file) and raw TLS records are not log lines.
+int FeedTranscript(CURL* /*h*/, curl_infotype type, char* data, std::size_t size,
+                   void* userp) {
+    Transcript* log = static_cast<Transcript*>(userp);
+    switch (type) {
+        case CURLINFO_TEXT:       log->Feed(Channel::Text, std::string(data, size)); break;
+        case CURLINFO_HEADER_OUT: log->Feed(Channel::Sent, std::string(data, size)); break;
+        case CURLINFO_HEADER_IN:  log->Feed(Channel::Received, std::string(data, size)); break;
+        default: break;
+    }
+    return 0;
+}
+
+// What the diagnostics chain says about this call besides what libcurl
+// reports: which component, how TLS starts, how it signs in. Set for the
+// length of one transfer and put back after it, because the context is per
+// thread and shared with the mail plug-ins.
+class DiagnosticsContext {
+public:
+    DiagnosticsContext(const UltraNetFtpOptions& opt, const std::string& url)
+        : saved_(ultranet_curlerror::CurrentContext()) {
+        ultranet_curlerror::Context& c = ultranet_curlerror::CurrentContext();
+        c.component = kComponent;
+        c.tls = IsSftpUrl(url)  ? "SSH (SFTP)"
+              : !opt.useTls     ? "none - plain FTP, password and data unencrypted"
+              : opt.implicitTls ? "implicit (TLS from connect)"
+                                : "explicit (AUTH TLS; continues without it when refused)";
+        c.signIn = opt.credentials.username.empty() ? "anonymous" : "user name and password";
+    }
+    ~DiagnosticsContext() { ultranet_curlerror::CurrentContext() = saved_; }
+    DiagnosticsContext(const DiagnosticsContext&) = delete;
+    DiagnosticsContext& operator=(const DiagnosticsContext&) = delete;
+
+private:
+    ultranet_curlerror::Context saved_;
+};
+
+// libcurl's error classes that mean something more specific for FTP than the
+// shared HTTP mapping gives them.
+UltraNetResultCode MapFtpError(CURLcode rc) {
+    switch (rc) {
+        case CURLE_REMOTE_FILE_NOT_FOUND: return UltraNetResultCode::NotFound;
+        case CURLE_FTP_ACCEPT_TIMEOUT:    return UltraNetResultCode::Timeout;
+        case CURLE_USE_SSL_FAILED:        return UltraNetResultCode::TlsHandshakeFailed;
+        default:                          return ultranet_internal::MapCurlError(rc, 0);
+    }
+}
+
+// Runs the transfer on `h`, logging it into `log`. A failure carries
+// libcurl's specific reason (its error buffer, not just the error class)
+// with the server's refusal added, and the diagnostics chain.
+UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions& opt,
+                       Transcript& log, CURLcode* rcOut = nullptr) {
+    curl_easy_setopt(h, CURLOPT_DEBUGFUNCTION, &FeedTranscript);
+    curl_easy_setopt(h, CURLOPT_DEBUGDATA, &log);
+    curl_easy_setopt(h, CURLOPT_VERBOSE, 1L);
+    log.Begin(url);
+
+    std::string detail, diagnostics;
+    CURLcode rc = CURLE_OK;
+    {
+        DiagnosticsContext context(opt, url);
+        rc = ultranet_curlerror::Perform(h, detail, &diagnostics);
+    }
+    if (rcOut) *rcOut = rc;
+
     UltraNetResult r;
-    r.url = url;
+    r.url = ultranet_curlerror::RedactUrl(url);
     if (rc == CURLE_OK) {
         r.code    = UltraNetResultCode::Success;
         r.success = true;
-    } else {
-        r.code    = ultranet_internal::MapCurlError(rc, 0);
-        r.success = false;
-        r.message = curl_easy_strerror(rc);
+        return r;
     }
+    r.code    = MapFtpError(rc);
+    r.success = false;
+    r.message = ultranet_internal::ftplog::FailureMessage(
+            detail, InactivitySeconds(opt), log.LastReplyCode(), log.LastReply());
+    r.diagnostics = diagnostics;
+    if (log.LastReplyCode() > 0) r.diagnostics += "Last server reply: " + log.LastReply() + "\n";
     return r;
 }
 
+// Ends a public call: a failure becomes the log's last line. `rc` is the
+// libcurl code when the failure came from a transfer, CURLE_OK when the call
+// was refused before one (an empty URL, a local file that cannot be opened).
+UltraNetResult Finish(Transcript& log, UltraNetResult r, CURLcode rc = CURLE_OK) {
+    if (!r.success) log.Fail(r.message, r.code, static_cast<int>(rc));
+    return r;
+}
+
+// Whether a listing that failed is worth asking for again in another format
+// (MLSD -> LIST -> NLST). Only when the server refused the listing command
+// itself; a failure to reach the server, sign in, set up TLS or the data
+// connection, or a server gone quiet, fails every format alike - and asking
+// three times turned one 30-second timeout into a minute and a half, and the
+// message into the third attempt's rather than the first's.
+bool WorthAnotherListing(CURLcode rc) {
+    switch (rc) {
+        case CURLE_COULDNT_RESOLVE_PROXY:
+        case CURLE_COULDNT_RESOLVE_HOST:
+        case CURLE_COULDNT_CONNECT:
+        case CURLE_FTP_WEIRD_SERVER_REPLY:
+        case CURLE_REMOTE_ACCESS_DENIED:
+        case CURLE_FTP_ACCEPT_FAILED:
+        case CURLE_FTP_WEIRD_PASS_REPLY:
+        case CURLE_FTP_ACCEPT_TIMEOUT:
+        case CURLE_FTP_WEIRD_PASV_REPLY:
+        case CURLE_FTP_WEIRD_227_FORMAT:
+        case CURLE_FTP_CANT_GET_HOST:
+        case CURLE_OUT_OF_MEMORY:
+        case CURLE_OPERATION_TIMEDOUT:
+        case CURLE_SSL_CONNECT_ERROR:
+        case CURLE_ABORTED_BY_CALLBACK:
+        case CURLE_GOT_NOTHING:
+        case CURLE_SEND_ERROR:
+        case CURLE_RECV_ERROR:
+        case CURLE_PEER_FAILED_VERIFICATION:
+        case CURLE_USE_SSL_FAILED:
+        case CURLE_LOGIN_DENIED:
+        case CURLE_SSL_CACERT_BADFILE:
+        case CURLE_SSH:
+            return false;
+        default:
+            return true;
+    }
+}
+
 } // anonymous namespace
+
+UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink) {
+    UltraNetFtpLogCallback previous = std::move(t_threadLog);
+    t_threadLog = std::move(sink);
+    return previous;
+}
 
 // Listing parsers live in ultranet_internal::ftp:: rather than the anonymous
 // namespace so the test suite can call them directly with synthetic input.
@@ -280,24 +447,26 @@ using ultranet_internal::ftp::SplitLines;
 UltraNetResult UltraNet_FtpDownload(const std::string& url,
                                     const std::string& localPath,
                                     const UltraNetFtpOptions& opt) {
+    Transcript log = MakeTranscript(opt, url);
     if (url.empty() || localPath.empty()) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "url or localPath is empty");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                                 "url or localPath is empty"));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
     const char* mode = opt.resumeTransfer ? "ab" : "wb";
     std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, mode);
     if (!fp) {
-        return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
-                                     "cannot open local file for write");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::AccessDenied,
+                                                 "cannot open local file for write: " +
+                                                 localPath));
     }
     std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
                                                           curl_easy_cleanup);
     if (!h) {
         std::fclose(fp);
-        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                     "curl_easy_init() failed");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                                 "curl_easy_init() failed"));
     }
     curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
     curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToFile);
@@ -309,24 +478,27 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
     ApplyCommonOptions(h.get(), opt);
     ApplyProgressCallback(h.get());
 
-    UltraNetResult r = Perform(h.get(), url);
+    CURLcode rc = CURLE_OK;
+    UltraNetResult r = Perform(h.get(), url, opt, log, &rc);
     std::fclose(fp);
-    return r;
+    return Finish(log, r, rc);
 }
 
 UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
                                   const std::string& url,
                                   const UltraNetFtpOptions& opt) {
+    Transcript log = MakeTranscript(opt, url);
     if (url.empty() || localPath.empty()) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "url or localPath is empty");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                                 "url or localPath is empty"));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
     std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
     if (!fp) {
-        return UltraNetResult::Error(UltraNetResultCode::NotFound,
-                                     "cannot open local file for read");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::NotFound,
+                                                 "cannot open local file for read: " +
+                                                 localPath));
     }
     std::fseek(fp, 0, SEEK_END);
     long size = std::ftell(fp);
@@ -339,8 +511,8 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
                                                           curl_easy_cleanup);
     if (!h) {
         std::fclose(fp);
-        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                     "curl_easy_init() failed");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                                 "curl_easy_init() failed"));
     }
     curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
     curl_easy_setopt(h.get(), CURLOPT_UPLOAD, 1L);
@@ -351,18 +523,20 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
     ApplyCommonOptions(h.get(), opt);
     ApplyProgressCallback(h.get());
 
-    UltraNetResult r = Perform(h.get(), url);
+    CURLcode rc = CURLE_OK;
+    UltraNetResult r = Perform(h.get(), url, opt, log, &rc);
     std::fclose(fp);
-    return r;
+    return Finish(log, r, rc);
 }
 
 UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
                                          std::vector<UltraNetFtpEntry>& out,
                                          const UltraNetFtpOptions& opt) {
     out.clear();
+    Transcript log = MakeTranscript(opt, url);
     if (url.empty()) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "url is empty");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                                 "url is empty"));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
@@ -375,18 +549,25 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
     //      (vsftpd, ProFTPD, pureftpd) support it; the response is
     //      structured (RFC 3659) and gives us size / mtime / perm /
     //      owner / group reliably.
-    //   2. If MLSD fails or the response doesn't look like MLSD,
-    //      fall back to libcurl's default LIST. The body is usually
+    //   2. If the server refuses MLSD or the response doesn't look like
+    //      MLSD, fall back to libcurl's default LIST. The body is usually
     //      UNIX `ls -l` output (also what libcurl's SFTP emits).
     //   3. If neither yields valid entries, last-resort DIRLISTONLY —
     //      names only, which is what the previous implementation always
     //      did.
     //
+    // A format that came back EMPTY is an empty folder, not a format the
+    // parser could not read: it is the answer, and asking again in another
+    // format only logged in twice more to hear the same. And a failure that
+    // is not the server refusing the command (WorthAnotherListing) is
+    // returned as it is rather than repeated.
+    //
     // SFTP is handled by libcurl issuing its own listing; we just parse
     // whatever it returns (always UNIX ls -l style for libcurl/SFTP).
     auto runListing = [&](const char* customReq, bool dirListOnly,
-                          std::string& body) -> UltraNetResult {
+                          std::string& body, CURLcode& rc) -> UltraNetResult {
         body.clear();
+        rc = CURLE_OK;
         std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
                                                               curl_easy_cleanup);
         if (!h) {
@@ -399,7 +580,7 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
         curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
         curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
         ApplyCommonOptions(h.get(), opt);
-        return Perform(h.get(), listUrl);
+        return Perform(h.get(), listUrl, opt, log, &rc);
     };
 
     auto isFtp = listUrl.rfind("ftp://", 0) == 0 ||
@@ -408,8 +589,12 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
     // Pass 1: MLSD (FTP/FTPS only)
     if (isFtp) {
         std::string body;
-        if (runListing("MLSD", false, body)) {
-            for (const auto& line : SplitLines(body)) {
+        CURLcode rc = CURLE_OK;
+        UltraNetResult r = runListing("MLSD", false, body, rc);
+        if (r) {
+            const std::vector<std::string> lines = SplitLines(body);
+            if (lines.empty()) return UltraNetResult::Ok();   // an empty folder
+            for (const auto& line : lines) {
                 UltraNetFtpEntry e;
                 if (ParseMlsdLine(line, e)) {
                     e.fullPath = listUrl + e.name;
@@ -417,35 +602,49 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
                 }
             }
             if (!out.empty()) return UltraNetResult::Ok();
+            log.Step("The MLSD listing could not be read - asking again with LIST");
+        } else if (!WorthAnotherListing(rc)) {
+            return Finish(log, r, rc);
+        } else {
+            log.Step("The server refused MLSD (" + r.message +
+                       ") - asking again with LIST");
         }
     }
 
     // Pass 2: LIST / SFTP default (UNIX ls -l format)
     {
         std::string body;
-        UltraNetResult r = runListing(nullptr, false, body);
+        CURLcode rc = CURLE_OK;
+        UltraNetResult r = runListing(nullptr, false, body, rc);
         if (r) {
+            bool anyLine = false;
             for (const auto& line : SplitLines(body)) {
                 if (line.rfind("total ", 0) == 0) continue;  // ls -l preamble
+                anyLine = true;
                 UltraNetFtpEntry e;
                 if (ParseUnixLine(line, e)) {
                     e.fullPath = listUrl + e.name;
                     out.push_back(std::move(e));
                 }
             }
-            if (!out.empty()) return r;
-        } else if (!isFtp) {
+            if (!out.empty() || !anyLine) return r;   // entries, or an empty folder
+            log.Step("The LIST listing could not be read - asking for the names only");
+        } else if (!isFtp || !WorthAnotherListing(rc)) {
             // SFTP / other: surface the error rather than try DIRLISTONLY,
             // which usually fails on non-FTP transports too.
-            return r;
+            return Finish(log, r, rc);
+        } else {
+            log.Step("The server refused LIST (" + r.message +
+                       ") - asking for the names only");
         }
     }
 
     // Pass 3: DIRLISTONLY — names only (previous-version behaviour).
     {
         std::string body;
-        UltraNetResult r = runListing(nullptr, true, body);
-        if (!r) return r;
+        CURLcode rc = CURLE_OK;
+        UltraNetResult r = runListing(nullptr, true, body, rc);
+        if (!r) return Finish(log, r, rc);
         for (const auto& line : SplitLines(body)) {
             if (line == "." || line == "..") continue;
             UltraNetFtpEntry e;
@@ -464,17 +663,18 @@ namespace {
 // SFTP backend's own commands for an sftp:// URL.
 UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Verb verb,
                         const std::string& newName, const UltraNetFtpOptions& opt) {
+    Transcript log = MakeTranscript(opt, url);
     ultranet_internal::ftpquote::Plan plan;
     std::string error;
     if (!ultranet_internal::ftpquote::Build(url, verb, newName, plan, error)) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, error);
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InvalidUrl, error));
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
     std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
                                                           curl_easy_cleanup);
     if (!h) {
-        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                     "curl_easy_init() failed");
+        return Finish(log, UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                                 "curl_easy_init() failed"));
     }
     curl_slist* cmds = nullptr;
     for (const std::string& c : plan.commands)
@@ -487,7 +687,9 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
     curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
     ApplyCommonOptions(h.get(), opt);
 
-    return Perform(h.get(), plan.parentUrl);
+    CURLcode rc = CURLE_OK;
+    UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);
+    return Finish(log, r, rc);
 }
 
 } // namespace

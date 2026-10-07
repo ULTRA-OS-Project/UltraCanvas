@@ -120,12 +120,37 @@ atomic, post to the UI thread. One change can produce several callbacks; the
 receiver coalesces. Where the platform cannot notify, `Start()` succeeds and
 nothing is ever reported: `IsNative()` says which.
 
+### Global shortcuts
+
+`UltraCanvasGlobalShortcut` is a key combination that reaches the program
+whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
+panel:
+
+```cpp
+UltraCanvasGlobalShortcut shortcut;   // a member: Stop() runs in its destructor
+std::string error;
+if (!shortcut.Start("Super+V", [this]() {
+        // The shortcut's own thread: hand the press to the UI thread.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { TogglePanel(); });
+        }
+    }, &error)) {
+    debugOutput << "Super+V is not available: " << error << std::endl;
+}
+```
+
+`Start(accelerator, onPressed, &error)` reads `Super`, `Ctrl`, `Alt` and
+`Shift` and one key (`"Ctrl+Alt+H"`, `"Super+V"`); it fails, saying why, when
+the combination cannot be read, when another program already holds it, and on
+a platform without global shortcuts. `Stop()` joins the thread, so no
+callback runs after it returns; `IsRunning()`.
+
 ## Backends
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` and `CaptureScreenImage` fail with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -134,6 +159,8 @@ fallback when it is absent.
 ## See also
 
 - [UltraDesktop](../UltraDesktop/README.md) — the desktop built on this.
+- [UltraCanvasClipboardHistory](UltraCanvasClipboardHistory.md) — the
+  clipboard history the desktop's `Super+V` panel shows.
 - [UltraCanvasWaveSeparator](UltraCanvasWaveSeparator.md) and the
   [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
   elements the desktop's bars are made of.

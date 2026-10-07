@@ -4,6 +4,9 @@
 // in-memory journal, so it never touches the user's message centre, seeds a
 // few chats, mails and notifications through a second endpoint, and lets the
 // visitor post more with a button — the element updates live.
+// Version: 1.0.1 - seeds only an empty feed (the journal outlives the page, so
+//   every visit added the samples again); the subtitle's height follows its
+//   lines instead of clipping them at 40 px
 // Version: 1.0.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -138,7 +141,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     container->AddChild(title);
     title->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto subtitle = CreateLabel("MCSubtitle", 0, 0, 0, 40);
+    // Height 0 = auto: the wrapped text is three lines at the usual width and
+    // was cut to a fixed 40 px.
+    auto subtitle = CreateLabel("MCSubtitle", 0, 0, 0, 0);
     subtitle->SetWrap(TextWrap::WrapWord);
     subtitle->SetFontSize(12);
     container->AddChild(subtitle);
@@ -180,7 +185,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     options.busPath = DemoBusPath();
     options.journalPath = ":memory:";
     auto source = std::make_shared<DemoSource>();
-    if (center->Connect(options) && source->Connect()) {
+    // The broker and its journal outlive this page (whichever endpoint hosts
+    // it), so a second visit found last visit's samples already there and
+    // showed every one twice. Connect() has read the journal: seed only an
+    // empty feed.
+    if (center->Connect(options) && source->Connect() && center->GetEntries().empty()) {
         source->Seed();
         center->Refresh();
     }

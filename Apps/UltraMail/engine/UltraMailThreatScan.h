@@ -14,6 +14,14 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.5.0 - mail authentication: the receiving server's (topmost)
+//                  Authentication-Results header is parsed
+//                  (ParseAuthenticationResults); a sender whose domain DMARC
+//                  or an aligned DKIM signature proves (VerifiedSenderDomain)
+//                  is not flagged for its mail service's tracking links, its
+//                  reply address or its many link domains, and a proven
+//                  registry brand not for asking to update account details;
+//                  auth-failure only when DMARC fails, or nothing passes
 // Version: 0.4.0 - plain text: mail addresses (mailto:) are links too
 // Version: 0.3.0 - PlainLinkAt (the bare URL under the pointer in plain text)
 // Version: 0.2.0 - borrowed-pictures rule; kThreatRulesRevision (re-scan older verdicts);
@@ -51,6 +59,12 @@ struct ThreatReport {
     int                        score = 0;
     bool                       bulk  = false;   // List-Unsubscribe / Precedence: bulk
     std::vector<ThreatFinding> findings;
+    // The From domain the receiving server proved genuine ("" when nothing
+    // proved it), and how ("DKIM signature", "DMARC", "DKIM signature and
+    // DMARC"). Not a finding: it says the address is real, not that the
+    // message is harmless.
+    std::string                verifiedDomain;
+    std::string                verifiedBy;
 
     // The findings as one human-readable block ("• …\n• …"); empty when clean.
     std::string Summary() const;
@@ -88,7 +102,9 @@ struct ScanInput {
     std::string autoSubmitted;   // Auto-Submitted header value
     std::string spamFlag;        // X-Spam-Flag value
     std::string spamStatus;      // X-Spam-Status / SpamAssassin summary
-    std::string authResults;     // Authentication-Results value
+    std::string authResults;     // the topmost Authentication-Results header's value:
+                                 // the receiving server's own (one further down
+                                 // may come from anyone, the sender included)
     std::string body;
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
@@ -96,8 +112,66 @@ struct ScanInput {
 
 // When the rules last changed (epoch seconds). A stored verdict made before it
 // came from older rules: the reader scans the message again when it is opened,
-// so a phishing mail an earlier version let through is caught on its next read.
-constexpr long long kThreatRulesRevision = 1791072000;   // 2026-10-04 00:00 UTC
+// and the sync re-scans the stored bodies a batch at a time
+// (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
+// through is caught, and a genuine one it flagged is cleared.
+constexpr long long kThreatRulesRevision = 1791244800;   // 2026-10-06 00:00 UTC
+
+// ---------------------------------------------------------------------------
+// Mail authentication
+// ---------------------------------------------------------------------------
+// What one Authentication-Results header (RFC 8601) reports - the checks the
+// receiving server made of the sending domain's own records. Comments are
+// dropped; methods, results and domains are lowercased.
+struct AuthResults {
+    std::string authservId;   // who checked: "mx.google.com"
+    std::string dmarc;        // "pass", "fail", "none", ... ("" when not reported)
+    std::string dmarcFrom;    // the From domain DMARC was evaluated for (header.from)
+    std::string spf;          // the SPF result
+    std::string spfDomain;    // the envelope sender's domain (smtp.mailfrom)
+    // Every DKIM signature: its result and the domain that signed (header.d,
+    // else the domain of header.i).
+    std::vector<std::pair<std::string, std::string>> dkim;
+};
+AuthResults ParseAuthenticationResults(const std::string& headerValue);
+
+// The From domain the receiving server proved genuine: DMARC passed for it,
+// or a DKIM signature by its registrable domain verified (a mail service's
+// own signature proves nothing about the From address). "" when nothing
+// proves it, or DMARC failed. `method` gets "DKIM signature", "DMARC" or
+// "DKIM signature and DMARC".
+std::string VerifiedSenderDomain(const AuthResults& auth, const std::string& fromDomain,
+                                 std::string* method = nullptr);
+
+// The first (topmost) value of header `name` in a raw message's header block,
+// folded lines joined; "" when it has none.
+std::string TopHeaderValue(const std::string& rawMessage, const std::string& name);
+
+// One check, as the reading pane shows it: a small pill per method
+// ("DMARC", "DKIM", "SPF") - passed, failed or no clear answer - whose
+// tooltip says what was checked, for which domain, what that proves and who
+// checked it.
+enum class AuthCheckState { Passed, Failed, Neutral };
+struct AuthCheck {
+    std::string    label;     // "DMARC", "DKIM", "SPF", "S/MIME", "Not checked"
+    AuthCheckState state = AuthCheckState::Neutral;
+    std::string    tooltip;   // a few lines, ready to show
+};
+
+// The pills for one message: DMARC, DKIM and SPF as the receiving server
+// reported them (in that order, the strongest first), or a single neutral
+// "Not checked" when it reported none. `fromDomain` is the From address's.
+std::vector<AuthCheck> DescribeAuthentication(const AuthResults& auth,
+                                              const std::string& fromDomain);
+
+// How a raw message is signed by its author: "S/MIME" (multipart/signed with
+// a PKCS #7 signature, or signed application/pkcs7-mime), "OpenPGP", or "".
+// Detected, not verified: the signature and its certificate are not checked.
+std::string MessageSignatureKind(const std::string& rawMessage);
+
+// Everything above for a raw message: the authentication pills, then the
+// author's signature when there is one.
+std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessage);
 
 // The hosts the body's pictures (<img src>, background images) are loaded from,
 // lowercased; http(s) sources only.

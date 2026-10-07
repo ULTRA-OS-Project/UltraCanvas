@@ -2,8 +2,10 @@
 // Tooltip style and structured tooltip content types.
 // Shared by UltraCanvasTooltipManager (rendering) and UltraCanvasUIElement
 // (per-element tooltip storage) — keep this header lightweight.
+// Version: 1.2.0 - offsetX / offsetY are the gap right of and above the pointer
+//                 (12 / 20 px; the tooltip sits above-right of it)
 // Version: 1.1.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -79,8 +81,12 @@ namespace UltraCanvas {
         // Behavior
         unsigned int showDelay = 300;        // milliseconds to wait before showing
         unsigned int hideDelay = 200;        // milliseconds to wait before hiding
-        int offsetX = 10;              // Offset from cursor
-        int offsetY = 10;
+        // The gap between the pointer and the tooltip's body: offsetX to the
+        // right of it, offsetY above it (the tooltip sits above-right of the
+        // pointer, clear of the line under it; below the pointer's arrow only
+        // when there is no room above, to its left when none on the right).
+        int offsetX = 12;
+        int offsetY = 20;
         bool followCursor = false;     // Whether tooltip follows mouse movement
 
         TooltipStyle() = default;

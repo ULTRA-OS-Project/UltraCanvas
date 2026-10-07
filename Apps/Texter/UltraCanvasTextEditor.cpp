@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.3.2 - Live search starts at two characters
-// Last Modified: 2026-10-01
+// Version: 2.3.3 - The profile folder and comment author read as UTF-8
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -56,9 +56,11 @@ namespace UltraCanvas {
 namespace {
     std::string GetAppDataDirectory() {
 #ifdef _WIN32
-        const char* appData = std::getenv("APPDATA");
-        if (appData) {
-            return std::string(appData) + "\\UltraTexter\\";
+        // UTF-8 from the wide environment, as the autosave folder is opened
+        // through PathFromUtf8; getenv would answer in the ANSI code page.
+        const std::string appData = GetEnvUtf8("APPDATA");
+        if (!appData.empty()) {
+            return appData + "\\UltraTexter\\";
         }
         return "C:\\UltraTexter\\";
 #elif __APPLE__
@@ -833,7 +835,7 @@ namespace {
             cs.forceShowHorizontalScrollbar = false;
             toolbarContainer->SetContainerStyle(cs);
         }
-        toolbarContainer->layout.SetFlexRow();
+        toolbarContainer->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         toolbarContainer->layout.SetFlexGap(0);
         toolbarContainer->AddChild(toolbar); toolbar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -4140,7 +4142,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
         // Replace default layout with custom vertical layout
-        aboutDialog->layout.SetFlexColumn();
+        aboutDialog->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         aboutDialog->layout.SetFlexGap(4);
         aboutDialog->SetPadding(20);
 
@@ -4733,9 +4735,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Comments are signed with the login name; a double-click on one in
         // the comment pane edits it.
-        const char* user = std::getenv("USER");
-        if (!user) user = std::getenv("USERNAME");
-        doc->richEdit->SetCommentAuthor(user ? user : "");
+        // In UTF-8, as the document stores it: on Windows a narrow getenv
+        // would hand over the name in the ANSI code page.
+        std::string user = GetEnvUtf8("USER");
+        if (user.empty()) user = GetEnvUtf8("USERNAME");
+        doc->richEdit->SetCommentAuthor(user);
         doc->richEdit->onCommentActivated = [this](int index) { EditRichComment(index); };
     }
 

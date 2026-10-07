@@ -31,7 +31,7 @@
 // UltraCanvasModelMath.h so the B-rep header can use them without a cycle.
 //
 // Version: 1.0.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -501,7 +501,10 @@ namespace ModelStorage {
         // animations is returned via outDroppedAnimations when non-null.
         void FlattenTransforms(size_t* outDroppedAnimations = nullptr);
         // Rotate the model so Up becomes the requested axis, adjusting the
-        // roots' transforms rather than the vertices. No-op when it matches.
+        // roots' transforms rather than the vertices - and the translation
+        // and rotation keys of any animation that drives a root, which would
+        // otherwise replace the turned values on playback. A sampler shared
+        // with a channel that does not turn is split. No-op when it matches.
         void ConvertUpAxis(UpAxis target);
         // Merge coincident vertices within tolerance, building Indices. STL
         // arrives as unindexed triangle soup — three quarters of the airplane

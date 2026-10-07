@@ -527,6 +527,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRAWEB =====
+# The ULTRA OS browser. This version runs WebAssembly apps that build their UI
+# out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
+# reader and JavaScript follow Docs/UltraWeb/UltraWebProposal.md. A headless
+# --check mode starts an app without a window.
+option(BUILD_ULTRAWEB "Build the UltraWeb browser" ON)
+if(BUILD_ULTRAWEB)
+    message(STATUS "")
+    message(STATUS "── Building UltraWeb ──")
+    add_subdirectory(Apps/UltraWeb)
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
@@ -538,6 +550,16 @@ if(BUILD_ULTRADESKTOP)
     message(STATUS "")
     message(STATUS "── Building UltraDesktop ──")
     add_subdirectory(Apps/UltraDesktop)
+endif()
+
+# ===== ULTRACLIPBOARD =====
+# The clipboard history of ULTRA OS: everything copied - texts, links,
+# colours, images, files - with a thumbnail and Copy / Edit / Delete on every
+# entry, search, pins and the history's settings. UltraDesktop records the
+# history and opens this from its quick panel (Super+V).
+option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
+if(BUILD_ULTRACLIPBOARD)
+    add_subdirectory(Apps/UltraClipboard)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -955,6 +977,16 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== VAULT TESTS WITHOUT THE FULL SUITE =====
+# UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
+# row): the device-key vault in a Thai-and-emoji folder is only a test where a
+# folder name goes through UTF-16 and a code page.
+option(ULTRACANVAS_BUILD_VAULT_TESTS "Build UltraVaultTests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VAULT_TESTS AND NOT BUILD_TESTS AND TARGET UltraVault)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
+endif()
+
 # ===== ULTRANET TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraNet is built.
@@ -1221,6 +1253,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
@@ -1899,17 +1932,9 @@ if (BUILD_TESTS)
              COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
-    # persistence, and the no-oracle property (wrong passphrase and a tampered
-    # file are indistinguishable). Compiles only UltraVault + UltraCrypt.
-    add_executable(UltraVaultTests Tests/UltraVaultTests.cpp)
-    target_link_libraries(UltraVaultTests PRIVATE UltraVault)
-    target_compile_features(UltraVaultTests PRIVATE cxx_std_20)
-    set_target_properties(UltraVaultTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraVaultTests COMMAND UltraVaultTests
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # UltraVault unit tests (Tests/VaultTests.cmake, shared with
+    # ULTRACANVAS_BUILD_VAULT_TESTS below).
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 
     # Cross-module: UltraAI's ResolveApiKey resolving apiKeyVaultRef through
     # UltraVault (the path enabled by ULTRAAI_USE_ULTRAVAULT).

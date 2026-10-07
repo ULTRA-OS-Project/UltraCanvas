@@ -182,9 +182,11 @@ ApplicationFilter GetApplicationFilter() {
 
 std::string GetApplicationsDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-    const char* systemRoot = std::getenv("SystemRoot");
+    // UTF-8, like the dialog's other folders (GetEnvUtf8 asks Windows for
+    // the UTF-16 value; getenv would answer in the ANSI code page).
+    const std::string systemRoot = GetEnvUtf8("SystemRoot");
     const std::string system32 =
-            systemRoot ? std::string(systemRoot) + "\\System32" : std::string();
+            systemRoot.empty() ? std::string() : systemRoot + "\\System32";
     return DirectoryExists(system32) ? system32 : std::string();
 #elif defined(__APPLE__)
     if (DirectoryExists("/Applications/Utilities")) return "/Applications/Utilities";

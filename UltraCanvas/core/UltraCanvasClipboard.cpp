@@ -1,7 +1,7 @@
 // UltraCanvasClipboard.cpp
 // Platform-independent clipboard core implementation
-// Version: 1.0.0
-// Last Modified: 2025-08-13
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboard.h"
@@ -95,31 +95,38 @@ UltraCanvasClipboard::~UltraCanvasClipboard() {
 bool UltraCanvasClipboard::Initialize() {
     // Create platform-specific backend
 #if defined(__ANDROID__)
-    backend = std::make_unique<UltraCanvasAndroidClipboard>();
+    return InitializeWithBackend(std::make_unique<UltraCanvasAndroidClipboard>());
 #elif defined(__EMSCRIPTEN__)
-    backend = std::make_unique<UltraCanvasWASMClipboard>();
+    return InitializeWithBackend(std::make_unique<UltraCanvasWASMClipboard>());
 #elif defined(__linux__)
-    backend = std::make_unique<UltraCanvasLinuxClipboard>();
+    return InitializeWithBackend(std::make_unique<UltraCanvasLinuxClipboard>());
 #elif _WIN32
-    backend = std::make_unique<UltraCanvasWindowsClipboard>();
+    return InitializeWithBackend(std::make_unique<UltraCanvasWindowsClipboard>());
 #elif __APPLE__
-    backend = std::make_unique<UltraCanvasMacOSClipboard>();
+    return InitializeWithBackend(std::make_unique<UltraCanvasMacOSClipboard>());
 #else
     debugOutput << "UltraCanvas: Clipboard not supported on this platform" << std::endl;
     return false;
 #endif
+}
 
+bool UltraCanvasClipboard::InitializeWithBackend(std::unique_ptr<UltraCanvasClipboardBackend> clipboardBackend) {
+    backend = std::move(clipboardBackend);
     if (!backend || !backend->Initialize()) {
         debugOutput << "UltraCanvas: Failed to initialize clipboard backend" << std::endl;
         return false;
     }
 
-    // Get initial clipboard content
+    // Get initial clipboard content. A password on the clipboard when the
+    // program starts is remembered as seen, so the monitor does not take it
+    // for a new copy, but it is not recorded.
     std::string initialText;
     if (GetText(initialText)) {
         lastClipboardContent = initialText;
-        auto entry = CreateEntryFromCurrentClipboard();
-        AddEntry(entry);
+        if (!backend->IsClipboardMarkedSecret()) {
+            auto entry = CreateEntryFromCurrentClipboard();
+            AddEntry(entry);
+        }
     }
 
     debugOutput << "UltraCanvas: Clipboard initialized successfully" << std::endl;
@@ -148,6 +155,20 @@ bool UltraCanvasClipboard::SetText(const std::string& text) {
     if (!backend) return false;
     
     bool success = backend->SetClipboardText(text);
+    if (success) {
+        lastClipboardContent = text;
+        backend->ResetChangeState();
+    }
+    return success;
+}
+
+bool UltraCanvasClipboard::SetText(const std::string& text, ClipboardHint hint) {
+    if (hint == ClipboardHint::Normal) return SetText(text);
+    if (!backend) return false;
+
+    // Remembered as seen, so this process's own monitor does not record it;
+    // the marker keeps every other process's history from recording it.
+    const bool success = backend->SetClipboardSecretText(text);
     if (success) {
         lastClipboardContent = text;
         backend->ResetChangeState();
@@ -282,6 +303,12 @@ void UltraCanvasClipboard::CheckForChanges() {
 void UltraCanvasClipboard::ProcessNewClipboardContent() {
     std::string currentText;
     if (GetText(currentText) && currentText != lastClipboardContent && !currentText.empty()) {
+        // A password manager's copy: seen, never recorded and never logged.
+        if (backend->IsClipboardMarkedSecret()) {
+            lastClipboardContent = currentText;
+            debugOutput << "UltraCanvas: Clipboard changed: content marked secret, not recorded" << std::endl;
+            return;
+        }
         debugOutput << "UltraCanvas: Clipboard changed: " << currentText.substr(0, 50) << "..." << std::endl;
 
         ClipboardData newEntry = CreateEntryFromCurrentClipboard();
@@ -508,6 +535,10 @@ bool SetClipboardText(const std::string& text) {
         return g_clipboard->SetText(text);
     }
     return false;
+}
+
+bool SetClipboardText(const std::string& text, ClipboardHint hint) {
+    return g_clipboard && g_clipboard->SetText(text, hint);
 }
 
 bool GetClipboardHtml(std::string& html) {

@@ -5,7 +5,7 @@
 // what it does not.
 //
 // Version: 2.0.0
-// Last Modified: 2026-09-11
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/Blend/UltraCanvasBlendConverter.h"
@@ -390,7 +390,9 @@ private:
         // it recomputes on load; from 3.x it often stores none at all. Both are
         // reasons to generate rather than read: a generated normal is correct
         // for the geometry actually present, and a stale cached one is not.
-        prim.RecomputeNormals();
+        // So every Blender normal is a generated one - and a caller that asked
+        // for none (GenerateMissingNormals off) gets none, as from any reader.
+        if (options_.GenerateMissingNormals) prim.RecomputeNormals();
         return true;
     }
 
@@ -777,6 +779,13 @@ private:
         if (sawNodeMaterial_)
             options_.Warn("Blender: a material's surface is a node tree, which is not evaluated; "
                           "its colour is the viewport approximation Blender stores beside it");
+        // The same post-processing every other reader applies, in the same
+        // order. Blender is Z-up; a caller that asked for Y-up gets it. The
+        // rotation goes on the root objects, so the meshes themselves stay as
+        // Blender stored them.
+        if (options_.WeldTolerance > 0.0) document_->WeldVertices(options_.WeldTolerance);
+        if (options_.TriangulateOnImport) document_->TriangulateAll();
+        if (options_.ForceUpAxis.has_value()) document_->ConvertUpAxis(*options_.ForceUpAxis);
     }
 
     void WarnOnce(const std::string& key, const std::string& message) {

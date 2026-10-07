@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.1
+**Version:** 1.0.2
 
 ## Class Hierarchy
 
@@ -147,15 +147,15 @@ struct AdjacencyDiagramStyle {
 
 ```cpp
 UltraCanvasAdjacencyDiagram(const std::string& id,
-                            long x, long y, long w, long h);
+                            float x, float y, float w, float h);
 ```
 
 ### Factory Function
 
 ```cpp
 std::shared_ptr<UltraCanvasAdjacencyDiagram> CreateAdjacencyDiagram(
-        const std::string& id, long uid,
-        long x, long y, long width, long height);
+        const std::string& id,
+        float x, float y, float width, float height);
 ```
 
 ### Room API

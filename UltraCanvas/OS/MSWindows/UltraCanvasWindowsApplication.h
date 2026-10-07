@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.h
 // Windows platform implementation for UltraCanvas Framework
-// Version: 1.2.0
-// Last Modified: 2026-05-10
+// Version: 1.3.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -13,6 +13,7 @@
 #include "../../include/UltraCanvasCommonTypes.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasWindow.h"
+#include "../../include/UltraCanvasImageCursorCache.h"
 
 // ===== WINDOWS PLATFORM INCLUDES =====
 #ifndef WIN32_LEAN_AND_MEAN
@@ -69,6 +70,7 @@ namespace UltraCanvas {
 
     // Forward declarations
     class UltraCanvasWindowsWindow;
+    class UCPixmapCairo;
 
     struct MouseClickInfo {
         HWND window = nullptr;
@@ -90,7 +92,15 @@ namespace UltraCanvas {
         ATOM windowClassAtom;
 
         // ===== CURSOR CACHE =====
+        // System cursors (they follow the screen's scaling by themselves).
         std::unordered_map<UCMouseCursor, HCURSOR> cursors;
+        // Cursors drawn from a picture: one per screen scaling, so a window
+        // moved to a screen with other scaling gets one of its own size.
+        UCImageCursorCache<HCURSOR> imageCursors{
+                [this](const std::string& file, int hotspotX, int hotspotY, float scale) {
+                    return LoadCursorFromImageFile(file.c_str(), hotspotX, hotspotY, scale);
+                },
+                [](HCURSOR cursor) { DestroyCursor(cursor); }};
 
         // Wakeup mechanism for cross-thread signaling
         HANDLE wakeupEvent = nullptr;
@@ -153,6 +163,15 @@ namespace UltraCanvas {
         static std::wstring Utf8ToUtf16(const std::string& utf8);
         static std::string Utf16ToUtf8(const std::wstring& utf16);
 
+        // ===== ICONS AND CURSORS FROM PIXELS =====
+        // An icon (cursor = false) or a cursor with its hotspot in pixels,
+        // from a cairo pixmap: 32-bit colour with straight alpha, which is
+        // what Windows expects (cairo's is premultiplied). The window icon and
+        // the image cursors both come from here. nullptr on failure; the
+        // caller owns the handle (DestroyIcon / DestroyCursor).
+        static HICON IconFromPixmap(UCPixmapCairo& pixmap, bool cursor,
+                                    int hotspotX, int hotspotY);
+
     protected:
         // ===== INHERITED FROM BASE APPLICATION =====
         bool InitializeNative() override;
@@ -181,7 +200,11 @@ namespace UltraCanvas {
         UCMouseButton ConvertWin32ButtonToUCButton(UINT msg, WPARAM wParam);
 
         // ===== CURSOR LOADING =====
-        HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY);
+        // .cur / .ani / .ico through Win32; any other image the framework can
+        // read (PNG, SVG, ...) is decoded with UCImage and drawn at `scale`
+        // (the window's DPI scale), hotspot scaled with it.
+        HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY,
+                                        float scale = 1.0f);
 
         // ===== HOST FD-WATCHES =====
         // Non-blocking Winsock select() over the fds registered via AddFdWatch(), firing the

@@ -37,4 +37,4 @@
   - `UltraMessage` links `shell32` and `user32` on Windows. Tests: two
     presenter cases against a fake desktop notification server on the private
     D-Bus session (36 in the suite); the message centre's NoJournal rule.
-    UltraMail uses all this for its new-mail notification (UltraMail 0.10.31).
+    UltraMail uses all this for its new-mail notification (UltraMail 0.10.34).

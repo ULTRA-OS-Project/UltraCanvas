@@ -537,7 +537,13 @@ builds a single-application AppImage.
 unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
 notarised bundle a release ships; it needs a Developer ID certificate in the
 keychain and the notarisation credentials the script names. CI runs it only on
-pushes to `main`; pull requests get the unsigned bundle.
+pushes to `main`; pull requests get the unsigned bundle. `--no-sign` signs ad
+hoc, so the bundles still carry a valid signature, and names the disk image
+`UCDemo-MacOS-<version>-<arch>-unsigned.dmg`. Once a browser has downloaded
+such an image, macOS refuses its apps - on Apple silicon with *"… is damaged
+and can't be opened"*. Nothing is damaged: copy the `UltraCanvas` folder to
+Applications and run `xattr -dr com.apple.quarantine /Applications/UltraCanvas`,
+as the read-me inside the image says.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
 

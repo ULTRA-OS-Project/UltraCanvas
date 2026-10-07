@@ -4,6 +4,7 @@
 #include "UltraAIEndpoints.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cctype>
@@ -54,8 +55,12 @@ EndpointStore& EndpointStore::Instance() {
 
 std::string EndpointStore::ConfigDir() {
 #if defined(_WIN32)
-    if (const char* appdata = std::getenv("APPDATA"); appdata && *appdata)
-        return std::string(appdata) + "\\UltraAI";
+    // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8): the
+    // JSON file helpers open it with OpenFileUtf8, and the narrow getenv
+    // answers in the ANSI code page, which cannot spell a profile folder
+    // named in Thai under code page 1252.
+    if (const std::string appdata = UltraCanvas::GetEnvUtf8("APPDATA"); !appdata.empty())
+        return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(appdata) / "UltraAI");
     return "UltraAI";
 #elif defined(__APPLE__)
     if (const char* home = std::getenv("HOME"); home && *home)
@@ -132,7 +137,7 @@ bool EndpointStore::Load() {
     endpoints_.clear();
 
     std::error_code ec;
-    if (!std::filesystem::exists(ConfigPath(), ec)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(ConfigPath()), ec)) {
         return true;  // no file yet — an empty store is valid
     }
 
@@ -168,7 +173,7 @@ bool EndpointStore::Load() {
 
 bool EndpointStore::Save() const {
     std::error_code ec;
-    std::filesystem::create_directories(ConfigDir(), ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(ConfigDir()), ec);
 
     JSONValue arr = JSONValue::MakeArray();
     for (const auto& e : endpoints_) {
