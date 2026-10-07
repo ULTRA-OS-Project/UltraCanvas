@@ -72163,6 +72163,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
+| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
 | Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
@@ -76692,6 +76693,16 @@ The desktop's quick panel starts UltraClipboard for what does not fit in it:
 
 The desktop looks for `UltraClipboard` next to its own executable first, then
 on `PATH`.
+
+There is one UltraClipboard at a time. A start while it is open - from the
+panel, the app starter or the command line - hands its search or its entry
+to the open window, which comes forward, and quits. A dialog already open
+there comes forward instead and keeps what is typed in it. The hand-off goes
+over UltraMessage, the per-user message bus: a request on the topic
+`org.ultraos.ultraclipboard.show` (`search`, `editId`) to the running
+instance, which answers before it acts; the first instance hosts the bus when
+nothing else does. Without the bus (a build without UltraDatabase, a bus that
+cannot be reached) every start opens its own window.
 
 ## Command line
 
