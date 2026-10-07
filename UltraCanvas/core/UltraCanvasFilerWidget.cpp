@@ -50,8 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.35.1
-// Last Modified: 2026-10-04
+// Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -77,6 +77,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
 #include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
@@ -1623,6 +1624,33 @@ namespace UltraCanvas {
                 case FilerViewType::View3D:              return "3D";
             }
             return "";
+        }
+
+        // The icon of a context-menu entry: a file of media/icons/menu/, drawn
+        // for a menu - dark strokes on its light background, one set so the
+        // entries read as one menu.
+        std::string MenuIconPath(const char* fileName) {
+            return NormalizePath(GetResourcesDir() + "media/icons/menu/" + fileName);
+        }
+
+        // Display > Type's entries carry the glyphs UltraFiler's view selector
+        // shows (media/icons/view-*.svg), so a layout has the same picture in
+        // the menu and in the toolbar.
+        std::string ViewTypeIconPath(FilerViewType v) {
+            const char* file = "view-details.svg";
+            switch (v) {
+                case FilerViewType::Details:             file = "view-details.svg"; break;
+                case FilerViewType::List:                file = "view-list.svg"; break;
+                case FilerViewType::ThumbnailsSmall:     file = "view-icons-small.svg"; break;
+                case FilerViewType::ThumbnailsMedium:    file = "view-icons-medium.svg"; break;
+                case FilerViewType::ThumbnailsBig:       file = "view-icons-large.svg"; break;
+                case FilerViewType::ThumbnailsMaximized: file = "view-icons-xlarge.svg"; break;
+                case FilerViewType::BarSize:             file = "view-size-bars.svg"; break;
+                case FilerViewType::TreeMap:             file = "view-treemap.svg"; break;
+                case FilerViewType::GourceTree:          file = "view-force-tree.svg"; break;
+                case FilerViewType::View3D:              file = "view-3d.svg"; break;
+            }
+            return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
 
         std::string FormatDuration(double seconds) {
@@ -14582,12 +14610,15 @@ namespace UltraCanvas {
         activePopupMenu->SetMenuType(MenuType::PopupMenu);
         auto& menu = *activePopupMenu;
 
-        auto addAction = [&menu](const std::string& label, bool enabled,
-                                 std::function<void()> cb,
+        // Every entry of this menu carries an icon (MenuIconPath), so the
+        // labels line up behind one icon column.
+        auto addAction = [&menu](const std::string& label, const char* icon,
+                                 bool enabled, std::function<void()> cb,
                                  const std::string& shortcut = "") {
             MenuItemData item = shortcut.empty()
-                    ? MenuItemData::Action(label, std::move(cb))
+                    ? MenuItemData::Action(label, MenuIconPath(icon), std::move(cb))
                     : MenuItemData::ActionWithShortcut(label, shortcut,
+                                                       MenuIconPath(icon),
                                                        std::move(cb));
             item.enabled = enabled;
             menu.AddItem(item);
@@ -14668,7 +14699,8 @@ namespace UltraCanvas {
                 none.enabled = false;
                 openItems.push_back(none);
             }
-            MenuItemData openWith = MenuItemData::Submenu("Open with", openItems);
+            MenuItemData openWith = MenuItemData::Submenu(
+                    "Open with", MenuIconPath("open-with.svg"), openItems);
             if (openable) {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
@@ -14679,7 +14711,7 @@ namespace UltraCanvas {
         // noise in the menu of every file.
         if (singleSel && CanExtractAndRun(targets.front())) {
             const FilerEntry program = targets.front();
-            addAction("Extract and Run", true,
+            addAction("Extract and Run", "run.svg", true,
                       [this, program]() { ExtractAndRunEntry(program); });
         }
         menu.AddItem(MenuItemData::Separator());
@@ -14689,7 +14721,7 @@ namespace UltraCanvas {
         // action there.
         if (showOpenPathItem) {
             size_t openIdx = hasSel ? selection.front() : 0;
-            addAction(openPathItemLabel, hasSel, [this, openIdx]() {
+            addAction(openPathItemLabel, "folder.svg", hasSel, [this, openIdx]() {
                 if (openIdx >= entries.size()) return;
                 const FilerEntry e = entries[openIdx];
                 if (onOpenPath) onOpenPath(e);
@@ -14698,25 +14730,26 @@ namespace UltraCanvas {
             menu.AddItem(MenuItemData::Separator());
         }
 
-        addAction("Copy", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
+        addAction("Copy", "copy.svg", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
         // Cut and Duplicate are greyed out on a drive rather than offered and
         // then refused: a move off a drive is a download plus a destructive
         // delete, and a duplicate is a server-side copy no provider has.
         // Paste stays live - into a drive it uploads, out of one it downloads.
-        addAction("Cut", hasSel && !ShowingRemoteFolder(),
+        addAction("Cut", "cut.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { CutSelection(); }, "Ctrl+X");
-        addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", hasSel, [this]() {
+        addAction("Paste", "paste.svg", ClipboardHasContent(),
+                  [this]() { Paste(); }, "Ctrl+V");
+        addAction("Delete", "delete.svg", hasSel, [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", hasSel, [this]() {
+        addAction("Delete Permanently", "delete-permanently.svg", hasSel, [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
-        addAction("Duplicate", hasSel && !ShowingRemoteFolder(),
+        addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", singleSel,
+            addAction("Rename", "rename.svg", singleSel,
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
@@ -14734,7 +14767,7 @@ namespace UltraCanvas {
                 newItems.push_back(MenuItemData::Action(
                         t.label, [this, copy]() { CreateNewDocument(copy); }));
             }
-            menu.AddItem(MenuItemData::Submenu("New", newItems));
+            menu.AddItem(MenuItemData::Submenu("New", MenuIconPath("new.svg"), newItems));
         }
         menu.AddItem(MenuItemData::Separator());
 
@@ -14761,14 +14794,15 @@ namespace UltraCanvas {
                 item.enabled = canCompress;
                 compressItems.push_back(item);
             }
-            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
+            MenuItemData compressSub = MenuItemData::Submenu(
+                    "Compress", MenuIconPath("compress.svg"), compressItems);
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
-        addAction("Extract", anyArchive, [this]() { OpenExtractDialog(); });
+        addAction("Extract", "extract.svg", anyArchive, [this]() { OpenExtractDialog(); });
         menu.AddItem(MenuItemData::Separator());
 
-        addAction("Print", static_cast<bool>(onPrint), [this]() {
+        addAction("Print", "print.svg", static_cast<bool>(onPrint), [this]() {
             if (onPrint) onPrint(SelectionOrAll());
         }, "Ctrl+P");
         menu.AddItem(MenuItemData::Separator());
@@ -14816,7 +14850,8 @@ namespace UltraCanvas {
                 }
             }
 
-            menu.AddItem(MenuItemData::Submenu("Extras", extraItems));
+            menu.AddItem(MenuItemData::Submenu("Extras", MenuIconPath("extras.svg"),
+                                               extraItems));
         }
 
         // Display > Sort / Type / Icon-Menu
@@ -14848,9 +14883,11 @@ namespace UltraCanvas {
                 FilerViewType::GourceTree, FilerViewType::View3D,
             };
             for (FilerViewType v : views) {
-                typeItems.push_back(MenuItemData::Radio(
+                MenuItemData typeItem = MenuItemData::Radio(
                         ViewTypeLabel(v), 3, viewType == v,
-                        [this, v]() { SetViewType(v); }));
+                        [this, v]() { SetViewType(v); });
+                typeItem.iconPath = ViewTypeIconPath(v);
+                typeItems.push_back(std::move(typeItem));
             }
 
             // Dataset > extra per-file facts under thumbnail captions.
@@ -14936,38 +14973,49 @@ namespace UltraCanvas {
             // A list shown in the order it was handed over (a history, a
             // pin order - SetFileListOrderPreserved) cannot be sorted, so
             // the choice is greyed out rather than offered and ignored.
-            MenuItemData sortSub = MenuItemData::Submenu("Sort", sortItems);
+            // The switches carry an icon as well as their tick, so every label
+            // of this submenu starts behind the same two columns.
+            auto addSwitch = [&displayItems](const char* label, const char* icon,
+                                             bool on, std::function<void(bool)> cb) {
+                MenuItemData item = MenuItemData::Checkbox(label, on, std::move(cb));
+                item.iconPath = MenuIconPath(icon);
+                displayItems.push_back(std::move(item));
+            };
+            MenuItemData sortSub = MenuItemData::Submenu(
+                    "Sort", MenuIconPath("sort.svg"), sortItems);
             sortSub.enabled = !(fileListMode && preserveFileListOrder);
             displayItems.push_back(std::move(sortSub));
-            displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
-            displayItems.push_back(MenuItemData::Submenu("File extensions",
-                                                         extensionItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Type", MenuIconPath("view-type.svg"), typeItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "File extensions", MenuIconPath("file-extensions.svg"),
+                    extensionItems));
             if (!fileIconItems.empty()) {
-                displayItems.push_back(MenuItemData::Submenu("File icons",
-                                                             fileIconItems));
+                displayItems.push_back(MenuItemData::Submenu(
+                        "File icons", MenuIconPath("file-icons.svg"), fileIconItems));
             }
-            displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
-            displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
-            displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Icon-Menu", hoverIconMenu,
-                    [this](bool on) { SetHoverIconMenuEnabled(on); }));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Thumbnails", MenuIconPath("thumbnails.svg"), thumbnailItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Detail view", MenuIconPath("detail-view.svg"), detailViewItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Dataset", MenuIconPath("dataset.svg"), datasetItems));
+            addSwitch("Icon-Menu", "icon-menu.svg", hoverIconMenu,
+                      [this](bool on) { SetHoverIconMenuEnabled(on); });
             // The first pictures inside a folder peeking out of its icon.
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Folder previews", folderPreviews,
-                    [this](bool on) { SetFolderPreviewsEnabled(on); }));
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Info-Bar", showSelectionInfo,
-                    [this](bool on) { SetSelectionInfoVisible(on); }));
+            addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
+                      [this](bool on) { SetFolderPreviewsEnabled(on); });
+            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                      [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Hidden files", showHiddenFiles,
-                    [this](bool on) { SetShowHiddenFiles(on); }));
-            menu.AddItem(MenuItemData::Submenu("Display", displayItems));
+            addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
+                      [this](bool on) { SetShowHiddenFiles(on); });
+            menu.AddItem(MenuItemData::Submenu("Display", MenuIconPath("display.svg"),
+                                               displayItems));
         }
 
-        addAction("Settings", static_cast<bool>(onSettings), [this]() {
+        addAction("Settings", "settings.svg", static_cast<bool>(onSettings), [this]() {
             if (onSettings) onSettings();
         });
 

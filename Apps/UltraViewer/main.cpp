@@ -111,8 +111,8 @@ int main(int argc, char* argv[]) {
                 NormalizePath(GetResourcesDir() + "media/appicon/UltraViewer.png"));
         // The framework's own dialogs, not the platform's: the toolbar's Open
         // and Save buttons get UltraCanvasFileDialog (folder tree, filer-widget
-        // listing, view buttons), the same on every platform. The viewer shows
-        // no message boxes, so this changes only its file dialogs.
+        // listing, view buttons), the same on every platform. Its message
+        // boxes - a failed save, the replace prompt - follow the same setting.
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
         UltraViewerWindow mainWindow;

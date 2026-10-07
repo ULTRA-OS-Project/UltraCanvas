@@ -21826,7 +21826,10 @@ every platform:
   four icon sizes);
 - a folder tree (Home, the user's places and every mounted drive, loaded as
   each node is expanded) beside the listing of the current folder, which is an
-  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard;
+  `UltraCanvasFilerWidget` with its icons, thumbnails, sorting and keyboard -
+  but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
+  the file under the pointer): a picker chooses files rather than managing
+  them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
   of toggle buttons (see [Filter toggles](#filter-toggles)).
 
@@ -21866,7 +21869,8 @@ options say `SetRegisterAsRecent(false)`.
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles`, `SetConfirmOverwrite` and the parent window.
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
+window.
 
 ### Building it yourself
 
@@ -21897,6 +21901,7 @@ A config starts without filters: the dialog then lists every file under an
 | `showHiddenFiles` | List dot-files / hidden files |
 | `filterToggles` | Toggle buttons instead of the dropdown |
 | `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
+| `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -21910,7 +21915,8 @@ between folders.
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
   listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists. A name that is already a
+- **Save** accepts any name in a folder that exists, with the chosen file
+  type's extension - see [Save names](#save-names). A name that is already a
   file gets a **Replace File** question first ("… already exists. Do you want
   to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
   dialog open on that name. A caller that asks itself, or appends to the
@@ -21923,6 +21929,42 @@ between folders.
 
 Keyboard handling (Tab order, Enter, Escape, mnemonics) is the same as every
 modal dialog: see [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md).
+
+## Save names
+
+The Save callback receives a path and nothing else, so an application picks
+the format to write from the path's extension. The dialog therefore hands
+back a name that carries the extension of the file type chosen under "Files
+of type" - `ApplySaveExtension(name, type, offered)` in
+`UltraCanvasModalDialog.h`, with PNG, JPEG (`jpg`, `jpeg`) and All files
+offered:
+
+| Typed | Chosen | Saved as |
+|---|---|---|
+| `photo` or `photo.` | PNG | `photo.png` |
+| `photo.png`, `photo.PNG` | PNG | as typed |
+| `photo.jpeg` | JPEG | as typed - any of the type's extensions stands |
+| `photo.png` | JPEG | `photo.jpg` - another offered type's extension is swapped |
+| `Report v1.2` | PNG | `Report v1.2.png` - an extension no type offers is kept |
+| anything | All files (`*`) | as typed |
+
+- The extension goes on **before** the Replace File question, so the question
+  names the file that will be written: "picture" with PNG chosen asks about
+  `picture.png`. The name field shows the name as it will be saved.
+- Switching the type rewrites the name the same way ("photo.png" becomes
+  "photo.jpg"), as the platforms' own save dialogs do.
+- The dialog opens on the type of `defaultFileName` when the type the caller
+  chose does not fit it (`FindFilterForName`): suggesting "holiday.jpg" with
+  PNG first in the list opens on JPEG rather than saving "holiday.png".
+- With filter toggles on, a name of any type that is on stands; any other
+  takes the first one's extension.
+- The native dialogs follow the same rule. Windows is given the chosen
+  type's extension as its default (`SetDefaultExtension`) and the result is
+  checked as above; the GTK chooser rewrites the name when the type changes
+  and when it is accepted. Where that produces a different name that is
+  already a file, they ask about replacing it - GTK leaves the chooser open
+  on **No**, Windows cancels. The macOS panel already insists on one of the
+  offered extensions.
 
 ## Filter toggles
 
@@ -22450,6 +22492,7 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Dataset     >  Size / Edit date / Creation date / Attributes /
                                  Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
+                  Folder previews (checkbox: pictures peeking out of a folder)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
                              of a curated home folder — see below)
@@ -22458,6 +22501,15 @@ Settings
 
 Notes:
 
+- **Icons.** Every entry of the menu and of its *Display* submenu carries an
+  icon from `media/icons/menu/` (copy, cut, paste, delete, ...), found
+  through `GetResourcesDir()`, so the labels line up behind one icon column.
+  The entries of *Display > Type* carry the same `media/icons/view-*.svg`
+  glyphs as UltraFiler's view selector. The checkbox entries of *Display*
+  show their tick and their icon side by side (see *Icon and Indicator
+  Columns* in [UltraCanvasMenuExamples.md](UltraCanvasMenuExamples.md)); the
+  tick is drawn round or square by `MenuStyle::checkboxShape`, which a host
+  sets for all its menus with `SetDefaultMenuCheckboxShape` (UltraFiler: round).
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
@@ -23763,7 +23815,9 @@ UltraFiler does that when a tile of its History view is activated.
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
-item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
+item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
+turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
+`FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
 so no icon assets are required.
 
 A button acts on the hovered entry — or on the **whole selection** when the
@@ -36581,7 +36635,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 
 # UltraCanvasMenu Documentation
 
-<!-- doc-check: void OpenWithDefaultApplication(); void onToggleStandardToolbar(bool); void onToggleFormattingToolbar(bool); void onToggleDrawingToolbar(bool); -->
+<!-- doc-check: void OpenWithDefaultApplication(); void onToggleStandardToolbar(bool); void onToggleFormattingToolbar(bool); void onToggleDrawingToolbar(bool); void SetShowHiddenFiles(bool on); -->
 
 ## Overview
 
@@ -36785,6 +36839,7 @@ struct MenuStyle {
     int minWidth;            // Minimum menu width (0 = no minimum)
     int maxWidth;            // Maximum menu width (0 = none; labels ellipsize beyond it)
     MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
+    MenuCheckboxShape checkboxShape;  // Outline of a Checkbox item's indicator: Square (default) or Round
 
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
@@ -37074,6 +37129,58 @@ Both shapes are `iconSize` wide and are centred on the row. The label is
 centred on the row by its cap height rather than by its line box (which
 holds the ascender and descender space too), so the indicator and the
 visible text sit on one centre line whatever the item height.
+
+### Checkbox Indicator Shape
+
+A `Checkbox` item draws a tick inside a square box, as `UltraCanvasCheckbox`
+does. `MenuCheckboxShape::Round` draws the same tick, smaller, inside a
+circle - the outline a `Radio` item gets - for a menu whose indicators should
+all be round:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.checkboxShape = MenuCheckboxShape::Round;
+menu->SetStyle(style);
+```
+
+An application that wants round checkboxes in **every** menu it shows sets the
+default once, before it builds its windows. Every `MenuStyle` starts from it,
+so it also reaches menus an element builds for itself, such as the file
+display's context menu, which an application never gets to style:
+
+```cpp
+// UltraFiler's main(), after app.Initialize(...)
+SetDefaultMenuCheckboxShape(MenuCheckboxShape::Round);
+```
+
+Until an application calls it the default is `Square`, so nothing changes for
+one that never does.
+
+### Icon and Indicator Columns
+
+A vertical menu lines its labels up. When any visible item is a `Checkbox` or
+`Radio`, the menu has an indicator column; when any has an icon (`iconPath`
+or `iconImage`), it has an icon column beside that. Each column is
+`iconSize + iconSpacing` wide, and **every** row steps over both, so an
+`Action` without an icon starts its label where the others do:
+
+```
+| paddingLeft | [indicator] | [icon] | label | gap | [shortcut] | [arrow] | paddingRight |
+```
+
+An item can fill both columns: a checkbox with an icon shows the indicator,
+then the icon, then the label.
+
+```cpp
+MenuItemData hidden = MenuItemData::Checkbox("Hidden files", showHidden,
+        [this](bool on) { SetShowHiddenFiles(on); });
+hidden.iconPath = iconDir + "hidden-files.svg";   // tick + icon + label
+menu->AddItem(hidden);
+```
+
+The icon of a disabled item is drawn faded (35 % opacity), with its label
+greyed. A menubar (horizontal menu) lays each item out on its own and has no
+columns.
 
 ### Custom Styling
 
@@ -48108,7 +48215,7 @@ UltraCanvas/
 The Vector plugin implements `UltraCanvas::VectorConverter::SVGConverter`, converting between SVG markup and the `VectorStorage::VectorDocument` model in both directions — the only vector format converter with lossless fidelity, because the storage model is essentially SVG-shaped.
 
 - **Export** keeps everything: groups and layers stay `<g>` elements (a document's layers become top-level groups), transforms stay `matrix()` attributes, gradients keep all their stops in `<defs>` (linear and radial; conical approximates as radial with a warning), patterns serialize their content, text keeps its `<tspan>` spans with `xml:space="preserve"`, dash arrays, opacity and `<use>`/`<symbol>`/`<image>` references all round-trip. `SVGOptions` controls pretty-printing, minification and the viewBox.
-- **Import** parses with tinyxml2: all basic shapes, paths (via `ParsePathString`), groups, presentation attributes and inline `style=""`, gradients resolved through `url(#id)` (with one level of `href` inheritance), text with tspans, unit conversion (pt/mm/cm/in/pc at CSS's 96 dpi), and entities. When every top-level drawable is a `<g>`, each imports as a `VectorLayer` — the shape this exporter and layered editors produce. CSS `<style>` sheets are not applied (warned once).
+- **Import** parses with tinyxml2: all basic shapes, paths (via `ParsePathString`), groups, presentation attributes and inline `style=""`, gradients resolved through `url(#id)` (with one level of `href` inheritance), text with tspans, unit conversion (pt/mm/cm/in/pc at CSS's 96 dpi), and entities. When every top-level drawable is a `<g>`, each imports as a `VectorLayer` — the shape this exporter and layered editors produce. CSS `<style>` sheets apply too, wherever they sit (`<defs>` included, CDATA or not, a `media` attribute honoured): they are parsed by the HTMLReader's CSS subset (`HTML::StyleSheet`) and matched against the SVG tree — type, class, id, attribute and structural pseudo-class selectors, descendant chains (`>` read as a descendant), specificity and source order. The cascade is SVG 2's: presentation attribute, then the sheets, then `style=""`, with `!important` reversing the last two. The SVG 2 geometry properties `x`, `y`, `width`, `height`, `rx`, `ry`, `cx`, `cy` and `r` can come from CSS on rects, circles and ellipses (`.card { rx: 8 }`). Sibling combinators and `:hover`-style pseudo-classes are dropped by the parser. `marker-start`, `marker-mid` and `marker-end` (and the `marker` shorthand; all four inherit) are drawn: the model has no marker-by-reference, so each `<marker>`'s content is read as ordinary shapes at the path's vertices (SVG 2's rules: each subpath start and segment end, curves and arcs by their tangents) — placed by `refX`/`refY`, mapped from its `viewBox` onto `markerWidth` × `markerHeight`, scaled by the stroke width unless `markerUnits="userSpaceOnUse"`, turned by `orient` (`auto`, `auto-start-reverse` or an angle) and clipped to its viewport when the content reaches past it. The shape and its markers become one `VectorGroup`, so an arrow stays one object in an editor; `context-fill` / `context-stroke` in marker content take the shape's paint.
 
 ```cpp
 #include "UltraCanvasVectorConverter.h"   // in UltraCanvas/Plugins/Vector
@@ -58834,6 +58941,11 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 - Tooltip text is laid out with Pango markup; the text passed in is wrapped
   in a `<span>` carrying `fontSize`/`fontFamily`, so tooltip strings may
   themselves contain markup (e.g. `<b>`, `<span foreground="...">`).
+- Text wider than `maxWidth` (less the padding) wraps at word boundaries and,
+  where a word alone is too long - a URL, a file path, a hash - between any
+  two of its characters. The box is sized to the wrapped text, so nothing a
+  tooltip draws runs past its border. Over-wide table cells wrap the same way
+  inside their column.
 
 ## Dependencies
 

@@ -356,6 +356,7 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Dataset     >  Size / Edit date / Creation date / Attributes /
                                  Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
+                  Folder previews (checkbox: pictures peeking out of a folder)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
                              of a curated home folder — see below)
@@ -364,6 +365,15 @@ Settings
 
 Notes:
 
+- **Icons.** Every entry of the menu and of its *Display* submenu carries an
+  icon from `media/icons/menu/` (copy, cut, paste, delete, ...), found
+  through `GetResourcesDir()`, so the labels line up behind one icon column.
+  The entries of *Display > Type* carry the same `media/icons/view-*.svg`
+  glyphs as UltraFiler's view selector. The checkbox entries of *Display*
+  show their tick and their icon side by side (see *Icon and Indicator
+  Columns* in [UltraCanvasMenuExamples.md](UltraCanvasMenuExamples.md)); the
+  tick is drawn round or square by `MenuStyle::checkboxShape`, which a host
+  sets for all its menus with `SetDefaultMenuCheckboxShape` (UltraFiler: round).
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
@@ -1669,7 +1679,9 @@ UltraFiler does that when a tile of its History view is activated.
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
-item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
+item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
+turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
+`FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
 so no icon assets are required.
 
 A button acts on the hovered entry — or on the **whole selection** when the

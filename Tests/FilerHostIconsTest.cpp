@@ -1,6 +1,7 @@
 // Tests/FilerHostIconsTest.cpp
-// Display > File icons: the setting itself (UltraCanvasFilerWidget) and the
-// cache key the host icon service answers by (UltraCanvasHostFileIcons).
+// Display > File icons: the setting itself (UltraCanvasFilerWidget), the
+// cache key the host icon service answers by (UltraCanvasHostFileIcons), and
+// UltraFiler's saved choice (Apps/UltraFiler/UltraFilerSettings.h).
 //
 // The rule this guards: a host icon is the icon of a TYPE, and the key says
 // which type. Key two file kinds the same and a folder draws one of them with
@@ -14,15 +15,35 @@
 // has one is free to change it. What IS asserted is that asking is harmless -
 // an unresolvable type returns null rather than failing - so the display
 // always has something to draw.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+//
+// UltraFiler draws the host's icons by default. Its config file is read from
+// a temporary folder here, so the test never touches a real installation: a
+// first start, both choices across a restart, and the files earlier releases
+// left behind - every one of which says "simple" under the old key, chosen or
+// not, and must take the new default rather than keep the old one forever.
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasHostFileIcons.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraFilerSettings.h"        // Apps/UltraFiler
 
+#include <cstdlib>   // setenv
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
+
+#if defined(_WIN32) || defined(_WIN64)
+// Declared rather than taken from <windows.h>, for the reason
+// UltraCanvasPathUtf8.h gives for GetEnvironmentVariableW: windows.h would
+// rename our own functions. This is the declaration windows.h makes (BOOL is
+// int, LPCWSTR const wchar_t*).
+extern "C" __declspec(dllimport) int __stdcall SetEnvironmentVariableW(
+        const wchar_t* lpName, const wchar_t* lpValue);
+#endif
 
 using namespace UltraCanvas;
 
@@ -37,6 +58,85 @@ void Check(bool condition, const std::string& what) {
 
 std::string FileKey(const std::string& path) {
     return HostFileIconKey(path, /*isDirectory=*/false);
+}
+
+// Points UltraFilerSettings::GetConfigDirectory() at `root` - through the
+// wide API on Windows, which is where GetEnvUtf8 reads APPDATA.
+void RedirectConfigDirectory(const std::filesystem::path& root) {
+#if defined(_WIN32) || defined(_WIN64)
+    SetEnvironmentVariableW(L"APPDATA", root.c_str());
+#elif defined(__APPLE__)
+    setenv("HOME", PathToUtf8(root).c_str(), 1);
+#else
+    setenv("XDG_CONFIG_HOME", PathToUtf8(root).c_str(), 1);
+#endif
+}
+
+// A config file holding exactly `lines`, the way an earlier release (or a
+// hand edit) left it.
+void WriteConfig(const std::string& lines) {
+    std::error_code ec;
+    std::filesystem::create_directories(
+            PathFromUtf8(UltraFilerSettings::GetConfigDirectory()), ec);
+    std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()),
+                       std::ios::trunc);
+    file << "# UltraFiler Configuration\n\n" << lines;
+}
+
+// What the next start of UltraFiler draws with.
+FilerFileIconStyle LoadedStyle() {
+    UltraFilerSettings settings;
+    settings.Load();
+    return settings.fileIconStyle;
+}
+
+void TestUltraFilerSavedChoice() {
+    std::cout << "\n-- UltraFiler's saved choice --\n";
+    std::error_code ec;
+    const std::filesystem::path root =
+            std::filesystem::temp_directory_path(ec) / "ultrafiler-file-icons-test";
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    if (ec) {
+        Check(false, "a temporary config directory can be made");
+        return;
+    }
+    RedirectConfigDirectory(root);
+
+    Check(UltraFilerSettings().fileIconStyle ==
+                  FilerFileIconStyle::HostOperatingSystem,
+          "UltraFiler draws the host's icons by default");
+    Check(LoadedStyle() == FilerFileIconStyle::HostOperatingSystem,
+          "a first start, with no config file, draws the host's icons");
+
+    for (FilerFileIconStyle style : UltraCanvasFilerWidget::AllFileIconStyles()) {
+        UltraFilerSettings settings;
+        settings.fileIconStyle = style;
+        Check(settings.Save(), "the choice is saved with the other settings");
+        Check(LoadedStyle() == style,
+              std::string("\"") + UltraCanvasFilerWidget::FileIconStyleLabel(style) +
+                      "\" comes back after a restart");
+    }
+
+    // Every save of 1.66.1 and earlier wrote "simple" under the old key,
+    // chosen or not, so such a file is the old default, not a choice.
+    WriteConfig("display.file.icons = simple\n");
+    Check(LoadedStyle() == FilerFileIconStyle::HostOperatingSystem,
+          "a config from before the change takes the host's icons");
+    WriteConfig("display.file.icons = host\n");
+    Check(LoadedStyle() == FilerFileIconStyle::HostOperatingSystem,
+          "one that had chosen the host's icons keeps them");
+    // A choice made from this release on has its own key, which the old one
+    // cannot override.
+    WriteConfig("display.file.icons = host\ndisplay.file.icons.style = simple\n");
+    Check(LoadedStyle() == FilerFileIconStyle::Simple,
+          "the simple icons, chosen now, stay chosen");
+    // A style a later release might add reads back as what every build draws.
+    WriteConfig("display.file.icons.style = some-later-style\n");
+    Check(LoadedStyle() == FilerFileIconStyle::Simple,
+          "an unknown style reads back as the simple icons");
+
+    std::filesystem::remove_all(root, ec);
 }
 
 } // namespace
@@ -135,6 +235,8 @@ int main() {
     Check(filer.GetFileIconStyle() == FilerFileIconStyle::HostOperatingSystem,
           "a refresh keeps the chosen style");
     filer.SetFileIconStyle(FilerFileIconStyle::Simple);
+
+    TestUltraFilerSavedChoice();
 
     std::cout << "\n";
     if (g_failures == 0) {
