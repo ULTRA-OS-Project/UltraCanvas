@@ -596,8 +596,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
-        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
-        # on top of the CSSLayout engine (used by the eBook subsystem).
+        # HTMLReader: the framework's one implementation of reading HTML and
+        # CSS - parser, DOM, CSS parser and selector matcher, cascade,
+        # DOM→element builder on the CSSLayout engine, HTML→UCRichDocument
+        # importer. Always built; the eBook engines, UltraMail and the Vector
+        # plugin's SVG reader use it. Docs/UltraCanvas/UltraCanvasHTMLReader.md.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp

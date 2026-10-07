@@ -1,0 +1,52 @@
+name: HTML reuse
+
+# Blocks a new tag stripper, entity table, style="" splitter or CSS selector
+# matcher written outside the HTMLReader module. The framework reads HTML and
+# CSS in UltraCanvas/{include,core}/HTMLReader/ - parser, DOM, CSS parser and
+# matcher, cascade, element builder, UCRichDocument importer,
+# HTML::DecodeEntities and HTML::ExtractPlainText - and seven places had
+# written their own by 2026-10, each with a different handful of entities.
+# See "Core conventions" in AGENTS.md and
+# Docs/UltraCanvas/UltraCanvasHTMLReader.md.
+#
+# Sites that predate the check are listed in scripts/html_reuse_baseline.txt;
+# only additions fail. A site that must stay says so with
+# `// html-reuse-exempt: <why>`.
+
+# Trigger policy matches build.yml / win32-names.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'UltraWeb/**'
+      - 'VirtualFS/**'
+      - 'Apps/**'
+      - 'scripts/check_html_reuse.py'
+      - 'scripts/html_reuse_baseline.txt'
+      - '.github/workflows/html-reuse.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for HTML, CSS or entity handling outside the HTMLReader module
+        run: python3 scripts/check_html_reuse.py --strict

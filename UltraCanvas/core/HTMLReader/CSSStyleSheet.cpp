@@ -1,5 +1,9 @@
 // core/HTMLReader/CSSStyleSheet.cpp
-// CSS-subset parser: values, selectors, rules.
+// CSS-subset parser: values, selectors, rules - and the two pieces of
+// selector matching that are not about the tree (attribute operators, an+b).
+// Version: 1.6.0 - AttributeValueMatches / NthPositionMatches: the matcher's
+//                  tree-independent halves, moved here from the style resolver
+//                  so the SVG reader's elements match through the same code
 // Version: 1.5.0 - structural pseudo-classes: :first-child, :last-child,
 //                  :only-child, :nth-child(an+b) / -last- / -of-type, :root,
 //                  :empty (dynamic ones such as :hover still drop the rule)
@@ -11,7 +15,7 @@
 //                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -685,6 +689,52 @@ void StyleSheet::ParseAppend(const std::string& css) {
 
         i = (close < text.size()) ? close + 1 : text.size();
     }
+}
+
+// ============================================================================
+// SELECTOR MATCHING - the tree-independent halves
+// ============================================================================
+
+bool AttributeValueMatches(const AttributeSelector& attr, const std::string& value) {
+    if (attr.op == 0) return true;
+    std::string have = value;
+    std::string want = attr.value;
+    if (attr.ignoreCase) {
+        for (char& ch : have) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        for (char& ch : want) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    switch (attr.op) {
+        case '=': return have == want;
+        case '^': return !want.empty() && have.compare(0, want.size(), want) == 0;
+        case '$': return !want.empty() && have.size() >= want.size() &&
+                         have.compare(have.size() - want.size(), want.size(), want) == 0;
+        case '*': return !want.empty() && have.find(want) != std::string::npos;
+        case '|': return have == want || have.compare(0, want.size() + 1, want + "-") == 0;
+        case '~': {
+            // One of the whitespace-separated words.
+            size_t pos = 0;
+            while (pos < have.size()) {
+                while (pos < have.size() && std::isspace(static_cast<unsigned char>(have[pos]))) ++pos;
+                size_t end = pos;
+                while (end < have.size() && !std::isspace(static_cast<unsigned char>(have[end]))) ++end;
+                if (end > pos && end - pos == want.size() && have.compare(pos, end - pos, want) == 0) {
+                    return true;
+                }
+                pos = end;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+bool NthPositionMatches(const PseudoClass& pc, int index, int count) {
+    if (index <= 0 || index > count) return false;
+    const int pos = pc.fromEnd ? count - index + 1 : index;
+    // pos == a*n + b for some n >= 0.
+    if (pc.a == 0) return pos == pc.b;
+    const int diff = pos - pc.b;
+    return diff % pc.a == 0 && diff / pc.a >= 0;
 }
 
 } // namespace HTML
