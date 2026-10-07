@@ -29,7 +29,7 @@
 // The naming rule is checked on its own and always runs; the dialog itself
 // is read back from the composited pixels, so that part runs under Xvfb and
 // skips - rather than fails - without a display.
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
@@ -37,6 +37,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
@@ -248,6 +249,16 @@ int main() {
         TEST("A name of no offered type finds none", FindFilterForName("notes.txt", types) == -1);
         TEST("The all-files type is never the one found", FindFilterForName("notes", types) == -1);
     }
+
+    std::cerr << "\n--- Default extension ---" << std::endl;
+    TEST("A bare name takes the default", ApplyDefaultExtension("photo", "png") == "photo.png");
+    TEST("... dotted or not", ApplyDefaultExtension("photo", ".png") == "photo.png");
+    TEST("... without its trailing dot", ApplyDefaultExtension("photo.", "png") == "photo.png");
+    TEST("A name with an extension keeps it", ApplyDefaultExtension("notes.txt", "png") == "notes.txt");
+    TEST("A dot-file is a bare name", ApplyDefaultExtension(".profile", "png") == ".profile.png");
+    TEST("Only the last component counts",
+         ApplyDefaultExtension("/home/me/my.pictures/photo", "png") == "/home/me/my.pictures/photo.png");
+    TEST("No default changes nothing", ApplyDefaultExtension("photo", "") == "photo");
 
     std::cerr << "\n--- File names ---" << std::endl;
     {
@@ -462,6 +473,31 @@ int main() {
         TEST("... and leaves it off when it is off",
              !InRecentFiles(scratch / "config", expect("forgotten.png")));
 #endif
+
+        // Through UltraCanvasFileLoader: FileDialogOptions::defaultExtension
+        // reaches the framework dialog.
+        {
+            UltraCanvasDialogManager::SetUseNativeDialogs(false);
+            auto saved = std::make_shared<std::string>();
+            FileDialogOptions opts;
+            opts.SetTitle("Loader save").SetInitialDirectory(folder)
+                .AddFilter("All files", std::string("*"))
+                .SetDefaultExtension("png").SetRegisterAsRecent(false);
+            UltraCanvasFileLoader::SaveFileDialog(opts, [saved](DialogResult r, const std::string& path) {
+                if (r == DialogResult::OK) *saved = path;
+            });
+            const auto open = UltraCanvasDialogManager::GetActiveDialogs();
+            auto* shown = open.empty() ? nullptr : dynamic_cast<UltraCanvasFileDialog*>(open.back().get());
+            auto* field = shown ? dynamic_cast<UltraCanvasTextInput*>(shown->FindChildById("FileDialogName"))
+                                : nullptr;
+            TEST("UltraCanvasFileLoader shows the framework Save dialog", field != nullptr);
+            if (field && field->onEnterPressed) {
+                field->SetText("loader");
+                field->onEnterPressed("loader");
+            }
+            TEST("... which gives a bare name FileDialogOptions' default extension",
+                 *saved == expect("loader.png"));
+        }
 
         run = ShowSave(folder, "holiday.jpg");
         TEST("The dialog opens on the type of the name it suggests",

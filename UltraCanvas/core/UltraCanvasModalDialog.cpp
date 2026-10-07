@@ -1214,22 +1214,6 @@ namespace UltraCanvas {
             return false;
         }
 
-        // `name` with `extension` added when its last component has none
-        // (FileDialogConfig::defaultExtension). Trailing dots are dropped
-        // first; a leading dot (".profile") is part of the name.
-        std::string WithDefaultExtension(const std::string& name, const std::string& extension) {
-            size_t start = 0;
-            while (start < extension.size() && extension[start] == '.') ++start;
-            if (start == extension.size()) return name;
-            const size_t sep = name.find_last_of("/\\");
-            const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
-            std::string result = name;
-            while (result.size() > leafStart && result.back() == '.') result.pop_back();
-            if (result.size() == leafStart) return name;   // no file name to extend
-            const size_t dot = result.find_last_of('.');
-            if (dot != std::string::npos && dot > leafStart) return result;
-            return result + "." + extension.substr(start);
-        }
     }
 
     std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
@@ -1273,6 +1257,20 @@ namespace UltraCanvas {
             }
         }
         return -1;
+    }
+
+    std::string ApplyDefaultExtension(const std::string& name, const std::string& extension) {
+        size_t start = 0;
+        while (start < extension.size() && extension[start] == '.') ++start;
+        if (start == extension.size()) return name;
+        const size_t sep = name.find_last_of("/\\");
+        const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
+        std::string result = name;
+        while (result.size() > leafStart && result.back() == '.') result.pop_back();
+        if (result.size() == leafStart) return name;   // no file name to extend
+        const size_t dot = result.find_last_of('.');
+        if (dot != std::string::npos && dot > leafStart) return result;
+        return result + "." + extension.substr(start);
     }
 
     std::string InvalidFileNameReason(const std::string& name, FileNameRules rules) {
@@ -2384,7 +2382,7 @@ namespace UltraCanvas {
         // A type that names no extension (All files) leaves a bare name
         // bare: the caller's default extension, if it gave one, goes on.
         if (!fileConfig.defaultExtension.empty()) {
-            named = WithDefaultExtension(named, fileConfig.defaultExtension);
+            named = ApplyDefaultExtension(named, fileConfig.defaultExtension);
         }
         return named;
     }

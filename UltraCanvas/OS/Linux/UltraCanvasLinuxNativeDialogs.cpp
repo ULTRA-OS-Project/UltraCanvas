@@ -180,6 +180,7 @@ namespace UltraCanvas {
         struct SaveFilterList {
             const std::vector<FileFilter>* filters = nullptr;
             std::vector<GtkFileFilter*> gtkFilters;   // in the order of *filters
+            std::string defaultExtension;             // FileDialogOptions::defaultExtension
         };
 
         // GTK's Save file chooser does NOT rewrite the extension in the name
@@ -202,8 +203,9 @@ namespace UltraCanvas {
 
             for (size_t i = 0; i < list->gtkFilters.size(); ++i) {
                 if (list->gtkFilters[i] != filter) continue;
-                const std::string renamed =
-                        ApplySaveExtension(name, (*list->filters)[i], *list->filters);
+                const std::string renamed = ApplyDefaultExtension(
+                        ApplySaveExtension(name, (*list->filters)[i], *list->filters),
+                        list->defaultExtension);
                 if (renamed != name) gtk_file_chooser_set_current_name(chooser, renamed.c_str());
                 return;
             }
@@ -544,6 +546,7 @@ namespace UltraCanvas {
         // chooser's choice can be read back as a FileFilter.
         SaveFilterList filterList;
         filterList.filters = &options.filters;
+        filterList.defaultExtension = options.defaultExtension;
         std::vector<GtkFileFilter*>& gtkFilters = filterList.gtkFilters;
         for (const auto& filter : options.filters) {
             GtkFileFilter* gtkFilter = gtk_file_filter_new();
@@ -593,6 +596,9 @@ namespace UltraCanvas {
                     break;
                 }
             }
+            // A type that names no extension (All files) leaves a bare name
+            // bare: the caller's default extension, if it gave one, goes on.
+            named = ApplyDefaultExtension(named, options.defaultExtension);
             // GTK asked about replacing the name it was given; a different
             // name that is already a file needs asking about too. No leaves
             // the chooser open on that name.

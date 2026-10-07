@@ -201,6 +201,12 @@ namespace UltraCanvas {
     // opens on the type of the name it suggests.
     int FindFilterForName(const std::string& name, const std::vector<FileFilter>& filters);
 
+    // `name` with `extension` ("png", undotted) added when its last component
+    // has no extension of its own: the default for a Save under a type that
+    // names none (All files). Trailing dots are dropped first; a leading dot
+    // (".profile") is part of the name. An empty `extension` changes nothing.
+    std::string ApplyDefaultExtension(const std::string& name, const std::string& extension);
+
     // Whose rules a file name is held to: the system this runs on, or one
     // named outright (for a name meant for another system, and for tests).
     enum class FileNameRules { Host, Windows, Posix };
