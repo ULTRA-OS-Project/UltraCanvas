@@ -3522,6 +3522,27 @@ else()
     message(STATUS "  DialogEscapeTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== IMAGE SAVE STAGED TEST =====
+# A failed image save (PixelFX::FileIO, the QR code's exports) leaves no file
+# behind and the one it was saving over intact. No display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageSaveStagedTest...")
+    add_executable(ImageSaveStagedTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageSaveStagedTest.cpp
+    )
+    target_include_directories(ImageSaveStagedTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageSaveStagedTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageSaveStagedTest PRIVATE UltraCanvas)
+    set_target_properties(ImageSaveStagedTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageSaveStagedTest COMMAND ImageSaveStagedTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageSaveStagedTest")
+else()
+    message(STATUS "  ImageSaveStagedTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DIALOG CLOSE-ALL TEST =====
 # CloseAllDialogs() cancels every open dialog; it used to erase from the list
 # it was walking and read past its end. Skips without DISPLAY.

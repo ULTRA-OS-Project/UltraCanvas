@@ -1,8 +1,12 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.7.0
-// Last Modified: 2026-09-09
+// Version: 1.7.1
+// Last Modified: 2026-10-06
+// V1.7.1: Save image as offers a name it can write - an SVG's stem as a PNG
+//   instead of "<name>.svg", which libvips has no writer for - gives a typed
+//   name without a written format ".png", and reports a failed save in a
+//   message rather than only in the info bar.
 // V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
 //   EPS/PostScript) are shown from the preview bitmap they carry inside
 //   themselves, the way a *.ucd container is - so a file manager's detail pane
@@ -93,6 +97,59 @@ static std::string BaseName(const std::string& path) {
     std::error_code ec;
     fs::path p(UltraCanvas::PathFromUtf8(path));
     return PathToUtf8(p.filename());
+}
+
+// ----- Save as -----
+// The formats Save writes, in the order the dialog lists them. libvips picks
+// the writer from the name's extension, so the extension is the format; the
+// first one of each is the one a name is given, and PNG, the first format, is
+// the default.
+struct SaveFormat {
+    const char* label;
+    std::vector<std::string> extensions;
+};
+
+static const std::vector<SaveFormat>& SaveFormats() {
+    static const std::vector<SaveFormat> formats = {
+        { "PNG image",  { "png" } },
+        { "JPEG image", { "jpg", "jpeg" } },
+        { "WebP image", { "webp" } },
+        { "TIFF image", { "tiff", "tif" } },
+        { "AVIF image", { "avif" } },
+        { "BMP image",  { "bmp" } },
+    };
+    return formats;
+}
+
+static bool HasSaveExtension(const std::string& path) {
+    const std::string ext = LowerExt(BaseName(path));
+    for (const SaveFormat& format : SaveFormats()) {
+        if (std::find(format.extensions.begin(), format.extensions.end(), ext) !=
+            format.extensions.end()) return true;
+    }
+    return false;
+}
+
+// The name Save offers for the file being shown: its own name when that is a
+// format Save writes, else its stem as a PNG. An SVG is rasterized for display
+// and cannot be written back as one - libvips has no SVG writer - so offering
+// "drawing.svg" made Save fail on the name it suggested.
+static std::string SaveNameFor(const std::string& path) {
+    if (path.empty()) return "image.png";
+    if (HasSaveExtension(path)) return BaseName(path);
+    const std::string stem = PathToUtf8(PathFromUtf8(path).stem());
+    return (stem.empty() ? std::string("image") : stem) + ".png";
+}
+
+// `path` named so Save can write it: kept when its extension is a format Save
+// writes, else given ".png". Added rather than swapped in, because what follows
+// the last dot is not always a format ("notes.v2"), and a name the user typed
+// is not shortened behind their back.
+static std::string WithSaveExtension(const std::string& path) {
+    if (HasSaveExtension(path)) return path;
+    std::string named = path;
+    if (!named.empty() && named.back() == '.') named.pop_back();
+    return named + ".png";
 }
 
 // ----- Toolbar icons -----
@@ -1792,28 +1849,43 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
 
 void UltraCanvasMediaViewer::ShowSaveDialog() {
     if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
-    std::string current = GetCurrentPath();
-    std::string defName = current.empty() ? "image.png" : BaseName(current);
 
     FileDialogOptions opts;
     opts.SetTitle("Save image as")
-        .SetDefaultFileName(defName)
-        .AddFilter("PNG image",  std::vector<std::string>{ "png" })
-        .AddFilter("JPEG image", std::vector<std::string>{ "jpg", "jpeg" })
-        .AddFilter("WebP image", std::vector<std::string>{ "webp" })
-        .AddFilter("TIFF image", std::vector<std::string>{ "tiff", "tif" })
-        .AddFilter("AVIF image", std::vector<std::string>{ "avif" })
-        .AddFilter("BMP image",  std::vector<std::string>{ "bmp" })
+        .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
+    for (const SaveFormat& format : SaveFormats()) opts.AddFilter(format.label, format.extensions);
     UltraCanvasFileLoader::SaveFileDialog(opts,
-            [this](DialogResult r, const std::string& path) {
-                if (r != DialogResult::OK || path.empty() || !surface) return;
-                std::string err;
-                if (surface->SaveProcessed(path, err)) {
-                    if (infoLabel) infoLabel->SetText("Saved: " + BaseName(path));
-                } else if (infoLabel) {
-                    infoLabel->SetText("Save failed: " + err);
+            [this](DialogResult r, const std::string& chosen) {
+                if (r != DialogResult::OK || chosen.empty() || !surface) return;
+                // A failed save says so in a message, not only in the info
+                // bar: the line at the bottom is easily missed, and then the
+                // save looks as if it did nothing at all.
+                auto save = [this](const std::string& path) {
+                    std::string err;
+                    if (surface && surface->SaveProcessed(path, err)) {
+                        if (infoLabel) infoLabel->SetText("Saved: " + BaseName(path));
+                        return;
+                    }
+                    if (infoLabel) infoLabel->SetText("Save failed: " + err);
+                    UltraCanvasDialogManager::ShowError(
+                            "Could not save \"" + BaseName(path) + "\".\n" + err,
+                            "Save image", nullptr, GetWindow());
+                };
+                // The dialog asked before replacing `chosen`; a name given its
+                // extension here is another file, so that one is asked about.
+                const std::string path = WithSaveExtension(chosen);
+                std::error_code ec;
+                if (path != chosen && fs::exists(PathFromUtf8(path), ec)) {
+                    UltraCanvasDialogManager::ShowConfirmation(
+                            "\"" + BaseName(path) + "\" already exists.\n"
+                            "Do you want to replace it?",
+                            "Replace File",
+                            [save, path](bool replace) { if (replace) save(path); },
+                            GetWindow());
+                    return;
                 }
+                save(path);
             });
 }
 
