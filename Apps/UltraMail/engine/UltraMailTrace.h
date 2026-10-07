@@ -1,8 +1,8 @@
 // Apps/UltraMail/engine/UltraMailTrace.h
 // Timing trace: what UltraMail spends its time on while starting and while
-// switching accounts, written as it happens to the console the application
-// was started with (stderr - on Windows the console window that opens with
-// UltraMail) and to trace.log in the data folder.
+// switching accounts, written as it happens to trace.log in the data folder
+// and to stderr - the console UltraMail was started from, or on Windows the
+// console window a Debug build opens (Release builds have none).
 //
 //   [UltraMail 17:46:12.345 +   1.234 s ui] > Switch to account work
 //   [UltraMail 17:46:12.347 +   1.236 s ui]   < Folder tree: 2.1 ms

@@ -213,6 +213,15 @@ set(ULTRAMAIL_UI_SOURCES
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
+# Windows Release builds open no console window (the GUI subsystem), like the
+# other apps' (root CMakeLists.txt, "Hide console window on Windows Release
+# builds"); main.cpp's WinMain enters main(). The timing trace still goes to
+# trace.log in the data folder, and into the console of a prompt UltraMail
+# is started from (the framework's AttachParentConsole). Debug builds keep
+# their console.
+if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_target_properties(UltraMail PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 # Plugins (SMTP/IMAP DSOs) resolve symbols back from the executable at runtime.
 set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(UltraMail PRIVATE

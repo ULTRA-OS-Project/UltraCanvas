@@ -30,15 +30,20 @@
     which: "system fonts: scanned in the background in N ms, in use from the
     start", or "still being scanned" and later "System fonts ready after N s
     of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
 - **A timing trace of the start and of every account switch.** Switching
   accounts still takes ten seconds and more on Windows, and the window stays
   black for ten to fifteen seconds after the start, while the switch measured
   on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
   measured on the machine where it is lost. UltraMail now writes each step it
-  takes, with its time, to the console it was started with (on Windows the
-  console window that opens with it) and to `trace.log` in the data folder,
-  emptied at each start. Every line carries the time of day, the seconds
-  since the process started and the thread. `ULTRAMAIL_TRACE=0` turns it off.
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
   - **The start:** how long the process ran before `main()` (loading the
     program and its libraries); the framework's initialisation with each of
     its steps - fontconfig, the image subsystem, the windowing backend, the

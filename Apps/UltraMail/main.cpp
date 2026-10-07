@@ -3,6 +3,7 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
+// Version: 0.6.2 - WinMain: Windows Release builds have no console window
 // Version: 0.6.1 - says whether the system fonts were ready at the start
 // Version: 0.6.0 - the timing trace: each step of the start, with its time, on
 //                  the console and in trace.log (UltraMailTrace.h)
@@ -151,3 +152,19 @@ int main() {
     UltraMail::SettingsDialog::Shutdown();
     return EXIT_SUCCESS;
 }
+
+// ===== WINDOWS ENTRY POINT =====
+// Release builds are GUI-subsystem programs (no console window; see
+// CMakeLists.txt), which Windows enters through WinMain. <windows.h> is
+// included only here, below everything else, so none of its macros
+// (CreateWindow, SendMessage ...) renames a name above.
+#ifdef _WIN32
+#include <windows.h>
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    (void)hInstance;
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    (void)nCmdShow;
+    return main();
+}
+#endif

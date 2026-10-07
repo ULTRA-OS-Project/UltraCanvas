@@ -308,11 +308,12 @@ admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
 
 ## Timing trace: where the start and an account switch spend their time
 
-UltraMail writes what it is doing, step by step and with its times, to the
-console it was started with - on Windows the console window that opens with
-it - and to `trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log`
-on Windows, `~/.local/share/UltraMail/trace.log` on Linux), which is emptied
-at each start. Every line carries the time of day, the seconds since the
+UltraMail writes what it is doing, step by step and with its times, to
+`trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log` on Windows,
+`~/.local/share/UltraMail/trace.log` on Linux), which is emptied at each
+start, and to the console it was started from. Windows Release builds open no
+console window of their own; started from a command prompt they write into
+it, and Debug builds keep their console window. Every line carries the time of day, the seconds since the
 process started and the thread (`ui`, or `w<n>` for a worker):
 
 ```
