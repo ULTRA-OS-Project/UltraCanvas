@@ -34,6 +34,9 @@ namespace {
 // A JSON value and a reader for the model's reply
 // =====================================================================
 
+// An object is kept as two parallel vectors rather than a vector of pairs:
+// std::vector may hold the incomplete JsonValue, but a std::pair of it
+// cannot be instantiated inside the class (libstdc++ 12 with clang 19).
 struct JsonValue {
     enum class Kind { Null, Bool, Number, String, Array, Object };
     Kind kind = Kind::Null;
@@ -41,16 +44,19 @@ struct JsonValue {
     double number = 0.0;
     std::string string;
     std::vector<JsonValue> array;
-    std::vector<std::pair<std::string, JsonValue>> object;
+    std::vector<std::string> objectKeys;
+    std::vector<JsonValue> objectValues;
 
-    const JsonValue* Get(const std::string& key) const {
-        if (kind != Kind::Object) return nullptr;
-        for (const auto& kv : object) {
-            if (kv.first == key) return &kv.second;
-        }
-        return nullptr;
-    }
+    const JsonValue* Get(const std::string& key) const;
 };
+
+const JsonValue* JsonValue::Get(const std::string& key) const {
+    if (kind != Kind::Object) return nullptr;
+    for (size_t i = 0; i < objectKeys.size(); ++i) {
+        if (objectKeys[i] == key) return &objectValues[i];
+    }
+    return nullptr;
+}
 
 class JsonReader {
 public:
@@ -118,7 +124,8 @@ private:
             SkipSpace();
             JsonValue value;
             if (!ParseValue(value)) return false;
-            out.object.emplace_back(std::move(key), std::move(value));
+            out.objectKeys.push_back(std::move(key));
+            out.objectValues.push_back(std::move(value));
             SkipSpace();
             if (Peek() == ',') { ++pos_; continue; }
             if (Peek() == '}') { ++pos_; return true; }
