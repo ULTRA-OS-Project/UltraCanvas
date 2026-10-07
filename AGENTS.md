@@ -62,6 +62,25 @@ before adding cross-module code.
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
   a value, it is an element: use the framework's, or add one.
+- **HTML, CSS and HTML entities are read through the HTMLReader module
+  (`UltraCanvas/{include,core}/HTMLReader/`, always built) and nowhere else.**
+  It has the parser and DOM (`HTML::Parser`, `HTML::Document`), the CSS
+  parser with selector matching for any tree (`HTML::StyleSheet`,
+  `HTML::MatchingRules<Traits>`), the cascade (`HTML::StyleResolver`), the
+  builder of native element trees (`HTML::ElementBuilder`), the importer into
+  an editable `UCRichDocument` (`ImportHTMLToRichDocument`), and the two
+  helpers that keep being rewritten: `HTML::DecodeEntities` and
+  `HTML::ExtractPlainText`. Do not write another tag stripper, entity table,
+  `style=""` splitter or selector matcher — seven had accumulated by
+  2026-10, in the Filer preview, two places in UltraMail, EmailCleaner, the
+  rich document's paste path and two SVG readers, each with a different
+  handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
+  supplying a ten-line Traits type, not a matcher. What the module lacks is
+  added to it, so the next caller finds it. `scripts/check_html_reuse.py`
+  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  lists the sites that predate the rule and only shrinks. A site that must
+  stay says why with `// html-reuse-exempt: <why>`. Doc:
+  `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
   (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
 - **Platform separation:** platform-specific code goes only under
@@ -500,7 +519,11 @@ number anywhere else, and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too.
+   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
+   `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
+   entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
+   runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
