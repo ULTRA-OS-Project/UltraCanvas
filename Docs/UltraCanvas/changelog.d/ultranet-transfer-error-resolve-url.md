@@ -11,7 +11,9 @@
 - **`UltraNet_ResolveUrl(base, reference, out)`** (`UltraNetUrl.h`) resolves a
   relative URL against a base the way RFC 3986 section 5 does - `../img/a.png`,
   `//cdn.example/x`, `?page=2` - through libcurl's URL parser. UltraWeb uses
-  it for an app's relative fetches.
+  it for an app's relative fetches. It refuses a URL with a control character
+  in it (a CR or LF would end the request line) itself: libcurl 8 does, but
+  libcurl 7.81 on Ubuntu 22.04 lets them through.
 - Tests: `url_resolve_*` in `Tests/UltraNet/test_url.cpp` and
   `loopback_async_reports_an_incomplete_transfer` in
   `Tests/UltraNet/test_loopback.cpp`.

@@ -154,6 +154,23 @@ TEST(url_resolve_relative_references) {
     }
 }
 
+TEST(url_resolve_refuses_control_characters) {
+    // Refused by UltraNet itself, whatever the installed libcurl accepts.
+    const std::string base = "https://x.org/app/main.wasm";
+    const std::string references[] = {
+        "/x\r\nHost: evil.example", "a\nb", "a\tb", std::string("a\0b", 3), "a\x7f",
+    };
+    for (const std::string& reference : references) {
+        std::string out = "stale";
+        const UltraNetResult result = UltraNet_ResolveUrl(base, reference, out);
+        CHECK(!bool(result));
+        CHECK(result.message.find("control character") != std::string::npos);
+        CHECK(out.empty());
+    }
+    std::string out;
+    CHECK(!bool(UltraNet_ResolveUrl("https://x.org/\r\n", "a.json", out)));
+}
+
 TEST(url_resolve_needs_an_absolute_base) {
     std::string out = "stale";
     CHECK(!bool(UltraNet_ResolveUrl("", "a.json", out)));

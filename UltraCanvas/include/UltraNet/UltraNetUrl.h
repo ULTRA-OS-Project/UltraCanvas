@@ -33,7 +33,8 @@ std::string UltraNet_BuildUrl(const UltraNetUrlComponents& components);
 // "https://x.org/app/main.wasm" is "https://x.org/img/a.png", "//cdn.x.org/a"
 // keeps the base's scheme, and an absolute reference stays itself. An empty
 // reference is the base without its fragment. Fails when base is not an
-// absolute URL or the reference is malformed.
+// absolute URL, the reference is malformed, or either holds a control
+// character (a CR or LF would end a request line).
 UltraNetResult UltraNet_ResolveUrl(
     const std::string& base,
     const std::string& reference,

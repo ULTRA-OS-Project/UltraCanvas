@@ -118,6 +118,17 @@ UltraNetResult UltraNet_ResolveUrl(const std::string& base,
                                    const std::string& reference,
                                    std::string& outUrl) {
     outUrl.clear();
+    // A CR or LF would end the request line it goes into. libcurl 8 refuses
+    // control characters in a URL; 7.81 (Ubuntu 22.04) lets them through, so
+    // the answer can't be left to whichever libcurl is installed.
+    for (const std::string* part : {&base, &reference}) {
+        for (unsigned char c : *part) {
+            if (c < 0x20 || c == 0x7f) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                             "a URL cannot contain a control character");
+            }
+        }
+    }
     CurlUrlPtr u(curl_url());
     if (!u) {
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,

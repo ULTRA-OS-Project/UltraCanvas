@@ -72130,7 +72130,8 @@ UltraNetHandle h = UltraNet_HttpRequestAsync(req,
 // A relative reference against a base URL (RFC 3986 section 5)
 std::string url;
 UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
-// url == "https://x.org/data/a.json"
+// url == "https://x.org/data/a.json"; a URL with a control character in it
+// (a CR or LF that would end the request line) is refused
 
 // File download streamed straight to disk
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
