@@ -1,7 +1,8 @@
 // Apps/UltraSocial/ui/UltraSocialApp.cpp
 // Version: 0.2.0 - UltraMail's first-run start page; the compose view fills
 //                  and follows the window; the account wizard's client id
-//                  reaches the connector
+//                  reaches the connector; the data folder is made private
+//                  and the database is ultrasocial.db
 // Version: 0.1.0 (Phase 1)
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,6 +10,7 @@
 
 #include "UltraSocialComposer.h"
 #include "UltraSocialConnector.h"
+#include "UltraSocialPaths.h"
 #include "UltraSocialPublisher.h"
 #include "UltraSocialTheme.h"
 
@@ -24,9 +26,7 @@
 
 #include <cstdio>
 #include <ctime>
-#include <filesystem>
 #include <thread>
-#include "UltraCanvasPathUtf8.h"
 
 // ULTRASOCIAL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -41,10 +41,18 @@ using namespace UltraCanvas;
 namespace UltraSocial {
 
 bool UltraSocialApp::Initialize(const std::string& dataDir) {
-    std::error_code ec;
-    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dataDir), ec);
+    // The data folder holds the vault and the key that opens it, so outside
+    // Windows it is its owner's alone (UltraSocialPaths.h).
+    std::string folderError;
+    if (!PrepareDataDir(dataDir, folderError)) {
+        std::fprintf(stderr, "UltraSocial: %s\n", folderError.c_str());
+        return false;
+    }
+    // 0.1.x called the database social.db; it is ultrasocial.db now.
+    if (!RenameLegacyDatabase(dataDir, folderError) && !folderError.empty())
+        std::fprintf(stderr, "UltraSocial: %s\n", folderError.c_str());
 
-    if (!store_.Open("ultrasocial", dataDir + "/social.db")) return false;
+    if (!store_.Open("ultrasocial", DatabasePath(dataDir))) return false;
     vault_ = CredentialVault(dataDir + "/vault");
     // Unlock the vault with the local device key so the user is not prompted
     // (Thunderbird-style; see UltraVault::DeviceKeyVault). A brand-new vault

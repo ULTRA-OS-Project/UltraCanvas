@@ -24,6 +24,24 @@
   toolbar logo, embedded in the Windows `.exe`, and installed with the new
   `UltraSocial.desktop` entry on Linux. New button glyphs
   `media/icons/user-plus.svg` and `media/icons/send.svg`.
+- **The data lives in the platform's application data folder.** UltraSocial
+  looked only at `XDG_DATA_HOME` and `HOME`, and Windows sets neither, so the
+  database and the credential vault went to `UltraSocial` in whatever folder
+  the app was started from - accounts seemed to vanish when it was started
+  from somewhere else - and on macOS they went to `~/.local/share`. The
+  folder is now `%APPDATA%\UltraSocial` on Windows,
+  `~/Library/Application Support/UltraSocial` on macOS and, unchanged,
+  `$XDG_DATA_HOME/UltraSocial` or `~/.local/share/UltraSocial` elsewhere
+  (`$XDG_DATA_HOME` still wins everywhere, as in UltraMail). The variables are
+  read as UTF-8, so a profile folder named in any script works. On the first
+  start a folder an earlier version left in one of those places is moved
+  there whole, vault included, and the vault opens as before; outside Windows
+  the folder is now readable by its owner alone. Logins stay where they were:
+  in UltraVault (the device-key vault, `vault/ultrasocial.vault`), never in the
+  database.
+- **The database is called `ultrasocial.db`.** `social.db` said too little
+  next to other applications' files; an existing one is renamed on the first
+  start, with any SQLite journal beside it.
 - **Reddit, X and LinkedIn accounts can be added.** The account wizard asked
   for the app's client id but never passed it to the sign-in, so all three
   stopped at "sign-in needs your app's client id" however the form was

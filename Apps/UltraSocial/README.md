@@ -105,6 +105,8 @@ Apps/UltraSocial/
                                        UltraSocial's profile (ultrasocial.vault,
                                        device.key, keys social.ultrasocial.<id>)
     UltraSocialStore.{h,cpp}           accounts + outbox + history on UltraDatabase
+    UltraSocialPaths.{h,cpp}           the per-user data folder (ultrasocial.db +
+                                       vault/), moving 0.1.x's folder into place
     UltraSocialPublisher.{h,cpp}       the one publish path (now + scheduled),
                                        outbox flush with retry/backoff
     UltraSocialWebUtil.{h,cpp}         JSON/form requests, multipart bodies, media IO
@@ -133,6 +135,24 @@ colours inside a circle); `UltraSocial.png` beside it is its 256 px render,
 which the window, the taskbar, the start page, the Windows `.exe` and the
 desktop entry all use.
 ```
+
+## Where the data lives
+
+One per-user folder holds the account / outbox / history database,
+`ultrasocial.db`, and the credential vault, `vault/` - every login, token and
+app password is in UltraVault's device-key vault (`ultrasocial.vault`,
+unlocked by the owner-only `device.key` beside it), never in the database.
+
+| Platform | Folder |
+|---|---|
+| Windows | `%APPDATA%\UltraSocial` |
+| macOS | `~/Library/Application Support/UltraSocial` |
+| Linux and others | `$XDG_DATA_HOME/UltraSocial`, else `~/.local/share/UltraSocial` |
+
+`$XDG_DATA_HOME`, when set, wins on every platform. Outside Windows the
+folder is readable by its owner alone. A folder 0.1.x left elsewhere (the
+working directory on Windows, `~/.local/share` on macOS) is moved into place
+on the first start, and its `social.db` becomes `ultrasocial.db`.
 
 ## Building and testing
 

@@ -25,6 +25,7 @@ set(ULTRASOCIAL_ENGINE_SOURCES
     engine/UltraSocialWebUtil.cpp
     engine/UltraSocialConnector.cpp
     engine/UltraSocialPublisher.cpp
+    engine/UltraSocialPaths.cpp
     engine/connectors/UltraSocialMastodonConnector.cpp
     engine/connectors/UltraSocialBlueskyConnector.cpp
     engine/connectors/UltraSocialTelegramConnector.cpp
