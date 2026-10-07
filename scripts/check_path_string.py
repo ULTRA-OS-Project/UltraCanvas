@@ -139,8 +139,13 @@ SEARCH_ROOTS = [
     "Apps",
     # Runs on Windows too (ULTRACANVAS_BUILD_VAULT_TESTS in build.yml).
     "Tests/UltraVaultTests.cpp",
-    # Runs on Windows too (ULTRACANVAS_BUILD_FILER_TESTS in build.yml).
+    # Run on Windows too (ULTRACANVAS_BUILD_FILER_TESTS in build.yml, the
+    # "Run Filer tests (Windows)" step - keep this list and that one equal).
+    "Tests/FilerFolderPreviewTest.cpp",
     "Tests/FilerHistoryTest.cpp",
+    "Tests/FilerHostIconsTest.cpp",
+    "Tests/FilerNameEncodingTest.cpp",
+    "Tests/FilerShortcutEntryTest.cpp",
 ]
 # The rest of Tests/ is not scanned: the framework test suite builds on Linux
 # only (BUILD_TESTS in build.yml), where a path's native string is the UTF-8
