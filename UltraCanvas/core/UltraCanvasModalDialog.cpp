@@ -1903,7 +1903,7 @@ namespace UltraCanvas {
                                       kFileDialogMinHeight, kFileDialogMaxSide);
         const int view = viewIndex;
         const std::string appName = CurrentApplicationName();
-        FileDialogSettings::Update([&](FileDialogSettings& s) {
+        const bool written = FileDialogSettings::Update([&](FileDialogSettings& s) {
             s.view = view;
             s.width = width;
             s.height = height;
@@ -1912,6 +1912,20 @@ namespace UltraCanvas {
             s.modifiedColumn = modifiedColumn;
             if (!folder.empty()) s.SetLastFolderFor(appName, folder);
         });
+        if (!written) {
+            // A settings folder that cannot be written (read-only, full, a
+            // locked-down profile) used to fail without a trace, and the
+            // dialog forgot its view, size and folder every time with no
+            // hint why. Said once per run: every close would say the same.
+            static bool reported = false;
+            if (!reported) {
+                reported = true;
+                debugOutput << "UltraCanvasFileDialog: could not write "
+                            << PathToUtf8(FileDialogSettings::FilePath())
+                            << "; the file dialog's view, size and last folder are not remembered"
+                            << std::endl;
+            }
+        }
         UltraCanvasModalDialog::PerformClose();
     }
 
@@ -2178,14 +2192,31 @@ namespace UltraCanvas {
             if (named != typed) fileNameInput->SetText(named);
             const std::string target = CombinePath(currentDirectory, named);
             std::filesystem::path parent = PathFromUtf8(target).parent_path();
-            if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) return;
+            if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) {
+                // A name typed with a folder in front of it that is not
+                // there: say so, as the platforms' save dialogs do, rather
+                // than leave OK doing nothing.
+                UltraCanvasDialogManager::ShowInformation(
+                        "The folder \"" + PathToUtf8(parent) + "\" does not exist.\n"
+                        "Check the path, or choose a folder from the tree.",
+                        "Folder Not Found", nullptr, this);
+                return;
+            }
             Accept({target});
             return;
         }
         // Open: only a file that is there.
         if (std::filesystem::is_regular_file(PathFromUtf8(full), ec)) {
             Accept({full});
+            return;
         }
+        // Nothing of that name here. Before this a click on OK was simply
+        // swallowed, which read as a dead button; the platforms' open dialogs
+        // all say what was wrong. The dialog stays open on the name typed.
+        UltraCanvasDialogManager::ShowInformation(
+                "\"" + typed + "\" was not found in\n" + currentDirectory + ".\n\n"
+                "Check the name, or choose a file from the list.",
+                "File Not Found", nullptr, this);
     }
 
     void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
