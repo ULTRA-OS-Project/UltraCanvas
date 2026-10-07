@@ -219,9 +219,11 @@ VideoFX_Export(timeline, "holiday.mp4", settings);
 | Field | Default | Meaning |
 |---|---|---|
 | `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `playlist` | — | Further songs, played after `path` in order (see *Song lists* below) |
+| `crossfade` | 3 s | Seconds each song blends into the next, 0..30; 0 = back to back |
 | `volume` | 0.8 | Linear gain, 0..4 |
-| `start` | 0 | Seconds into the song to begin at |
-| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `start` | 0 | Seconds into the first song to begin at |
+| `loop` | true | Repeat music shorter than the video (a list from its first song); `false` = silence after it ends |
 | `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
 | `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
 | `duckingThresholdDb` | −36.5 | The segments' sound counts as present above this RMS level, dBFS, −90..0 |
@@ -268,6 +270,30 @@ settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
 `videofx` takes `--duck-preset speech|outdoor|loud`; the single `--duck-*`
 values refine it whichever comes first on the command line.
 
+**Song lists.** Several songs play one after another, each **crossfading**
+into the next: over the last `crossfade` seconds of a song it fades out while
+the next one fades in, so there is no hard cut and no gap of silence.
+
+```
+Song A  ██████████████▓▓▒▒░░
+Song B                ░░▒▒▓▓██████████████
+                      └─ 3 s ─┘
+```
+
+```cpp
+settings.music = VideoFXMusic::FromFiles({"summer.mp3", "beach.mp3", "sunset.mp3"});
+settings.music.crossfade = 4.0;       // seconds of overlap between songs
+```
+
+The blend is equal-power (cosine / sine gains), so the loudness holds steady
+through it. A song shorter than twice the crossfade gets a shorter one — at
+most half of either song — so no song is swallowed by its neighbours. A
+looping list crossfades from its last song back into its first, and a single
+looping song crossfades into its own start; set `crossfade = 0` for the old
+back-to-back joins. Fades, volume and ducking apply to the whole bed, as for
+one song. `videofx` takes a list as repeated `--music FILE` and the overlap
+as `--music-crossfade S`.
+
 **Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
 `VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
 photo so the show ends with it:
@@ -278,6 +304,9 @@ options.music = VideoFXMusic::FromFile("song.mp3");
 options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
 VideoFX_CreateSlideshow(photos, "show.mp4", options);
 ```
+
+With a song list the show lasts as long as the list plays once: the songs'
+lengths minus the crossfades between them.
 
 Sound-only outputs work too: photos plus music into `.mp3` is a valid,
 correctly timed (if unusual) export, and so is music under silent clips.
@@ -511,6 +540,7 @@ videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --cap
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4 --fit-music
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -545,6 +575,7 @@ generates its own clips, so it needs no media files.
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
 | 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3b | Song lists, each song crossfading into the next | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

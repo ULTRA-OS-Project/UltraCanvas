@@ -10,8 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.4.2
-// Last Modified: 2026-10-02
+// Version: 0.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -419,6 +419,32 @@ static void TestMusicMath() {
     CHECK(Near(SlideshowSecondsForMusic(10.0, 3, 1.0), 4.0, 1e-9), "3 photos, 1 s overlaps, 10 s song: 4 s each");
     CHECK(Near(SlideshowSecondsForMusic(10.0, 1, 0.0), 10.0, 1e-9), "one photo lasts the song");
     CHECK(Near(SlideshowSecondsForMusic(5.0, 100, 1.0), 2.0, 1e-9), "too many photos: at least twice the transition");
+
+    // ---- song lists ----
+    VideoFXMusic list = VideoFXMusic::FromFiles({"a.mp3", "b.mp3"});
+    CHECK(list.IsSet() && list.path.empty(), "a playlist alone is music");
+    list.path = "intro.mp3";
+    CHECK(list.Songs() == std::vector<std::string>({"intro.mp3", "a.mp3", "b.mp3"}), "path plays first, then the list");
+    CHECK(ValidateMusic(list, error), "a playlist is valid");
+    list.crossfade = 31.0;
+    CHECK(!ValidateMusic(list, error), "crossfade 31 s refused");
+    list.crossfade = 3.0;
+    list.playlist.push_back("");
+    CHECK(!ValidateMusic(list, error), "a playlist entry without a path refused");
+
+    CHECK(Near(CrossfadeSeconds(3.0, 180.0, 200.0), 3.0, 1e-9), "long songs: the crossfade asked for");
+    CHECK(Near(CrossfadeSeconds(3.0, 4.0, 200.0), 2.0, 1e-9), "a 4 s song: at most half of it");
+    CHECK(Near(CrossfadeSeconds(3.0, 0.0, 0.0), 3.0, 1e-9), "unknown lengths do not limit it");
+    CHECK(Near(PlaylistSeconds({60.0, 60.0, 60.0}, 3.0, 0.0), 174.0, 1e-9), "three songs, two 3 s overlaps");
+    CHECK(Near(PlaylistSeconds({60.0, 60.0}, 3.0, 10.0), 107.0, 1e-9), "the start offset cuts the first song");
+    CHECK(Near(PlaylistSeconds({60.0, 0.0}, 3.0, 0.0), 0.0, 1e-9), "a length unknown: unknown");
+    double gOut = 0.0, gIn = 0.0;
+    CrossfadeGains(0.0, gOut, gIn);
+    CHECK(Near(gOut, 1.0, 1e-9) && Near(gIn, 0.0, 1e-9), "crossfade start: only the outgoing song");
+    CrossfadeGains(0.5, gOut, gIn);
+    CHECK(Near(gOut * gOut + gIn * gIn, 1.0, 1e-9) && Near(gOut, gIn, 1e-9), "half-way: equal power, both alike");
+    CrossfadeGains(1.0, gOut, gIn);
+    CHECK(Near(gOut, 0.0, 1e-9) && Near(gIn, 1.0, 1e-9), "crossfade end: only the incoming song");
 }
 
 // ============================================================================
@@ -1111,6 +1137,7 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK_OK(VideoFX_Export(talk, dry, duck), "the segments' sound alone");
     duck.music = VideoFXMusic::FromFile(longSong, 1.0);
     duck.music.fadeIn = duck.music.fadeOut = 0.0;
+    duck.music.crossfade = 0.0;             // steady music: no loop blend inside the 4 s
     duck.music.duckingLevel = 1.0;
     const std::string full = TempPath("full.wav");
     CHECK_OK(VideoFX_Export(talk, full, duck), "music, never ducked");
@@ -1143,12 +1170,59 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK_OK(VideoFX_Probe(show, info), "probe it");
     CHECK(Near(info.duration, 6.0, 0.1) && info.HasAudio(), "6 s song, 6 s slideshow, with sound");
 
+    // ---- song lists: a loud song A and a quiet song B, 2 s each ----
+    const std::string songA = TempPath("songA.wav"), songB = TempPath("songB.wav");
+    VideoFXSegment toneA = VideoFXSegment::TestPattern(2.0), toneB = VideoFXSegment::TestPattern(2.0);
+    toneB.effects = {VideoFXEffect::Volume(0.25)};
+    CHECK_OK(VideoFX_Export({toneA}, songA, VideoFXExportSettings::AudioOnlyWAV()), "make song A");
+    CHECK_OK(VideoFX_Export({toneB}, songB, VideoFXExportSettings::AudioOnlyWAV()), "make song B, a quarter as loud");
+    const std::vector<VideoFXSegment> six = {VideoFXSegment::SolidColor(0, 6.0)};
+    VideoFXExportSettings songs = VideoFXExportSettings::AudioOnlyWAV();
+    songs.music = VideoFXMusic::FromFiles({songA, songB}, 1.0);
+    songs.music.fadeIn = songs.music.fadeOut = 0.0;
+    songs.music.loop = false;
+    songs.music.crossfade = 0.0;
+    const std::string backToBack = TempPath("list-cut.wav");
+    CHECK_OK(VideoFX_Export(six, backToBack, songs), "two songs back to back");
+    w = ReadWav(backToBack);
+    const double loudA = w.Rms(0.3, 1.7), quietB = w.Rms(2.3, 3.7);
+    CHECK(loudA > 0.05 && Near(quietB, loudA * 0.25, loudA * 0.05), "A for 2 s, then B");
+    CHECK(w.Rms(4.1, 5.9) < 0.001, "then silence: the list does not loop");
+
+    songs.music.crossfade = 1.0;
+    const std::string blended = TempPath("list-xfade.wav");
+    CHECK_OK(VideoFX_Export(six, blended, songs), "the same with a 1 s crossfade");
+    w = ReadWav(blended);
+    CHECK(Near(w.Rms(0.2, 0.8), loudA, loudA * 0.05), "A alone before the crossfade");
+    CHECK(Near(w.Rms(2.2, 2.8), quietB, quietB * 0.1), "B alone after it - 1 s earlier than back to back");
+    CHECK(w.Rms(1.4, 1.6) < loudA * 0.95 && w.Rms(1.4, 1.6) > quietB, "in the crossfade: between the two");
+    CHECK(w.Rms(3.1, 5.9) < 0.001 && w.Rms(2.7, 2.9) > 0.01, "3 s in all: 2 + 2 - 1");
+
+    songs.music.crossfade = 0.0;
+    songs.music.loop = true;
+    const std::string around = TempPath("list-loop.wav");
+    CHECK_OK(VideoFX_Export(six, around, songs), "the list, looping");
+    w = ReadWav(around);
+    CHECK(Near(w.Rms(4.3, 5.7), loudA, loudA * 0.05), "after B comes A again");
+
+    VideoFXSlideshowOptions listShow;
+    listShow.transition = VideoFXTransition::Crossfade(0.5);
+    listShow.music = VideoFXMusic::FromFiles({songA, songB});
+    listShow.music.crossfade = 1.0;
+    listShow.matchMusicLength = true;
+    const std::string listShowPath = TempPath("list-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow({photo, photo, photo}, listShowPath, listShow, small), "slideshow fitted to a list");
+    CHECK_OK(VideoFX_Probe(listShowPath, info), "probe it");
+    CHECK(Near(info.duration, 3.0, 0.1), "2 s + 2 s songs, 1 s crossfade: a 3 s slideshow");
+
     // ---- errors ----
     VideoFXExportSettings bad = VideoFXExportSettings::AudioOnlyWAV();
     bad.music = VideoFXMusic::FromFile(TempPath("none.mp3"));
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::FileNotFound, "missing music file");
     bad.music = VideoFXMusic::FromFile(photo);
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::NoMediaStreams, "music without sound");
+    bad.music = VideoFXMusic::FromFiles({longSong, TempPath("none.mp3")});
+    CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::FileNotFound, "a missing song in the list");
     bad.music = VideoFXMusic::FromFile(longSong, 9.0);
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::InvalidArgument, "volume 9");
     VideoFXSlideshowOptions noMusic;

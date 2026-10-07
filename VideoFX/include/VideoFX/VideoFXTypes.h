@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.4.2
-// Last Modified: 2026-10-02
+// Version: 0.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -399,10 +399,17 @@ enum class VideoFXDuckingPreset {
 // a waterfall) holds the music down for its whole length with those values;
 // raise `duckingThresholdDb` so only sound well above the clip's own
 // background ducks, or set `duckingLevel` to 1 to never dip.
+//
+// Several songs play one after another: `path` (if set) first, then
+// `playlist` in order, each blending into the next over `crossfade` seconds.
+// A looping list crossfades from its last song back into its first.
 struct VideoFXMusic {
     std::string path;               // any file with sound (MP3, M4A, WAV, FLAC, OGG, a video ...); "" = none
+    std::vector<std::string> playlist;  // further songs, played after `path` in this order
+    double crossfade = 3.0;         // seconds one song blends into the next, 0..30 (0 = back to back);
+                                    // shortened where a song is under twice as long
     double volume = 0.8;            // linear gain, 0..4
-    double start = 0.0;             // seconds into the music file to begin at
+    double start = 0.0;             // seconds into the first song to begin at
     bool loop = true;               // repeat when shorter than the video (false: silence after it ends)
     double fadeIn = 1.0;            // seconds at the start of the export
     double fadeOut = 2.0;           // seconds at the end of the export
@@ -418,7 +425,21 @@ struct VideoFXMusic {
         m.volume = volume;
         return m;
     }
-    bool IsSet() const { return !path.empty(); }
+    // A song list, played in order
+    static VideoFXMusic FromFiles(const std::vector<std::string>& paths, double volume = 0.8) {
+        VideoFXMusic m;
+        m.playlist = paths;
+        m.volume = volume;
+        return m;
+    }
+    bool IsSet() const { return !path.empty() || !playlist.empty(); }
+    // Every song in playing order: `path`, then `playlist`
+    std::vector<std::string> Songs() const {
+        std::vector<std::string> songs;
+        if (!path.empty()) songs.push_back(path);
+        songs.insert(songs.end(), playlist.begin(), playlist.end());
+        return songs;
+    }
 
     void SetDuckingPreset(VideoFXDuckingPreset preset) {
         switch (preset) {
