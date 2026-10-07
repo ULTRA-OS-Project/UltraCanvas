@@ -551,6 +551,27 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT FONT TEST =====
+# SetFontSize / SetStyle on a text field invalidate its layout and redraw it,
+# headless, through a probe subclass.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputFontTest...")
+    add_executable(TextInputFontTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputFontTest.cpp
+    )
+    target_include_directories(TextInputFontTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputFontTest PRIVATE cxx_std_20)
+    target_link_libraries(TextInputFontTest PRIVATE UltraCanvas)
+    set_target_properties(TextInputFontTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputFontTest COMMAND TextInputFontTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputFontTest")
+else()
+    message(STATUS "  TextInputFontTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT ACCESSIBILITY TEST =====
 # A text field tells assistive technology it is one, and a password field that
 # its content is a secret (UI Automation IsPassword, AT-SPI password text).
