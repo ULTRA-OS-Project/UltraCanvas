@@ -1,7 +1,9 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
+//                  (the window fades popups in with it)
 // Version: 2.6.0
-// Last Modified: 2026-08-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -205,6 +207,19 @@ namespace UltraCanvas {
         virtual bool ResizeSurface(const Size2Di& sz) = 0;
         virtual Size2Di GetSurfaceSize() const = 0;
         virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) = 0;
+
+        // FlushToSurface at an opacity: each destination pixel moves towards
+        // this surface's by `opacity`, dest + (source - dest) * opacity. At 1
+        // it is exactly FlushToSurface, at 0 the destination is left alone, and
+        // in between what is already on `flushToSurface` shows through - the
+        // window fades a popup in over its content with this. The base
+        // fallback is a plain flush: a backend that cannot blend draws the
+        // surface opaque rather than not at all.
+        virtual void FlushToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                               double opacity) {
+            (void)opacity;
+            FlushToSurface(flushToSurface, pos);
+        }
 
         // Alpha-blend (OVER) this context's surface onto `flushToSurface` at
         // `pos`. Unlike FlushToSurface — a raw copy that would overwrite the

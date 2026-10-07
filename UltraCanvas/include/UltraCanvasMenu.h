@@ -1,5 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.11.0 - the opening fade takes in the whole panel, through the window's
+//                  popup opacity, not just the entries
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
 //                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
@@ -214,10 +216,10 @@ namespace UltraCanvas {
         // Submenu
         int submenuDelay = 300;  // milliseconds
 
-        // Animation. When enabled, a popup or submenu fades its entries in over
-        // animationDuration seconds as it opens; the panel itself (background
-        // and border) appears at once, because popups are composited onto the
-        // window as opaque blocks and cannot fade over what lies beneath.
+        // Animation. When enabled, a popup or submenu fades in as a whole -
+        // background, border, shadow and entries - over animationDuration
+        // seconds as it opens, by stepping its opacity on the window
+        // (UltraCanvasWindowBase::SetPopupOpacity) from 0 to 1.
         bool enableAnimations = false;
         float animationDuration = 0.15f;
 
@@ -271,8 +273,8 @@ namespace UltraCanvas {
         bool needsScrollbar = false;
 
         // Opening fade (MenuStyle::enableAnimations). Progress runs 0 -> 1 over
-        // style.animationDuration from OpenMenu(); 1 means fully drawn. The
-        // timer only asks for repaints while it runs: Render() reads the clock,
+        // style.animationDuration from OpenMenu(); 1 means fully shown. It is
+        // the popup's opacity on the window. Each timer tick reads the clock,
         // so the fade follows real time however late a tick is.
         std::chrono::steady_clock::time_point animationStartTime;
         float animationProgress = 1.0f;
@@ -456,6 +458,8 @@ namespace UltraCanvas {
         void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
+        // Hands animationProgress to the window as this popup's opacity.
+        void ApplyAnimationOpacity();
         void StopAnimation();
     };
 

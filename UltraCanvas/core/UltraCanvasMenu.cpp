@@ -1,5 +1,8 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.11.0 - the opening fade takes in the whole panel (background, border,
+//                  shadow, entries): the menu steps its popup's opacity on the
+//                  window instead of painting only its entries as a group
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens (the
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
@@ -115,12 +118,15 @@ namespace UltraCanvas {
             }
 
         } else { // submenu or popup
-            // Opening fade: the entries are drawn as one group and painted at
-            // the animation's progress, over a panel that is drawn in full at
-            // once (see MenuStyle::enableAnimations for why the panel cannot
-            // fade too). Once complete they are drawn directly again.
-            if (style.enableAnimations && animationProgress < 1.0f) UpdateAnimation();
-            const bool fading = style.enableAnimations && animationProgress < 1.0f;
+            // Opening fade: the window composites the whole popup at the
+            // animation's progress (ApplyAnimationOpacity), so the menu draws
+            // itself in full. The timer steps the fade; with no application
+            // there is no timer, and a repaint moves it on to where the clock
+            // has got.
+            if (style.enableAnimations && animationProgress < 1.0f) {
+                UpdateAnimation();
+                ApplyAnimationOpacity();
+            }
 
             // Shadow draws intentionally outside bounds — must be before clip is set
             if (style.showShadow &&
@@ -149,13 +155,11 @@ namespace UltraCanvas {
                                   finalBounds.width - bw * 2 - sbWidth,
                                   finalBounds.height - bw * 2));
 
-            if (fading) ctx->BeginGroup();
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
                     RenderItem(i, items[i], ctx);
                 }
             }
-            if (fading) ctx->EndGroup(animationProgress);
 
             ctx->PopState();  // releases the clip region
 
@@ -1449,16 +1453,25 @@ namespace UltraCanvas {
         if (style.animationDuration <= 0.0f) return;   // nothing to fade: drawn in full
         animationStartTime = std::chrono::steady_clock::now();
         animationProgress = 0.0f;
-        // Repaint about every frame until the fade is complete. Without an
-        // application (headless) there is no timer, and each Render() still
-        // draws the fade as far as the clock has got.
+        // Hidden before the first frame shows it, then about every frame a
+        // step more opaque until the fade is complete. A step only composites
+        // the window again; the menu is not repainted. Without an application
+        // (headless) there is no timer, and each Render() moves the fade on
+        // as far as the clock has got.
+        ApplyAnimationOpacity();
         if (auto* app = UltraCanvasApplication::GetInstance()) {
             animationTimerId = app->StartTimer(16, true, [this](TimerId) {
                 UpdateAnimation();
-                RequestRedraw();
+                ApplyAnimationOpacity();
                 if (animationProgress >= 1.0f) StopAnimation();
             });
         }
+    }
+
+    void UltraCanvasMenu::ApplyAnimationOpacity() {
+        // Only an open popup has an opacity on its window; a closed menu's
+        // window pointer is not used.
+        if (window && isPopup) window->SetPopupOpacity(*this, animationProgress);
     }
 
     void UltraCanvasMenu::UpdateAnimation() {
@@ -1473,6 +1486,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::StopAnimation() {
         animationProgress = 1.0f;
+        ApplyAnimationOpacity();
         if (animationTimerId == InvalidTimerId) return;
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(animationTimerId);
         animationTimerId = InvalidTimerId;
