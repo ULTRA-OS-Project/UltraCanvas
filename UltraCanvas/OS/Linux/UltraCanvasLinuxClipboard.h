@@ -3,9 +3,15 @@
 // Serves multiple targets per selection (UTF8_STRING / STRING / text/plain
 // variants for text; text/uri-list + x-special/gnome-copied-files +
 // application/x-kde-cutselection for file copy/cut) so files copied here
-// paste into external file managers and vice versa.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// paste into external file managers and vice versa. A secret copy also
+// offers x-kde-passwordManagerHint = "secret", the marker KDE's Klipper,
+// KeePassXC and this framework's own clipboard history agree on.
+// Changes are noticed through XFixes when the library is there: a listener on
+// a connection and thread of its own, started the first time something asks
+// whether the clipboard changed, reports every new owner - an image or a file
+// copy as much as a text. Without XFixes the text is compared as before.
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -13,9 +19,11 @@
 #include "../../include/UltraCanvasClipboard.h"
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <atomic>
 #include <memory>
 #include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -44,11 +52,21 @@ namespace UltraCanvas {
         Atom atomApplicationOctetStream;
         Atom atomGnomeCopiedFiles;   // x-special/gnome-copied-files ("copy\n<uris>" / "cut\n<uris>")
         Atom atomKdeCutSelection;    // application/x-kde-cutselection ("0" copy / "1" cut)
+        Atom atomPasswordManagerHint; // x-kde-passwordManagerHint ("secret": keep out of histories)
 
         // ===== CLIPBOARD STATE =====
         std::chrono::steady_clock::time_point lastChangeCheck;
         std::string lastClipboardText;
         bool clipboardChanged;
+
+        // ===== CHANGE LISTENER (XFixes) =====
+        bool changeListenerTried = false;
+        std::atomic<bool> changeListenerAlive{false};
+        std::atomic<uint64_t> ownerChanges{0};
+        uint64_t ownerChangesSeen = 0;
+        Display* changeDisplay = nullptr;
+        int changeWakePipe[2] = {-1, -1};
+        std::thread changeThread;
 
         // ===== SELECTION HANDLING (reading other apps' clipboards) =====
         std::vector<uint8_t> selectionData;
@@ -85,6 +103,9 @@ namespace UltraCanvas {
         // ===== CLIPBOARD OPERATIONS =====
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
+        bool SetClipboardSecretText(const std::string& text) override;
+        bool IsClipboardMarkedSecret() override;
+        bool HasClipboardOwner() override;
         bool SetClipboardHtml(const std::string& html, const std::string& plainText) override;
         bool GetClipboardHtml(std::string& html) override;
         bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
@@ -107,6 +128,8 @@ namespace UltraCanvas {
     private:
         // ===== INITIALIZATION HELPERS =====
         void InitializeAtoms();
+        void StartChangeListener();
+        void StopChangeListener();
         Window CreateHelperWindow();
         bool GetDisplayFromApplication();
 
@@ -130,7 +153,7 @@ namespace UltraCanvas {
 
         // ===== TEXT OPERATIONS =====
         bool ReadTextFromClipboard(Atom selection, std::string& text);
-        bool WriteTextToClipboard(Atom selection, const std::string& text);
+        bool WriteTextToClipboard(Atom selection, const std::string& text, bool secret = false);
 
         // ===== IMAGE OPERATIONS =====
         bool ReadImageFromClipboard(Atom selection, std::vector<uint8_t>& imageData, std::string& format);

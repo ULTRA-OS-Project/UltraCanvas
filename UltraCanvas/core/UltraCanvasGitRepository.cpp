@@ -751,7 +751,8 @@ bool UltraCanvasGitRepository::Open(const std::string& path) {
         if (fs::is_regular_file(dotGit, ec)) {
             std::string content;
             if (ReadWholeFile(dotGit, content) && content.rfind("gitdir:", 0) == 0) {
-                fs::path target = PathFromUtf8(Trim(content.substr(7)));
+                // Git writes the pointer in UTF-8.
+                fs::path target = UltraCanvas::PathFromUtf8(Trim(content.substr(7)));
                 if (target.is_relative()) target = candidate / target;
                 candidate = fs::weakly_canonical(UltraCanvas::PathFromUtf8(target), ec);
                 break;

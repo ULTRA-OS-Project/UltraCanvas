@@ -147,7 +147,7 @@ namespace UltraCanvas {
         {
             auto filerPtr = filer.get();
             upButton->SetOnClick([filerPtr]() {
-                std::filesystem::path p(PathFromUtf8(filerPtr->GetPath()));
+                std::filesystem::path p = PathFromUtf8(filerPtr->GetPath());
                 if (p.has_parent_path() && p.parent_path() != p) {
                     filerPtr->SetPath(PathToUtf8(p.parent_path()));
                 }

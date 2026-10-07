@@ -1,10 +1,11 @@
 /* Tests/AtspiBridgeTest/AtspiBridgeTestClient.c
  * The assistive-technology side of AtspiBridgeTest, written against libatspi
  * as Orca uses it: finds AtspiBridgeTestApp on the desktop, walks its tree,
- * reads the document through the Text interface, moves the caret and checks
- * the events the application sends back. Exits 0 when every check passes.
- * Version: 1.0.0
- * Last Modified: 2026-10-01
+ * reads the document through the Text interface, checks that the password
+ * field is reported as one, moves the caret and checks the events the
+ * application sends back. Exits 0 when every check passes.
+ * Version: 1.1.0
+ * Last Modified: 2026-10-05
  * Author: UltraCanvas Framework */
 
 #include <atspi/atspi.h>
@@ -100,6 +101,12 @@ int main(void) {
     check("editable and multi-line", atspi_state_set_contains(states, ATSPI_STATE_EDITABLE) &&
                                      atspi_state_set_contains(states, ATSPI_STATE_MULTI_LINE));
     check("showing", atspi_state_set_contains(states, ATSPI_STATE_SHOWING));
+
+    /* A password field is password text - Orca then speaks no character
+       typed into it - and offers nothing to read. */
+    AtspiAccessible* secret = findRole(app, ATSPI_ROLE_PASSWORD_TEXT, 0);
+    check("the password field is password text", secret != NULL);
+    check("whose text cannot be read", secret && atspi_accessible_get_text_iface(secret) == NULL);
 
     AtspiText* text = atspi_accessible_get_text_iface(doc);
     check("it has the Text interface", text != NULL);

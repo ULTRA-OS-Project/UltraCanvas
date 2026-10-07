@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
+#include "IODeviceManager/UltraCanvasIODeviceDnsSd.h"
 
 #include <algorithm>
 #include <cctype>
@@ -496,32 +497,6 @@ std::string PercentDecode(const std::string& text) {
     return out;
 }
 
-// DNS presentation-format escapes, as Bonjour leaves them in an instance
-// name: \032 is a byte by decimal value, \X is X.
-std::string DnsUnescape(const std::string& text) {
-    std::string out;
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] != '\\' || i + 1 >= text.size()) {
-            out.push_back(text[i]);
-            continue;
-        }
-        if (i + 3 < text.size() && std::isdigit(static_cast<unsigned char>(text[i + 1])) &&
-            std::isdigit(static_cast<unsigned char>(text[i + 2])) &&
-            std::isdigit(static_cast<unsigned char>(text[i + 3]))) {
-            const int value = (text[i + 1] - '0') * 100 + (text[i + 2] - '0') * 10 +
-                              (text[i + 3] - '0');
-            if (value <= 255) {
-                out.push_back(static_cast<char>(value));
-                i += 3;
-                continue;
-            }
-        }
-        out.push_back(text[i + 1]);
-        ++i;
-    }
-    return out;
-}
-
 struct UriParts {
     std::string scheme;
     std::string host;
@@ -579,30 +554,14 @@ int DefaultPortFor(const std::string& scheme) {
     return -1;
 }
 
-// Where the service type starts in a DNS-SD name: the last "._ipp._tcp" or
-// "._ipps._tcp" that is followed by a dot or ends the name. The last, because
-// an instance may itself contain those characters; the real type is the one
-// nearest the domain. npos when there is none.
-size_t ServiceTypeStart(const std::string& name) {
-    const std::string lower = Lower(name);
-    size_t best = std::string::npos;
-    for (const char* type : {"._ipp._tcp", "._ipps._tcp"}) {
-        const std::string marker = type;
-        size_t at = lower.rfind(marker);
-        while (at != std::string::npos) {
-            const size_t after = at + marker.size();
-            if (at > 0 && (after == lower.size() || lower[after] == '.')) break;
-            at = at == 0 ? std::string::npos : lower.rfind(marker, at - 1);
-        }
-        if (at != std::string::npos && (best == std::string::npos || at > best)) best = at;
-    }
-    return best;
-}
+// The service types an IPP printer advertises under, as a DNS-SD name
+// carries them.
+const std::vector<std::string> kIppServiceTypes = {"._ipp._tcp", "._ipps._tcp"};
 
 // "Office Printer._ipp._tcp.local" -> "Office Printer". Empty for a host
 // name that is not a DNS-SD service name.
 std::string InstanceFromServiceHost(const std::string& host) {
-    const size_t at = ServiceTypeStart(host);
+    const size_t at = DnsSdServiceTypeStart(host, kIppServiceTypes);
     return at == std::string::npos ? std::string() : host.substr(0, at);
 }
 
@@ -1195,8 +1154,7 @@ std::string IppUriFromMdns(const std::string& host, int port,
 }
 
 std::string IppInstanceFromServiceName(const std::string& serviceName) {
-    const size_t at = ServiceTypeStart(serviceName);
-    return DnsUnescape(at == std::string::npos ? serviceName : serviceName.substr(0, at));
+    return DnsSdInstanceName(serviceName, kIppServiceTypes);
 }
 
 std::string IppDeviceIdFor(const std::string& uuid, const std::string& printerUri) {

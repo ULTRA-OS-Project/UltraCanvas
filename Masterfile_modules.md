@@ -247,10 +247,13 @@ the backing implementation can be replaced without affecting callers.
     (`UltraCanvasXFileConverter.h`) - Frame, Mesh, MeshNormals,
     MeshTextureCoords, MeshVertexColors, MeshMaterialList and Material.
     Read-only and geometry only. It is the framework's one **left-handed**
-    format: the reflection that converts it back sits in the root frame's
-    matrix and the reversed winding cancels against it, so the reader alters
-    neither and instead *checks* the winding against the file's own normals.
-    Consult that header before assuming anything about its handedness.
+    format, and the reader converts it: Z is negated in every position and
+    normal, each frame matrix is conjugated by the same reflection, and every
+    face's corners are reversed, so the document is right-handed and a model
+    is not delivered as its mirror image. An exporter's own root-frame
+    reflection and reversed winding survive that and still cancel, which the
+    reader *checks* against the file's own normals. Consult that header before
+    assuming anything about its handedness.
     **MilkShape 3D** (`Plugins/Models/MS3D/UltraCanvasMS3DConverter.h`) is the
     one reader with no container layer, because an `.ms3d` has no container to
     speak of: a fixed sequence of packed little-endian structs, a count then
@@ -324,6 +327,62 @@ the backing implementation can be replaced without affecting callers.
   See `Docs/Research/UltraCanvas3DModelProposal.md` for the format survey the
   structure is derived from, and what is deliberately out of scope (B-rep
   solids: STEP, IGES, ACIS, DWG `3DSOLID`).
+
+**HTMLReader section** — the framework's one implementation of reading HTML
+and CSS, under `UltraCanvas/{include,core}/HTMLReader/`, always built, in
+`namespace UltraCanvas::HTML`. HTML, CSS and HTML entities are read through
+it and nowhere else (AGENTS.md, *Core conventions*; `scripts/check_html_reuse.py`
+blocks a new tag stripper, entity table, `style=""` splitter or selector
+matcher). Used by the eBook viewer and engines, UltraMail, the Vector
+plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
+`Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
+
+- **HTMLParser / HTMLDocument** (`HTMLReader/HTMLParser.h`,
+  `HTMLReader/HTMLDocument.h`) — `Parser::Parse(html)` → `Document`
+  (tolerant HTML/XHTML: unclosed elements, void and self-closing tags,
+  comments, CDATA, doctype and `quirksMode`, entities, raw-text `<style>` /
+  `<script>`; `Errors()` lists repairs). `Node` (one struct per node; tag
+  and attribute names lower-case) with `GetAttribute`, `HasClass`,
+  `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
+  `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
+  `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
+  entity and numeric references), `ExtractPlainText` (tags gone,
+  `<script>`/`<style>` bodies dropped, entities decoded).
+- **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
+  (rules with specificity and source order, `@media` against
+  `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
+  `MediaMatches`; `CssColor::Parse`, `CssLength::Parse` / `ToPx`; selectors:
+  type, class, id, attribute (`[a]`, `=`, `~=`, `^=`, `$=`, `*=`, `|=`, `i`),
+  `:link`, the structural pseudo-classes, descendant chains (`>` read as
+  descendant). **Selector matching for any tree**: `SelectorMatches<Traits>`,
+  `CompoundMatches<Traits>`, `MatchingRules<Traits>` (the matching rules in
+  cascade order) over a Traits type the tree supplies (ten static members:
+  `TagIs`, `IdIs`, `HasClass`, `GetAttribute`, `IsLink`, `IsRoot`,
+  `IsEmpty`, `SiblingPosition`, `Parent`); `AttributeValueMatches`,
+  `NthPositionMatches` are the tree-independent halves.
+- **HTMLStyleResolver** (`HTMLReader/HTMLStyleResolver.h`) — the cascade for a
+  document: `StyleResolver::AddStyleSheet` / `SetMediaWidth` /
+  `Resolve(document, ResolverOptions)` / `StyleOf(node)` → `ComputedStyle`
+  (display, inherited text properties, margins, padding, borders per side,
+  backgrounds, sizes in px or percent, floats, `box-sizing`, `overflow`,
+  `object-fit`, links); user-agent defaults and the presentational
+  attributes mail uses. `NodeSelectorTraits` is the DOM's view for the
+  matcher; `Matches(selector, node)` the stand-alone test.
+- **HTMLElementBuilder** (`HTMLReader/HTMLElementBuilder.h`) —
+  `ElementBuilder::Build(html, BuildOptions)` / `BuildDocument(document,
+  options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
+  `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
+  (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
+  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
+  engine; the tree's own scrollbars are off, the host scrolls.
+- **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
+  `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
+  HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
+  options)` → `UCRichDocument` through the same parser and cascade
+  (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
+  `keepColors`). `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
@@ -658,7 +717,40 @@ the backing implementation can be replaced without affecting callers.
   - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
     `IsRunning`, `IsNative`: window list, active window and desktop changes,
     reported on the monitor's thread.
+  - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
+    `Stop()` (joins) / `IsRunning`: a key combination that reaches this
+    program from any window (X11 `XGrabKey` on its own connection and
+    thread; fails with a reason elsewhere and when another program holds it).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
+  `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
+  clipboard history of ULTRA OS: every copy (files, images, text with its
+  HTML) kept on disk, shared by UltraDesktop, which records it and shows it
+  in its `Super+V` panel, and the UltraClipboard application. SQLite through
+  UltraDatabase, payloads in content-addressed files, titles, texts and
+  payloads sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key
+  file; copies marked secret are never recorded. Public surface:
+  - `UltraCanvasClipboardHistory` - `Open` / `Close`, `Record`, `List`
+    (`ClipboardHistoryQuery`: accent-insensitive text, kinds, pinned),
+    `Get`, `ReadFormats`, `ReadText`, `GetStats`, `MarkUsed`, `SetPinned`,
+    `Remove` / `Restore` (undo), `Replace` (an edited copy), `Clear`,
+    `Prune`, `GetPolicy` / `SetPolicy` (`ClipboardHistoryPolicy`: limits,
+    pause, thumbnails, excluded programs), `GetGeneration` (reload when
+    another process wrote), `AcquireRecorder` / `ReleaseRecorder` (one
+    process records).
+  - `CaptureClipboard` / `RestoreToClipboard` - a `ClipboardSnapshot` from and
+    to the live clipboard.
+  - `UltraCanvasClipboardRecorder` - records from a UI timer, holds the
+    lease, skips secret copies, puts the last copy back when its owner quits
+    (X11).
+  - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
+    (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
+    `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
+    / Delete hit-tested with `ActionAt`.
+  - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+  See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
   between two groups on one bar; one group's colour up to the curve, the next
@@ -822,7 +914,11 @@ the backing implementation can be replaced without affecting callers.
     `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
     sends a document the printer renders as it is and draws text and images
     as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
-    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested. Both
+    backends take a device's display name out of its DNS-SD service name
+    through `...DnsSd.h`, and trust a device's self-signed HTTPS certificate
+    on first use - its public key remembered, every later connection pinned
+    to it - through `...TlsTrust.h`.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
@@ -1063,12 +1159,18 @@ future.
 **Available Functions (Core, Tier 1):**
 - `UltraNet_HttpGet`, `UltraNet_HttpPost`, `UltraNet_HttpPut`,
   `UltraNet_HttpDelete`, `UltraNet_HttpHead`, `UltraNet_HttpPatch`
-- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync`
+- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
+  cut off after its status line carries `UltraNetResponse::transferError`,
+  `IsComplete()` and `exceededReceiveLimit`)
 - `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
-  `UltraNet_FtpDelete`, `UltraNet_FtpRename`
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`,
+  `UltraNet_FtpRemoveDirectory`; the session log of every call
+  (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
+  `UltraNetFtpLogLine` steps, commands with the password masked, replies with
+  their codes, the error with libcurl's number)
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1097,8 +1199,8 @@ future.
   `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
   `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
-- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
-  `UltraNet_UrlDecode`
+- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_ResolveUrl` (RFC 3986
+  reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
@@ -1340,8 +1442,9 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
 the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
-`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
--> `UnlockStatus`, `PersistDeviceKey`), per-account
+`device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
+`DescribeUnlockStatus` saying why it stayed closed) or by a master password
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -1444,8 +1547,10 @@ attach ram://` on macOS, the ImDisk driver on Windows when installed, an
 overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
 `VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
 `VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
-`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
-user and do not survive a reboot.
+`VirtualFS_GetPreferredRamDiskBacking`, `VirtualFS_GetMaxRamDiskNameLength`
+(names are at most 23 characters on Windows, where they live in the NTFS
+volume label; 64 elsewhere). Discs are private to the calling user and do
+not survive a reboot.
 
 **Provider interface** (`IVirtualFSProvider`) — one implementation per
 format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
@@ -1902,3 +2007,44 @@ Rules: every blocking call returns `VideoFXResult`, with the reason in
 `VideoFX_GetLastError()`; effects are typed values, never filter strings from
 the caller; numbers in filter text are dot-decimal whatever the locale; paths
 are UTF-8; a failed or cancelled export leaves no partial file behind.
+
+---
+
+### **17. WasmHost**
+
+Runs WebAssembly modules for UltraCanvas applications: compile (binary or
+WebAssembly text), link the host functions an application offers,
+instantiate with WASI preview 1 and nothing granted, call exports - with a
+memory cap per instance and a time limit per call. Sources under
+`UltraCanvas/{include,core}/WasmHost/`, target `WasmHost`, header
+`<WasmHost/UltraCanvasWasmHost.h>`, `namespace UltraCanvas`. First user:
+UltraWeb (`Docs/UltraWeb/UltraWeb.md`, plan in
+`Docs/UltraWeb/UltraWebProposal.md`).
+
+**A wrapped engine.** The engine is wasmtime 49.0.2 through its prebuilt C
+API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
+`ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
+reaches a caller, so the engine can be replaced (WAMR is the measured
+fallback). UI-free and thread-agnostic; an instance belongs to the thread
+that created it.
+
+**Implementation status:** Phase 1 started. On by default on Linux
+(`ULTRACANVAS_ENABLE_WASM_HOST`); elsewhere, and wherever no prebuilt wasmtime
+exists (the MSYS2 CLANG64 `gnullvm` builds), the library builds without an
+engine and every call says so.
+
+- Types: `UltraCanvasWasmInstance`, `WasmImport`, `WasmHostFunction`,
+  `WasmCaller` (guest memory, `Trap`), `WasmValue`, `WasmValueType`,
+  `WasmLimits` (`memoryBytes`, `callTimeoutMs`), `WasmStatus`
+  (`ok`, `trapped`, `interrupted`, `message`)
+- `UltraCanvasWasmInstance::Create`, `HasFunction`, `Call`, `IsUsable`
+- `UltraCanvasWasm_IsAvailable`, `UltraCanvasWasm_EngineDescription`,
+  `UltraCanvasWasm_WatToWasm`
+- Helpers: `WasmI32`, `WasmF64`
+
+Rules: every failure - a trap, a C++ exception thrown by a host function, a
+call running past its limit, malformed input - ends in a `WasmStatus`, never
+a crash or a hang of the host; after a trap or an interruption an instance
+refuses further calls; host functions are registered through the unchecked
+host-function API (measured at 7 ns per empty call against 82 ns for the
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.

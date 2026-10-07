@@ -1,13 +1,14 @@
 // core/UltraCanvasBusyIndicator.cpp
-// Platform-independent busy indicator (ring, dual ring, dots, bar, pulse) implementation.
-// Version: 1.1.0
-// Last Modified: 2026-10-01
+// Platform-independent busy indicator (ring, dual ring, dots, bar, pulse, dot ring) implementation.
+// Version: 1.2.0
+// Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace UltraCanvas {
 
@@ -25,6 +26,9 @@ namespace UltraCanvas {
         double Swell(double phase) {
             return 0.5 - 0.5 * std::cos(phase * 2.0 * kPi);
         }
+
+        // DotRing: a dot that has not been given a random colour yet.
+        constexpr long long kNoHue = std::numeric_limits<long long>::min();
     }
 
     UltraCanvasBusyIndicator::UltraCanvasBusyIndicator(const std::string& identifier,
@@ -41,14 +45,13 @@ namespace UltraCanvas {
         }
     }
 
-    double UltraCanvasBusyIndicator::CurrentPhase() const {
-        if (timerId == InvalidTimerId) return stoppedPhase;
-        // Phase from elapsed time, not from a per-tick step, so a late timer
+    double UltraCanvasBusyIndicator::CurrentCycles() const {
+        if (timerId == InvalidTimerId) return stoppedCycles;
+        // Cycles from elapsed time, not from a per-tick step, so a late timer
         // never slows the animation down.
         const double seconds = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - startedAt).count();
-        const double cycles = stoppedPhase + seconds * style.revolutionsPerSecond;
-        return cycles - std::floor(cycles);
+        return stoppedCycles + seconds * style.revolutionsPerSecond;
     }
 
     void UltraCanvasBusyIndicator::Start() {
@@ -63,7 +66,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBusyIndicator::Stop() {
         if (timerId == InvalidTimerId) return;
-        stoppedPhase = CurrentPhase();
+        stoppedCycles = CurrentCycles();
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(timerId);
         timerId = InvalidTimerId;
         RequestRedraw();
@@ -86,13 +89,15 @@ namespace UltraCanvas {
         if (std::min(w, h) <= 2.0f && style.kind != BusyIndicatorKind::Bar) return;
         if (w <= 2.0f || h <= 0.5f) return;
 
-        const double phase = CurrentPhase();
+        const double cycles = CurrentCycles();
+        const double phase = cycles - std::floor(cycles);
         switch (style.kind) {
             case BusyIndicatorKind::Ring:  RenderRing(ctx, w, h, phase);  break;
             case BusyIndicatorKind::DualRing: RenderDualRing(ctx, w, h, phase); break;
             case BusyIndicatorKind::Dots:  RenderDots(ctx, w, h, phase);  break;
             case BusyIndicatorKind::Bar:   RenderBar(ctx, w, h, phase);   break;
             case BusyIndicatorKind::Pulse: RenderPulse(ctx, w, h, phase); break;
+            case BusyIndicatorKind::DotRing: RenderDotRing(ctx, w, h, cycles); break;
         }
         ctx->ClearPath();
     }
@@ -150,12 +155,13 @@ namespace UltraCanvas {
         // 6 o'clock, so at rest the two arcs face each other.
         const double outerStart = phase * 2.0 * kPi - kPi / 2.0;
         const double innerStart = -phase * 2.0 * kPi + kPi / 2.0;
-        ctx->SetStrokePaint(style.arcColor);
         ctx->ClearPath();
         ctx->Arc(cx, cy, outerRadius, outerStart, outerStart + sweep);
+        ctx->SetStrokePaint(style.arcColor);
         ctx->Stroke();
         ctx->ClearPath();
         ctx->Arc(cx, cy, innerRadius, innerStart, innerStart + sweep);
+        ctx->SetStrokePaint(style.secondArcColor);
         ctx->Stroke();
     }
 
@@ -203,7 +209,9 @@ namespace UltraCanvas {
 
         // The segment enters from the left edge and leaves at the right one;
         // the part outside the track is cut off rather than drawn.
-        const double segment = w * std::clamp(static_cast<double>(style.barFraction), 0.05, 0.9);
+        const double segment = style.barLength > 0.0f
+                ? std::min<double>(style.barLength, w)
+                : w * std::clamp(static_cast<double>(style.barFraction), 0.05, 0.9);
         const double x = -segment + (w + segment) * phase;
         const double x0 = std::max(0.0, x);
         const double x1 = std::min<double>(w, x + segment);
@@ -232,6 +240,85 @@ namespace UltraCanvas {
         ctx->Circle(cx, cy, maxRadius * (0.4 + 0.6 * swell));
         ctx->SetFillPaint(Faded(style.arcColor, 0.35 + 0.65 * swell));
         ctx->Fill();
+    }
+
+    void UltraCanvasBusyIndicator::RenderDotRing(IRenderContext* ctx, float w, float h, double cycles) {
+        const int count = std::clamp(style.ringDotCount, 4, 16);
+        const double side = std::min(w, h);
+        const double cx = w / 2.0, cy = h / 2.0;
+        // Neighbouring dot centres are 2 * radius * sin(pi / count) apart.
+        // Unless the style sets a diameter, each dot is three quarters of that
+        // wide and the ring is as large as the box allows.
+        const double halfChord = std::sin(kPi / count);
+        double radius, dotRadius;
+        if (style.thickness > 0.0f) {
+            dotRadius = std::min(style.thickness / 2.0, side / 4.0);
+            radius = side / 2.0 - dotRadius;
+        } else {
+            radius = side / 2.0 / (1.0 + 0.75 * halfChord);
+            dotRadius = 0.75 * halfChord * radius;
+        }
+
+        // The head runs clockwise from 12 o'clock, one full turn per cycle. A
+        // dot is at its fullest the moment the head reaches it, shrinks (and
+        // fades) as the head moves on, and swells back during the last
+        // 1 / count of the turn, just before the head comes round again.
+        const double head = cycles * count;   // in dots, never wrapped
+        const double rise = 1.0 / count;      // share of a turn spent swelling back
+        for (int i = 0; i < count; ++i) {
+            const double angle = 2.0 * kPi * i / count - kPi / 2.0;
+            const double x = cx + radius * std::cos(angle);
+            const double y = cy + radius * std::sin(angle);
+
+            if (style.trackColor.a > 0) {
+                ctx->ClearPath();
+                ctx->Circle(x, y, dotRadius);
+                ctx->SetFillPaint(style.trackColor);
+                ctx->Fill();
+            }
+
+            // Turns since the head was last on this dot, and how far into
+            // this one: 0 = the head is here, just under 1 = it is one dot away.
+            const double turns = (head - i) / count;
+            const double since = turns - std::floor(turns);
+            const double level = since >= 1.0 - rise ? (since - (1.0 - rise)) / rise
+                                                     : 1.0 - since / (1.0 - rise);
+
+            Color color = style.arcColor;
+            if (style.dotRingFade == BusyDotRingFade::FadeRandomColor) {
+                // A new colour each time the dot starts to fade back in, which
+                // is when it is invisible: turns + rise passes a whole number.
+                const auto fadeIn = static_cast<long long>(std::floor(turns + rise));
+                color = HSV(DotHue(i, fadeIn), 0.8f, 0.9f, style.arcColor.a);
+            }
+            if (style.dotRingFade != BusyDotRingFade::NoFade) color = Faded(color, level);
+            if (color.a == 0) continue;
+
+            ctx->ClearPath();
+            ctx->Circle(x, y, dotRadius * (0.45 + 0.55 * level));
+            ctx->SetFillPaint(color);
+            ctx->Fill();
+        }
+    }
+
+    float UltraCanvasBusyIndicator::DotHue(int dot, long long fadeIn) {
+        const auto count = static_cast<size_t>(std::clamp(style.ringDotCount, 4, 16));
+        if (dotHues.size() != count) {
+            if (dotHues.empty()) colorRandom.seed(std::random_device{}());
+            dotHues.assign(count, 0.0f);
+            dotHueCycles.assign(count, kNoHue);
+        }
+        const auto i = static_cast<size_t>(dot);
+        if (dotHueCycles[i] != fadeIn) {
+            // The first colour anywhere on the wheel; every later one at least
+            // 60 degrees from the one before, so a dot never fades back in in
+            // the colour it faded out in.
+            const bool first = dotHueCycles[i] == kNoHue;
+            std::uniform_real_distribution<float> step(first ? 0.0f : 60.0f, first ? 360.0f : 300.0f);
+            dotHues[i] = std::fmod(dotHues[i] + step(colorRandom), 360.0f);
+            dotHueCycles[i] = fadeIn;
+        }
+        return dotHues[i];
     }
 
 } // namespace UltraCanvas

@@ -1,0 +1,17 @@
+{
+  "name": "librevenge",
+  "version": "0.0.5",
+  "description": "Base library for writing document import filters (libcdr, libwpd, ...).",
+  "homepage": "https://sourceforge.net/p/libwpd/wiki/librevenge/",
+  "license": "MPL-2.0 OR LGPL-2.1-or-later",
+  "dependencies": [
+    "boost-algorithm",
+    "boost-serialization",
+    "boost-spirit",
+    {
+      "name": "vcpkg-make",
+      "host": true
+    },
+    "zlib"
+  ]
+}

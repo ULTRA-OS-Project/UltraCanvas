@@ -1,18 +1,20 @@
 # UltraCanvas Slider Control Documentation
 
+<!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); -->
+
 ## Overview
 
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 2.0.0  
-**Last Modified**: 2025-08-17  
+**Version**: 2.0.1  
+**Last Modified**: 2026-10-07  
 **Author**: UltraCanvas Framework
 
 ## Features
 
 ### Core Functionality
-- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range, Rounded
+- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range (two handles)
 - ✅ **Value Management**: Min/max range, current value, percentage calculations
 - ✅ **Step Control**: Configurable increment/decrement step values
 - ✅ **Value Display Options**: Number, Percentage, Tooltip, Always Visible
@@ -43,7 +45,6 @@ enum class SliderStyle {
     Circular,       // Circular/knob style
     Progress,       // Progress bar style
     Range,          // Range slider with two handles
-    Rounded         // Rounded corners
 };
 ```
 
@@ -87,7 +88,9 @@ struct SliderVisualStyle {
     // Track colors
     Color trackColor = Color(200, 200, 200);
     Color activeTrackColor = Color(0, 120, 215);
-    Color disabledTrackColor = Color(180, 180, 180);
+    Color disabledTrackColor = Color(210, 210, 214);
+    Color disabledActiveTrackColor = Color(175, 175, 180);  // replaces activeTrackColor when disabled
+    Color rangeTrackColor = Color(0, 120, 215, 180);        // range between the two handles
 
     // Handle colors
     Color handleColor = Colors::White;
@@ -105,6 +108,7 @@ struct SliderVisualStyle {
     float handleSize = 16.0f;
     float borderWidth = 1.0f;
     float cornerRadius = 3.0f;
+    SliderHandleShape handleShape = SliderHandleShape::Circle;  // Circle, Square, Triangle, Diamond
 
     // Font
     FontStyle fontStyle;
@@ -114,16 +118,15 @@ struct SliderVisualStyle {
 ## Constructor
 
 ```cpp
-UltraCanvasSlider(const std::string& identifier = "Slider",
-                  long x = 0, long y = 0, 
-                  long w = 200, long h = 30)
+UltraCanvasSlider(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasSlider(const std::string& identifier, float w, float h);
+explicit UltraCanvasSlider(const std::string& identifier);
 ```
 
 **Parameters:**
 - `identifier`: Unique string identifier for the slider
-- `id`: Numeric ID for the control
-- `x`, `y`: Position coordinates
-- `w`, `h`: Width and height dimensions
+- `x`, `y`: Position coordinates (omitted: the layout places the slider)
+- `w`, `h`: Width and height dimensions (omitted: sized by the layout)
 
 ## Key Methods
 
@@ -165,11 +168,16 @@ later `SetRange()`, so an integer control (quality 0..100 that narrows to 0..9,
 an effort level 0..6) keeps whole steps whatever range it is given.
 
 ```cpp
-gamma->SetRange(0.2f, 3.0f);      // continuous by default
-quality->SetRange(0, 100);        // whole units by default
-effort->SetStep(1.0f);            // whole units, stated
-effort->SetRange(0, 6);           // ...and kept here
-seek->SetStep(0.0f);              // continuous, stated
+auto gammaSlider = CreateSlider("gamma", 10, 10, 200, 30);
+auto quality = CreateSlider("quality", 10, 50, 200, 30);
+auto effort = CreateSlider("effort", 10, 90, 200, 30);
+auto seek = CreateSlider("seek", 10, 130, 200, 30);
+
+gammaSlider->SetRange(0.2f, 3.0f);  // continuous by default
+quality->SetRange(0, 100);          // whole units by default
+effort->SetStep(1.0f);              // whole units, stated
+effort->SetRange(0, 6);             // ...and kept here
+seek->SetStep(0.0f);                // continuous, stated
 ```
 
 `UltraCanvasSlider::MinAutoStepSpan` (20) is the threshold, and
@@ -197,18 +205,44 @@ SliderOrientation GetOrientation() const;
 // Set colors
 void SetColors(const Color& track, const Color& activeTrack, const Color& handle);
 
-// Set dimensions
+// Set dimensions and handle shape
 void SetTrackHeight(float height);
 void SetHandleSize(float size);
+void SetHandleShape(SliderHandleShape shape);
 
 // Set text formatting
 void SetValueFormat(const std::string& format);
 void SetCustomText(const std::string& text);
 
+// Optional gradient painted inside the track (e.g. a hue palette)
+void SetTrackGradient(const std::vector<GradientStop>& stops);
+void ClearTrackGradient();
+bool HasTrackGradient() const;
+
 // Access style directly
 SliderVisualStyle& GetStyle();
 const SliderVisualStyle& GetStyle() const;
+void SetStyle(const SliderVisualStyle& st);
 ```
+
+### Range Mode (two handles)
+
+```cpp
+void SetRangeMode(bool enabled);
+bool IsRangeMode() const;
+void SetLowerValue(float value);
+void SetUpperValue(float value);
+void SetRangeValues(float lower, float upper);
+float GetLowerValue() const;
+float GetUpperValue() const;
+void SetHandleCollisionMargin(float margin);   // minimum distance between the handles
+float GetHandleCollisionMargin() const;
+```
+
+In range mode the arrow keys move the active handle (both when none is
+active), and Tab switches between the handles. Range changes are reported
+through `onLowerValueChanged`, `onUpperValueChanged` and `onRangeChanged`
+(see below).
 
 ## Event Callbacks
 
@@ -225,6 +259,11 @@ std::function<void(float)> onValueChanging;
 std::function<void(const UCEvent&)> onPress;
 std::function<void(const UCEvent&)> onRelease;
 std::function<void(const UCEvent&)> onClick;
+
+// Range mode
+std::function<void(float)> onLowerValueChanged;
+std::function<void(float)> onUpperValueChanged;
+std::function<void(float, float)> onRangeChanged;
 ```
 
 ## Factory Functions
@@ -232,45 +271,27 @@ std::function<void(const UCEvent&)> onClick;
 ```cpp
 // Create basic slider
 std::shared_ptr<UltraCanvasSlider> CreateSlider(
-    const std::string& identifier, long id, 
-    long x, long y, long width, long height);
+    const std::string& identifier, float x, float y, float width, float height);
 
 // Create horizontal slider
 std::shared_ptr<UltraCanvasSlider> CreateHorizontalSlider(
-    const std::string& identifier, long id, 
-    long x, long y, long width, long height,
+    const std::string& identifier, float x, float y, float width, float height,
     float min = 0.0f, float max = 100.0f);
 
 // Create vertical slider
 std::shared_ptr<UltraCanvasSlider> CreateVerticalSlider(
-    const std::string& identifier, long id, 
-    long x, long y, long width, long height,
+    const std::string& identifier, float x, float y, float width, float height,
     float min = 0.0f, float max = 100.0f);
 
-// Create circular slider
+// Create circular slider (size x size)
 std::shared_ptr<UltraCanvasSlider> CreateCircularSlider(
-    const std::string& identifier, long id, 
-    long x, long y, long size,
+    const std::string& identifier, float x, float y, float size,
     float min = 0.0f, float max = 100.0f);
 
-// Create rounded slider
-std::shared_ptr<UltraCanvasSlider> CreateRoundedSlider(
-    const std::string& identifier, long id, 
-    long x, long y, long width, long height,
-    float min = 0.0f, float max = 100.0f);
-```
-
-## Convenience Functions
-
-```cpp
-// Set slider value
-void SetSliderValue(UltraCanvasSlider* slider, float value);
-
-// Get slider value
-float GetSliderValue(const UltraCanvasSlider* slider);
-
-// Set slider range
-void SetSliderRange(UltraCanvasSlider* slider, float min, float max);
+// Create range slider (two handles, range mode on)
+std::shared_ptr<UltraCanvasSlider> CreateRangeSlider(
+    const std::string& identifier, float x, float y, float width, float height,
+    float min = 0.0f, float max = 100.0f, float lower = 25.0f, float upper = 75.0f);
 ```
 
 ## Keyboard Controls
@@ -286,13 +307,15 @@ The slider supports comprehensive keyboard navigation:
 | **Page Up** | Increase by 10 × step |
 | **Page Down** | Decrease by 10 × step |
 
+With a continuous slider (step 0) one key step is 1% of the range.
+
 ## Usage Examples
 
 ### Basic Horizontal Slider
 
 ```cpp
 // Create a horizontal slider
-auto hSlider = CreateHorizontalSlider("volume", 100, 50, 100, 200, 30, 0.0f, 100.0f);
+auto hSlider = CreateHorizontalSlider("volume", 50, 100, 200, 30, 0.0f, 100.0f);
 hSlider->SetValue(50.0f);
 hSlider->SetStep(5.0f);
 hSlider->SetValueDisplay(SliderValueDisplay::Number);
@@ -310,7 +333,7 @@ container->AddChild(hSlider);
 
 ```cpp
 // Create a vertical slider
-auto vSlider = CreateVerticalSlider("progress", 101, 300, 50, 30, 200, 0.0f, 100.0f);
+auto vSlider = CreateVerticalSlider("progress", 300, 50, 30, 200, 0.0f, 100.0f);
 vSlider->SetValueDisplay(SliderValueDisplay::Percentage);
 vSlider->SetValue(75.0f);
 
@@ -326,7 +349,7 @@ container->AddChild(vSlider);
 
 ```cpp
 // Create a circular knob
-auto knob = CreateCircularSlider("knob", 102, 400, 150, 100, 0.0f, 360.0f);
+auto knob = CreateCircularSlider("knob", 400, 150, 100, 0.0f, 360.0f);
 knob->SetValueDisplay(SliderValueDisplay::Tooltip);
 knob->SetValueFormat("%.0f°");
 
@@ -396,7 +419,7 @@ Different styles render with variations:
 - **Linear**: Traditional bar with handle
 - **Circular**: Arc track with rotating handle
 - **Progress**: Bar without handle
-- **Rounded**: Bar with rounded corners
+- **Range**: Bar with two handles and the range between them highlighted
 
 ## Advanced Features
 

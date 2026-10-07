@@ -187,6 +187,10 @@ if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
 
+# Where the macOS dependency libraries are: Homebrew's, or the vcpkg prefix CI
+# builds for the oldest supported macOS (ULTRACANVAS_MACOS_DEPS_PREFIX).
+include(cmake/UltraCanvasMacOSDeps.cmake)
+
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -523,6 +527,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRAWEB =====
+# The ULTRA OS browser. This version runs WebAssembly apps that build their UI
+# out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
+# reader and JavaScript follow Docs/UltraWeb/UltraWebProposal.md. A headless
+# --check mode starts an app without a window.
+option(BUILD_ULTRAWEB "Build the UltraWeb browser" ON)
+if(BUILD_ULTRAWEB)
+    message(STATUS "")
+    message(STATUS "── Building UltraWeb ──")
+    add_subdirectory(Apps/UltraWeb)
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
@@ -534,6 +550,16 @@ if(BUILD_ULTRADESKTOP)
     message(STATUS "")
     message(STATUS "── Building UltraDesktop ──")
     add_subdirectory(Apps/UltraDesktop)
+endif()
+
+# ===== ULTRACLIPBOARD =====
+# The clipboard history of ULTRA OS: everything copied - texts, links,
+# colours, images, files - with a thumbnail and Copy / Edit / Delete on every
+# entry, search, pins and the history's settings. UltraDesktop records the
+# history and opens this from its quick panel (Super+V).
+option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
+if(BUILD_ULTRACLIPBOARD)
+    add_subdirectory(Apps/UltraClipboard)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -785,12 +811,10 @@ if(BUILD_DEMO_APP)
                 ${LIBVIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
-        # Set Homebrew prefix
-        execute_process(
-            COMMAND brew --prefix
-            OUTPUT_VARIABLE HOMEBREW_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+        # The dependency prefix (cmake/UltraCanvasMacOSDeps.cmake): Homebrew's,
+        # or the vcpkg one CI builds.
+        set(HOMEBREW_PREFIX "${ULTRACANVAS_MACOS_DEPS_PREFIX}")
+        ultracanvas_macos_dep_prefix(vips _uc_vips_prefix)
         include_directories(
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
@@ -818,7 +842,7 @@ if(BUILD_DEMO_APP)
                 ${GLIB_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
-                ${HOMEBREW_PREFIX}/opt/vips/lib
+                ${_uc_vips_prefix}/lib
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         link_directories(
@@ -948,6 +972,16 @@ option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
+# ===== VAULT TESTS WITHOUT THE FULL SUITE =====
+# UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
+# row): the device-key vault in a Thai-and-emoji folder is only a test where a
+# folder name goes through UTF-16 and a code page.
+option(ULTRACANVAS_BUILD_VAULT_TESTS "Build UltraVaultTests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VAULT_TESTS AND NOT BUILD_TESTS AND TARGET UltraVault)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 endif()
 
 # ===== ULTRANET TESTS =====
@@ -1216,6 +1250,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
@@ -1894,17 +1929,9 @@ if (BUILD_TESTS)
              COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
-    # persistence, and the no-oracle property (wrong passphrase and a tampered
-    # file are indistinguishable). Compiles only UltraVault + UltraCrypt.
-    add_executable(UltraVaultTests Tests/UltraVaultTests.cpp)
-    target_link_libraries(UltraVaultTests PRIVATE UltraVault)
-    target_compile_features(UltraVaultTests PRIVATE cxx_std_20)
-    set_target_properties(UltraVaultTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraVaultTests COMMAND UltraVaultTests
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # UltraVault unit tests (Tests/VaultTests.cmake, shared with
+    # ULTRACANVAS_BUILD_VAULT_TESTS below).
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 
     # Cross-module: UltraAI's ResolveApiKey resolving apiKeyVaultRef through
     # UltraVault (the path enabled by ULTRAAI_USE_ULTRAVAULT).
@@ -2160,7 +2187,7 @@ endif()
 # ===== CPack CONFIGURATION =====
 #set(CPACK_PACKAGE_NAME "UltraCanvas")
 #set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-#set(CPACK_PACKAGE_VENDOR "Cloverleaf UG")
+#set(CPACK_PACKAGE_VENDOR "ULTRA OS Development GmbH")
 #set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Cross-platform UI & Rendering Framework")
 #set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 #set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")

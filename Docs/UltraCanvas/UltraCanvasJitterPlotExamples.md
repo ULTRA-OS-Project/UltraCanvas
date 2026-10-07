@@ -7,8 +7,8 @@ The `UltraCanvasJitterPlotElement` is a categorical distribution chart for the U
 **Namespace:** `UltraCanvas`  
 **Header:** `include/Plugins/Charts/UltraCanvasJitterPlotElement.h`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.3.0  
-**Last Modified:** 2026-07-31  
+**Version:** 1.3.1  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -75,11 +75,14 @@ enum class JitterPointColorMode {
     ByCategory,  // Category / hue group colour (default)
     ByValue      // Continuous colormap over JitterCategoryData::colorValues
 };
+```
 
-// Public nested point shape (used by examples)
-enum class UltraCanvasJitterPlotElement::PointShape {
-    Circle, Square, Triangle, Diamond
-};
+The point shape is a public enum nested in the element class,
+`UltraCanvasJitterPlotElement::PointShape`, with the values `Circle`, `Square`,
+`Triangle` and `Diamond` (default `Circle`):
+
+```cpp
+jitter->SetPointShape(UltraCanvasJitterPlotElement::PointShape::Diamond);
 ```
 
 `BeeswarmCorral::NoneCorral` is named to avoid colliding with the X11 `None` macro (the header `#undef`s `None` for safety).
@@ -301,7 +304,7 @@ void SetAxesVisible(bool visible);
 ### Overrides
 
 ```cpp
-void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 void RenderChart(IRenderContext* ctx) override;
 bool HandleChartMouseMove(const Point2Di& mousePos) override;
 std::string GenerateTooltipContent(const ChartDataPoint& point, size_t index) override;
@@ -509,13 +512,19 @@ jitter->SetCategories(marketTiers);
 jitter->SetYAxisScale(AxisScale::Logarithmic);
 jitter->SetLogScaleBase(10.0);
 
-// ... generate log-uniform samples spanning 10 to 10,000,000 ...
+// Log-uniform samples: tier N spans one decade, 10^(N+1) .. 10^(N+2),
+// so the six tiers cover 10 to 10,000,000
+std::mt19937 rng(42);
 for (size_t tier = 0; tier < marketTiers.size(); ++tier) {
-    std::vector<double> marketCaps = /* exp(log-uniform samples) */;
+    std::uniform_real_distribution<double> exponent(tier + 1.0, tier + 2.0);
+    std::vector<double> marketCaps;
+    for (int i = 0; i < 40; ++i) {
+        marketCaps.push_back(std::pow(10.0, exponent(rng)));
+    }
     jitter->AddCategoryData(marketTiers[tier], marketCaps);
 }
 
-jitter->SetChartTitle("Market Cap ($");
+jitter->SetChartTitle("Market Cap ($)");
 jitter->SetEnableTooltips(true);
 ```
 
@@ -625,7 +634,13 @@ the county's share of the national vote, and colour is the same signed margin ru
 through a diverging palette centred on zero. Three encodings, one chart.
 
 ```cpp
-auto plot = CreateJitterPlotElement("margins", 1001, 20, 20, 900, 420);
+// Your data: one record per county
+struct CountyResult { double marginPercent; double votes; };
+std::vector<CountyResult> counties = { {12.5, 84000}, {-30.2, 210000}, {4.1, 56000} };
+double nationalTotal = 0.0;
+for (const auto& c : counties) nationalTotal += c.votes;
+
+auto plot = CreateJitterPlotElement("margins", 20, 20, 900, 420);
 plot->SetCategories({"Counties"});
 plot->SetChartTitle("Results by County");
 

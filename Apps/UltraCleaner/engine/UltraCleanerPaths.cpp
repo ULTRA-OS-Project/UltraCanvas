@@ -2,7 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerPaths.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -19,9 +19,12 @@ using UltraCanvas::PathToUtf8;
 namespace UltraCleaner {
 namespace {
 
+// UTF-8, as every path here is scanned and removed through PathFromUtf8. On
+// Windows that means the wide environment: getenv answers in the ANSI code
+// page, so a profile folder named outside it would be neither found nor
+// recognised as protected.
 std::string EnvOrEmpty(const char* name) {
-    const char* value = std::getenv(name);
-    return (value && *value) ? std::string(value) : std::string();
+    return UltraCanvas::GetEnvUtf8(name);
 }
 
 // Trailing separators make "inside" comparisons and joins awkward; strip them

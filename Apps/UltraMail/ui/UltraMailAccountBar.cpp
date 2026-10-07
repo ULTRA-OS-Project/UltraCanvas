@@ -87,6 +87,7 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
                          const std::string& selectedAccountId) {
     if (!root_) Build();
     root_->ClearChildren();
+    tiles_.clear();
     if (accounts.empty()) return;
     if (accounts.size() == 1)
         BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
@@ -112,7 +113,8 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
     auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(2)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeHeading));
     auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                   Theme::kSizeSecondary, Theme::kTextSecondary);
@@ -145,7 +147,10 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         // baseline is a minimum width (a flex row honours boxConstraints on
         // its main axis).
         auto tile = std::make_shared<Theme::ClickSurface>("acctTile_" + acc, [this, acc]() {
-            if (onSelectAccount) onSelectAccount(acc);
+            // A copy: whatever the handler does to the bar, the id it was
+            // given stays valid (the captured one lives in this tile).
+            const std::string id = acc;
+            if (onSelectAccount) onSelectAccount(id);
         });
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
@@ -167,7 +172,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         head->AddChild(Theme::MakeAvatar("acctAvatar_" + acc, ProviderLetter(account.email),
                                          kTileAvatar));
         auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
-        who->layout.SetFlexColumn().SetFlexGap(1);
+        who->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeBody));
         who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                       Theme::kSizeSmall, Theme::kTextSecondary));
@@ -194,6 +199,17 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         tile->AddChild(counters);
 
         root_->AddChild(tile);
+        tiles_[acc] = tile;
+    }
+}
+
+void AccountBar::SetSelected(const std::string& accountId) {
+    for (const auto& [acc, tile] : tiles_) {
+        const bool selected = (acc == accountId);
+        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBorders(selected ? 2.0f : 1.0f,
+                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+        tile->RequestRedraw();
     }
 }
 

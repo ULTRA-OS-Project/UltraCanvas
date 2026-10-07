@@ -384,9 +384,9 @@ UltraWinResult UltraWin_UnmapFolder(const std::string& environment,
                                      "cannot write mapping manifest");
     std::error_code ec;
     fs::remove(PathFromUtf8(prefix) / "dosdevices" /
-                   (std::string(1, static_cast<char>(std::tolower(
-                                       static_cast<unsigned char>(letter)))) +
-                    ":"),
+                   PathFromUtf8(std::string(1, static_cast<char>(std::tolower(
+                                                static_cast<unsigned char>(letter)))) +
+                                ":"),
                ec);
     return UltraWinResult::Ok();
 }

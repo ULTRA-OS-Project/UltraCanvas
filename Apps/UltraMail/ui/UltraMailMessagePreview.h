@@ -3,6 +3,13 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.11.0 - the sender checks as bordered labels in the header:
+//                   [DMARC] [DKIM] [SPF] (and [S/MIME] / [OpenPGP]), details as
+//                   tooltips
+// Version: 0.10.0 - the sender badge asks for its icon when it has none
+//                   (SetIconRequester) and shows it on arrival (IconCached)
+// Version: 0.9.0 - onBodyMissing / BodyArrived: a message shown before its body
+//                  was downloaded fetches it now and shows it when it arrives
 // Version: 0.8.0 - onComposeTo: a clicked mail address (mailto:) is written to in
 //                UltraMail, from the shown message's account
 // Version: 0.7.0 - linkTooltips: a link's address as a tooltip (Settings > Display >
@@ -55,7 +62,13 @@ public:
     void SetStore(LocalStore* store) { store_ = store; }
     // The address book and the icon cache behind the sender badge.
     void SetContacts(ContactIndex contacts) { badges_.SetContacts(std::move(contacts)); }
-    void SetIconCache(const SenderIconCache* cache) { badges_.SetIconCache(cache); }
+    void SetIconCache(const SenderIconCache* cache) { icons_ = cache; badges_.SetIconCache(cache); }
+    // Asked for the icon the shown sender's badge lacks; IconCached shows it
+    // once it has arrived.
+    void SetIconRequester(std::function<void(const std::string& key)> request) {
+        requestIcon_ = std::move(request);
+    }
+    void IconCached(const std::string& key);
     // Whether the folder being read is the account's junk mailbox.
     void SetJunkFolder(bool junk) { junkFolder_ = junk; }
 
@@ -67,6 +80,23 @@ public:
     void Show(const MessageEnvelope& env);
     // Back to the empty "Select a message" state.
     void Clear();
+
+    // Whether the pane shows this message now.
+    bool Shows(const std::string& accountId, const std::string& folder, int64_t uid) const {
+        return hasMessage_ && curEnv_.uid == uid && curEnv_.folder == folder &&
+               curEnv_.accountId == accountId;
+    }
+    // Whether the message shown had no downloaded body when it was shown.
+    bool BodyMissing() const { return hasMessage_ && bodyMissing_; }
+    // The body area's note while the message is not downloaded: "Downloading
+    // the message…", or why it could not be. No-op unless the body is missing.
+    void ShowBodyNote(const std::string& note);
+    // A body the shown message did not have has been downloaded: show it.
+    // No-op unless the pane shows that message and still lacks its body.
+    void BodyArrived(const MessageEnvelope& env);
+    // Raised by Show for a message whose body is not downloaded: the app
+    // downloads it now instead of waiting for the next sync.
+    std::function<void(const MessageEnvelope&)> onBodyMissing;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Container() const { return root_; }
 
@@ -161,9 +191,13 @@ private:
     std::vector<Account> accounts_;
     std::string          curAccount_;
     bool                 hasMessage_ = false;
+    bool                 bodyMissing_ = false;   // shown without a downloaded body
     bool                 junkFolder_ = false;
     LocalStore*          store_ = nullptr;
     SenderBadgeResolver  badges_;
+    const SenderIconCache* icons_ = nullptr;
+    std::function<void(const std::string& key)> requestIcon_;
+    SenderBadge          shownBadge_;   // the badge beside the shown message
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> actions_;      // Reply · Forward · Junk · Delete · More
@@ -173,6 +207,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     from_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     to_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     date_;
+    // [DMARC] [DKIM] [SPF]: the sender checks the receiving server made, a
+    // small bordered label each (green passed, red failed, grey no verdict),
+    // with the details as its tooltip; [S/MIME] / [OpenPGP] for a signed
+    // message.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> authRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;       // avatar · from/to · date · Reply
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> rule_;         // divider above the body
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> avatarHost_;   // sender badge

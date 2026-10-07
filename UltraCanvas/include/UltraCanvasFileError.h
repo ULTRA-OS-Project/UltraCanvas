@@ -148,9 +148,10 @@ namespace Detail {
         const auto stamp = static_cast<unsigned long long>(
                 std::chrono::steady_clock::now().time_since_epoch().count()) & 0xffffffu;
         for (unsigned attempt = 0; attempt < 1000; ++attempt) {
-            const fs::path candidate = dir / (".ucsave-" + std::to_string(stamp) + "-" +
-                                              std::to_string(counter.fetch_add(1)) +
-                                              PathToUtf8(target.extension()));
+            // The extension is the target's own, and can be outside ASCII.
+            const fs::path candidate = dir / PathFromUtf8(".ucsave-" + std::to_string(stamp) + "-" +
+                                                          std::to_string(counter.fetch_add(1)) +
+                                                          PathToUtf8(target.extension()));
             std::error_code ec;
             if (!fs::exists(candidate, ec)) return candidate;
         }

@@ -4,7 +4,7 @@
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -50,7 +50,7 @@ Creates a list view at the given position and size. Until a model is attached th
 ### Model / Delegate / Selection wiring
 
 ```cpp
-void SetModel(IListModel* model);
+void SetModel(std::shared_ptr<IListModel> model);
 IListModel* GetModel() const;
 
 void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
@@ -60,7 +60,7 @@ void SetSelection(std::shared_ptr<IListSelection> selection);
 IListSelection* GetSelection() const;
 ```
 
-The view never owns the raw model pointer — callers keep the model alive (typically via a `std::shared_ptr` whose `.get()` is passed in). Delegates and selections are shared via `std::shared_ptr`.
+The view shares ownership of the model, the delegate and the selection: all three are passed as `std::shared_ptr`, and the getters return plain pointers for reading.
 
 ### Styling
 
@@ -150,6 +150,9 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+Called before the view has been laid out (no height yet), `EnsureRowVisible`
+remembers the row and reveals it once the view has its size, so a list filled
+and selected while its window is still being built opens with that row in view.
 
 ```cpp
 ScrollMetrics GetScrollMetrics() const;
@@ -283,6 +286,8 @@ public:
     void InsertItem(int row, const MultiColumnListItem& item);
     void RemoveItem(int row);
     void Clear();
+    // Every row at once, one change notification (AddItem notifies per row).
+    void SetItems(std::vector<MultiColumnListItem> newItems);
 
     int GetItemCount() const;
     const MultiColumnListItem& GetItem(int row) const;
@@ -371,6 +376,9 @@ public:
     virtual std::vector<int> GetSelectedRows() const = 0;
     virtual int GetCurrentRow() const = 0;
     virtual bool HasSelection() const = 0;
+    // Rows inserted (count > 0) or removed (count < 0) at `row`: the same items
+    // stay selected at their new rows (the view calls it from the model).
+    virtual void ShiftRows(int row, int count);
 };
 
 class UltraCanvasSingleSelection : public IListSelection { /* ... */ };
@@ -378,6 +386,14 @@ class UltraCanvasMultiSelection  : public IListSelection { /* ... */ };
 ```
 
 If `SetSelection()` is never called, the view installs a single-selection by default.
+
+The selection follows the items, not the row numbers: when the model inserts
+or removes rows (`InsertItem`, `RemoveItem`), the view moves the selection,
+the keyboard focus and the hover with them, so a row inserted above the
+selected one leaves the same item selected. That moves no item in or out of
+the selection, so it raises no `onSelectionChanged`; a selected row that is
+removed leaves the selection, and that is reported. `SetItems` / `Clear`
+replace every row, and the caller selects again.
 
 ## Events / Callbacks
 
@@ -406,9 +422,11 @@ std::function<void(int row, const UCEvent& event)> onContextMenu;
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
 
-`onHeaderClicked` is where sorting is wired up: re-order the model by the
+`onHeaderClicked` is where sorting is wired up: re-order the rows by the
 column, toggling the direction when it is already the sort column, then tell
-the view which column is sorted so the header shows it. A header press no
+the view which column is sorted so the header shows it. The ready-made way to
+re-order is to show the model through an
+[`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md). A header press no
 longer counts as a click on "no row", so it leaves the selection alone.
 
 `onContextMenu` is where a right-click menu is wired up. The view has
@@ -416,14 +434,27 @@ already selected the row under the pointer, so the handler reads the
 selection (or `row`) and opens a popup menu at the pointer:
 
 ```cpp
-listView->onContextMenu = [this](int row, const UCEvent& event) {
-    contextMenu_ = std::make_shared<UltraCanvasMenu>("listCtx", 0, 0, 200, 0);
-    contextMenu_->SetMenuType(MenuType::PopupMenu);
-    contextMenu_->AddItem(MenuItemData::Submenu("Export", {
-        MenuItemData::Action("As CSV…", [this]() { ExportCsv(); }),
-    }));
-    PopupElementSettings settings;
-    contextMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+class FileListPanel {
+public:
+    FileListPanel(UltraCanvasWindowBase& window,
+                  std::shared_ptr<UltraCanvasListView> listView)
+        : window_(&window), listView_(std::move(listView)) {
+        listView_->onContextMenu = [this](int row, const UCEvent& event) {
+            contextMenu_ = std::make_shared<UltraCanvasMenu>("listCtx", 0, 0, 200, 0);
+            contextMenu_->SetMenuType(MenuType::PopupMenu);
+            contextMenu_->AddItem(MenuItemData::Submenu("Export", {
+                MenuItemData::Action("As CSV…", [this]() { ExportCsv(); }),
+            }));
+            PopupElementSettings settings;
+            contextMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+        };
+    }
+
+private:
+    void ExportCsv();                                // your export code
+    UltraCanvasWindowBase* window_;
+    std::shared_ptr<UltraCanvasListView> listView_;
+    std::shared_ptr<UltraCanvasMenu> contextMenu_;   // keeps the open menu alive
 };
 ```
 
@@ -431,9 +462,14 @@ Keep the menu in a member: `OpenMenu` shows it, and a menu that goes out of
 scope at the end of the handler closes before it is seen.
 
 ```cpp
-listView->onHeaderClicked = [view = listView.get(), model](int column) {
+// The view shows a sorting proxy over the source model
+auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(model);
+listView->SetModel(proxy);
+
+listView->onHeaderClicked = [view = listView.get(), proxy](int column) {
     bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
-    model->SortBy(column, ascending);          // however your model orders its rows
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
     view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
 };
 ```
@@ -603,6 +639,12 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
+
+The keys go on from the selection's current row, whoever selected it: a click,
+a key, or the application through `GetSelection()->Select(row)` - after it
+rebuilt or re-sorted the rows and selected the one the user was on, Down moves
+to the row below that one. `ResetSelection()` clears the focus as well, so the
+first Down after it selects the first row.
 
 ## Best Practices
 

@@ -162,6 +162,7 @@ namespace UltraCanvas {
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
         config.confirmOverwrite = opts.confirmOverwrite;
+        config.hoverIconMenu    = opts.hoverIconMenu;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;

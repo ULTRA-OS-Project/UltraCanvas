@@ -104,7 +104,7 @@ int LoadProviderPlugins() {
     host.registerProvider = [](std::shared_ptr<ICloudProvider> p) { RegisterProvider(std::move(p)); };
 
     std::error_code ec;
-    const std::filesystem::path dir = PathFromUtf8(GetPluginDirectory());
+    const std::filesystem::path dir = UltraCanvas::PathFromUtf8(GetPluginDirectory());
     if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) return 0;
 
     int loaded = 0;

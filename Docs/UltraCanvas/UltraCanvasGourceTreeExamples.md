@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasGourceTree.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.1
+**Version:** 1.0.2
 
 ## Class Hierarchy
 
@@ -156,14 +156,14 @@ struct GourceStyle {
 
 ```cpp
 UltraCanvasGourceTree(const std::string& id,
-                      long x, long y, long w, long h);
+                      float x, float y, float w, float h);
 ```
 
 ### Factory Function
 
 ```cpp
 std::shared_ptr<UltraCanvasGourceTree> CreateGourceTree(
-        const std::string& id, long x, long y, long w, long h);
+        const std::string& id, float x, float y, float w, float h);
 ```
 
 ### Node Management
@@ -243,7 +243,7 @@ void   ZoomToFit();
 void   ResetView();
 
 void     SetPan(float x, float y);
-Point2Df GetPan() const;
+Point2Dd GetPan() const;
 void     CenterOnNode(const std::string& nodeId);
 ```
 
@@ -277,7 +277,7 @@ std::function<void()>                   onLayoutComplete;
 
 All examples are drawn from `Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp`.
 
-### Building a project tree
+### Building and configuring a project tree
 
 ```cpp
 void GenerateSampleFileSystem(UltraCanvasGourceTree* tree) {
@@ -301,13 +301,10 @@ void GenerateSampleFileSystem(UltraCanvasGourceTree* tree) {
     tree->AddDirectory("root", "tests", "tests");
     // ...add files
 }
-```
 
-### Configuring the project tree visualization
-
-```cpp
+// Build the tree, then configure the visualization
 auto projectTree = std::make_shared<UltraCanvasGourceTree>(
-    "ProjectTree", 10, 90, kDefaultWidth - 50, 540);
+    "ProjectTree", 10, 90, 980, 540);
 
 GenerateSampleFileSystem(projectTree.get());
 projectTree->SetLayoutMode(GourceLayoutMode::Hybrid);
@@ -467,6 +464,12 @@ void GenerateLargeFileSystem(UltraCanvasGourceTree* tree,
         };
     createLevel("root", 0);
 }
+
+// Benchmark run: 4 levels deep, 20 files per directory
+auto largeTree = CreateGourceTree("LargeTree", 10, 90, 980, 540);
+GenerateLargeFileSystem(largeTree.get(), 4, 20);
+largeTree->SetLayoutMode(GourceLayoutMode::Static);
+largeTree->PerformLayout();
 ```
 
 ### Adding nodes interactively from a form

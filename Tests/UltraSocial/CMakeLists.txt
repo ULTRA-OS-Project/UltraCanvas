@@ -12,6 +12,7 @@ set(ULTRASOCIAL_TEST_SOURCES
     test_tier2_connectors.cpp
     test_tier3_connectors.cpp
     test_outbox.cpp
+    test_paths.cpp
 )
 
 add_executable(UltraSocialEngineTests ${ULTRASOCIAL_TEST_SOURCES})

@@ -4,6 +4,13 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.13.0 - sender icons on demand: SetIconRequester (a painted row
+//                   whose badge has no icon asks for it), IconCached,
+//                   RefreshBadges
+// Version: 0.12.0 - folder names by the server's separator (UltraMailFolderNames)
+// Version: 0.11.0 - the list sorts by the column header clicked (SetSort,
+//                   onSortChanged); a list fills in one go and paints before
+//                   the reading pane renders; onBodyMissing / BodyArrived
 // Version: 0.10.0 - onComposeTo from the reading pane (a clicked mail address)
 // Version: 0.9.0 - SetLinkTooltips (Settings > Display > Links)
 // Version: 0.8.0 - onLinksShown / onLinkHovered from the reading pane
@@ -31,6 +38,7 @@
 #include "UltraMailSenderBadge.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailMessageFilter.h"
+#include "UltraMailMessageSort.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -64,8 +72,16 @@ public:
     // section. Re-set it after the address book changes; the next Reload()
     // draws the new colours.
     void SetContacts(ContactIndex contacts);
-    // The sender-icon cache the badge reads brand icons from (not owned).
+    // The sender-icon cache the badge reads icons from (not owned).
     void SetIconCache(const SenderIconCache* cache);
+    // Asked for the icon of a badge on screen that has none cached yet
+    // (SenderBadge::iconKey) - the app hands the key to the cache's loader.
+    void SetIconRequester(std::function<void(const std::string& key)> request);
+    // An icon has been cached: the rows (and the reading pane) waiting for it
+    // show it. UI thread.
+    void IconCached(const std::string& key);
+    // Every row's badge worked out again (after the icon settings changed).
+    void RefreshBadges();
 
     // Build the mail area. Call once; add the result to a parent.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
@@ -113,6 +129,21 @@ public:
     // closed; otherwise it is `fixedPx` wide. Dragging the divider still
     // resizes it until the next change here (or, fitted, the next refit).
     void SetFolderTreeWidth(bool fitToText, int fixedPx);
+
+    // The list's order. Clicking a column header changes it (the same header
+    // again turns it round) and raises onSortChanged, so the app can remember
+    // it; SetSort applies a remembered one. Newest first by default.
+    void SetSort(const MessageSort& sort);
+    const MessageSort& Sort() const { return sort_; }
+    std::function<void(const MessageSort&)> onSortChanged;
+
+    // The reading pane's message had no downloaded body; the app fetches it
+    // (MessagePreview::onBodyMissing) and reports back here.
+    std::function<void(const MessageEnvelope&)> onBodyMissing;
+    void BodyArrived(const MessageEnvelope& env) { preview_.BodyArrived(env); }
+    void ShowBodyNote(const MessageEnvelope& env, const std::string& note) {
+        if (preview_.Shows(env.accountId, env.folder, env.uid)) preview_.ShowBodyNote(note);
+    }
 
     // Narrow the list to one kind of mail ("Show emails ▸" in the row menu);
     // a filter with kind All shows everything again. Switching folder or
@@ -206,7 +237,6 @@ private:
     // read state — keeping selection and scroll. Falls back to FullRebuild on a
     // near-total turnover (e.g. a UIDVALIDITY renumber).
     void DiffListFromStore(bool markTopRead);
-    void AddMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids);
     // Build one row's model item + parallel state (shared by rebuild / insert).
     void BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,
                          UltraCanvas::MultiColumnListItem& outItem,
@@ -218,13 +248,27 @@ private:
     void UpdateRowFlags(int row, uint32_t newFlags);
     // Re-draw one row's cell-0 text (sender + ●/↩ glyphs) from its current state.
     void RefreshRowText(int row);
-    // The row a message with `date` belongs at in the date-DESC list.
-    int SortedInsertPos(int64_t date) const;
+    // The row `m` belongs at in the list as it is sorted (sort_).
+    int SortedInsertPos(const MessageEnvelope& m) const;
+    // What the order is worked out from: the sender and subject as the row
+    // shows them, the badge's kind.
+    MessageSortText SortText() const;
+    // Put the rows on screen into sort_'s order, keeping the selection.
+    void ApplySort();
+    // The header's ▲/▼ for sort_.
+    void ShowSortIndicator();
+    // Show `row` in the reading pane once the list has been painted: the pane
+    // (an HTML message's layout) is the slow part of showing a folder, and the
+    // list should not wait for it. `markRead` as for SelectRowImpl.
+    void PreviewAfterPaint(int row, bool markRead);
+    uint64_t previewToken_ = 0;   // the latest PreviewAfterPaint wins
     // Clear the unread ● and dim one row in place (keeps the ↩ waiting glyph).
     void MarkRowRead(int row);
     // The badge for one message, from the address book, the brand registry and
     // the stored content-scan verdict.
     SenderBadge BadgeFor(const MessageEnvelope& m) const;
+    // Its class alone (sorting and filtering need no icon or tooltip).
+    SenderClass ClassFor(const MessageEnvelope& m) const;
     // True when the folder on screen is the account's junk/spam mailbox (a
     // message sitting in it is spam by the server's own verdict).
     bool CurrentFolderIsJunk() const;
@@ -256,6 +300,12 @@ private:
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
     MessageFilter                filter_;
+    MessageSort                  sort_;
+    // True while the list's selection is set by code (a rebuild, a re-sort):
+    // the selection callback then neither shows the row nor marks it read -
+    // whoever set it decides that. Without it a rebuild rendered the message
+    // twice, and every sync that added mail above it rendered it again.
+    bool                         programmaticSelection_ = false;
     // The search field above the list and what it holds: every word must occur
     // in the sender's name or address or in the subject (case-insensitive).
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
@@ -267,6 +317,8 @@ private:
     void ApplyFilter(std::vector<MessageEnvelope>& messages,
                      const std::set<int64_t>& waitingUids) const;
     SenderBadgeResolver          badges_;
+    const SenderIconCache*       icons_ = nullptr;
+    std::function<void(const std::string& key)> iconRequester_;
     bool                         curFolderIsJunk_ = false;
     int                          shownUnread_ = 0;
     bool                         readingPane_ = true;
@@ -290,6 +342,10 @@ private:
 
     // Folder-tree node id -> (accountId, folderName).
     std::map<std::string, std::pair<std::string, std::string>> folderNodeId_;
+    // (accountId + "\n" + folder) -> the separator its name is read by, for
+    // every folder in the tree (RebuildFolderTree).
+    std::map<std::string, std::string> folderDelims_;
+    std::string DelimiterOf(const std::string& accountId, const std::string& folder) const;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane>  outerSplit_;

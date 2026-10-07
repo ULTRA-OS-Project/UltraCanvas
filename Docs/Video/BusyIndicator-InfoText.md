@@ -11,14 +11,16 @@ You can't draw a progress bar without a percentage — but you also can't leave
 the user staring at a frozen screen. That's the job of the Busy Indicator: a
 small animation that says "I'm on it."
 
-Five kinds, one element. The first row is the classic Ring: a blue arc turning
+Six kinds, one element. The first row is the classic Ring: a blue arc turning
 over a faint gray track. Small at 16 pixels for a status line, large next to
 it, and on the right the same ring in orange — `arcColor` and `trackColor`,
 that's all it takes to match your theme.
 
 Row two, the Dual Ring: two concentric arcs, the outer one turning clockwise,
-the inner one turning the other way. At rest they face each other; in motion
-they look like a little mechanism. Same element — the only difference is
+the inner one turning the other way — and in two colours, blue outside and
+orange inside. At rest they face each other; in motion they look like a little
+mechanism. `secondArcColor` paints the inner ring, so on the right it's orange
+and purple. Same element — the only difference is
 `BusyIndicatorKind::DualRing` in the factory call.
 
 Row three is Dots: three dots in a row, swelling and brightening one after the
@@ -28,11 +30,22 @@ line.
 
 Row four, the Bar: a segment sliding along a thin track, entering at the left
 edge and leaving at the right. Perfect under a header or along the bottom of a
-panel. `barFraction` sets how long the segment is.
+panel. `barFraction` sets how long the segment is as a share of the track — or
+give it a length in pixels with `barLength`, like the green one on the right:
+a 40-pixel segment, whatever the width of the track.
 
-And row five, the Pulse: a circle that grows and brightens, then shrinks and
-pales again, like breathing. Quiet enough to sit next to a connection status
-all day long.
+Row five, the Pulse: a circle that grows and brightens, then shrinks and pales
+again, like breathing. Quiet enough to sit next to a connection status all day
+long.
+
+And row six, the fancy one: the Dot Ring. Eight dots on a circle, and a head
+running round them clockwise — each dot is full size when the head reaches it
+and shrinks away behind it. Just below, three of them side by side, one per
+`dotRingFade`. Fade: the trail fades out like a comet's tail. NoFade: no fading
+at all, every dot stays solid and the head shows by size alone. And
+FadeRandomColor — watch this one: every time a dot fades back in, it comes
+back in a new random colour, never the one it just faded out in. It switches
+while the dot is invisible, so it never jumps; it just keeps changing.
 
 Below that, the indicators in their natural habitat: a status line. Each kind
 next to a line of text — "Checking mail…", "Receiving messages… forty-two" —
@@ -52,6 +65,6 @@ indicator — use the Gauge in LinearBar mode, or the Progress Dialog. And if
 you came here looking for a number box with up and down arrows, that's the
 Spinner — a different element despite the name.
 
-So that's the Busy Indicator: Ring, Dual Ring, Dots, Bar and Pulse, all with
+So that's the Busy Indicator: Ring, Dual Ring, Dots, Bar, Pulse and Dot Ring, all with
 Start, Stop and a style struct — the smallest possible way to tell your users
 the app hasn't forgotten them.

@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxClipboard.cpp
 // X11-specific clipboard implementation for Linux
-// Version: 1.0.1
-// Last Modified: 2025-08-14
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxClipboard.h"
@@ -14,7 +14,12 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/select.h>
+#include <poll.h>
+#include <cerrno>
 #include "UltraCanvasDebug.h"
+#ifdef ULTRACANVAS_HAS_XFIXES
+#include <X11/extensions/Xfixes.h>
+#endif
 
 namespace UltraCanvas {
 
@@ -67,6 +72,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxClipboard::Shutdown() {
+        StopChangeListener();
         if (display && window) {
             XDestroyWindow(display, window);
             window = 0;
@@ -138,6 +144,7 @@ namespace UltraCanvas {
         atomApplicationOctetStream = XInternAtom(display, "application/octet-stream", False);
         atomGnomeCopiedFiles = XInternAtom(display, "x-special/gnome-copied-files", False);
         atomKdeCutSelection = XInternAtom(display, "application/x-kde-cutselection", False);
+        atomPasswordManagerHint = XInternAtom(display, "x-kde-passwordManagerHint", False);
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -156,6 +163,32 @@ namespace UltraCanvas {
         }
 
         return success;
+    }
+
+    // Not logged, unlike SetClipboardText: the text is a password.
+    bool UltraCanvasLinuxClipboard::SetClipboardSecretText(const std::string& text) {
+        return WriteTextToClipboard(atomClipboard, text, true);
+    }
+
+    // The marker is a target of its own whose content is "secret". Our own
+    // copy is answered from what we offer; another program's by asking it for
+    // that target, which an owner without the marker refuses at once.
+    bool UltraCanvasLinuxClipboard::IsClipboardMarkedSecret() {
+        if (!display || !window) return false;
+        std::vector<uint8_t> hint;
+        if (ownsClipboard && XGetSelectionOwner(display, atomClipboard) == window) {
+            for (const auto& offer : offeredTargets) {
+                if (offer.first == atomPasswordManagerHint) hint = offer.second;
+            }
+        } else {
+            std::string format;
+            if (!ReadClipboardData(atomClipboard, atomPasswordManagerHint, hint, format)) return false;
+        }
+        std::string value(hint.begin(), hint.end());
+        while (!value.empty() && (value.back() == '\0' || std::isspace(static_cast<unsigned char>(value.back())))) {
+            value.pop_back();
+        }
+        return value == "secret";
     }
 
     // text/html next to the text flavours: browsers, office suites and mail
@@ -242,7 +275,90 @@ namespace UltraCanvas {
     }
 
 // ===== MONITORING =====
+    // XFixes reports every new owner of CLIPBOARD (and the owner going away)
+    // on a connection of its own, so this thread never touches the
+    // application's display. It only counts; HasClipboardChanged reads the count.
+    void UltraCanvasLinuxClipboard::StartChangeListener() {
+#ifdef ULTRACANVAS_HAS_XFIXES
+        if (!display) return;
+        Display* d = XOpenDisplay(DisplayString(display));
+        int eventBase = 0, errorBase = 0;
+        if (!d || !XFixesQueryExtension(d, &eventBase, &errorBase) || ::pipe(changeWakePipe) != 0) {
+            if (d) XCloseDisplay(d);
+            debugOutput << "UltraCanvas: no XFixes; clipboard changes are noticed by their text" << std::endl;
+            return;
+        }
+        XFixesSelectSelectionInput(d, DefaultRootWindow(d), XInternAtom(d, "CLIPBOARD", False),
+                                   XFixesSetSelectionOwnerNotifyMask |
+                                   XFixesSelectionWindowDestroyNotifyMask |
+                                   XFixesSelectionClientCloseNotifyMask);
+        XFlush(d);
+        changeDisplay = d;
+        changeListenerAlive = true;
+        const int wakeFd = changeWakePipe[0];
+        changeThread = std::thread([this, d, eventBase, wakeFd]() {
+            for (;;) {
+                while (XPending(d) > 0) {
+                    XEvent event;
+                    XNextEvent(d, &event);
+                    if (event.type == eventBase + XFixesSelectionNotify) ownerChanges.fetch_add(1);
+                }
+                pollfd fds[2];
+                fds[0].fd = ConnectionNumber(d);
+                fds[0].events = POLLIN;
+                fds[0].revents = 0;
+                fds[1].fd = wakeFd;
+                fds[1].events = POLLIN;
+                fds[1].revents = 0;
+                const int n = ::poll(fds, 2, -1);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    break;
+                }
+                if (fds[1].revents & POLLIN) break;
+                if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
+            }
+            changeListenerAlive = false;
+        });
+#endif
+    }
+
+    void UltraCanvasLinuxClipboard::StopChangeListener() {
+        if (changeThread.joinable()) {
+            const char byte = 1;
+            if (::write(changeWakePipe[1], &byte, 1) < 0) {
+                // The thread is gone already; join below returns at once.
+            }
+            changeThread.join();
+        }
+        if (changeDisplay) XCloseDisplay(changeDisplay);
+        changeDisplay = nullptr;
+        for (int& fd : changeWakePipe) {
+            if (fd >= 0) ::close(fd);
+            fd = -1;
+        }
+        changeListenerAlive = false;
+    }
+
+    bool UltraCanvasLinuxClipboard::HasClipboardOwner() {
+        return display && XGetSelectionOwner(display, atomClipboard) != None;
+    }
+
     bool UltraCanvasLinuxClipboard::HasClipboardChanged() {
+        // Whoever asks is watching the clipboard: start listening for owners.
+        if (!changeListenerTried) {
+            changeListenerTried = true;
+            StartChangeListener();
+        }
+        if (changeListenerAlive) {
+            const uint64_t changes = ownerChanges.load();
+            if (changes != ownerChangesSeen) {
+                ownerChangesSeen = changes;
+                clipboardChanged = true;
+            }
+            return clipboardChanged;
+        }
+
         // Check if enough time has passed since last check
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastChangeCheck);
@@ -317,7 +433,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text) {
+    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text, bool secret) {
         std::vector<uint8_t> data(text.begin(), text.end());
         // One string, several targets: requestors ask for whichever text
         // flavour they prefer.
@@ -327,6 +443,10 @@ namespace UltraCanvas {
         offers.emplace_back(atomTextPlain, data);
         offers.emplace_back(atomString, data);
         offers.emplace_back(atomText, std::move(data));
+        if (secret) {
+            const std::string hint = "secret";
+            offers.emplace_back(atomPasswordManagerHint, std::vector<uint8_t>(hint.begin(), hint.end()));
+        }
         return WriteClipboardTargets(selection, std::move(offers));
     }
 
@@ -445,6 +565,13 @@ namespace UltraCanvas {
                 rest.clear();
             }
             if (!verb.empty() && verb.back() == '\r') verb.pop_back();
+            // Only "copy" or "cut" is a verb. An owner that answers every
+            // target with the same bytes (xclip) hands over a bare URI
+            // list here, whose first line is a file.
+            if (verb != "copy" && verb != "cut") {
+                verb.clear();
+                rest = payload;
+            }
             cutOperation = (verb == "cut");
             filePaths = ParseUriListPaths(rest);
             if (!filePaths.empty()) return true;

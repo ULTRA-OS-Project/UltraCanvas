@@ -165,6 +165,8 @@ namespace UltraCanvas {
         // --- LaTeX plugin ---
         {"MicroTeX",          "https://github.com/NanoMichael/MicroTeX",                           "https://github.com/NanoMichael/MicroTeX",                       "MIT"},
         {"Latin Modern Math", "https://www.gust.org.pl/projects/e-foundry/lm-math",                "",                                                              "LPPL"},
+        // --- WasmHost module (UltraWeb) ---
+        {"wasmtime",          "https://wasmtime.dev/",                                             "https://github.com/bytecodealliance/wasmtime",                  "Apache 2"},
         // --- DataFormats (UltraCanvasJSON, vendored engine) ---
         {"yyjson",            "https://ibireme.github.io/yyjson/doc/doxygen/html/",                "https://github.com/ibireme/yyjson",                             "MIT"},
         // --- AudioFX / VideoFX ---
@@ -707,6 +709,10 @@ namespace UltraCanvas {
         dep("Archive formats", "libarchive (BSD 2)", "libarchive (BSD 2)", "libarchive (BSD 2)");
         dep("Compression", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)");
         dep("Planned providers (CHM/LIT, WIM, Brotli)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)");
+
+        header("WasmHost module");
+        dep("WebAssembly engine", "wasmtime (Apache 2)\n(prebuilt C API, downloaded)",
+            "wasmtime (Apache 2)\n(opt-in)", "wasmtime (Apache 2)\n(opt-in; none for CLANG64)");
 
         // ============================================================
         // The UltraCanvasListView table itself

@@ -1,9 +1,19 @@
+#### 2026-10-05 *0.1.9*
+- **The dashboard keeps its settings and endpoints in a Windows profile
+  named in any script.** Its configuration folder was read with the narrow
+  `getenv("APPDATA")`, which answers in the ANSI code page, and handed to the
+  JSON file helpers, which open it as UTF-8; for a user name outside the code
+  page `endpoints.json` and `config.ini` were neither saved nor read back. The
+  folder is read with the framework's `GetEnvUtf8` now and every file in it
+  opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`).
+
 #### 2026-10-04 *0.1.8*
-- **Settings and endpoints load and save under a profile folder outside the
-  Windows code page.** The config path and folder, `std::string`s from
-  `ConfigPath()` / `ConfigDir()`, were handed straight to `fs::` calls and
-  streams, which Windows converts in its ANSI code page. They go through
-  `PathFromUtf8` now (found by the path check, framework changelog).
+- **The chat dialog sends on Enter.** Its message box only sent through the
+  Send button; now Enter sends and Shift+Enter starts a new line, through the
+  text area's `onBeforeKeyDown` hook (framework,
+  `Docs/UltraCanvas/changelog.d/textarea-before-keydown.md`). The placeholder
+  says so. While a reply is still on its way Enter does nothing, as Send.
 
 #### 2026-09-29 *0.1.7*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called

@@ -1,3 +1,259 @@
+#### 2026-10-06 *0.10.33*
+- **The account wizard explains how to set up iCloud mail.** Apple takes only
+  an app-specific password in other mail programs, made on account.apple.com -
+  the Apple Account password fails with "authentication failed", and the
+  wizard's one-line hint said only that an app password was needed. Under the
+  sign-in fields, *How to set up an iCloud mail account* now has a **Show
+  info** button that opens the steps in an info area (the dialog grows to hold
+  it, *Hide info* closes it): two-factor authentication and iCloud Mail turned
+  on; account.apple.com, *Sign-In and Security*, *App-Specific Passwords*,
+  *Generate*; what goes in the address and password fields; the servers and
+  the username (the @icloud.com address) for an own domain on iCloud+; and what
+  to check when the sign-in still fails. It is offered for iCloud addresses
+  and for addresses at a domain no preset knows (an own iCloud+ domain looks
+  like that), not for Gmail, Outlook or the other known providers. For an
+  iCloud address the hint and the password field say "app-specific password".
+  The servers in the guide are taken from the iCloud preset
+  (`ICloudSetupGuide`, `OffersICloudSetupGuide`). Tests: `test_discovery.cpp`.
+
+#### 2026-10-05 *0.10.32*
+- **The window no longer freezes after a sync that brought much mail.**
+  At the end of every sync the senders of the new mail go into the address
+  book, and that ran on the window's own thread one sender at a time: a
+  search of the whole address book, then - for a new address - a save in a
+  transaction of its own, each flushed to disk. With a handful of new
+  messages nobody noticed. After a sync that brought many - a newly added
+  account, an inbox downloaded again - it held the window: on Windows,
+  where every flush also meets the virus scanner, clicks went unanswered
+  for twenty seconds and more (160 messages), and for minutes on a mailbox
+  of a few thousand. A click on the other account's tile looked as if
+  switching accounts were slow. The senders of a sync are now collected
+  together: one read of the stored addresses, one transaction for every new
+  contact, each address once however many messages it sent
+  (`ContactCollector::CollectSenders`, `ContactStore::SaveAll`). Measured
+  on Linux against the old way: 160 senders 146 ms -> 1.2 ms, 2228 senders
+  2.2 s -> 10 ms; disk flushes for 160 senders 303 -> 8.
+- **The address book is in WAL mode**, as the mail index has been since
+  0.10.21: a saved contact no longer creates, flushes and deletes a journal
+  file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+- **How often new mail is checked is a setting**: *Settings > Mail > New
+  mail* offers every 20, 30, 40 or 50 seconds, every 1, 2, 3, 4 or 5 minutes
+  and every 10 minutes (the default stays 5 minutes). It applies as soon as it
+  is chosen - the sync timer now ticks every five seconds and the scheduler
+  starts the accounts that are due - and the connection's tooltip says the
+  interval. An account whose last check is still running when the next falls
+  due is not checked a second time beside it, which a short interval and a
+  slow server or a first download would otherwise do. Stored as
+  `check_mail_every_sec` in `preferences.ini`; a number edited in by hand is
+  read as the nearest choice. Tests: `test_preferences.cpp`,
+  `test_scheduler.cpp`.
+- **A new account's mail arrives forty times faster**: the IMAP plug-in
+  now fetches headers and bodies in batches instead of one message at a time
+  (about a second a message on Windows before): two hundred headers to a
+  request, and bodies in blocks of up to 4 MB. See the framework changelog,
+  "IMAP: headers and bodies are fetched in batches".
+- **Sender icons are fetched in the background, for the rows on screen.**
+  The sync fetched a known service's icon as each new message's header
+  arrived, and waited for the download (up to ten seconds when a site did
+  not answer) before taking the next message. Now the message list asks for
+  an icon when it paints a row whose sender has none yet - so only the
+  senders actually shown are fetched - and the icon cache's own threads (up to
+  three) download it; the row, and the reading pane, show it as it arrives.
+  Neither the sync nor the window waits for a download
+  (`SenderIconCache::Request`, `SetReadyHandler`).
+- **Other senders show their website's icon.** A sender that is not on
+  UltraMail's list of known services now gets the icon of the website it
+  writes from: the home page of its domain (`mail.shop.example` ->
+  `shop.example`) is read for its `<link rel="icon">`, the size that suits
+  the badge first, with `/favicon.ico` as the fallback; the icon is kept in
+  `cache/sender-icons/sites`, and a site without one is asked again after a
+  week. Only for mail that passed the scam check - never for spam, a scam,
+  the junk folder or a mailbox provider such as gmail.com - because reading
+  the site tells its server that someone looked. A second switch in
+  *Settings > Privacy > Sender icons*, "Show other senders' website icons"
+  (on; `fetch_site_icons`). Tests: `test_senderidentity.cpp`.
+- **A spam or scam badge no longer wears the brand's logo.** An icon is
+  drawn without the badge's frame, so a phishing mail from a forged
+  `paypal.com` address showed PayPal's logo and not the red frame. A
+  dangerous message's badge now always shows its frame.
+- **Genuine mail is no longer marked as a scam for its tracking links.** A
+  newsletter whose link reads "www.shop.example/sale" but goes through its
+  mail service's click tracker looked like a link lying about where it goes -
+  the strongest scam rule - and a bank asking to update payment details, a
+  help-desk Reply-To or links to many sites added to it. UltraMail now reads
+  the checks the receiving server made of the sending domain (the
+  `Authentication-Results` header: DKIM, SPF, DMARC). A sender is **verified**
+  when DMARC passed for its From domain or a DKIM signature of that domain
+  verified; for it those rules no longer count, and for a verified known
+  service (PayPal from `paypal.com`, proven) neither does asking to update
+  account details. Every rule that catches a lie stays: a look-alike domain
+  that signs its own mail is still a scam. Only the topmost header is read -
+  the user's own server's; one further down may be the sender's own forgery
+  (the scan read the bottom one before). A failure counts when DMARC fails,
+  or nothing passed: forwarded mail fails SPF, and a mail service's second
+  signature may fail while the sender's passes - both were "possibly forged"
+  before. Stored verdicts of older rules are scanned again by the sync, 300
+  per folder and check, so the list's badges follow without each message
+  being opened (`SyncEngine::RescanStaleVerdicts`, schema 10). Tests:
+  `test_threatscan.cpp`, `test_localstore.cpp`.
+- **[DMARC] [DKIM] [SPF] beside the sender.** The reading pane shows the
+  sender checks as small bordered labels - green passed, red failed, grey
+  no verdict - each with a tooltip saying what was checked, for which domain,
+  what that proves and which server checked it; **[Not checked]** when the
+  server recorded none (not a warning). A message signed with S/MIME or
+  OpenPGP shows **[S/MIME]** / **[OpenPGP]** in grey: detected, not yet
+  verified. The badge's and the sender's tooltips name a verified sender:
+  "✓ Verified sender: paypal.com (DKIM signature and DMARC)".
+- **Buttons in HTML mail show their text again.** In a newsletter whose
+  template colours every link red with `!important` and whose buttons set
+  their own white text the same way (Lexware, via Intercom), the buttons'
+  text was painted red on the red button - "Zum Artikel", "Anmelden" looked
+  like empty red boxes - and the white footer links came out red. The
+  button's own colour now wins, as in a browser. See the framework
+  changelog, "HTML reader: an inline `!important` beats a style sheet's".
+- **Tooltips no longer cover what they explain.** A tooltip - a message
+  row's, the sender badge's, a link's address - opened below and to the right
+  of the pointer, over the line being read. It now opens above and to the
+  right, with a gap, so the line under the pointer stays readable (below the
+  pointer only at the top of the window). See the framework changelog,
+  "Tooltips sit above and to the right of the pointer".
+- **A mail check no longer signs in four times.** The status, the new
+  messages, the read flags and the bodies each signed in to the server on a
+  connection of their own; now the plug-in keeps a signed-in connection and
+  every check, and every flag change, move or delete between them, runs on
+  it. At a check every twenty seconds that is no sign-in at all after the
+  first, instead of twelve a minute per account - which some providers limit.
+  See the framework changelog, "IMAP: one sign-in serves many checks".
+
+#### 2026-10-05 *0.10.31*
+- **The mailbox opens in a Windows profile named in any script.** The data
+  folder (`%APPDATA%\UltraMail`: the mail database, the credential vault,
+  the preferences) was found through the narrow `getenv("APPDATA")`, which
+  answers in the ANSI code page; for a user name outside it the folder came
+  back with `?` in it and the store did not open. It is read with the
+  framework's `GetEnvUtf8` now, as UTF-8 (framework changelog:
+  `env-narrow`).
+
+#### 2026-10-04 *0.10.30*
+- **Switching accounts is immediate.** A click on an account's tile shows its
+  mail as stored at once - the list first, the message beside it a moment
+  later, once the list is on screen - and then fetches its inbox from the
+  server in the background; new mail joins the list in place when it comes.
+  On a mailbox of 5000 messages the window used to stand still for 0.4 to 1
+  second per switch (measured: 420-960 ms); it now takes 10-55 ms. What made
+  it slow:
+  - **The waiting-for-reply count.** Its "only people you have written to"
+    rule compared every waiting message with every message in the Sent
+    folder, in the database, on every count - half a second each time the
+    account bar or the list was redrawn. The addresses written to are now
+    read once and only again when the Sent mail changes: 470 ms became 15 ms.
+    The rule also missed most of them: it matched only recipients written as
+    a bare address, never "Maya Bennett <maya@example.com>", the way the
+    composer and most mail programs address mail. Those count now.
+  - A switch no longer re-counts every account and re-reads the address
+    book: nothing either depends on changed by looking at another account.
+  - The list fills in one step instead of row by row, and the message in the
+    reading pane is laid out once instead of twice (also on every click on a
+    message, and on every sync that brought mail above it - which also sent
+    the reading pane back to the top of the message).
+  - After a sync only the senders of the new mail are added to the address
+    book, not every sender of the inbox again.
+- **The message list sorts by its column headers.** A click on *From*, on the
+  sender-badge column, on *Subject* or on *Date* orders the list by it; a
+  second click turns the order round, and a small triangle in the header
+  shows which column and which way. Dates start newest first, the rest from A
+  (contacts first for the badge column). Subjects sort without their "Re:",
+  "Fwd:", "AW:" or "WG:", so a reply stays with what it answers, and accented
+  letters sort with their base letter ("Ärztekammer" among the A's). The
+  message being read stays selected, new mail arriving during a sync goes in
+  at its place in the order, and the choice is remembered (`list_sort` in
+  `preferences.ini`).
+- **New mail that never showed up.** Several ways a message could be left out
+  of the list for good, all repaired by the next sync:
+  - Every sync now compares the inbox with the server's own list of messages,
+    not only "anything above the highest message number held". A message an
+    interrupted sync skipped, or one stored blank because its header could
+    not be read (earlier versions did that), is fetched; mail deleted, moved
+    or read on another computer is followed in the background sync too (it
+    used to be only when a folder was opened by hand).
+  - A cache whose message numbers the server has not handed out yet is
+    dropped and fetched again - the server renumbered the mailbox, or the
+    account's server changed. Before, every new message numbered below the
+    old highest number was skipped, without an error.
+  - **Windows only:** a server's mailbox number (UIDVALIDITY) above 2147483647
+    was read as 2147483647 on Windows, so a renumbered mailbox looked
+    unchanged there - and only there (framework changelog, "IMAP: numbers above
+    2147483647 are read right on Windows").
+  - Changing an account's incoming server or user name in *Account Settings*
+    drops the mail downloaded from the old one and fetches the new mailbox.
+  - **"(message body not downloaded yet)" no longer stays.** A message whose
+    body download failed was never downloaded again. Opening it now downloads
+    it at once (the reading pane says so meanwhile), and each sync fetches the
+    bodies still missing among the newest 100 messages.
+  - The newest message was downloaded again on every sync (the server always
+    answers "messages from number N on" with its newest one).
+- **The connection pill says how many messages the server's inbox holds**
+  ("Inbox on the server: 59 messages" in its tooltip). When another computer
+  shows mail this one does not, this tells whether the mail is on the server
+  this account reads at all: if the numbers differ, compare the *Incoming
+  server* in *Account Settings* on both computers.
+- The list opens with its newest message in view; it used to open scrolled two
+  rows down, the selected message hidden above the top (framework changelog,
+  "ListView: EnsureRowVisible before the first layout").
+- **Folders as the server names them.** On servers that put every folder
+  under the inbox with a dot - Courier-style, "INBOX.Drafts" - the folder tree
+  showed "INBOX.Drafts", "INBOX.Trash" and "INBOX.INBOX^Sent" as names. The
+  separator the server lists is now kept with each folder (schema 9) and the
+  names are read by it: Inbox › Sent, Drafts, Trash, Investor, Invoice, as on
+  any other server. The same names appear in the list's title, the status line
+  and *Move to folder* ("Projects / 2026" for a folder two levels down).
+  - **The Sent folder is found** on such servers: "INBOX^Sent" - how a folder
+    came across from a server with another separator - is the Sent folder,
+    and so are the German names servers use ("Gesendete Objekte",
+    "Papierkorb", "Entwürfe" …). That also makes "Waiting for reply" work
+    there: its "people you have written to" rule reads the Sent folder
+    (framework changelog, "IMAP: folder roles by the server's own separator").
+- **Folders deleted or renamed on the server leave the tree.** The folder list
+  only ever added folders; one deleted on the server, or renamed there, stayed
+  in the tree with its old mail for good. Every sync now drops a folder the
+  server no longer lists, with its messages and downloaded bodies (never on an
+  empty list, never the inbox). A folder that is open when it goes takes the
+  view back to the inbox, and pressing *Update* on it says "The folder … is no
+  longer on the server" instead of a "Select failed" alert.
+- **A renumbered mailbox was never noticed in the regular sync.** Reading the
+  folder list wrote 0 over each folder's stored UIDVALIDITY, so the inbox sync
+  that followed found nothing to compare and kept a stale cache. The folder
+  list now leaves the numbering alone.
+- **The highlight stays on the message being read while new mail streams
+  in.** Rows inserted above it moved the message down but not the highlight,
+  which sat on whatever message took its place until the sync finished
+  (framework changelog, "ListView: the selection follows the rows").
+- **The arrow keys go on from the selected message** after the list was
+  rebuilt or re-sorted - a folder or account switch, a sync, a click on a
+  column header. They started again from the top (framework changelog,
+  "ListView: the arrow keys go on from a row selected in code").
+
+#### 2026-10-04 *0.10.29*
+- **The message text fits its pane.** An HTML message tall enough to scroll
+  was laid out for the pane's full width, and the vertical scrollbar then took
+  its strip on top: the end of every line ran under the bar and the few
+  hidden pixels raised a horizontal scrollbar across the bottom as well. The
+  body is now laid out at the width beside the bar, so lines wrap before it and
+  a horizontal bar appears only for content that really cannot wrap (a
+  fixed-width table, a large picture).
+- **No dotted line or slivers after scrolling.** Scrolling a message left a
+  faint dotted yellow line just left of the text and slivers of glyphs below
+  it: the edges of the letters, which scrolling never painted over. Fixed in
+  the framework (framework changelog, "A scrolled view no longer leaves glyph
+  fringes beside and below it").
+- **Resizing the window keeps your place in the message.** It sent the
+  message back to its top (framework changelog, "Resizing a window keeps the
+  scroll position of everything in a split pane").
+- **Thin, round scrollbars in the reading pane.** The message text (HTML and
+  plain text) scrolls with the same thin, rounded scrollbar as the message
+  list instead of the wide square one. Plain-text mail needs the framework's
+  new text-area scrollbar style (framework changelog, "TextArea: the
+  scrollbar's thickness and rounding are styleable").
 #### 2026-10-04 *0.10.28*
 - **Mail addresses in a message open a new message.** A `mailto:` link in
   formatted mail, and a `mailto:` or plain address ("support@shop.example")

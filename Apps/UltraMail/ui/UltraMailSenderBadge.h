@@ -18,6 +18,10 @@
 //     a place a child element can live);
 //   * MakeSenderBadgeElement — for the reading pane, built out of catalogue
 //     elements (container + image element + label) like every other widget.
+// Version: 0.2.0 - website icons for senders that are no known service (when
+//                  their mail passed the scan); iconKey: what to ask the icon
+//                  cache for while no icon is cached; no icon on a spam or
+//                  scam badge, which keeps its warning frame
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -39,7 +43,11 @@ namespace UltraMail {
 // How one badge is drawn.
 struct SenderBadge {
     SenderClass cls      = SenderClass::New;
-    std::string iconPath;                 // cached brand icon, or "" for the monogram
+    std::string iconPath;                 // cached brand or website icon, or "" for the monogram
+    // While no icon is cached but one may be fetched: the icon cache key to
+    // ask for (SenderIconCache::Request) - the list asks when it paints the
+    // row, so only the senders on screen are fetched.
+    std::string iconKey;
     std::string initial  = "?";           // monogram fallback
     UltraCanvas::Color brandColor = UltraCanvas::Color(91, 100, 112);
     std::string tooltip;                  // the whole explanation, ready to show

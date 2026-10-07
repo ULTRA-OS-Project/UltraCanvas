@@ -1,18 +1,20 @@
-- **The path check reads the headers.** `scripts/check_path_string.py` told
-  a string from a path only by the declarations in the file itself, so a
-  struct member or getter declared in a header slipped through
-  (`PathFromUtf8(mailDir_) / env.accountId` in UltraMail's preview,
-  `fs::exists(GetConfigPath())`). It now reads the file's own header for
-  the class's members, and every in-repo header the file includes
-  (transitively, up to 400) for a member access or a call; a name those
-  headers declare two different ways is left alone. Calls to a function
-  declared as returning `std::string` count as strings in `fs::` arguments
-  and stream constructors too, not only in `/` joins. 52 more sites are
-  wrapped in `PathFromUtf8`: the Filer widget (current folder, link targets,
-  templates), UltraVault's device-key vault, UltraWin's environments and
-  associations, the LaTeX reader, the Z-Wave controller path, UltraCloud's
-  plug-in folder, VirtualFS's RAM disk and temp files, the Git reader, rich
-  document export, and the UltraFiler, UltraAI and UltraSocial apps.
+- **The path check follows a member access through the includes.**
+  `scripts/check_path_string.py` already read the headers a file includes
+  directly; a member access such as `PathFromUtf8(mailDir_) / env.accountId`
+  in UltraMail's preview still slipped through, because the struct
+  (`UltraMailTypes.h`) is two includes away. A member access (`x.name`,
+  `x->name`) is now looked up in every repository header the file includes,
+  transitively (up to 400), a header that the include roots do not reach
+  being found by its file name when exactly one header in the repository
+  has it; a member name the headers declare two different ways is left
+  alone. Bare names keep the direct-include rule. Each header's
+  declarations and each include are read once per run, so a full run takes
+  about as long as before (36 s against 34 s). The self-test gains a struct
+  included through another header, and against the pre-fix UltraMail /
+  EmailCleaner sources the check now reports all eight wrong operands.
+  Five more sites are wrapped in `PathFromUtf8`: UltraWin's environment
+  listing and prefix check, VirtualFS's cached-archive cleanup, UltraSocial's
+  attachment check, and an AnchorPoint test.
 - **A plug-in carrying a copy of the core is caught.** Linking a core
   library *statically* into an UltraNet plug-in leaves nothing undefined
   and nothing imported, so neither import check saw it - but the plug-in
@@ -33,5 +35,5 @@
     functions it pulled in; a DLL exporting `UltraNet_ParseUrl` is
     reported; the 12 real plug-ins are clean. The core marks nothing
     `dllexport`, so a static copy inside a Windows DLL exports nothing -
-    that case is the configure guard's. The self-test now covers the export
+    that case is the configure guard's. The self-test covers the export
     parsers of all three platforms.

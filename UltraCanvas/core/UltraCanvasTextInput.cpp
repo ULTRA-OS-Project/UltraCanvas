@@ -1,7 +1,9 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.5.0
-// Last Modified: 2026-09-15
+// Version: 1.5.1
+// Last Modified: 2026-10-07
+// V1.5.1: SetFontSize / SetStyle re-clamp the scroll, invalidate the layout
+//   and redraw (FontChanged), as the Label and Button font setters do.
 // V1.5.0: Every byte offset the field keeps is now a character boundary. Caret
 //   movement, Backspace and Delete step a whole character, hit testing snaps to
 //   one, the password mask draws one '*' per character, the length limit counts
@@ -405,7 +407,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
-        if (IsDisabled() || !IsVisible()) return false;;
+        // FocusLost always gets through: it releases the shared caret, and an
+        // input loses the focus precisely when it is hidden (SetVisible(false)
+        // hides first, then drops the focus) or disabled - swallowing it left
+        // the caret blinking where the field had been.
+        if ((IsDisabled() || !IsVisible()) && event.type != UCEventType::FocusLost) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -439,6 +445,25 @@ namespace UltraCanvas {
 
         // Clear redo stack when new state is saved
         redoStack.clear();
+    }
+
+    void UltraCanvasTextInput::SetStyle(const TextInputStyle& inputStyle) {
+        style = inputStyle;
+        FontChanged();
+    }
+
+    void UltraCanvasTextInput::SetFontSize(float size) {
+        style.fontStyle.fontSize = size;
+        FontChanged();
+    }
+
+    // Every character, and with them the caret, moves with the font: the
+    // horizontal scroll is clamped again, the layout told (for a parent that
+    // sizes from it) and the field redrawn.
+    void UltraCanvasTextInput::FontChanged() {
+        UpdateScrollOffset();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::UpdateScrollOffset() {

@@ -1,6 +1,9 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
+// Version: 1.17.0 - the !important cascade: inline !important beats a style
+//                  sheet's !important (a newsletter's white button text)
 // Version: 1.16.0 - merged with main's 1.4.0-1.7.0
 // Version: 1.15.0 - letter-spacing
 // Version: 1.14.0 - doctype / quirks mode; line-height kept; overflow
@@ -22,7 +25,7 @@
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -542,6 +545,55 @@ static void TestImportantWidthReplacesInlineWidth() {
     CHECK(!sa.widthPercent.has_value());
 }
 
+// A newsletter's button (Intercom / Lexware): the template's style sheet says
+// a.intercom-content-link { color: #FF4554 !important } and the button's link
+// says style="color: #ffffff !important" on a #FF4554 cell. The inline
+// !important wins in CSS; applied before the sheet's, the text was red on red.
+static void TestInlineImportantBeatsSheetImportant() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><head><style>"
+        "a.intercom-content-link { color: #FF4554 !important; font-weight: normal !important; }"
+        "p.lead { color: #333333 !important; }"
+        "</style></head><body>"
+        "<table><tr><td style='background-color: #FF4554; padding: 10px 24px;' bgcolor='#FF4554'>"
+        "<a id='btn' href='https://example.com/' class='intercom-content-link' "
+        "style='color: #ffffff !important; font-size: 14px; white-space: nowrap;'>Zum Artikel</a>"
+        "</td></tr></table>"
+        "<a id='plain' href='https://example.com/' class='intercom-content-link' "
+        "style='color: #00ff00;'>Weiter</a>"
+        "<p id='lead' class='lead' style='color: #0000ff !important; color: #00ff00;'>x</p>"
+        "</body></html>");
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    ResolverOptions options;
+    options.baseFontSizePx = 16.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    Node* btn = find(doc.root.get(), "btn");
+    Node* plain = find(doc.root.get(), "plain");
+    Node* lead = find(doc.root.get(), "lead");
+    CHECK(btn && plain && lead);
+    if (!btn || !plain || !lead) return;
+
+    // Inline !important over the sheet's !important: white.
+    const ComputedStyle& sb = resolver.StyleOf(btn);
+    CHECK(sb.color.r == 255 && sb.color.g == 255 && sb.color.b == 255);
+    CHECK(Near(sb.fontSizePx, 14.f));
+    // A plain inline colour still loses to the sheet's !important.
+    const ComputedStyle& sp = resolver.StyleOf(plain);
+    CHECK(sp.color.r == 0xFF && sp.color.g == 0x45 && sp.color.b == 0x54);
+    // Within the style attribute, !important beats a later normal declaration.
+    const ComputedStyle& sl = resolver.StyleOf(lead);
+    CHECK(sl.color.r == 0 && sl.color.g == 0 && sl.color.b == 255);
+}
+
 // Attribute selectors, as Mailchimp writes its narrow-screen rules:
 // table[id=templateBody]{width:100% !important}, td[class=mcnTextContent].
 static void TestAttributeSelectors() {
@@ -1028,7 +1080,187 @@ static void TestQuirksAndLineHeight() {
     }
 }
 
+// ============================================================================
+// SELECTOR MATCHING ON ANOTHER TREE
+// ============================================================================
+//
+// The matcher is written against a Traits type, not the HTML DOM, so the
+// Vector plugin's SVG reader (tinyxml2 elements, camelCase names kept as
+// written) matches through the same code as the resolver. This tree stands
+// in for such a reader: it keeps its names in their original case and
+// resolves type selectors case-insensitively, the way an SVG vocabulary
+// (linearGradient) must against the parser's lower-cased selectors.
+
+namespace {
+
+struct XmlLikeElement {
+    std::string name;
+    std::vector<std::pair<std::string, std::string>> attributes;
+    std::string text;
+    std::vector<XmlLikeElement*> children;
+    XmlLikeElement* parent = nullptr;
+
+    XmlLikeElement(std::string n, std::vector<std::pair<std::string, std::string>> a = {})
+        : name(std::move(n)), attributes(std::move(a)) {}
+    XmlLikeElement& Add(XmlLikeElement& child) {
+        child.parent = this;
+        children.push_back(&child);
+        return child;
+    }
+    const std::string* Attribute(const std::string& lowerName) const {
+        for (const auto& [k, v] : attributes) {
+            if (LowerAscii(k) == lowerName) return &v;
+        }
+        return nullptr;
+    }
+    static std::string LowerAscii(std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    }
+};
+
+struct XmlLikeTraits {
+    using Element = XmlLikeElement;
+    static bool TagIs(const Element& e, const std::string& lowerTag) {
+        return XmlLikeElement::LowerAscii(e.name) == lowerTag;
+    }
+    static bool IdIs(const Element& e, const std::string& id) {
+        const std::string* v = e.Attribute("id");
+        return v && *v == id;
+    }
+    static bool HasClass(const Element& e, const std::string& name) {
+        const std::string* v = e.Attribute("class");
+        if (!v) return false;
+        size_t pos = 0;
+        while (pos < v->size()) {
+            while (pos < v->size() && std::isspace(static_cast<unsigned char>((*v)[pos]))) ++pos;
+            size_t end = pos;
+            while (end < v->size() && !std::isspace(static_cast<unsigned char>((*v)[end]))) ++end;
+            if (end > pos && v->compare(pos, end - pos, name) == 0 && end - pos == name.size()) return true;
+            pos = end;
+        }
+        return false;
+    }
+    static bool GetAttribute(const Element& e, const std::string& lowerName, std::string& value) {
+        const std::string* v = e.Attribute(lowerName);
+        if (!v) return false;
+        value = *v;
+        return true;
+    }
+    static bool IsLink(const Element& e) { return TagIs(e, "a") && e.Attribute("href"); }
+    static bool IsRoot(const Element& e) { return e.parent == nullptr; }
+    static bool IsEmpty(const Element& e) { return e.children.empty() && e.text.empty(); }
+    static bool SiblingPosition(const Element& e, bool ofType, int& index, int& count) {
+        if (!e.parent) return false;
+        index = 0;
+        count = 0;
+        for (const Element* sib : e.parent->children) {
+            if (ofType && sib->name != e.name) continue;
+            ++count;
+            if (sib == &e) index = count;
+        }
+        return index > 0;
+    }
+    static const Element* Parent(const Element& e) { return e.parent; }
+};
+
+} // namespace
+
+static void TestSelectorMatchingOnForeignTree() {
+    // <svg><defs><linearGradient id="g" class="warm"><stop/><stop class="Hot"/></linearGradient></defs>
+    //      <g class="row"><rect class="box" rx="4"/><rect class="box"/><circle data-Kind="A-B"/></g>
+    //      <rect class="box"/></svg>
+    XmlLikeElement svg("svg", {{"viewBox", "0 0 10 10"}});
+    XmlLikeElement defs("defs");
+    XmlLikeElement grad("linearGradient", {{"id", "g"}, {"class", "warm"}});
+    XmlLikeElement stop1("stop");
+    XmlLikeElement stop2("stop", {{"class", "Hot"}});
+    XmlLikeElement g("g", {{"class", "row"}});
+    XmlLikeElement r1("rect", {{"class", "box"}, {"rx", "4"}});
+    XmlLikeElement r2("rect", {{"class", "box"}});
+    XmlLikeElement c("circle", {{"data-Kind", "A-B"}});
+    XmlLikeElement r3("rect", {{"class", "box"}});
+    svg.Add(defs).Add(grad);
+    grad.Add(stop1);
+    grad.Add(stop2);
+    svg.Add(g);
+    g.Add(r1);
+    g.Add(r2);
+    g.Add(c);
+    svg.Add(r3);
+
+    StyleSheet sheet;
+    sheet.ParseAppend(
+        "linearGradient stop { stop-color: red }\n"          // camelCase type, descendant
+        "#g .Hot { stop-color: blue }\n"                       // id, then a class with its case
+        ".hot { stop-color: green }\n"                         // the class in another case: no
+        "g rect:first-of-type[rx] { fill: yellow }\n"        // ancestor, nth-of-type, attribute present
+        "rect.box:last-child { fill: black }\n"
+        "svg > rect { stroke: gray }\n"                      // `>` reads as a descendant: both rects
+        "[data-kind|=A] { opacity: 0.5 }\n"                  // lower-cased attribute name, |=
+        "[viewbox] { x: 1 }\n"
+        ":root { y: 2 }\n"
+        "stop:empty { z: 3 }\n"
+        ".box { fill: white }\n"
+        ".box.box { fill: silver }\n");                      // more specific, earlier in source: still wins
+
+    auto declared = [&](const XmlLikeElement& e, const std::string& prop) -> std::string {
+        std::string value;
+        for (const Rule* rule : MatchingRules<XmlLikeTraits>(sheet, e)) {
+            for (const auto& d : rule->declarations) {
+                if (d.property == prop) value = d.value;
+            }
+        }
+        return value;
+    };
+
+    CHECK_EQ(declared(stop1, "stop-color"), std::string("red"));
+    CHECK_EQ(declared(stop2, "stop-color"), std::string("blue"));   // #g .Hot beats the type rule; .hot never matched
+    CHECK_EQ(declared(r1, "fill"), std::string("yellow"));          // first rect of its type in <g>, with rx
+    CHECK_EQ(declared(r2, "fill"), std::string("silver"));          // .box.box (0,2,0) over .box (0,1,0)
+    CHECK_EQ(declared(r3, "fill"), std::string("black"));           // last child of <svg>
+    CHECK_EQ(declared(r1, "stroke"), std::string("gray"));          // svg > rect, read as svg rect
+    CHECK_EQ(declared(c, "opacity"), std::string("0.5"));
+    CHECK_EQ(declared(svg, "x"), std::string("1"));
+    CHECK_EQ(declared(svg, "y"), std::string("2"));
+    CHECK_EQ(declared(g, "y"), std::string(""));
+    CHECK_EQ(declared(stop1, "z"), std::string("3"));
+    CHECK_EQ(declared(grad, "z"), std::string(""));
+
+    // The pieces on their own.
+    AttributeSelector words;
+    words.op = '~';
+    words.value = "b";
+    CHECK(AttributeValueMatches(words, "a b c"));
+    CHECK(!AttributeValueMatches(words, "a bb c"));
+    words.op = '^';
+    words.value = "";
+    CHECK(!AttributeValueMatches(words, "anything"));   // an empty prefix matches nothing, as in CSS
+    PseudoClass odd;
+    odd.a = 2;
+    odd.b = 1;
+    CHECK(NthPositionMatches(odd, 3, 5));
+    CHECK(!NthPositionMatches(odd, 4, 5));
+    odd.fromEnd = true;
+    CHECK(!NthPositionMatches(odd, 4, 5));   // 4 of 5 is the 2nd from the end: even
+    CHECK(NthPositionMatches(odd, 3, 5));    // 3 of 5 is the 3rd from the end
+    CHECK(!NthPositionMatches(odd, 0, 5));
+
+    // And the DOM's own traits answer the same questions.
+    Parser parser;
+    Document doc = parser.Parse("<ul><li>a</li><li class=\"X\">b</li></ul>");
+    Node* second = doc.Body()->FindFirst("ul")->children[1].get();
+    StyleSheet domSheet;
+    domSheet.ParseAppend("li:last-child.X { color: red } li.x { color: blue }");
+    const auto rules = MatchingRules<NodeSelectorTraits>(domSheet, *second);
+    CHECK_EQ(rules.size(), size_t(1));
+    CHECK(rules.size() == 1 && rules[0]->declarations[0].value == "red");
+    CHECK(Matches(domSheet.rules[0].selectors[0], *second));
+    CHECK(!Matches(domSheet.rules[1].selectors[0], *second));
+}
+
 int main() {
+    TestSelectorMatchingOnForeignTree();
     TestParserBasics();
     TestParserFragmentAndRecovery();
     TestParserXhtmlAndEntities();
@@ -1044,6 +1276,7 @@ int main() {
     TestMailTableStyles();
     TestImageAutoAttributes();
     TestImportantWidthReplacesInlineWidth();
+    TestInlineImportantBeatsSheetImportant();
     TestAttributeSelectors();
     TestStructuralPseudoClasses();
     TestMediaAndBackgrounds();

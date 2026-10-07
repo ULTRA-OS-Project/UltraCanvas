@@ -367,7 +367,7 @@ namespace UltraCanvas {
         headerContainer->SetBackgroundColor(Color(230, 230, 230, 255));
         headerContainer->SetBorders(1.0f);
         headerContainer->SetPadding(10, 0);
-        headerContainer->layout.SetFlexRow();
+        headerContainer->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         headerContainer->layout.SetFlexGap(10);
 
         int headerX = 10;

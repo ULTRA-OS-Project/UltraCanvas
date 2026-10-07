@@ -12,7 +12,8 @@
 #pragma once
 
 #include "UltraCanvasFilerWidget.h"   // FilerViewType, FilerSortField
-#include "UltraFilerSettings.h"       // GetConfigDirectory()
+#include "UltraFilerSettings.h"
+#include "UltraCanvasPathUtf8.h"       // GetConfigDirectory()
 
 #include <algorithm>
 #include <ctime>
@@ -85,7 +86,7 @@ public:
 
     bool Load() {
         entries.clear();
-        std::ifstream file(PathFromUtf8(GetFolderViewsPath()));
+        std::ifstream file(UltraCanvas::PathFromUtf8(GetFolderViewsPath()));
         if (!file.is_open()) return false;
 
         std::string line;
@@ -123,10 +124,10 @@ public:
     bool Save() const {
         std::error_code ec;
         std::filesystem::create_directories(
-                UltraFilerSettings::GetConfigDirectory(), ec);
+                UltraCanvas::PathFromUtf8(UltraFilerSettings::GetConfigDirectory()), ec);
         if (ec) return false;
 
-        std::ofstream file(PathFromUtf8(GetFolderViewsPath()));
+        std::ofstream file(UltraCanvas::PathFromUtf8(GetFolderViewsPath()));
         if (!file.is_open()) return false;
 
         file << "# UltraFiler folder display state\n";

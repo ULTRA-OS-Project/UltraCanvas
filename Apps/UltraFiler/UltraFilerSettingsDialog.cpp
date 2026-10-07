@@ -38,8 +38,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.14.0
-// Last Modified: 2026-09-17
+// Version: 1.15.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -1201,6 +1201,16 @@ namespace {
         }
     }
 
+    // The style the page ticks: the setting, except that a system with no
+    // desktop to ask draws the simple icons whatever it says - and the host
+    // icons are the default - so the page ticks what is actually drawn
+    // rather than the greyed-out choice.
+    FilerFileIconStyle ShownFileIconStyle(const DialogState* d) {
+        if (!UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+            return FilerFileIconStyle::Simple;
+        return d->settings->fileIconStyle;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildFileIconsPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-file-icons", "File icons",
                 "Whose icons the file display draws for a file that shows no "
@@ -1217,7 +1227,7 @@ namespace {
                             (style == FilerFileIconStyle::HostOperatingSystem
                                      ? "host" : "simple"),
                     FileIconStyleDescription(style),
-                    d->settings->fileIconStyle == style);
+                    ShownFileIconStyle(d) == style);
             // Nothing to take icons from on this system: the choice is shown
             // so the page still says what the setting is, and greyed so it
             // does not promise a display it cannot produce.
@@ -2619,7 +2629,7 @@ namespace {
         for (const auto& [badge, radio] : d->badgeRadios)
             if (badge == d->settings->extensionBadge) d->extensionBadgeGroup.SelectButton(radio);
         for (const auto& [style, radio] : d->fileIconRadios)
-            if (style == d->settings->fileIconStyle) d->fileIconGroup.SelectButton(radio);
+            if (style == ShownFileIconStyle(d)) d->fileIconGroup.SelectButton(radio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }

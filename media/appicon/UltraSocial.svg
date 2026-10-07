@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraSocial</title>
+  <desc>Three people in three colours - pink, blue and amber - inside a white circle with a cyan-to-violet ring: one post, many audiences. The cross-posting mark.</desc>
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <clipPath id="inside">
+      <circle cx="128" cy="128" r="100"/>
+    </clipPath>
+  </defs>
+  <circle cx="128" cy="128" r="112" fill="url(#ring)"/>
+  <circle cx="128" cy="128" r="100" fill="#ffffff"/>
+  <!-- The white stroke is the gap between a head and its shoulders, and
+       between the person in front and the two behind. -->
+  <g clip-path="url(#inside)" stroke="#ffffff" stroke-width="8">
+    <rect x="28" y="158" width="96" height="120" rx="48" ry="48" fill="#ec4899"/>
+    <circle cx="76" cy="122" r="24" fill="#ec4899"/>
+    <rect x="132" y="158" width="96" height="120" rx="48" ry="48" fill="#f59e0b"/>
+    <circle cx="180" cy="122" r="24" fill="#f59e0b"/>
+    <rect x="70" y="162" width="116" height="120" rx="58" ry="58" fill="#2563eb"/>
+    <circle cx="128" cy="112" r="31" fill="#2563eb"/>
+  </g>
+</svg>

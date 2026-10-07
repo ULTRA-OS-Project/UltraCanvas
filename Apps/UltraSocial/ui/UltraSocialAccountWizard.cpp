@@ -1,10 +1,14 @@
 // Apps/UltraSocial/ui/UltraSocialAccountWizard.cpp
+// Version: 0.4.0 - UltraMail's look: themed inputs, a primary Connect button;
+//                  the network's hint in a tinted box under the fields, at
+//                  the height of its text (in the grid it was cut to a line)
 // Version: 0.3.0 - the form is a UltraCanvasFormLayout grid: captions size
 //                  themselves to the wording the chosen network uses, and a
 //                  field the network has no use for leaves the form
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialAccountWizard.h"
+#include "UltraSocialTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -112,7 +116,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     DialogConfig config;
     config.title      = "Add social account";
     config.width      = 500;
-    config.height     = 430;
+    config.height     = 390;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -145,19 +149,37 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
         auto label = CreateFormCaption(id + "Label", labelText);
+        label->SetFontSize(Theme::kSizeBody);
+        label->SetTextColor(Theme::kTextSecondary);
+        Theme::StyleInput(input);
         AddFormRow(content, label, input);
         return Row{label, input};
     };
 
     // Network picker row.
     auto network = CreateDropdown("swNetwork", 0, 0, 0, 28);
+    Theme::StyleDropdown(network);
     for (const auto& form : kForms) network->AddItem(form.dropdownText);
-    AddFormRow(content, CreateFormCaption("swNetworkLabel", "Network"), network);
+    auto networkLabel = CreateFormCaption("swNetworkLabel", "Network");
+    networkLabel->SetFontSize(Theme::kSizeBody);
+    networkLabel->SetTextColor(Theme::kTextSecondary);
+    AddFormRow(content, networkLabel, network);
 
-    // The hint is its own caption, so it spans both columns.
-    auto hint = CreateLabel("swHint", 0, 0, 0, 78, kForms[0].hint);
-    hint->SetWrap(TextWrap::WrapWord);
-    AddFormWideRow(content, hint);
+    // How to get the credentials this network asks for, in a tinted box
+    // under the fields. It lives outside the grid: a wrapped label in a flex
+    // column is measured at the column's width and gets the height of its
+    // lines, where the grid row cut the hint to its middle line.
+    auto hint = Theme::MakeWrapped("swHint", kForms[0].hint, Theme::kSizeBody,
+                                   Theme::kTextSecondary);
+    auto hintBox = CreateContainer("swHintBox", 0, 0, 0, 0);
+    hintBox->SetBackgroundColor(Theme::kAccentSoft);
+    hintBox->SetBorders(0.0f, Colors::Transparent, Theme::kControlRadius);
+    hintBox->SetPadding(10, 12);
+    hintBox->layout.SetFlexColumn()
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    hintBox->layoutItem.SetFlexShrink(0);
+    Theme::NoScrollbars(hintBox);
+    hintBox->AddChild(hint);
 
     auto server = CreateTextInput("swServer", 0, 0, 0, 28);
     Row serverRow = addRow("swServer", kForms[0].serverLabel, server);
@@ -205,6 +227,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     };
 
     dialog->AddChild(content);
+    dialog->AddChild(hintBox);
     // The grid keeps its rows at their own height; the spacer takes the slack
     // so the buttons stay at the bottom of the dialog.
     dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
@@ -216,11 +239,12 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto connectBtn = CreateButton("swConnect", 0, 0, 100, 28, "Connect");
+    auto connectBtn = Theme::MakeButton("swConnect", "Connect", true, "user-plus.svg",
+                                        100.0f, 28.0f);
     connectBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(connectBtn);
 
-    auto cancelBtn = CreateButton("swCancel", 0, 0, 80, 28, "Cancel");
+    auto cancelBtn = Theme::MakeButton("swCancel", "Cancel", false, "", 80.0f, 28.0f);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 

@@ -15,7 +15,9 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
+#include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"   // PathToUtf8
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
@@ -23,6 +25,7 @@
 #include <algorithm>
 #include <set>
 #include <utility>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -58,6 +61,14 @@ namespace {
     constexpr const char* kPageDesktop        = "desktop";
     constexpr const char* kSectionFileDialogs = "file-dialogs";
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
+    constexpr const char* kSectionDevices     = "devices";
+    constexpr const char* kPageCertificates   = "devices/certificates";
+
+    // Trusted certificates table: the name, address and button columns are
+    // fixed, the key takes the rest.
+    constexpr int kDeviceColumnWidth  = 150;
+    constexpr int kAddressColumnWidth = 170;
+    constexpr int kForgetColumnWidth  = 90;
 
     // Segment order of every Global | Individual switch.
     constexpr int kSegmentGlobal = 0;
@@ -101,6 +112,104 @@ namespace {
         sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return sw;
     }
+
+    // A column of a settings table: its header text and its width, 0 for the
+    // one column that takes what the others leave.
+    struct TableColumn {
+        std::string id;
+        std::string title;
+        int width = 0;
+    };
+
+    // A bordered table: a header row over a container that holds the rows and
+    // scrolls vertically, handed back in `rows`. The table grows to the room
+    // the page leaves it.
+    std::shared_ptr<UltraCanvasContainer> MakeTable(const std::string& id,
+                                                    const std::vector<TableColumn>& columns,
+                                                    std::shared_ptr<UltraCanvasContainer>& rows) {
+        auto table = std::make_shared<UltraCanvasContainer>(id);
+        table->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        table->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        table->size.height = CSSLayout::Dimension::Px(120);   // basis; it grows
+        table->SetBorders(1.0f, kRuleColor);
+        table->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        auto header = std::make_shared<UltraCanvasContainer>(id + "-header");
+        header->layout.SetFlexRow().SetFlexGap(12)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        header->size.height = CSSLayout::Dimension::Px(28);
+        header->SetPadding(0, kScrollbarRoom, 0, 10);
+        header->SetBackgroundColor(kHeaderBackground);
+        header->SetBorderBottom(1, kRuleColor);
+        for (const TableColumn& column : columns) {
+            auto l = MakeLabel(id + "-h-" + column.id, column.title);
+            l->SetFontWeight(FontWeight::Bold);
+            if (column.width > 0) {
+                l->size.width = CSSLayout::Dimension::Px(static_cast<float>(column.width));
+            } else {
+                l->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                l->size.width = CSSLayout::Dimension::Px(0);
+            }
+            header->AddChild(l);
+        }
+        table->AddChild(header);
+
+        rows = std::make_shared<UltraCanvasContainer>(id + "-rows");
+        rows->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        rows->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        rows->size.height = CSSLayout::Dimension::Px(60);   // basis; it grows
+        // Opaque, like the table around it: a scroll repaints only these
+        // containers, and without backgrounds of their own the strip under the
+        // last row kept the pixels of the rows that were there before.
+        rows->SetBackgroundColor(Color(255, 255, 255, 255));
+        {
+            // Vertically only: a vertical bar narrows the rows, which must not
+            // turn into a horizontal overflow of its own width.
+            ContainerStyle cs;
+            cs.autoShowScrollbars = true;
+            cs.autoShowHorizontalScrollbar = false;
+            rows->SetContainerStyle(cs);
+        }
+        // A scroll repaints the rows' own box; the strip of the table just
+        // below it kept the pixels of the row that was there before the
+        // scroll. The whole table is repainted instead.
+        rows->SetScrollChangedCallback([t = table.get()](int, int) { t->RequestRedraw(); });
+        table->AddChild(rows);
+        return table;
+    }
+
+    // One row of a settings table, its cells added by the caller.
+    std::shared_ptr<UltraCanvasContainer> MakeTableRow(const std::string& id) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.height = CSSLayout::Dimension::Px(kRowHeight);
+        row->SetPadding(0, kScrollbarRoom, 0, 10);
+        row->SetBorderBottom(1, kRuleColor);
+        return row;
+    }
+
+    // The shaded box of notes at the foot of a page.
+    std::shared_ptr<UltraCanvasContainer> MakeNotes(const std::string& id,
+                                                    const std::vector<std::string>& texts) {
+        auto notes = std::make_shared<UltraCanvasContainer>(id);
+        notes->layout.SetFlexColumn().SetFlexGap(6)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        notes->SetBackgroundColor(kNoteBackground);
+        notes->SetBorderLeft(3, kNoteAccent);
+        notes->SetPadding(10, 12, 10, 12);
+        for (size_t i = 0; i < texts.size(); ++i) {
+            notes->AddChild(MakeText(id + "-" + std::to_string(i + 1), texts[i],
+                                     kNoteWidth, kNoteFontSize, kNoteTextColor));
+        }
+        return notes;
+    }
 } // namespace
 
 UOSSettingsWindow::UOSSettingsWindow(std::string version) : version_(std::move(version)) {}
@@ -143,6 +252,8 @@ bool UOSSettingsWindow::Create() {
     tree_->AddNode("settings", TreeNodeData(kPageDesktop, "Desktop"));
     tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, "File dialogs"));
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
+    tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
+    tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
     tree_->SetRootVisible(false);
     content->AddChild(tree_);
 
@@ -155,6 +266,7 @@ bool UOSSettingsWindow::Create() {
 
     BuildDesktopPage();
     BuildLastFolderPage();
+    BuildCertificatesPage();
     window_->AddChild(content);
 
     // ----- bottom bar: Close -----
@@ -212,6 +324,7 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     // Another application may have written the file since: show it as it is.
     if (pageId == kPageLastFolder) RefreshLastFolderPage();
     if (pageId == kPageDesktop) RefreshDesktopPage();
+    if (pageId == kPageCertificates) RefreshCertificatesPage();
 }
 
 // ===== DESKTOP =====
@@ -312,23 +425,12 @@ void UOSSettingsWindow::BuildDesktopPage() {
     spacer->size.height = CSSLayout::Dimension::Px(24);
     page->AddChild(spacer);
 
-    auto notes = std::make_shared<UltraCanvasContainer>("uos-dt-notes");
-    notes->layout.SetFlexColumn().SetFlexGap(6)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    notes->SetBackgroundColor(kNoteBackground);
-    notes->SetBorderLeft(3, kNoteAccent);
-    notes->SetPadding(10, 12, 10, 12);
-    notes->AddChild(MakeText("uos-dt-note-1",
+    auto notes = MakeNotes("uos-dt-note", {
             "Changes are saved at once - a text field when you leave it or press "
             "Return - and a running desktop takes them over within a second.",
-            kNoteWidth, kNoteFontSize, kNoteTextColor));
-    notes->AddChild(MakeText("uos-dt-note-2",
             "The RAM disc is the folder the desktop's drive button opens; the file "
             "manager is the program its folder buttons start. Virtual desktops "
-            "are asked of the window manager, which may offer a different number.",
-            kNoteWidth, kNoteFontSize, kNoteTextColor));
+            "are asked of the window manager, which may offer a different number."});
     page->AddChild(notes);
 
     pages_[kPageDesktop] = page;
@@ -441,83 +543,22 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     tableNote_->SetMargin(14, 0, 6, 0);
     page->AddChild(tableNote_);
 
-    auto table = std::make_shared<UltraCanvasContainer>("uos-lf-table");
-    table->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    table->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    table->size.height = CSSLayout::Dimension::Px(120);   // basis; it grows
-    table->SetBorders(1.0f, kRuleColor);
-    table->SetBackgroundColor(Color(255, 255, 255, 255));
-
-    auto header = std::make_shared<UltraCanvasContainer>("uos-lf-table-header");
-    header->layout.SetFlexRow().SetFlexGap(12)
-                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    header->size.height = CSSLayout::Dimension::Px(28);
-    header->SetPadding(0, kScrollbarRoom, 0, 10);
-    header->SetBackgroundColor(kHeaderBackground);
-    header->SetBorderBottom(1, kRuleColor);
-    auto addHeader = [&](const std::string& id, const std::string& text, int width) {
-        auto l = MakeLabel(id, text);
-        l->SetFontWeight(FontWeight::Bold);
-        if (width > 0) {
-            l->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
-        } else {
-            l->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-            l->size.width = CSSLayout::Dimension::Px(0);
-        }
-        header->AddChild(l);
-    };
-    addHeader("uos-lf-h-app", "Application", kAppColumnWidth);
-    addHeader("uos-lf-h-folder", "Opens in", 0);
-    addHeader("uos-lf-h-scope", "Last used folder", kScopeColumnWidth);
-    table->AddChild(header);
-
-    tableRows_ = std::make_shared<UltraCanvasContainer>("uos-lf-table-rows");
-    tableRows_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    tableRows_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    tableRows_->size.height = CSSLayout::Dimension::Px(60);   // basis; it grows
-    // Opaque, like the table around it: a scroll repaints only these
-    // containers, and without backgrounds of their own the strip under the
-    // last row kept the pixels of the rows that were there before.
-    tableRows_->SetBackgroundColor(Color(255, 255, 255, 255));
-    {
-        // Vertically only: a vertical bar narrows the rows, which must not
-        // turn into a horizontal overflow of its own width.
-        ContainerStyle cs;
-        cs.autoShowScrollbars = true;
-        cs.autoShowHorizontalScrollbar = false;
-        tableRows_->SetContainerStyle(cs);
-    }
-    // A scroll repaints the rows' own box; the strip of the table just below
-    // it kept the pixels of the row that was there before the scroll. The
-    // whole table is repainted instead.
-    tableRows_->SetScrollChangedCallback([table = table.get()](int, int) {
-        table->RequestRedraw();
-    });
-    table->AddChild(tableRows_);
+    auto table = MakeTable("uos-lf-table",
+                           {{"app", "Application", kAppColumnWidth},
+                            {"folder", "Opens in", 0},
+                            {"scope", "Last used folder", kScopeColumnWidth}},
+                           tableRows_);
     page->AddChild(table);
 
     // ----- notes -----
-    auto notes = std::make_shared<UltraCanvasContainer>("uos-lf-notes");
-    notes->layout.SetFlexColumn().SetFlexGap(6)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    notes->SetBackgroundColor(kNoteBackground);
-    notes->SetBorderLeft(3, kNoteAccent);
-    notes->SetPadding(10, 12, 10, 12);
-    notes->SetMargin(14, 0, 0, 0);
-    notes->AddChild(MakeText("uos-lf-note-1",
+    auto notes = MakeNotes("uos-lf-note", {
             "One common folder: whichever application last used a file dialog, "
-            "the next one opens there.", kNoteWidth, kNoteFontSize, kNoteTextColor));
-    notes->AddChild(MakeText("uos-lf-note-2",
+            "the next one opens there.",
             "Their own folders: each application set to Individual keeps its own "
             "last folder, starting from the common one until it has used a folder "
             "of its own; one set to Global still shares the common folder. "
-            "Changes are saved at once and apply the next time a file dialog opens.",
-            kNoteWidth, kNoteFontSize, kNoteTextColor));
+            "Changes are saved at once and apply the next time a file dialog opens."});
+    notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
     // The applications that use the framework's file dialog, listed before
@@ -532,13 +573,7 @@ void UOSSettingsWindow::AddAppRow(const std::string& appName) {
     if (rows_.count(appName) || !tableRows_) return;
     const std::string id = "uos-lf-row-" + std::to_string(rows_.size());
 
-    auto row = std::make_shared<UltraCanvasContainer>(id);
-    row->layout.SetFlexRow().SetFlexGap(12)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    row->size.height = CSSLayout::Dimension::Px(kRowHeight);
-    row->SetPadding(0, kScrollbarRoom, 0, 10);
-    row->SetBorderBottom(1, kRuleColor);
+    auto row = MakeTableRow(id);
 
     auto name = MakeLabel(id + "-app", appName);
     name->size.width = CSSLayout::Dimension::Px(kAppColumnWidth);
@@ -614,6 +649,150 @@ void UOSSettingsWindow::SetAppScope(const std::string& appName, bool individual)
                                            : LastFolderScope::Global;
     });
     RefreshLastFolderPage();
+}
+
+// ===== DEVICES > TRUSTED CERTIFICATES =====
+
+void UOSSettingsWindow::BuildCertificatesPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-certificates");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-tc-title", "Trusted certificates", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-tc-caption",
+            "Network scanners and printers that are reached over HTTPS with a "
+            "certificate they signed themselves. Each was trusted the first time "
+            "it was reached; from then on it is reached only while it presents "
+            "the same key - shown here as the SHA-256 of its public key.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    certificateNote_ = MakeText("uos-tc-table-note", "", kTextWidth, kTextFontSize,
+                                kNoteTextColor);
+    certificateNote_->SetMargin(14, 0, 6, 0);
+    page->AddChild(certificateNote_);
+
+    page->AddChild(MakeTable("uos-tc-table",
+                             {{"device", "Device", kDeviceColumnWidth},
+                              {"address", "Address", kAddressColumnWidth},
+                              {"key", "Key", 0},
+                              {"forget", "", kForgetColumnWidth}},
+                             certificateRows_));
+
+    certificateStatus_ = MakeLabel("uos-tc-status", "", kTextFontSize, kMutedTextColor);
+    certificateStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(certificateStatus_);
+
+    auto notes = MakeNotes("uos-tc-note", {
+            "Forget a device only when you know it was reset or replaced and so "
+            "presents a new certificate - the connection to it is refused until "
+            "then. Its new key is trusted the next time it is reached, on the same "
+            "terms as the first time: whatever answers at that address then.",
+            "A device with a certificate a certificate authority vouches for is "
+            "never listed: it is checked the ordinary way."});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages_[kPageCertificates] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
+    if (certificates_.count(address) || !certificateRows_) return;
+    const std::string id = "uos-tc-row-" + std::to_string(certificates_.size());
+
+    CertificateRow entry;
+    entry.row = MakeTableRow(id);
+
+    entry.name = MakeLabel(id + "-device", "");
+    entry.name->size.width = CSSLayout::Dimension::Px(kDeviceColumnWidth);
+    entry.row->AddChild(entry.name);
+
+    auto where = MakeLabel(id + "-address", address);
+    where->size.width = CSSLayout::Dimension::Px(kAddressColumnWidth);
+    where->SetTooltip(address);
+    entry.row->AddChild(where);
+
+    entry.key = MakeLabel(id + "-key", "", kTextFontSize, kMutedTextColor);
+    entry.key->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    entry.key->size.width = CSSLayout::Dimension::Px(0);
+    entry.row->AddChild(entry.key);
+
+    auto forget = std::make_shared<UltraCanvasButton>(id + "-forget", 0, 0,
+                                                      kForgetColumnWidth, 24, "Forget");
+    forget->SetFontSize(kTextFontSize);
+    forget->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    forget->SetOnClick([this, address]() { ForgetCertificate(address); });
+    entry.row->AddChild(forget);
+
+    certificates_[address] = entry;
+    certificateRows_->AddChild(entry.row);
+}
+
+void UOSSettingsWindow::RefreshCertificatesPage() {
+    const std::vector<IODeviceTrustedCertificate> trusted = IODeviceTrustedCertificates();
+    std::map<std::string, IODeviceTrustedCertificate> byAddress;
+    for (const IODeviceTrustedCertificate& certificate : trusted) {
+        byAddress[certificate.address] = certificate;
+        AddCertificateRow(certificate.address);
+    }
+    // A forgotten device's row stays, hidden, so it can come back in place
+    // when the device is trusted again.
+    for (auto& [address, row] : certificates_) {
+        auto found = byAddress.find(address);
+        row.row->SetVisible(found != byAddress.end());
+        if (found == byAddress.end()) continue;
+        const IODeviceTrustedCertificate& certificate = found->second;
+        // A key learned before the device's name was known, or for one only
+        // ever named by its address, has none to show.
+        row.name->SetText(certificate.name.empty() ? "(name not known)" : certificate.name);
+        row.name->SetTextColor(certificate.name.empty() ? kMutedTextColor : kTextColor);
+        row.name->SetTooltip(certificate.name);
+        // "sha256//" is the form the pin is stored in, not part of the key.
+        std::string shown = certificate.pin;
+        if (shown.rfind("sha256//", 0) == 0) shown.erase(0, 8);
+        row.key->SetText(shown);
+        row.key->SetTooltip(certificate.pin);
+    }
+    if (certificateNote_) {
+        certificateNote_->SetText(trusted.empty()
+                ? "No device's certificate has been trusted yet. A scanner or printer "
+                  "is listed here once it has been reached over HTTPS with a "
+                  "certificate it signed itself."
+                : "Forget a device to have its key learned again the next time it is "
+                  "reached:");
+    }
+    if (certificateStatus_) {
+        const std::string file = PathToUtf8(IODeviceTrustedCertificatesFile());
+        certificateStatus_->SetText(file.empty() ? "There is no settings folder to keep keys in."
+                                                 : "Kept in " + file);
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void UOSSettingsWindow::ForgetCertificate(const std::string& address) {
+    // "Office Scanner (192.168.1.20:443)" when its name is known.
+    std::string device = address;
+    for (const IODeviceTrustedCertificate& certificate : IODeviceTrustedCertificates()) {
+        if (certificate.address == address && !certificate.name.empty())
+            device = certificate.name + " (" + address + ")";
+    }
+    const bool forgotten = IODeviceForgetCertificate(address);
+    RefreshCertificatesPage();
+    // After the refresh, which shows where the keys are kept: what was done
+    // matters more just now.
+    if (certificateStatus_) {
+        certificateStatus_->SetText(forgotten
+                ? "Forgot the key of " + device + "; it is learned again the next "
+                  "time the device is reached."
+                : "Could not forget the key of " + device + " - " +
+                  PathToUtf8(IODeviceTrustedCertificatesFile()) + " could not be written.");
+    }
 }
 
 } // namespace UOSSettings

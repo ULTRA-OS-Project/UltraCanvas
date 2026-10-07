@@ -14,7 +14,7 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$ExePath,
 
-    [string]$CertSubject    = "CN=Cloverleaf UG, O=Cloverleaf UG, L=Unknown, C=DE",
+    [string]$CertSubject    = "CN=ULTRA OS Development GmbH, O=ULTRA OS Development GmbH, L=Unknown, C=DE",
     [string]$CertFriendly   = "UltraCanvasDemo Code Signing",
     [string]$CertStore      = "Cert:\CurrentUser\My",
     [string]$PfxPath        = "$PSScriptRoot\UltraDemoSign.pfx",

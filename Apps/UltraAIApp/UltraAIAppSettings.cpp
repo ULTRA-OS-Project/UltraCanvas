@@ -3,10 +3,10 @@
 // Last Modified: 2026-09-24
 
 #include "UltraAIAppSettings.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include "UltraAI.h"
 #include "UltraAIRouting.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <filesystem>
 #include <fstream>

@@ -92,9 +92,22 @@ bool Signature::IsActive() const {
     return false;
 }
 
+MailSecurity EffectiveSecurity(int port, MailSecurity chosen) {
+    if (chosen == MailSecurity::Plain) return chosen;         // explicit plaintext stays
+    switch (port) {
+        case 465: case 993:          return MailSecurity::SslTls;    // implicit-TLS ports
+        case 587: case 25: case 143: return MailSecurity::StartTls;  // STARTTLS ports
+        default:                     return chosen;                  // non-standard: trust user
+    }
+}
+
 void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options) {
-    options.useTls      = server.security != MailSecurity::Plain;
-    options.implicitTls = server.security == MailSecurity::SslTls;
+    // Reconcile against the port so implicit TLS never reaches a STARTTLS port
+    // (and vice versa); see EffectiveSecurity. The scheme in Smtp/ImapServerUrl
+    // is derived the same way, so the flag and the URL always agree.
+    const MailSecurity sec = EffectiveSecurity(server.port, server.security);
+    options.useTls      = sec != MailSecurity::Plain;
+    options.implicitTls = sec == MailSecurity::SslTls;
     options.auth        = server.auth;
 }
 

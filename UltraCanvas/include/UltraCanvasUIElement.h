@@ -5,8 +5,9 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -132,12 +133,15 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         // NOTE: Passing non-zero w/h here stamps a CSS `size.width/height`
-        // on the element. Per CSS spec, an explicit width/height OVERRIDES
-        // parent stretch (grid cell, flex-grow, align-self: Stretch). For
-        // widgets you want the engine to size — children of a flex/grid
-        // container, or any widget that should stretch to its parent — use
-        // the no-size constructor (or pass 0, 0) and let the parent decide.
-        // Pass non-zero w/h only when you genuinely want a fixed-size box.
+        // on the element. An explicit width/height OVERRIDES the parent's
+        // stretch (align-items / justify-items: Stretch), as in CSS; the
+        // element's own align-self / justify-self: Stretch still stretches it,
+        // and flex-grow still grows the main axis. For widgets you want the
+        // engine to size — children of a flex/grid container, or any widget
+        // that should stretch to its parent — use the no-size constructor
+        // (or pass 0, 0) and let the parent decide; the parent stretches
+        // only when its layout asks for it. Pass non-zero w/h only when you
+        // genuinely want a fixed-size box.
         UltraCanvasUIElement(const std::string& idstr,
                              float x, float y, float w, float h) {
             id = idstr;
@@ -506,6 +510,13 @@ namespace UltraCanvas {
         virtual AccessibleRole GetAccessibleRole() const { return AccessibleRole::Unknown; }
         virtual std::string GetAccessibleName() const { return ""; }
         virtual IAccessibleText* GetAccessibleTextInterface() { return nullptr; }
+        // True for a field whose content is a secret. The bridges report it
+        // as a password field (UI Automation's IsPassword, AT-SPI's password
+        // text role), so a screen reader says "password" and echoes stars
+        // rather than the characters typed, and other assistive tools leave
+        // the content alone. Such an element must not hand out its text
+        // through GetAccessibleTextInterface().
+        virtual bool IsAccessiblePassword() const { return false; }
 
         // True for an element that shows an input method's pre-edit text in
         // place (TextComposition events). While one has focus the platform
@@ -542,6 +553,9 @@ namespace UltraCanvas {
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
 
         void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
+        // Arrange() for an element that places its children itself: takes the
+        // box and redraws what it covered, but runs no layout of the children.
+        void ArrangeOwnBox(const Rect2Df& newFinalRect);
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
@@ -567,6 +581,9 @@ namespace UltraCanvas {
         }
 
     protected:
+        // Redraws the union of oldBounds and the new finalBounds (Arrange's tail).
+        void InvalidateArrangeDamage(const Rect2Df& oldBounds);
+
         virtual bool OnPopupAboutToClose(ClosePopupReason reason) {
             if (onPopupAboutToClose) return onPopupAboutToClose(reason);
             return true;

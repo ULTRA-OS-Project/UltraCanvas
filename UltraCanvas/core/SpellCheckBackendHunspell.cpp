@@ -1,7 +1,7 @@
 // core/SpellCheckBackendHunspell.cpp
 // Portable Hunspell spell check backend with dictionary discovery
-// Version: 1.0.1
-// Last Modified: 2026-08-24
+// Version: 1.0.2 - %APPDATA% read as UTF-8; a dictionary Hunspell cannot open is not listed
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 //
 // This backend is always compiled. It is the fallback when a native OS spell
@@ -33,6 +33,13 @@
 
 #ifdef ULTRACANVAS_HAS_HUNSPELL
     #include <hunspell/hunspell.hxx>
+#endif
+
+#if defined(_WIN32)
+// The process's ANSI code page - declared here rather than by including
+// <windows.h> and its thousands of macros; this is the declaration windows.h
+// makes (UINT is unsigned int).
+extern "C" __declspec(dllimport) unsigned int __stdcall GetACP(void);
 #endif
 
 namespace UltraCanvas {
@@ -224,8 +231,10 @@ std::vector<std::string> BuildDictionarySearchPaths() {
         paths.push_back(std::string(home) + "/.local/share/hunspell");
         paths.push_back(std::string(home) + "/Library/Spelling");
     }
-    if (const char* appData = std::getenv("APPDATA")) {
-        paths.push_back(std::string(appData) + "\\UltraCanvas\\dictionaries");
+    // Asked wide: the path is opened as UTF-8, and a narrow getenv would
+    // have spelled the profile folder in the ANSI code page.
+    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) {
+        paths.push_back(appData + "\\UltraCanvas\\dictionaries");
     }
 
     paths.push_back("dictionaries");
@@ -243,8 +252,27 @@ std::vector<std::string> BuildDictionarySearchPaths() {
     return paths;
 }
 
+// Can Hunspell open a file by this UTF-8 path? It opens its files with the
+// narrow CRT, which reads the name in the ANSI code page: on Windows a path
+// beyond ASCII only arrives intact where that code page is UTF-8 (the
+// manifest's activeCodePage, honoured from Windows 10 1903). Elsewhere a file
+// name is its UTF-8 bytes.
+bool HunspellCanOpen(const std::string& utf8Path) {
+#if defined(_WIN32)
+    constexpr unsigned int kUtf8CodePage = 65001;
+    if (::GetACP() == kUtf8CodePage) return true;
+    return std::all_of(utf8Path.begin(), utf8Path.end(),
+                       [](unsigned char c) { return c < 0x80; });
+#else
+    (void)utf8Path;
+    return true;
+#endif
+}
+
 // Collects every .aff that has a matching .dic. Keyed by code so the
-// highest-priority directory wins.
+// highest-priority directory wins - among the dictionaries Hunspell can open:
+// one it cannot (HunspellCanOpen) is passed over, so that the same language
+// further down the search order, such as the bundled copy, is used instead.
 //
 // Every filesystem query takes its own std::error_code: sharing one across the
 // loop lets a single failed probe latch and abort the rest of the directory.
@@ -275,10 +303,12 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
 
             fs::path base = entry.path();
             base.replace_extension();
+            const std::string basePath = PathToUtf8(base);
+            if (!HunspellCanOpen(basePath)) continue;
 
             DictionaryEntry found;
             found.code = code;
-            found.basePath = PathToUtf8(base);
+            found.basePath = basePath;
             found.encoding = ReadAffixEncoding(PathToUtf8(entry.path()));
 
             seen.insert(code);

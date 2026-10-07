@@ -137,6 +137,12 @@ UltraMsgHandle UltraMsg_Subscribe(UltraMsgHandle endpoint, const std::string& to
                                   UltraMsgCallback callback,
                                   const UltraMsgSubscribeOptions& options = {},
                                   UltraMsgResult* error = nullptr);
+// Ends a subscription. Called on the UI thread, no callback of it runs after
+// this returns - not even for a message already queued for the UI thread - so
+// an object may unsubscribe in its destructor and free what its callbacks
+// capture. A callback already running on another thread at that moment
+// still finishes. UltraMsg_Disconnect ends every subscription of the
+// endpoint the same way.
 UltraMsgResult UltraMsg_Unsubscribe(UltraMsgHandle subscription);
 
 // ---------------------------------------------------------------------------

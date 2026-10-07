@@ -247,6 +247,18 @@ TEST(ftp_error_mapping) {
     REQUIRE(r.message.find("550 no such file") != std::string::npos);
 }
 
+TEST(ftp_from_ftp_keeps_the_diagnostics_of_a_failure) {
+    // What UltraNet knew about the connection reaches the caller with the
+    // failure, for a "Details" view - UltraFiler's connection log shows it.
+    UltraNetResult net = NetError(UltraNetResultCode::Timeout, "Connection timed out");
+    net.diagnostics = "Error: Connection timed out (libcurl error 28: Timeout was reached)\n"
+                      "Connected to: 203.0.113.7:21\n";
+    const Result r = FromFtp(net, "list /pub");
+    REQUIRE(r.code == ResultCode::Network);
+    REQUIRE(r.diagnostics == net.diagnostics);
+    REQUIRE(FromFtp(NetOk(), "list").diagnostics.empty());
+}
+
 TEST(ftp_capabilities_is_a_drive_without_share_links) {
     const ProviderCapabilities c = FtpProvider().Capabilities();
     REQUIRE(c.browse);

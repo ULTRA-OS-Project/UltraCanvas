@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.2 - CloseMenu() is a no-op on an already-closed menu
-// Last Modified: 2026-07-31
+// Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -13,6 +13,19 @@
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
+
+// ===== APPLICATION-WIDE CHECKBOX SHAPE =====
+    namespace {
+        MenuCheckboxShape g_defaultMenuCheckboxShape = MenuCheckboxShape::Square;
+    }
+
+    void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape) {
+        g_defaultMenuCheckboxShape = shape;
+    }
+
+    MenuCheckboxShape GetDefaultMenuCheckboxShape() {
+        return g_defaultMenuCheckboxShape;
+    }
 
     void UltraCanvasMenu::OpenMenu(const Point2Di &pos, UltraCanvasWindowBase &win,
                                    const PopupElementSettings &popupSettings) {
@@ -69,6 +82,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
+        leadingColumns = GetLeadingColumns();
         // FIX: Simplified visibility check - if not visible at all, don't render
         if (menuType == MenuType::Menubar) {
 
@@ -236,6 +250,9 @@ namespace UltraCanvas {
 
         const MenuItemData &item = items[itemIndex];
         if (item.subItems.empty() && !item.subItemsProvider) return;
+        // Greyed out means unavailable: the entry shows what is there but
+        // offers none of it, by hover, click or keyboard alike.
+        if (!item.enabled) return;
 
         // Close existing submenu
         CloseActiveSubmenu();
@@ -431,8 +448,6 @@ namespace UltraCanvas {
             // ============================================================
 
             // Column width accumulators - find MAX for each column across ALL items
-            bool hasAnyCheckboxOrRadio = false;
-            bool hasAnyIcon = false;
             bool hasAnyShortcut = false;
             bool hasAnySubmenu = false;
 
@@ -446,16 +461,6 @@ namespace UltraCanvas {
 
                 // Apply per-item font for accurate measurement
                 ctx->SetFontStyle(item.font.value_or(style.font));
-
-                // Check for checkbox/radio column
-                if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-                    hasAnyCheckboxOrRadio = true;
-                }
-
-                // Check for icon column
-                if (!item.iconPath.empty() || item.iconImage) {
-                    hasAnyIcon = true;
-                }
 
                 // Find maximum label width
                 if (!item.label.empty()) {
@@ -491,10 +496,15 @@ namespace UltraCanvas {
             // Left padding
             totalWidth += style.paddingLeft;
 
-            // Checkbox/Radio column (reserve space if ANY item has it)
-            if (hasAnyCheckboxOrRadio) {
+            // Checkbox/Radio column and icon column, each reserved when ANY
+            // item has one. An item can have both - a checkbox with an icon -
+            // so the two are side by side, not one shared column: sharing it
+            // pushed that item's label one column past the width measured here.
+            const LeadingColumns columns = GetLeadingColumns();
+            if (columns.check) {
                 totalWidth += style.iconSize + style.iconSpacing;
-            } else if (hasAnyIcon) {
+            }
+            if (columns.icon) {
                 totalWidth += style.iconSize + style.iconSpacing;
             }
 
@@ -560,24 +570,43 @@ namespace UltraCanvas {
         int currentX = itemBounds.x + style.paddingLeft;
         int textY = ctx->TextTopCentredOnCaps(itemBounds, item.font.value_or(style.font));
 
+        // A vertical menu keeps its columns on every row - an item without an
+        // indicator or an icon still steps over the column - so the labels
+        // line up. A menubar lays each item out on its own.
+        const bool vertical = orientation == MenuOrientation::Vertical;
+        const bool checkable = item.type == MenuItemType::Checkbox ||
+                               item.type == MenuItemType::Radio;
+        const bool hasIcon = item.iconImage || !item.iconPath.empty();
+
         // Render checkbox/radio. The indicator is centred on the row, the same
         // line the label's capitals are centred on (TextTopCentredOnCaps), so the box
         // and the text stay level whatever the item height. It used to be
         // nudged one pixel up, which read as the box floating above the text.
-        if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+        if (checkable) {
             int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
             RenderCheckbox(item, Point2Di(currentX, checkboxY), ctx);
+        }
+        if (checkable || (vertical && leadingColumns.check)) {
             currentX += style.iconSize + style.iconSpacing;
         }
 
-        // Render icon (from an in-memory image if provided, else the file path)
-        if (item.iconImage || !item.iconPath.empty()) {
+        // Render icon (from an in-memory image if provided, else the file
+        // path). A disabled item's icon is faded with its label, as a
+        // disabled button's is.
+        if (hasIcon) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
+            if (!item.enabled) {
+                ctx->PushState();
+                ctx->SetAlpha(0.35f);
+            }
             if (item.iconImage) {
                 ctx->DrawImage(*item.iconImage, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
             } else if (item.iconPath != "-") {
                 RenderIcon(item.iconPath, Point2Di(currentX, iconY), ctx);
             }
+            if (!item.enabled) ctx->PopState();
+        }
+        if (hasIcon || (vertical && leadingColumns.icon)) {
             currentX += style.iconSize + style.iconSpacing;
         }
 
@@ -659,6 +688,20 @@ namespace UltraCanvas {
         }
 
         return rect;
+    }
+
+    UltraCanvasMenu::LeadingColumns UltraCanvasMenu::GetLeadingColumns() const {
+        LeadingColumns columns;
+        for (const auto &item: items) {
+            if (!item.visible) continue;
+            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                columns.check = true;
+            }
+            if (!item.iconPath.empty() || item.iconImage) {
+                columns.icon = true;
+            }
+        }
+        return columns;
     }
 
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
@@ -778,10 +821,11 @@ namespace UltraCanvas {
         // the given box, on whole pixels, so its centre is position + iconSize / 2.
         const double size = static_cast<double>(style.iconSize);
         const Point2Dd center(position.x + size / 2.0, position.y + size / 2.0);
-        const bool roundRadio = item.type == MenuItemType::Radio &&
-                                style.radioShape == MenuRadioShape::Round;
+        const bool round = item.type == MenuItemType::Radio
+                ? style.radioShape == MenuRadioShape::Round
+                : style.checkboxShape == MenuCheckboxShape::Round;
 
-        if (roundRadio) {
+        if (round) {
             ctx->DrawFilledCircle(center, static_cast<float>(size / 2.0),
                                   Colors::Transparent, style.borderColor, 1.0f);
         } else {
@@ -793,12 +837,21 @@ namespace UltraCanvas {
             Color markColor = item.enabled ? style.textColor : style.disabledTextColor;
 
             if (item.type == MenuItemType::Checkbox) {
-                // Draw checkmark
+                // Draw checkmark. In a box it reaches into the corners; in a
+                // circle there are no corners, so it is drawn smaller and
+                // centred, clear of the ring.
                 ctx->SetStrokePaint(markColor);
                 ctx->SetStrokeWidth(2.0f);
-                Point2Dd p1(position.x + 3, position.y + style.iconSize / 2);
-                Point2Dd p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
-                Point2Dd p3(position.x + style.iconSize - 3, position.y + 3);
+                Point2Dd p1, p2, p3;
+                if (round) {
+                    p1 = Point2Dd(position.x + size * 0.27, position.y + size * 0.52);
+                    p2 = Point2Dd(position.x + size * 0.44, position.y + size * 0.69);
+                    p3 = Point2Dd(position.x + size * 0.73, position.y + size * 0.33);
+                } else {
+                    p1 = Point2Dd(position.x + 3, position.y + style.iconSize / 2);
+                    p2 = Point2Dd(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                    p3 = Point2Dd(position.x + style.iconSize - 3, position.y + 3);
+                }
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
@@ -951,7 +1004,7 @@ namespace UltraCanvas {
             // Auto-open submenu on hover (with delay)
             if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
                 const MenuItemData &item = items[activeIndex];
-                if (item.HasSubmenu()) {
+                if (item.HasSubmenu() && item.enabled) {
                     // In a complete implementation, you'd add a timer for submenu delay
                     OpenSubmenu(activeIndex);
                 } else {

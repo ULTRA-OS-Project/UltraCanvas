@@ -2,7 +2,14 @@
 // An application's own vault on UltraVault, unlocked by a device key — see
 // the header. UI-free and free of UltraNet, like the rest of the module, so
 // the headless consumers and the test binary link it as they are.
-// Version: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
+//
+// Every path is UTF-8 and goes to the filesystem through PathFromUtf8: the
+// device key's path used to be handed over as a std::string, which on Windows
+// is read in the ANSI code page, so a profile folder the code page cannot
+// spell (a Thai or Cyrillic user name under code page 1252) could not find,
+// write or protect its device key, and the vault did not open.
+// Version: 0.2.0 - GetLastUnlockStatus / DescribeUnlockStatus; UTF-8 paths
+// Previous: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -149,12 +156,13 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
     // An empty passphrase derives a key anyone could reproduce, which would
     // put us back where the 0.1 vault was. Refuse it outright. A vault with
     // no directory or no file name has nowhere to go.
-    if (passphrase.empty()) return UnlockStatus::WrongPassphrase;
-    if (dir_.empty() || profile_.vaultFileName.empty()) return UnlockStatus::IoError;
+    if (passphrase.empty()) return lastStatus_ = UnlockStatus::WrongPassphrase;
+    if (dir_.empty() || profile_.vaultFileName.empty())
+        return lastStatus_ = UnlockStatus::IoError;
 
     std::error_code ec;
     fs::create_directories(PathFromUtf8(dir_), ec);
-    if (ec) return UnlockStatus::IoError;
+    if (ec) return lastStatus_ = UnlockStatus::IoError;
 
     // Initialize() is idempotent per process and will not reconfigure an open
     // vault, so close any previous one before adopting this passphrase.
@@ -168,12 +176,12 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
     const Result r = Initialize(config);
     if (!r.IsOk()) {
         unlocked_ = false;
-        return StatusFor(r);
+        return lastStatus_ = StatusFor(r);
     }
     unlocked_ = true;
 
     MigrateLegacy();
-    return UnlockStatus::Ok;
+    return lastStatus_ = UnlockStatus::Ok;
 }
 
 void DeviceKeyVault::Lock() {
@@ -187,30 +195,54 @@ std::string DeviceKeyVault::DeviceKeyPath() const {
 }
 
 bool DeviceKeyVault::TryAutoUnlock() {
-    if (unlocked_) return true;
-    if (dir_.empty()) return false;
+    if (unlocked_) {
+        lastStatus_ = UnlockStatus::Ok;
+        return true;
+    }
+    if (dir_.empty()) {
+        lastStatus_ = UnlockStatus::IoError;
+        return false;
+    }
+    const fs::path keyFile = PathFromUtf8(DeviceKeyPath());
 
     // A stored device key: unlock silently with it.
     std::error_code ec;
-    if (fs::exists(PathFromUtf8(DeviceKeyPath()), ec)) {
-        std::ifstream in(PathFromUtf8(DeviceKeyPath()), std::ios::binary);
+    if (fs::exists(keyFile, ec)) {
+        std::ifstream in(keyFile, std::ios::binary);
         std::string pass((std::istreambuf_iterator<char>(in)),
                          std::istreambuf_iterator<char>());
         while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
-        return !pass.empty() && Unlock(pass) == UnlockStatus::Ok;
+        if (pass.empty()) {
+            lastStatus_ = UnlockStatus::IoError;   // unreadable, or emptied
+            return false;
+        }
+        return Unlock(pass) == UnlockStatus::Ok;
     }
 
     // No device key. If a vault already exists it was made with a master
     // password we don't have — the caller must prompt once, then persist the
     // key. Only create a fresh vault + key when there is nothing to migrate.
-    if (Exists()) return false;
+    if (Exists()) {
+        lastStatus_ = UnlockStatus::Locked;
+        return false;
+    }
 
+    // No random bytes means no crypto backend: UltraCrypt was built without
+    // libsodium. Unlock() would say the same, but a device key cannot even be
+    // made, so it is said here.
     const std::string pass = RandomPassphrase();
-    if (pass.empty()) return false;                 // no secure RNG on this build
-    if (!PersistDeviceKey(pass)) return false;      // could not write the key file
+    if (pass.empty()) {
+        lastStatus_ = UnlockStatus::Unavailable;
+        return false;
+    }
+    if (!PersistDeviceKey(pass)) {
+        lastStatus_ = UnlockStatus::IoError;        // could not write the key file
+        return false;
+    }
     if (Unlock(pass) == UnlockStatus::Ok) return true;
     // Creating the vault failed: drop the key file so a retry is not blocked.
-    fs::remove(PathFromUtf8(DeviceKeyPath()), ec);
+    // lastStatus_ keeps what Unlock() reported.
+    fs::remove(keyFile, ec);
     return false;
 }
 
@@ -218,16 +250,36 @@ bool DeviceKeyVault::PersistDeviceKey(const std::string& passphrase) {
     if (passphrase.empty() || dir_.empty()) return false;
     std::error_code ec;
     fs::create_directories(PathFromUtf8(dir_), ec);
-    { std::ofstream out(PathFromUtf8(DeviceKeyPath()), std::ios::binary | std::ios::trunc);
+    const fs::path keyFile = PathFromUtf8(DeviceKeyPath());
+    { std::ofstream out(keyFile, std::ios::binary | std::ios::trunc);
       if (!out) return false;
       out << passphrase;
       if (!out) return false; }
     // Owner-only: the local key is the only thing standing between the folder
     // and the secrets, so keep it off other users (Thunderbird's key4.db posture).
-    fs::permissions(DeviceKeyPath(),
+    fs::permissions(keyFile,
                     fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
     return true;
+}
+
+std::string DeviceKeyVault::DescribeUnlockStatus(UnlockStatus status) {
+    switch (status) {
+        case UnlockStatus::Ok:
+            return "the vault is open";
+        case UnlockStatus::WrongPassphrase:
+            return "the key does not open it - a wrong password, or the vault file "
+                   "was changed";
+        case UnlockStatus::Unavailable:
+            return "this build has no encryption library (UltraCrypt was built without "
+                   "libsodium), so it cannot keep passwords";
+        case UnlockStatus::IoError:
+            return "the vault folder or its files cannot be read or written";
+        case UnlockStatus::Locked:
+            return "the vault was made with a master password and has no device key; "
+                   "it has to be unlocked with that password once";
+    }
+    return "unknown reason";
 }
 
 int DeviceKeyVault::MigrateLegacy() {

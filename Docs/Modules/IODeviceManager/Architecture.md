@@ -564,16 +564,14 @@ instance name, which is unique on the network, rather than `ty`, which two
 printers of one model share. The mDNS plugin reports the *full* service name
 ("Office Printer._ipp._tcp.local"), readable from Avahi and Win32 and escaped
 from Bonjour, so the instance is cut out of it and unescaped
-(`IppInstanceFromServiceName`) before it is shown or compared.
+(`IppInstanceFromServiceName`, over the shared `DnsSdInstanceName` in
+`UltraCanvasIODeviceDnsSd.h`) before it is shown or compared.
 
-**A printer offering both is reached over plain IPP.** Printers' certificates
-are self-signed in all but a few cases, and UltraNet's rule is that TLS
-verification stays on, so the `ipps://` route would fail where the `ipp://`
-one works. The TLS address is kept in the device's attributes, and an
-`ipps://` failure says what probably happened rather than reading like a
-network fault. A printer that offers only `ipps://` with a self-signed
-certificate is therefore not reachable yet; the fix is trust on first use,
-not turning verification off (see Gaps).
+**A printer offering both is reached over plain IPP**, which needs nothing
+remembered; the TLS address is kept in the device's attributes. A printer
+that offers only `ipps://` is reached through
+[trust on first use](#self-signed-certificates-trust-on-first-use), since
+its certificate is self-signed in all but a few cases.
 
 **IPP 1.1 printers** answer a 2.0 request with
 `server-error-version-not-supported`; the request is repeated as 1.1 and the
@@ -874,12 +872,70 @@ since the device id is the scanner's URL, the two used to be two entries.
 Discovery now recognises a scanner by the `uuid` in its TXT record - the same
 in both advertisements - or by its host when it gives none
 (`EsclScannerIdentity`), keeps the plain-HTTP advertisement, and records the
-TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
-it does for IPP printers: the certificate is self-signed in all but a few
-cases, and TLS verification stays on.
+TLS address as the `escl-tls-url` attribute. Plain HTTP wins, as it does
+for IPP printers, because it needs nothing remembered; a scanner that offers
+only `https://` is reached through
+[trust on first use](#self-signed-certificates-trust-on-first-use).
+
+A scanner is shown by its DNS-SD instance name, as an IPP printer is: it is
+unique on the network, where the model (`ty`) is shared by every scanner of
+that model, so two of them used to look identical. The model stays in
+`model`, and is the name only when the instance name is empty. The mDNS
+plugin reports the full service name, so the instance is cut out of it
+(`EsclInstanceFromServiceName`); used whole, it read
+"Office Scanner._uscan._tcp.local" - and on macOS, where Bonjour leaves the
+name escaped, `Office\032Scanner._uscan._tcp.local.`. The full name is kept as
+the `mdns-name` attribute.
 
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
+
+### Self-signed certificates: trust on first use
+
+A scanner or printer that speaks HTTPS presents, in all but a few cases, a
+certificate it signed itself. No certificate authority vouches for it, so
+ordinary verification refuses it, and a device that offered *only* HTTPS was
+unreachable. Turning verification off would accept anything that answers;
+what both backends do instead is what SSH does with host keys
+(`UltraCanvasIODeviceTlsTrust.h`, `Internal::DeviceHttpRequest`):
+
+1. **A certificate that verifies is used as it is**, and nothing is
+   remembered - pinning it would break the day it renews.
+2. **The first time one fails verification**, the device's public key is
+   fetched over a connection that sends a bare `HEAD /` - none of the real
+   request's headers or body - and remembered against `host:port`. The real
+   request then goes ahead pinned to that key. That first contact is the one
+   moment the key is taken on trust.
+3. **From then on the address is reached only with the same key.** The pin
+   is libcurl's `CURLOPT_PINNEDPUBLICKEY` (UltraNet's
+   `UltraNetHttpOptions::pinnedPublicKey`), checked on every handshake even
+   though ordinary verification is off for the request. A different key fails
+   with `TlsPublicKeyMismatch` and is never learned over the old one: the
+   message names the device and says how to forget its key - UOS-Settings'
+   *Devices > Trusted certificates* page, deleting its line, or
+   `IODeviceForgetCertificate()` in code - for a device that was reset or
+   replaced.
+
+The keys are kept in `DeviceCertificates.conf` in the UltraCanvas settings
+folder (`UltraCanvasSettingsFolder.h`), shared by every application, each
+with the name its device was discovered under
+(`host:port=sha256//... Office Printer`) so the settings page can show it.
+The backends hand that name over as they list their devices
+(`Internal::NoteDeviceTlsName`); a printer named only by its address in
+configuration hands it over once it has described itself, and a key learned
+before then takes it on at that point.
+`ULTRACANVAS_DEVICE_CERTIFICATES` names another file and
+`ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new keys being learned.
+
+**Fail closed.** A TLS backend that cannot check a pin makes UltraNet switch
+verification back on for the request rather than drop the pin, and one that
+cannot report the server's certificate leaves the key unlearned; either way a
+self-signed device stays unreachable rather than being accepted unchecked.
+Checked on Linux (libcurl with OpenSSL) against CUPS's `ippeveprinter` over
+`ipps://` and a TLS-only eSCL scanner: first contact learns the key `openssl`
+computes for the certificate, a changed certificate is refused with the key
+file untouched, and the first-contact server saw only `HEAD /` before the
+pinned request. Not yet run on Schannel (Windows) or Apple's TLS.
 
 ---
 

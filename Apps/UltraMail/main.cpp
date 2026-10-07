@@ -3,8 +3,8 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
-// Version: 0.5.1 - the data folder is %APPDATA%\UltraMail on Windows
-// Last Modified: 2026-09-10
+// Version: 0.5.2 - the data folder's location is read as UTF-8
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
@@ -12,6 +12,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
 
 #include <cstdio>
 #include <cstdlib>
@@ -22,15 +23,19 @@ namespace {
 // Per-platform user data directory for UltraMail: XDG on Linux, %APPDATA% on
 // Windows (where HOME is normally unset, so without this the mailbox database
 // and the credential vault landed in whatever folder the app was started from).
+// Read as UTF-8 (GetEnvUtf8), which the databases, the vault and the
+// preferences file all take: on Windows a narrow getenv answers in the ANSI
+// code page and misses a profile folder named outside it.
 std::string UserDataDir() {
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/UltraMail";
+    using UltraCanvas::GetEnvUtf8;
+    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty())
+        return xdg + "/UltraMail";
 #if defined(_WIN32) || defined(_WIN64)
-    if (const char* appData = std::getenv("APPDATA"); appData && *appData)
-        return std::string(appData) + "/UltraMail";
+    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty())
+        return appData + "/UltraMail";
 #endif
-    if (const char* home = std::getenv("HOME"); home && *home)
-        return std::string(home) + "/.local/share/UltraMail";
+    if (const std::string home = GetEnvUtf8("HOME"); !home.empty())
+        return home + "/.local/share/UltraMail";
     return "./UltraMail";
 }
 

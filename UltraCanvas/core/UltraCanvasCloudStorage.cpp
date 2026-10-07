@@ -19,7 +19,7 @@
 #endif
 
 #include "UltraCanvasCloudStorage.h"
-#include "UltraCanvasUtils.h"           // PathFromUtf8 / Utf8ToWide / WideToUtf8
+#include "UltraCanvasUtils.h"           // WideToUtf8
 #include "DataFormats/UltraCanvasJSON.h"  // the Dropbox info.json
 #include <algorithm>
 #include <cctype>
@@ -61,18 +61,14 @@ namespace UltraCanvas {
             out.push_back({kind, path, name});
         }
 
-        // An environment variable as a path. Read wide on Windows: a profile
-        // path holding characters outside the system code page
-        // ("C:\Users\Ελένη\OneDrive") comes back mangled through the narrow
-        // CRT, and a mangled path simply fails the is_directory() test.
+        // An environment variable as a path. GetEnvUtf8 asks Windows for the
+        // UTF-16 value and hands it over as UTF-8: a profile path holding
+        // characters outside the system code page ("C:\Users\Ελένη\OneDrive")
+        // comes back mangled through the narrow CRT, and a mangled path fails
+        // is_directory().
         std::filesystem::path CloudEnvPath(const char* name) {
-#if defined(_WIN32) || defined(_WIN64)
-            const wchar_t* value = ::_wgetenv(Utf8ToWide(name).c_str());
-            return value ? std::filesystem::path(value) : std::filesystem::path();   // path-string-ok: wide
-#else
-            const char* value = std::getenv(name);
-            return value ? PathFromUtf8(value) : std::filesystem::path();
-#endif
+            const std::string value = GetEnvUtf8(name);
+            return value.empty() ? std::filesystem::path() : PathFromUtf8(value);
         }
 
         // The account folders recorded in a Dropbox info.json:

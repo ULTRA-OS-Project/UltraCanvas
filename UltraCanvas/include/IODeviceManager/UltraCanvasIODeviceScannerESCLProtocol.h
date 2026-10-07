@@ -142,4 +142,12 @@ std::string EsclTxtValue(const std::vector<std::string>& txtRecords,
 std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
                                 const std::string& host);
 
+// The instance name - "Office Scanner" - out of the DNS-SD name the mDNS
+// plugin reports as an entry's `dn`, which is the full service name
+// ("Office Scanner._uscan._tcp.local"), escaped in DNS presentation form on
+// Bonjour ("Office\032Scanner._uscans._tcp.local."). See DnsSdInstanceName().
+// A name with no `_uscan._tcp` or `_uscans._tcp` in it is taken to be the
+// instance already.
+std::string EsclInstanceFromServiceName(const std::string& serviceName);
+
 }  // namespace UltraCanvas

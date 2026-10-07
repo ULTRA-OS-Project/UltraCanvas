@@ -26,6 +26,7 @@ on:
       - 'UltraCloud/**'
       - 'VirtualFS/**'
       - 'Apps/**'
+      - 'Tests/UltraVaultTests.cpp'
       - 'scripts/check_path_string.py'
       - 'scripts/path_string_baseline.txt'
       - '.github/workflows/path-strings.yml'
@@ -47,5 +48,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The rules first, against examples of their own: a member or a
+      # string-returning function declared in the header, a call over
+      # several lines. A rule that stopped seeing those would otherwise pass
+      # the scan below by finding nothing.
+      - name: Self-test the check
+        run: python3 scripts/check_path_string.py --self-test
       - name: Check for code-page path conversions
         run: python3 scripts/check_path_string.py --strict

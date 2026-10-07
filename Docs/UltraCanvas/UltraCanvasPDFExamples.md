@@ -1,5 +1,7 @@
 # UltraCanvasPDF Documentation
 
+<!-- doc-check: std::unique_ptr<IPDFDocument> doc; std::unique_ptr<IPDFDocument> other; -->
+
 ## Overview
 
 **UltraCanvasPDF** is the PDF subsystem: the `UltraCanvasPDFView` widget and the
@@ -33,8 +35,8 @@ nothing in PDF capability and decides three things in its favour:
 
 That last row is the one that bites. `ULTRACANVAS_PLUGIN_PDF` defaults **ON**,
 but a machine without MuPDF does not fail the build — `UltraCanvas/CMakeLists.txt`
-sets `MUPDF_FOUND FALSE`, prints `[✗] PDF Plugin - DISABLED (MuPDF not found…)`
-and carries on. So the option being ON is **not** a promise that the view exists.
+sets `MUPDF_FOUND FALSE`, prints a `[✗] PDF Plugin - DISABLED` status line
+("MuPDF not found…") and carries on. So the option being ON is **not** a promise that the view exists.
 Every PDF reference inside the media viewer is `#ifdef ULTRACANVAS_PLUGIN_PDF`-guarded
 already; an application that embeds `UltraCanvasPDFView` itself has to repeat
 those guards and invent its own fallback, or it silently ships a pane that is
@@ -58,7 +60,7 @@ extracting text, searching or rewriting a PDF headlessly.
 To open one file full size in a window of its own, see
 [UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md).
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Headers:** `include/Plugins/Documents/UltraCanvasPDFView.h`,
 `include/Plugins/Documents/UltraCanvasPDF.h`
 **Namespace:** `UltraCanvas`
@@ -360,7 +362,7 @@ view->SetThumbnailWidthFraction(0.2f);
 bool DeleteCurrentPage();
 bool MovePage(int fromPage, int toPage);
 bool InsertBlankPageAt(int at, float widthPt, float heightPt);
-bool SaveAs(const std::string& path, const PDFSaveOptions& opts = {});
+bool SaveAs(const std::string& path, const PDFSaveOptions& opts = PDFSaveOptions());
 
 // Content editing (M3)
 bool ReplaceTextAt(const Rect2Df& bboxPt, const std::string& newText);
@@ -505,10 +507,12 @@ auto doc = UltraCanvas::OpenPDF("/path/to/file.pdf");   // nullptr on failure
 bool Open(const std::string& path, const std::string& password = "");
 bool OpenInMemory(const std::string& path, const std::string& password = "");
 bool OpenFromBytes(const std::vector<uint8_t>& data, const std::string& password = "");
-bool Save(const std::string& path, const PDFSaveOptions& opts = {});
+bool Save(const std::string& path, const PDFSaveOptions& opts = PDFSaveOptions());
 bool SaveIncremental(const std::string& path);
 void Close();
-bool IsOpen() const;  bool IsDirty() const;
+bool IsOpen() const;
+bool IsDirty() const;
+const std::string& GetSourcePath() const;
 
 PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryption…
 int             GetPageCount() const;

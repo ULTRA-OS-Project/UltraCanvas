@@ -104,11 +104,14 @@ std::string FindProgram(const std::string& name,
 
 std::string FindMsys2Root() {
 #if defined(_WIN32)
+    // Every variable as UTF-8 (GetEnvUtf8): the candidates are tested through
+    // PathFromUtf8, and getenv would answer in the ANSI code page.
     std::vector<std::string> candidates;
-    if (const char* root = std::getenv("MSYS2_ROOT")) candidates.push_back(root);
+    if (std::string root = UltraCanvas::GetEnvUtf8("MSYS2_ROOT"); !root.empty())
+        candidates.push_back(root);
     // An MSYSTEM shell exports MSYSTEM_PREFIX ("/clang64"), which is of no use
     // natively, but WD points at the usr/bin of the installation it runs from.
-    if (const char* wd = std::getenv("WD")) {
+    if (const std::string wd = UltraCanvas::GetEnvUtf8("WD"); !wd.empty()) {
         const fs::path usrBin = UltraCanvas::PathFromUtf8(wd);
         if (usrBin.has_parent_path() && usrBin.parent_path().has_parent_path()) {
             candidates.push_back(UltraCanvas::PathToUtf8(usrBin.parent_path().parent_path()));
@@ -116,8 +119,8 @@ std::string FindMsys2Root() {
     }
     candidates.push_back("C:/msys64");
     candidates.push_back("C:/msys2");
-    if (const char* programs = std::getenv("ProgramFiles")) {
-        candidates.push_back(std::string(programs) + "/msys64");
+    if (const std::string programs = UltraCanvas::GetEnvUtf8("ProgramFiles"); !programs.empty()) {
+        candidates.push_back(programs + "/msys64");
     }
     std::error_code ec;
     for (const auto& candidate : candidates) {
@@ -141,8 +144,9 @@ SystemProfile DetectSystem() {
     profile.architecture = NormalizeArchitecture(snapshot.system.architecture);
 
 #if defined(_WIN32)
-    if (const char* home = std::getenv("USERPROFILE")) profile.homeDirectory = home;
-    if (const char* msystem = std::getenv("MSYSTEM")) profile.msystem = msystem;
+    // UTF-8, as the window shows it and the folder pickers take it.
+    profile.homeDirectory = UltraCanvas::GetEnvUtf8("USERPROFILE");
+    profile.msystem = UltraCanvas::GetEnvUtf8("MSYSTEM");
     profile.msysPrefix = FindMsys2Root();
     if (!profile.msysPrefix.empty()) {
         profile.packageManager = PackageManager::Msys2Pacman;

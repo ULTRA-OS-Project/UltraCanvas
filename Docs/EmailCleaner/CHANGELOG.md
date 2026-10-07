@@ -1,3 +1,31 @@
+#### 2026-10-04 *0.4.4*
+- **When a credential vault will not open, the window says why.** For
+  UltraMail's vault the reason was guessed from whether the vault file
+  exists, so a build without an encryption library - which has no vault file
+  either - was told "UltraMail has no credential vault yet - set the account
+  up in UltraMail first". It now says what is wrong: "UltraMail's credential
+  vault cannot be opened: this build has no encryption library (UltraCrypt
+  was built without libsodium), so it cannot keep passwords", a folder that
+  cannot be written, or (as before) a vault locked with a master password.
+  EmailCleaner's own vault, which was skipped in silence - the window then
+  said no account had a saved password - reports its reason the same way, and
+  so does adding an account whose password could not be stored (framework
+  changelog: `DeviceKeyVault::GetLastUnlockStatus` / `DescribeUnlockStatus`).
+
+#### 2026-10-04 *0.4.3*
+- **A server name that cannot be one is caught before the sign-in is tried.**
+  Adding an account with `mail@example.com` as the incoming server (the
+  address's @ where the name has a dot) used to wait out the sign-in timeout
+  and then report that the server did not answer. The account form now says
+  what is wrong, with the likely fix: *Incoming (IMAP) server
+  "mail@example.com": A server name has no @ - did you mean mail.example.com?*
+  It also catches a URL scheme (`imaps://`), a port after a colon, a path,
+  spaces inside the name and characters no host name holds. Spaces around a
+  correct name are simply dropped. This is UltraMail's own check
+  (`UltraMail::ServerNameProblem`, UltraMail 0.10.25), applied in
+  `OwnAccounts::Validate`. Test: `test_accounts.cpp`
+  (`Accounts_ValidateCatchesAServerNameThatCannotBeOne`).
+
 #### 2026-10-02 *0.4.2*
 - **Mail in folders and accounts with non-English names is read on
   Windows.** Scanning the mail cache and opening a message for its

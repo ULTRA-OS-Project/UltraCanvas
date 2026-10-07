@@ -2,9 +2,9 @@
 // Version: 0.1.0
 
 #include "UltraAIEndpoints.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,8 +55,12 @@ EndpointStore& EndpointStore::Instance() {
 
 std::string EndpointStore::ConfigDir() {
 #if defined(_WIN32)
-    if (const char* appdata = std::getenv("APPDATA"); appdata && *appdata)
-        return std::string(appdata) + "\\UltraAI";
+    // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8): the
+    // JSON file helpers open it with OpenFileUtf8, and the narrow getenv
+    // answers in the ANSI code page, which cannot spell a profile folder
+    // named in Thai under code page 1252.
+    if (const std::string appdata = UltraCanvas::GetEnvUtf8("APPDATA"); !appdata.empty())
+        return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(appdata) / "UltraAI");
     return "UltraAI";
 #elif defined(__APPLE__)
     if (const char* home = std::getenv("HOME"); home && *home)

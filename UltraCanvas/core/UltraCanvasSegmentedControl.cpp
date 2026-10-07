@@ -344,9 +344,12 @@ namespace UltraCanvas {
         int contentY = rect.y + rect.height / 2;
         int totalContentWidth = 0;
 
-        // Render icon if present
+        // Render icon if present. Alone in its segment it sits in the middle:
+        // the segment is seldom exactly icon + padding wide (equal widths share
+        // out the control), so the left padding would push it off centre.
         if (segment.HasIcon()) {
-            int iconX = contentX;
+            int iconX = segment.HasText() ? contentX
+                                          : rect.x + (rect.width - style.iconSize) / 2;
             int iconY = contentY - style.iconSize / 2;
             ctx->DrawImage(segment.iconPath, Rect2Dd(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;

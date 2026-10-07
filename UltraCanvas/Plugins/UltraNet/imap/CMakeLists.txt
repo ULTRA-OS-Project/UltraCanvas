@@ -24,6 +24,10 @@ if(NOT DEFINED UC_CURL_LINK)
     set(UC_CURL_LINK CURL::libcurl)
 endif()
 target_link_libraries(UltraNetImapPlugin PRIVATE ${UC_CURL_LINK})
+# select() on the socket of a session the plug-in reads itself (ImapSession).
+if(WIN32)
+    target_link_libraries(UltraNetImapPlugin PRIVATE ws2_32)
+endif()
 
 set_target_properties(UltraNetImapPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)

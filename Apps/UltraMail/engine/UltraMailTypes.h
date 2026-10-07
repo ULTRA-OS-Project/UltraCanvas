@@ -52,6 +52,16 @@ enum class MailSecurity {
 std::string  ToString(MailSecurity security);
 MailSecurity MailSecurityFromString(const std::string& s);
 
+// The security that actually matches a well-known port, reconciling a stored
+// setting that contradicts it. RFC 8314: 465 = implicit TLS (SMTPS), 587/25 =
+// STARTTLS submission/relay; 993 = implicit IMAPS, 143 = STARTTLS IMAP. Implicit
+// TLS on a STARTTLS port makes libcurl send a TLS ClientHello before the SMTP/
+// IMAP greeting — postfix logs "improper command pipelining" and fail2ban bans
+// for it. The port is the authoritative signal of what the server speaks, so a
+// choice that contradicts a well-known port follows the port; a non-standard
+// port (and an explicit Plain choice) is left untouched.
+MailSecurity EffectiveSecurity(int port, MailSecurity chosen);
+
 // The authentication method of a server, as the server settings page offers
 // it: "auto" | "password" | "encrypted" | "oauth2" | "kerberos" | "ntlm" |
 // "none" — the form stored in the database. Unknown text reads as Any.
@@ -137,6 +147,11 @@ struct Folder {
     // False for \Noselect container folders (e.g. Gmail's "[Gmail]"): they hold
     // no mail and are elided from the folder tree (their children are promoted).
     bool        selectable = true;
+    // The hierarchy separator the server listed for it ("/", or "." on
+    // Courier-style servers whose folders are "INBOX.Drafts"); "" until the
+    // folder list has been fetched since it was stored (UltraMailFolderNames
+    // then works it out from the names).
+    std::string delimiter;
 };
 
 // The header-level view of a message kept in the index (bodies stay in .eml

@@ -72,8 +72,10 @@ brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
 ```
 
 Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
-directory itself. The complete list is the *Install dependencies (macOS)* step
-in `.github/workflows/build.yml`.
+directory itself. Apps built this way run on the macOS you build on and newer.
+CI builds the same libraries with vcpkg instead, for macOS 14 and newer, from
+the list in `MacOS/deps/vcpkg.json`; `MacOS/deps/README.md` shows how to do
+that locally (`scripts/macos-deps.sh`).
 
 </details>
 
@@ -535,9 +537,27 @@ builds a single-application AppImage.
 unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
 notarised bundle a release ships; it needs a Developer ID certificate in the
 keychain and the notarisation credentials the script names. CI runs it only on
-pushes to `main`; pull requests get the unsigned bundle.
+pushes to `main`; pull requests get the unsigned bundle. `--no-sign` signs ad
+hoc, so the bundles still carry a valid signature, and names the disk image
+`UCDemo-MacOS-<version>-<arch>-unsigned.dmg`. Once a browser has downloaded
+such an image, macOS refuses its apps - on Apple silicon with *"… is damaged
+and can't be opened"*. Nothing is damaged: copy the `UltraCanvas` folder to
+Applications and run `xattr -dr com.apple.quarantine /Applications/UltraCanvas`,
+as the read-me inside the image says.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
+
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the libraries in the suite's shared `Frameworks/`: macOS refuses to
+load a library built for a newer version than its own. Homebrew builds its
+libraries for the macOS of the machine that built them, so a suite you package
+from Homebrew runs on the macOS you built it on and newer. The suite CI
+publishes runs on **macOS 14 and later**: CI builds the libraries with vcpkg
+for `MACOSX_DEPLOYMENT_TARGET=14.0` (`MacOS/deps/README.md`) and passes their
+prefix as `UC_MACOS_DEPS_PREFIX`. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
 
 </details>
 

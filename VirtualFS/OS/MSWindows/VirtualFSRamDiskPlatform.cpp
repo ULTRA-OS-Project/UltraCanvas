@@ -16,8 +16,16 @@
 //
 // The fallback exists so that calling code has one code path on all
 // platforms; it is not a security equivalent.
-// Version: 1.0.0
-// Last Modified: 2026-08-31
+//
+// Names are at most 23 characters here (PlatformMaxNameLength): an ImDisk
+// disc keeps its name in its NTFS volume label, which holds 32, behind the
+// 9-character prefix. A longer name could not be stamped on the volume, and
+// the disc was then neither found by its name nor listed. The fallback
+// takes the same limit, so a name does not work on one machine and fail on
+// the next only because ImDisk is installed there.
+// Version: 1.2.0 - names fit the NTFS volume label; labels read wide,
+//                  foreign labels not listed
+// Last Modified: 2026-10-05
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -28,6 +36,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -47,8 +56,12 @@ namespace {
 
 int RunCommand(const std::string& command) {
     // _popen keeps this free of CreateProcess plumbing; output is discarded
-    // because the exit code is all that matters here.
-    std::FILE* pipe = ::_popen((command + " >NUL 2>&1").c_str(), "r");
+    // because the exit code is all that matters here. The wide one, because
+    // the command carries UTF-8 paths (icacls on a folder under %TEMP%), and
+    // the narrow one reads its command line in the ANSI code page.
+    const std::wstring wide =
+            UltraCanvas::PathUtf8Detail::Utf8ToUtf16<std::wstring>(command + " >NUL 2>&1");
+    std::FILE* pipe = ::_wpopen(wide.c_str(), L"r");
     if (!pipe) {
         return -1;
     }
@@ -71,43 +84,60 @@ char FindFreeDriveLetter() {
     return '\0';
 }
 
+// UTF-8, like every path the module hands out: the fallback discs live here
+// and their mount paths are opened with PathFromUtf8. GetTempPathA answered in
+// the ANSI code page, which cannot spell a profile folder named in Thai under
+// code page 1252, and its bytes were then read as UTF-8.
 std::string TempRoot() {
-    char buffer[MAX_PATH + 1] = {};
-    const DWORD length = ::GetTempPathA(MAX_PATH, buffer);
+    wchar_t buffer[MAX_PATH + 1] = {};
+    const DWORD length = ::GetTempPathW(MAX_PATH, buffer);
     if (length == 0 || length > MAX_PATH) {
         return ".";
     }
-    return std::string(buffer, length);
+    return PathToUtf8(std::filesystem::path(std::wstring(buffer, length)));   // path-string-ok: wide
 }
 
 std::string FallbackPathFor(const std::string& name) {
     return TempRoot() + MountPrefix() + name;
 }
 
+// The most characters an NTFS volume label holds.
+constexpr std::size_t kNtfsVolumeLabelLength = 32;
+
 // ImDisk discs live on a drive letter, which carries no name. The NTFS
 // volume label does, so it is set to the prefixed disc name on creation and
 // read back here - that is what makes duplicate detection and listing work
-// for ImDisk discs, not just for fallback directories.
+// for ImDisk discs, not just for fallback directories. IsValidName keeps the
+// name short enough for the whole label to fit (PlatformMaxNameLength).
 std::string VolumeLabelFor(const std::string& name) {
     return std::string(MountPrefix()) + name;
 }
 
+// The label as UTF-8. Read wide: our own labels are ASCII (IsValidName), but
+// every drive's label is read to find them, and GetVolumeInformationA hands a
+// stick labelled "ultravfs-Ελένη" back as "ultravfs-?????" under code page
+// 1252 - a name that then looked like one of ours.
 std::string ReadVolumeLabel(const std::string& driveRoot) {
-    char label[MAX_PATH + 1] = {};
-    if (!::GetVolumeInformationA(driveRoot.c_str(), label, MAX_PATH,
+    const std::wstring root = UltraCanvas::PathUtf8Detail::Utf8ToUtf16<std::wstring>(driveRoot);
+    wchar_t label[MAX_PATH + 1] = {};
+    if (!::GetVolumeInformationW(root.c_str(), label, MAX_PATH,
                                  nullptr, nullptr, nullptr, nullptr, 0)) {
         return {};
     }
-    return std::string(label);
+    return UltraCanvas::PathUtf8Detail::Utf16ToUtf8(std::wstring(label));
 }
 
+// The disc name a label carries, or empty when the label is not one this
+// module wrote: the prefix, then a name IsValidName accepts. Anything else
+// is somebody else's volume that happens to start the same way.
 std::string NameFromVolumeLabel(const std::string& label) {
     const std::string prefix = MountPrefix();
     if (label.size() <= prefix.size() ||
         label.compare(0, prefix.size(), prefix) != 0) {
         return {};
     }
-    return label.substr(prefix.size());
+    std::string name = label.substr(prefix.size());
+    return IsValidName(name) ? name : std::string();
 }
 
 // Finds the drive letter hosting the ImDisk disc with this name, or '\0'.
@@ -144,6 +174,12 @@ void RestrictToCurrentUser(const std::string& path) {
 }
 
 } // namespace
+
+// The label must hold the prefix and the whole name: 32 - 9 = 23.
+std::size_t PlatformMaxNameLength() {
+    const std::size_t room = kNtfsVolumeLabelLength - std::strlen(MountPrefix());
+    return room < kMaxNameLength ? room : kMaxNameLength;
+}
 
 VirtualFSResult PlatformCreate(const std::string& name,
                                uint64_t sizeBytes,

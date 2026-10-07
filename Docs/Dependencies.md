@@ -16,7 +16,14 @@ component the libraries are listed per platform (Linux / macOS / Windows).
 
 Source of truth: every `CMakeLists.txt` (root, `UltraCanvas/`,
 `Plugins/Vector/{CDR,XAR}`) plus the third-party `#include`s across the source
-tree. Mirrors the in-app table at
+tree.
+
+**Where the macOS libraries come from.** A local macOS build uses Homebrew's.
+The macOS apps CI publishes bundle the same libraries built with vcpkg for the
+oldest supported macOS (14.0) instead, because Homebrew's carry the macOS of
+the machine that built them: the manifest, triplets and the ports vcpkg lacks
+(MuPDF, zbar, librevenge, and libvips' extra formats) are in `MacOS/deps/`,
+built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-app table at
 **Dependencies & Third Party → Dependencies & Third Party**
 (`Apps/DemoApp/UltraCanvasDependenciesExamples.cpp`).
 
@@ -128,6 +135,7 @@ their *License* is likewise marked **—** (OS component).
 | visioncortex | [visioncortex.org](https://www.visioncortex.org/) | [github.com/visioncortex/visioncortex](https://github.com/visioncortex/visioncortex) | [MIT](https://spdx.org/licenses/MIT.html) |
 | VTracer | [visioncortex.org/vtracer-docs](https://www.visioncortex.org/vtracer-docs) | [github.com/visioncortex/vtracer](https://github.com/visioncortex/vtracer) | [MIT](https://spdx.org/licenses/MIT.html) |
 | WASAPI | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi) | — | — |
+| wasmtime | [wasmtime.dev](https://wasmtime.dev/) | [github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) | [Apache 2 with LLVM exception](https://spdx.org/licenses/LLVM-exception.html) |
 | WGL | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/opengl/wgl-and-windows-reference) | — | — |
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
@@ -522,6 +530,22 @@ configure time naming what is missing.
 > and LZ4 are opt-in via `-DVIRTUALFS_USE_ZSTD=ON` / `-DVIRTUALFS_USE_LZ4=ON`
 > (both default OFF). libmspack, wimlib, and libbrotli belong to the planned
 > CHM/LIT, WIM, and Brotli providers and are not detected by the build yet.
+
+### WasmHost module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| WebAssembly engine (compile, run, WASI preview 1) | wasmtime 49.0.2 C API (prebuilt, downloaded) | wasmtime 49.0.2 C API (opt-in, not yet built in CI) | wasmtime 49.0.2 C API for MSVC / GNU MinGW (opt-in); none for MSYS2 CLANG64 |
+
+> Not a system package: `cmake/UltraCanvasWasmtime.cmake` downloads the
+> release's prebuilt C API with FetchContent and checks its SHA-256, or takes
+> an unpacked one from `ULTRACANVAS_WASMTIME_DIR`; no Rust toolchain is
+> needed. Linked statically and privately - no wasmtime type appears in a
+> WasmHost header. On by default on Linux (`ULTRACANVAS_ENABLE_WASM_HOST`);
+> without it the module builds as a stub that reports there is no engine.
+> The MSYS2 CLANG64 / CLANGARM64 builds (the `gnullvm` ABI) have no prebuilt
+> library; building the `c-api` crate with Corrosion, as the Vectorizer plugin
+> builds VTracer, is the way there. Used by UltraWeb.
 
 ---
 

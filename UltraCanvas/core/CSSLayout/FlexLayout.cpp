@@ -2,6 +2,11 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.5.0 - an item stretches only when the container or the item asks
+//                 for it (align-items now starts at Start); the container's
+//                 stretch leaves a set width in a column, or height in a row,
+//                 as it is (CSS Flexbox 9.4 step 11), the item's own
+//                 align-self: stretch does not
 // Version: 1.4.0 - merged with main's 1.3.7 (a stretched item is clamped by its min /
 //                 max cross size)
 // Version: 1.3.9 - a flex container's own min / max-height percentages use
@@ -30,7 +35,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -775,6 +780,21 @@ namespace UltraCanvas {
 
                     AlignSelf as = effectiveAlignSelf(it->fi, s.fl.alignItems);
                     float itemCross = it->crossSize;
+                    // The most specific statement wins. A container's
+                    // align-items: stretch fills the line only for an item
+                    // whose cross size is automatic (CSS Flexbox 9.4 step 11):
+                    // a set width in a column, or height in a row, is the
+                    // item's size - a 200px button in a stretch column stays
+                    // 200px, at the start. The item's own align-self: stretch
+                    // is a statement about that very item and stretches it
+                    // over a size it carries (where CSS would keep the size):
+                    // in this framework a size often comes from a constructor
+                    // that requires one, the align-self never does.
+                    const Dimension& crossDim = s.axis.isRow ? it->el->size.height : it->el->size.width;
+                    if (as == AlignSelf::Stretch && it->fi.alignSelf != AlignSelf::Stretch && hasSetSize(crossDim)) {
+                        auditKeptSize(*it->el, s.axis.isRow ? "height" : "width", it->crossSize, ln.lineCrossSize);
+                        as = AlignSelf::Start;
+                    }
                     if (as == AlignSelf::Stretch) {
                         float marginsCross = it->marginCrossStart + it->marginCrossEnd;
                         itemCross = std::max(0.f, ln.lineCrossSize - marginsCross);

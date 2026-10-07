@@ -25,9 +25,12 @@
 // engine lands, the viewer shows the container's embedded preview thumbnail
 // (readable without parsing the body — the format is designed for that) plus
 // the header details; files without a thumbnail get a header summary. The
-// right view is chosen automatically from the file kind; image-only tools
-// (zoom, rotate, adjustments, save) apply to images, and zoom also drives the
-// PDF and e-book views. The displayed page zooms with the mouse wheel and with
+// right view is chosen automatically from the file kind, and the toolbar
+// offers only the tools that kind takes (GetAvailableTools): colour
+// adjustments and Curves for bitmaps, rotate / mirror / save for anything on
+// the image surface, zoom for images, drawings, PDFs and e-books - and none of
+// them for text, spreadsheets, fonts, 3D models, video or audio, whose views
+// bring their own controls. The displayed page zooms with the mouse wheel and with
 // the keyboard (+ / - to step, 0 to fit, 1 for 100 %) in both the image surface
 // and the PDF view; the PDF page inventory's thumbnails take either an absolute
 // pixel width or a share of the viewer's width (SetPDFThumbnailWidth /
@@ -63,8 +66,8 @@
 // click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
 // off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.9.0
-// Last Modified: 2026-09-16
+// Version: 1.10.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -100,6 +103,7 @@ class UltraCanvasTextArea;           // text / source / markdown (read-only)
 class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine registry)
 class UltraCanvasCurvesDialog;       // tone curve editor window (dialogs/)
 class UltraCanvasColorSwatchBar;     // backdrop palette under transparent images
+class UltraCanvasVectorElement;      // drawings read through the vector preview seam
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
@@ -159,6 +163,24 @@ struct MediaAdjustments {
     }
 };
 
+// ===== WHICH VIEW / EDIT TOOLS APPLY =====
+// The groups of the second toolbar row that mean something for the file on
+// show. The viewer offers only these, so a video, a PDF or a 3D model is not
+// given colour sliders it cannot apply. Details is always available.
+//   bitmap image          zoom, transform, colour, save
+//   SVG / vector drawing  zoom, transform, save (rasterized) - on the image
+//                         surface; a drawing in the vector view zooms only
+//   *.ucd preview         zoom (it is a picture of a document, not an image)
+//   PDF, e-book           zoom
+//   everything else       nothing: text, spreadsheet, font, 3D model, video
+//                         and audio views bring their own controls
+struct MediaViewerTools {
+    bool zoom      = false;   // zoom out / zoom level / zoom in / fit
+    bool transform = false;   // rotate left / right, mirror horizontally / vertically
+    bool colour    = false;   // adjustments panel and Curves (with its histogram)
+    bool save      = false;   // Save as... (bakes the edits into a bitmap file)
+};
+
 // ===== CENTRAL DISPLAY SURFACE =====
 // Owns the currently displayed image plus its view geometry (zoom about the
 // fit scale, pan, rotation in 90° steps, horizontal/vertical mirror) and the
@@ -171,9 +193,14 @@ public:
     explicit UltraCanvasMediaSurface(const std::string& elemId = "MediaSurface");
     ~UltraCanvasMediaSurface() override;
 
-    // Show a new image, optionally animating the swap with `transition`.
+    // Show a new image, optionally animating the swap with `transition`. The
+    // current adjustments carry over to it; the second form replaces them in
+    // the same step, so the new image is colour-processed once, not twice
+    // (and the outgoing one keeps its look for the transition).
     void ShowImage(std::shared_ptr<UCImage> img, MediaTransition transition,
                    int durationMs, bool animated);
+    void ShowImage(std::shared_ptr<UCImage> img, MediaTransition transition,
+                   int durationMs, bool animated, const MediaAdjustments& adj);
     std::shared_ptr<UCImage> GetImage() const { return image; }
 
     // Tone / colour adjustments (rebuilds the processed pixmap).
@@ -448,6 +475,16 @@ public:
     void SetTopBarsVisible(bool visible);
     bool GetTopBarsVisible() const { return topBarsVisible; }
 
+    // ===== TOOLS FOR THE SHOWN FILE =====
+    // Which view / edit tools apply to what is on show (see MediaViewerTools),
+    // decided on every load. The second toolbar row shows only these groups,
+    // and the adjustments panel folds away while colour does not apply (it
+    // comes back with the next bitmap if its toggle is still on). A host with
+    // its own controls can ask the same question. Colour adjustments made on
+    // one photo still carry over to the next, but never reach a file that
+    // does not take them: a drawing or a document preview shows unaltered.
+    MediaViewerTools GetAvailableTools() const { return tools; }
+
     // ===== KEYBOARD =====
     // Give the widget the window keyboard focus, so the browsing keys work
     // without clicking into it first.
@@ -505,6 +542,18 @@ private:
     // Mark the swatch matching the backdrop the surface is using (none when it
     // is a colour the palette does not hold).
     void SyncBackdropSelection();
+    // Decide `tools` from what the current load put on show, then apply it.
+    void UpdateToolAvailability();
+    // Show only the toolbar groups `tools` allows (separators included) and
+    // the adjustments panel only while it is open and colour applies.
+    void ApplyToolAvailability();
+    // Whether a file's pixels take the colour adjustments: a bitmap image.
+    // Not a drawing (SVG, the vector formats), whose picture is rasterized
+    // at whatever size it is shown, and not a document preview.
+    static bool TakesColourAdjustments(const std::string& path);
+    // What the surface shows `path` with: the viewer's adjustments for a
+    // bitmap, none for anything else.
+    MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
@@ -522,12 +571,14 @@ private:
     void FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const;
     void ShowSaveDialog();
     void HandleDroppedFiles(const std::vector<std::string>& files);
-    // Zoom toolbar actions route to the PDF view or the image surface depending
-    // on which is currently showing.
+    // Zoom toolbar actions route to the PDF view, the e-book view, the vector
+    // drawing view or the image surface, depending on which is showing.
     void ZoomInAction();
     void ZoomOutAction();
     void ZoomFitAction();
     void ZoomPercentAction(double percent);
+    // The vector drawing view while it is the one showing, else null.
+    UltraCanvasVectorElement* ActiveVectorView() const;
     void ShowView(MediaKind kind);    // toggle child visibility for the kind
     // Detach and forget the current plugin-built view, if any.
     void DropPluginView();
@@ -624,6 +675,11 @@ private:
     std::string ucdDetails;
 
     MediaAdjustments adjustments;
+    // The tools the shown file takes (see GetAvailableTools()).
+    MediaViewerTools tools;
+    // The adjustments toggle is on. The panel is visible only while colour
+    // applies to the shown file, so this remembers it across a video or a PDF.
+    bool adjustPanelOpen = false;
     // Puts each adjustment control back to the value it was built with.
     std::vector<std::function<void()>> adjustResetters;
     // True while ResetAdjustments() moves the controls: their callbacks must

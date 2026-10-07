@@ -2,6 +2,8 @@
 // Account auto-discovery: provider presets, Mozilla-autoconfig XML parsing,
 // username placeholder resolution and server-URL construction. All pure — no
 // network.
+// Version: 0.3.0 - the iCloud setup guide: which addresses offer it, and its
+//                  servers are the preset's
 // Version: 0.2.0 - ServerNameProblem
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -57,6 +59,29 @@ TEST(server_name_problem_accepts_real_server_names) {
     REQUIRE(ServerNameProblem("192.168.1.20").empty());
     REQUIRE(ServerNameProblem("[2001:db8::1]").empty());
     REQUIRE(ServerNameProblem("mail.b\xC3\xBC" "cher.de").empty());  // an international name
+}
+
+TEST(incoming_mailbox_changed_only_for_another_host_or_user) {
+    MailServerSettings before;
+    before.host = "mail.interkontakt.net"; before.port = 993; before.username = "info@ultraos.eu";
+
+    MailServerSettings same = before;
+    same.host = " Mail.Interkontakt.NET. ";             // case, spaces, a final dot
+    same.username = "INFO@ultraos.eu";
+    REQUIRE(!IncomingMailboxChanged(before, same));
+    same.port = 143;                                    // another port, same mailbox
+    same.security = MailSecurity::StartTls;
+    REQUIRE(!IncomingMailboxChanged(before, same));
+
+    MailServerSettings otherHost = before;
+    otherHost.host = "imap.ultraos.eu";
+    REQUIRE(IncomingMailboxChanged(before, otherHost));
+    MailServerSettings otherUser = before;
+    otherUser.username = "office@ultraos.eu";
+    REQUIRE(IncomingMailboxChanged(before, otherUser));
+
+    // No server before: no mail from another mailbox to drop.
+    REQUIRE(!IncomingMailboxChanged(MailServerSettings{}, otherHost));
 }
 
 TEST(server_name_problem_rejects_what_cannot_be_a_server) {
@@ -296,6 +321,44 @@ TEST(server_url_construction) {
     REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(o.smtp), std::string("smtp://smtp.office365.com:587/"));
 }
 
+// A security choice that contradicts a well-known port must follow the port, so
+// implicit TLS never reaches a STARTTLS port (which sends a ClientHello before
+// the greeting - postfix "improper command pipelining" - and gets the IP
+// fail2ban-banned). See EffectiveSecurity / ApplyConnection / Smtp/ImapServerUrl.
+TEST(security_reconciled_against_port) {
+    // The raw helper.
+    REQUIRE(EffectiveSecurity(587, MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(25,  MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(465, MailSecurity::StartTls) == MailSecurity::SslTls);
+    REQUIRE(EffectiveSecurity(143, MailSecurity::SslTls)   == MailSecurity::StartTls);
+    REQUIRE(EffectiveSecurity(993, MailSecurity::StartTls) == MailSecurity::SslTls);
+    // Non-standard port: trust the user. Explicit plaintext stays plaintext.
+    REQUIRE(EffectiveSecurity(2525, MailSecurity::SslTls)  == MailSecurity::SslTls);
+    REQUIRE(EffectiveSecurity(587,  MailSecurity::Plain)   == MailSecurity::Plain);
+
+    // The reported bug: 587 + SSL/TLS must build smtp:// (STARTTLS), not smtps://.
+    MailServerSettings smtp; smtp.host = "mail.example.com"; smtp.port = 587;
+    smtp.security = MailSecurity::SslTls;
+    REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(smtp), std::string("smtp://mail.example.com:587/"));
+    UltraNetMailOptions opt;
+    ApplyConnection(smtp, opt);
+    REQUIRE(opt.useTls);
+    REQUIRE(!opt.implicitTls);   // STARTTLS upgrade, no premature ClientHello
+
+    // 465 + STARTTLS must build smtps:// (implicit).
+    MailServerSettings s465; s465.host = "mail.example.com"; s465.port = 465;
+    s465.security = MailSecurity::StartTls;
+    REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(s465), std::string("smtps://mail.example.com:465/"));
+
+    // IMAP symmetry: 143 + SSL/TLS -> imap:// (STARTTLS); 993 keeps imaps://.
+    MailServerSettings i143; i143.host = "mail.example.com"; i143.port = 143;
+    i143.security = MailSecurity::SslTls;
+    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i143), std::string("imap://mail.example.com:143/"));
+    MailServerSettings i993; i993.host = "mail.example.com"; i993.port = 993;
+    i993.security = MailSecurity::StartTls;
+    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(i993), std::string("imaps://mail.example.com:993/"));
+}
+
 // ---- credential vault ------------------------------------------------------
 // The vault is UltraVault-backed and stays locked until the master password is
 // supplied, so every test unlocks first. UltraVault is a per-process singleton:
@@ -445,4 +508,32 @@ TEST(credential_vault_migrates_legacy_format) {
 
     vault.Lock();
     fs::remove_all(dir);
+}
+
+TEST(icloud_setup_guide_is_offered_for_icloud_and_unknown_domains) {
+    REQUIRE(OffersICloudSetupGuide(""));                      // nothing typed yet
+    REQUIRE(OffersICloudSetupGuide("erika"));                 // still typing
+    REQUIRE(OffersICloudSetupGuide("erika@icloud.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@me.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@mac.com"));
+    REQUIRE(OffersICloudSetupGuide("erika@own-domain.example"));   // iCloud+ own domain?
+    REQUIRE(!OffersICloudSetupGuide("erika@gmail.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@outlook.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@yahoo.com"));
+    REQUIRE(!OffersICloudSetupGuide("erika@gmx.net"));
+}
+
+TEST(icloud_setup_guide_names_the_presets_servers) {
+    const std::string guide = ICloudSetupGuide();
+    const DiscoveryResult icloud = AutoDiscovery::FromPresets("erika@icloud.com");
+    REQUIRE(icloud.found);
+    auto has = [&guide](const std::string& text) { return guide.find(text) != std::string::npos; };
+    REQUIRE(has("**" + icloud.imap.host + "**, port **" + std::to_string(icloud.imap.port) +
+                "**, SSL/TLS"));
+    REQUIRE(has("**" + icloud.smtp.host + "**, port **" + std::to_string(icloud.smtp.port) +
+                "**, STARTTLS"));
+    REQUIRE(has("account.apple.com"));
+    REQUIRE(has("App-Specific Passwords"));
+    REQUIRE(has("Two-factor authentication"));
+    REQUIRE(has("@icloud.com address"));
 }
