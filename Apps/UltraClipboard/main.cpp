@@ -1,9 +1,11 @@
 // Apps/UltraClipboard/main.cpp
 // Entry point: the clipboard history's main window. UltraDesktop's quick
 // panel starts it with --search TEXT (the panel's search, carried over) or
-// --edit ID (an entry's edit dialog at once).
+// --edit ID (an entry's edit dialog at once). When UltraClipboard is already
+// running, the request goes to it and this start quits (SingleInstance.h).
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "SingleInstance.h"
 #include "ui/UltraClipboardWindow.h"
 
 #include "UltraCanvasApplication.h"
@@ -80,6 +82,12 @@ int main(int argc, char* argv[]) {
 
     UltraCanvasApplication app;
     std::unique_ptr<UltraClipboard::UltraClipboardWindow> window;
+    // Declared after the window, so it stops listening before the window goes.
+    UltraClipboard::SingleInstance instance;
+    if (instance.HandOff({search, editId})) {
+        std::cout << "UltraClipboard is already running: brought it forward.\n";
+        return EXIT_SUCCESS;
+    }
     try {
         if (!app.Initialize("UltraClipboard")) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
@@ -92,6 +100,10 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         window->Show();
+        UltraClipboard::UltraClipboardWindow* shown = window.get();
+        instance.Listen([shown](const UltraClipboard::SingleInstance::Request& request) {
+            shown->Present(request.search, request.editId);
+        });
         app.Run();
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
@@ -100,6 +112,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Fatal: unknown exception\n";
         return EXIT_FAILURE;
     }
+    instance.Close();
     window.reset();
     return EXIT_SUCCESS;
 }
