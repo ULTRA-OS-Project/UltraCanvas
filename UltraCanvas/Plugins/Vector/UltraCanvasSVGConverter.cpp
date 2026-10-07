@@ -9,11 +9,12 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.4.0 - line-gallery arrowheads exported as <marker>s and read back
 // Version: 1.3.0 - <marker>: marker-start/-mid/-end drawn as grouped shapes
 // Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
 //                  with presentation attributes and style="" (SVG 2 order)
 // Version: 1.1.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -84,6 +85,31 @@ std::string XmlEscape(const std::string& s) {
 }
 
 bool NearlyOne(float v) { return std::fabs(v - 1.0f) < 1e-4f; }
+
+// The line gallery's arrowheads by the name the writer tags its <marker>s
+// with (data-ultracanvas-arrowhead), so the reader gives them back as
+// arrowheads rather than as shapes. File-format names, fixed: not the
+// editor's labels.
+struct ArrowheadName {
+    ArrowheadKind Kind;
+    const char* Name;
+};
+constexpr ArrowheadName kArrowheadNames[] = {
+    {ArrowheadKind::Triangle, "triangle"},         {ArrowheadKind::OpenArrow, "open-arrow"},
+    {ArrowheadKind::Circle, "circle"},             {ArrowheadKind::Square, "square"},
+    {ArrowheadKind::Diamond, "diamond"},           {ArrowheadKind::Bar, "bar"},
+    {ArrowheadKind::StraightArrow, "straight-arrow"}, {ArrowheadKind::AngledArrow, "angled-arrow"},
+    {ArrowheadKind::RoundedArrow, "rounded-arrow"}, {ArrowheadKind::Spot, "spot"},
+    {ArrowheadKind::SolidDiamond, "solid-diamond"}, {ArrowheadKind::Feather, "feather"},
+    {ArrowheadKind::Feather2, "feather2"},         {ArrowheadKind::HollowDiamond, "hollow-diamond"},
+};
+
+const char* ArrowheadNameOf(ArrowheadKind kind) {
+    for (const auto& n : kArrowheadNames) {
+        if (n.Kind == kind) return n.Name;
+    }
+    return nullptr;
+}
 
 // ===== WRITER =====
 
@@ -166,6 +192,8 @@ private:
     std::ostringstream defs;
     int depth = 1;
     int nextDefId = 1;
+    // Arrowhead markers already written, by kind, scale, end, width and colour.
+    std::map<std::string, std::string> arrowheadMarkers;
 
     std::string NL() const { return opts.Minify ? "" : "\n"; }
     std::string Ind(int level) const {
@@ -366,7 +394,98 @@ private:
                            e.Type == VectorElementType::Polygon ||
                            e.Type == VectorElementType::Path;
         a << StyleAttrs(e.Style, shape);
+        if (e.Type == VectorElementType::Line || e.Type == VectorElementType::Polyline ||
+            e.Type == VectorElementType::Path)
+            a << ArrowheadAttrs(e);
         return a.str();
+    }
+
+    // ===== ARROWHEADS =====
+
+    // The line gallery's arrowheads as SVG markers, so every SVG reader draws
+    // them: marker-start / marker-end on the line, each pointing at a
+    // <marker> whose content is the very outline the renderer fills or
+    // strokes (ArrowheadOutline). The renderer draws them only on a path whose
+    // first and last subpaths are open, and so does this.
+    std::string ArrowheadAttrs(const VectorElement& e) {
+        const VectorStyle& s = e.Style;
+        if (!s.Stroke || !s.Stroke->HasArrowheads() || s.Stroke->Width <= 0 ||
+            std::holds_alternative<std::monostate>(s.Stroke->Fill))
+            return {};
+        PathData outline;
+        Point2Dd start, startDir, end, endDir;
+        if (!BuildOutlinePath(e, outline) || !PathEndpoints(outline, start, startDir, end, endDir)) return {};
+        std::string a;
+        if (s.Stroke->StartArrow.IsSet()) {
+            const std::string id = ArrowheadMarker(s.Stroke->StartArrow, true, *s.Stroke, s.StrokeOpacity);
+            if (!id.empty()) a += " marker-start=\"url(#" + id + ")\"";
+        }
+        if (s.Stroke->EndArrow.IsSet()) {
+            const std::string id = ArrowheadMarker(s.Stroke->EndArrow, false, *s.Stroke, s.StrokeOpacity);
+            if (!id.empty()) a += " marker-end=\"url(#" + id + ")\"";
+        }
+        return a;
+    }
+
+    // The <marker> for one arrowhead. It is drawn in the line's own units
+    // (markerUnits="userSpaceOnUse": the arrowhead is sized from the line
+    // width, with the renderer's 0.5 floor, not simply scaled by it) with
+    // its tip on the vertex. orient="auto" turns +x along the path, so an end
+    // arrowhead points along +x and a start one along -x: the renderer points
+    // both away from the line, and SVG 1.1 readers know no
+    // auto-start-reverse. The viewBox covers the outline, so a reader that
+    // clips to the marker's viewport loses nothing either.
+    std::string ArrowheadMarker(const ArrowheadData& arrow, bool atStart, const StrokeData& stroke,
+                                float strokeOpacity) {
+        const char* name = ArrowheadNameOf(arrow.Kind);
+        if (!name) return {};
+        bool stroked = false;
+        const PathData outline = ArrowheadOutline(arrow, Point2Dd(0, 0), Point2Dd(atStart ? -1 : 1, 0),
+                                                  stroke.Width, stroked);
+        if (outline.commands.empty()) return {};
+
+        // The same arrowhead in the same colour is written once.
+        const Color* colour = std::get_if<Color>(&stroke.Fill);
+        const float opacity = stroke.Opacity * strokeOpacity;
+        std::string key;
+        if (colour) {
+            key = std::string(name) + "|" + Num(arrow.Scale) + "|" + (atStart ? "s" : "e") + "|" +
+                  Num(stroke.Width) + "|" + HexColor(*colour) + "|" + std::to_string(colour->a) + "|" + Num(opacity);
+            auto it = arrowheadMarkers.find(key);
+            if (it != arrowheadMarkers.end()) return it->second;
+        }
+        float alpha = 1.0f;
+        const std::string paint = PaintValue(stroke.Fill, &alpha);
+        if (paint.empty() || paint == "none") return {};
+
+        const Rect2Dd box = outline.GetBounds();
+        const double pad = std::max(0.5 * stroke.Width, 1e-3);   // a stroked outline's half width
+        const Rect2Dd view{box.x - pad, box.y - pad, box.width + 2 * pad, box.height + 2 * pad};
+        const std::string id = "arrow" + std::to_string(nextDefId++);
+        std::ostringstream m;
+        m << Ind(2) << "<marker id=\"" << id << "\" data-ultracanvas-arrowhead=\"" << name << "\""
+          << " data-ultracanvas-scale=\"" << Num(arrow.Scale) << "\""
+          << " data-ultracanvas-end=\"" << (atStart ? "start" : "end") << "\""
+          << " markerUnits=\"userSpaceOnUse\" orient=\"auto\" overflow=\"visible\""
+          << " viewBox=\"" << Num(view.x) << " " << Num(view.y) << " " << Num(view.width) << " "
+          << Num(view.height) << "\" markerWidth=\"" << Num(view.width) << "\" markerHeight=\""
+          << Num(view.height) << "\" refX=\"0\" refY=\"0\">" << NL();
+        std::string d = SerializePathData(outline);
+        while (!d.empty() && d.back() == ' ') d.pop_back();
+        const float o = alpha * opacity;
+        m << Ind(3) << "<path d=\"" << d << "\"";
+        if (stroked) {
+            m << " fill=\"none\" stroke=\"" << paint << "\" stroke-width=\"" << Num(stroke.Width) << "\""
+              << " stroke-linecap=\"round\" stroke-linejoin=\"round\"";
+            if (!NearlyOne(o)) m << " stroke-opacity=\"" << Num(o) << "\"";
+        } else {
+            m << " fill=\"" << paint << "\"";
+            if (!NearlyOne(o)) m << " fill-opacity=\"" << Num(o) << "\"";
+        }
+        m << "/>" << NL() << Ind(2) << "</marker>" << NL();
+        defs << m.str();
+        if (!key.empty()) arrowheadMarkers.emplace(key, id);
+        return id;
     }
 
     // ===== TEXT =====
@@ -1683,6 +1802,27 @@ private:
         return inst;
     }
 
+    // A <marker> the writer made for a line-gallery arrowhead at this end
+    // (data-ultracanvas-arrowhead / -scale / -end), read into `out`.
+    static bool GalleryArrowhead(const tinyxml2::XMLElement* m, bool atStart, ArrowheadData& out) {
+        if (!m) return false;
+        const char* name = m->Attribute("data-ultracanvas-arrowhead");
+        const char* end = m->Attribute("data-ultracanvas-end");
+        if (!name || !end || std::strcmp(end, atStart ? "start" : "end") != 0) return false;
+        for (const auto& n : kArrowheadNames) {
+            if (std::strcmp(n.Name, name) != 0) continue;
+            ArrowheadData arrow;
+            arrow.Kind = n.Kind;
+            if (const char* scale = m->Attribute("data-ultracanvas-scale")) {
+                float v = 1.0f;
+                if (TryParseFloat(scale, v) && v > 0) arrow.Scale = v;
+            }
+            out = arrow;
+            return true;
+        }
+        return false;
+    }
+
     // `shape` with the markers its marker properties ask for, as a group
     // (the shape first, then marker-start, the marker-mids and marker-end,
     // which is SVG's drawing order) - or `shape` itself when there are none.
@@ -1701,6 +1841,17 @@ private:
         if (!any) return shape;
         PathData outline;
         if (!BuildOutlinePath(*shape, outline)) return shape;
+
+        // This writer's own arrowheads come back as what they were: the line
+        // gallery's StartArrow / EndArrow on the stroke, editable as such.
+        // Only where the renderer would draw them (the path's ends open) and
+        // only in the slot each was written for.
+        Point2Dd start, startDir, end, endDir;
+        if (shape->Style.Stroke && PathEndpoints(outline, start, startDir, end, endDir)) {
+            if (GalleryArrowhead(refs[0], true, shape->Style.Stroke->StartArrow)) refs[0] = nullptr;
+            if (GalleryArrowhead(refs[2], false, shape->Style.Stroke->EndArrow)) refs[2] = nullptr;
+            if (!refs[0] && !refs[1] && !refs[2]) return shape;
+        }
         const std::vector<MarkerVertex> vertices = MarkerVertices(outline);
         if (vertices.empty()) return shape;
 

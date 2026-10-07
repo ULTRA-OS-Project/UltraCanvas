@@ -1,3 +1,12 @@
+#### 2026-10-07 *0.6.7*
+- **Arrowheads are saved in SVG files.** An arrow drawn with the line
+  gallery's arrowheads lost them when saved as SVG: every other program, and
+  ArtCreator itself on reopening, showed a bare line. They are now saved as
+  SVG markers, so browsers, Inkscape and UltraFiler's thumbnails draw them,
+  and reopening the file in ArtCreator gives back the arrowheads you chose,
+  still editable in the line panel. The fix is in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-arrowheads.md`).
+
 #### 2026-10-06 *0.6.6*
 - **SVG files styled with CSS open in their colours.** A drawing that sets
   its fills, strokes, corner radii and text styles from a `<style>` block

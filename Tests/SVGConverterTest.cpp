@@ -9,12 +9,13 @@
 // percentages, entities, tspans, defs-referenced gradients), a styled
 // one the <style> cascade (class/id/descendant rules, !important, CDATA),
 // and a marked one <marker> drawing (placement, orient, viewBox, units,
-// context paint, clipping, inheritance, a self-referencing marker).
+// context paint, clipping, inheritance, a self-referencing marker); line-
+// gallery arrowheads go out as markers and come back as arrowheads.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.3.0
-// Last Modified: 2026-10-06
+// Version: 1.4.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -567,6 +568,87 @@ int main(int argc, char** argv) {
         bool markerNote = false;
         for (const auto& n : notes) markerNote = markerNote || n.find("marker") != std::string::npos;
         Check(!markerNote, "no reader note about <marker>");
+    }
+
+    // ===== ARROWHEADS OUT AND BACK =====
+    // The line gallery's arrowheads were not written at all, so an arrow
+    // drawn in ArtCreator lost its heads when saved as SVG. They are written
+    // as markers every SVG reader draws, and come back as arrowheads.
+    {
+        auto adoc = std::make_shared<VectorDocument>();
+        adoc->Size = Size2Dd{400, 300};
+        auto al = adoc->AddLayer("Arrows");
+        auto arrowStroke = [](Color c, float width) {
+            StrokeData st;
+            st.Fill = c;
+            st.Width = width;
+            return st;
+        };
+        auto line = std::make_shared<VectorLine>();
+        line->Start = Point2Dd(40, 150);
+        line->End = Point2Dd(140, 150);
+        line->Style.Stroke = arrowStroke(Color(255, 0, 0, 255), 2.0f);
+        line->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 3.0f};
+        line->Style.Stroke->StartArrow = ArrowheadData{ArrowheadKind::OpenArrow, 1.0f};
+        al->AddChild(line);
+        auto curve = std::make_shared<VectorPath>();
+        curve->Path = ParsePathString("M 40 220 C 80 200 120 240 160 220");
+        curve->Style.Stroke = arrowStroke(Color(0, 0, 255, 255), 3.0f);
+        curve->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::StraightArrow, 1.0f};
+        al->AddChild(curve);
+        auto closed = std::make_shared<VectorPolygon>();
+        closed->Points = {Point2Dd(250, 50), Point2Dd(300, 50), Point2Dd(275, 90)};
+        closed->Style.Stroke = arrowStroke(Color(0, 0, 0, 255), 1.0f);
+        closed->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 1.0f};
+        al->AddChild(closed);
+        auto twin = std::make_shared<VectorLine>();
+        twin->Start = Point2Dd(40, 100);
+        twin->End = Point2Dd(140, 100);
+        twin->Style.Stroke = arrowStroke(Color(255, 0, 0, 255), 2.0f);
+        twin->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 3.0f};
+        al->AddChild(twin);
+
+        const std::string out = converter.ExportToString(*adoc, options);
+        auto count = [&](const std::string& what) {
+            size_t n = 0;
+            for (size_t at = out.find(what); at != std::string::npos; at = out.find(what, at + 1)) ++n;
+            return n;
+        };
+        Check(out.find("marker-end=\"url(#") != std::string::npos &&
+              out.find("marker-start=\"url(#") != std::string::npos &&
+              out.find("data-ultracanvas-arrowhead=\"triangle\"") != std::string::npos,
+              "arrowheads are written as marker-start / marker-end");
+        Check(count("<marker ") == 3, "the same arrowhead in the same colour is written once");
+        const size_t poly = out.find("<polygon");
+        Check(poly != std::string::npos &&
+              out.substr(poly, out.find("/>", poly) - poly).find("marker-") == std::string::npos,
+              "a closed shape gets no markers (the renderer draws none on it)");
+
+        auto back = converter.ImportFromString(out, options);
+        auto bl = (back && !back->Layers.empty()) ? back->Layers[0] : nullptr;
+        Check(bl && bl->Children.size() == 4, "arrowed shapes come back as four shapes, not groups");
+        auto bline = ChildAs<VectorLine>(bl, 0);
+        Check(bline && bline->Style.Stroke && bline->Style.Stroke->EndArrow.Kind == ArrowheadKind::Triangle &&
+              std::fabs(bline->Style.Stroke->EndArrow.Scale - 3.0f) < 1e-4f &&
+              bline->Style.Stroke->StartArrow.Kind == ArrowheadKind::OpenArrow,
+              "the line's arrowheads come back as arrowheads, kind and size");
+        auto bcurve = ChildAs<VectorPath>(bl, 1);
+        Check(bcurve && bcurve->Style.Stroke &&
+              bcurve->Style.Stroke->EndArrow.Kind == ArrowheadKind::StraightArrow &&
+              !bcurve->Style.Stroke->StartArrow.IsSet(),
+              "a Xara arrowhead on a curve comes back, and only at its end");
+
+        // Another SVG reader draws them: the triangle's body below the line.
+        std::vector<uint8_t> bytes(out.begin(), out.end());
+        auto img = UCImage::LoadFromMemory(bytes);
+        auto pm = img ? img->GetPixmap(400, 300, ImageFitMode::Contain, 1.0f) : nullptr;
+        if (pm) {
+            const uint32_t px = pm->GetPixelData()[153 * pm->GetRawWidth() + 124];
+            Check(((px >> 16) & 0xFF) > 200 && ((px >> 8) & 0xFF) < 80,
+                  "librsvg draws the end arrowhead from the marker");
+        } else {
+            Check(false, "the export with arrowheads rasterizes");
+        }
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
