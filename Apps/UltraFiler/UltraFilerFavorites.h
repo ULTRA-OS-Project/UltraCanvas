@@ -7,8 +7,8 @@
 // they were pinned in. Persisted next to the settings
 // (UltraFilerSettings::GetConfigDirectory()) as a tab separated text file,
 // so paths keep their '=' and spaces.
-// Version: 1.1.0
-// Last Modified: 2026-10-03
+// Version: 1.1.1 - a name outside the Windows code page is no longer forgotten
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,7 +106,10 @@ public:
         const size_t before = list.size();
         std::error_code ec;
         for (size_t i = 0; i < list.size();) {
-            if (!std::filesystem::exists(list[i].path, ec) || ec) {
+            // The path is UTF-8. Handed over as a plain string, Windows read
+            // it in the ANSI code page, found no such file for any name the
+            // code page cannot hold (Thai, CJK, emoji) and dropped the pin.
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(list[i].path), ec) || ec) {
                 ec.clear();
                 list.erase(list.begin() + i);
                 continue;

@@ -341,8 +341,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `HTMLReader/HTMLDocument.h`) — `Parser::Parse(html)` → `Document`
   (tolerant HTML/XHTML: unclosed elements, void and self-closing tags,
   comments, CDATA, doctype and `quirksMode`, entities, raw-text `<style>` /
-  `<script>`; `Errors()` lists repairs). `Node` (one struct per node; tag
-  and attribute names lower-case) with `GetAttribute`, `HasClass`,
+  `<script>`; `Errors()` lists repairs; inside an inline `<svg>` / `<math>`
+  the names keep their vocabulary's case, `linearGradient`, `viewBox`).
+  `Node` (one struct per node; HTML tag and attribute names lower-case,
+  attribute lookup exact then case-insensitive) with `GetAttribute`, `HasClass`,
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
@@ -1770,16 +1772,28 @@ the Linux `freedesktop-notifications` adapter
 `windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
 C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
 the shared chat / mail mirrors with category guessing from the application's
-identity, UltraMail publishing new mail as `mail.message`
-(`Apps/UltraMail/engine/UltraMailFeedPublisher`), and the desktop message
+identity, the presenters that put an application's `system.notification` on
+screen through the platform's own notification service and report its click
+back (`freedesktop-presenter`: `Notify` to the desktop's server;
+`windows-presenter`: notification-area balloons, shown as toasts;
+`macos-presenter`: Notification Center from an application bundle, osascript
+outside one), the toast
+host that draws the notifications nothing else draws - where UltraMessage
+itself serves `org.freedesktop.Notifications`, as on ULTRA OS - in
+`WindowType::Notification` windows (`UltraCanvasNotificationToast` /
+`UltraCanvasNotificationToastHost`, `include/Plugins/UltraMessage/`, hosted by
+the ULTRA OS desktop; every notification says what shows it in `displayed`), UltraMail
+publishing new mail as `mail.message` and notifying of it on screen
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`, `UltraMailNewMail`), and the desktop message
 centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
 `UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
 search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
-a DemoApp page). Tests in `Tests/UltraMessage` (34 cases, in-tree and
-standalone, the adapter ones on a private D-Bus session; 5 for the element
-in-tree). Not yet: the `AddFdWatch` event-loop path (a reader thread serves
-every endpoint), an FTS5 index (text search is a LIKE), automatic reconnection
-after the hosting broker exits, and the macOS and Telegram adapters. See
+a DemoApp page). Tests in `Tests/UltraMessage` (41 cases, in-tree and
+standalone, the adapter and presenter ones on a private D-Bus session; 11 for
+the message centre and the toasts in-tree). Not yet: the `AddFdWatch` event-loop path (a reader
+thread serves every endpoint), an FTS5 index (text search is a LIKE),
+automatic reconnection after the hosting broker exits, and the macOS and
+Telegram adapters. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---
@@ -1950,8 +1964,11 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom and one-call slideshows,
-background music (fades, looping, ducking under the segments' own sound),
+frame, still images with sub-pixel pan and zoom (keeping given faces in
+shot) and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound,
+song lists crossfading into each other), beat detection and slideshows
+changing on the beat,
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
@@ -1965,7 +1982,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
-  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`
+  `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXBeatInfo`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1976,7 +1995,7 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
-  `VideoFX_GenerateTestClip`
+  `VideoFX_DetectBeats`, `VideoFX_GenerateTestClip`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -1998,8 +2017,12 @@ automatically (VideoToolbox, Media Foundation), project files.
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
-  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
-  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
+  MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
+  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
+  FocusBounds, FitMotionToFocus, KeepFocusInView}`
+  (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
+  have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 

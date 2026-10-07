@@ -214,7 +214,7 @@ int main() {
 #if !defined(_WIN32)
     // A name that is not UTF-8: only POSIX file systems can hold one.
     const std::string latin1 = "Alte Namens\xE4nderung.txt";
-    std::ofstream(dir / latin1) << "x";
+    std::ofstream(dir / latin1) << "x";   // path-string-ok: POSIX-only, raw Latin-1 bytes on purpose - PathFromUtf8 would turn \xE4 into U+FFFD
 #endif
 
     filer.SetPath(PathToUtf8(dir));
@@ -227,7 +227,7 @@ int main() {
     Check(legacy != nullptr, "the Latin-1 name draws as \"" + latin1Shown + "\"");
     if (legacy) {
         Check(legacy->name == latin1, "and keeps its real bytes as its name");
-        Check(fs::exists(fs::path(legacy->path)), "and its path still reaches the file");
+        Check(fs::exists(fs::path(legacy->path)), "and its path still reaches the file");   // path-string-ok: POSIX-only, the entry keeps the raw non-UTF-8 bytes
     }
 #endif
     fs::remove_all(dir, ec);

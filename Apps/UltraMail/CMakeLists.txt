@@ -44,6 +44,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncScheduler.cpp
     engine/UltraMailContactCollector.cpp
     engine/UltraMailFeedPublisher.cpp
+    engine/UltraMailNewMail.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────

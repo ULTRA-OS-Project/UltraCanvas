@@ -1,3 +1,10 @@
+#### 2026-10-07 *0.2.1*
+- **An attachment in a folder outside the Windows code page is found.** The
+  composer checked each attachment's size with its `std::string` path handed
+  straight to `fs::file_size`, which Windows converts in its ANSI code page;
+  it goes through `PathFromUtf8` now (found by the path check's member
+  lookup, framework changelog).
+
 #### 2026-10-07 *0.2.0*
 - **UltraSocial looks like UltraMail.** The window was a column of default
   controls at fixed positions on a grey page. It now uses UltraMail's

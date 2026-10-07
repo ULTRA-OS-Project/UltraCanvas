@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.10.0 - notifyNewMail: a notification on screen when new mail arrives
+//                   (Settings > Display > Notifications)
 // Version: 0.9.0 - fetchSiteIcons (the website icon of a sender that is no
 //                  known service)
 // Version: 0.8.0 - how often new mail is checked (check_mail_every_sec, Settings >
@@ -118,6 +120,12 @@ struct Preferences {
     static int NearestCheckMailChoice(int seconds);
     // "20 seconds", "1 minute", "10 minutes".
     static std::string CheckMailLabel(int seconds);
+
+    // Settings > Display > Notifications: when a sync brings new mail into an
+    // inbox, a notification on screen - posted through UltraMessage, drawn by
+    // the desktop's notification server - names the sender and subject (or
+    // counts the messages), and a click on it opens the mail.
+    bool notifyNewMail = true;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

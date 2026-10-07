@@ -312,7 +312,7 @@ namespace UltraCanvas {
 
             // Window style mask
             NSWindowStyleMask styleMask;
-            if (config_.type == WindowType::Borderless) {
+            if (config_.type == WindowType::Borderless || config_.type == WindowType::Notification) {
                 styleMask = NSWindowStyleMaskBorderless;
             } else {
                 styleMask = NSWindowStyleMaskTitled |

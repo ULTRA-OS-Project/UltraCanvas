@@ -3,6 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.0 - new mail on screen: a notification through UltraMessage
+//                   after a sync brings mail (BeginNewMail / AnnounceNewMail),
+//                   and its click opens the mail (OpenFromNotification)
 // Version: 0.11.0 - SwitchToAccount (the account's stored mail at once, its
 //                   inbox refreshed in the background); FetchMissingBody;
 //                   ForgetDownloadedMail on a change of incoming server
@@ -15,7 +18,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -44,6 +47,7 @@
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailFeedPublisher.h"
+#include "UltraMailNewMail.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -445,6 +449,17 @@ private:
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
     void SyncAccounts(const std::vector<ScheduledAccount>& targets, bool userInitiated);
+    // Before a sync of the account's inbox: what it already holds, so the
+    // mail above that is news (NewMailTracker).
+    void BeginNewMail(const std::string& accountId);
+    // After it, done or failed: put a notification on screen for the new
+    // mail it stored (Settings > Display > Notifications), through
+    // UltraMessage, which hands it to the desktop's notification server.
+    void AnnounceNewMail(const std::string& accountId, const SyncOutcome& outcome);
+    // A click on one of those notifications: the window to the front and the
+    // mail it announced on screen - the message, or the account's inbox when
+    // it announced several.
+    void OpenFromNotification(const std::string& notificationId);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
     // Explain that no mail can be fetched because the IMAP plug-in was not
@@ -610,8 +625,18 @@ private:
     std::vector<ComposeSession> composers_;
     SyncScheduler   scheduler_;
     // New mail to the desktop feed (UltraMessage mail.message); fed from the
-    // sync workers' progress callbacks.
+    // sync workers' progress callbacks. Also posts the new-mail notification.
     FeedPublisher   feed_;
+    // Which of the stored messages are news, per account, until its sync ends.
+    NewMailTracker  newMail_;
+    // What a click on a notification opens, by the notification's bus id
+    // (UI thread only).
+    struct NotificationTarget {
+        std::string accountId;
+        std::string folder;     // empty: the account's inbox
+        int64_t     uid = 0;    // 0: no single message
+    };
+    std::map<std::string, NotificationTarget> notificationTargets_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;

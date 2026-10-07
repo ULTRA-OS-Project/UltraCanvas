@@ -284,7 +284,7 @@ std::vector<UltraWinEnvironmentInfo> UltraWin_ListEnvironments() {
     std::vector<UltraWinEnvironmentInfo> out;
     if (!UltraWin_IsInitialized()) return out;
     std::error_code ec;
-    fs::directory_iterator it(EnvironmentsRoot(), ec);
+    fs::directory_iterator it(PathFromUtf8(EnvironmentsRoot()), ec);
     if (ec) return out;
     for (const auto& entry : it) {
         if (!entry.is_directory(ec)) continue;
@@ -304,7 +304,7 @@ std::vector<UltraWinEnvironmentInfo> UltraWin_ListEnvironments() {
 bool UltraWin_EnvironmentExists(const std::string& name) {
     if (!UltraWin_IsInitialized() || !IsValidEnvironmentName(name))
         return false;
-    return fs::exists(PrefixPath(name));
+    return fs::exists(PathFromUtf8(PrefixPath(name)));
 }
 
 UltraWinResult UltraWin_MapFolder(const std::string& environment,
