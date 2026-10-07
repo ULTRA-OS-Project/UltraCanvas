@@ -12,8 +12,14 @@
 // that UTF-8 flagged names (Thai, Russian, Chinese) survive unchanged, and
 // that an unflagged name which already is valid UTF-8 (Info-ZIP on Linux
 // writes those) is not re-decoded into mojibake.
-// Version: 1.0.1
-// Last Modified: 2026-09-24
+//
+// Usage: VirtualFSNameEncodingTest [work-dir] - the directory is emptied
+// first. It defaults to vfs-name-encoding-test-out in the system temp
+// directory, never the current directory, where a run from the repository
+// root left the archive and its extracted folders in the source tree; ctest
+// passes one in the build tree.
+// Version: 1.0.2
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
@@ -70,7 +76,9 @@ int main(int argc, char** argv) {
     // come out right in "C" (a test runner, a service) as in a UTF-8 one.
     std::setlocale(LC_ALL, "");
 
-    const fs::path work = fs::path(argc > 1 ? argv[1] : "vfs-name-encoding-test-out");
+    const fs::path work = argc > 1
+        ? fs::path(argv[1])
+        : fs::temp_directory_path() / "vfs-name-encoding-test-out";
     std::error_code ec;
     fs::remove_all(work, ec);
     fs::create_directories(work);

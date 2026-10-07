@@ -12,8 +12,15 @@
 //      entry at most once per delete call.
 //   3. The ZIP raw-copy fast path and the generic libarchive rewrite
 //      (.tar.gz) both work, as does the VirtualFSManager batch entry point.
-// Version: 1.0.0
-// Last Modified: 2026-07-25
+//   4. The fast path opens an archive with a Thai-and-emoji name, and lets
+//      go of both files before the rewrite replaces the original.
+//
+// The archives are written to the directory given as the first argument
+// (ctest passes one in the build tree), else to the system temp directory -
+// never to the current directory, which run from the repository root put
+// them into the source tree, where they were once committed.
+// Version: 1.1.1
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
@@ -176,7 +183,9 @@ static void RunDeleteScenario(const std::string& archivePath, const char* label,
 }
 
 int main(int argc, char** argv) {
-    std::string outDir = (argc > 1) ? argv[1] : "vfsdelete-test-out";
+    std::string outDir = (argc > 1)
+        ? std::string(argv[1])
+        : UltraCanvas::PathToUtf8(fs::temp_directory_path() / "vfsdelete-test-out");
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(outDir), ec);
     fs::create_directories(UltraCanvas::PathFromUtf8(outDir));
@@ -190,6 +199,11 @@ int main(int argc, char** argv) {
     // .tar.gz always exercises the generic libarchive rewrite.
     RunDeleteScenario(outDir + "/bulk.zip", "ZIP archive", kBulkCount);
     RunDeleteScenario(outDir + "/bulk.tar.gz", "TAR.GZ archive", 100);
+    // The fast path opens the archive and writes its rewrite by their UTF-8
+    // names (OpenFileUtf8), never through miniz's own fopen.
+    RunDeleteScenario(outDir + "/\xE0\xB8\x8B\xE0\xB8\xB4\xE0\xB8\x9B "
+                               "\xF0\x9F\x93\xA6 bulk.zip",
+                      "ZIP archive with a Thai-and-emoji name", 100);
 
     // Manager-level batch entry point (what UltraFiler / the Filer widget
     // calls): one DeleteFromArchive call for a mixed selection.

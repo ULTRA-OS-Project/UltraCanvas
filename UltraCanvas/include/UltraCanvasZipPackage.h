@@ -4,8 +4,8 @@
 // library behind a pimpl so consumers never see miniz types.
 // The writer supports the ODF rule that the "mimetype" entry must be the
 // first entry and stored uncompressed.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.0.1
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,8 +25,11 @@ public:
     UCZipPackageReader(const UCZipPackageReader&) = delete;
     UCZipPackageReader& operator=(const UCZipPackageReader&) = delete;
 
-    // Opens a ZIP file from disk. Returns false (see GetLastError) if the
-    // file is missing or not a valid ZIP archive.
+    // Opens a ZIP file from disk; `filePath` is UTF-8 on every platform.
+    // Reads the central directory only, and keeps the file open - shared, so
+    // other programs may still read and write it - until Close(). Returns
+    // false (see GetLastError) if the file cannot be opened or is not a
+    // valid ZIP archive.
     bool Open(const std::string& filePath);
     void Close();
     bool IsOpen() const;
