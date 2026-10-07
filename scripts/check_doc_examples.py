@@ -31,8 +31,10 @@ an HTML comment (not rendered):
     <!-- doc-check: void CreateFolder(); std::shared_ptr<UltraCanvasTreeView> tree; -->
 
 A function is declared for every block; a variable is given to the blocks
-that use it without declaring it. A snippet's `#include <...>` is honoured
-where this machine has the header.
+that use it without declaring it. A snippet's `#include <...>` or
+`#include "..."` is honoured where this machine has the header (the include
+paths cover the plugin directories, so a plugin header such as
+`#include "UltraCanvasVectorConverter.h"` resolves).
 
 Missing `#include` targets are reported too.
 
@@ -45,7 +47,7 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
 Exit status 1 when a doc has findings.
 """
-# Version: 1.0.0
+# Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
 # Last Modified: 2026-10-07
 # Author: UltraCanvas Framework
 
@@ -919,9 +921,9 @@ class Doc:
         out = list(self.includes)
         for b in self.blocks:
             for kind, i, j in b.chunks:
-                m = re.match(r"\s*#\s*include\s*<([^>]+)>", b.lines[i]) if kind == "pp" else None
+                m = re.match(r"\s*#\s*include\s*(<[^>]+>|\"[^\"]+\")", b.lines[i]) if kind == "pp" else None
                 if m:
-                    out += ["#if __has_include(<%s>)" % m.group(1), "#include <%s>" % m.group(1), "#endif"]
+                    out += ["#if __has_include(%s)" % m.group(1), "#include %s" % m.group(1), "#endif"]
         for b in self.blocks:
             code = [c for c in b.chunks if c[0] != "pp"]
             if not code:
