@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.14.2 - ShowPendingPreviewNow: the selected message in the window's
+//                  first frame at start
 // Version: 0.14.1 - the folder tree, the list's rebuild and the reading pane in
 //                  the timing trace, step by step (UltraMailTrace.h)
 // Version: 0.14.0 - OpenMessage
@@ -1122,9 +1124,18 @@ void MailView::PreviewAfterPaint(int row, bool markRead) {
     };
     auto* app = UltraCanvasApplicationBase::GetCurrent();
     if (!app) { show(); return; }
+    pendingPreview_ = show;
     // Twice: a task posted from an event handler (a click on an account or a
     // folder) runs before the frame is painted; the one it posts runs after.
     app->PostToUIThread([app, show]() { app->PostToUIThread(show); });
+}
+
+void MailView::ShowPendingPreviewNow() {
+    if (!pendingPreview_) return;
+    // The posted copy finds its token taken when it runs, and does nothing.
+    auto show = std::move(pendingPreview_);
+    pendingPreview_ = nullptr;
+    show();
 }
 
 void MailView::InsertMessageRowAt(int row, const MessageEnvelope& m,

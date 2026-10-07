@@ -121,6 +121,9 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _windowVisible = false;
+        // RenderBeforeShow is drawing the first frame of a window not yet
+        // shown (UpdateAndRender otherwise skips a hidden window).
+        bool _renderingBeforeShow = false;
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
@@ -470,6 +473,11 @@ namespace UltraCanvas {
         void RequestWindowComposition() { _needsWindowComposition = true; }
         void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
+        // Lays out and draws the window's first frame into its surface while
+        // it is still hidden, so a backend's Show() puts the window on screen
+        // with its content - not a surface nothing was drawn into yet (black
+        // on Windows) that the event loop's first frame replaces later.
+        void RenderBeforeShow();
 
         bool IsNeedsResize() const { return _needsResize; }
 

@@ -1,4 +1,26 @@
 #### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
 - **A timing trace of the start and of every account switch.** Switching
   accounts still takes ten seconds and more on Windows, and the window stays
   black for ten to fifteen seconds after the start, while the switch measured

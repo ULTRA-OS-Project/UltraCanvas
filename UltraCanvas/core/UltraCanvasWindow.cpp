@@ -575,8 +575,15 @@ namespace UltraCanvas {
     }
 
 
+    void UltraCanvasWindowBase::RenderBeforeShow() {
+        if (!_created || _windowVisible) return;
+        _renderingBeforeShow = true;
+        UpdateAndRender();
+        _renderingBeforeShow = false;
+    }
+
     void UltraCanvasWindowBase::UpdateAndRender() {
-        if (!_created || !_windowVisible) return;
+        if (!_created || (!_windowVisible && !_renderingBeforeShow)) return;
         // A backend can lose its presentation surface while the window is
         // still marked visible (Android between APP_CMD_TERM_WINDOW and the
         // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the

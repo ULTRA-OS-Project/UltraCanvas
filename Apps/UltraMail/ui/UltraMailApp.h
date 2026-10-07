@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.2 - FinishStartup: the window and the stored mail first, the
+//                   plug-ins, the vault and the first check after it is shown
 // Version: 0.12.1 - the timing trace: the stages of the start and of an
 //                   account switch, and the frames that follow, with their
 //                   times (TraceFrame, UltraMailTrace.h)
@@ -66,6 +68,7 @@
 #include <ctime>
 #include <functional>
 #include <map>
+#include <optional>
 #include <memory>
 #include <set>
 #include <string>
@@ -109,6 +112,13 @@ public:
     bool ApplyNeedsAnswerRules();
 
 private:
+    // The start page, built the first time there is no account to show.
+    void EnsureStartPage();
+    // The rest of the start, once the window is on screen with the stored
+    // mail: the cloud accounts, the mail plug-ins, the vault, the cache
+    // pruning (on a thread), the sync timer and the first check. Idempotent;
+    // an action that needs any of it before then runs it first.
+    void FinishStartup();
     // The timing trace (UltraMailTrace.h): every main-window frame that is
     // slow, and the next few in full after the start or an account switch,
     // with how long after it each came.
@@ -656,6 +666,9 @@ private:
     // Attachments open in the framework's media viewer (images, PDF, office
     // sheets, text, audio, video, fonts, …); one window, reused per attachment.
     std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;
+    bool            startupFinished_ = false;
+    // A body the message shown at start lacks, fetched by FinishStartup.
+    std::optional<MessageEnvelope> pendingBodyFetch_;
     // TraceFrame: frames still to report in full, what they are timed from
     // ("the click on work") and when that was (Trace::NowSeconds).
     int             traceFramesLeft_ = 0;

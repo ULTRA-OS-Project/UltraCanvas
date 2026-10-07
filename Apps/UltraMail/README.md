@@ -331,9 +331,12 @@ process started and the thread (`ui`, or `w<n>` for a worker):
 
 - **The start:** the time before `main()` (loading the program and its
   libraries), the framework's initialisation with each of its steps (fonts,
-  images, the windowing backend, the clipboard), opening the mailbox and the
-  vault, building and filling the window, and the first frames with their
-  layout and painting times, each timed from the start of the process.
+  images, the windowing backend, the clipboard), opening the mailbox,
+  building and filling the window with the list and the selected message,
+  the first frames with their layout and painting times, each timed from the
+  start of the process - and then what follows once the window is on screen
+  ("After the window is on screen": the mail plug-ins, the vault, the cloud
+  accounts, the cache pruning, the first check).
 - **An account switch:** each step of the click on a tile (the folder tree,
   each query of the store, the rows, the list, the reading pane's message),
   the next frames timed from the click, and the inbox update from the server -
