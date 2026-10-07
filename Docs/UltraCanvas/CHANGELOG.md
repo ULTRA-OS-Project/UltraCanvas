@@ -1,3 +1,69 @@
+#### 2026-10-07 *0.9.181*
+- **Mobipocket and Kindle books show their cover in the file display too.**
+  `.mobi`, `.prc`, `.azw` and `.azw3` tiles were still purple type sheets
+  after EPUB got its covers in 0.9.173. `UltraCanvasFilerWidget` now shows
+  their cover the same way - thumbnail grids, the Details / List icon column,
+  folder previews, cached on disk - and `GetPreviewableFormats()` reports all
+  four as thumbnail-supported in every build. A PalmDOC `.prc` with no
+  pictures keeps its glyph.
+  - **Reading a cover does not read the book.** The new
+    `MOBIEngine::ReadCoverImageFromFile(path)` reads the record list, record 0
+    and the cover record - the first bytes of the image records in between at
+    most - and gives the picture `GetCoverImage()` gives once the book is
+    loaded: the EXTH 201 image, else the first image. It decompresses and
+    decrypts nothing, so a **DRM-protected** `.azw` and a HUFF/CDIC-compressed
+    book, whose text the engine refuses, show their cover as well (Mobipocket
+    DRM encrypts the text records only). The path is opened as UTF-8 through
+    `OpenFileUtf8`, and a cover past 64 MB is refused before it is read.
+  - `MOBIEngine::ParseRecord0` now reads the PalmDOC, MOBI and EXTH headers
+    before it refuses a DRM or HUFF/CDIC text, so the cover reader shares it;
+    what `LoadFromMemory` accepts, and the errors it reports, are unchanged.
+    `MOBIEngine` 1.3.0.
+- **Tests no longer write into the source tree.** Run without an argument,
+  four tests wrote their files into the current directory, so a run from the
+  repository root put them in the source tree: `VirtualFSDeleteTest`'s
+  archives in `vfsdelete-test-out/`, where they were committed (`bulk.zip`,
+  `bulk.tar.gz`, `manager.zip`) and every later run rewrote tracked files;
+  `WordFormatsTest`'s some fifty sample documents (`sample.odt`,
+  `edited.docx`, `mdmedia/`, ...) and `LaTeXDocumentTest`'s files loose in
+  the root; and `VirtualFSNameEncodingTest`'s archive and extracted folders
+  in `vfs-name-encoding-test-out/`, a folder it also deletes on start. All
+  four now default to a folder in the system temp directory (ctest still
+  passes one in the build tree), the three archives are removed from the
+  repository, and `.gitignore` keeps `vfsdelete-test-out/` out should an
+  older build of the test still write it.
+  - `LaTeXDocumentTest` also finds the shipped `media/LaTex` corpus from any
+    directory: its path is compiled in (`LATEXTEST_CORPUS_DIR`) instead of
+    the `../../media/LaTex` that resolved only from `build/bin`. Run from
+    anywhere else, the corpus checks were skipped and the test still reported
+    every check passed; a corpus that cannot be found is now a failure.
+- **ZIP files open by their UTF-8 name, and without locking the file.** Three
+  readers handed the path to miniz's own fopen: `UCZipPackageReader::Open`
+  (the CorelDRAW thumbnails, the ODT / DOCX / mind-map imports), the ODS
+  spreadsheet loader, and VirtualFS's fast ZIP rewrite behind deleting entries
+  from an archive. miniz turns a UTF-8 name into UTF-16 only under MSVC and
+  64-bit MinGW; with any other Windows toolchain a Thai, Cyrillic or emoji
+  name went through the ANSI code page and the file did not open. Where miniz
+  did convert the name, it opened with `_wfopen_s`, which denies every other
+  program write access while the file is open, so saving a drawing in
+  CorelDRAW could fail while the file display was reading its thumbnail. All
+  three now open the file themselves through `OpenFileUtf8` (`_wfopen`,
+  shared like every other open), hand it to miniz, and close it when done.
+  The package writer and the ODS writer already opened their files this way.
+  - `UCZipPackageReader`: a file that cannot be opened now says so ("Cannot
+    open file") instead of "Not a valid ZIP archive".
+  - VirtualFS: the raw-copy rewrite now also opens the temporary archive it
+    writes through `OpenFileUtf8`, and fails the delete when closing that file
+    fails. miniz closed it itself and ignored the answer, so a disk that
+    filled up during the last flush left a cut-off archive that was then
+    renamed over the original. `VirtualFSLibArchiveProvider` 1.3.1.
+  - Tests: the new `ZipPackageTest` writes and reads a package in a
+    Thai-and-emoji folder, and on Windows writes the file from a second handle
+    while the reader holds it; Windows CI compiles and runs it by hand next to
+    `PathUtf8Test`, on its code page 1252 runner. The new
+    `SpreadsheetOdsFileTest` saves and reloads a sheet under a Thai-and-emoji
+    name, and `VirtualFSDeleteTest` deletes entries from a ZIP with one.
+
 #### 2026-10-07 *0.9.180*
 - **The `*Examples.md` component docs describe the API that exists.** A new
   checker, `scripts/check_doc_examples.py`, compiles the C++ in a doc
