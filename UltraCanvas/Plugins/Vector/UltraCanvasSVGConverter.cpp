@@ -9,6 +9,8 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.5.0 - width profiles and brushes exported as the shapes they draw,
+//                  with the data the reader rebuilds the stroke from
 // Version: 1.4.0 - line-gallery arrowheads exported as <marker>s and read back
 // Version: 1.3.0 - <marker>: marker-start/-mid/-end drawn as grouped shapes
 // Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
@@ -194,6 +196,8 @@ private:
     int nextDefId = 1;
     // Arrowhead markers already written, by kind, scale, end, width and colour.
     std::map<std::string, std::string> arrowheadMarkers;
+    // Brush stamps already written into <defs>.
+    std::map<const VectorGroup*, std::string> stampDefinitions;
 
     std::string NL() const { return opts.Minify ? "" : "\n"; }
     std::string Ind(int level) const {
@@ -325,6 +329,35 @@ private:
         return "";
     }
 
+    // The stroke's presentation properties, name and value, in the order the
+    // attributes are written. `paintOut` / `alphaOut` receive the paint and
+    // its colour's alpha, for a caller drawing in the stroke's paint.
+    std::vector<std::pair<std::string, std::string>> StrokeProps(const VectorStyle& s, std::string* paintOut = nullptr,
+                                                                 float* alphaOut = nullptr) {
+        std::vector<std::pair<std::string, std::string>> p;
+        const StrokeData& st = *s.Stroke;
+        float alpha = 1.0f;
+        const std::string v = PaintValue(st.Fill, &alpha);
+        if (paintOut) *paintOut = v;
+        if (alphaOut) *alphaOut = alpha;
+        if (!v.empty()) p.emplace_back("stroke", v);
+        p.emplace_back("stroke-width", Num(st.Width));
+        if (st.LineCap == StrokeLineCap::Round) p.emplace_back("stroke-linecap", "round");
+        else if (st.LineCap == StrokeLineCap::Square) p.emplace_back("stroke-linecap", "square");
+        if (st.LineJoin == StrokeLineJoin::Round) p.emplace_back("stroke-linejoin", "round");
+        else if (st.LineJoin == StrokeLineJoin::Bevel) p.emplace_back("stroke-linejoin", "bevel");
+        if (std::fabs(st.MiterLimit - 4.0f) > 1e-4f) p.emplace_back("stroke-miterlimit", Num(st.MiterLimit));
+        if (!st.DashArray.empty()) {
+            std::string dash;
+            for (size_t i = 0; i < st.DashArray.size(); ++i) dash += (i ? " " : "") + Num(st.DashArray[i]);
+            p.emplace_back("stroke-dasharray", dash);
+            if (std::fabs(st.DashOffset) > 1e-9) p.emplace_back("stroke-dashoffset", Num(st.DashOffset));
+        }
+        const float so = alpha * st.Opacity * s.StrokeOpacity;
+        if (!NearlyOne(so)) p.emplace_back("stroke-opacity", Num(so));
+        return p;
+    }
+
     // `shape` marks a geometric element: with no fill in the model it has
     // no fill at all, which SVG must be told (its default is black).
     std::string StyleAttrs(const VectorStyle& s, bool shape = false) {
@@ -340,29 +373,7 @@ private:
             if (!NearlyOne(s.FillOpacity)) a << " fill-opacity=\"" << Num(s.FillOpacity) << "\"";
         }
         if (s.Stroke) {
-            const StrokeData& st = *s.Stroke;
-            float alpha = 1.0f;
-            std::string v = PaintValue(st.Fill, &alpha);
-            if (!v.empty()) a << " stroke=\"" << v << "\"";
-            a << " stroke-width=\"" << Num(st.Width) << "\"";
-            if (st.LineCap == StrokeLineCap::Round) a << " stroke-linecap=\"round\"";
-            else if (st.LineCap == StrokeLineCap::Square) a << " stroke-linecap=\"square\"";
-            if (st.LineJoin == StrokeLineJoin::Round) a << " stroke-linejoin=\"round\"";
-            else if (st.LineJoin == StrokeLineJoin::Bevel) a << " stroke-linejoin=\"bevel\"";
-            if (std::fabs(st.MiterLimit - 4.0f) > 1e-4f)
-                a << " stroke-miterlimit=\"" << Num(st.MiterLimit) << "\"";
-            if (!st.DashArray.empty()) {
-                a << " stroke-dasharray=\"";
-                for (size_t i = 0; i < st.DashArray.size(); ++i) {
-                    if (i) a << " ";
-                    a << Num(st.DashArray[i]);
-                }
-                a << "\"";
-                if (std::fabs(st.DashOffset) > 1e-9)
-                    a << " stroke-dashoffset=\"" << Num(st.DashOffset) << "\"";
-            }
-            float so = alpha * st.Opacity * s.StrokeOpacity;
-            if (!NearlyOne(so)) a << " stroke-opacity=\"" << Num(so) << "\"";
+            for (const auto& [name, value] : StrokeProps(s)) a << " " << name << "=\"" << value << "\"";
         }
         if (!NearlyOne(s.Opacity)) a << " opacity=\"" << Num(s.Opacity) << "\"";
         if (!s.Visible || !s.Display) a << " display=\"none\"";
@@ -408,23 +419,167 @@ private:
     // strokes (ArrowheadOutline). The renderer draws them only on a path whose
     // first and last subpaths are open, and so does this.
     std::string ArrowheadAttrs(const VectorElement& e) {
+        std::string startId, endId, a;
+        ArrowheadMarkers(e, startId, endId);
+        if (!startId.empty()) a += " marker-start=\"url(#" + startId + ")\"";
+        if (!endId.empty()) a += " marker-end=\"url(#" + endId + ")\"";
+        return a;
+    }
+
+    // The <marker> ids for the element's arrowheads; empty where it has none.
+    void ArrowheadMarkers(const VectorElement& e, std::string& startId, std::string& endId) {
         const VectorStyle& s = e.Style;
         if (!s.Stroke || !s.Stroke->HasArrowheads() || s.Stroke->Width <= 0 ||
             std::holds_alternative<std::monostate>(s.Stroke->Fill))
-            return {};
+            return;
         PathData outline;
         Point2Dd start, startDir, end, endDir;
-        if (!BuildOutlinePath(e, outline) || !PathEndpoints(outline, start, startDir, end, endDir)) return {};
-        std::string a;
-        if (s.Stroke->StartArrow.IsSet()) {
-            const std::string id = ArrowheadMarker(s.Stroke->StartArrow, true, *s.Stroke, s.StrokeOpacity);
-            if (!id.empty()) a += " marker-start=\"url(#" + id + ")\"";
+        if (!BuildOutlinePath(e, outline) || !PathEndpoints(outline, start, startDir, end, endDir)) return;
+        if (s.Stroke->StartArrow.IsSet())
+            startId = ArrowheadMarker(s.Stroke->StartArrow, true, *s.Stroke, s.StrokeOpacity);
+        if (s.Stroke->EndArrow.IsSet())
+            endId = ArrowheadMarker(s.Stroke->EndArrow, false, *s.Stroke, s.StrokeOpacity);
+    }
+
+    // ===== WIDTH PROFILES AND BRUSHES =====
+
+    // SVG has neither a variable-width stroke nor a brush, so a shape with
+    // either is written as what the renderer draws: a group holding the shape
+    // with its fill and no stroke, then the band a width profile makes
+    // (filled even-odd in the stroke's paint) or the brush's stamps (<use>s
+    // of the stamp, written once in <defs>), then the arrowheads on top. The
+    // group carries what draws them - the stroke as a style declaration list
+    // (data-ultracanvas-stroke), the profile and the brush - so the reader
+    // gives the shape back with its stroke, while any other reader draws the
+    // shapes. A profile wins over a brush, as in the renderer.
+    static bool HasGalleryStroke(const VectorElement& e) {
+        switch (e.Type) {
+            case VectorElementType::Rectangle: case VectorElementType::RoundedRectangle:
+            case VectorElementType::Circle: case VectorElementType::Ellipse:
+            case VectorElementType::Line: case VectorElementType::Polyline:
+            case VectorElementType::Polygon: case VectorElementType::Path:
+                break;
+            default:
+                return false;
         }
-        if (s.Stroke->EndArrow.IsSet()) {
-            const std::string id = ArrowheadMarker(s.Stroke->EndArrow, false, *s.Stroke, s.StrokeOpacity);
-            if (!id.empty()) a += " marker-end=\"url(#" + id + ")\"";
+        const VectorStyle& s = e.Style;
+        return s.Stroke && s.Stroke->Width > 0 && !std::holds_alternative<std::monostate>(s.Stroke->Fill) &&
+               (s.Stroke->HasWidthProfile() || s.Stroke->HasBrush());
+    }
+
+    // A matrix as an SVG transform, dot-decimal.
+    static std::string MatrixValue(const Matrix3x3& m) {
+        return "matrix(" + Num(m.m[0][0]) + " " + Num(m.m[1][0]) + " " + Num(m.m[0][1]) + " " +
+               Num(m.m[1][1]) + " " + Num(m.m[0][2]) + " " + Num(m.m[1][2]) + ")";
+    }
+
+    // The brush's stamp in <defs>, written once however many lines use it.
+    std::string StampDefinition(const VectorGroup& stamp) {
+        auto it = stampDefinitions.find(&stamp);
+        if (it != stampDefinitions.end()) return it->second;
+        const std::string id = "ucstamp" + std::to_string(nextDefId++);
+        std::ostringstream s;   // gradients the stamp registers land in <defs> before it
+        const int savedDepth = depth;
+        depth = 2;
+        WriteElement(s, stamp, id);
+        depth = savedDepth;
+        defs << s.str();
+        stampDefinitions.emplace(&stamp, id);
+        return id;
+    }
+
+    void WriteLineGallery(std::ostringstream& out, const VectorElement& e, const std::string& forcedId) {
+        const VectorStyle& style = e.Style;
+        const StrokeData& st = *style.Stroke;
+        PathData outline;
+        if (!BuildOutlinePath(e, outline)) return;
+        std::string outlineD = SerializePathData(outline);
+        while (!outlineD.empty() && outlineD.back() == ' ') outlineD.pop_back();
+
+        // The group: the element's place and presence, and what its stroke is.
+        std::ostringstream a;
+        const std::string& id = forcedId.empty() ? e.Id : forcedId;
+        if (!id.empty()) a << " id=\"" << XmlEscape(id) << "\"";
+        if (!e.Classes.empty()) {
+            a << " class=\"";
+            for (size_t i = 0; i < e.Classes.size(); ++i) a << (i ? " " : "") << XmlEscape(e.Classes[i]);
+            a << "\"";
         }
-        return a;
+        if (e.Transform) {
+            const std::string t = MatrixValue(*e.Transform);
+            a << " transform=\"" << t << "\"";
+        }
+        if (!NearlyOne(style.Opacity)) a << " opacity=\"" << Num(style.Opacity) << "\"";
+        if (!style.Visible || !style.Display) a << " display=\"none\"";
+        std::string paint;
+        float alpha = 1.0f;
+        std::string declarations;
+        for (const auto& [name, value] : StrokeProps(style, &paint, &alpha)) declarations += name + ": " + value + "; ";
+        std::string startId, endId;
+        ArrowheadMarkers(e, startId, endId);
+        if (!startId.empty()) declarations += "marker-start: url(#" + startId + "); ";
+        if (!endId.empty()) declarations += "marker-end: url(#" + endId + "); ";
+        while (!declarations.empty() && declarations.back() == ' ') declarations.pop_back();
+        a << " data-ultracanvas-stroke=\"" << XmlEscape(declarations) << "\"";
+        if (st.HasWidthProfile()) {
+            a << " data-ultracanvas-width-profile=\"";
+            for (size_t i = 0; i < st.WidthProfile.size(); ++i)
+                a << (i ? " " : "") << Num(st.WidthProfile[i].T) << " " << Num(st.WidthProfile[i].Factor);
+            a << "\"";
+        }
+        std::string stampId;
+        if (st.HasBrush()) {
+            stampId = StampDefinition(*st.Brush->Stamp);
+            a << " data-ultracanvas-brush=\"" << stampId << " " << Num(st.Brush->Spacing) << " "
+              << Num(st.Brush->Scale) << " " << (st.Brush->Rotate ? 1 : 0) << "\"";
+        }
+        OpenTag(out, "g", a.str(), false);
+        ++depth;
+
+        // The shape with its fill, told it has no stroke (an ancestor's
+        // would otherwise apply).
+        auto bare = e.Clone();
+        bare->Id.clear();
+        bare->Classes.clear();
+        bare->Transform.reset();
+        bare->Style.Opacity = 1.0f;
+        bare->Style.Visible = bare->Style.Display = true;
+        StrokeData none;
+        none.Fill = std::monostate{};
+        bare->Style.Stroke = none;
+        WriteElement(out, *bare);
+
+        // What the renderer draws in place of the stroke.
+        const float o = alpha * st.Opacity * style.StrokeOpacity;
+        if (st.HasWidthProfile()) {
+            const PathData band = VariableWidthOutline(outline, st);
+            std::string d = SerializePathData(band);
+            while (!d.empty() && d.back() == ' ') d.pop_back();
+            if (!d.empty() && !paint.empty()) {
+                std::string attrs = " d=\"" + d + "\" fill=\"" + paint + "\" fill-rule=\"evenodd\"";
+                if (!NearlyOne(o)) attrs += " fill-opacity=\"" + Num(o) + "\"";
+                OpenTag(out, "path", attrs, true);
+            }
+        } else if (!stampId.empty()) {
+            OpenTag(out, "g", "", false);
+            ++depth;
+            for (const auto& sub : FlattenPathData(outline)) {
+                for (const Matrix3x3& m : BrushStampPlacements(sub.Points, st))
+                    OpenTag(out, "use", " href=\"#" + stampId + "\" transform=\"" + MatrixValue(m) + "\"", true);
+            }
+            --depth;
+            CloseTag(out, "g");
+        }
+
+        // The arrowheads, over the band or the stamps.
+        if (!startId.empty() || !endId.empty()) {
+            std::string attrs = " d=\"" + outlineD + "\" fill=\"none\" stroke=\"none\"";
+            if (!startId.empty()) attrs += " marker-start=\"url(#" + startId + ")\"";
+            if (!endId.empty()) attrs += " marker-end=\"url(#" + endId + ")\"";
+            OpenTag(out, "path", attrs, true);
+        }
+        --depth;
+        CloseTag(out, "g");
     }
 
     // The <marker> for one arrowhead. It is drawn in the line's own units
@@ -555,6 +710,10 @@ private:
 
     void WriteElement(std::ostringstream& out, const VectorElement& e,
                       const std::string& forcedId = "") {
+        if (HasGalleryStroke(e)) {
+            WriteLineGallery(out, e, forcedId);
+            return;
+        }
         switch (e.Type) {
             case VectorElementType::Rectangle:
             case VectorElementType::RoundedRectangle: {
@@ -1255,6 +1414,35 @@ private:
         return static_cast<float>(std::max(0.0, std::min(1.0, d)));
     }
 
+    // A stroke from its presentation properties, `prop` answering each by
+    // name; false when there is none ("none", "inherit" or unset).
+    bool ParseStroke(const std::function<std::string(const char*)>& prop, StrokeData& st) {
+        const std::string strokeVal = prop("stroke");
+        if (strokeVal.empty() || strokeVal == "none" || strokeVal == "inherit") return false;
+        if (auto p = ParsePaint(strokeVal)) st.Fill = *p;
+        const std::string sw = prop("stroke-width");
+        if (!sw.empty()) st.Width = static_cast<float>(ParseLength(sw.c_str(), 1.0));
+        const std::string cap = prop("stroke-linecap");
+        if (cap == "round") st.LineCap = StrokeLineCap::Round;
+        else if (cap == "square") st.LineCap = StrokeLineCap::Square;
+        const std::string join = prop("stroke-linejoin");
+        if (join == "round") st.LineJoin = StrokeLineJoin::Round;
+        else if (join == "bevel") st.LineJoin = StrokeLineJoin::Bevel;
+        const std::string ml = prop("stroke-miterlimit");
+        if (!ml.empty()) TryParseFloat(ml, st.MiterLimit);
+        std::string dash = prop("stroke-dasharray");
+        if (!dash.empty() && dash != "none") {
+            for (char& ch : dash) if (ch == ',') ch = ' ';
+            std::istringstream iss(dash);
+            double d;
+            while (iss >> d) st.DashArray.push_back(d);
+        }
+        const std::string doff = prop("stroke-dashoffset");
+        if (!doff.empty()) TryParseFloat(doff, st.DashOffset);
+        st.Opacity = ParseOpacity(prop("stroke-opacity"), 1.0f);
+        return true;
+    }
+
     void ApplyStyle(const tinyxml2::XMLElement* e, VectorElement& out) {
         if (const char* id = e->Attribute("id")) out.Id = id;
         if (const char* cls = e->Attribute("class")) {
@@ -1269,30 +1457,9 @@ private:
 
         VectorStyle& s = out.Style;
         if (auto f = ParsePaint(Prop(e, "fill"))) s.Fill = *f;
-        std::string strokeVal = Prop(e, "stroke");
-        if (!strokeVal.empty() && strokeVal != "none" && strokeVal != "inherit") {
-            StrokeData st;
-            if (auto p = ParsePaint(strokeVal)) st.Fill = *p;
-            std::string sw = Prop(e, "stroke-width");
-            if (!sw.empty()) st.Width = static_cast<float>(ParseLength(sw.c_str(), 1.0));
-            std::string cap = Prop(e, "stroke-linecap");
-            if (cap == "round") st.LineCap = StrokeLineCap::Round;
-            else if (cap == "square") st.LineCap = StrokeLineCap::Square;
-            std::string join = Prop(e, "stroke-linejoin");
-            if (join == "round") st.LineJoin = StrokeLineJoin::Round;
-            else if (join == "bevel") st.LineJoin = StrokeLineJoin::Bevel;
-            std::string ml = Prop(e, "stroke-miterlimit");
-            if (!ml.empty()) TryParseFloat(ml, st.MiterLimit);
-            std::string dash = Prop(e, "stroke-dasharray");
-            if (!dash.empty() && dash != "none") {
-                for (char& ch : dash) if (ch == ',') ch = ' ';
-                std::istringstream iss(dash);
-                double d;
-                while (iss >> d) st.DashArray.push_back(d);
-            }
-            std::string doff = Prop(e, "stroke-dashoffset");
-            if (!doff.empty()) TryParseFloat(doff, st.DashOffset);
-            st.Opacity = ParseOpacity(Prop(e, "stroke-opacity"), 1.0f);
+        const std::string strokeVal = Prop(e, "stroke");
+        StrokeData st;
+        if (ParseStroke([&](const char* name) { return Prop(e, name); }, st)) {
             s.Stroke = st;
         } else if (strokeVal == "none") {
             s.Stroke.reset();
@@ -1887,6 +2054,74 @@ private:
         return group;
     }
 
+    // ===== WIDTH PROFILES AND BRUSHES =====
+
+    // A shape the writer drew as its width profile or brush: the group's
+    // first child is the shape, and its stroke comes back from the group's
+    // data - the stroke's properties, the profile, and the brush with its
+    // stamp taken back out of <defs>. What the group draws besides is the
+    // stroke's picture and is left out. Null when the data does not hold
+    // together (a stamp that is not there), so the group is read as drawn.
+    std::shared_ptr<VectorElement> RebuildLineGallery(const tinyxml2::XMLElement* g, const char* strokeDecl,
+                                                      VectorDocument& doc) {
+        const tinyxml2::XMLElement* first = g->FirstChildElement();
+        if (!first) return nullptr;
+        std::map<std::string, std::string> props;
+        for (const auto& d : HTML::StyleSheet::ParseDeclarationList(strokeDecl)) props[d.property] = d.value;
+        auto prop = [&](const char* n) {
+            auto it = props.find(n);
+            return it == props.end() ? std::string() : it->second;
+        };
+        StrokeData st;
+        if (!ParseStroke(prop, st)) return nullptr;
+        GalleryArrowhead(MarkerReference(prop("marker-start")), true, st.StartArrow);
+        GalleryArrowhead(MarkerReference(prop("marker-end")), false, st.EndArrow);
+        if (const char* p = g->Attribute("data-ultracanvas-width-profile")) {
+            std::istringstream iss(p);
+            std::string t, f;
+            while (iss >> t >> f) {
+                WidthSample w;
+                if (TryParseFloat(t, w.T) && TryParseFloat(f, w.Factor)) st.WidthProfile.push_back(w);
+            }
+        }
+        std::string stampId;
+        if (const char* b = g->Attribute("data-ultracanvas-brush")) {
+            std::istringstream iss(b);
+            std::string spacing, scale, rotate;
+            iss >> stampId >> spacing >> scale >> rotate;
+            auto stamp = std::dynamic_pointer_cast<VectorGroup>(doc.GetDefinition(stampId));
+            if (!stamp) return nullptr;
+            BrushData brush;
+            brush.Stamp = stamp;
+            TryParseFloat(spacing, brush.Spacing);
+            TryParseFloat(scale, brush.Scale);
+            brush.Rotate = rotate != "0";
+            st.Brush = brush;
+        }
+
+        auto shape = ParseShape(first, doc);
+        if (!shape) return nullptr;
+        if (!stampId.empty()) {
+            // The stamp lives in the stroke now, not among the definitions;
+            // its unpainted parts are black, as in <defs>.
+            doc.Definitions.erase(stampId);
+            st.Brush->Stamp->Id.clear();
+            ResolveInheritedPaint(*st.Brush->Stamp, FillData(Color(0, 0, 0, 255)), std::nullopt);
+        }
+        shape->Style.Stroke = st;
+        // The group's own place and presence are the shape's.
+        auto frame = std::make_shared<VectorGroup>();
+        ApplyStyle(g, *frame);
+        strokeNone.erase(frame.get());
+        shape->Id = frame->Id;
+        shape->Classes = frame->Classes;
+        shape->Transform = frame->Transform;
+        shape->Style.Opacity = frame->Style.Opacity;
+        shape->Style.Visible = frame->Style.Visible;
+        shape->Style.Display = frame->Style.Display;
+        return shape;
+    }
+
     // ===== ELEMENTS =====
 
     void ParseNode(const tinyxml2::XMLElement* e, VectorDocument& doc,
@@ -2001,6 +2236,9 @@ private:
             return ParseText(e);
         }
         if (std::strcmp(name, "g") == 0 || std::strcmp(name, "a") == 0) {
+            if (const char* stroke = e->Attribute("data-ultracanvas-stroke")) {
+                if (auto shape = RebuildLineGallery(e, stroke, doc)) return shape;
+            }
             auto g = std::make_shared<VectorGroup>();
             ApplyStyle(e, *g);
             for (const tinyxml2::XMLElement* child = e->FirstChildElement();

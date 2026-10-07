@@ -1,7 +1,7 @@
 // UltraCanvasVectorStorage.cpp
 // Implementation of the Vector Graphics Storage System for UltraCanvas
-// Version: 1.1.1
-// Last Modified: 2026-09-26
+// Version: 1.1.2
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -1821,6 +1821,34 @@ PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const
             break;
     }
     if (!IsXaraArrowhead(arrow.Kind)) out.Closed = !stroked;
+    return out;
+}
+
+std::vector<Matrix3x3> BrushStampPlacements(const std::vector<Point2Dd>& pts, const StrokeData& st) {
+    std::vector<Matrix3x3> out;
+    if (!st.Brush || !st.Brush->Stamp || pts.size() < 2) return out;
+    const BrushData& b = *st.Brush;
+    const Rect2Dd sb = b.Stamp->GetBoundingBox();
+    if (sb.width <= 0 || sb.height <= 0) return out;
+    const double k = (std::max(0.5f, st.Width) * std::max(0.01f, b.Scale)) / sb.height;
+    const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
+    std::vector<double> cum(pts.size(), 0.0);
+    for (size_t i = 1; i < pts.size(); ++i)
+        cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    const double total = cum.back();
+    if (total <= 1e-9) return out;
+    size_t seg = 1;
+    int stamps = 0;
+    for (double dist = 0; dist <= total + 1e-9 && stamps < 4000; dist += step, ++stamps) {
+        while (seg + 1 < pts.size() && cum[seg] < dist) ++seg;
+        const double segLen = cum[seg] - cum[seg - 1];
+        const double u = segLen > 1e-12 ? std::min(1.0, std::max(0.0, (dist - cum[seg - 1]) / segLen)) : 0.0;
+        const Point2Dd p(pts[seg - 1].x + (pts[seg].x - pts[seg - 1].x) * u,
+                         pts[seg - 1].y + (pts[seg].y - pts[seg - 1].y) * u);
+        const double angle = b.Rotate ? std::atan2(pts[seg].y - pts[seg - 1].y, pts[seg].x - pts[seg - 1].x) : 0.0;
+        out.push_back(Matrix3x3::Translate(p.x, p.y) * Matrix3x3::Rotate(angle) * Matrix3x3::Scale(k, k) *
+                      Matrix3x3::Translate(-(sb.x + sb.width / 2), -(sb.y + sb.height / 2)));
+    }
     return out;
 }
 
