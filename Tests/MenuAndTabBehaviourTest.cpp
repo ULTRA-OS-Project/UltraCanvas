@@ -5,7 +5,12 @@
 //    and then failed to link. The declarations are gone; MenuItemType::Input
 //    stays, reserved.
 //  - MenuStyle::enableAnimations computed an opening progress that nothing
-//    drew. A popup now fades its entries in over animationDuration.
+//    drew. A popup now fades in over animationDuration - the whole panel,
+//    background, border, shadow and entries, not only the entries - by
+//    stepping its popup opacity on the window.
+//  - UltraCanvasWindowBase::SetPopupOpacity: below 1 the window mixes a popup
+//    with the content beneath it; at 1, the default, the popup is copied onto
+//    the window bit for bit as before.
 //  - Escape closes an open menu through the popup system (the application
 //    closes the topmost popup when its closeByEscapeKey is set). That was
 //    already so; the check here keeps the menu registered that way.
@@ -23,7 +28,10 @@
 //    pointer to post the MenuClick event; it runs the item and posts nothing.
 //
 // Runs headless: popups open in a window stand-in with no native side, and
-// the menu is drawn into an offscreen surface read back pixel by pixel.
+// the menu is drawn into an offscreen surface read back pixel by pixel. The
+// fade is read off a second stand-in whose "screen" is an offscreen surface,
+// so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
@@ -36,13 +44,17 @@
 
 #include <cairo/cairo.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -135,6 +147,89 @@ struct Canvas {
     }
 };
 
+// A window stand-in with a screen: an offscreen surface takes the native
+// surface's place, so UpdateAndRender() lays out, paints and composites the
+// popups onto it exactly as a real window does. The content is one flat
+// colour, so whatever a popup lets through of it can be told apart.
+class ScreenWindow : public HeadlessWindow {
+public:
+    static constexpr int kWidth = 400;
+    static constexpr int kHeight = 300;
+    const Color content = Color(30, 160, 60, 255);
+    cairo_surface_t* screen = nullptr;
+
+    ScreenWindow() {
+        config_.width = kWidth;
+        config_.height = kHeight;
+        SetBounds(Rect2Df(0, 0, kWidth, kHeight));
+        screen = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, kWidth, kHeight);
+        nativeSurface = screen;
+        renderContext = CreateRenderContext(Size2Di(kWidth, kHeight), nativeSurface);
+        _created = renderContext != nullptr;
+        _windowVisible = true;
+        AddDirtyRectangle(Rect2Di(0, 0, kWidth, kHeight));
+    }
+    ~ScreenWindow() override {
+        CloseAllPopups();
+        renderContext.reset();
+        cairo_surface_destroy(screen);
+    }
+
+    bool Ready() const { return _created; }
+
+    void RenderCustomContent(IRenderContext* ctx, const Rect2Di&) override {
+        ctx->SetFillPaint(content);
+        ctx->FillRectangle(Rect2Df(0, 0, kWidth, kHeight));
+    }
+
+    // One frame, as the application's loop would run it.
+    void Frame() { UpdateAndRender(); }
+
+    // The screen's pixels (premultiplied ARGB) inside `r`, row by row.
+    std::vector<uint32_t> Pixels(const Rect2Di& r) const {
+        cairo_surface_flush(screen);
+        const unsigned char* data = cairo_image_surface_get_data(screen);
+        const int stride = cairo_image_surface_get_stride(screen);
+        std::vector<uint32_t> out;
+        for (int y = r.y; y < r.y + r.height; ++y)
+            for (int x = r.x; x < r.x + r.width; ++x)
+                out.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+        return out;
+    }
+
+    // The largest difference of any channel of any pixel in `r` from the content colour.
+    int MaxDifferenceFromContent(const Rect2Di& r) const {
+        int worst = 0;
+        for (uint32_t px : Pixels(r)) {
+            worst = std::max({worst,
+                              std::abs(static_cast<int>((px >> 16) & 0xFF) - content.r),
+                              std::abs(static_cast<int>((px >> 8) & 0xFF) - content.g),
+                              std::abs(static_cast<int>(px & 0xFF) - content.b),
+                              std::abs(static_cast<int>(px >> 24) - content.a)});
+        }
+        return worst;
+    }
+};
+
+// A popup that is not a menu: opaque blue on the left, half-transparent red in
+// the middle, nothing on the right - so a copy and a blend give different pixels.
+class Swatch : public UltraCanvasUIElement {
+public:
+    Swatch() : UltraCanvasUIElement("swatch", 0, 0, 90, 30) {}
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        ctx->SetFillPaint(Color(0, 0, 255, 255));
+        ctx->FillRectangle(Rect2Df(0, 0, 30, 30));
+        ctx->SetFillPaint(Color(255, 0, 0, 128));
+        ctx->FillRectangle(Rect2Df(30, 0, 30, 30));
+    }
+};
+
+Rect2Di WindowBounds(const UltraCanvasUIElement& e) {
+    Rect2Df b = e.GetBoundsInWindow();
+    return Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                   static_cast<int>(b.width), static_cast<int>(b.height));
+}
+
 // A popup menu with one wide label, open in `win` and laid out at the origin.
 std::shared_ptr<UltraCanvasMenu> OpenLabelMenu(HeadlessWindow& win, bool animate, float seconds) {
     auto menu = std::make_shared<UltraCanvasMenu>("fade", 220, 40);
@@ -174,14 +269,12 @@ void MenuChecks(HeadlessWindow& win) {
     TEST("without animation the label is drawn at once", full > 40);
     still->CloseMenu();
 
-    auto fading = OpenLabelMenu(win, true, 0.6f);
+    // The window does the fading now, so the menu itself draws in full: its
+    // entries are no longer faded a second time inside a faded popup.
+    auto fading = OpenLabelMenu(win, true, 60.0f);
+    TEST("a fading menu opens with its popup at opacity 0", win.GetPopupOpacity(*fading) == 0.0f);
     const int atOpen = DrawAndCount(*fading, canvas);
-    TEST("with animation the label starts out transparent", atOpen < full / 10);
-    std::this_thread::sleep_for(std::chrono::milliseconds(700));
-    const int afterFade = DrawAndCount(*fading, canvas);
-    TEST("and is drawn in full once animationDuration has passed", afterFade > full * 9 / 10);
-    std::cerr << "  (dark label pixels: still " << full << ", fade at open " << atOpen
-              << ", after the fade " << afterFade << ")" << std::endl;
+    TEST("and draws its entries in full: the window fades the whole popup", atOpen == full);
     fading->CloseMenu();
 
     // ---- 3. Escape: the menu's popup is one the application closes on Escape ----
@@ -214,6 +307,105 @@ void MenuChecks(HeadlessWindow& win) {
     picker->OnEvent(key);
     TEST("Return on an item runs it without an application", ran);
     if (picker->IsVisible()) picker->CloseMenu();
+}
+
+void PopupOpacityChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    const Rect2Di whole(0, 0, ScreenWindow::kWidth, ScreenWindow::kHeight);
+    TEST("the stand-in's screen shows its content", win.MaxDifferenceFromContent(whole) == 0);
+
+    // ---- A popup opened with default settings is copied onto the window as before ----
+    auto swatch = std::make_shared<Swatch>();
+    win.OpenPopup(Point2Di(40, 50), *swatch, PopupElementSettings());
+    win.Frame();
+    const Rect2Di at = WindowBounds(*swatch);
+    Canvas own(90, 30);   // the popup drawn on its own, onto nothing
+    if (own.cr) swatch->Render(own.ctx.get(), Rect2Df(0, 0, 90, 30));
+    std::vector<uint32_t> ownPixels;
+    if (own.cr) {
+        cairo_surface_flush(cairo_get_target(own.cr));
+        const unsigned char* data = cairo_image_surface_get_data(cairo_get_target(own.cr));
+        const int stride = cairo_image_surface_get_stride(cairo_get_target(own.cr));
+        for (int y = 0; y < 30; ++y)
+            for (int x = 0; x < 90; ++x)
+                ownPixels.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
+    }
+    TEST("a popup opens at opacity 1", win.GetPopupOpacity(*swatch) == 1.0f);
+    TEST("at the default opacity its pixels are copied as they are, transparent ones too",
+         at.x == 40 && at.y == 50 && at.width == 90 && at.height == 30 &&
+         !ownPixels.empty() && win.Pixels(at) == ownPixels);
+
+    // ---- Below 1 it is mixed with the content beneath ----
+    TEST("SetPopupOpacity takes an open popup", win.SetPopupOpacity(*swatch, 0.0f));
+    win.Frame();
+    TEST("at opacity 0 the content beneath shows unchanged", win.MaxDifferenceFromContent(at) == 0);
+
+    win.SetPopupOpacity(*swatch, 0.5f);
+    win.Frame();
+    const uint32_t mid = win.Pixels(Rect2Di(at.x + 10, at.y + 10, 1, 1))[0];
+    auto near = [](int v, int want) { return std::abs(v - want) <= 2; };
+    TEST("at opacity 0.5 its opaque blue is half way to the content",
+         near((mid >> 16) & 0xFF, (30 + 0) / 2) && near((mid >> 8) & 0xFF, (160 + 0) / 2) &&
+         near(mid & 0xFF, (60 + 255) / 2));
+    std::cerr << "  (opacity 0.5 over the content: " << std::hex << mid << std::dec << ")" << std::endl;
+
+    win.SetPopupOpacity(*swatch, 1.0f);
+    win.Frame();
+    TEST("back at 1 it is the plain copy again", win.Pixels(at) == ownPixels);
+
+    Swatch loose;
+    TEST("an element that is not an open popup has no opacity to set", !win.SetPopupOpacity(loose, 0.5f) &&
+                                                                       win.GetPopupOpacity(loose) == 1.0f);
+    win.ClosePopup(*swatch);
+    win.Frame();
+    TEST("closing it uncovers the content", win.MaxDifferenceFromContent(at) == 0);
+
+    // ---- A menu with enableAnimations fades in as a whole panel ----
+    auto open = [&win](bool animate, float seconds) {
+        auto menu = std::make_shared<UltraCanvasMenu>("panel", 220, 40);
+        menu->SetMenuType(MenuType::PopupMenu);
+        MenuStyle style = MenuStyle::Default();
+        style.font.fontSize = 20.0f;
+        style.itemHeight = 36;
+        style.enableAnimations = animate;
+        style.animationDuration = seconds;
+        menu->SetStyle(style);
+        menu->AddItem(MenuItemData::Action("MMMM WWWW", [] {}));
+        menu->OpenMenu(Point2Di(20, 20), win, PopupElementSettings());
+        win.Frame();
+        return menu;
+    };
+
+    auto still = open(false, 1.0f);
+    const Rect2Di panel = WindowBounds(*still);
+    const std::vector<uint32_t> stillPixels = win.Pixels(panel);
+    TEST("a menu without animation is on screen at once",
+         panel.width > 100 && panel.height > 30 && win.MaxDifferenceFromContent(panel) > 100);
+    still->CloseMenu();
+    win.Frame();
+
+    auto fading = open(true, 1.0f);
+    const float opacityAtOpen = win.GetPopupOpacity(*fading);
+    const int differenceAtOpen = win.MaxDifferenceFromContent(panel);
+    TEST("an animated menu opens nearly transparent", opacityAtOpen < 0.25f);
+    TEST("its whole panel - background, border, shadow, entries - is close to the content beneath",
+         WindowBounds(*fading).x == panel.x && WindowBounds(*fading).y == panel.y &&
+         differenceAtOpen <= static_cast<int>(std::ceil(255.0f * opacityAtOpen)) + 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    // No application, so no timer: a repaint moves the fade on to where the clock has got.
+    fading->RequestRedraw();
+    win.Frame();
+    TEST("after animationDuration the popup is opaque", win.GetPopupOpacity(*fading) == 1.0f);
+    TEST("and the panel's pixels are the menu's own, exactly as without animation",
+         win.Pixels(panel) == stillPixels);
+    std::cerr << "  (fade: opacity at open " << opacityAtOpen << ", largest difference from the content "
+              << differenceAtOpen << ")" << std::endl;
+    fading->CloseMenu();
 }
 
 void TabChecks(HeadlessWindow& win) {
@@ -291,6 +483,7 @@ void TextAreaChecks() {
 int main() {
     auto win = std::make_shared<HeadlessWindow>();
     MenuChecks(*win);
+    PopupOpacityChecks();
     TabChecks(*win);
     TextAreaChecks();
 
