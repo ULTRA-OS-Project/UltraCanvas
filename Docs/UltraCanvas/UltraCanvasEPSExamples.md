@@ -8,7 +8,7 @@ EPS files are PostScript *programs*: real-world files (Illustrator, CorelDRAW, g
 
 EPS support is **implemented**: the interpreter covers the level-1/2 core that drawing programs actually emit, and renderings of the shipped samples agree with ghostscript to within antialiasing differences. A handful of constructs outside that core are approximated rather than refused — they are listed under *Known gaps* below, and `EPSDocument::GetDiagnostics()` names every one a given file actually hit.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `Plugins/Vector/EPS/UltraCanvasEPSPlugin.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement` (the plugin class derives from `IGraphicsPlugin`)
@@ -120,6 +120,8 @@ What the writer emits:
 Flattened with a warning (PostScript has neither): opacity (blended toward the white page) and gradients (the blend of the end stops). The output restricts itself to operators this plugin's interpreter understands, so written files round-trip cleanly — `Tests/EPSWriterTest.cpp` asserts zero unknown operators and zero warnings, plus pixel placement; ghostscript renders the same output identically.
 
 ```cpp
+#include "Plugins/Vector/UltraCanvasEPSConverter.h"
+
 using namespace UltraCanvas::VectorConverter;
 EPSConverter eps;
 eps.Export(*document, "drawing.eps");          // document is a VectorStorage::VectorDocument

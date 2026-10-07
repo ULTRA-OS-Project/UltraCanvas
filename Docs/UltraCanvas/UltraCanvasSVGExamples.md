@@ -1,5 +1,7 @@
 # UltraCanvasSVGElement Documentation
 
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> document; -->
+
 ## Overview
 
 `UltraCanvasSVGElement` is a powerful UI component in the UltraCanvas framework that enables rendering and manipulation of Scalable Vector Graphics (SVG) files. It provides full support for SVG 1.1 specifications including paths, shapes, text, gradients, filters, and transformations.
@@ -8,9 +10,9 @@
 
 ```cpp
 // UltraCanvasSVGPlugin.h
-// SVG rendering and manipulation support for UltraCanvas
+// Complete SVG rendering plugin with gradient, filter, and transform support
 // Version: 2.0.0
-// Last Modified: 2025-01-02
+// Last Modified: 2024-12-19
 // Author: UltraCanvas Framework
 ```
 
@@ -36,19 +38,11 @@ namespace UltraCanvas {
 ## Constructor
 
 ```cpp
-UltraCanvasSVGElement(
-    const std::string& identifier,  // Unique identifier for the element
-    long id,                        // Numeric ID
-    long x,                         // X position
-    long y,                         // Y position
-    long w,                         // Width
-    long h                          // Height
-);
+UltraCanvasSVGElement(const std::string& identifier, float x, float y, float w, float h);
 ```
 
 ### Parameters
 - `identifier`: String identifier for the SVG element
-- `id`: Unique numeric ID for element identification
 - `x`, `y`: Position coordinates within parent container
 - `w`, `h`: Dimensions of the SVG rendering area
 
@@ -74,6 +68,12 @@ if (svgElement->LoadFromFile(GetResourcesDir() + "media/logo.svg")) {
     // SVG loaded successfully
 }
 ```
+
+### GetLastError
+```cpp
+const std::string& GetLastError() const;
+```
+Returns the reason for the most recent failed load (file locked, missing, or not valid SVG).
 
 ### LoadFromString
 ```cpp
@@ -101,7 +101,7 @@ svgElement->LoadFromString(svgData);
 
 ### Render
 ```cpp
-void Render(IRenderContext* ctx) override;
+void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 ```
 Renders the SVG content to the screen. Called automatically by the framework during the render cycle.
 
@@ -211,7 +211,6 @@ auto container = std::make_shared<UltraCanvasContainer>("svgContainer", 20, 20, 
 // Create SVG element
 auto svgElement = std::make_shared<UltraCanvasSVGElement>(
     "mySVG",
-    101,
     10, 10,  // Position within container
     280, 280 // Size
 );
@@ -234,11 +233,7 @@ private:
 public:
     void Setup() {
         container = std::make_shared<UltraCanvasContainer>("svgBox", 50, 50, 200, 200);
-        
-        auto style = container->GetContainerStyle();
-        style.borderWidth = 2;
-        style.borderColor = Color(180, 180, 180, 255);
-        container->SetContainerStyle(style);
+        container->SetBorders(2, Color(180, 180, 180, 255));
 
         svg = std::make_shared<UltraCanvasSVGElement>("icon", 10, 10, 180, 180);
         svg->LoadFromFile(GetResourcesDir() + "media/icon.svg");
@@ -251,19 +246,15 @@ public:
     }
 
     bool HandleSVGEvent(const UCEvent& event) {
-        auto style = container->GetContainerStyle();
-        
         switch (event.type) {
             case UCEventType::MouseEnter:
-                style.borderColor = Color(100, 149, 237, 255); // Highlight
+                container->SetBordersColor(Color(100, 149, 237, 255)); // Highlight
                 svg->SetScale(1.1f); // Slight zoom
-                container->SetContainerStyle(style);
                 return true;
                 
             case UCEventType::MouseLeave:
-                style.borderColor = Color(180, 180, 180, 255); // Normal
+                container->SetBordersColor(Color(180, 180, 180, 255)); // Normal
                 svg->SetScale(1.0f); // Reset zoom
-                container->SetContainerStyle(style);
                 return true;
                 
             case UCEventType::MouseUp:
@@ -283,34 +274,32 @@ public:
 
 ### Dynamic SVG Generation
 ```cpp
-void CreateDynamicSVG() {
-    auto svgElement = std::make_shared<UltraCanvasSVGElement>("dynamic", 0, 0, 400, 300);
-    
-    std::ostringstream svg;
-    svg << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    svg << "<svg width=\"400\" height=\"300\" xmlns=\"http://www.w3.org/2000/svg\">\n";
-    
-    // Dynamic background gradient
-    svg << "  <defs>\n";
-    svg << "    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n";
-    svg << "      <stop offset=\"0%\" style=\"stop-color:#667eea\" />\n";
-    svg << "      <stop offset=\"100%\" style=\"stop-color:#764ba2\" />\n";
-    svg << "    </linearGradient>\n";
-    svg << "  </defs>\n";
-    
-    svg << "  <rect width=\"400\" height=\"300\" fill=\"url(#bg)\"/>\n";
-    
-    // Add dynamic content
-    for (int i = 0; i < 5; i++) {
-        int x = 80 * i + 40;
-        svg << "  <circle cx=\"" << x << "\" cy=\"150\" r=\"30\" ";
-        svg << "fill=\"white\" opacity=\"0.8\"/>\n";
-    }
-    
-    svg << "</svg>\n";
-    
-    svgElement->LoadFromString(svg.str());
+auto svgElement = std::make_shared<UltraCanvasSVGElement>("dynamic", 0, 0, 400, 300);
+
+std::ostringstream svg;
+svg << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+svg << "<svg width=\"400\" height=\"300\" xmlns=\"http://www.w3.org/2000/svg\">\n";
+
+// Dynamic background gradient
+svg << "  <defs>\n";
+svg << "    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\n";
+svg << "      <stop offset=\"0%\" style=\"stop-color:#667eea\" />\n";
+svg << "      <stop offset=\"100%\" style=\"stop-color:#764ba2\" />\n";
+svg << "    </linearGradient>\n";
+svg << "  </defs>\n";
+
+svg << "  <rect width=\"400\" height=\"300\" fill=\"url(#bg)\"/>\n";
+
+// Add dynamic content
+for (int i = 0; i < 5; i++) {
+    int x = 80 * i + 40;
+    svg << "  <circle cx=\"" << x << "\" cy=\"150\" r=\"30\" ";
+    svg << "fill=\"white\" opacity=\"0.8\"/>\n";
 }
+
+svg << "</svg>\n";
+
+svgElement->LoadFromString(svg.str());
 ```
 
 ### Gallery View with Multiple SVGs
@@ -334,7 +323,6 @@ public:
         for (size_t i = 0; i < svgFiles.size(); i++) {
             auto container = std::make_shared<UltraCanvasContainer>(
                 "galleryItem" + std::to_string(i),
-                400 + i,
                 col * (itemSize + spacing) + spacing,
                 row * (itemSize + spacing) + spacing,
                 itemSize,
@@ -343,7 +331,6 @@ public:
             
             auto svg = std::make_shared<UltraCanvasSVGElement>(
                 "svg" + std::to_string(i),
-                500 + i,
                 5, 5,
                 itemSize - 10,
                 itemSize - 10
@@ -425,6 +412,8 @@ The Vector plugin implements `UltraCanvas::VectorConverter::SVGConverter`, conve
 - **Import** parses with tinyxml2: all basic shapes, paths (via `ParsePathString`), groups, presentation attributes and inline `style=""`, gradients resolved through `url(#id)` (with one level of `href` inheritance), text with tspans, unit conversion (pt/mm/cm/in/pc at CSS's 96 dpi), and entities. When every top-level drawable is a `<g>`, each imports as a `VectorLayer` — the shape this exporter and layered editors produce. CSS `<style>` sheets are not applied (warned once).
 
 ```cpp
+#include "UltraCanvasVectorConverter.h"   // in UltraCanvas/Plugins/Vector
+
 using namespace UltraCanvas::VectorConverter;
 SVGConverter svgc;
 svgc.Export(*document, "drawing.svg");

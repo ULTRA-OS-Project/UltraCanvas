@@ -7,8 +7,8 @@ The `UltraCanvasPieChartElement` is a comprehensive pie / donut / 3D chart compo
 **Namespace:** `UltraCanvas`  
 **Header:** `include/Plugins/Charts/UltraCanvasPieChart.h`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.0.0  
-**Last Modified:** 2026-05-14  
+**Version:** 1.0.1  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -168,7 +168,7 @@ void SetPerspectiveAngle(float angleDeg);
 float GetPerspectiveAngle() const;
 void SetDepthHeight(float h);
 float GetDepthHeight() const;
-void SetLightDirection(Point2Df dir);
+void SetLightDirection(Point2Dd dir);
 void SetAmbientLight(float a);
 void SetDiffuseLight(float d);
 ```
@@ -228,6 +228,10 @@ std::shared_ptr<ChartDataVector> GenerateBudgetData() {
     data->LoadFromArray(budget);
     return data;
 }
+
+// Each example below hands one of these to SetDataSource()
+auto marketShare = GenerateMarketShareData();   // 5 slices
+auto budget = GenerateBudgetData();             // 6 slices
 ```
 
 ### Example 1: Market Share Pie Chart (Auto-Labeled)
@@ -287,7 +291,7 @@ donutChart->SetColorPalette({
 
 // Enable 3D mode with custom depth + perspective and configure lighting
 donutChart->Enable3DMode(30.0f, 22.0f);
-donutChart->SetLightDirection(Point2Df(-0.6f, -0.8f));
+donutChart->SetLightDirection(Point2Dd(-0.6, -0.8));
 donutChart->SetAmbientLight(0.35f);
 donutChart->SetDiffuseLight(0.65f);
 

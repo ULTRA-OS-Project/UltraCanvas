@@ -1,5 +1,7 @@
 # UltraCanvasGitGraph Documentation
 
+<!-- doc-check: std::string MyRelativeTime(int64_t when); std::string MyPatchFor(const std::string& sha, const std::string& path); std::string AskUserForBranchName(); -->
+
 ## Overview
 
 **UltraCanvasGitGraph** renders a Git commit history — a directed acyclic graph
@@ -21,7 +23,7 @@ tested on its own in `Tests/GitGraphLayoutTest.cpp`.
 **Headers:** `include/Plugins/Diagrams/UltraCanvasGitGraph.h`,
 `UltraCanvasGitGraphLayout.h`, `UltraCanvasGitGraphTypes.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.0
+**Version:** 1.0.1
 
 ## Class Hierarchy
 
@@ -543,10 +545,10 @@ multi-column `UltraCanvasListView` instead, use the row-alignment API:
 
 ```cpp
 const int    rows    = graph->GetRowCount();
+const int    row     = graph->GetRowAtScreenPosition(y);   // Row under y
 const double top     = graph->GetRowScreenPosition(row);   // Element space
 const double spacing = graph->GetRowSpacing();             // Zoom applied
 const auto   visible = graph->GetVisibleRowRange();        // {first, last}
-const int    row     = graph->GetRowAtScreenPosition(y);
 ```
 
 ### Minimap

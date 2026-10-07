@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasBlockDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.3.1
+**Version:** 2.3.2
 
 ## Class Hierarchy
 
@@ -238,7 +238,7 @@ std::function<void(const std::string&)> onNodeCreated;
 std::function<void(const std::string&)> onNodeSelected;
 std::function<void(const std::string&)> onNodeDoubleClick;
 std::function<void(const std::string&, const std::string&)> onConnectionCreated;
-std::function<void(EditMode)> onEditModeChanged;
+std::function<void(UltraCanvasBlockDiagram::EditMode)> onEditModeChanged;
 ```
 
 ## Usage Examples
@@ -313,6 +313,8 @@ A dashed line distinguishes electrical control signals from the refrigerant
 flow it modulates.
 
 ```cpp
+Color ctrlConn = Color(120, 130, 145, 255);
+
 diagram->AddConnection("ctrl_comp", "comp_control", "compressor",
                        ConnectionStyle::Orthogonal);
 diagram->SetConnectionColor("ctrl_comp", ctrlConn);
@@ -323,24 +325,30 @@ diagram->SetConnectionLineStyle("ctrl_comp", LineStyle::Dashed);
 ### Toolbar wired to edit mode and view
 
 ```cpp
+int btnY = 635;
+int btnX = 50;
+
 auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", btnX, btnY, 90, 32);
 btnSelect->SetText("Select");
 btnSelect->SetOnClick([diagram]() {
     diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::Select);
 });
 
+btnX += 100;
 auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", btnX, btnY, 90, 32);
 btnConnect->SetText("Connect");
 btnConnect->SetOnClick([diagram]() {
     diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::CreateConnection);
 });
 
+btnX += 100;
 auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 90, 32);
 btnZoomIn->SetText("Zoom +");
 btnZoomIn->SetOnClick([diagram]() {
     diagram->SetZoomLevel(diagram->GetZoomLevel() * 1.2f);
 });
 
+btnX += 100;
 auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 90, 32);
 btnZoomOut->SetText("Zoom -");
 btnZoomOut->SetOnClick([diagram]() {
@@ -363,7 +371,7 @@ std::vector<InitialNodePos> initialLayout = {
     // ... etc.
 };
 
-auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 90, 32);
+auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 450, 635, 90, 32);
 btnReset->SetText("Reset");
 btnReset->SetOnClick([diagram, initialLayout]() {
     diagram->SetZoomLevel(1.0f);

@@ -4,7 +4,7 @@
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -31,9 +31,10 @@
 ### Constructor
 
 ```cpp
-UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                      long x = 0, long y = 0,
-                      long w = 400, long h = 28);
+UltraCanvasBreadcrumb(const std::string& identifier,
+                      float x, float y, float w, float h);
+UltraCanvasBreadcrumb(const std::string& identifier, float w, float h);   // position -1, -1
+explicit UltraCanvasBreadcrumb(const std::string& identifier = "");       // size -1, -1 (layout decides)
 ```
 
 ### Factory Function
@@ -41,7 +42,7 @@ UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
 ```cpp
 std::shared_ptr<UltraCanvasBreadcrumb> CreateBreadcrumb(
     const std::string& identifier,
-    long x, long y, long w = 400, long h = 28);
+    float x, float y, float w = 400, float h = 28);
 ```
 
 ### BreadcrumbItem Structure

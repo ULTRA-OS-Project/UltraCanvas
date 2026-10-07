@@ -1,5 +1,7 @@
 # UltraCanvasGroupBox Documentation
 
+<!-- doc-check: UltraCanvasRadioGroup foodGroup; -->
+
 ## Overview
 
 **UltraCanvasGroupBox** is a titled container (a "group box" or "fieldset") that
@@ -8,7 +10,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -102,10 +104,20 @@ std::function<void(bool)> onCollapsedChanged;   // new collapsed state
 
 ```cpp
 auto gb = CreateGroupBox("food", 20, 20, 280, 150, "Best Food");
-gb->AddChild(CreateRadio("r1", "Pizza"));
-gb->AddChild(CreateRadio("r2", "Taco"));
-gb->AddChild(CreateRadio("r3", "Burrito"));
-window->AddElement(gb);
+auto pizza   = std::make_shared<UltraCanvasRadio>("r1", "Pizza");
+auto taco    = std::make_shared<UltraCanvasRadio>("r2", "Taco");
+auto burrito = std::make_shared<UltraCanvasRadio>("r3", "Burrito");
+gb->AddChild(pizza);
+gb->AddChild(taco);
+gb->AddChild(burrito);
+window->AddChild(gb);
+
+// The box only frames the radios. One-of-many selection comes from an
+// UltraCanvasRadioGroup that lives as long as they do (e.g. a member of
+// your window class).
+foodGroup.AddRadioButton(pizza);
+foodGroup.AddRadioButton(taco);
+foodGroup.AddRadioButton(burrito);
 ```
 
 ### Checkable group (enables/disables its contents)
@@ -126,7 +138,7 @@ gb->SetFrameStyle(GroupBoxFrameStyle::Header);
 gb->EnableActivatorSwitch(GroupBoxIndicatorSide::Right);  // switch on the right
 gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
 gb->SetHelpText("Toggle the switch to enable or disable this section.");
-gb->AddChild(/* ... */);
+gb->AddChild(std::make_shared<UltraCanvasCheckbox>("autosave", "Save automatically"));
 gb->onCheckedChanged = [](bool on) { /* ... */ };
 ```
 
