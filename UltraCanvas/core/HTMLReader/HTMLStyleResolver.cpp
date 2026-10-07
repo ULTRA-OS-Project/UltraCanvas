@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.18.0 - selector matching is CSSStyleSheet.h's (SelectorMatches /
+//                  MatchingRules over NodeSelectorTraits); the copy that lived
+//                  here is gone, so the SVG reader and this resolver match alike
 // Version: 1.17.0 - an inline !important declaration beats a style sheet's
 //                  !important one, as in CSS: style="color:#fff !important" on
 //                  a mail's button link no longer loses to the template's
@@ -42,7 +45,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -259,31 +262,9 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
 
     // Author rules, lowest specificity first so later Apply wins. !important
     // declarations are collected and re-applied last.
-    struct Match {
-        int specificity;
-        int order;
-        const Rule* rule;
-    };
-    std::vector<Match> matches;
-    for (const auto& rule : sheet.rules) {
-        int best = -1;
-        for (const auto& selector : rule.selectors) {
-            if (SelectorMatches(selector, element)) {
-                best = std::max(best, selector.Specificity());
-            }
-        }
-        if (best >= 0) {
-            matches.push_back({best, rule.sourceOrder, &rule});
-        }
-    }
-    std::sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
-        if (a.specificity != b.specificity) return a.specificity < b.specificity;
-        return a.order < b.order;
-    });
-
     std::vector<const Declaration*> importantDecls;
-    for (const auto& match : matches) {
-        for (const auto& decl : match.rule->declarations) {
+    for (const Rule* rule : MatchingRules<NodeSelectorTraits>(sheet, element)) {
+        for (const auto& decl : rule->declarations) {
             if (decl.important) {
                 importantDecls.push_back(&decl);
             } else {
@@ -477,101 +458,6 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         s.display = DisplayMode::Hidden;
     }
     // Unknown tags stay Inline, matching browser behavior.
-}
-
-// ============================================================================
-// SELECTOR MATCHING
-// ============================================================================
-
-bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& element) {
-    if (!part.tag.empty() && part.tag != "*" && element.tag != part.tag) return false;
-    if (!part.id.empty() && element.GetId() != part.id) return false;
-    for (const auto& cls : part.classes) {
-        if (!element.HasClass(cls)) return false;
-    }
-    if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
-    for (const auto& pc : part.pseudos) {
-        if (pc.kind == PseudoClass::Kind::Root) {
-            if (element.tag != "html") return false;
-            continue;
-        }
-        if (pc.kind == PseudoClass::Kind::Empty) {
-            for (const auto& child : element.children)
-                if (child->IsElement() ||
-                    (child->type == NodeType::Text && !child->text.empty()))
-                    return false;
-            continue;
-        }
-        // The element's 1-based position among its element siblings (of its
-        // tag, for -of-type), from the first or from the last.
-        const Node* parent = element.parent;
-        if (!parent) return false;
-        int index = 0, count = 0;
-        for (const auto& sib : parent->children) {
-            if (!sib->IsElement()) continue;
-            if (pc.ofType && sib->tag != element.tag) continue;
-            ++count;
-            if (sib.get() == &element) index = count;
-        }
-        if (index == 0) return false;
-        const int pos = pc.fromEnd ? count - index + 1 : index;
-        // pos == a*n + b for some n >= 0.
-        if (pc.a == 0) {
-            if (pos != pc.b) return false;
-        } else {
-            const int diff = pos - pc.b;
-            if (diff % pc.a != 0 || diff / pc.a < 0) return false;
-        }
-    }
-    for (const auto& attr : part.attributes) {
-        if (!element.HasAttribute(attr.name)) return false;
-        if (attr.op == 0) continue;
-        std::string have = element.GetAttribute(attr.name);
-        std::string want = attr.value;
-        if (attr.ignoreCase) {
-            for (char& ch : have) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-            for (char& ch : want) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        }
-        bool ok = false;
-        switch (attr.op) {
-            case '=': ok = have == want; break;
-            case '^': ok = !want.empty() && have.compare(0, want.size(), want) == 0; break;
-            case '$': ok = !want.empty() && have.size() >= want.size() &&
-                           have.compare(have.size() - want.size(), want.size(), want) == 0; break;
-            case '*': ok = !want.empty() && have.find(want) != std::string::npos; break;
-            case '|': ok = have == want || have.compare(0, want.size() + 1, want + "-") == 0; break;
-            case '~': {
-                size_t pos = 0;
-                while (!ok && pos < have.size()) {
-                    while (pos < have.size() && std::isspace(static_cast<unsigned char>(have[pos]))) ++pos;
-                    size_t end = pos;
-                    while (end < have.size() && !std::isspace(static_cast<unsigned char>(have[end]))) ++end;
-                    ok = end > pos && have.compare(pos, end - pos, want) == 0 && end - pos == want.size();
-                    pos = end;
-                }
-                break;
-            }
-        }
-        if (!ok) return false;
-    }
-    return true;
-}
-
-bool StyleResolver::SelectorMatches(const Selector& selector, const Node& element) {
-    if (selector.path.empty()) return false;
-    if (!CompoundMatches(selector.path.back(), element)) return false;
-
-    // Remaining compounds must match ancestors, nearest-last, in order.
-    int index = static_cast<int>(selector.path.size()) - 2;
-    const Node* ancestor = element.parent;
-    while (index >= 0 && ancestor) {
-        if (ancestor->IsElement() &&
-            CompoundMatches(selector.path[static_cast<size_t>(index)], *ancestor)) {
-            --index;
-        }
-        ancestor = ancestor->parent;
-    }
-    return index < 0;
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 // Apps/UltraWeb/host/UltraWebLoader.cpp
 // Address bar → module bytes (UltraWebLoader.h).
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -116,6 +116,11 @@ void UltraWebLoader::Load(const std::string& typed, std::function<void(LoadedApp
                 // No HTTP answer at all; UltraNet puts the transport's reason here.
                 app.error = "Could not load " + address
                             + (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
+            } else if (response.exceededReceiveLimit) {
+                app.error = address + " is larger than " + std::to_string(kMaxModuleBytes / (1024 * 1024)) + " MB.";
+            } else if (!response.IsComplete()) {
+                // The status line came, the whole body did not.
+                app.error = "Could not load " + address + ": " + response.transferError;
             } else if (!response.IsSuccess()) {
                 app.error = "The server answered " + std::to_string(response.statusCode) + " "
                             + response.statusMessage + " for " + address + ".";

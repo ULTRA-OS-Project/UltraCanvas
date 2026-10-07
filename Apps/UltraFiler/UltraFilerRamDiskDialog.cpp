@@ -62,13 +62,13 @@ void UltraFilerRamDiskDialog::Initialize() {
     cfg.dialogType = DialogType::Custom;
     CreateDialog(cfg);
 
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     auto content = std::make_shared<UltraCanvasContainer>(
         "uf-ramdisk-content", 0, 0, kContentWidth, 236);
-    content->layout.SetFlexColumn();
+    content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layout.SetFlexGap(6);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
@@ -118,7 +118,7 @@ void UltraFilerRamDiskDialog::Initialize() {
 
     auto buttons = std::make_shared<UltraCanvasContainer>(
         "uf-ramdisk-buttons", 0, 0, kContentWidth, 34);
-    buttons->layout.SetFlexRow();
+    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttons->layout.SetFlexGap(8);
     auto createBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-create", 0, 0, 100, 30);

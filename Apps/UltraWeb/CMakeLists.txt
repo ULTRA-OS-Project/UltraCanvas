@@ -7,7 +7,7 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
-# Version: 0.1.0
+# Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT ULTRACANVAS_LIBRARY)
@@ -25,8 +25,10 @@ endif()
 
 add_executable(UltraWeb
     main.cpp
+    host/UltraWebFetch.cpp
     host/UltraWebGuest.cpp
     host/UltraWebLoader.cpp
+    host/UltraWebStorage.cpp
     ui/UltraWebWindow.cpp
 )
 

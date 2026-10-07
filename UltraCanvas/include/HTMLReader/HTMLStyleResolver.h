@@ -3,6 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.18.0 - selector matching moved to CSSStyleSheet.h; NodeSelectorTraits
+//                  is the DOM's view of it, Matches() the stand-alone test
 // Version: 1.17.0 - merged with main's 1.4.0-1.6.0 (float / clear, box-sizing as
 //                  borderBox)
 // Version: 1.16.0 - letter-spacing
@@ -25,7 +27,7 @@
 // Version: 1.4.0 - box-sizing (borderBox)
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -248,6 +250,53 @@ struct ResolverOptions {
     bool overrideAuthorColors = false;
 };
 
+// The HTML DOM as the selector matcher sees it (CSSStyleSheet.h, "Matching"):
+// tag and attribute names are stored lower-case by the parser, so they
+// compare directly; class names and ids compare exactly. The matcher itself
+// is shared with every other tree that is styled by CSS (the SVG reader).
+struct NodeSelectorTraits {
+    using Element = Node;
+    static bool TagIs(const Node& n, const std::string& tag) { return n.tag == tag; }
+    static bool IdIs(const Node& n, const std::string& id) { return n.GetId() == id; }
+    static bool HasClass(const Node& n, const std::string& name) { return n.HasClass(name); }
+    static bool GetAttribute(const Node& n, const std::string& name, std::string& value) {
+        if (!n.HasAttribute(name)) return false;
+        value = n.GetAttribute(name);
+        return true;
+    }
+    static bool IsLink(const Node& n) { return n.tag == "a" && n.HasAttribute("href"); }
+    static bool IsRoot(const Node& n) { return n.tag == "html"; }
+    static bool IsEmpty(const Node& n) {
+        for (const auto& child : n.children) {
+            if (child->IsElement() || (child->type == NodeType::Text && !child->text.empty())) return false;
+        }
+        return true;
+    }
+    static bool SiblingPosition(const Node& n, bool ofType, int& index, int& count) {
+        if (!n.parent) return false;
+        index = 0;
+        count = 0;
+        for (const auto& sib : n.parent->children) {
+            if (!sib->IsElement()) continue;
+            if (ofType && sib->tag != n.tag) continue;
+            ++count;
+            if (sib.get() == &n) index = count;
+        }
+        return index > 0;
+    }
+    // Only an element can match a compound; the document node above <html>
+    // ends the walk.
+    static const Node* Parent(const Node& n) {
+        return n.parent && n.parent->IsElement() ? n.parent : nullptr;
+    }
+};
+
+// Whether `selector` matches `element` - the resolver's own test, on its own,
+// for callers that select nodes rather than style them (a querySelector).
+inline bool Matches(const Selector& selector, const Node& element) {
+    return SelectorMatches<NodeSelectorTraits>(selector, element);
+}
+
 class StyleResolver {
 public:
     void AddStyleSheet(const std::string& css) { sheet.ParseAppend(css); }
@@ -276,8 +325,6 @@ private:
     void ApplyLegacyAttributes(const Node& element, ComputedStyle& style);
     void ApplyDeclaration(const Declaration& declaration, ComputedStyle& style,
                           const ComputedStyle& parentStyle);
-    static bool SelectorMatches(const Selector& selector, const Node& element);
-    static bool CompoundMatches(const SimpleSelector& part, const Node& element);
 };
 
 } // namespace HTML

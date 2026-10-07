@@ -328,6 +328,62 @@ the backing implementation can be replaced without affecting callers.
   structure is derived from, and what is deliberately out of scope (B-rep
   solids: STEP, IGES, ACIS, DWG `3DSOLID`).
 
+**HTMLReader section** — the framework's one implementation of reading HTML
+and CSS, under `UltraCanvas/{include,core}/HTMLReader/`, always built, in
+`namespace UltraCanvas::HTML`. HTML, CSS and HTML entities are read through
+it and nowhere else (AGENTS.md, *Core conventions*; `scripts/check_html_reuse.py`
+blocks a new tag stripper, entity table, `style=""` splitter or selector
+matcher). Used by the eBook viewer and engines, UltraMail, the Vector
+plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
+`Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
+
+- **HTMLParser / HTMLDocument** (`HTMLReader/HTMLParser.h`,
+  `HTMLReader/HTMLDocument.h`) — `Parser::Parse(html)` → `Document`
+  (tolerant HTML/XHTML: unclosed elements, void and self-closing tags,
+  comments, CDATA, doctype and `quirksMode`, entities, raw-text `<style>` /
+  `<script>`; `Errors()` lists repairs). `Node` (one struct per node; tag
+  and attribute names lower-case) with `GetAttribute`, `HasClass`,
+  `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
+  `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
+  `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
+  entity and numeric references), `ExtractPlainText` (tags gone,
+  `<script>`/`<style>` bodies dropped, entities decoded).
+- **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
+  (rules with specificity and source order, `@media` against
+  `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
+  `MediaMatches`; `CssColor::Parse`, `CssLength::Parse` / `ToPx`; selectors:
+  type, class, id, attribute (`[a]`, `=`, `~=`, `^=`, `$=`, `*=`, `|=`, `i`),
+  `:link`, the structural pseudo-classes, descendant chains (`>` read as
+  descendant). **Selector matching for any tree**: `SelectorMatches<Traits>`,
+  `CompoundMatches<Traits>`, `MatchingRules<Traits>` (the matching rules in
+  cascade order) over a Traits type the tree supplies (ten static members:
+  `TagIs`, `IdIs`, `HasClass`, `GetAttribute`, `IsLink`, `IsRoot`,
+  `IsEmpty`, `SiblingPosition`, `Parent`); `AttributeValueMatches`,
+  `NthPositionMatches` are the tree-independent halves.
+- **HTMLStyleResolver** (`HTMLReader/HTMLStyleResolver.h`) — the cascade for a
+  document: `StyleResolver::AddStyleSheet` / `SetMediaWidth` /
+  `Resolve(document, ResolverOptions)` / `StyleOf(node)` → `ComputedStyle`
+  (display, inherited text properties, margins, padding, borders per side,
+  backgrounds, sizes in px or percent, floats, `box-sizing`, `overflow`,
+  `object-fit`, links); user-agent defaults and the presentational
+  attributes mail uses. `NodeSelectorTraits` is the DOM's view for the
+  matcher; `Matches(selector, node)` the stand-alone test.
+- **HTMLElementBuilder** (`HTMLReader/HTMLElementBuilder.h`) —
+  `ElementBuilder::Build(html, BuildOptions)` / `BuildDocument(document,
+  options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
+  `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
+  (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
+  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
+  engine; the tree's own scrollbars are off, the host scrolls.
+- **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
+  `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
+  HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
+  options)` → `UCRichDocument` through the same parser and cascade
+  (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
+  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
   for a file, and detached launching. Core worker/cache in
@@ -1103,7 +1159,9 @@ future.
 **Available Functions (Core, Tier 1):**
 - `UltraNet_HttpGet`, `UltraNet_HttpPost`, `UltraNet_HttpPut`,
   `UltraNet_HttpDelete`, `UltraNet_HttpHead`, `UltraNet_HttpPatch`
-- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync`
+- `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
+  cut off after its status line carries `UltraNetResponse::transferError`,
+  `IsComplete()` and `exceededReceiveLimit`)
 - `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
@@ -1141,8 +1199,8 @@ future.
   `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
   `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
-- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
-  `UltraNet_UrlDecode`
+- `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_ResolveUrl` (RFC 3986
+  reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 

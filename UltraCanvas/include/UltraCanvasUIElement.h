@@ -7,7 +7,7 @@
 // on the engine base.
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -133,12 +133,15 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         // NOTE: Passing non-zero w/h here stamps a CSS `size.width/height`
-        // on the element. Per CSS spec, an explicit width/height OVERRIDES
-        // parent stretch (grid cell, flex-grow, align-self: Stretch). For
-        // widgets you want the engine to size — children of a flex/grid
-        // container, or any widget that should stretch to its parent — use
-        // the no-size constructor (or pass 0, 0) and let the parent decide.
-        // Pass non-zero w/h only when you genuinely want a fixed-size box.
+        // on the element. An explicit width/height OVERRIDES the parent's
+        // stretch (align-items / justify-items: Stretch), as in CSS; the
+        // element's own align-self / justify-self: Stretch still stretches it,
+        // and flex-grow still grows the main axis. For widgets you want the
+        // engine to size — children of a flex/grid container, or any widget
+        // that should stretch to its parent — use the no-size constructor
+        // (or pass 0, 0) and let the parent decide; the parent stretches
+        // only when its layout asks for it. Pass non-zero w/h only when you
+        // genuinely want a fixed-size box.
         UltraCanvasUIElement(const std::string& idstr,
                              float x, float y, float w, float h) {
             id = idstr;

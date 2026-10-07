@@ -568,8 +568,10 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
     }
 
     if (exceededLimit) {
+        response.transferError = "response exceeded maxReceiveSize";
+        response.exceededReceiveLimit = true;
         return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                     "response exceeded maxReceiveSize");
+                                     response.transferError);
     }
     UltraNetResult result;
     result.url            = url;
@@ -589,6 +591,7 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
         result.code    = MapCurlError(rc, status);
         result.success = false;
         result.message = curl_easy_strerror(rc);
+        response.transferError = result.message;
     }
     return result;
 }

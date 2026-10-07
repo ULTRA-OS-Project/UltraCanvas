@@ -1,3 +1,219 @@
+#### 2026-10-07 *0.9.183*
+- **CSS selector matching is one piece of code for every tree.** The HTML
+  style resolver matched selectors with a private method typed on the HTML
+  DOM, so the Vector plugin's SVG reader, which holds tinyxml2 elements, had
+  to carry a copy of it to apply `<style>` sheets. The matcher now lives in
+  `CSSStyleSheet.h` as `SelectorMatches` / `CompoundMatches` /
+  `MatchingRules`, written against a small Traits type a tree supplies
+  (`NodeSelectorTraits` is the DOM's; `HTML::Matches(selector, node)` is the
+  stand-alone test a querySelector is made of), with the attribute operators
+  and the an+b arithmetic as plain functions. The resolver uses it; a second
+  tree joins with ten one-line traits. `Tests/HTMLReaderTest.cpp` runs the
+  matcher over an SVG-shaped tree that is not the DOM.
+- **The HTMLReader module is documented and registered.** It had no page
+  under `Docs/UltraCanvas/`, no row in `Masterfile_modules.md` and no entry
+  in `llms.txt`, which is how seven tag strippers and entity tables came to
+  be written around it. `Docs/UltraCanvas/UltraCanvasHTMLReader.md` is the
+  page; AGENTS.md states the rule (HTML, CSS and entities are read through
+  the module); `scripts/check_html_reuse.py` and `html-reuse.yml` block a new
+  copy, with the existing sites in `scripts/html_reuse_baseline.txt` to be
+  worked off.
+
+#### 2026-10-07 *0.9.182*
+- **`GetTextIndexForXY` no longer reads a freed font name.** With no font
+  family set (the system-default font), the Cairo backend's
+  `RenderContextCairo::CreatePangoFont` resolved the default family into a
+  string local to an `if` block and handed Pango a pointer to it after the
+  block had ended, so `pango_font_description_set_family` read stack memory
+  that was already out of scope (AddressSanitizer: stack-use-after-scope).
+  Short names such as "Sans" usually survived on the stack by luck; when they
+  did not, the hit-test measured text in an arbitrary font. The name now lives
+  until Pango has copied it, as it already did in `UCTextLayout`. Nothing in
+  this repository calls `GetTextIndexForXY` today, so only callers outside it
+  were affected.
+
+#### 2026-10-07 *0.9.181*
+- **Mobipocket and Kindle books show their cover in the file display too.**
+  `.mobi`, `.prc`, `.azw` and `.azw3` tiles were still purple type sheets
+  after EPUB got its covers in 0.9.173. `UltraCanvasFilerWidget` now shows
+  their cover the same way - thumbnail grids, the Details / List icon column,
+  folder previews, cached on disk - and `GetPreviewableFormats()` reports all
+  four as thumbnail-supported in every build. A PalmDOC `.prc` with no
+  pictures keeps its glyph.
+  - **Reading a cover does not read the book.** The new
+    `MOBIEngine::ReadCoverImageFromFile(path)` reads the record list, record 0
+    and the cover record - the first bytes of the image records in between at
+    most - and gives the picture `GetCoverImage()` gives once the book is
+    loaded: the EXTH 201 image, else the first image. It decompresses and
+    decrypts nothing, so a **DRM-protected** `.azw` and a HUFF/CDIC-compressed
+    book, whose text the engine refuses, show their cover as well (Mobipocket
+    DRM encrypts the text records only). The path is opened as UTF-8 through
+    `OpenFileUtf8`, and a cover past 64 MB is refused before it is read.
+  - `MOBIEngine::ParseRecord0` now reads the PalmDOC, MOBI and EXTH headers
+    before it refuses a DRM or HUFF/CDIC text, so the cover reader shares it;
+    what `LoadFromMemory` accepts, and the errors it reports, are unchanged.
+    `MOBIEngine` 1.3.0.
+- **Tests no longer write into the source tree.** Run without an argument,
+  four tests wrote their files into the current directory, so a run from the
+  repository root put them in the source tree: `VirtualFSDeleteTest`'s
+  archives in `vfsdelete-test-out/`, where they were committed (`bulk.zip`,
+  `bulk.tar.gz`, `manager.zip`) and every later run rewrote tracked files;
+  `WordFormatsTest`'s some fifty sample documents (`sample.odt`,
+  `edited.docx`, `mdmedia/`, ...) and `LaTeXDocumentTest`'s files loose in
+  the root; and `VirtualFSNameEncodingTest`'s archive and extracted folders
+  in `vfs-name-encoding-test-out/`, a folder it also deletes on start. All
+  four now default to a folder in the system temp directory (ctest still
+  passes one in the build tree), the three archives are removed from the
+  repository, and `.gitignore` keeps `vfsdelete-test-out/` out should an
+  older build of the test still write it.
+  - `LaTeXDocumentTest` also finds the shipped `media/LaTex` corpus from any
+    directory: its path is compiled in (`LATEXTEST_CORPUS_DIR`) instead of
+    the `../../media/LaTex` that resolved only from `build/bin`. Run from
+    anywhere else, the corpus checks were skipped and the test still reported
+    every check passed; a corpus that cannot be found is now a failure.
+- **ZIP files open by their UTF-8 name, and without locking the file.** Three
+  readers handed the path to miniz's own fopen: `UCZipPackageReader::Open`
+  (the CorelDRAW thumbnails, the ODT / DOCX / mind-map imports), the ODS
+  spreadsheet loader, and VirtualFS's fast ZIP rewrite behind deleting entries
+  from an archive. miniz turns a UTF-8 name into UTF-16 only under MSVC and
+  64-bit MinGW; with any other Windows toolchain a Thai, Cyrillic or emoji
+  name went through the ANSI code page and the file did not open. Where miniz
+  did convert the name, it opened with `_wfopen_s`, which denies every other
+  program write access while the file is open, so saving a drawing in
+  CorelDRAW could fail while the file display was reading its thumbnail. All
+  three now open the file themselves through `OpenFileUtf8` (`_wfopen`,
+  shared like every other open), hand it to miniz, and close it when done.
+  The package writer and the ODS writer already opened their files this way.
+  - `UCZipPackageReader`: a file that cannot be opened now says so ("Cannot
+    open file") instead of "Not a valid ZIP archive".
+  - VirtualFS: the raw-copy rewrite now also opens the temporary archive it
+    writes through `OpenFileUtf8`, and fails the delete when closing that file
+    fails. miniz closed it itself and ignored the answer, so a disk that
+    filled up during the last flush left a cut-off archive that was then
+    renamed over the original. `VirtualFSLibArchiveProvider` 1.3.1.
+  - Tests: the new `ZipPackageTest` writes and reads a package in a
+    Thai-and-emoji folder, and on Windows writes the file from a second handle
+    while the reader holds it; Windows CI compiles and runs it by hand next to
+    `PathUtf8Test`, on its code page 1252 runner. The new
+    `SpreadsheetOdsFileTest` saves and reloads a sheet under a Thai-and-emoji
+    name, and `VirtualFSDeleteTest` deletes entries from a ZIP with one.
+
+#### 2026-10-07 *0.9.180*
+- **The `*Examples.md` component docs describe the API that exists.** A new
+  checker, `scripts/check_doc_examples.py`, compiles the C++ in a doc
+  against the headers (clang++, Linux) and reports, at the doc's own line,
+  every example that does not compile, every listed function, field or
+  enumerator the class does not have, and every signature that differs. Run
+  over the 60 Examples docs it found 694 problems in 42 of them; all 60 pass
+  it now. The usual faults: a numeric `long id` / `uid` argument and `long`
+  coordinates on constructors and factories (they take `float`s and no id),
+  functions that were renamed or never existed (`GetButtonState`,
+  `SetAutoresize`, `Show`/`Hide` on a menu, `SetModel(IListModel*)`,
+  `SetGridEnabled`, `onOverflowChange`), style fields that are not there
+  (`hoverBackgroundColor`, `padding`, `borderWidth`), wrong return types
+  (`Point2Df` for `Point2Dd`, `Rect2Di` for `Rect2Df`), and listings written
+  as pseudo-code. `UltraCanvasLayoutExamples.md` is rewritten for the CSS
+  layout engine (the box/grid/flex layout managers it documented are gone),
+  and `UltraCanvasBasicChartsExamples.md`, which held a stale copy of the
+  demo's C++ source, is now a doc for the line, bar, scatter and area
+  charts.
+- **`CreateAdjacencyDiagram` can be called.** Its declaration took a
+  `long uid` that its only definition does not, so every call failed to
+  link; the declaration now matches.
+- Comments: `UltraCanvasSpacer.h` and `AddSpacer` no longer say the cross
+  axis stretches by default, and the usage notes in
+  `UltraCanvasJitterPlotElement.h` drop the numeric id.
+- **DemoApp gauges: the cards no longer carry a size they never had.** Every
+  gauge card, and the gauge in it, was built at 272 x 374 (`kCardW` /
+  `kCardH`) and then placed in a 1fr grid cell of about 180 x 247. The grid
+  sized them anyway, but the stale heights made the Progress, Specialized
+  and Analog tabs taller than their area, so a vertical scrollbar appeared
+  and narrowed every card. They are built without a size now; the tabs fit
+  and the scrollbar is gone. The Round Gauges tab is unchanged, pixel for
+  pixel.
+- **`Docs/UltraCanvas/UltraCanvasLabelExamples.md` documents the label that
+  exists.** It described a constructor with a numeric `long id`, `LabelStyle`
+  fields the struct does not have (padding, border, `wordWrap`,
+  `autoResize`), and functions that were never there or are gone -
+  `SetAutoResize`, `SetWordWrap`, `SetCrossAlignment`, `SetShadow`,
+  `SetBorderWidth`, `AppendText`, `ClearText`, `IsEmpty`, `CreateAutoLabel`,
+  `CreateHeaderLabel`, `CreateStatusLabel`, `CreateLabelBuilder`,
+  `onSizeChanged`. It now follows `UltraCanvasLabel.h`: the four
+  constructors, the real `LabelStyle`, text links, the factories,
+  `LabelBuilder`, and how a label sizes itself in a layout. Every example in
+  it compiles against the headers.
+- **The layout engine stretches nothing unless the layout asks for it, and a
+  container's stretch no longer overrides a child's own size.** Flex
+  `align-items` defaulted to `Stretch`, and a grid item to `justify-self` /
+  `align-self: Stretch` whatever its container said, so every child of a flex
+  or grid container was stretched across it unless someone opted out - and a
+  child with its own `width` or `height` was stretched over that too (a 200 px
+  button in a column came out full width), although `UltraCanvasUIElement.h`
+  and `Docs/CSSLayout.md` already promised the CSS rule. Now, in one place,
+  for every application, the most specific statement wins:
+  - the child's own `align-self` / `justify-self: Stretch` stretches it, also
+    over a size it carries (CSS would keep the size; here a size often comes
+    from a constructor that requires one, the request never does);
+  - otherwise a child's set width (in a column, a grid cell's width) or
+    height (in a row, a cell's height) is kept, at the start (CSS Flexbox 9.4
+    step 11, CSS Box Alignment 6.1);
+  - otherwise the container's `align-items` / `justify-items` decides, and
+    those now start at `Start` - flex `FlexLayout::alignItems`, grid
+    `GridLayout::justifyItems` / `alignItems` - with a grid item's own values
+    at `Auto`, which takes the container's; the grid code never read the
+    container's values before, so a grid's `SetGridAlignItems(Center)` takes
+    effect now.
+  - A negative width or height counts as no size (CSS rejects it; here it is
+    the "not set" -1, or a size computed before the window had one).
+  - A child that is not stretched is still measured against the container's
+    width as an upper bound, so a wrapping label still wraps.
+  - New: `Layout::SetGridJustifyItems`, and `ULTRACANVAS_LAYOUT_AUDIT=1`,
+    which prints once per element every set size that outranked its
+    container's stretch - the way to find a size given only because a
+    constructor wanted one.
+- **Every container that relied on the old default asks for it now**, so it
+  looks as it did: 72 flex containers (the CSV import and export dialogs,
+  the image export dialog, the e-book viewer; Texter's find, replace and
+  go-to dialogs and toolbar; UltraFiler's find-text, RAM-disk and Windows-app
+  dialogs; UltraAI's chat and settings dialogs; UltraMail's account bar and
+  message preview; DemoApp pages) set `SetFlexAlignItems(Stretch)`, and 10
+  grid containers (DemoApp's main window, gauges and diagram pages, Texter's
+  file statistics, UltraAI's settings modes) set both grid stretches.
+  `CreateFormGrid` asks for its horizontal stretch, so form controls still
+  fill their column - except a control given a width of its own, which now
+  keeps it (the image export dialog's 200 px file-name field, for one).
+- Tests: `Apps/CSSLayoutTests` Phase 11 (default start, the container's
+  stretch keeps a set size, the item's own stretch does not, a negative size,
+  grid start / stretch / set size); the track-sizing cases ask for the
+  stretch they read their tracks through; `Tests/CSSLayoutFormGridTest.cpp`
+  adds a sized control.
+- **A text field showed a new font only when something else repainted it.**
+  `UltraCanvasTextInput::SetFontSize` and `SetStyle` stored the new font and
+  did nothing else: no redraw, no layout invalidation, and the horizontal
+  scroll stayed clamped for the old character widths. Both now re-clamp the
+  scroll, invalidate the layout and redraw, as the `UltraCanvasLabel` and
+  `UltraCanvasButton` font setters always did. Test:
+  `Tests/TextInputFontTest.cpp` (headless, through a probe subclass).
+- **An async HTTP transfer cut off after its status line looked like a
+  success.** When a response went over `maxReceiveSize`, timed out or lost its
+  connection mid-body, `UltraNet_HttpRequestAsync` handed its callback the
+  server's status (200, say) and the bytes that had arrived, with nothing to
+  tell them from a whole response; only the synchronous calls returned the
+  error. `UltraNetResponse::transferError` now carries why the transfer did
+  not finish (also for a cancelled request), empty when the whole response
+  arrived, `IsComplete()` asks it, and `exceededReceiveLimit` marks the
+  over-the-limit case. An HTTP error status (404, 500) is a
+  finished transfer and leaves it empty.
+- **`UltraNet_ResolveUrl(base, reference, out)`** (`UltraNetUrl.h`) resolves a
+  relative URL against a base the way RFC 3986 section 5 does - `../img/a.png`,
+  `//cdn.example/x`, `?page=2` - through libcurl's URL parser. UltraWeb uses
+  it for an app's relative fetches. It refuses a URL with a control character
+  in it (a CR or LF would end the request line) itself: libcurl 8 does, but
+  libcurl 7.81 on Ubuntu 22.04 lets them through.
+- Tests: `url_resolve_*` in `Tests/UltraNet/test_url.cpp` and
+  `loopback_async_reports_an_incomplete_transfer` in
+  `Tests/UltraNet/test_loopback.cpp`.
+
 #### 2026-10-07 *0.9.179*
 - **Menus line their labels up, and a checkbox can be round.** A vertical
   `UltraCanvasMenu` now has an indicator column (when any item is a Checkbox

@@ -479,7 +479,9 @@ namespace UltraCanvas {
                                                  .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
                         CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
                                                  .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
-                .SetGridGap(6);
+                .SetGridGap(6)
+                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto title = std::make_shared<UltraCanvasLabel>("AdjDiagTitle");
         title->SetText("Architectural Adjacency Diagram");

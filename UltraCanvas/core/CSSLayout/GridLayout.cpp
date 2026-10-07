@@ -5,6 +5,10 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
+// Version: 1.4.0 - justify-self / align-self Auto take the container's
+//                 justify-items / align-items (Start by default, so nothing
+//                 stretches unless asked); the container's stretch keeps a set
+//                 width or height (CSS Box Alignment 6.1), the item's own does not
 // Version: 1.3.4 - a percentage height resolves against a block parent's set height
 //                 (percentHeightBase) when no definite height comes down
 // Version: 1.3.3 - position:fixed children go through ArrangeFixedChild so their
@@ -13,7 +17,7 @@
 //                 derives its content extent from the constraint rather than its
 //                 own explicit size, so a grown/stretched grid lays out its tracks
 //                 against its USED size, not its specified size.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -387,6 +391,28 @@ namespace UltraCanvas {
 
             // ---- Item positioning helpers ------------------------------------
 
+            JustifySelf resolveJustifySelf(JustifySelf js, JustifyItems containerJI) {
+                if (js != JustifySelf::Auto) return js;
+                switch (containerJI) {
+                    case JustifyItems::End:     return JustifySelf::End;
+                    case JustifyItems::Center:  return JustifySelf::Center;
+                    case JustifyItems::Stretch: return JustifySelf::Stretch;
+                    case JustifyItems::Start:
+                    default:                    return JustifySelf::Start;
+                }
+            }
+            AlignSelf resolveAlignSelf(AlignSelf as, AlignItems containerAI) {
+                if (as != AlignSelf::Auto) return as;
+                switch (containerAI) {
+                    case AlignItems::End:      return AlignSelf::End;
+                    case AlignItems::Center:   return AlignSelf::Center;
+                    case AlignItems::Stretch:  return AlignSelf::Stretch;
+                    case AlignItems::Baseline: return AlignSelf::Baseline;
+                    case AlignItems::Start:
+                    default:                   return AlignSelf::Start;
+                }
+            }
+
             float justifySelfOffset(JustifySelf js, float trackSize, float itemSize) {
                 switch (js) {
                     case JustifySelf::End:    return trackSize - itemSize;
@@ -629,9 +655,24 @@ namespace UltraCanvas {
                 colW = std::max(0.f, colW);
                 rowH = std::max(0.f, rowH);
 
-                // Determine item size from justify/align self.
-                JustifySelf js = p.gi.justifySelf;
-                AlignSelf   as = p.gi.alignSelf;
+                // Determine item size from justify/align self. Auto is the
+                // container's justify-items / align-items. The container's
+                // stretch fills the cell only along an axis where the item's
+                // size is automatic - a set width or height is kept, aligned
+                // to the start; the item's own justify-self / align-self:
+                // stretch fills it regardless (see ArrangeFlex).
+                JustifySelf js = resolveJustifySelf(p.gi.justifySelf, s.gl.justifyItems);
+                AlignSelf   as = resolveAlignSelf(p.gi.alignSelf, s.gl.alignItems);
+                if (js == JustifySelf::Stretch && p.gi.justifySelf != JustifySelf::Stretch
+                    && hasSetSize(p.el->size.width)) {
+                    auditKeptSize(*p.el, "width", p.el->size.width.value, colW);
+                    js = JustifySelf::Start;
+                }
+                if (as == AlignSelf::Stretch && p.gi.alignSelf != AlignSelf::Stretch
+                    && hasSetSize(p.el->size.height)) {
+                    auditKeptSize(*p.el, "height", p.el->size.height.value, rowH);
+                    as = AlignSelf::Start;
+                }
 
                 float itemW = colW, itemH = rowH;
                 if (js != JustifySelf::Stretch && js != JustifySelf::Auto) {

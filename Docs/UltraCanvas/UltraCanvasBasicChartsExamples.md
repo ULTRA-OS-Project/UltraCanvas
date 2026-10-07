@@ -1,543 +1,273 @@
-// Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
-// Implementation of all chart component example creators with interactive controls
-// Version: 1.1.0
-// Last Modified: 2025-01-07
-// Author: UltraCanvas Framework
+# Basic Chart Elements: Examples
 
-#include "UltraCanvasDemo.h"
+**Version:** 2.0.0
+**Last Modified:** 2026-10-07
+
+The basic chart elements are four ready-made XY charts — line, bar, scatter
+and area — declared in
+`UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`. They
+share a base class (`UltraCanvasChartElementBase`), one data model
+(`ChartDataPoint` in a `ChartDataVector`) and one set of common options; each
+adds a few options of its own. Each element draws a single series with a
+title, grid, axes and hover tooltips.
+
+The demo app's **Line Chart**, **Scatter Plot Chart** and **Area Chart** pages
+are built in `Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp` — read it for
+the full pages with their data-switching buttons and toggles. The demo's **Bar
+Chart** page shows the chart engine instead
+(`Apps/DemoApp/UltraCanvasBarChartExamples.cpp`); `UltraCanvasBarChartElement`
+itself is unchanged and is still used, for example by the audio analysis page.
+
+## Which element
+
+| Element | Factory | Draws | Its own options | Reference |
+|---|---|---|---|---|
+| `UltraCanvasLineChartElement` | `CreateLineChartElement` | a line through the points, straight or smoothed, with optional dots | line colour and width, dots, dot colour, smoothing | [UltraCanvasLineChartElement.md](UltraCanvasLineChartElement.md) |
+| `UltraCanvasBarChartElement` | `CreateBarChartElement` | one bar per point | bar colour, border colour and width, spacing | [UltraCanvasBarChartElement.md](UltraCanvasBarChartElement.md) |
+| `UltraCanvasScatterPlotElement` | `CreateScatterPlotElement` | one marker per point, optional least-squares trend line and r / r² readout | marker colour, size and shape, trend line, correlation info | [UltraCanvasScatterPlotElement.md](UltraCanvasScatterPlotElement.md) |
+| `UltraCanvasAreaChartElement` | `CreateAreaChartElement` | a line with the area under it filled, flat or with a gradient | fill colour or gradient, line, dots, smoothing | [UltraCanvasAreaChartElement.md](UltraCanvasAreaChartElement.md) |
+
+For several series, axis scales, legends or limit lines, use the chart engine
+([UltraCanvasChartEngine.md](UltraCanvasChartEngine.md)). For an (x, y, z) point
+cloud, `UltraCanvasScatterPlot3DElement`
+([UltraCanvasScatterPlot3D.md](UltraCanvasScatterPlot3D.md)) sits next to the 2D
+scatter plot on the demo page.
+
+```cpp
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
-#include "UltraCanvasButton.h"
-#include "UltraCanvasLabel.h"
-#include <sstream>
-#include <random>
-#include <map>
+```
 
-namespace UltraCanvas {
+## Feeding data
 
-// ===== BASIC CHART ELEMENTS =====
-static struct ChartControls {
-    bool showPoints = true;
-    bool smoothingEnabled = true;
-    int currentShape = 0;
-} chartControl;
+A point is a `ChartDataPoint(x, y, z = 0, label = "", value = 0, color = Colors::Transparent)`.
+A `ChartDataVector` holds the points; hand it to the chart with
+`SetDataSource`.
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLineChartsExamples() {
-        // Sample data sources
-        std::shared_ptr<ChartDataVector> salesData;
-        std::shared_ptr<ChartDataVector> revenueData;
-        std::shared_ptr<ChartDataVector> randomData;
+```cpp
+auto monthlySales = std::make_shared<ChartDataVector>();
+monthlySales->LoadFromArray({
+    ChartDataPoint(1, 45000, 0, "Jan"),
+    ChartDataPoint(2, 52000, 0, "Feb"),
+    ChartDataPoint(3, 48000, 0, "Mar"),
+    ChartDataPoint(4, 61000, 0, "Apr"),
+    ChartDataPoint(5, 55000, 0, "May"),
+    ChartDataPoint(6, 67000, 0, "Jun"),
+});
+monthlySales->AddPoint(ChartDataPoint(7, 71000, 0, "Jul"));
 
-        // Create revenue data
-        revenueData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> revenue = {
-                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
-                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
-                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
-                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
-                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
-                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
-                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
-                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
-        };
-        revenueData->LoadFromArray(revenue);
+auto fromFile = std::make_shared<ChartDataVector>();
+fromFile->LoadFromCSV("/data/sales.csv");     // lines "x,y[,z[,label]]"; throws if the file cannot be opened
+```
 
-        // Create sales data for line chart (monthly sales over 12 months)
-        salesData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 45000, 0, "Jan", 45000),
-                ChartDataPoint(2, 52000, 0, "Feb", 52000),
-                ChartDataPoint(3, 48000, 0, "Mar", 48000),
-                ChartDataPoint(4, 61000, 0, "Apr", 61000),
-                ChartDataPoint(5, 55000, 0, "May", 55000),
-                ChartDataPoint(6, 67000, 0, "Jun", 67000),
-                ChartDataPoint(7, 71000, 0, "Jul", 71000),
-                ChartDataPoint(8, 69000, 0, "Aug", 69000),
-                ChartDataPoint(9, 58000, 0, "Sep", 58000),
-                ChartDataPoint(10, 63000, 0, "Oct", 63000),
-                ChartDataPoint(11, 72000, 0, "Nov", 72000),
-                ChartDataPoint(12, 78000, 0, "Dec", 78000)
-        };
-        salesData->LoadFromArray(sales);
+- **x** places the point horizontally. With the default
+  `XAxisLabelMode::NumericValue` the axis is numbered and points sit at their x
+  value. With `XAxisLabelMode::DataLabel` the points are spaced evenly in data
+  order and the axis shows each point's **label** — the right choice for
+  months, quarters, regions.
+- **y** is the plotted value. The y axis runs from the smallest to the largest y
+  plus 5 % on each side; it does not start at 0 unless the data does.
+- **color** is honoured by the scatter plot: a point with a non-transparent
+  colour is drawn in it instead of the marker colour.
+- **z**, **value** and **category** are carried along for other chart types;
+  these four charts do not draw them.
+- The chart keeps the pointer and reads the points each time it draws, but it
+  works out the axis ranges only when the data source is set. After changing
+  the vector (`AddPoint`, `Clear`, `LoadFromArray`), call
+  `SetDataSource(data)` again.
+- A CSV file is read with dot decimals. Its first line is skipped as a header
+  if it contains an `x` or a `y` anywhere, so do not start a header-less file
+  with a labelled row such as `1,45000,0,May`. For files too large to hold in
+  memory, `ChartDataStream` reads the points in chunks.
 
-        // Generate random data
-        randomData = std::make_shared<ChartDataVector>();
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> valueDist(20000, 100000);
-        std::vector<ChartDataPoint> randomPoints;
-        for (int i = 1; i <= 10; ++i) {
-            double value = valueDist(gen);
-            randomPoints.emplace_back(i, value, 0, "Point " + std::to_string(i), value);
-        }
-        randomData->LoadFromArray(randomPoints);
+## Size and placement
 
-        auto container = std::make_shared<UltraCanvasContainer>("LineChartExamples", 0, 0, 800, 700);
+The constructors and factories take `(id, x, y, width, height)` as integers,
+and the charts have no content size of their own, so always give a width and
+a height. A non-zero x or y pins the chart at that point; inside a flex or grid
+container pass `0, 0` and let the container place it
+([UltraCanvasLayoutExamples.md](UltraCanvasLayoutExamples.md)).
 
-        // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("LineChartDescription", 50, 20, 700, 60);
-        descLabel->SetText("Line Chart Example - Visualizes trends over time with smooth lines and data points.\n"
-                           "Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
-                           "Features: Interactive zooming, panning, tooltips, and customizable appearance.");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(50, 50, 50, 255));
-        container->AddChild(descLabel);
+```cpp
+auto chartRow = std::make_shared<UltraCanvasContainer>("chart-row");
+chartRow->SetPadding(20);
+chartRow->layout.SetFlexRow().SetFlexGap(20);
 
-        // Create line chart
-        std::shared_ptr<UltraCanvasLineChartElement> lineChart =
-                CreateLineChartElement("salesLineChart", 50, 100, 600, 400);
+auto trendChart = CreateLineChartElement("trend", 0, 0, 480, 320);
+auto volumeChart = CreateAreaChartElement("volume", 0, 0, 480, 320);
+chartRow->AddChild(trendChart);
+chartRow->AddChild(volumeChart);
+window->AddChild(chartRow);
+```
 
-        lineChart->SetDataSource(salesData);
-        lineChart->SetChartTitle("Monthly Sales Trend");
-        lineChart->SetLineColor(Color(0, 102, 204, 255));       // Blue line
-        lineChart->SetLineWidth(3.0f);
-        lineChart->SetShowDataPoints(true);
-        lineChart->SetPointColor(Color(255, 99, 71, 255));      // Tomato red points
-        lineChart->SetPointRadius(5.0f);
-        lineChart->SetSmoothingEnabled(true);
-        lineChart->SetEnableTooltips(true);
-        lineChart->SetEnableZoom(true);
-        lineChart->SetEnablePan(true);
+## Options every chart has
 
-        container->AddChild(lineChart);
+| Call | Effect |
+|---|---|
+| `SetDataSource(data)` | the points to draw (any `IChartDataSource`) |
+| `SetChartTitle(text)` | the title above the plot (`SetTitle` does the same) |
+| `SetXAxisLabelMode(XAxisLabelMode::DataLabel)` | evenly spaced points labelled with their `label` |
+| `SetRotateXAxisLabels(true, 45.0f)` | slanted x labels, for long or many labels |
+| `SetShowGrid(bool)`, `SetGridColor(color)` | the grid lines (on by default) |
+| `SetShowAxes(bool)` | the axes and their labels (on by default) |
+| `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element, and the plot rectangle |
+| `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
+| `SetPointRadius(radius)` | the dot radius of the area chart and the offset of value labels |
+| `SetEnableTooltips(bool)` | hover tooltip with X and Y (on by default) |
+| `SetSeriesName(text)` | a first line for the tooltip |
+| `SetCustomTooltipGenerator(fn)` | your own tooltip text, from the point and its index |
+| `SetEnableSelection(bool)` | a ring around the hovered point (on by default for the scatter plot) |
 
-        // Button group positioning
-        int buttonY = 520;
-        int buttonX = 50;
-        int buttonWidth = 120;
-        int buttonHeight = 35;
-        int buttonSpacing = 10;
+```cpp
+trendChart->SetSeriesName("Sales 2024");
+trendChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index) {
+    return point.label + ": " + std::to_string(static_cast<int>(point.y)) + " EUR";
+});
+```
 
-        // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3001,
-                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRevenue->SetText("Load Revenue");
-        btnLoadRevenue->onClick = [lineChart, revenueData]() {
-            lineChart->SetDataSource(revenueData);
-            lineChart->SetChartTitle("Quarterly Revenue");
-            //lineChart->InvalidateRect();
-        };
-        container->AddChild(btnLoadRevenue);
+## Line chart
 
-        // Load Sales button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3002,
-                                                                buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadSales->SetText("Load Sales");
-        btnLoadSales->onClick = [lineChart, salesData]() {
-            lineChart->SetDataSource(salesData);
-            lineChart->SetChartTitle("Monthly Sales Trend");
-            //lineChart->InvalidateRect();
-        };
-        container->AddChild(btnLoadSales);
+```cpp
+auto salesChart = CreateLineChartElement("sales-line", 0, 0, 600, 400);
+salesChart->SetDataSource(monthlySales);
+salesChart->SetChartTitle("Monthly Sales Trend");
+salesChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+salesChart->SetLineColor(Color(0, 102, 204, 255));
+salesChart->SetLineWidth(3.0f);
+salesChart->SetShowDataPoints(true);                 // dots on the points (off by default)
+salesChart->SetPointColor(Color(255, 99, 71, 255));
+salesChart->SetSmoothingEnabled(true);               // a Catmull-Rom curve instead of straight segments
+salesChart->SetShowValueLabels(false);
+```
 
-        // Load Random button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3003,
-                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRandom->SetText("Load Random");
-        btnLoadRandom->onClick = [lineChart]() {
-            // Generate new random data
-            auto newRandomData = std::make_shared<ChartDataVector>();
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_real_distribution<> valueDist(15000, 90000);
-            std::vector<ChartDataPoint> randomPoints;
-            for (int i = 1; i <= 12; ++i) {
-                double value = valueDist(gen);
-                randomPoints.emplace_back(i, value, 0, "Pt" + std::to_string(i), value);
-            }
-            newRandomData->LoadFromArray(randomPoints);
-            lineChart->SetDataSource(newRandomData);
-            lineChart->SetChartTitle("Random Data");
-            //lineChart->InvalidateRect();
-        };
-        container->AddChild(btnLoadRandom);
+## Bar chart
 
-        // Toggle Data Points button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints", 3004,
-                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
-        btnTogglePoints->SetText("Toggle Points");
-        btnTogglePoints->onClick = [lineChart]()  {
-            chartControl.showPoints = !chartControl.showPoints;
-            lineChart->SetShowDataPoints(chartControl.showPoints);
-            //lineChart->InvalidateRect();
-        };
-        container->AddChild(btnTogglePoints);
+```cpp
+auto unitsByRegion = std::make_shared<ChartDataVector>();
+unitsByRegion->LoadFromArray({
+    ChartDataPoint(1, 420, 0, "North"),
+    ChartDataPoint(2, 380, 0, "South"),
+    ChartDataPoint(3, 510, 0, "East"),
+    ChartDataPoint(4, 290, 0, "West"),
+});
 
-        // Toggle Smoothing button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3005,
-                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-        btnToggleSmoothing->SetText("Toggle Smooth");
-        btnToggleSmoothing->onClick = [lineChart]()  {
-            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
-            lineChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-            //lineChart->InvalidateRect();
-        };
-        container->AddChild(btnToggleSmoothing);
+auto regionChart = CreateBarChartElement("units-by-region", 0, 0, 600, 360);
+regionChart->SetDataSource(unitsByRegion);
+regionChart->SetChartTitle("Units by Region");
+regionChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);   // one labelled bar per point
+regionChart->SetBarColor(Color(76, 175, 80, 255));
+regionChart->SetBarBorderColor(Color(46, 125, 50, 255));
+regionChart->SetBarBorderWidth(1.0);                         // 0 for no border
+regionChart->SetBarSpacing(0.25);                            // 25 % of each slot left empty (0 to 0.9)
+```
 
-        return container;
-    }
+Every bar has the same colour, and bars rise from the bottom of the plotted y
+range (see *Feeding data*), not from 0.
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChartsExamples() {
-        // Sample data sources
-        std::shared_ptr<ChartDataVector> salesData;
-        std::shared_ptr<ChartDataVector> performanceData;
-        std::shared_ptr<ChartDataVector> revenueData;
+## Scatter plot
 
-        revenueData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> revenue = {
-                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
-                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
-                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
-                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
-                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
-                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
-                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
-                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
-        };
-        revenueData->LoadFromArray(revenue);
+```cpp
+auto spendVsSales = std::make_shared<ChartDataVector>();
+std::mt19937 generator(42);
+std::uniform_real_distribution<double> spend(1000.0, 10000.0);
+std::uniform_real_distribution<double> noise(-5000.0, 5000.0);
+for (int i = 0; i < 50; ++i) {
+    double x = spend(generator);
+    spendVsSales->AddPoint(ChartDataPoint(x, x * 3.2 + 15000.0 + noise(generator)));
+}
+ChartDataPoint outlier(9500, 12000, 0, "Outlier");
+outlier.color = Color(220, 60, 60, 255);             // this point's own colour
+spendVsSales->AddPoint(outlier);
 
-        // Create sales data
-        salesData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 45000, 0, "Jan", 45000),
-                ChartDataPoint(2, 52000, 0, "Feb", 52000),
-                ChartDataPoint(3, 48000, 0, "Mar", 48000),
-                ChartDataPoint(4, 61000, 0, "Apr", 61000),
-                ChartDataPoint(5, 55000, 0, "May", 55000),
-                ChartDataPoint(6, 67000, 0, "Jun", 67000),
-                ChartDataPoint(7, 71000, 0, "Jul", 71000),
-                ChartDataPoint(8, 69000, 0, "Aug", 69000),
-                ChartDataPoint(9, 58000, 0, "Sep", 58000),
-                ChartDataPoint(10, 63000, 0, "Oct", 63000),
-                ChartDataPoint(11, 72000, 0, "Nov", 72000),
-                ChartDataPoint(12, 78000, 0, "Dec", 78000)
-        };
-        salesData->LoadFromArray(sales);
+auto scatter = CreateScatterPlotElement("spend-vs-sales", 0, 0, 540, 420);
+scatter->SetDataSource(spendVsSales);
+scatter->SetChartTitle("Marketing Spend vs Sales");
+scatter->SetPointColor(Color(255, 140, 0, 255));
+scatter->SetPointSize(6.0);                          // marker radius in pixels
+scatter->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Diamond);   // Circle, Square, Triangle, Diamond
+scatter->SetShowTrendLine(true);                     // least-squares line
+scatter->SetTrendLineColor(Color(220, 60, 60, 255));
+scatter->SetTrendLineStyle(UltraCanvasScatterPlotElement::TrendLineStyle::Dashed);
+scatter->SetShowCorrelationInfo(true);               // "y = ax + b" and r / r² beside the plot
+```
 
-        // Create performance data for bar chart (quarterly performance)
-        performanceData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> performance = {
-                ChartDataPoint(1, 85, 0, "Q1 2024", 85),
-                ChartDataPoint(2, 92, 0, "Q2 2024", 92),
-                ChartDataPoint(3, 78, 0, "Q3 2024", 78),
-                ChartDataPoint(4, 95, 0, "Q4 2024", 95),
-                ChartDataPoint(5, 88, 0, "Q1 2025", 88)
-        };
-        performanceData->LoadFromArray(performance);
+The fit is also available as numbers:
 
-        auto container = std::make_shared<UltraCanvasContainer>("BarChartExamples", 0, 0, 800, 700);
+```cpp
+double slope = 0.0;
+double intercept = 0.0;
+if (scatter->ComputeLinearRegression(slope, intercept)) {      // false for < 2 points or constant x
+    double r = scatter->GetCorrelationCoefficient();
+    std::printf("y = %.2fx + %.0f, r = %.3f\n", slope, intercept, r);
+}
+```
 
-        // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("BarChartDescription", 50, 20, 700, 60);
-        descLabel->SetText("Bar Chart Example - Displays categorical data with rectangular bars.\n"
-                           "Ideal for comparing discrete values across categories like quarterly performance or regional sales.\n"
-                           "Features: Customizable colors, borders, spacing, and interactive tooltips.");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(50, 50, 50, 255));
-        container->AddChild(descLabel);
+## Area chart
 
-        // Create bar chart
-        std::shared_ptr<UltraCanvasBarChartElement> barChart =
-                CreateBarChartElement("performanceBarChart", 50, 100, 600, 400);
+```cpp
+auto quarterlyRevenue = std::make_shared<ChartDataVector>();
+quarterlyRevenue->LoadFromArray({
+    ChartDataPoint(1, 85000, 0, "Q1 2024"),
+    ChartDataPoint(2, 92000, 0, "Q2 2024"),
+    ChartDataPoint(3, 78000, 0, "Q3 2024"),
+    ChartDataPoint(4, 105000, 0, "Q4 2024"),
+});
 
-        // Configure Bar Chart
-        barChart->SetDataSource(performanceData);
-        barChart->SetChartTitle("Quarterly Performance");
-        barChart->SetBarColor(Color(60, 179, 113, 255));        // Medium sea green
-        barChart->SetBarBorderColor(Color(34, 139, 34, 255));   // Forest green border
-        barChart->SetBarBorderWidth(2.0f);
-        barChart->SetBarSpacing(0.2f);                          // 20% spacing between bars
-        barChart->SetEnableTooltips(true);
+auto revenueChart = CreateAreaChartElement("revenue-area", 0, 0, 600, 400);
+revenueChart->SetDataSource(quarterlyRevenue);
+revenueChart->SetChartTitle("Quarterly Revenue");
+revenueChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+revenueChart->SetLineColor(Color(0, 150, 136, 255));
+revenueChart->SetLineWidth(3.0);
+revenueChart->SetFillColor(Color(0, 150, 136, 120));                // used while the gradient is off
+revenueChart->SetFillGradientEnabled(true);
+revenueChart->SetGradientColors(Color(0, 150, 136, 180),            // at the highest point
+                                Color(0, 150, 136, 40));            // at the lowest
+revenueChart->SetShowDataPoints(true);
+revenueChart->SetPointColor(Color(255, 87, 34, 255));
+revenueChart->SetPointRadius(4.0f);
+revenueChart->SetSmoothingEnabled(true);
+```
 
-        container->AddChild(barChart);
+## Switching data at run time
 
-        // Button group positioning
-        int buttonY = 520;
-        int buttonX = 50;
-        int buttonWidth = 120;
-        int buttonHeight = 35;
-        int buttonSpacing = 10;
+A chart can show any data source at any time; this is what the demo's
+"Load Revenue" / "Load Sales" buttons do.
 
-        // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3011,
-                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRevenue->SetText("Load Revenue");
-        btnLoadRevenue->onClick = [barChart, revenueData]() {
-            barChart->SetDataSource(revenueData);
-            barChart->SetChartTitle("Quarterly Revenue");
-            //barChart->InvalidateRect();
-        };
-        container->AddChild(btnLoadRevenue);
+```cpp
+auto showRevenue = std::make_shared<UltraCanvasButton>("show-revenue", "Revenue");
+showRevenue->SetOnClick([salesChart, quarterlyRevenue]() {
+    salesChart->SetDataSource(quarterlyRevenue);
+    salesChart->SetChartTitle("Quarterly Revenue");
+});
 
-        // Load Sales button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3012,
-                                                                buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadSales->SetText("Load Sales");
-        btnLoadSales->SetOnClick([barChart, salesData]() {
-            barChart->SetDataSource(salesData);
-            barChart->SetChartTitle("Monthly Sales");
-            //barChart->InvalidateRect();
-        });
-        container->AddChild(btnLoadSales);
+auto addMonth = std::make_shared<UltraCanvasButton>("add-month", "Add August");
+addMonth->SetOnClick([salesChart, monthlySales]() {
+    monthlySales->AddPoint(ChartDataPoint(8, 69000, 0, "Aug"));
+    salesChart->SetDataSource(monthlySales);          // re-set so the axes take the new point in
+});
+```
 
-        // Load Random button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3013,
-                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRandom->SetText("Load Random");
-        btnLoadRandom->SetOnClick([barChart]() {
-            // Generate new random data
-            auto newRandomData = std::make_shared<ChartDataVector>();
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_real_distribution<> valueDist(50, 100);
-            std::vector<ChartDataPoint> randomPoints;
-            std::vector<std::string> categories = {"Cat A", "Cat B", "Cat C", "Cat D", "Cat E", "Cat F"};
-            for (size_t i = 0; i < categories.size(); ++i) {
-                double value = valueDist(gen);
-                randomPoints.emplace_back(i + 1, value, 0, categories[i], value);
-            }
-            newRandomData->LoadFromArray(randomPoints);
-            barChart->SetDataSource(newRandomData);
-            barChart->SetChartTitle("Random Categories");
-            //barChart->InvalidateRect();
-        });
-        container->AddChild(btnLoadRandom);
+## Limitations
 
-        return container;
-    }
+- **One series per element.** Overlaying two series means two elements or the
+  chart engine.
+- **Zoom and pan do nothing visible.** `SetEnableZoom` and `SetEnablePan` are
+  accepted, and the line, area and scatter charts switch both on in their
+  constructors, but nothing rescales or moves. With zoom on, the chart takes
+  the mouse wheel for itself, so inside a scrolling container call
+  `SetEnableZoom(false)` to let the wheel scroll the container.
+- **The plot area is worked out when the data is set.** A chart whose size the
+  layout changes later keeps its old plot rectangle until `SetDataSource` is
+  called again, so give charts a fixed width and height.
+- **The line chart's dots are always 4 px.** `SetPointRadius` reaches the area
+  chart's dots, but the line chart draws its dots with a radius of its own.
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScatterPlotChartsExamples() {
-        // Sample data sources
-        std::shared_ptr<ChartDataVector> correlationData;
+## See also
 
-        // Create correlation data for scatter plot (marketing spend vs sales)
-        correlationData = std::make_shared<ChartDataVector>();
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> xDist(1000, 10000);  // Marketing spend
-        std::uniform_real_distribution<> noise(-5000, 5000);  // Random noise
-
-        std::vector<ChartDataPoint> correlation;
-        for (int i = 0; i < 50; ++i) {
-            double marketingSpend = xDist(gen);
-            double sales = marketingSpend * 3.2 + 15000 + noise(gen);  // Correlation with noise
-            correlation.emplace_back(marketingSpend, sales, 0,
-                                     "Point " + std::to_string(i + 1), sales);
-        }
-        correlationData->LoadFromArray(correlation);
-
-        auto container = std::make_shared<UltraCanvasContainer>("ScatterPlotExamples", 0, 0, 800, 700);
-
-        // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("ScatterPlotDescription", 50, 20, 700, 60);
-        descLabel->SetText("Scatter Plot Example - Shows relationships between two continuous variables.\n"
-                           "Excellent for identifying correlations, clusters, and outliers in datasets.\n"
-                           "Features: Multiple point shapes, selection capability, zoom, pan, and interactive tooltips.");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(50, 50, 50, 255));
-        container->AddChild(descLabel);
-
-        // Create scatter plot for correlation analysis
-        std::shared_ptr<UltraCanvasScatterPlotElement> scatterPlot =
-                CreateScatterPlotElement("correlationScatter", 50, 100, 600, 400);
-
-        // Configure Scatter Plot
-        scatterPlot->SetDataSource(correlationData);
-        scatterPlot->SetChartTitle("Marketing Spend vs Sales");
-        scatterPlot->SetPointColor(Color(255, 140, 0, 255));    // Dark orange
-        scatterPlot->SetPointSize(8.0f);
-        scatterPlot->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Circle);
-        scatterPlot->SetEnableTooltips(true);
-        scatterPlot->SetEnableZoom(true);
-        scatterPlot->SetEnablePan(true);
-        scatterPlot->SetEnableSelection(true);
-
-        container->AddChild(scatterPlot);
-
-        // Button for cycling scatter plot shapes
-        int buttonY = 520;
-        int buttonX = 50;
-        int buttonWidth = 180;
-        int buttonHeight = 35;
-
-        // Cycle Scatter Plot Shapes button
-        auto btnCycleShapes = std::make_shared<UltraCanvasButton>("btnCycleShapes", 3021,
-                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
-        btnCycleShapes->SetText("Cycle Scatter Shapes");
-
-        // Track current shape
-        std::vector<UltraCanvasScatterPlotElement::PointShape> shapes = {
-                UltraCanvasScatterPlotElement::PointShape::Circle,
-                UltraCanvasScatterPlotElement::PointShape::Square,
-                UltraCanvasScatterPlotElement::PointShape::Triangle,
-                UltraCanvasScatterPlotElement::PointShape::Diamond
-        };
-
-        btnCycleShapes->SetOnClick([scatterPlot, shapes]()  {
-            chartControl.currentShape = (chartControl.currentShape + 1) % shapes.size();
-            scatterPlot->SetPointShape(shapes[chartControl.currentShape]);
-            //scatterPlot->InvalidateRect();
-        });
-        container->AddChild(btnCycleShapes);
-
-        return container;
-    }
-
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAreaChartsExamples() {
-        // Sample data sources
-        std::shared_ptr<ChartDataVector> salesData;
-        std::shared_ptr<ChartDataVector> revenueData;
-
-        revenueData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> revenue = {
-                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
-                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
-                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
-                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
-                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
-                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
-                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
-                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
-        };
-        revenueData->LoadFromArray(revenue);
-
-        // Create sales data
-        salesData = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 45000, 0, "Jan", 45000),
-                ChartDataPoint(2, 52000, 0, "Feb", 52000),
-                ChartDataPoint(3, 48000, 0, "Mar", 48000),
-                ChartDataPoint(4, 61000, 0, "Apr", 61000),
-                ChartDataPoint(5, 55000, 0, "May", 55000),
-                ChartDataPoint(6, 67000, 0, "Jun", 67000),
-                ChartDataPoint(7, 71000, 0, "Jul", 71000),
-                ChartDataPoint(8, 69000, 0, "Aug", 69000),
-                ChartDataPoint(9, 58000, 0, "Sep", 58000),
-                ChartDataPoint(10, 63000, 0, "Oct", 63000),
-                ChartDataPoint(11, 72000, 0, "Nov", 72000),
-                ChartDataPoint(12, 78000, 0, "Dec", 78000)
-        };
-        salesData->LoadFromArray(sales);
-
-        auto container = std::make_shared<UltraCanvasContainer>("AreaChartExamples", 0, 0, 900, 700);
-
-        // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("AreaChartDescription", 50, 20, 800, 60);
-        descLabel->SetText("Area Chart Example - Emphasizes magnitude of change over time with filled areas.\n"
-                           "Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
-                           "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities.");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(50, 50, 50, 255));
-        container->AddChild(descLabel);
-
-        // Create area chart
-        std::shared_ptr<UltraCanvasAreaChartElement> areaChart =
-                CreateAreaChartElement("revenueAreaChart", 50, 100, 600, 400);
-
-        // Configure Area Chart
-        areaChart->SetDataSource(revenueData);
-        areaChart->SetChartTitle("Quarterly Revenue Growth");
-        areaChart->SetFillColor(Color(0, 150, 136, 120));        // Teal with transparency
-        areaChart->SetLineColor(Color(0, 150, 136, 255));        // Solid teal line
-        areaChart->SetLineWidth(3.0f);
-        areaChart->SetShowDataPoints(true);
-        areaChart->SetPointColor(Color(255, 87, 34, 255));       // Deep orange points
-        areaChart->SetPointRadius(4.0f);
-        areaChart->SetFillGradientEnabled(true);
-        areaChart->SetGradientColors(
-                Color(0, 150, 136, 180),    // Teal top
-                Color(0, 150, 136, 40)      // Faded teal bottom
-        );
-        areaChart->SetSmoothingEnabled(false);
-        areaChart->SetEnableTooltips(true);
-        areaChart->SetEnableZoom(true);
-        areaChart->SetEnablePan(true);
-
-        container->AddChild(areaChart);
-
-        // Button group positioning
-        int buttonY = 520;
-        int buttonX = 50;
-        int buttonWidth = 120;
-        int buttonHeight = 35;
-        int buttonSpacing = 10;
-
-        // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3031,
-                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRevenue->SetText("Load Revenue");
-        btnLoadRevenue->SetOnClick([areaChart, revenueData]() {
-            areaChart->SetDataSource(revenueData);
-            areaChart->SetChartTitle("Quarterly Revenue Growth");
-            //areaChart->InvalidateRect();
-        });
-        container->AddChild(btnLoadRevenue);
-
-        // Load Sales button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3032,
-                                                                buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadSales->SetText("Load Sales");
-        btnLoadSales->SetOnClick([areaChart, salesData]() {
-            areaChart->SetDataSource(salesData);
-            areaChart->SetChartTitle("Monthly Sales Volume");
-            //areaChart->InvalidateRect();
-        });
-        container->AddChild(btnLoadSales);
-
-        // Load Random button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3033,
-                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
-        btnLoadRandom->SetText("Load Random");
-        btnLoadRandom->SetOnClick([areaChart]() {
-            // Generate new random data
-            auto newRandomData = std::make_shared<ChartDataVector>();
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_real_distribution<> valueDist(30000, 120000);
-            std::vector<ChartDataPoint> randomPoints;
-            for (int i = 1; i <= 10; ++i) {
-                double value = valueDist(gen);
-                randomPoints.emplace_back(i, value, 0, "Period " + std::to_string(i), value);
-            }
-            newRandomData->LoadFromArray(randomPoints);
-            areaChart->SetDataSource(newRandomData);
-            areaChart->SetChartTitle("Random Data Volume");
-            //areaChart->InvalidateRect();
-        });
-        container->AddChild(btnLoadRandom);
-
-        // Toggle Data Points button
-        buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints", 3034,
-                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
-        btnTogglePoints->SetText("Toggle Points");
-        btnTogglePoints->SetOnClick([areaChart]() {
-            chartControl.showPoints = !chartControl.showPoints;
-            areaChart->SetShowDataPoints(chartControl.showPoints);
-            //areaChart->InvalidateRect();
-        });
-        container->AddChild(btnTogglePoints);
-
-        // Toggle Smoothing button
-//        buttonX += buttonWidth + buttonSpacing;
-//        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3035,
-//                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-//        btnToggleSmoothing->SetText("Toggle Smooth");
-//        btnToggleSmoothing->SetOnClick([areaChart]() {
-//            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
-//            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-//            //areaChart->InvalidateRect();
-//        });
-//        container->AddChild(btnToggleSmoothing);
-
-        return container;
-    }
-
-} // namespace UltraCanvas
+- [UltraCanvasLineChartElement.md](UltraCanvasLineChartElement.md),
+  [UltraCanvasBarChartElement.md](UltraCanvasBarChartElement.md),
+  [UltraCanvasScatterPlotElement.md](UltraCanvasScatterPlotElement.md),
+  [UltraCanvasAreaChartElement.md](UltraCanvasAreaChartElement.md) — one page per element
+- [UltraCanvasScatterPlot3D.md](UltraCanvasScatterPlot3D.md) — the 3D scatter plot
+- [UltraCanvasChartEngine.md](UltraCanvasChartEngine.md) — multi-series charts, scales and legends
+- `Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp` — the demo's line, scatter and area pages
