@@ -26,7 +26,7 @@
 #        scripts/ci-apt.sh install [apt-get install options] package...
 #
 # Version: 1.0.0
-# Last Modified: 2026-10-07
+# Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 set -euo pipefail
 
@@ -38,7 +38,6 @@ fi
 
 idle_limit="${CI_APT_IDLE:-120}"
 attempts="${CI_APT_ATTEMPTS:-3}"
-poll=5
 
 # Bytes apt has on disk: its lists and package cache, partial files included.
 # Any change means data is arriving.
@@ -64,22 +63,25 @@ stop_apt() {
 }
 
 # apt-get "$@" under the watchdog. 0 when it succeeded, 1 when it failed
-# or stalled.
+# or stalled. It looks every second: a look is one `du` of two small
+# directories, and the loop's sleep is also how long a finished apt-get waits
+# to be noticed - at five seconds that came to about a minute per Linux job,
+# whose dependency step makes two dozen apt calls.
 watched() {
-    local pid last now idle=0
+    local pid last now since
     apt-get "$@" &
     pid=$!
     last=$(downloaded)
+    since=$SECONDS
     while kill -0 "$pid" 2>/dev/null; do
-        sleep "$poll"
+        sleep 1
         now=$(downloaded)
         if [[ "$now" != "$last" ]]; then
             last=$now
-            idle=0
+            since=$SECONDS
             continue
         fi
-        idle=$(( idle + poll ))
-        if (( idle >= idle_limit )); then
+        if (( SECONDS - since >= idle_limit )); then
             echo "::warning::apt-get $1: nothing downloaded for ${idle_limit}s, stopping it" >&2
             stop_apt "$pid"
             return 1
