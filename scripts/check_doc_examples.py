@@ -11,7 +11,10 @@ told apart:
   a declaration whose type is taken from the doc (`auto label =
   std::make_shared<UltraCanvasLabel>(...)` elsewhere in it) or guessed from
   the name; a name that can't be typed is listed as context, not as an
-  error.
+  error. A framework class's member defined out of line (`void
+  UltraCanvasUIElement::Render(...) {`) is compiled in the class's
+  namespace, and a line that is only a macro call without `;`
+  (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) at file scope.
 * API listings - declarations copied from a class
   (`void SetText(const std::string& text);`). Each must be a member of a
   class the doc uses, or a free function (in the namespace the listing is
@@ -23,9 +26,11 @@ told apart:
   class outline, where X is a type of the headers: its fields and
   enumerators must exist in the real X, and its functions with their
   signatures.
-* prose - a `Name(` in backticks must be a function of some header, of a
-  header the doc includes, or of the doc's doc-check comment. A name with
-  a space before its parenthesis (`Strong (9)`) is a word, not a call.
+* prose - a `Name(` in backticks must be a function of some framework
+  header (public, plugin, backend, platform or dialog), of a header the doc
+  includes, or of the doc's doc-check comment. A name with a space before
+  its parenthesis (`Strong (9)`) is a word, not a call; an OS or library
+  function is written without the `(`.
 
 A doc can declare what its snippets assume and the checker can't guess, in
 an HTML comment (not rendered):
@@ -67,6 +72,11 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.3.0 - a member of a header class defined out of line goes in
+#                 its namespace; a file-scope macro line is a definition; a
+#                 listing may be in a top-level namespace the headers define;
+#                 prose may name any framework header's function;
+#                 `auto x = UltraCanvas::CreateX(...)` is typed
 # Version: 1.2.0 - --all, --strict and the baseline, for CI
 # Version: 1.1.1 - a copied type is checked against every type of its name, judged by
 #                  the best match (BlendMode is three enums)
@@ -311,6 +321,18 @@ class HeaderIndex:
             self._scan(path, text)
         blob = "\n".join(self.text.values())
         self.functions = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", blob))
+        # Prose may name a function of any framework header, not only the
+        # public ones the types come from: a backend's
+        # (libspecific/Cairo/ImageCairo.h, which UltraCanvasImage.h
+        # includes), a platform's (OS/MSWindows/...), a dialog's (dialogs/).
+        for p in (ROOT / "UltraCanvas").rglob("*.h"):
+            if p in self.text or "third_party" in p.parts:
+                continue
+            try:
+                extra = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            self.functions |= set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", extra))
         self.types = set(self.qualified)
         self.types |= set(re.findall(r"\busing\s+([A-Za-z_]\w*)\s*=", blob))
         self.types |= set(re.findall(r"\btypedef\b[^;]*\b([A-Za-z_]\w*)\s*;", blob))
@@ -465,6 +487,12 @@ def chunk_block(clean):
                 j += 1
             chunks.append(("pp", i, j))
             i = j + 1
+            continue
+        # `ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`: a macro written at file
+        # scope, with no ';' (a statement always has one), defines something.
+        if re.match(r"^[A-Z][A-Z0-9_]{2,}\s*\(.*\)$", code) and code.count("(") == code.count(")"):
+            chunks.append(("def", i, i))
+            i += 1
             continue
         depth_brace = depth_paren = 0
         kind = None
@@ -675,7 +703,7 @@ def context_types(text, index):
         types.setdefault(m.group(1), "std::shared_ptr<%s>" % m.group(2))
     for m in re.finditer(r"\bstd::shared_ptr<\s*([\w:]+)\s*>\s*&?\s*(\w+)\s*[;=({,)]", text):
         types.setdefault(m.group(2), "std::shared_ptr<%s>" % m.group(1))
-    for m in re.finditer(r"\bauto\s+(\w+)\s*=\s*(Create\w+)\s*\(", text):
+    for m in re.finditer(r"\bauto\s+(\w+)\s*=\s*(?:UltraCanvas::)?(Create\w+)\s*\(", text):
         t = index.factories.get(m.group(2))
         if t:
             types.setdefault(m.group(1), "std::shared_ptr<%s>" % t)
@@ -899,8 +927,13 @@ class Doc:
                 continue
             listing = listing_of(s, self.index.qualified)
             if listing and listing[0]:
+                # The namespace the listing is written in, inside UltraCanvas
+                # unless the headers have it at the top (PixelFX::Colour).
+                written = "::".join(ns)
+                inside = "::".join(["UltraCanvas"] + [n for n in ns if n != "UltraCanvas"])
+                top = written and inside not in self.index.namespaces and written in self.index.namespaces
                 for d in listing[0] + listing[1]:
-                    d["ns"] = "::".join(["UltraCanvas"] + list(ns))
+                    d["ns"] = written if top else inside
                 self.listing(b, line, s, listing, None)
 
     def type_copy(self, b, i, j, text):
@@ -996,8 +1029,13 @@ class Doc:
                 out.append(self.gen(("context", b.index, name)))
                 out.append("extern %s %s;" % (t, name))
             pp = self.pp_in_place(b)
+            outside = []
             for kind, i, j in b.chunks:
                 if kind == "def" or (kind, i, j) in pp:
+                    ns = self.framework_member_namespace(b, i, j) if kind == "def" else None
+                    if ns:
+                        outside.append((ns, i, j))
+                        continue
                     out.append('#line %d "%s"' % (b.first + i, self.rel))
                     out.extend(b.lines[i:j + 1])
             if any(kind == "stmt" for kind, i, j in code):
@@ -1014,7 +1052,32 @@ class Doc:
                 out.append("} };")
             out.append(self.gen(None))
             out.append("}")
+            for ns, i, j in outside:
+                out.append(self.gen(None))
+                out.append("namespace %s {" % ns)
+                out.append('#line %d "%s"' % (b.first + i, self.rel))
+                out.extend(b.lines[i:j + 1])
+                out.append(self.gen(None))
+                out.append("}")
         return "\n".join(out) + "\n"
+
+    def framework_member_namespace(self, b, i, j):
+        """The namespace of the header class whose member a definition
+        defines out of line (`void UltraCanvasUIElement::Render(...) {`), or
+        None. Such a definition shows the framework's own code; it cannot be
+        written inside the block's namespace, only in the class's. A class
+        the doc defines itself stays where it is."""
+        head = "\n".join(b.clean[i:j + 1]).split("{")[0].strip()
+        m = re.match(r"^[^()]*?\b(\w+)::~?\w+\s*\(", head)
+        if not m:
+            return None
+        owner = m.group(1)
+        if re.search(r"\b(class|struct)\s+%s\b" % re.escape(owner), self.text):
+            return None
+        qs = [q for q in self.index.qualified.get(owner, ()) if q.startswith("UltraCanvas::")]
+        if not qs:
+            return None
+        return sorted(qs, key=lambda q: q.count("::"))[0].rsplit("::", 1)[0]
 
     def check_examples(self):
         declared = context_types("\n".join("\n".join(b.clean) for b in self.blocks), self.index)
@@ -1378,6 +1441,9 @@ BASELINE_HEADER = """\
 # snippets assume in a <!-- doc-check: ... --> comment. After fixing some,
 # rewrite it:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
+#
+# It is empty: every finding the check started with was fixed by
+# 2026-10-08. Keep it that way.
 """
 
 
