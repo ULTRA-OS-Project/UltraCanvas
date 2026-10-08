@@ -1,7 +1,9 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.6.1 - the line box takes the font's unrounded line height, so the caret
+//                  reaches the descenders (it stopped a pixel short)
 // Version: 1.6.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // V1.6.0: One key press is one undo step: typed characters, Space, typing over
 //   a selection, Backspace/Delete on a selection and a paste each saved two or
 //   three states, and a key press the length limit refused saved one with no
@@ -1443,9 +1445,11 @@ namespace UltraCanvas {
         // Centre the capitals rather than the line box, which holds the
         // ascender and descender space too and so hung the text a shade below
         // the elements beside the field. The height is the font's, not the
-        // current text's, so an empty or all-lowercase field measures the same.
+        // current text's, so an empty or all-lowercase field measures the same,
+        // and it is not rounded down: GetTextLineHeight's whole pixels made
+        // the caret a pixel short of the descenders.
         ctx->SetFontStyle(style.fontStyle);
-        double lineHeight = ctx->GetTextLineHeight("H");
+        double lineHeight = ctx->GetSingleLineHeight(style.fontStyle);
         double top = ctx->TextTopCentredOnCaps(area, style.fontStyle);
         return Rect2Dd(area.x, top, area.width, lineHeight);
     }
