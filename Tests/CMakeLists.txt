@@ -677,6 +677,28 @@ else()
     message(STATUS "  TextInputAccessibilityTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== WIDGET ACCESSIBILITY TEST =====
+# What the common widgets tell screen readers: role, name, description,
+# checked state, value range, value text and default action, and that changes
+# are announced. Headless - no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building WidgetAccessibilityTest...")
+    add_executable(WidgetAccessibilityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/WidgetAccessibilityTest.cpp
+    )
+    target_include_directories(WidgetAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(WidgetAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(WidgetAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(WidgetAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WidgetAccessibilityTest COMMAND WidgetAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: WidgetAccessibilityTest")
+else()
+    message(STATUS "  WidgetAccessibilityTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CLIPBOARD HISTORY TEST =====
 # The clipboard history the desktop shows is newest first, and never records
 # content marked secret - a password copied from UltraPassword, or another

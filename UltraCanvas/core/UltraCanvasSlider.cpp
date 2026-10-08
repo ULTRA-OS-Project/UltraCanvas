@@ -1,7 +1,7 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
-// Version: 1.2.0
-// Last Modified: 2026-07-10
+// Version: 1.3.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -68,8 +68,25 @@ namespace UltraCanvas {
             } else if (onValueChanged) {
                 onValueChanged(currentValue);
             }
+            NotifyAccessibility(AccessibilityEventType::ValueChanged);
             RequestRedraw();
         }
+    }
+
+    bool UltraCanvasSlider::GetAccessibleRange(AccessibleRange& range) const {
+        if (isRangeMode) return false;
+        range.value = currentValue;
+        range.minimum = minValue;
+        range.maximum = maxValue;
+        range.step = step;
+        range.readOnly = IsDisabled();
+        return true;
+    }
+
+    bool UltraCanvasSlider::SetAccessibleValue(double value) {
+        if (isRangeMode || IsDisabled()) return false;
+        SetValue(static_cast<float>(value));
+        return true;
     }
 
     void UltraCanvasSlider::SetRangeMode(bool enabled) {

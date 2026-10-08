@@ -1,7 +1,7 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.6.0
-// Last Modified: 2026-10-07
+// Version: 1.7.0
+// Last Modified: 2026-10-08
 // V1.6.0: One key press is one undo step: typed characters, Space, typing over
 //   a selection, Backspace/Delete on a selection and a paste each saved two or
 //   three states, and a key press the length limit refused saved one with no
@@ -82,6 +82,23 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::TextChanged() {
         if (onTextChanged) onTextChanged(text);
+        NotifyAccessibility(AccessibilityEventType::ValueChanged);
+    }
+
+    std::string UltraCanvasTextInput::GetAccessibleName() const {
+        // The placeholder says what belongs in the field when nothing else does.
+        return GetAccessibleNameOverride().empty() ? placeholderText : GetAccessibleNameOverride();
+    }
+
+    std::string UltraCanvasTextInput::GetAccessibleValueText() const {
+        return passwordMode ? std::string() : text;
+    }
+
+    bool UltraCanvasTextInput::SetAccessibleValueText(const std::string& newText) {
+        if (readOnly || IsDisabled()) return false;
+        SetText(newText);
+        TextChanged();   // as typing would: the owner hears of it
+        return true;
     }
 
     std::string UltraCanvasTextInput::GetRenderText() const {
@@ -140,6 +157,7 @@ namespace UltraCanvas {
         }
 
         UpdateScrollOffset();
+        NotifyAccessibility(AccessibilityEventType::ValueChanged);
     }
 
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
