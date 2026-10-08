@@ -8,8 +8,8 @@ orientation, optional thumb icons (built-in checkmark or custom images), and
 state texts that can be drawn inside the track, next to it, or as two permanent
 labels with the switch between them (`Backup [switch] Auto-Save`).
 
-**Version:** 1.3.0
-**Last Modified:** 2026-08-04
+**Version:** 1.3.2
+**Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Header:** `include/UltraCanvasSwitch.h`
 **Implementation:** `core/UltraCanvasSwitch.cpp`
@@ -25,8 +25,9 @@ labels with the switch between them (`Backup [switch] Auto-Save`).
   each side of the track
 - **Main label**: inherited from `UltraCanvasLabeledToggleBase`, drawn after the
   indicator
-- **Keyboard**: Space / Enter activate when focused; focus ring follows the
-  track shape
+- **Keyboard**: takes the focus (Tab, or a press); Space activates it while
+  focused, and Enter is left to the window (a dialog's default button); the
+  focus ring follows the track shape
 - **Content sizing**: the natural size is measured from track + texts + label
 
 ## Class Definition
@@ -180,6 +181,8 @@ container->AddChild(sw);
 
 ### Two texts with the switch between them
 
+<!-- doc-check: void UseAutoSave(bool on); -->
+
 ```cpp
 // Renders as:  Backup  (=O)  Auto-Save
 auto mode = UltraCanvasSwitch::CreateWithSideLabels(
@@ -253,7 +256,9 @@ volume->SetTrackSize(40.0f, 18.0f);   // long axis 40, short axis 18 — ON is a
 
 ## Related Components
 
-- `UltraCanvasCheckbox` — checkbox / radio styles on the same toggle base
+- `UltraCanvasCheckbox` — the checkbox (two or three states) on the same toggle base
+- `UltraCanvasRadio` / `UltraCanvasRadioGroup` — radio buttons on that base, made
+  exclusive by a group (documented in [UltraCanvasCheckbox.md](UltraCanvasCheckbox.md))
 - `UltraCanvasLabeledToggleBase` — shared state, layout and event plumbing
 
 ## See Also

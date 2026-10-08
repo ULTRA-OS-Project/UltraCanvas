@@ -1,7 +1,9 @@
 // core/UltraCanvasGradientEditor.cpp
 // The gradient ramp editor: see the header.
+// Version: 1.0.1 - a left press off the stops and the strip, which takes the
+//                  focus, is the editor's
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasGradientEditor.h"
@@ -252,7 +254,9 @@ bool UltraCanvasGradientEditor::OnEvent(const UCEvent& event) {
                 SelectStop(-1);
                 return true;
             }
-            return false;
+            // Off the stops and the strip the press still took the keyboard
+            // focus: it was the editor's, not one for the elements around it.
+            return true;
         }
         case UCEventType::MouseDoubleClick: {
             if (!Contains(event.pointer)) return false;

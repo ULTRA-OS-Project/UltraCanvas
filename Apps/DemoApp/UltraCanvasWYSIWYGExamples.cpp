@@ -14,8 +14,8 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.2.1
-// Last Modified: 2026-10-01
+// Version: 1.2.2
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -730,8 +730,8 @@ namespace UltraCanvas {
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
         notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
                        "paragraph keeps left-to-right indents, the input method's candidate window is not "
-                       "placed at the caret, and macOS has no screen-reader bridge yet (Linux and Windows "
-                       "have one). See UltraCanvasRichTextEdit.md.");
+                       "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
+                       "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);

@@ -1,5 +1,7 @@
 # UltraCanvas Vector Format Converters
 
+<!-- doc-check: std::string dwgBytes; -->
+
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
 **Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
@@ -42,6 +44,13 @@ The survey of what each converter reads and writes, the dead model surface and t
 ## Usage
 
 ```cpp
+#include "UltraCanvasVectorConverter.h"      // SVGConverter, PDFVectorConverter
+#include "UltraCanvasXARConverter.h"
+#include "UltraCanvasEPSConverter.h"
+#include "UltraCanvasCDRConverter.h"
+#include "UltraCanvasMetafileConverters.h"   // EMFConverter, WMFConverter, AIConverter
+#include "UltraCanvasCADConverters.h"        // DXFConverter, DWGConverter
+
 using namespace UltraCanvas::VectorConverter;
 
 SVGConverter svg;
@@ -174,6 +183,8 @@ and remains the only writer, since save dispatch matches on
 `GetSaveExtensions` rather than the extension map.
 
 ```cpp
+#include "UltraCanvasAllFormats.h"   // Plugins/
+
 // An application does this and nothing else:
 //     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
 //                                         UltraCanvasAllFormats)

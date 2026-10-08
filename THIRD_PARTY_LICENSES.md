@@ -216,6 +216,28 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## OpenCV frontal-face Haar cascade (face model data)
+
+- **Used by:** VideoFX's built-in face detector (`VideoFX/core/VideoFXFaces.*`,
+  `VideoFX_DetectFaces`), which slideshows use to keep faces in shot.
+- **Upstream:** https://github.com/opencv/opencv/tree/4.x/data/haarcascades —
+  `haarcascade_frontalface_alt.xml`, stump-based 20x20 gentle AdaBoost
+  frontal face detector created by Rainer Lienhart; taken unmodified from the
+  `opencv-python-headless` 4.10.0.84 wheel.
+- **Vendored at:** `UltraCanvas/third_party/opencv_haarcascade` (the XML,
+  unmodified). VideoFX compiles a table generated from it
+  (`VideoFX/core/VideoFXFaceCascade.inc`, by `scripts/generate_face_cascade.py`)
+  and evaluates it with its own code: **only the trained data is used — no
+  OpenCV code is carried or linked.**
+- **License:** Intel License Agreement For Open Source Computer Vision Library
+  — Copyright (C) 2000, Intel Corporation, all rights reserved. A 3-clause
+  BSD-style licence: source redistributions keep the notice; binary
+  redistributions reproduce it in their documentation.
+- **Full text:** `UltraCanvas/third_party/opencv_haarcascade/LICENSE` (it is
+  also the XML's own header, and is cited in the generated table).
+
+---
+
 ## dingbat-to-unicode (symbol-font character tables)
 
 - **Used by:** the Word document readers' symbol-font mapping

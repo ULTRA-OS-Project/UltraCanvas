@@ -67,6 +67,8 @@ caller's side. A backend without groups draws straight through: `EndGroup`
 and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
 `nullptr`.
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 ```cpp
 // Layer at 40 %: children composite normally inside, the result fades once.
 ctx->BeginGroup();
@@ -190,6 +192,25 @@ ctx->SetStrokeWidth(strokeWidth);
 ctx->Stroke();
 ```
 
+## Wrapping
+
+```cpp
+auto layout = ctx->CreateTextLayout(text, false);
+layout->SetExplicitWidth(300);              // wraps to 300 px
+layout->SetWrap(TextWrap::WrapWord);        // only to change the default
+```
+
+Every text layout wraps the same way unless told otherwise, whether it came
+from `CreateTextLayout` or from `DrawText` / `DrawTextInRect` (whose mode is
+`TextStyle::wrap`): at word boundaries first, and between two characters
+where a word alone is wider than the line (`TextWrap::WrapWordChar`). A URL,
+a file path or a hash therefore stays inside the width it was given. A
+layout from `CreateTextLayout` used to wrap at words only (Pango's own
+default), so such a word ran on past its width - a tooltip drew a tracking
+link over its own border (framework changelog, "New text layouts wrap a long
+word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
+breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
+
 ## Centring text on its capitals
 
 ```cpp
@@ -221,6 +242,30 @@ contexts can measure the same font differently, and a backend calls
 options, hinting or device scale change, so nothing measured under the old
 settings survives them. Callers never need to call it. A font with no
 measurable ink falls back to the line box's middle.
+
+### The line box a caret or selection covers
+
+```cpp
+double GetLineBoxHeight(const FontStyle& font);   // ascent + descent, fractional pixels
+```
+
+A caret or a selection band that should cover a line's glyphs needs the
+font's line height as `DrawText` draws it. `GetTextLineHeight` returns whole
+pixels with the fraction cut off, so a box that tall ends up to a pixel above
+the descenders and the bottoms of parentheses. `GetLineBoxHeight` keeps the
+fraction, and is measured once per font and cached like the cap height
+(`InvalidateFontMetricsCache` clears it too). Round such a box outwards when
+it becomes pixels - top down, bottom up - so it covers every row the glyphs
+touch:
+
+```cpp
+const double top = ctx->TextTopCentredOnCaps(textArea, font);
+const double bottom = top + ctx->GetLineBoxHeight(font);
+Rect2Di caret(x, static_cast<int>(std::floor(top)), 1,
+              static_cast<int>(std::ceil(bottom)) - static_cast<int>(std::floor(top)));
+```
+
+`UltraCanvasTextInput` places its caret and selection this way.
 
 ## Text outlines
 

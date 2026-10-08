@@ -9,8 +9,9 @@
 //   2. ULTRAAI_DEFAULT_<CAPABILITY> env var    — deployment configuration
 //      (e.g. ULTRAAI_DEFAULT_TEXTLLM=anthropic)
 //   3. a known local provider for the capability (local-first:
-//      "llama-cpp" then "qwen" for textllm, "comfyui" for imagegen,
-//      "whisper-cpp" for speechtotext, ...), then any other registered
+//      "llama-cpp" then "qwen" for textllm, embeddings and translator,
+//      "comfyui" for imagegen, "whisper-cpp" for speechtotext, ...),
+//      then any other registered
 //      local provider (sorted by id)
 //   4. cloud providers (sorted by id) — ONLY when cloud fallback is
 //      allowed (SetCloudFallbackAllowed(true) or

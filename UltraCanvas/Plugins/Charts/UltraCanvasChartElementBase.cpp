@@ -1,5 +1,8 @@
 // Plugins/Charts/UltraCanvasChartElementBase.cpp
 // Base class for all chart elements with common functionality
+// Version: 1.2.2 - a left press or release is taken only when it starts or ends a
+//                  pan; any other goes on to the parent
+// Version: 1.2.1 - the hover ring sits on the point in DataLabel mode
 // Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
 //                  drags are left to the parent when nothing zooms; plot area
 //                  recomputed on every resize
@@ -452,10 +455,11 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::DrawSelectionIndicators(IRenderContext* ctx) {
         if (hoveredPointIndex == SIZE_MAX || !dataSource) return;
 
+        // Where the point is drawn: by its index in DataLabel mode, by its x
+        // value otherwise. Not drawn for a point the zoom has scrolled away.
         auto point = dataSource->GetPoint(hoveredPointIndex);
-        ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-
-        auto screenPos = transform.DataToScreen(point.x, point.y);
+        Point2Dd screenPos = GetDataPointScreenPosition(hoveredPointIndex, point);
+        if (!IsScreenXInView(screenPos.x)) return;
         float indicatorSize = 8.0f;
 
         // Use existing IRenderContext drawing functions
@@ -511,19 +515,21 @@ namespace UltraCanvas {
                 if (auto* app = UltraCanvasApplication::GetInstance()) {
                     app->CaptureMouse(this);
                 }
+                return true;
             }
-            return true;
         }
+        // A press that starts no pan is not the chart's: it goes on to the
+        // parent (a scrolling or draggable container), as an unused wheel
+        // turn does. A subclass that reacts to clicks handles them first.
         return false;
     }
 
     bool UltraCanvasChartElementBase::HandleMouseUp(const UCEvent& event) {
-        if (event.button == UCMouseButton::Left) {
-            isDragging = false;
-            EndPan();
-            return true;
-        }
-        return false;
+        if (event.button != UCMouseButton::Left) return false;
+        const bool endsPan = isPanning;
+        isDragging = false;
+        EndPan();
+        return endsPan;
     }
 
     bool UltraCanvasChartElementBase::HandleMouseWheel(const UCEvent& event) {

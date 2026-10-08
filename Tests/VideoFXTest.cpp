@@ -10,12 +10,13 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXBeats.h"
+#include "VideoFXFaces.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
 #include "VideoFXMusic.h"
@@ -28,6 +29,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <locale>
 #include <random>
 #include <string>
@@ -573,6 +575,105 @@ static void TestBeatMath() {
     CHECK(same(BeatAlignedChanges(wobbly, 3, 2.0, 2.0, 0), {2.25, 4.247}),
           "a beat 3 ms short of the minimum gap still takes the change");
     CHECK(BeatAlignedChanges(beats, 1, 1.7, 1.0, 0).empty(), "one image: no change");
+}
+
+// ---- the built-in face detector ----
+
+// The test photo (a real face, public domain - Tests/data/videofx/README.md)
+// as RGBA, read from its binary PPM without any decoder
+static bool ReadPpm(const std::string& path, VideoFXFrame& frame) {
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    std::string magic;
+    int w = 0, h = 0, maxValue = 0;
+    if (!(f >> magic >> w >> h >> maxValue) || magic != "P6" || maxValue != 255 || w <= 0 || h <= 0) return false;
+    f.get();
+    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+    if (!f.read(reinterpret_cast<char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()))) return false;
+    frame.width = w;
+    frame.height = h;
+    frame.pixels.resize(static_cast<size_t>(w) * h * 4);
+    for (size_t i = 0; i < static_cast<size_t>(w) * h; ++i) {
+        frame.pixels[i * 4] = rgb[i * 3];
+        frame.pixels[i * 4 + 1] = rgb[i * 3 + 1];
+        frame.pixels[i * 4 + 2] = rgb[i * 3 + 2];
+        frame.pixels[i * 4 + 3] = 255;
+    }
+    return true;
+}
+
+// BT.601 grey, as OpenCV's RGB2GRAY
+static std::vector<uint8_t> Grey(const VideoFXFrame& f) {
+    std::vector<uint8_t> g(static_cast<size_t>(f.width) * f.height);
+    for (size_t i = 0; i < g.size(); ++i)
+        g[i] = static_cast<uint8_t>((f.pixels[i * 4] * 4899 + f.pixels[i * 4 + 1] * 9617 + f.pixels[i * 4 + 2] * 1868 +
+                                     8192) >> 14);
+    return g;
+}
+
+static const std::string kAstronaut = std::string(VIDEOFX_TEST_DATA_DIR) + "/astronaut-200.ppm";
+
+static void TestFaceDetector() {
+    std::printf("Face detector: a real face, mirrored, several, none\n");
+    VideoFXFrame photo;
+    CHECK(ReadPpm(kAstronaut, photo) && photo.width == 200 && photo.height == 200, "read the test photo");
+    if (!photo.IsValid()) return;
+    const int w = photo.width, h = photo.height;
+    const std::vector<uint8_t> px = Grey(photo);
+    // OpenCV's CascadeClassifier, same model and settings, finds (66, 24) 43 x 43
+    std::vector<FaceBox> boxes = DetectFacesGray(px.data(), w, h, w);
+    CHECK(boxes.size() == 1, "one face, as OpenCV finds");
+    if (boxes.size() == 1)
+        CHECK(std::abs(boxes[0].x - 66) <= 3 && std::abs(boxes[0].y - 24) <= 3 && std::abs(boxes[0].w - 43) <= 3,
+              "where OpenCV finds it, within 3 pixels");
+    std::vector<uint8_t> mirrored(px.size());
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) mirrored[static_cast<size_t>(y) * w + x] = px[static_cast<size_t>(y) * w + (w - 1 - x)];
+    boxes = DetectFacesGray(mirrored.data(), w, h, w);
+    CHECK(boxes.size() == 1 && std::abs(boxes[0].x - 91) <= 3, "mirrored: found on the other side (OpenCV: x 91)");
+
+    std::vector<VideoFXRect> faces;
+    CHECK(VideoFX_DetectFaces(photo, faces) == VideoFXResult::Ok && faces.size() == 1, "VideoFX_DetectFaces: one face");
+    if (faces.size() == 1)
+        CHECK(Near(faces[0].x, 0.335, 0.02) && Near(faces[0].y, 0.12, 0.02) && Near(faces[0].w, 0.21, 0.02),
+              "as fractions of the photo");
+    CHECK(VideoFX_DetectFaces(VideoFXFrame{}, faces) == VideoFXResult::InvalidArgument, "no image: refused");
+    // In colour a face needs skin: the same face tinted blue is no face
+    VideoFXFrame blue = photo;
+    for (int y = 20; y < 70; ++y)
+        for (int x = 60; x < 115; ++x) {
+            uint8_t* p = &blue.pixels[(static_cast<size_t>(y) * w + x) * 4];
+            const int v = (p[0] + p[1] + p[2]) / 3;
+            p[0] = static_cast<uint8_t>(v / 2); p[1] = static_cast<uint8_t>(v * 3 / 4); p[2] = static_cast<uint8_t>(std::min(255, v + 60));
+        }
+    CHECK(VideoFX_DetectFaces(blue, faces) == VideoFXResult::Ok && faces.empty(), "colour photo, blue face: no skin, no face");
+    VideoFXFrame mono = photo;
+    for (size_t i = 0; i < px.size(); ++i) mono.pixels[i * 4] = mono.pixels[i * 4 + 1] = mono.pixels[i * 4 + 2] = px[i];
+    CHECK(VideoFX_DetectFaces(mono, faces) == VideoFXResult::Ok && faces.size() == 1,
+          "black and white photo: found without the skin test");
+
+    // Four people: the photo at four sizes on one canvas
+    VideoFXFrame group;
+    group.width = 640;
+    group.height = 400;
+    group.pixels.assign(static_cast<size_t>(640) * 400 * 4, 128);
+    const int places[4][3] = {{10, 10, 200}, {250, 20, 170}, {440, 180, 190}, {120, 250, 140}};
+    for (const auto& p : places)                // all four found by OpenCV too
+        for (int y = 0; y < p[2]; ++y)
+            for (int x = 0; x < p[2]; ++x) {
+                const uint8_t* s0 = &photo.pixels[(static_cast<size_t>(y * h / p[2]) * w + x * w / p[2]) * 4];
+                uint8_t* d = &group.pixels[(static_cast<size_t>(p[1] + y) * 640 + p[0] + x) * 4];
+                d[0] = s0[0]; d[1] = s0[1]; d[2] = s0[2];
+            }
+    CHECK(VideoFX_DetectFaces(group, faces) == VideoFXResult::Ok && faces.size() == 4, "four faces on one picture");
+    CHECK(faces.size() == 4 && faces[0].w >= faces[3].w, "largest first");
+
+    VideoFXFrame flat;
+    flat.width = 320; flat.height = 240;
+    flat.pixels.assign(static_cast<size_t>(320) * 240 * 4, 180);
+    CHECK(VideoFX_DetectFaces(flat, faces) == VideoFXResult::Ok && faces.empty(), "a flat picture: none");
+    std::mt19937 gen(5);
+    for (size_t i = 0; i < flat.pixels.size(); ++i) flat.pixels[i] = (i % 4 == 3) ? 255 : static_cast<uint8_t>(gen());
+    CHECK(VideoFX_DetectFaces(flat, faces) == VideoFXResult::Ok && faces.empty(), "noise: none");
 }
 
 #ifdef VIDEOFX_HAS_FFMPEG
@@ -1204,6 +1305,47 @@ static void TestStillImages(const VideoFXExportSettings& base) {
     CHECK(VideoFX_Export({outside}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument,
           "a region past the image edge refused");
 
+    // ---- the built-in detector frames a real face ----
+    {
+        VideoFXFrame astronaut;
+        if (ReadPpm(kAstronaut, astronaut)) {
+            VideoFXExportSettings big = s;
+            big.width = 320;
+            big.height = 240;
+            auto facesAt = [](const std::string& file, double t) {
+                VideoFXFrame fr;
+                std::vector<VideoFXRect> found;
+                if (VideoFX_ExtractFrame(file, t, fr) == VideoFXResult::Ok) VideoFX_DetectFaces(fr, found);
+                return found.size();
+            };
+            // Zooming into the suit, bottom right: the face leaves the frame
+            VideoFXSegment away = VideoFXSegment::FromImageFrame(
+                astronaut, 2.0, VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 2.0, 0.8, 0.85));
+            const std::string suit = TempPath("astro-suit.mkv");
+            CHECK_OK(VideoFX_Export({away}, suit, big), "a zoom into the suit");
+            CHECK(facesAt(suit, 0.05) == 1 && facesAt(suit, 1.95) == 0, "without: no face in the last frame");
+            away.keepFacesInView = true;
+            const std::string framed = TempPath("astro-framed.mkv");
+            CHECK_OK(VideoFX_Export({away}, framed, big), "the same, the built-in detector framing the face");
+            CHECK(facesAt(framed, 1.0) == 1 && facesAt(framed, 1.95) == 1, "with: the face in the middle and last frames");
+
+            const std::string astroPng = TempPath("astronaut.png");
+            CHECK_OK(VideoFX_SaveFrameImage(astronaut, astroPng), "save the photo");
+            VideoFXSlideshowOptions show;
+            show.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+            show.secondsPerImage = 2.0;
+            show.fadeInOut = false;
+            show.motion = VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 2.0, 0.8, 0.85);
+            const std::string withFaces = TempPath("astro-show.mkv");
+            CHECK_OK(VideoFX_CreateSlideshow({astroPng}, withFaces, show, big), "a slideshow, no face code at all");
+            CHECK(facesAt(withFaces, 1.95) == 1, "keeps the face in shot by default");
+            show.keepFacesInView = false;
+            const std::string plain = TempPath("astro-plain.mkv");
+            CHECK_OK(VideoFX_CreateSlideshow({astroPng}, plain, show, big), "the same with keepFacesInView off");
+            CHECK(facesAt(plain, 1.95) == 0, "plain motion: into the suit");
+        }
+    }
+
     // ---- errors ----
     CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");
     CHECK(VideoFX_CreateSlideshow({TempPath("none.jpg")}, TempPath("x.mkv")) == VideoFXResult::FileNotFound,
@@ -1514,6 +1656,7 @@ int main() {
     TestKenBurnsMath();
     TestMusicMath();
     TestBeatMath();
+    TestFaceDetector();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

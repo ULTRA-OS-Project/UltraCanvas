@@ -16,14 +16,36 @@
 //     running totals are not recomputed on every read; LoadFromArray and
 //     LoadFromCSV load steps.
 //  8. CreatePopulationPyramid lays out its row labels as rows.
+//  9. The hover ring is drawn around the point where the chart draws it,
+//     by index in DataLabel mode.
+// 10. A left press, and its release, are taken only when they start and end
+//     a pan; CSV rows that cannot be read are skipped (were plotted at 0,0).
+// 11. Eleven charts and diagrams defined a private InvalidateLayout() that
+//     only cleared their own cache. It overrode the layout engine's, so a
+//     framework invalidation (a new size, visibility) never reached the
+//     parent. Each now drops its cache and calls the engine's too.
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
-// Version: 1.0.0
-// Last Modified: 2026-10-07
+// Version: 1.3.0 - a framework invalidation of any of eleven charts reaches the parent
+// Version: 1.2.0 - a press is taken only when it starts a pan; bad CSV rows are skipped
+// Version: 1.1.0 - the hover ring in DataLabel mode
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
+#include "Plugins/Charts/UltraCanvasChordChart.h"
+#include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
+#include "Plugins/Charts/UltraCanvasPolarChart.h"
+#include "Plugins/Charts/UltraCanvasRadialBarChart.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
+#include "Plugins/Charts/UltraCanvasTimelineChart.h"
+#include "Plugins/Diagrams/UltraCanvasFishboneDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasParliamentDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasSWOTDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasTimelineDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasWordCloudDiagram.h"
+#include "UltraCanvasContainer.h"
 #include "Plugins/Charts/UltraCanvasWaterfallChart.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasRenderContext.h"
@@ -136,6 +158,8 @@ public:
         return ChartCoordinateTransform(this->cachedPlotArea, this->cachedDataBounds).DataToScreenY(value);
     }
 
+    void HoverPoint(size_t index) { this->hoveredPointIndex = index; }
+
     double DataXAt(double screenX) {
         this->UpdateRenderingCache();
         return ChartCoordinateTransform(this->cachedPlotArea, this->cachedDataBounds).ScreenToDataX(screenX);
@@ -223,11 +247,16 @@ void TestZoomAndPan() {
 
     Check(!line->OnEvent(Wheel(cx, cy, 1)), "by default the wheel over the plot is left to the parent");
 
+    Check(!line->OnEvent(Mouse(UCEventType::MouseDown, cx, cy)) &&
+          !line->OnEvent(Mouse(UCEventType::MouseUp, cx, cy)),
+          "a click on a chart that does not pan is left to the parent");
+
     line->SetEnablePan(true);
-    line->OnEvent(Mouse(UCEventType::MouseDown, cx, cy));
+    bool pressTaken = line->OnEvent(Mouse(UCEventType::MouseDown, cx, cy));
     bool movedTaken = line->OnEvent(Mouse(UCEventType::MouseMove, cx + 40, cy));
-    line->OnEvent(Mouse(UCEventType::MouseUp, cx + 40, cy));
-    Check(!movedTaken, "a drag over a chart that is not zoomed in is left to the parent");
+    bool releaseTaken = line->OnEvent(Mouse(UCEventType::MouseUp, cx + 40, cy));
+    Check(!pressTaken && !movedTaken && !releaseTaken,
+          "a press, drag and release over a chart that is not zoomed in are left to the parent");
 
     line->SetEnableZoom(true);
     Check(!line->OnEvent(Wheel(plot.x - 30, cy, 1)), "zoom on: the wheel over the axis margin is left to the parent");
@@ -241,12 +270,13 @@ void TestZoomAndPan() {
     Check(std::abs(line->DataXAt(anchorX) - anchorBefore) < 1e-6,
           "the value under the pointer stays under the pointer");
 
-    line->OnEvent(Mouse(UCEventType::MouseDown, cx, cy));
+    bool panPressTaken = line->OnEvent(Mouse(UCEventType::MouseDown, cx, cy));
     bool panTaken = line->OnEvent(Mouse(UCEventType::MouseMove, cx + 40, cy));
-    line->OnEvent(Mouse(UCEventType::MouseUp, cx + 40, cy));
+    bool panReleaseTaken = line->OnEvent(Mouse(UCEventType::MouseUp, cx + 40, cy));
     ChartDataBounds panned = line->Bounds();
     double expectedShift = 40.0 / plot.width * zoomed.GetXRange();
-    Check(panTaken, "dragging a zoomed plot is taken");
+    Check(panPressTaken && panTaken && panReleaseTaken,
+          "the press, drag and release of a pan on a zoomed plot are taken");
     Check(std::abs((zoomed.minX - panned.minX) - expectedShift) < 1e-6 &&
           std::abs(panned.GetXRange() - zoomed.GetXRange()) < 1e-9,
           "dragging right by 40 px shows the data 40 px further left");
@@ -329,6 +359,22 @@ void TestCsvHeader(const fs::path& dir) {
     ChartDataStream streamNamed(named);
     Check(streamNamed.GetPointCount() == 2 && streamNamed.GetPoint(0).x == 1,
           "ChartDataStream: a Month,Sales header is skipped");
+
+    // Rows that cannot be read, after the first line, are skipped too: they
+    // were plotted at the origin. CRLF line ends and blank lines read as before.
+    std::string messy = PathToUtf8(WriteFile(dir, "messy.csv",
+            "x,y\r\n1,10\r\nn/a,oops\r\n\r\n2,20\r\n3\r\n4,40\r\n"));
+    vec.LoadFromCSV(messy);
+    bool noOrigin = true;
+    for (size_t i = 0; i < vec.GetPointCount(); ++i) {
+        if (vec.GetPoint(i).x == 0 && vec.GetPoint(i).y == 0) noOrigin = false;
+    }
+    Check(vec.GetPointCount() == 3 && noOrigin && vec.GetPoint(1).x == 2 && vec.GetPoint(2).y == 40,
+          "ChartDataVector: unreadable rows are skipped, not plotted at (0,0)");
+    ChartDataStream streamMessy(messy);
+    Check(streamMessy.GetPointCount() == 3 && streamMessy.GetPoint(1).x == 2 &&
+          streamMessy.GetPoint(2).y == 40,
+          "ChartDataStream: unreadable rows are skipped, and the indexes count data rows");
 }
 
 void TestBarsFromZero() {
@@ -445,6 +491,68 @@ void TestPopulationPyramidRows() {
           "AddDataRow fills the row of that label");
 }
 
+void TestHoverRingOnThePoint() {
+    std::cout << "9. the hover ring sits on the point in DataLabel mode\n";
+    // x values that are not the indexes: by value the second point would sit
+    // near the left edge, by index it sits a third of the way across.
+    auto chart = std::make_shared<Probe<UltraCanvasScatterPlotElement>>("scatter", 0, 0, 400, 300);
+    chart->SetDataSource(Series({{0, 10}, {1, 20}, {2, 15}, {30, 12}}));
+    chart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    chart->SetShowGrid(false);
+    chart->SetShowAxes(false);
+    chart->SetPointColor(Color(0, 0, 255));
+    chart->SetEnableSelection(true);
+    chart->HoverPoint(1);
+
+    Canvas canvas(400, 300);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, 400, 300));
+    Point2Dd dot = chart->ScreenOf(1);
+    // The ring: radius 8, stroked 2 px wide, in red - a red pixel 6 to 10 px
+    // to each side of the point (the point need not sit on a pixel centre).
+    auto redBeside = [&](int side) {
+        for (int d = 6; d <= 10; ++d) {
+            if (Near(canvas.At(dot.x + side * d, dot.y), Color(255, 0, 0), 30)) return true;
+        }
+        return false;
+    };
+    Check(redBeside(-1) && redBeside(1),
+          "the red ring is drawn around the hovered point where it is drawn");
+}
+
+// A chart laid out in a container, then invalidated the way the framework
+// does it (SetVisible, SetElementSize and the rest call InvalidateLayout
+// through the element base): the container's measure must be dropped too.
+template <typename Chart>
+void CheckInvalidationReachesParent(const std::string& name) {
+    auto parent = std::make_shared<UltraCanvasContainer>("parent", 0, 0, 400, 300);
+    auto chart = std::make_shared<Chart>("chart", 0, 0, 200, 150);
+    parent->AddChild(chart);
+    CSSLayout::LayoutContext ctx;
+    CSSLayout::MeasureConstraints c{ { CSSLayout::ConstraintMode::Exact, 400.0f },
+                                     { CSSLayout::ConstraintMode::Exact, 300.0f } };
+    parent->Measure(c, ctx);
+    parent->Arrange(Rect2Df{ 0, 0, 400, 300 }, ctx);
+    const bool measuredBefore = parent->measured.valid;
+    static_cast<CSSLayout::Element&>(*chart).InvalidateLayout();
+    Check(measuredBefore && !parent->measured.valid,
+          name + ": a framework invalidation reaches the parent");
+}
+
+void TestInvalidationReachesParent() {
+    std::cout << "11. a chart's invalidation reaches the layout engine\n";
+    CheckInvalidationReachesParent<UltraCanvasChordChart>("chord chart");
+    CheckInvalidationReachesParent<UltraCanvasCircularProgressChart>("circular progress chart");
+    CheckInvalidationReachesParent<UltraCanvasPolarChart>("polar chart");
+    CheckInvalidationReachesParent<UltraCanvasRadialBarChart>("radial bar chart");
+    CheckInvalidationReachesParent<UltraCanvasTimelineChart>("timeline chart");
+    CheckInvalidationReachesParent<UltraCanvasFishboneDiagram>("fishbone diagram");
+    CheckInvalidationReachesParent<UltraCanvasMatrixDiagram>("matrix diagram");
+    CheckInvalidationReachesParent<UltraCanvasParliamentDiagram>("parliament diagram");
+    CheckInvalidationReachesParent<UltraCanvasSWOTDiagram>("SWOT diagram");
+    CheckInvalidationReachesParent<UltraCanvasTimelineDiagram>("timeline diagram");
+    CheckInvalidationReachesParent<UltraCanvasWordCloudElement>("word cloud");
+}
+
 } // namespace
 
 int main() {
@@ -459,6 +567,8 @@ int main() {
     TestBackgroundIsTheElements();
     TestWaterfall(dir);
     TestPopulationPyramidRows();
+    TestHoverRingOnThePoint();
+    TestInvalidationReachesParent();
 
     std::error_code ec;
     fs::remove_all(dir, ec);

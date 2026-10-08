@@ -23,7 +23,9 @@ told apart:
   class outline, where X is a type of the headers: its fields and
   enumerators must exist in the real X, and its functions with their
   signatures.
-* prose - a `Name(` in backticks must be a function of some header.
+* prose - a `Name(` in backticks must be a function of some header, of a
+  header the doc includes, or of the doc's doc-check comment. A name with
+  a space before its parenthesis (`Strong (9)`) is a word, not a call.
 
 A doc can declare what its snippets assume and the checker can't guess, in
 an HTML comment (not rendered):
@@ -31,8 +33,15 @@ an HTML comment (not rendered):
     <!-- doc-check: void CreateFolder(); std::shared_ptr<UltraCanvasTreeView> tree; -->
 
 A function is declared for every block; a variable is given to the blocks
-that use it without declaring it. A snippet's `#include <...>` is honoured
-where this machine has the header.
+that use it without declaring it. A line of the comment that starts with
+`#define` defines a macro the build would (`#define MYAPP_VERSION "1.0.0"`
+for a `target_compile_definitions`). A snippet's `#include <...>` or
+`#include "..."` is honoured where this machine has the header (the include
+paths cover the plugin directories, so a plugin header such as
+`#include "UltraCanvasVectorConverter.h"` resolves), and its `#if` /
+`#ifdef` / `#else` / `#endif` and `#define` lines stay where they are, so
+code for another platform (`#ifdef _WIN32 ... WinMain ... #endif`) is left
+out.
 
 Missing `#include` targets are reported too.
 
@@ -45,8 +54,14 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
 Exit status 1 when a doc has findings.
 """
-# Version: 1.0.0
-# Last Modified: 2026-10-07
+# Version: 1.1.1 - a copied type is checked against every type of its name, judged by
+#                  the best match (BlendMode is three enums)
+# Version: 1.1.0 - a snippet's #if blocks and #defines are kept in place, a
+#                 doc-check comment can #define a macro, and prose may name
+#                 what the doc's own headers and doc-check comment declare;
+#                 `Name (` with a space is prose, not a call
+# Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
+# Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 
 import argparse
@@ -104,6 +119,11 @@ KEYWORDS = {
 }
 
 GEN = "__gen__"          # #line file name of generated lines
+
+# The preprocessor lines of a snippet that are compiled where they stand:
+# conditionals, so that another platform's code drops out, and macros.
+PP_IN_PLACE = re.compile(r"\s*#\s*(if|ifdef|ifndef|elif|elifdef|elifndef|else|endif|define|undef)\b")
+DOC_CHECK = re.compile(r"<!--\s*doc-check:(.*?)-->", re.S)
 
 
 # --------------------------------------------------------------------------
@@ -913,15 +933,38 @@ class Doc:
                 if m and not any((d / m.group(1)).exists() for d in INCLUDE_DIRS):
                     self.add(b.first + i, 'header "%s" does not exist' % m.group(1))
 
-    def emit_examples(self, assumed):
+    @staticmethod
+    def pp_in_place(b):
+        """The block's #if / #define chunks, compiled where they stand - when
+        its #if and #endif pair up; a fragment of a conditional is left out."""
+        keep, depth = set(), 0
+        for kind, i, j in b.chunks:
+            m = PP_IN_PLACE.match(b.lines[i]) if kind == "pp" else None
+            if not m:
+                continue
+            if m.group(1) in ("if", "ifdef", "ifndef"):
+                depth += 1
+            elif m.group(1) == "endif":
+                depth -= 1
+            elif m.group(1) not in ("define", "undef") and depth == 0:
+                return set()
+            if depth < 0:
+                return set()
+            keep.add((kind, i, j))
+        return keep if depth == 0 else set()
+
+    def emit_examples(self, assumed, macros=()):
         self.gen_map = {}
         self.gen_next = 1
         out = list(self.includes)
+        for macro in macros:
+            out.append(self.gen(("assumed", macro)))
+            out.append(macro)
         for b in self.blocks:
             for kind, i, j in b.chunks:
-                m = re.match(r"\s*#\s*include\s*<([^>]+)>", b.lines[i]) if kind == "pp" else None
+                m = re.match(r"\s*#\s*include\s*(<[^>]+>|\"[^\"]+\")", b.lines[i]) if kind == "pp" else None
                 if m:
-                    out += ["#if __has_include(<%s>)" % m.group(1), "#include <%s>" % m.group(1), "#endif"]
+                    out += ["#if __has_include(%s)" % m.group(1), "#include %s" % m.group(1), "#endif"]
         for b in self.blocks:
             code = [c for c in b.chunks if c[0] != "pp"]
             if not code:
@@ -937,20 +980,21 @@ class Doc:
             for name, t in sorted(b.context.items()):
                 out.append(self.gen(("context", b.index, name)))
                 out.append("extern %s %s;" % (t, name))
-            for kind, i, j in code:
-                if kind == "def":
+            pp = self.pp_in_place(b)
+            for kind, i, j in b.chunks:
+                if kind == "def" or (kind, i, j) in pp:
                     out.append('#line %d "%s"' % (b.first + i, self.rel))
                     out.extend(b.lines[i:j + 1])
-            stmts = [(i, j) for kind, i, j in code if kind == "stmt"]
-            if stmts:
+            if any(kind == "stmt" for kind, i, j in code):
                 out.append(self.gen(None))
                 out.append("struct __Run { auto __run() {")
                 for name, t in sorted(b.context.items()):
                     out.append(self.gen(("context", b.index, name)))
                     out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
-                for i, j in stmts:
-                    out.append('#line %d "%s"' % (b.first + i, self.rel))
-                    out.extend(b.lines[i:j + 1])
+                for kind, i, j in b.chunks:
+                    if kind == "stmt" or (kind, i, j) in pp:
+                        out.append('#line %d "%s"' % (b.first + i, self.rel))
+                        out.extend(b.lines[i:j + 1])
                 out.append(self.gen(None))
                 out.append("} };")
             out.append(self.gen(None))
@@ -961,8 +1005,11 @@ class Doc:
         declared = context_types("\n".join("\n".join(b.clean) for b in self.blocks), self.index)
         main = self.classes[0] if self.classes else None
         assumed = []
-        for m in re.finditer(r"<!--\s*doc-check:(.*?)-->", self.text, re.S):
-            for st in statements(m.group(1)):
+        macros = []
+        for m in DOC_CHECK.finditer(self.text):
+            lines = m.group(1).splitlines()
+            macros += [l.strip() for l in lines if l.strip().startswith("#")]
+            for st in statements("\n".join(l for l in lines if not l.strip().startswith("#"))):
                 # A type (`struct Message { ... };`) is declared as written;
                 # only `Type name;` gives a variable.
                 is_type = re.match(r"^\s*(struct|class|enum|union|using|typedef|template|namespace)\b", st)
@@ -976,9 +1023,11 @@ class Doc:
         for _ in range(5):
             if not any(c[0] != "pp" for b in self.blocks for c in b.chunks):
                 return
-            errors = run_clang(self.args.clang, self.flags, self.pch, self.emit_examples(assumed),
+            errors = run_clang(self.args.clang, self.flags, self.pch, self.emit_examples(assumed, macros),
                                self.work, self.tag + "_ex", self.rel)
             changed = False
+            grew = set()        # blocks given a `using` in this pass
+            doubtful = []       # context names that failed with no way out
             for f, line, msg in errors:
                 if f == GEN:
                     what = self.gen_map.get(line)
@@ -988,14 +1037,11 @@ class Doc:
                         key = (int(other.group(1)), other.group(2))
                         if key[0] < b.index and key not in b.uses:
                             b.uses.add(key)
+                            grew.add(b.index)
                             changed = True
                             continue
                     if what and what[0] == "context":
-                        b = self.blocks[what[1]]
-                        if what[2] in b.context:
-                            del b.context[what[2]]
-                            b.bad_context.add(what[2])
-                            changed = True
+                        doubtful.append(what)
                     continue
                 other = re.search(r"did you mean '__dc_b(\d+)::(\w+)'", msg)
                 if other and f == self.rel:
@@ -1003,6 +1049,7 @@ class Doc:
                     key = (int(other.group(1)), other.group(2))
                     if b is not None and key[0] < b.index and key not in b.uses:
                         b.uses.add(key)
+                        grew.add(b.index)
                         changed = True
                     continue
                 m = re.match(r"use of undeclared identifier '(\w+)'", msg)
@@ -1017,6 +1064,16 @@ class Doc:
                 t = guess_type(name, declared, main, self.index)
                 if t:
                     b.context[name] = t
+                    changed = True
+            # A name fails on two generated lines, and clang may suggest the
+            # other block's type on one of them only: a block that got a
+            # `using` in this pass is compiled again before a name of it is
+            # given up.
+            for what in doubtful:
+                b = self.blocks[what[1]]
+                if b.index not in grew and what[2] in b.context:
+                    del b.context[what[2]]
+                    b.bad_context.add(what[2])
                     changed = True
             if not changed:
                 break
@@ -1043,49 +1100,69 @@ class Doc:
 
     def check_copies(self):
         """Fields and enumerators of a type copy must exist in the real type;
-        its functions go to the listing check with the type as owner."""
+        its functions go to the listing check with the type as owner.
+
+        A short name can name more than one type (BlendMode is a render
+        context enum, a PixelFX one and a VectorStorage one), so a copy is
+        checked against each of them and judged by the one it matches best:
+        the fewest missing members, ties going to namespace UltraCanvas."""
         src = self.includes + ["namespace __dc_c {", "using namespace ::UltraCanvas;"]
-        where = {}
+        where = {}          # n -> (copy index, candidate, doc line, member)
+        members = {}        # copy index -> [(doc line, member name)]
         n = 0
-        for first, qs, kind, body in self.copies:
+        for c, (first, qs, kind, body) in enumerate(self.copies):
+            found = []
             if kind.startswith("enum"):
                 for e in split_top(body):
                     e = e.split("=")[0].strip()
                     if re.match(r"^\w+$", e):
-                        line = first + body[:body.find(e)].count("\n")
-                        n += 1
-                        where[n] = (line, "%s::%s" % (qs[0], e))
-                        src.append('#line %d "%s"' % (n, GEN))
-                        src.append("inline void __c%d() { (void)::%s::%s; }" % (n, qs[0], e))
-                continue
-            for st in statements(body):
-                st0 = re.sub(r"^\s*(?:public|private|protected)\s*:\s*", "", st).strip()
-                if not st0 or re.match(r"^(?:template\s*<[^>]*>\s*)?(class|struct|enum|union|using|typedef|friend)\b", st0):
-                    continue
-                line = first + body[:body.find(st0.split("\n")[0])].count("\n")
-                d = parse_decl(st0)
-                if d:
-                    if d["name"].startswith("~"):
+                        found.append((first + body[:body.find(e)].count("\n"), e, "enum"))
+            else:
+                for st in statements(body):
+                    st0 = re.sub(r"^\s*(?:public|private|protected)\s*:\s*", "", st).strip()
+                    if not st0 or re.match(r"^(?:template\s*<[^>]*>\s*)?(class|struct|enum|union|using|typedef|friend)\b", st0):
                         continue
-                    self.items.append((line, d, False, qs))
-                    continue
-                f = parse_field(st0)
-                if not f:
-                    continue
-                more = [re.split(r"[={]", part)[0].strip() for part in split_top(st0)[1:]]
-                for fname in [f["name"]] + [x for x in more if re.match(r"^[A-Za-z_]\w*$", x)]:
+                    line = first + body[:body.find(st0.split("\n")[0])].count("\n")
+                    d = parse_decl(st0)
+                    if d:
+                        if d["name"].startswith("~"):
+                            continue
+                        self.items.append((line, d, False, qs))
+                        continue
+                    f = parse_field(st0)
+                    if not f:
+                        continue
+                    more = [re.split(r"[={]", part)[0].strip() for part in split_top(st0)[1:]]
+                    for fname in [f["name"]] + [x for x in more if re.match(r"^[A-Za-z_]\w*$", x)]:
+                        found.append((line, fname, "field"))
+            members[c] = [(line, name) for line, name, _ in found]
+            for q in qs[:4]:
+                for line, name, how in found:
                     n += 1
-                    where[n] = (line, "%s::%s" % (qs[0], fname))
+                    where[n] = (c, q, line, name)
                     src.append('#line %d "%s"' % (n, GEN))
-                    src.append("inline void __c%d() { (void)sizeof(&::%s::%s); }" % (n, qs[0], fname))
+                    if how == "enum":
+                        src.append("inline void __c%d() { (void)::%s::%s; }" % (n, q, name))
+                    else:
+                        src.append("inline void __c%d() { (void)sizeof(&::%s::%s); }" % (n, q, name))
         src.append("}")
         if not where:
             return
         errors = run_clang(self.args.clang, self.flags, self.pch, "\n".join(src) + "\n", self.work, self.tag + "_c")
+        failures = {}       # (copy index, candidate) -> [(doc line, member, message)]
         for f, line, msg in errors:
             if f == GEN and line in where and "protected" not in msg and "private" not in msg \
                     and "overloaded" not in msg and "non-static" not in msg:
-                doc_line, what = where[line]
+                c, q, doc_line, name = where[line]
+                failures.setdefault((c, q), []).append((doc_line, name, msg))
+        for c, (first, qs, kind, body) in enumerate(self.copies):
+            if not members.get(c):
+                continue
+            tried = qs[:4]
+            best = min(tried, key=lambda q: (len(failures.get((c, q), [])),
+                                             not q.startswith("UltraCanvas::"), tried.index(q)))
+            for doc_line, name, msg in failures.get((c, best), []):
+                what = "%s::%s" % (best, name)
                 self.add(doc_line, "'%s' does not exist (%s)" % (what.split("::", 1)[-1] if what.startswith("UltraCanvas::") else what, msg))
 
     def namespace_of(self, q):
@@ -1245,7 +1322,19 @@ class Doc:
             self.add(line, "signature differs: `%s`%s" % (" ".join(d["text"].split()), hint))
 
     def check_prose(self):
-        """`Name(` in backticks outside code must be a function somewhere."""
+        """`Name(` in backticks outside code must be a function somewhere: in
+        the headers, in a header the doc includes, or in its doc-check comment."""
+        own = set()
+        for m in DOC_CHECK.finditer(self.text):
+            own |= set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", m.group(1)))
+        for line in self.includes:
+            path = Path(line.split('"')[1])
+            if path not in self.index.text:
+                try:
+                    code = "\n".join(clean_lines(path.read_text(encoding="utf-8", errors="replace").splitlines()))
+                except OSError:
+                    continue
+                own |= set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", code))
         fence = False
         for i, line in enumerate(self.lines, 1):
             if re.match(r"^\s*```", line):
@@ -1254,9 +1343,9 @@ class Doc:
             if fence:
                 continue
             for span in re.findall(r"`([^`]+)`", line):
-                for m in re.finditer(r"(?:->|\.|::|^|\s)([A-Z]\w+)\s*\(", span):
+                for m in re.finditer(r"(?:->|\.|::|^|\s)([A-Z]\w+)\(", span):
                     name = m.group(1)
-                    if name not in self.index.functions and name not in self.index.types:
+                    if name not in self.index.functions and name not in self.index.types and name not in own:
                         self.add(i, "prose names `%s(`, which no header declares" % name)
 
 

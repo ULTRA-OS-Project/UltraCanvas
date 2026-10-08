@@ -1,3 +1,161 @@
+#### 2026-10-08 *0.10.39*
+- **Formatted mail as plain text keeps its paragraphs.** With Settings >
+  Reading set to plain text, and in the quote of a formatted mail in a reply
+  or forward, the text was the HTML with its tags taken out: paragraphs ran
+  into one another or kept the HTML source's line breaks, only four entities
+  were decoded (`&eacute;`, `&#8211;` and the rest showed as written), and a
+  newsletter's hidden preview line appeared at the top. The text now comes
+  from the framework's HTML reader (`HTML::ExtractPlainText`, its new Lines
+  layout): a paragraph to a line with a blank line between, `<br>` as a line
+  break, table cells a tab apart, list items as `- `, every entity decoded,
+  and hidden text left out.
+
+#### 2026-10-08 *0.10.38*
+- **The mail's text can be selected and copied.** In formatted (HTML) mail a
+  drag selects across the whole message, from paragraph to paragraph as in a
+  browser, a double-click takes a word and a triple-click a paragraph;
+  Ctrl+C copies and Ctrl+A selects the whole message once it has been
+  clicked. The subject, the sender, the recipients and the date can be
+  selected too. A right-click on the text offers Copy and Select All, over
+  formatted and plain-text mail alike. Only one part is highlighted at a
+  time, as on a web page. A link still opens on a click; a drag that starts
+  on a link selects instead. (The framework's selectable labels, see the
+  framework changelog.)
+- **A copy button on sign-in codes.** A one-time code - the code a sign-in,
+  a payment or an address check sends to be typed in elsewhere - gets a copy
+  button: inside the code's own box when the mail puts it in one
+  (Papierkram's "Dein Anmelde-Code"), otherwise in a bar above the message
+  with the code and a Copy button (plain-text mail, a code inside a
+  sentence). A click copies the code - without the spaces of "649 082" - and
+  the button shows a check mark for a moment.
+  - Found in any language: the code by its shape (4 to 10 digits, or
+    capitals and digits, alone or in groups) and the word for "code" beside
+    it or in the subject - Code, código, codice, kod, kód, koodi, код,
+    κωδικός, 验证码, 認証コード, 인증번호, รหัส, رمز, קוד, कोड, OTP, PIN, TAN and
+    more (`UltraMailOneTimeCode.h`).
+  - Numbers that only look like codes get no button: years, prices, times,
+    IP addresses, phone numbers, "#order" numbers, parts of links and
+    addresses, and what follows "postal code", "error code" and the like.
+
+#### 2026-10-08 *0.10.37*
+- **A click anywhere on an account tile switches to that account.** Clicking
+  the other account's tile mostly did nothing: the window gave a click to
+  the innermost element under the pointer and to no other, and the tile's
+  name, address, avatar and counters are elements of their own that ignore a
+  click. The rows holding them stretch across the tile, so only its padding
+  and the strip between the two rows switched the account - on a tile in a
+  real window, 1 of 14 spots (the centre of each part of the tile) answered.
+  A click that missed looked like a switch that never came, or a slow one
+  when a later click happened to land on the padding; 0.10.21, 0.10.30 and
+  0.10.32 made the switch itself faster, which cannot help a click that never
+  reaches the tile. All 14 spots switch now, twice over: the framework hands
+  a press nobody under the pointer took on to the elements around it (see
+  the framework changelog, "A mouse press the element under the pointer does
+  not take climbs to its parents"), and the tile is one target for the
+  pointer. The counters' captions moved from each counter's tooltip into the
+  tile's: the address, then *New today*, *Unread (before today)* and *Waiting
+  for reply* with their numbers (`ClickSurface::PassPointerThroughContent`).
+  Tests:
+  `Tests/UltraMail/AccountBarClickTest.cpp` (`UltraMailAccountBarTest`, a
+  window under Xvfb; it skips without a display).
+
+- **A click on a group's or list's name in the address book selects it.**
+  The sidebar of the contacts window had the same dead spots as the account
+  tiles: the name stretches across the row and ignored the click, so only
+  the row's edges and its count answered. Fixed by the same framework change
+  (a press nobody under the pointer took goes on to the row), with no change
+  in UltraMail's code.
+
+#### 2026-10-08 *0.10.36*
+- **The message fills the pane.** Two things kept a message's body from
+  using the space it is given:
+  - **No empty band under the mail.** The attachment strip under the body
+    kept its 42 px, and the pane's gap above it, for every message - with
+    no attachment in it as well. It is hidden now while a message has no
+    attachments, and the body reaches the bottom of the pane.
+  - **No sideways scrolling by the scrollbar's width.** A newsletter whose
+    body asks to be at least as wide as the window (`min-width: 100%`, as
+    Reddit's digest does) was measured against the whole pane, including
+    the 12 px under the vertical scrollbar, so it scrolled sideways by
+    exactly that much and its centred layout sat off-centre. The body now
+    sits in a page as wide as the visible pane, the way a browser's window
+    works, so every width the message's CSS gives in percent is taken from
+    what the reader can see. Mails that do not ask for that (most) looked
+    right before and still do; content that really is wider than the pane
+    (a fixed-width table, a large picture) still gets its horizontal bar.
+
+#### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
+
 #### 2026-10-07 *0.10.34*
 - **New mail shows a notification on the screen.** When a sync brings new
   mail into an inbox, UltraMail posts one notification through UltraMessage,

@@ -1,14 +1,12 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
-// Version: 1.7.0 - SetTintColor tints the picture; LoadFromImage fires onImageLoaded /
-//                 onImageLoadFailed like LoadFromFile; CreateImageFromMemory's format
-//                 hint is documented as unused
+// Version: 1.8.0 - an image to screen readers (name it with SetAccessibleName)
 // Version: 1.6.0 - onHoverEnter / onHoverLeave
 // Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -90,6 +88,10 @@ private:
     bool animationEnabled = true;
 
 public:
+    // ===== ACCESSIBILITY =====
+    // An image; describe it with SetAccessibleName() (its alt text).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Image; }
+
     // ===== EVENTS =====
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;

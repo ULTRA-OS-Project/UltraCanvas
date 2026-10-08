@@ -14,16 +14,26 @@
 //   group takes the handler back when it goes or the radio leaves it.
 // - SliderHandleShape is an enum class, so Circle, Square, Triangle and
 //   Diamond no longer sit in namespace UltraCanvas.
+// - A radio added to a group already checked becomes the selection (the
+//   group ignored it, so its dot showed with no selection behind it).
+// - Checkboxes, radios and switches take the keyboard focus: Tab reaches
+//   them (Space and Enter are checked in a dialog by DialogEscapeTest).
+//   IsFocused() without an application no longer crashes.
 //
 // Runs headless: the image element renders into an offscreen context whose
-// pixels are read back; the rest is plain state.
+// pixels are read back; focus moves in a window with nothing native behind
+// it; the rest is plain state.
+// Version: 1.1.0 - radios added checked, and the toggles' keyboard focus
 // Version: 1.0.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSwitch.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -234,6 +244,96 @@ void TestRadioGroup() {
     TEST("and keeps them when the moved-from group goes", static_cast<bool>(e->onChecked));
 }
 
+void TestRadioAddedChecked() {
+    auto low = std::make_shared<UltraCanvasRadio>("low", "Low");
+    auto high = std::make_shared<UltraCanvasRadio>("high", "High");
+    high->SetChecked(true);   // created as the initial choice
+    UltraCanvasRadioGroup group;
+    int reports = 0;
+    group.onSelectionChanged = [&reports](std::shared_ptr<UltraCanvasRadio>) { ++reports; };
+    group.AddRadioButton(low);
+    group.AddRadioButton(high);
+    TEST("a radio added already checked is the group's selection", group.GetSelectedButton() == high);
+    TEST("and building the group reports no change", reports == 0);
+
+    auto other = std::make_shared<UltraCanvasRadio>("other", "Other");
+    other->SetChecked(true);
+    group.AddRadioButton(other);
+    TEST("a second checked radio added wins, and the first is cleared",
+         group.GetSelectedButton() == other && other->IsChecked() && !high->IsChecked());
+    low->SetChecked(true);   // what a click does
+    TEST("the adopted selection moves on a click like any other",
+         group.GetSelectedButton() == low && !other->IsChecked() && reports == 1);
+}
+
+// A window with nothing native behind it; the focus moves in it as in a real
+// one.
+class FocusWindow : public UltraCanvasWindowBase {
+public:
+    FocusWindow() { SetBounds(Rect2Df(0, 0, 400, 300)); }
+    void Show() override {}
+    void Hide() override {}
+    void RaiseAndFocus() override {}
+    void SetWindowTitle(const std::string&) override {}
+    void SetWindowIcon(const std::string&) override {}
+    void SetWindowPosition(int, int) override {}
+    void SetWindowSize(int, int) override {}
+    void Minimize() override {}
+    void Maximize() override {}
+    void Restore() override {}
+    void SetFullscreen(bool) override {}
+    void SetResizable(bool) override {}
+    void GetScreenSize(int& width, int& height) const override { width = 400; height = 300; }
+    NativeWindowHandle GetNativeHandle() const override { return NativeWindowHandle{}; }
+    void InvalidateWindowNative() override {}
+
+protected:
+    bool CreateNative() override { return true; }
+    void DestroyNative() override {}
+    void DoResizeNative() override {}
+    bool RecreateNativeSurface() override { return true; }
+};
+
+UCEvent Key(UCKeys key) {
+    UCEvent event;
+    event.type = UCEventType::KeyDown;
+    event.virtualKey = key;
+    return event;
+}
+
+void TestTogglesTakeFocus() {
+    auto win = std::make_shared<FocusWindow>();
+    auto box = std::make_shared<UltraCanvasCheckbox>("box", 10, 10, 140, 24, "Remember me");
+    auto radio = std::make_shared<UltraCanvasRadio>("radio", "Option");
+    auto toggle = UltraCanvasSwitch::Create("switch", 10, 70, "Dark mode", false);
+    auto skipped = std::make_shared<UltraCanvasCheckbox>("skipped", 10, 100, 140, 24, "Not in Tab order");
+    skipped->SetAcceptsFocus(false);
+    win->AddChild(box);
+    win->AddChild(radio);
+    win->AddChild(toggle);
+    win->AddChild(skipped);
+
+    TEST("a checkbox, a radio and a switch accept the focus",
+         box->CanReceiveFocus() && radio->CanReceiveFocus() && toggle->CanReceiveFocus());
+    win->FocusNextElement();
+    TEST("Tab reaches the checkbox", win->GetFocusedElement() == box.get());
+    win->FocusNextElement();
+    TEST("then the radio", win->GetFocusedElement() == radio.get());
+    win->FocusNextElement();
+    TEST("then the switch", win->GetFocusedElement() == toggle.get());
+    win->FocusNextElement();
+    TEST("SetAcceptsFocus(false) keeps a toggle out of the Tab order",
+         win->GetFocusedElement() != skipped.get() && !skipped->SetFocus(true));
+    TEST("SetFocus(true) gives a checkbox its window's focus",
+         box->SetFocus(true) && win->GetFocusedElement() == box.get());
+    // With no application no window has the focus, so no element is focused
+    // (this used to call through a null application pointer). Space and
+    // Enter on a focused toggle are checked in a real dialog by
+    // DialogEscapeTest.
+    TEST("IsFocused() is false, not a crash, without an application", !box->IsFocused());
+    TEST("so Space does nothing to it", !box->OnEvent(Key(UCKeys::Space)) && !box->IsChecked());
+}
+
 void TestSliderHandleShape() {
     TEST("SliderHandleShape is a scoped enum (no implicit int, no names in UltraCanvas)",
          (std::is_enum_v<SliderHandleShape> && !std::is_convertible_v<SliderHandleShape, int>));
@@ -262,6 +362,8 @@ int main() {
     TestTint();
     TestLoadFromImage();
     TestRadioGroup();
+    TestRadioAddedChecked();
+    TestTogglesTakeFocus();
     TestSliderHandleShape();
     TestGLSurfacePlacement();
 

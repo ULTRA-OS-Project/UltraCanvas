@@ -527,8 +527,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default, `PlainTextLayout::Lines` keeps the text's line structure -
+  paragraphs, `<br>`, table rows and cells, list items, `<pre>` - and leaves
+  out hidden content).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -554,8 +557,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine; the tree's own scrollbars are off, the host scrolls.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
@@ -1252,12 +1257,21 @@ engine; these classes hold the pixels being edited and hand them to it.
   `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
-  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
-  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
-  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
-  the Text pattern), sharing the tree, ids, geometry and text diffing in
-  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `GetAccessibleTextInterface` and, since 1.2, `GetAccessibleDescription`,
+  `GetAccessibleToggleState`, `GetAccessibleRange` / `SetAccessibleValue`,
+  `GetAccessibleValueText` / `SetAccessibleValueText` and
+  `GetAccessibleActionName` / `DoAccessibleAction`, with
+  `SetAccessibleName` / `SetAccessibleDescription` overrides on every
+  element. The common widgets implement it (button, checkbox, radio, switch,
+  label, text input, dropdown, slider, spinner, busy indicator, group box,
+  tabbed container, toolbar, list and tree view, image, menu), as does
+  `UltraCanvasRichTextEdit`. Platform bridges: AT-SPI on Linux
+  (`OS/Linux/UltraCanvasLinuxAccessibility`, GIO D-Bus, tested end to end by
+  `Tests/AtspiBridgeTest`), UI Automation on Windows
+  (`OS/MSWindows/UltraCanvasWindowsAccessibility`: Text, Invoke, Toggle,
+  SelectionItem, RangeValue and Value patterns) and NSAccessibility on macOS
+  (`OS/MacOS/UltraCanvasMacOSAccessibility`, VoiceOver), sharing the tree, ids,
+  geometry and text diffing in `UltraCanvasAccessibilityBridge.h`. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
@@ -1288,7 +1302,11 @@ engine; these classes hold the pixels being edited and hand them to it.
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
 image / video / music generation, translation, code assist). See
-`Docs/Modules/UltraAI/README.md`.
+`Docs/Modules/UltraAI/README.md`. Translation (`ITranslator`) is served
+through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
+`BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
+`ParseDetectionReply`), registered under each text-LLM provider's id;
+`Docs/Modules/UltraAI/Adapters.md` has the option keys.
 
 ### **3. FileLoader**
 
@@ -2143,8 +2161,8 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom (keeping given faces in
-shot) and one-call slideshows,
+frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
 changing on the beat,
@@ -2174,7 +2192,7 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
-  `VideoFX_DetectBeats`, `VideoFX_GenerateTestClip`
+  `VideoFX_DetectBeats`, `VideoFX_DetectFaces`, `VideoFX_GenerateTestClip`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2199,7 +2217,10 @@ automatically (VideoToolbox, Media Foundation), project files.
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
   CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
-  FocusBounds, FitMotionToFocus, KeepFocusInView}`
+  FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
+  DetectFaces}` (`core/VideoFXFaces.h` - the cascade compiled in as
+  `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
+  from `UltraCanvas/third_party/opencv_haarcascade/`)
   (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
   have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
@@ -3041,6 +3062,7 @@ their *License* is likewise marked **—** (OS component).
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
+| OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
 | OpenJPEG (openjp2) | [openjpeg.org](https://www.openjpeg.org/) | [github.com/uclouvain/openjpeg](https://github.com/uclouvain/openjpeg) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | OpenSSL | [openssl.org](https://www.openssl.org/) | [github.com/openssl/openssl](https://github.com/openssl/openssl) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
@@ -3075,7 +3097,8 @@ their *License* is likewise marked **—** (OS component).
 | zlib | [zlib.net](https://zlib.net/) | [github.com/madler/zlib](https://github.com/madler/zlib) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | zstd | [facebook.github.io/zstd](https://facebook.github.io/zstd/) | [github.com/facebook/zstd](https://github.com/facebook/zstd) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 
-> qrcodegen, miniz, KissFFT and miniaudio are **bundled** (vendored in-tree); the
+> qrcodegen, miniz, KissFFT, miniaudio and OpenCV's frontal-face Haar cascade
+> (data only, for VideoFX) are **bundled** (vendored in-tree); the
 > links above point to their upstream projects for reference and updates.
 
 ---
@@ -3432,6 +3455,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Probe, decode, effects (libavfilter), encode, mux | FFmpeg ≥ 4.4 — libavformat, libavcodec, libavfilter, libavutil, libswscale (optional) | FFmpeg (optional) | FFmpeg (optional) |
+| Face detection (slideshows keeping faces in shot) | OpenCV's frontal-face Haar cascade (bundled data; VideoFX's own evaluator, no OpenCV linked) | the same | the same |
 
 > Found through pkg-config and linked as shared system libraries, never
 > vendored; no FFmpeg type appears in a VideoFX public header. Without it the
@@ -3684,8 +3708,8 @@ FILE: Docs/GettingStarted.md
 
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.1
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -3835,9 +3859,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 
@@ -3861,6 +3887,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -3976,6 +4006,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 
 `Apps/MyApp/main.cpp`
 
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
+
 ```cpp
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
@@ -4066,10 +4098,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -4243,6 +4277,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>
@@ -4286,7 +4330,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 
@@ -4342,7 +4386,7 @@ platform leg, as a workflow artifact:
 | Artifact | Contents |
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
-| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
@@ -4398,9 +4442,17 @@ that opens a window and registers the formats. Copy it, rename it, start
 there. The imported targets and variables the package provides are listed at
 the top of `UltraCanvasConfig.cmake`.
 
-On Linux the shared core sits in `lib/`; run an application with that
+The core is a shared library on every platform, and the modules (UltraNet,
+UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
+inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
+to the core, which exports their whole API, so an application links nothing
+else. On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On Windows the core is
+the executable the way `package-linux.sh` does. On macOS it is
+`lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
+needs a run path to that directory (CMake writes one into a build-tree
+executable), or the dylib copied beside it the way `package-macos.sh` does
+into the suite's `Frameworks/`. On Windows the core is
 `bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
 the executable, which is what `package-win.sh` does for a release.
 
@@ -6695,11 +6747,10 @@ needs to know about an element, in a form that does not depend on the
 platform: its **role**, its **name**, for text a **text interface** (content,
 caret, selection, character boxes, formatting, words, lines, sentences) and an
 **event stream** saying what changed. A platform bridge hands this to the
-operating system, where screen readers find it: **AT-SPI** on Linux (Orca)
-and **UI Automation** on Windows (Narrator, NVDA, JAWS) - see
-[Platform bridges](#platform-bridges). There is no macOS bridge
-(NSAccessibility) yet. The same layer serves tests and in-application readers
-(read aloud, a braille panel).
+operating system, where screen readers find it: **AT-SPI** on Linux (Orca),
+**UI Automation** on Windows (Narrator, NVDA, JAWS) and **NSAccessibility** on
+macOS (VoiceOver) - see [Platform bridges](#platform-bridges). The same layer
+serves tests and in-application readers (read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
@@ -6708,15 +6759,50 @@ Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 ```cpp
 AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
 std::string name = element->GetAccessibleName();
+std::string help = element->GetAccessibleDescription();          // the tooltip by default
 IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
 bool secret = element->IsAccessiblePassword();        // false by default
+AccessibleToggleState state = element->GetAccessibleToggleState();   // NotToggleable, Off, On, Mixed
+AccessibleRange range;                                // value, minimum, maximum, step, readOnly
+bool hasValue = element->GetAccessibleRange(range);
+std::string value = element->GetAccessibleValueText();          // a combo box's item, a field's text
+std::string action = element->GetAccessibleActionName();        // "press", "toggle", "select" or ""
+element->DoAccessibleAction();                        // as a click would
+element->SetAccessibleValue(70);                      // a slider, a spin button
+element->SetAccessibleValueText("Ada");               // a text field
 ```
 
 An element describes itself by overriding these virtuals of
-`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` does: role `Document`, name
-the document's title (else the element's identifier), and a text interface
-over the whole document. `UltraCanvasTextInput` (and what is built on it) is a
-`TextField`, without a text interface yet.
+`UltraCanvasUIElement`. Whatever an element says, an application can name it
+and describe it: `SetAccessibleName("Bold")` for an icon button, or for a field
+whose label is a separate element; `SetAccessibleDescription(...)` for help
+beyond the tooltip.
+
+**What the widgets say.**
+
+| Element | Role | Name | Also |
+|---|---|---|---|
+| `UltraCanvasButton` | `Button` | text, else tooltip (icon button) | action *press*; a toggle button: toggle state, action *toggle* |
+| `UltraCanvasCheckbox` | `CheckBox` | label | toggle state (Mixed when indeterminate), action *toggle* |
+| `UltraCanvasRadio` | `RadioButton` | label | toggle state, action *select* |
+| `UltraCanvasSwitch` | `Switch` | label | toggle state, action *toggle* |
+| `UltraCanvasLabel` | `Label` | text | |
+| `UltraCanvasTextInput` | `TextField` | placeholder | value text = content (never in password mode), settable |
+| `UltraCanvasDropdown` | `ComboBox` | `SetAccessibleName` | value text = the shown selection |
+| `UltraCanvasSlider` | `Slider` | `SetAccessibleName` | range, settable (no single value in range mode) |
+| `UltraCanvasSpinner` | `SpinButton` | `SetAccessibleName` | range, settable; value text = what it shows |
+| `UltraCanvasBusyIndicator` | `ProgressBar` | `SetAccessibleName` | indeterminate (no range) |
+| `UltraCanvasGroupBox` | `Group` | title | |
+| `UltraCanvasTabbedContainer` | `TabList` | open tab's title | |
+| `UltraCanvasToolbar` | `Toolbar` | `SetAccessibleName` | its buttons are its children |
+| `UltraCanvasListView` / `UltraCanvasTreeView` | `List` / `Tree` | `SetAccessibleName` | rows and nodes are drawn, not elements: not yet reachable one by one |
+| `UltraCanvasImageElement` | `Image` | `SetAccessibleName` (its alt text) | |
+| `UltraCanvasMenu` | `Menu` | | items are drawn, not elements |
+| `UltraCanvasRichTextEdit` | `Document` | the document's title | the full text interface |
+
+A changed name, toggle state or value is announced (`NameChanged`,
+`StateChanged`, `ValueChanged`), so a screen reader hears it without the
+user moving.
 
 **Password fields.** `IsAccessiblePassword()` is true for a field whose content
 is a secret - `UltraCanvasTextInput` in password mode, whether or not its text
@@ -6826,14 +6912,51 @@ range differ). Focus, text and caret/selection changes raise the matching
 events. `UIAutomationCore.dll` is loaded at run time, and the bridge does
 nothing until a client sends the first `WM_GETOBJECT`.
 
+**Widgets on AT-SPI and UI Automation.** Toggle states become AT-SPI's
+checkable / checked / indeterminate (and pressed for a toggle button) and UI
+Automation's Toggle pattern (SelectionItem for a radio button). A range is
+AT-SPI's `Value` interface and UI Automation's RangeValue pattern, both
+settable. A value text is UI Automation's Value pattern; on AT-SPI a text
+field's or combo box's value is read through `Text`, the way Orca reads an
+entry. The default action is AT-SPI's `Action` interface (one action, its
+name) and UI Automation's Invoke pattern. Descriptions are AT-SPI's
+`Description` and UI Automation's `HelpText`. Changes become
+`StateChanged:checked`, `PropertyChange:accessible-value` and text
+insert/delete signals (AT-SPI) and property-changed events for ToggleState,
+IsSelected, RangeValue.Value, Value.Value and Name (UI Automation).
+
+**NSAccessibility (macOS)** - `OS/MacOS/UltraCanvasMacOSAccessibility`. A
+window's content view (`UltraCanvasView`) is the way in: its accessibility
+children are the window's elements, it hit-tests and reports the focused
+element, and every element is a `UCAccessibilityElement`
+(`NSAccessibilityElement`) kept for its lifetime. Roles map to AppKit roles
+(`Button` → AXButton, `CheckBox` → AXCheckBox, `Switch` → AXCheckBox/AXSwitch,
+`TextField` → AXTextField or AXSecureTextField for a password, `Document` →
+AXTextArea, `ComboBox` → AXPopUpButton, `Slider` → AXSlider, `SpinButton` →
+AXIncrementor, `ProgressBar` → AXProgressIndicator or AXBusyIndicator, ...).
+Elements that never described themselves are left out and their children
+lifted into their place. Label, help, value (toggle state as 0/1/2, range
+value, or the text), min/max, settable value, AXPress, increment/decrement,
+focus, frames in screen coordinates, and for text the parameterised
+attributes VoiceOver uses - character count, selected range and text,
+insertion-point line, string/line/range/style range/frame for a range or
+position - with NSString (UTF-16) ranges converted to the code points of
+`IAccessibleText`. Changes post the matching notifications (focused element,
+value, selected text, title, element destroyed). The bridge starts listening
+when VoiceOver first asks a window for its children.
+
 **Testing.** `Tests/AtspiBridgeTest` runs a libatspi client - the library Orca
 uses - against a test application on a private accessibility bus: the tree,
 names, roles, states, text, words, sentences, attributes, extents, hit
-testing, moving the caret, and the insert/delete events of typing. It is built
-when the `atspi-2` development package is installed and skips itself without a
-display or at-spi2-core. The UI Automation bridge has no automated test yet:
-so far it is compile-checked (MinGW GCC and Clang) but has not been run
-against Narrator, NVDA or JAWS.
+testing, moving the caret, the insert/delete events of typing, and the common
+widgets - pressing a button, ticking a checkbox, reading and setting a
+slider, reading a text field. It is built when the `atspi-2` development
+package is installed and skips itself without a display or at-spi2-core.
+`Tests/WidgetAccessibilityTest` checks every widget's answers headless. The
+UI Automation and NSAccessibility bridges have no automated test yet: they
+are compile-checked (UI Automation with MinGW GCC and Clang, NSAccessibility
+by the macOS CI build) but have not been run against Narrator, NVDA, JAWS or
+VoiceOver.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -9850,7 +9973,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBarChartElement.md
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
@@ -10093,7 +10216,9 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` / `HandleMouseUp` - track the left button
+- `HandleMouseDown` / `HandleMouseUp` - leave the left button to the parent
+  (the bar chart does not pan), so a chart in a scrolling or draggable
+  container does not swallow its clicks
 - `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples
@@ -14104,485 +14229,849 @@ boundary.
 FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
 ==============================================================================
 
-# UltraCanvas Checkbox Component Documentation
+# UltraCanvas Checkbox and Radio Button Documentation
 
 ## Overview
 
-The **UltraCanvasCheckbox** is an interactive checkbox component that provides multiple states and customizable appearance options. It supports standard checkboxes, tri-state checkboxes, toggle switches, and radio button styles within the UltraCanvas framework.
+This page documents the framework's two choice controls and the helper that
+makes radio buttons exclusive:
 
-**Version:** 1.1.0  
-**Last Modified:** 2024-12-19  
-**Author:** UltraCanvas Framework  
-**Header:** `include/UltraCanvasCheckbox.h`  
-**Implementation:** `core/UltraCanvasCheckbox.cpp`  
+- **`UltraCanvasCheckbox`**: a box with a label that is ticked and cleared
+  independently of any other control. It can also show a third,
+  *indeterminate* state (a dash), for a "select all" box whose items are only
+  partly selected.
+- **`UltraCanvasRadio`**: a round radio button with a label.
+- **`UltraCanvasRadioGroup`**: a plain object (not a UI element) that makes a
+  set of radios exclusive, so that checking one clears the others, and
+  reports which one is selected.
+
+Both controls derive from `UltraCanvasLabeledToggleBase`, which holds the
+label, the checked state, the callbacks, mouse and keyboard handling and
+content sizing. The on/off **switch** is a third class on the same base,
+`UltraCanvasSwitch`, documented in [UltraCanvasSwitch.md](UltraCanvasSwitch.md).
+The checkbox no longer has a switch or radio style: those are the separate
+classes.
+
+**Version:** 2.1.0
+**Last Modified:** 2026-10-07
+**Author:** UltraCanvas Framework
+**Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
+**Implementation:** `core/UltraCanvasCheckbox.cpp`, `core/UltraCanvasRadio.cpp`, `core/UltraCanvasLabeledToggleBase.cpp`
+**Demo:** `Apps/DemoApp/UltraCanvasCheckboxExamples.cpp`
 
 ## Features
 
-### Core Capabilities
-- **Three-state support**: Unchecked, Checked, and Indeterminate states
-- **Multiple styles**: Standard, Rounded, Switch, Radio, and Material Design
-- **Customizable appearance**: Colors, sizes, fonts, and visual effects
-- **Auto-sizing**: Automatic size calculation based on content
-- **Keyboard navigation**: Full keyboard support with Space and Enter keys
-- **Focus indication**: Visual focus ring for accessibility
-- **Event callbacks**: Comprehensive event handling system
-- **Hover effects**: Interactive hover states for better user feedback
+- **Checkbox states**: Unchecked, Checked and (optionally) Indeterminate, with
+  a click cycling through them
+- **Three box shapes**: square (`Standard`) or rounded corners (`Rounded`,
+  `Material`)
+- **Radio buttons** with a ring and a centre dot; clicking the selected radio
+  changes nothing
+- **Exclusive selection** through `UltraCanvasRadioGroup`, with a single
+  `onSelectionChanged` notification per change
+- **Callbacks** for every state change, fired for clicks and for changes made
+  in code alike
+- **Content sizing**: the natural size is the indicator plus the label
+- **Styling**: colours for every state, indicator size, border, corner radius,
+  label font and focus ring
+- **Disabled look**: a disabled control greys its indicator, mark and label
+  and ignores input
 
-## Class Definition
+## Which control to use
 
-### Main Class: `UltraCanvasCheckbox`
+| Need | Use |
+|---|---|
+| An option that is on or off, independent of the others | `UltraCanvasCheckbox` |
+| A parent box over a list of items, partly selected | `UltraCanvasCheckbox` with the Indeterminate state |
+| One choice out of a few, all visible at once | `UltraCanvasRadio` in an `UltraCanvasRadioGroup` |
+| A setting that takes effect immediately (on/off) | `UltraCanvasSwitch` |
+| One choice out of many, or a list that changes | a dropdown (`UltraCanvasDropdown`) |
+
+## Class Hierarchy
 
 ```cpp
 namespace UltraCanvas {
-    class UltraCanvasCheckbox : public UltraCanvasUIElement {
-        // Implementation details
-    };
+    class UltraCanvasLabeledToggleBase : public UltraCanvasUIElement { /* label, state, callbacks */ };
+    class UltraCanvasCheckbox : public UltraCanvasLabeledToggleBase { /* box, checkmark, dash */ };
+    class UltraCanvasRadio : public UltraCanvasLabeledToggleBase { /* ring, dot */ };
+    class UltraCanvasRadioGroup { /* not an element */ };
 }
 ```
 
-### Inheritance
-- **Base Class:** `UltraCanvasUIElement`
-- **Namespace:** `UltraCanvas`
+## Shared Toggle API
 
-## Enumerations
+Everything in this section is inherited by both the checkbox and the radio
+(and the switch).
 
 ### CheckedState
-Defines the three possible states of a checkbox:
 
 ```cpp
 enum class CheckedState {
-    Unchecked,      // Default unchecked state
-    Checked,        // Checked state
-    Indeterminate   // Partially checked state (for tree views)
+    Unchecked,
+    Checked,
+    Indeterminate  // Only checkbox uses this; radio/switch clamp to Unchecked.
 };
 ```
 
-### CheckboxStyle
-Defines the visual style variants:
+### State and label
 
 ```cpp
-enum class CheckboxStyle {
-    Standard,       // Default square checkbox
-    Rounded,        // Rounded corners
-    Switch,         // Toggle switch style
-    Radio,          // Radio button style (circular)
-    Material        // Material Design style
+class UltraCanvasLabeledToggleBase : public UltraCanvasUIElement {
+public:
+    void SetChecked(bool checked);                 // Checked or Unchecked
+    bool IsChecked() const;                        // true only for Checked (not Indeterminate)
+
+    virtual void SetCheckState(CheckedState state);
+    CheckedState GetCheckState() const;
+
+    virtual void Toggle();                         // Checked <-> Unchecked (the checkbox overrides it)
+
+    void SetText(const std::string& labelText);    // the label beside the indicator
+    std::string GetText() const;
 };
 ```
 
-## Visual Style Configuration
+`SetChecked` is `SetCheckState(Checked)` or `SetCheckState(Unchecked)`.
+Setting the state the control already has does nothing: no callback, no
+redraw.
 
-### CheckboxVisualStyle Structure
-
-The `CheckboxVisualStyle` structure provides comprehensive customization options:
+### Callbacks
 
 ```cpp
-struct CheckboxVisualStyle {
-    // Box appearance
-    Color boxColor = Colors::ButtonFace;
-    Color boxBorderColor = Colors::ButtonShadow;
-    Color boxHoverColor = Colors::SelectionHover;
-    Color boxPressedColor = Color(204, 228, 247, 255);
-    Color boxDisabledColor = Colors::LightGray;
-    
-    // Checkmark appearance
-    Color checkmarkColor = Colors::TextDefault;
-    Color checkmarkHoverColor = Colors::TextDefault;
-    Color checkmarkDisabledColor = Colors::TextDisabled;
-    
+std::function<void(CheckedState oldState, CheckedState newState)> onStateChanged;
+std::function<void()> onChecked;
+std::function<void()> onUnchecked;
+std::function<void()> onIndeterminate;
+```
+
+On every real change, `onStateChanged` runs first, then the one of
+`onChecked` / `onUnchecked` / `onIndeterminate` that matches the new state.
+They fire for a click **and** for a change made in code (`SetChecked`,
+`SetCheckState`, `Toggle`, a group's `SelectButton`), so code that writes a
+stored setting back into a control and also saves the setting from the
+callback has to tell the two apart, for instance with a "restoring" flag.
+
+`onStateChanged` is the one to use when the handler needs the new value:
+
+```cpp
+auto notify = std::make_shared<UltraCanvasCheckbox>("Notify", 10, 10, 260, 24, "Notify me of new mail");
+notify->onStateChanged = [](CheckedState oldState, CheckedState newState) {
+    bool enabled = (newState == CheckedState::Checked);
+    // ... store `enabled` ...
+};
+```
+
+On a radio that belongs to an `UltraCanvasRadioGroup`, `onChecked` is the
+group's: see [onChecked belongs to the group](#onchecked-belongs-to-the-group).
+
+### Shared visual fields
+
+The label, its font and the focus ring are set through a
+`LabeledToggleVisualStyle`, which each control's own visual style carries as
+its `base` member (`CheckboxVisualStyle::base`, `RadioVisualStyle::base`):
+
+```cpp
+struct LabeledToggleVisualStyle {
     // Text appearance
     Color textColor = Colors::TextDefault;
     Color textHoverColor = Colors::TextDefault;
     Color textDisabledColor = Colors::TextDisabled;
-    
+
     // Layout
-    float boxSize = 16.0f;
-    float borderWidth = 1.0f;
-    float cornerRadius = 2.0f;
-    float checkmarkThickness = 2.0f;
-    int textSpacing = 6;
-    
+    int textSpacing = 6;  // Space between indicator and label
+
     // Text styling
     std::string fontFamily = "Arial";
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
-    
-    // Effects
+
+    // Focus ring
     bool hasFocusRing = true;
     Color focusRingColor = Color(0, 120, 215, 128);
     float focusRingWidth = 2.0f;
 };
 ```
 
-## Constructor
+The label is drawn in `textHoverColor` while the pointer is over the control,
+so a custom `textColor` usually wants the same `textHoverColor`.
+
+### Sizing and placement
+
+The constructors follow the framework's element conventions:
+
+- **x, y**: when either is positive the control is placed absolutely at
+  (x, y); `-1, -1` (or `0, 0`) leaves it in the parent's layout flow.
+- **w, h**: a positive value fixes that axis; `-1` or `0` leaves it to the
+  content. The content width is 8 px, the indicator, `textSpacing`, the
+  label's width and 8 px again (no spacing without a label); the height is
+  the taller of the indicator and the label line, plus 8 px.
+
+Measuring the label needs the window's render context. A control that is laid
+out before it is in a window (a dialog built and laid out before it is shown)
+has nothing to measure against yet, so such dialogs give their toggles an
+explicit size, as UltraFiler's and UltraMail's settings dialogs do:
 
 ```cpp
-UltraCanvasCheckbox(
-    const std::string& identifier = "",
-    long id = 0,
-    long x = 0,
-    long y = 0,
-    long w = 150,
-    long h = 24,
-    const std::string& labelText = ""
-);
+auto box = std::make_shared<UltraCanvasCheckbox>("ShowHidden", "Show hidden files");
+box->size.width  = CSSLayout::Dimension::Px(320);
+box->size.height = CSSLayout::Dimension::Px(26);
 ```
 
-### Parameters
-- `identifier`: Unique string identifier for the checkbox
-- `id`: Numeric ID for the checkbox
-- `x`, `y`: Position coordinates
-- `w`, `h`: Width and height (can be 0 for auto-sizing)
-- `labelText`: Optional label text to display next to the checkbox
+## UltraCanvasCheckbox
 
-## Public Methods
-
-### State Management
-
-#### SetChecked
-```cpp
-void SetChecked(bool checked);
-```
-Sets the checkbox to checked or unchecked state.
-
-#### IsChecked
-```cpp
-bool IsChecked() const;
-```
-Returns true if the checkbox is in the checked state.
-
-#### SetCheckState
-```cpp
-void SetCheckState(CheckedState state);
-```
-Sets the checkbox to a specific state (Unchecked, Checked, or Indeterminate).
-
-#### GetCheckState
-```cpp
-CheckedState GetCheckState() const;
-```
-Returns the current state of the checkbox.
-
-#### SetIndeterminate
-```cpp
-void SetIndeterminate(bool indeterminate);
-```
-Sets the checkbox to the indeterminate state (if allowed).
-
-#### IsIndeterminate
-```cpp
-bool IsIndeterminate() const;
-```
-Returns true if the checkbox is in the indeterminate state.
-
-#### SetAllowIndeterminate
-```cpp
-void SetAllowIndeterminate(bool allow);
-```
-Enables or disables tri-state functionality.
-
-#### Toggle
-```cpp
-void Toggle();
-```
-Toggles the checkbox between states based on current state and tri-state setting.
-
-### Appearance Configuration
-
-#### SetText
-```cpp
-void SetText(const std::string& labelText);
-```
-Sets the label text displayed next to the checkbox.
-
-#### GetText
-```cpp
-std::string GetText() const;
-```
-Returns the current label text.
-
-#### SetStyle
-```cpp
-void SetStyle(CheckboxStyle newStyle);
-```
-Sets the visual style of the checkbox.
-
-#### SetVisualStyle
-```cpp
-void SetVisualStyle(const CheckboxVisualStyle& newStyle);
-```
-Sets the complete visual style configuration.
-
-#### SetBoxSize
-```cpp
-void SetBoxSize(float size);
-```
-Sets the size of the checkbox box in pixels.
-
-#### SetColors
-```cpp
-void SetColors(const Color& box, const Color& checkmark, const Color& text);
-```
-Sets the primary colors for the checkbox components.
-
-#### SetFont
-```cpp
-void SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
-```
-Configures the font settings for the label text.
-
-#### SetAutoSize
-```cpp
-void SetAutoSize(bool val);
-```
-Enables or disables automatic sizing based on content.
-
-## Event Callbacks
-
-The checkbox provides several callback functions for state changes:
+### Constructors and factory
 
 ```cpp
-// Called when state changes with old and new states
-std::function<void(CheckedState oldState, CheckedState newState)> onStateChanged;
+class UltraCanvasCheckbox : public UltraCanvasLabeledToggleBase {
+public:
+    // Placed (positive x, y) or in flow (-1, -1), with a fixed or content size
+    UltraCanvasCheckbox(const std::string& identifier,
+                        float x, float y, float w, float h,
+                        const std::string& labelText = "");
 
-// Called when checkbox becomes checked
-std::function<void()> onChecked;
+    // In the layout flow, with a fixed size
+    UltraCanvasCheckbox(const std::string& identifier,
+                        float w, float h,
+                        const std::string& labelText = "");
 
-// Called when checkbox becomes unchecked
-std::function<void()> onUnchecked;
+    // In the layout flow, content-sized
+    UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText);
+    explicit UltraCanvasCheckbox(const std::string& labelText = "");
 
-// Called when checkbox enters indeterminate state
-std::function<void()> onIndeterminate;
+    static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
+            const std::string& identifier,
+            float x, float y, float w, float h,
+            const std::string& text = "",
+            bool checked = false);
+};
 ```
 
-## Factory Methods
+There is no numeric id argument and no free `CreateCheckbox` function: the
+factory is the static member. A zero `w` or `h` passed to it leaves that axis
+content-sized.
 
-### CreateCheckbox
 ```cpp
-static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
-    const std::string& identifier, long id,
-    long x, long y, long w, long h,
-    const std::string& text = "",
-    bool checked = false
-);
-```
-Creates a standard checkbox with optional initial state.
+// Placed at (20, 20), fixed 200 x 24
+auto terms = std::make_shared<UltraCanvasCheckbox>("Terms", 20, 20, 200, 24, "I agree to the terms");
 
-### CreateSwitch
+// In a flex column, sized to its label
+auto autosave = std::make_shared<UltraCanvasCheckbox>("AutoSave", "Save automatically");
+
+// Factory: placed, content-sized, initially checked
+auto wrap = UltraCanvasCheckbox::CreateCheckbox("WordWrap", 20, 60, 0, 0, "Word wrap", true);
+```
+
+### The three states
+
 ```cpp
-static std::shared_ptr<UltraCanvasCheckbox> CreateSwitch(
-    const std::string& identifier, long id,
-    long x, long y,
-    const std::string& text = "",
-    bool checked = false
-);
-```
-Creates a toggle switch style checkbox.
+class UltraCanvasCheckbox : public UltraCanvasLabeledToggleBase {
+public:
+    void Toggle() override;                           // what a click does
 
-### CreateRadioButton
+    void SetAllowIndeterminate(bool allow);           // let a click reach Indeterminate
+    bool GetAllowIndeterminate() const;
+
+    void SetIndeterminate(bool indeterminate);        // only while indeterminate is allowed
+    bool IsIndeterminate() const;
+};
+```
+
+A click (or `Toggle()`) moves the box on as follows:
+
+| Current state | Indeterminate not allowed (default) | `SetAllowIndeterminate(true)` |
+|---|---|---|
+| Unchecked | Checked | Checked |
+| Checked | Unchecked | Indeterminate |
+| Indeterminate | Unchecked | Unchecked |
+
+Setting the state in code:
+
+- `SetCheckState(CheckedState::Indeterminate)` shows the dash whatever
+  `SetAllowIndeterminate` says. This is the usual way for a "select all" box:
+  code sets the dash when only some items are selected, and the user's clicks
+  still go only between checked and unchecked.
+- `SetIndeterminate(true)` sets Indeterminate and `SetIndeterminate(false)`
+  sets **Unchecked** (not the state before), and both do nothing unless
+  indeterminate is allowed.
+- `IsChecked()` is false for an indeterminate box; test
+  `GetCheckState()` or `IsIndeterminate()` for the dash.
+
+### Appearance
+
+#### CheckboxStyle
+
 ```cpp
-static std::shared_ptr<UltraCanvasCheckbox> CreateRadioButton(
-    const std::string& identifier, long id,
-    long x, long y,
-    const std::string& text = "",
-    bool checked = false
-);
+enum class CheckboxStyle {
+    Standard,   // Default square checkbox
+    Rounded,    // Rounded corners
+    Material    // Material Design (rounded with material colors)
+};
 ```
-Creates a radio button style checkbox.
 
-## Radio Button Group Management
+`Standard` draws square corners and ignores `cornerRadius`; `Rounded` and
+`Material` round the box by `cornerRadius`. `Material` does not change any
+colour by itself: set `boxColor` and `checkmarkColor` as well (the demo uses
+blue `Color(33, 150, 243, 255)` with a white checkmark).
 
-### UltraCanvasRadioGroup Class
+#### CheckboxVisualStyle
 
-A helper class for managing groups of radio buttons:
+```cpp
+struct CheckboxVisualStyle {
+    LabeledToggleVisualStyle base;
+
+    // Box appearance
+    Color boxColor = Colors::ButtonFace;
+    Color boxBorderColor = Colors::ButtonShadow;
+    Color boxHoverColor = Colors::SelectionHover;
+    Color boxPressedColor = Color(204, 228, 247, 255);
+    Color boxDisabledColor = Colors::ControlDisabled;
+    Color boxBorderDisabledColor = Colors::ControlDisabledBorder;
+
+    // Checkmark appearance
+    Color checkmarkColor = Colors::TextDefault;
+    Color checkmarkHoverColor = Colors::TextDefault;
+    Color checkmarkDisabledColor = Colors::TextDisabled;
+
+    // Layout
+    float boxSize = 16.0f;
+    float borderWidth = 1.0f;
+    float cornerRadius = 2.0f;
+    float checkmarkThickness = 2.0f;
+};
+```
+
+The box takes `boxHoverColor` under the pointer and `boxPressedColor` while
+the mouse button is held on it. A disabled box uses the two disabled colours,
+which are lighter than the normal ones, so a control that cannot be used
+recedes. `checkmarkThickness` is the line width of the tick and the height of
+the indeterminate dash.
+
+#### Appearance methods
+
+```cpp
+class UltraCanvasCheckbox : public UltraCanvasLabeledToggleBase {
+public:
+    void SetStyle(CheckboxStyle newStyle);
+    CheckboxStyle GetStyle() const;
+
+    void SetVisualStyle(const CheckboxVisualStyle& s);
+    CheckboxVisualStyle& GetVisualStyle();
+    const CheckboxVisualStyle& GetVisualStyle() const;
+
+    void SetBoxSize(float size);
+    float GetBoxSize() const;
+
+    // Box fill, tick colour and label colour (base.textColor; not the hover colour)
+    void SetColors(const Color& box, const Color& checkmark, const Color& text);
+    void SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
+    void SetFontSize(float size);
+};
+```
+
+`SetVisualStyle`, `SetStyle`, `SetBoxSize`, `SetFont` and `SetFontSize`
+re-measure and redraw the control. Writing through the reference that
+`GetVisualStyle()` returns does neither, which is fine before the control is
+first laid out; on a control that is already shown, copy the style, change
+the copy and hand it to `SetVisualStyle`.
+
+## UltraCanvasRadio
+
+A radio draws a ring and, when checked, a dot in it. On its own a radio only
+checks itself; put the radios of one question in an
+[`UltraCanvasRadioGroup`](#ultracanvasradiogroup) so that checking one clears
+the others.
+
+### Constructors and factory
+
+```cpp
+class UltraCanvasRadio : public UltraCanvasLabeledToggleBase {
+public:
+    UltraCanvasRadio(const std::string& identifier,
+                     float x, float y, float w, float h,
+                     const std::string& labelText = "");
+    UltraCanvasRadio(const std::string& identifier,
+                     float w, float h,
+                     const std::string& labelText = "");
+    UltraCanvasRadio(const std::string& identifier, const std::string& labelText);
+    explicit UltraCanvasRadio(const std::string& labelText = "");
+
+    // Content-sized; a positive x, y places it, -1, -1 leaves it in the flow
+    static std::shared_ptr<UltraCanvasRadio> Create(
+            const std::string& identifier,
+            float x, float y,
+            const std::string& text = "",
+            bool checked = false);
+};
+```
+
+The factory is `UltraCanvasRadio::Create`. There is no `CreateRadioButton`,
+and no radio style on the checkbox.
+
+```cpp
+auto low  = UltraCanvasRadio::Create("QualityLow", 20, 20, "Low quality");
+auto high = UltraCanvasRadio::Create("QualityHigh", 20, 50, "High quality", true);
+auto inFlow = std::make_shared<UltraCanvasRadio>("QualityAuto", "Automatic");
+```
+
+### Behaviour
+
+- A click checks the radio. Clicking a radio that is already checked changes
+  nothing: a radio is cleared by checking another one in its group, or in
+  code.
+- `SetCheckState(CheckedState::Indeterminate)` is turned into Unchecked;
+  radios have only two states.
+- `Toggle()`, inherited from the base, *does* clear a checked radio. To select
+  a radio in code use `SetChecked(true)` or the group's `SelectButton`.
+
+### RadioVisualStyle
+
+```cpp
+struct RadioVisualStyle {
+    LabeledToggleVisualStyle base;
+
+    // Outer circle (the ring)
+    Color outerColor = Colors::ButtonFace;
+    Color outerBorderColor = Colors::ButtonShadow;
+    Color outerHoverColor = Colors::SelectionHover;
+    Color outerPressedColor = Color(204, 228, 247, 255);
+    Color outerDisabledColor = Colors::ControlDisabled;
+    Color outerBorderDisabledColor = Colors::ControlDisabledBorder;
+
+    // Inner dot (visible when checked)
+    Color innerDotColor = Colors::TextDefault;
+    Color innerDotDisabledColor = Colors::TextDisabled;
+
+    // Layout
+    float boxSize = 16.0f;       // Diameter of outer circle
+    float borderWidth = 1.0f;
+    float dotInsetRatio = 0.3f;  // Inner dot radius = (boxSize/2) * (1 - 2*dotInsetRatio)
+};
+```
+
+```cpp
+class UltraCanvasRadio : public UltraCanvasLabeledToggleBase {
+public:
+    void SetVisualStyle(const RadioVisualStyle& s);
+    RadioVisualStyle& GetVisualStyle();
+    const RadioVisualStyle& GetVisualStyle() const;
+
+    void SetBoxSize(float size);    // ring diameter
+    float GetBoxSize() const;
+};
+```
+
+The radio has no `SetFont` or `SetColors`: its label font and colours are in
+`base`. The settings dialogs style their radios like this:
+
+```cpp
+auto radio = UltraCanvasRadio::Create("ViewHtml", -1, -1, "Show HTML", true);
+RadioVisualStyle style = radio->GetVisualStyle();
+style.base.fontSize       = 13.0f;
+style.base.textColor      = Color(30, 30, 30, 255);
+style.base.textHoverColor = Color(30, 30, 30, 255);
+radio->SetVisualStyle(style);
+```
+
+## UltraCanvasRadioGroup
 
 ```cpp
 class UltraCanvasRadioGroup {
 public:
-    void AddRadioButton(std::shared_ptr<UltraCanvasCheckbox> button);
-    void RemoveRadioButton(std::shared_ptr<UltraCanvasCheckbox> button);
-    void SelectButton(std::shared_ptr<UltraCanvasCheckbox> button);
-    std::shared_ptr<UltraCanvasCheckbox> GetSelectedButton() const;
+    UltraCanvasRadioGroup() = default;
+    ~UltraCanvasRadioGroup();
+
+    void AddRadioButton(std::shared_ptr<UltraCanvasRadio> button);
+    void RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button);
+    void SelectButton(std::shared_ptr<UltraCanvasRadio> button);
+    std::shared_ptr<UltraCanvasRadio> GetSelectedButton() const;
     void ClearSelection();
-    
-    // Callback for selection changes
-    std::function<void(std::shared_ptr<UltraCanvasCheckbox>)> onSelectionChanged;
+
+    std::function<void(std::shared_ptr<UltraCanvasRadio>)> onSelectionChanged;
 };
 ```
 
-## Event Handling
+### How the selection works
 
-The checkbox responds to the following events:
+- **`AddRadioButton`** appends the radio (a null pointer is ignored) and
+  installs the group's handler in the radio's `onChecked`. From then on a
+  click on the radio, or `SetChecked(true)` on it in code, selects it in the
+  group. A radio that is already checked when it is added becomes the
+  selection, and any member checked before it is cleared: the last checked
+  radio added wins, as in an HTML radio group. `onSelectionChanged` is not
+  called for it.
+- **`SelectButton`** makes a member the selection: it checks it, clears
+  every other member and calls `onSelectionChanged` with it, once. A radio
+  that is not in the group, or a null pointer, is ignored; selecting the
+  radio that is already selected and checked does nothing and reports
+  nothing.
+- **`GetSelectedButton`** returns the selected radio, or null.
+- **`ClearSelection`** clears every member and calls
+  `onSelectionChanged(nullptr)`, so a handler must allow for a null radio.
+- **`RemoveRadioButton`** takes the radio out of the group and takes the
+  group's handler back from it (see [Lifetime](#lifetime-and-ownership)). If
+  it was the selection, the group has none afterwards. The radio keeps its
+  checked state, and `onSelectionChanged` is not called.
 
-### Mouse Events
-- **MouseDown**: Initiates checkbox press state
-- **MouseUp**: Toggles checkbox if released over the control
-- **MouseMove**: Updates hover state
-- **MouseEnter/Leave**: Manages hover highlighting
+**The initial selection.** Create the initial choice checked
+(`UltraCanvasRadio::Create(..., true)`) and add it: the group adopts it
+without reporting a change. Or call `SelectButton` on it after adding the
+radios; that one is reported, so assign `onSelectionChanged` after it if
+building the dialog should not count as a change.
 
-### Keyboard Events
-- **Space/Enter**: Toggles the checkbox state
-- **Tab**: Navigation between controls
+A group serves one question, and a radio belongs to one group: adding it to a
+second group hands its clicks to the second one.
 
-### Focus Events
-- **FocusGained/Lost**: Shows/hides focus ring
+### onChecked belongs to the group
 
-## Rendering Details
+The group listens to its radios through their `onChecked` callback, so on a
+grouped radio that slot is taken:
 
-### Drawing Components
+- an `onChecked` assigned **before** `AddRadioButton` is replaced by the
+  group's handler;
+- an `onChecked` assigned **after** it replaces the group's handler, and the
+  radio then no longer clears the others when clicked.
 
-The checkbox rendering consists of several components:
+React to the choice with the group's `onSelectionChanged`. A radio's own
+`onStateChanged` and `onUnchecked` stay free for the application.
 
-1. **Checkbox Box**: The main square/rounded container
-2. **Checkmark**: Drawn as two connected lines forming a check
-3. **Indeterminate Mark**: Horizontal line in the middle
-4. **Label Text**: Optional text displayed beside the checkbox
-5. **Focus Ring**: Visual indicator when keyboard focused
+### Lifetime and ownership
 
-### Render Order
-1. Background box with border
-2. Checkmark or indeterminate mark (if applicable)
-3. Label text
-4. Focus ring (if focused)
+The group is **not an element and is not owned by its radios**. The
+handler it installs in a radio's `onChecked` refers to the group, and to the
+radio, by plain pointers, so a radio keeps neither its group nor itself
+alive. The group does hold `shared_ptr`s to its radios: it keeps them alive,
+not the other way round. The rules:
+
+- **Keep the group alive for as long as the selection should work**: make it
+  a member of the window, dialog or container that holds the radios (a plain
+  member, as in UltraFiler, UltraMail and UltraCanvasStart, or a
+  `std::shared_ptr` member, as in the demo). A group that is a local variable
+  of the function building the page is destroyed when that function returns.
+- **If the group goes first**, its destructor takes back the `onChecked`
+  handler it installed on each radio. A radio clicked afterwards only checks
+  itself: the others are not cleared, and nothing reports the change. This is
+  safe (no handler is left pointing at the destroyed group), but the radios
+  are no longer exclusive.
+- **`RemoveRadioButton` takes the handler back too**, so a removed radio is
+  an independent radio again.
+- **Only the group's own handler is taken back.** An `onChecked` that the
+  application assigned after `AddRadioButton` (which replaced the group's)
+  stays when the group goes or the radio is removed.
+- **Moving a group hands its radios' clicks to the new object**, and the
+  moved-from group is left with no radios. A group can therefore be returned from a
+  function or kept in a `std::vector`, which moves its elements when it
+  grows. Move-assigning into a group first takes back the handlers of the
+  radios it held before.
+- **A copy lists the same radios, but their clicks stay with the original.**
+  The copy has the same radios, selection and `onSelectionChanged`, but a
+  click still reaches only the original group, and once the original is
+  destroyed the radios stop being exclusive even though the copy still lists
+  them. Hold a group by value in one place, or by reference or pointer, rather
+  than copying it. Copy-assigning into a group first takes back the handlers
+  of the radios it held before.
+
+The radios themselves are owned like any element, by the container they are
+added to (`AddChild`). The group is only a second owner.
+
+## Mouse and Keyboard
+
+- **Mouse**: pressing the button anywhere on the control (indicator or label)
+  shows the pressed colour, and releasing it over the control activates it: a
+  checkbox moves to its next state, a radio checks itself. Releasing outside
+  cancels. A quick second click counts as a click. The indicator takes its
+  hover colour, and the label `textHoverColor`, while the pointer is over the
+  control.
+- **Keyboard**: checkboxes, radios and switches take the keyboard focus like
+  buttons: Tab reaches them and a press focuses them. Space activates the
+  focused control, and the focus ring (`base.hasFocusRing`, a rectangle
+  around the box or a circle around the ring) is drawn while it has the
+  focus. Enter is left to the window, so in a dialog it still presses the
+  default button. `SetAcceptsFocus(false)` keeps a control out of the Tab
+  order.
+- **Disabled or hidden**: a control for which `SetDisabled(true)` was called,
+  or that is not visible, ignores all input. A disabled control still
+  accepts `SetChecked` from code and draws its state in the disabled colours.
 
 ## Usage Examples
 
-### Basic Checkbox
+### Basic checkbox enabling a button
+
 ```cpp
-auto checkbox = std::make_shared<UltraCanvasCheckbox>(
-    "AgreeCheckbox", 1001, 10, 10, 200, 24, "I agree to terms"
-);
-checkbox->SetChecked(false);
-checkbox->onChecked = []() {
-    std::cerr << "User agreed to terms" << std::endl;
+auto agree = std::make_shared<UltraCanvasCheckbox>("AgreeTerms", 20, 20, 240, 24, "I agree to the terms");
+auto okButton = CreateButton("OkButton", 20, 60, 100, 30, "Continue");
+okButton->SetDisabled(true);
+
+agree->onStateChanged = [okButton](CheckedState, CheckedState now) {
+    okButton->SetDisabled(now != CheckedState::Checked);
+};
+
+container->AddChild(agree);
+container->AddChild(okButton);
+```
+
+### "Select all" with an indeterminate parent
+
+The parent shows a dash while only some items are checked. Code sets the
+dash; the parent's own clicks only check or clear everything, because
+`SetAllowIndeterminate` is left off. A flag stops the two directions from
+feeding each other.
+
+```cpp
+// Raw pointers: the boxes' callbacks refer to each other, and shared_ptrs
+// both ways would keep every box alive for good. The container owns them.
+std::vector<UltraCanvasCheckbox*> rows;
+for (int i = 0; i < 3; ++i) {
+    auto row = std::make_shared<UltraCanvasCheckbox>("Item" + std::to_string(i),
+            50, 50 + 26.0f * i, 220, 24, "Item " + std::to_string(i + 1));
+    container->AddChild(row);
+    rows.push_back(row.get());
+}
+
+auto selectAll = std::make_shared<UltraCanvasCheckbox>("SelectAll", 20, 20, 240, 24, "Select all");
+container->AddChild(selectAll);
+auto syncing = std::make_shared<bool>(false);
+
+// Parent to items: a click on "Select all" checks or clears every item.
+selectAll->onStateChanged = [rows, syncing](CheckedState, CheckedState now) {
+    if (*syncing || now == CheckedState::Indeterminate) return;
+    *syncing = true;
+    for (auto* row : rows) row->SetChecked(now == CheckedState::Checked);
+    *syncing = false;
+};
+
+// Items to parent: all, none, or some.
+for (auto* row : rows) {
+    row->onStateChanged = [rows, syncing, parent = selectAll.get()](CheckedState, CheckedState) {
+        if (*syncing) return;
+        size_t checked = 0;
+        for (auto* r : rows) checked += r->IsChecked() ? 1 : 0;
+        *syncing = true;
+        parent->SetCheckState(checked == 0 ? CheckedState::Unchecked
+                            : checked == rows.size() ? CheckedState::Checked
+                            : CheckedState::Indeterminate);
+        *syncing = false;
+    };
+}
+```
+
+A click on the parent while it shows the dash clears it, and with it every
+item (the table in [The three states](#the-three-states)).
+
+### Tri-state cycling
+
+With indeterminate allowed, the user's clicks go through all three states,
+for a "yes / no / don't change" setting:
+
+```cpp
+auto bold = std::make_shared<UltraCanvasCheckbox>("ApplyBold", 20, 20, 220, 24, "Bold");
+bold->SetAllowIndeterminate(true);
+bold->SetIndeterminate(true);            // start at "leave as it is"
+bold->onIndeterminate = []() { /* keep each selection's own weight */ };
+bold->onChecked = []() { /* make everything bold */ };
+bold->onUnchecked = []() { /* make everything regular */ };
+```
+
+### Custom styling
+
+```cpp
+auto styled = std::make_shared<UltraCanvasCheckbox>("Styled", 20, 20, 240, 32, "Custom styled");
+styled->SetStyle(CheckboxStyle::Rounded);
+
+CheckboxVisualStyle style = styled->GetVisualStyle();
+style.boxSize = 20.0f;
+style.cornerRadius = 4.0f;
+style.boxColor = Color(240, 240, 255, 255);
+style.boxBorderColor = Color(100, 100, 200, 255);
+style.checkmarkColor = Color(0, 150, 0, 255);
+style.base.fontSize = 14.0f;
+style.base.fontWeight = FontWeight::Bold;
+styled->SetVisualStyle(style);
+
+// The shortcuts for the common cases
+auto large = std::make_shared<UltraCanvasCheckbox>("Large", 20, 60, 260, 40, "Large");
+large->SetBoxSize(28.0f);
+large->SetFont("Arial", 16.0f, FontWeight::Bold);
+large->SetColors(Color(255, 240, 240, 255),   // box
+                 Color(200, 0, 0, 255),       // tick
+                 Color(60, 60, 60, 255));     // label
+```
+
+### A radio group in a dialog class
+
+The group is a member of the dialog, so it lives exactly as long as the
+radios it serves. This is the pattern of the UltraFiler, UltraMail and
+UltraCanvasStart settings pages.
+
+```cpp
+class ExportDialog {
+public:
+    void Build(UltraCanvasContainer* body) {
+        pngRadio  = UltraCanvasRadio::Create("ExportPng", -1, -1, "PNG");
+        jpegRadio = UltraCanvasRadio::Create("ExportJpeg", -1, -1, "JPEG");
+        svgRadio  = UltraCanvasRadio::Create("ExportSvg", -1, -1, "SVG");
+
+        formatGroup.AddRadioButton(pngRadio);
+        formatGroup.AddRadioButton(jpegRadio);
+        formatGroup.AddRadioButton(svgRadio);
+        formatGroup.SelectButton(pngRadio);    // the initial choice
+
+        // Assigned after the initial choice, so building is not a change.
+        // `this` is captured raw: the dialog owns the group.
+        formatGroup.onSelectionChanged = [this](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected) return;             // ClearSelection reports nullptr
+            format = selected == svgRadio  ? "svg"
+                   : selected == jpegRadio ? "jpeg"
+                                           : "png";
+        };
+
+        body->AddChild(pngRadio);
+        body->AddChild(jpegRadio);
+        body->AddChild(svgRadio);
+    }
+
+    // Shows a stored choice. SelectButton reports it through
+    // onSelectionChanged unless it already was the selection.
+    void Show(const std::string& stored) {
+        formatGroup.SelectButton(stored == "svg"  ? svgRadio
+                               : stored == "jpeg" ? jpegRadio
+                                                  : pngRadio);
+    }
+
+private:
+    std::shared_ptr<UltraCanvasRadio> pngRadio, jpegRadio, svgRadio;
+    UltraCanvasRadioGroup formatGroup;         // as long-lived as the dialog
+    std::string format = "png";
 };
 ```
 
-### Tri-State Checkbox
+### A radio group on a page built by a function
+
+When a function builds the page and returns it, the page must own the group.
+The demo does this with a small container subclass:
+
 ```cpp
-auto triStateBox = std::make_shared<UltraCanvasCheckbox>(
-    "SelectAll", 2001, 10, 50, 200, 24, "Select All Items"
-);
-triStateBox->SetAllowIndeterminate(true);
-triStateBox->SetCheckState(CheckedState::Indeterminate);
-triStateBox->onStateChanged = [](CheckedState oldState, CheckedState newState) {
-    std::cerr << "State changed from " << (int)oldState 
-              << " to " << (int)newState << std::endl;
+class ThemePage : public UltraCanvasContainer {
+public:
+    ThemePage() : UltraCanvasContainer("ThemePage", 0, 0, 400, 120) {}
+    UltraCanvasRadioGroup themeGroup;   // lives as long as the page and its radios
 };
+
+std::shared_ptr<UltraCanvasContainer> BuildThemePage() {
+    auto page = std::make_shared<ThemePage>();
+    auto light = UltraCanvasRadio::Create("ThemeLight", 20, 20, "Light", true);
+    auto dark  = UltraCanvasRadio::Create("ThemeDark", 20, 50, "Dark");
+    auto status = CreateLabel("ThemeStatus", 200, 20, 180, 24, "Theme: Light");
+
+    page->themeGroup.AddRadioButton(light);
+    page->themeGroup.AddRadioButton(dark);
+    page->themeGroup.SelectButton(light);
+    page->themeGroup.onSelectionChanged =
+            [label = status.get()](std::shared_ptr<UltraCanvasRadio> selected) {
+        if (selected) label->SetText("Theme: " + selected->GetText());
+    };
+
+    page->AddChild(light);
+    page->AddChild(dark);
+    page->AddChild(status);
+    return page;
+}
 ```
 
-### Toggle Switch
+The mistake this avoids, a group that dies with the function that built it:
+
 ```cpp
-auto toggleSwitch = UltraCanvasCheckbox::CreateSwitch(
-    "NotificationSwitch", 3001, 10, 100, "Enable Notifications", true
-);
-toggleSwitch->onChecked = []() {
-    std::cerr << "Notifications enabled" << std::endl;
-};
-toggleSwitch->onUnchecked = []() {
-    std::cerr << "Notifications disabled" << std::endl;
-};
+void BuildSizeChoice(UltraCanvasContainer* page) {
+    UltraCanvasRadioGroup sizeGroup;                 // destroyed at the closing brace
+    auto small = UltraCanvasRadio::Create("SizeSmall", 20, 20, "Small", true);
+    auto large = UltraCanvasRadio::Create("SizeLarge", 20, 50, "Large");
+    sizeGroup.AddRadioButton(small);
+    sizeGroup.AddRadioButton(large);
+    page->AddChild(small);
+    page->AddChild(large);
+}   // the group takes its handlers back here: each radio now only checks itself
 ```
 
-### Radio Button Group
+### Groups in a container
+
+Groups can live in a `std::vector`. When the vector grows it moves them, and
+each radio's clicks follow its group to the new place:
+
 ```cpp
-auto radioGroup = std::make_shared<UltraCanvasRadioGroup>();
-
-auto radio1 = UltraCanvasCheckbox::CreateRadioButton(
-    "Option1", 4001, 10, 150, "Option 1", true
-);
-auto radio2 = UltraCanvasCheckbox::CreateRadioButton(
-    "Option2", 4002, 10, 180, "Option 2", false
-);
-auto radio3 = UltraCanvasCheckbox::CreateRadioButton(
-    "Option3", 4003, 10, 210, "Option 3", false
-);
-
-radioGroup->AddRadioButton(radio1);
-radioGroup->AddRadioButton(radio2);
-radioGroup->AddRadioButton(radio3);
-
-radioGroup->onSelectionChanged = [](auto selected) {
-    std::cerr << "Selected: " << selected->GetText() << std::endl;
-};
+std::vector<UltraCanvasRadioGroup> questions;
+for (int q = 0; q < 3; ++q) {
+    questions.emplace_back();     // may move the earlier groups: still fine
+    auto yes = UltraCanvasRadio::Create("Q" + std::to_string(q) + "Yes", 20, 20 + 60.0f * q, "Yes");
+    auto no  = UltraCanvasRadio::Create("Q" + std::to_string(q) + "No", 120, 20 + 60.0f * q, "No");
+    questions.back().AddRadioButton(yes);
+    questions.back().AddRadioButton(no);
+    container->AddChild(yes);
+    container->AddChild(no);
+}
 ```
 
-### Custom Styling
-```cpp
-auto customCheckbox = std::make_shared<UltraCanvasCheckbox>(
-    "CustomBox", 5001, 10, 250, 200, 30, "Custom Styled"
-);
+As above, the vector itself must outlive the radios' use, typically as a
+member of the window.
 
-CheckboxVisualStyle customStyle;
-customStyle.boxSize = 20.0f;
-customStyle.boxColor = Color(240, 240, 255, 255);
-customStyle.boxBorderColor = Color(100, 100, 200, 255);
-customStyle.checkmarkColor = Color(0, 150, 0, 255);
-customStyle.fontSize = 14.0f;
-customStyle.fontWeight = FontWeight::Bold;
-customStyle.cornerRadius = 4.0f;
+## Rendering Details
 
-customCheckbox->SetVisualStyle(customStyle);
-customCheckbox->SetStyle(CheckboxStyle::Rounded);
-```
+Each control draws, in this order:
+
+1. **The indicator**, at 4 px from the left and centred vertically:
+   - checkbox: the box, filled and bordered in the colours of the current
+     state, with square corners for `Standard` and `cornerRadius` for the
+     other two styles; then the tick (three points joined by a line of
+     `checkmarkThickness`) when checked, or a horizontal dash when
+     indeterminate;
+   - radio: the ring, and the dot when checked.
+2. **The label**, `textSpacing` px to the right of the indicator, centred
+   vertically, in the colour for the current state.
+3. **The focus ring**, when the control has the focus and `hasFocusRing` is
+   set.
 
 ## Best Practices
 
-### Accessibility
-1. Always provide descriptive label text
-2. Ensure adequate contrast ratios for colors
-3. Maintain minimum touch target sizes (44x44 pixels for mobile)
-4. Support keyboard navigation
+1. Give every checkbox and radio a label: a click on the label activates the
+   control, which makes it a much larger target than the 16 px indicator.
+2. Make the group a member of whatever owns the radios, never a local
+   variable of a builder function.
+3. Create the initial radio checked, or select it with `SelectButton` before
+   assigning `onSelectionChanged`.
+4. Do not assign `onChecked` on a grouped radio; use the group's
+   `onSelectionChanged`.
+5. A toggle's callback must not hold a `std::shared_ptr` to the toggle
+   itself or to a container above it; capture those raw. Two toggles whose
+   callbacks refer to each other (the "select all" example) capture each
+   other raw too.
+6. For a setting that applies immediately, prefer `UltraCanvasSwitch`; a
+   checkbox suits options confirmed with OK or Apply.
 
-### Performance
-1. Use auto-sizing sparingly for large numbers of checkboxes
-2. Cache visual styles when creating multiple similar checkboxes
-3. Batch state changes when updating multiple checkboxes
+## See Also
 
-### User Experience
-1. Provide immediate visual feedback on interaction
-2. Use indeterminate state for parent checkboxes in hierarchical selections
-3. Group related checkboxes visually
-4. Consider using switches for on/off settings instead of checkboxes
+- [UltraCanvasSwitch](UltraCanvasSwitch.md) - the on/off switch, on the same toggle base
+- [UltraCanvasGroupBox](UltraCanvasGroupBoxExamples.md) - frames a set of radios or checkboxes, and can be checkable itself
+- [UltraCanvasUIElements](UltraCanvasUIElements.md) - which element to use for what
+- Demo: `Apps/DemoApp/UltraCanvasCheckboxExamples.cpp`
 
-## Implementation Status
+## Version History
 
-**Current Version:** 1.1.0  
-**Status:** Fully Implemented  
-**Platform Support:** Windows, Linux, macOS  
-
-### Implemented Features
-- ✅ Basic checkbox functionality
-- ✅ Tri-state support
-- ✅ Multiple visual styles
-- ✅ Keyboard navigation
-- ✅ Mouse interaction
-- ✅ Focus management
-- ✅ Auto-sizing
-- ✅ Custom styling
-- ✅ Event callbacks
-- ✅ Radio button groups
-
-### Future Enhancements
-- Animation support for state transitions
-- Additional Material Design animations
-- Custom checkmark shapes
-- Theme preset support
-- Right-to-left (RTL) layout support
-
-## Related Components
-
-- **UltraCanvasRadioGroup**: Manages exclusive selection among radio buttons
-- **UltraCanvasButton**: Alternative interaction component
-- **UltraCanvasSwitch**: Dedicated toggle switch component (planned)
-- **UltraCanvasTreeView**: Uses checkboxes for multi-selection
-
-## File Locations
-
-- **Header:** `UltraCanvas/include/UltraCanvasCheckbox.h`
-- **Implementation:** `UltraCanvas/core/UltraCanvasCheckbox.cpp`
-- **Examples:** `Apps/DemoApp/UltraCanvasCheckboxExamples.cpp`
-- **Documentation:** `Docs/UltraCanvasCheckbox.md`
+- **2.1.0** (2026-10-07): the toggles take the keyboard focus (Space
+  activates, Enter is left to the dialog); a radio added to a group already
+  checked becomes its selection.
+- **2.0.0** (2026-10-07): Rewritten for the current API. The checkbox is one
+  class of three on `UltraCanvasLabeledToggleBase`; the radio
+  (`UltraCanvasRadio`, factory `UltraCanvasRadio::Create`) and the switch
+  (`UltraCanvasSwitch`) are separate classes, and the checkbox's `Switch` and
+  `Radio` styles, `CreateSwitch`, `CreateRadioButton` and `SetAutoSize` are
+  gone. Constructors and `CreateCheckbox` take `float` geometry and no numeric
+  id. The label, font and focus-ring fields moved to
+  `LabeledToggleVisualStyle` (`CheckboxVisualStyle::base`). Added the radio
+  visual style, sizing, the click cycle of the three states, and
+  `UltraCanvasRadioGroup`: how the selection works, that `onChecked` is the
+  group's, and its lifetime rules (it is not owned by its radios; going
+  first, removing a radio, moving and copying).
+- **1.1.0** (2024-12-19): One checkbox class with Standard, Rounded, Switch,
+  Radio and Material styles, `CreateSwitch` and `CreateRadioButton`
+  factories, and a radio group of checkboxes.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasChip.md
@@ -16811,6 +17300,46 @@ Rect2Di MyElement::SidebarArea() const {
 
 Drag deltas (`pointer - anchor`) are frame‑independent, so panning logic that
 only uses differences is safe in any frame.
+
+### Which element gets a press
+
+A mouse press (`MouseDown`, `MouseUp`, `MouseDoubleClick`) goes first to the
+innermost interactive element under the pointer. If its `OnEvent` returns
+`false`, the press climbs to that element's parent, then the grandparent, and
+so on — each one gets it with `event.pointer` mapped into *its own* local
+space — until one returns `true`. The climb stops below the window, which
+still gets a press nobody took, once, at the end. A popup is a child of the
+window, so a press inside a popup never reaches what lies under it.
+
+So a container that acts on clicks — a clickable card, a row, a tile — hears
+a click on the label or icon inside it without any extra work, and:
+
+- **Return `true` for a press you acted on**, `false` for one you did not.
+  A press you used but report as untaken goes on to your parents, which may
+  act on it again — clearing a selection or taking the focus is acting on
+  it. A press you have no use for (a middle press on an editor) is better
+  left alone entirely: do not take the focus first, and return `false`.
+  A right press you have no menu for goes on on purpose, so the menu of the
+  element around you can open (a button does this).
+- **A container gets the presses its children did not take**, with the
+  pointer over that child. A view that hit‑tests its own painted content
+  must not treat such a press as a click on whatever is painted under the
+  child.
+- A press whose element left the tree while handling it (a click that
+  closed its row) stops there; the elements it left do not get it.
+- Hit‑testing skips an element that is not interactive
+  (`SetInteractive(false)`) together with everything inside it: the press
+  lands on the element around it directly, and so does the hover — and with
+  it the tooltip.
+- A window event filter (`InstallEventFilter`) sees every step of the climb,
+  `event.targetElement` set to the element of that step — as it already did
+  for the wheel — so a filter that acts on a press must act once, or return
+  `true` to stop the press.
+
+Before October 2026 a press went to the innermost element and then straight
+to the window, so a card answered only on its padding - UltraMail's account
+tiles switched the account from 1 of 14 spots (framework changelog: "A mouse
+press the element under the pointer does not take climbs to its parents").
 
 ---
 
@@ -22023,7 +22552,7 @@ config.initialDirectory = startFolder;   // empty: the last used folder
 
 auto dialog = UltraCanvasDialogManager::CreateFileDialog(config);
 dialog->onFileSelected = [](const std::string& folder) { /* ... */ };
-UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow);
+UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow.get());
 ```
 
 A config starts without filters: the dialog then lists every file under an
@@ -22053,9 +22582,12 @@ between folders.
 
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
-  listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists, with the chosen file
-  type's extension - see [Save names](#save-names). A name that is already a
+  listing. A typed folder name opens that folder instead of accepting it. A
+  typed name that is not a file gets a **File Not Found** notice and the
+  dialog stays open on it, as the platforms' open dialogs do.
+- **Save** accepts any name in a folder that exists (a path typed into a
+  folder that is not there gets a **Folder Not Found** notice), with the
+  chosen file type's extension - see [Save names](#save-names). A name that is already a
   file gets a **Replace File** question first ("… already exists. Do you want
   to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
   dialog open on that name. A caller that asks itself, or appends to the
@@ -22129,7 +22661,7 @@ opts.SetTitle("Open media").SetFilterToggles(true)
     .AddFilter("Audio",  audioExtensions)
     .AddFilter("Video",  videoExtensions)
     .AddFilter("All files", std::vector<std::string>{ "*" })
-    .SetParentWindow(GetWindow());
+    .SetParentWindow(parentWindow.get());
 UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, onPicked);
 ```
 
@@ -22161,7 +22693,10 @@ on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
 elsewhere. Every application shares the file. The last used folder is either
 one for all applications (Global) or kept per application (Individual); ULTRA
 OS settings switches between them. A caller that names an
-`initialDirectory` always opens there.
+`initialDirectory` always opens there. The file is rewritten only when a
+close changed something in it; a file that cannot be written or read is
+reported once per run on `debugOutput`, and the dialog carries on with the
+defaults.
 
 ## Native or framework
 
@@ -29939,7 +30474,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
-| HTML text | its words, for a list, a search index or a reply quote | `HTML::ExtractPlainText` |
+| HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
 | HTML text | the links, images, headings or any other elements | `HTML::Parser::Parse`, then walk the `Document` or use `HTML::Matches` with a selector |
 | CSS text and your own tree (SVG, XML) | which rules apply to an element | `HTML::StyleSheet::ParseAppend`, then `HTML::MatchingRules<YourTraits>` |
@@ -29988,17 +30523,34 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
-Two helpers need no DOM:
+Two helpers need no DOM of the caller's:
 
 ```cpp
 std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<style> bodies dropped,
                                                      // entities decoded, whitespace collapsed
+std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
 ```
 
-`ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+`ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
+message list's preview line or a search index wants: block boundaries become
+spaces, everything is one line. `PlainTextLayout::Lines` is the text a
+person reads or quotes - an HTML mail shown as plain text, the quote in a
+reply. It parses the page and writes it the way a browser's `innerText`
+does, simplified:
+
+- a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
+  own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
+  `<hr>` - never more than one blank line in a row;
+- `<br>` a line break, two of them a blank line;
+- the cells of a table row a tab apart;
+- list items as `- item`, or `1. item` in an `<ol>` (from its `start`);
+- `<pre>` as written; elsewhere whitespace collapses to single spaces, and a
+  no-break space is a space;
+- what a browser does not show is left out: `<head>`, `<script>`, `<style>`,
+  `<template>`, `<select>`, `<svg>`, the `hidden` attribute, and an inline
+  `display: none`, `visibility: hidden` or `mso-hide: all` (a mail's hidden
+  preheader). A class that hides through a style sheet is not looked up.
 
 ## CSS: the style sheet model
 
@@ -30147,6 +30699,7 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
+opts.selectableText = true;                   // the text selects and copies, as in a browser
 
 HTML::ElementBuilder builder;
 HTML::BuildResult r = builder.Build(html, opts);     // or BuildDocument(doc, opts) for a parsed one
@@ -30157,6 +30710,14 @@ if (r.root) {
 }
 for (const std::string& w : r.warnings) Log(w);
 ```
+
+With `selectableText` every label of the tree joins one
+`UltraCanvasTextSelection` (`r.textSelection`): a drag runs on from
+paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
+once the text has been clicked, and a text link opens when it is released
+without a drag. Keep `r.textSelection` to offer Copy and Select All in a
+menu (its `onContextMenu` is asked on a right-click); see
+`UltraCanvasLabelExamples.md`, *Selectable text*.
 
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
@@ -30197,7 +30758,6 @@ and the check blocks new ones:
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
 | `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
 | `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
 | `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
 | `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
@@ -31049,6 +31609,22 @@ FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 
 # UltraCanvas Image Performance Test Documentation
 
+<!-- doc-check:
+double NowMs();
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
+std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeQOIFile(const std::string& path);
+std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeBMPFile(const std::string& path);
+using Step = std::function<void()>;
+Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
+CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
+std::string outPath; std::string stablePath; int globalIdx; int slot; int activeCount;
+double t0; double t1; double d0; double d1;
+UltraCanvasWindowBase* win; IRenderContext* ctx;
+std::shared_ptr<UltraCanvasImageElement> imageElement;
+-->
+
 ## Overview
 
 The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
@@ -31069,7 +31645,7 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.7
+**Version:** 2.5.9
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -31081,10 +31657,11 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"
+#include "UltraCanvasModalDialog.h"   // FileFilter
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 
@@ -31154,10 +31731,14 @@ struct ImageExportOptions {
 ```cpp
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 public:
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                            long x = 0, long y = 0, long w = 100, long h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                            float x, float y, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
-    bool LoadFromFile(const std::string& filePath);
+    // Both return true when the element shows a valid image. LoadFromFile
+    // goes through UCImage's path-keyed cache unless forceLoad is set.
+    bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     void SetFitMode(ImageFitMode mode);   // Contain, Cover, Stretch, ...
@@ -31216,16 +31797,93 @@ struct CodecResult {
 };
 ```
 
+### Helpers (file-local)
+
+Every timed region reads one monotonic millisecond clock, and every libvips
+codec is saved with the same options builder - the struct defaults already
+carry each codec's quality (85 / 80 / 65 / 50 / ...):
+
+```cpp
+double NowMs() {
+    using namespace std::chrono;
+    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
+}
+
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
+    UCImageSave::ImageExportOptions opt;
+    opt.format = f;
+    opt.preserveMetadata = false;
+    opt.preserveTransparency = true;
+    return opt;
+}
+```
+
+The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
+and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
+success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
+and return whether that worked. All of them live in an anonymous namespace
+in the source file; none is part of the framework.
+
+### CodecComparisonChartElement (the grouped bar chart, file-local)
+
+```cpp
+class CodecComparisonChartElement : public UltraCanvasUIElement {
+public:
+    CodecComparisonChartElement(const std::string& identifier)
+            : UltraCanvasUIElement(identifier) {}
+
+    void SetCodecNames(const std::vector<std::string>& names);   // one bar group per name
+    void SetResults(const std::vector<CodecResult>& newResults);  // the rows so far; repaints
+    void SetThumbnailImages(const std::vector<std::shared_ptr<UltraCanvasImageElement>>& thumbs);
+
+    // Fired from Render() when the chart's bounds changed since the last
+    // paint: the demo moves the thumbnails under their bar groups.
+    std::function<void()> onGeometryChanged;
+
+    // Geometry, for aligning the thumbnails with the bar groups.
+    Rect2Di GetPlotArea() const;
+    int GetGroupCenterX(int index) const;
+    int GetGroupInnerWidth() const;
+    int GetXAxisBottomY() const;
+};
+```
+
+### PanelState (shared by every lambda of the page)
+
+```cpp
+struct PanelState {
+    std::string sourcePath;
+    UCImagePtr  sourceImage;
+    int         sourceWidth = 0;
+    int         sourceHeight = 0;
+    std::vector<CodecResult> results;
+
+    std::shared_ptr<UltraCanvasButton>   chooseBtn;
+    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasLabel>    infoLabel;
+    std::shared_ptr<UltraCanvasLabel>    statusLabel;
+    std::shared_ptr<CodecComparisonChartElement> chartElem;
+    std::shared_ptr<UltraCanvasContainer> thumbsRow;
+    std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
+
+    std::vector<std::string> codecNames;   // chart groups, in display order
+    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    bool benchmarkRunning = false;         // re-entry guard while a run is in flight
+    std::string runStamp;                  // temp-file prefix, new for every run
+};
+auto state = std::make_shared<PanelState>();
+```
+
 ## Events / Callbacks
 
 The benchmark wires up the following user-facing actions:
 
-| Control            | Callback              | Behavior                                                          |
-|--------------------|----------------------|-------------------------------------------------------------------|
-| `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
-| `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
+| Control              | Callback            | Behavior                                                          |
+|----------------------|---------------------|-------------------------------------------------------------------|
+| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
+| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
+| `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
 
@@ -31299,7 +31957,8 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
     state->chartElem->SetResults(state->results);
     resetThumbnails();
 
-    std::string fileName = std::filesystem::path(path).filename().string();
+    // File names are UTF-8 on every platform: never path.string().
+    std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
     std::ostringstream info;
     info << fileName << "  -  " << state->sourceWidth << " x " << state->sourceHeight << " px";
     state->infoLabel->SetText(info.str());
@@ -31323,8 +31982,10 @@ double t1 = NowMs();
 if (err.empty()) {
     r.encodeTimeMs    = t1 - t0;
     r.encodedFilePath = outPath;
-    r.encodedSizeBytes =
-        static_cast<size_t>(std::filesystem::file_size(outPath));
+    std::error_code ec;
+    r.encodedSizeBytes = static_cast<size_t>(
+            std::filesystem::file_size(PathFromUtf8(outPath), ec));
+    if (ec) r.encodedSizeBytes = 0;
 
     // Force eager decode so libvips doesn't lazy-defer the work.
     double d0 = NowMs();
@@ -32950,6 +33611,10 @@ its text unless it is given a size.
   borders and rounded corners, padding, margin.
 - **Pango markup** (`SetTextIsMarkup`) and **text links** (`SetTextLinks`).
 - **Inline images** flowing in the text like a browser's `<img>`.
+- **Selectable text** (`SetSelectable`): drag to select, double-click a word,
+  triple-click all of it, Ctrl+C to copy - and with an
+  `UltraCanvasTextSelection` one selection across many labels, as in a
+  browser.
 - **Events:** click, hover, link activated and hovered, text changed.
 - **Disabled look:** `disabledTextColor` while the label `IsDisabled()`.
 
@@ -33128,6 +33793,91 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
+### Selectable text
+
+A label's text can be selected and copied the way text on a web page can.
+It is off by default - a caption beside a control should not take the press
+meant for the control.
+
+```cpp
+void SetSelectable(bool selectable);   // a selection of its own
+bool IsSelectable() const;
+void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);   // a shared one
+const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const;
+
+void SetSelectedRange(int startByte, int endByte);   // an end past the text = its end
+void ClearSelectedRange();
+bool HasSelectedRange() const;
+int GetSelectionStart() const;
+int GetSelectionEnd() const;
+std::string GetSelectedText();     // as a reader copies it
+std::string GetRenderedText();     // markup parsed, entities decoded
+int TextIndexAtPoint(const Point2Df& localPoint);   // nearest text position, -1 before the first layout
+std::pair<int, int> WordRangeAt(int byteIndex);     // [first, second)
+```
+
+On a selectable label:
+
+- **A drag selects**, a **double-click** takes the word under the pointer (a
+  dot or apostrophe between letters stays in it: `example.com`, `don't`), a
+  **triple-click** the whole text, and **Shift+click** extends the selection.
+- **Ctrl+C** (or Ctrl+Insert, or Cmd+C) copies, **Ctrl+A** selects all. The
+  pressed label takes the keyboard focus for them; only that one label of a
+  selection accepts the focus, so a page of paragraphs is one stop in the Tab
+  order, not one per paragraph.
+- The highlight is drawn under the text in `LabelStyle::selectionColor`.
+- `GetSelectedText()` leaves out the U+FFFC placeholders of inline images and
+  soft hyphens, and copies a no-break space as a plain space.
+- A **text link** opens when the button is released on it without having
+  dragged, rather than on the press - otherwise a drag that starts on a link
+  could never select it. A label with `onClick` stays a button: a press on it
+  clicks, it does not select.
+- The pointer is the text I-beam over the label (the hand over a link).
+- Byte offsets are those of the rendered text, as for links and inline
+  images. `SetText` and `SetTextIsMarkup` clear the selection.
+
+```cpp
+auto address = CreateLabel("address", "anna.berg@example.com");
+address->SetSelectable(true);   // the reader can copy the address
+```
+
+#### One selection across many labels
+
+`UltraCanvasTextSelection` (`UltraCanvasTextSelection.h`) is a selection that
+several labels share, in reading order. A drag that starts in one label runs
+on through the next ones, and a copy joins their parts: a line break between
+labels above one another, a tab between labels side by side (the cells of a
+table row). Create it with `std::make_shared` - every label keeps it alive,
+while it holds the labels weakly and a label leaves it as it is destroyed.
+
+```cpp
+auto selection = std::make_shared<UltraCanvasTextSelection>();
+selection->AddLabel(*subject);          // the order added is the reading order
+selection->AddLabel(*sender);
+selection->AddLabelsIn(*articleRoot);   // every label below, depth first
+
+selection->onContextMenu = [](const UCEvent& event) {
+    // A right-click on one of the labels: show Copy / Select All.
+};
+bool any = selection->HasSelection();
+std::string text = selection->GetSelectedText();
+selection->CopyToClipboard();
+selection->SelectAll();
+selection->ClearSelection();
+```
+
+- With the pointer between labels, the selection runs to the nearest text: a
+  label beside the pointer on its line, otherwise the end of the last label
+  above it. Dragged past the top or bottom of the scroll view the labels sit
+  in, that view scrolls, faster the further the pointer is past its edge.
+- A right-click inside the selection keeps it (for the menu's Copy); outside
+  it, it clears it first. `onContextMenu` is then called - a right-click on
+  a selectable label never opens a link. `onSelectionChanged` is raised
+  whenever what is selected changes.
+- `HTML::BuildOptions::selectableText` gives every label of a tree built from
+  HTML one such selection (`HTML::BuildResult::textSelection`); UltraMail
+  selects a mail's body that way.
+
 ## Event Callbacks
 
 ```cpp
@@ -33140,6 +33890,10 @@ std::function<void(const std::string&)> onTextChanged;    // after SetText chang
 std::function<void(const std::string&)> onLinkActivated;
 std::function<void(const std::string&)> onLinkHovered;
 ```
+
+In a selectable label (`SetSelectable`) `onLinkActivated` fires when the
+button is released on the link it was pressed on, without a drag that
+selected text in between.
 
 `SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
 beside the pointer, following it along the link and hidden again as the
@@ -34168,7 +34922,7 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -34444,8 +35198,9 @@ The line chart follows this rendering sequence:
 ### Supported Events
 
 - **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
-- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
-- **MouseUp:** Ends the pan
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in;
+  any other left press is left to the parent
+- **MouseUp:** Ends the pan (a release that ends none is left to the parent)
 - **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior
@@ -35332,6 +36087,132 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 };
 ```
 
+### A custom delegate with clickable cells (the domain dashboard)
+
+The DemoApp's *Domain Dashboard* page
+(`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) is a table whose
+cells are more than text: a link, a status, an action, a sparkline, a figure, a
+plan and a row-menu button. A list view does not hold elements per row; one
+`IItemDelegate` paints every cell from the model, and the view's cell
+callbacks make parts of the cells clickable. That is what keeps it fast at any
+size: only the rows on screen are painted (the page's *Add 1,000 domains*
+button shows it).
+
+The model keeps records and answers text and tooltips per column; the delegate
+reads the record directly for what is not text (the sparkline's history):
+
+<!-- doc-check:
+struct DomainRecord { std::string domain; bool active = true; bool insightsEnabled = false; std::vector<float> history; int visitors = 0; std::string plan = "Free"; };
+enum DomainColumn { ColDomain, ColStatus, ColInsights, ColTrend, ColVisitors, ColPlan, ColMenu, ColCount };
+enum { kCellPadding = 10 };
+const Color kLinkColor(0, 102, 204);
+const Color kTextColor(40, 40, 40);
+void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box);
+std::shared_ptr<UltraCanvasListView> list;
+-->
+
+```cpp
+class DomainListModel : public IListModel {
+public:
+    std::vector<DomainRecord> rows;   // domain, active, history, visitors, plan
+    int GetRowCount() const override { return static_cast<int>(rows.size()); }
+    int GetColumnCount() const override { return ColCount; }
+    ListColumnDef GetColumnDef(int column) const override;   // titles, widths, header tooltips
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+    bool SortBy(int column, bool ascending);                  // reorders rows, NotifyDataChanged()
+    void RowChanged(int row) { NotifyRowChanged(row); }
+};
+
+class DomainRowDelegate : public IItemDelegate {
+public:
+    int hoverRow = -1, hoverColumn = -1;
+    bool hoverOnTarget = false;
+
+    void RenderItem(IRenderContext* ctx, const IListModel* model, int row, int column,
+                    const ListItemStyleOption& option) override {
+        const auto* domains = dynamic_cast<const DomainListModel*>(model);
+        if (!domains || row < 0 || row >= domains->GetRowCount()) return;
+        const Rect2Dd cell(option.columnX + kCellPadding, option.rect.y,
+                           option.columnWidth - 2 * kCellPadding, option.rect.height);
+        if (column == ColTrend) {                         // not text: draw it
+            DrawSparkline(ctx, domains->rows[row].history, cell);
+            return;
+        }
+        ctx->SetTextAlignment(option.columnAlignment);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(column == ColDomain ? kLinkColor : kTextColor);   // and status green, ...
+        ctx->DrawTextInRect(GetStringValue(model->GetData({row, column},
+                                           ListDataRole::DisplayRole)), cell);
+    }
+    int GetRowHeight(const IListModel*, int) const override { return 44; }
+
+    // Whether a cell-local point is on what the cell lets you click: the
+    // link's or "Enable"'s text (its width measured while painting), or ⋮.
+    bool OnTarget(const DomainListModel& model, int row, int column, const Point2Di& inCell) const;
+};
+```
+
+The view paints the row background (selection, hover) before the delegate
+runs, so the delegate draws content only. The default selection is a strong
+blue; a dashboard with coloured text sets a light one in its `ListViewStyle`
+(`selectionBackgroundColor`) so the colours stay readable.
+
+Clicks and hover come per cell, with the point inside the cell - the same
+space the delegate painted in - so the handler can tell the link text from the
+empty part of its cell:
+
+```cpp
+struct DashboardState {                                   // what the callbacks share
+    std::shared_ptr<DomainListModel> model;
+    std::shared_ptr<DomainRowDelegate> delegate;
+    UltraCanvasListView* list = nullptr;                  // raw: the view owns the callbacks
+    int sortColumn = -1;
+    bool sortAscending = true;
+    void OpenRowMenu(const std::string& domain, const Point2Di& at);
+};
+auto state = std::make_shared<DashboardState>();
+state->list = list.get();
+
+list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
+    state->delegate->hoverOnTarget = row >= 0 && state->delegate->OnTarget(*state->model, row, column, inCell);
+    state->delegate->hoverRow = row;
+    state->delegate->hoverColumn = column;
+    state->list->SetMouseCursor(state->delegate->hoverOnTarget ? UCMouseCursor::Hand
+                                                               : UCMouseCursor::Default);
+    state->list->RequestRedraw();                         // the link underlines
+};
+list->onCellClicked = [state](int row, int column, const Point2Di& inCell) {
+    if (!state->delegate->OnTarget(*state->model, row, column, inCell)) return;
+    if (column == ColDomain) OpenURL("https://" + state->model->rows[row].domain);
+    if (column == ColMenu)
+        state->OpenRowMenu(state->model->rows[row].domain,
+                           UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
+};
+list->onContextMenu = [state](int row, const UCEvent& event) {   // right-click a row
+    if (row >= 0) state->OpenRowMenu(state->model->rows[row].domain, event.pointerWindow);
+};
+list->onHeaderClicked = [state](int column) {             // the model orders its rows
+    if (column == ColMenu) return;
+    state->sortAscending = state->sortColumn == column ? !state->sortAscending : true;
+    state->sortColumn = column;
+    if (state->model->SortBy(column, state->sortAscending))
+        state->list->SetSortIndicator(column, state->sortAscending);
+};
+```
+
+`state` is a small struct the callbacks share; it holds the list view as a raw
+pointer, because the view owns the callbacks that hold `state` (a
+`shared_ptr` back to the view would be a cycle). The menu's actions find their
+row again by name when they run: sorting or removing rows while a menu is open
+moves the row it was opened on.
+
+What a delegate gives up is a real element per cell: the "Enable" action and
+the ⋮ button are drawn and hit-tested, not `UltraCanvasButton`s, so they do not
+take the keyboard focus one by one - the row does. That is how list views on
+every desktop do it. When each row needs live controls of its own (a text
+field, a slider), use a container of elements instead, for a short list.
+
 ## Keyboard Navigation
 
 | Key                | Action                              |
@@ -35362,6 +36243,7 @@ first Down after it selects the first row.
 
 ## See Also
 
+- DemoApp → *Domain Dashboard* (`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
@@ -35972,6 +36854,7 @@ dots with letter codes under one legend.
 The point of the weights is that they sum.
 
 ```cpp
+int col = 0, row = 1;                       // item indices in panel 0's column and row sets
 double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
 double total = model.RowScore(0, row);
 std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
@@ -36065,9 +36948,11 @@ shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
+<!-- doc-check: void Log(const std::string& message); -->
+
 ```cpp
 MatrixValidation result = model.Validate();
-if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: your app's logger
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
@@ -37151,7 +38036,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.2.6  
+**Version:** 1.2.7  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -37356,7 +38241,7 @@ struct MenuStyle {
     int submenuDelay;        // Hover delay before opening (ms)
 
     // Animation
-    bool enableAnimations;   // Fade a popup's entries in as it opens (default false)
+    bool enableAnimations;   // Fade a popup in, panel and entries, as it opens (default false)
     float animationDuration; // Length of the fade (seconds)
     
     // Shadow
@@ -37461,6 +38346,18 @@ struct PopupElementSettings {
 ```
 
 Opening runs `onMenuOpened`, closing runs `onMenuClosed`.
+
+An open menu, like any popup, can be shown at an opacity through its window
+(0 = not seen, 1 = the default). The whole panel is mixed with what lies
+beneath it; the menu is not repainted, and it still takes input:
+
+```cpp
+// bool UltraCanvasWindowBase::SetPopupOpacity(UltraCanvasUIElement& popup, float opacity);
+// float UltraCanvasWindowBase::GetPopupOpacity(const UltraCanvasUIElement& popup) const;
+void ShowHalfSeen(UltraCanvasMenu& menu) {
+    if (auto* win = menu.GetWindow()) win->SetPopupOpacity(menu, 0.5f);
+}
+```
 
 ### Submenu Management
 
@@ -37721,8 +38618,8 @@ menu->SetStyle(customStyle);
 
 ## Animation Support
 
-With `enableAnimations` set, a popup menu or submenu fades its entries in
-over `animationDuration` seconds when it opens:
+With `enableAnimations` set, a popup menu or submenu fades in over
+`animationDuration` seconds when it opens:
 
 ```cpp
 auto menu = CreateMenu("ContextMenu", 0, 0, 200, 0);
@@ -37732,11 +38629,13 @@ style.animationDuration = 0.2f;  // 200ms
 menu->SetStyle(style);
 ```
 
-The panel itself (background and border) appears at once and the entries
-fade in over it: popups are composited onto the window as opaque blocks, so
-the panel has nothing beneath it to fade over. The menu bar does not
-animate, and closing is immediate. Animations are off by default; an
-`animationDuration` of 0 or less draws the entries in full at once.
+The whole panel fades - background, border, shadow and entries together -
+over the window content beneath it. The menu opens its popup at opacity 0 and
+steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
+(see Display Control), so a step only composites the window again and does
+not repaint the menu. The menu bar does not animate, and closing is
+immediate. Animations are off by default; an `animationDuration` of 0 or less
+shows the menu in full at once.
 
 ## Performance Considerations
 
@@ -37770,7 +38669,7 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 1. Maximum submenu depth is implementation-defined (typically 10 levels)
 2. `Custom` and `Input` items have no special drawing or behaviour yet
 3. Touch gesture support varies by platform
-4. Only opening animates, and only the entries fade (see Animation Support)
+4. Only opening animates (see Animation Support)
 
 ## Best Practices
 
@@ -46179,6 +47078,8 @@ caller's side. A backend without groups draws straight through: `EndGroup`
 and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
 `nullptr`.
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 ```cpp
 // Layer at 40 %: children composite normally inside, the result fades once.
 ctx->BeginGroup();
@@ -46302,6 +47203,25 @@ ctx->SetStrokeWidth(strokeWidth);
 ctx->Stroke();
 ```
 
+## Wrapping
+
+```cpp
+auto layout = ctx->CreateTextLayout(text, false);
+layout->SetExplicitWidth(300);              // wraps to 300 px
+layout->SetWrap(TextWrap::WrapWord);        // only to change the default
+```
+
+Every text layout wraps the same way unless told otherwise, whether it came
+from `CreateTextLayout` or from `DrawText` / `DrawTextInRect` (whose mode is
+`TextStyle::wrap`): at word boundaries first, and between two characters
+where a word alone is wider than the line (`TextWrap::WrapWordChar`). A URL,
+a file path or a hash therefore stays inside the width it was given. A
+layout from `CreateTextLayout` used to wrap at words only (Pango's own
+default), so such a word ran on past its width - a tooltip drew a tracking
+link over its own border (framework changelog, "New text layouts wrap a long
+word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
+breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
+
 ## Centring text on its capitals
 
 ```cpp
@@ -46333,6 +47253,30 @@ contexts can measure the same font differently, and a backend calls
 options, hinting or device scale change, so nothing measured under the old
 settings survives them. Callers never need to call it. A font with no
 measurable ink falls back to the line box's middle.
+
+### The line box a caret or selection covers
+
+```cpp
+double GetLineBoxHeight(const FontStyle& font);   // ascent + descent, fractional pixels
+```
+
+A caret or a selection band that should cover a line's glyphs needs the
+font's line height as `DrawText` draws it. `GetTextLineHeight` returns whole
+pixels with the fraction cut off, so a box that tall ends up to a pixel above
+the descenders and the bottoms of parentheses. `GetLineBoxHeight` keeps the
+fraction, and is measured once per font and cached like the cap height
+(`InvalidateFontMetricsCache` clears it too). Round such a box outwards when
+it becomes pixels - top down, bottom up - so it covers every row the glyphs
+touch:
+
+```cpp
+const double top = ctx->TextTopCentredOnCaps(textArea, font);
+const double bottom = top + ctx->GetLineBoxHeight(font);
+Rect2Di caret(x, static_cast<int>(std::floor(top)), 1,
+              static_cast<int>(std::ceil(bottom)) - static_cast<int>(std::floor(top)));
+```
+
+`UltraCanvasTextInput` places its caret and selection this way.
 
 ## Text outlines
 
@@ -47957,9 +48901,9 @@ character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
 selection changes and focus are announced to listeners, and the platform
 bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
-Automation on Windows (Narrator, NVDA, JAWS) - see
-[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
-is no macOS bridge yet.
+Automation on Windows (Narrator, NVDA, JAWS) and NSAccessibility on macOS
+(VoiceOver) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges).
 
 ## Drag and drop
 
@@ -48293,8 +49237,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
-  Automation) have one; VoiceOver does not see the element yet.
+- **Screen readers on Windows and macOS are untested.** The UI Automation
+  and NSAccessibility bridges compile but have not yet been run against
+  Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 
@@ -48525,6 +49470,8 @@ The Vector plugin implements `UltraCanvas::VectorConverter::SVGConverter`, conve
 - **Import** parses with tinyxml2: all basic shapes, paths (via `ParsePathString`), groups, presentation attributes and inline `style=""`, gradients resolved through `url(#id)` (with one level of `href` inheritance), text with tspans, unit conversion (pt/mm/cm/in/pc at CSS's 96 dpi), and entities. When every top-level drawable is a `<g>`, each imports as a `VectorLayer` — the shape this exporter and layered editors produce. CSS `<style>` sheets apply too, wherever they sit (`<defs>` included, CDATA or not, a `media` attribute honoured): they are parsed by the HTMLReader's CSS subset (`HTML::StyleSheet`) and matched against the SVG tree — type, class, id, attribute and structural pseudo-class selectors, descendant chains (`>` read as a descendant), specificity and source order. The cascade is SVG 2's: presentation attribute, then the sheets, then `style=""`, with `!important` reversing the last two. The SVG 2 geometry properties `x`, `y`, `width`, `height`, `rx`, `ry`, `cx`, `cy` and `r` can come from CSS on rects, circles and ellipses (`.card { rx: 8 }`). Sibling combinators and `:hover`-style pseudo-classes are dropped by the parser. `marker-start`, `marker-mid` and `marker-end` (and the `marker` shorthand; all four inherit) are drawn: the model has no marker-by-reference, so each `<marker>`'s content is read as ordinary shapes at the path's vertices (SVG 2's rules: each subpath start and segment end, curves and arcs by their tangents) — placed by `refX`/`refY`, mapped from its `viewBox` onto `markerWidth` × `markerHeight`, scaled by the stroke width unless `markerUnits="userSpaceOnUse"`, turned by `orient` (`auto`, `auto-start-reverse` or an angle) and clipped to its viewport when the content reaches past it. The shape and its markers become one `VectorGroup`, so an arrow stays one object in an editor; `context-fill` / `context-stroke` in marker content take the shape's paint.
 
 ```cpp
+#include "UltraCanvasVectorConverter.h"   // in UltraCanvas/Plugins/Vector
+
 using namespace UltraCanvas::VectorConverter;
 SVGConverter svgc;
 svgc.Export(*document, "drawing.svg");
@@ -49442,7 +50389,7 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.1  
+**Version:** 1.1.3  
 **Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
@@ -49454,34 +50401,36 @@ namespace UltraCanvas {
 - **Multiple Point Shapes:** Circle, Square, Triangle, Diamond
 - **Correlation / Trend Line:** Least-squares fit with r and r² readout
 - **Per-Point Colors:** Points may override the element color (outliers, series)
-- **Interactive Tooltips:** Display detailed information on hover
-- **Zoom & Pan:** Navigate through large datasets with mouse controls
-- **Point Selection:** Interactive selection of individual data points
+- **Interactive Tooltips:** The x and y values of the point under the pointer
+  (or text of your own)
+- **Zoom & Pan:** Wheel zoom and drag pan of the x axis, off until enabled
+- **Hover Highlight:** A ring marks the point whose tooltip is showing
 - **Customizable Appearance:** Configurable colors, sizes, and styles
-- **High Performance:** Efficient rendering for large datasets
 
 ## Constructor
 
 ```cpp
-UltraCanvasScatterPlotElement(const std::string& id, long uid, 
-                              int x, int y, int width, int height)
+UltraCanvasScatterPlotElement(const std::string& id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 - `id` - Unique identifier string for the chart element
-- `uid` - Unique numeric identifier
 - `x` - X position of the chart
 - `y` - Y position of the chart
 - `width` - Width of the chart
 - `height` - Height of the chart
 
+There is no numeric id argument.
+
 ### Default Settings
 - `enableZoom` = false
 - `enablePan` = false
-- `enableSelection` = true
+- `enableTooltips` = true
+- `enableSelection` = true (the hover ring; the base class default is false)
 - `pointShape` = PointShape::Circle
 - `pointColor` = Color(0, 102, 204, 255) // Blue
-- `pointSize` = 6.0f
+- `pointSize` = 6.0 // a radius: circles are 12 px across
+- `showTrendLine` = false
 
 ## Enumerations
 
@@ -49494,7 +50443,7 @@ enum class PointShape {
     Square,    // Square points
     Triangle,  // Triangular points pointing up
     Diamond    // Diamond-shaped points
-}
+};
 ```
 
 ### TrendLineStyle
@@ -49505,8 +50454,11 @@ enum class TrendLineStyle {
     Solid,
     Dashed,    // default
     Dotted
-}
+};
 ```
+
+Both are nested in the class: `UltraCanvasScatterPlotElement::PointShape`,
+`UltraCanvasScatterPlotElement::TrendLineStyle`.
 
 ## Configuration Methods
 
@@ -49516,7 +50468,9 @@ enum class TrendLineStyle {
 ```cpp
 void SetPointColor(const Color& color)
 ```
-Sets the fill color for all data points.
+Sets the fill color for all data points. A point whose own `color` is not
+transparent keeps that color (see *Per-Point Colors*). Points are filled
+only; they have no outline.
 
 **Parameters:**
 - `color` - Color object defining the point color
@@ -49528,16 +50482,20 @@ scatterPlot->SetPointColor(Color(255, 140, 0, 255)); // Dark orange
 
 #### SetPointSize
 ```cpp
-void SetPointSize(float size)
+void SetPointSize(double size)
 ```
-Sets the base size for data points in pixels.
+Sets the size of the points in pixels, measured from the point's centre: the
+circle's radius, half the side of the square, and the distance from the
+centre to the tips of the triangle and the diamond. 6 by default, so a
+default circle is 12 px across. The tooltip picks a point within this size
+plus 5 px.
 
 **Parameters:**
-- `size` - Point diameter/size in pixels
+- `size` - Point radius / half-size in pixels
 
 **Example:**
 ```cpp
-scatterPlot->SetPointSize(8.0f);
+scatterPlot->SetPointSize(8.0);
 ```
 
 #### SetPointShape
@@ -49554,19 +50512,24 @@ Changes the shape used to render data points.
 scatterPlot->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Diamond);
 ```
 
+The base class's `SetPointRadius` and `SetShowValueLabels` do not apply to
+the scatter plot: it sizes its points with `SetPointSize` and draws no value
+labels.
+
 ### Correlation / Trend Line
 
 The scatter plot can fit and draw a least-squares regression line over the
 current data source, together with an optional readout of the fitted equation
-and the Pearson correlation coefficient. The fit spans the full visible x
-range and is recomputed automatically whenever the data changes. With
-categorical (label-based) x positioning the x axis carries no metric, so the
-line is not drawn in that mode.
+and the Pearson correlation coefficient. The fit is worked out on every paint
+over all the points - also while the x axis is zoomed - and the line spans
+the visible x range, under the points and clipped to the plot area. With
+categorical x positioning (`XAxisLabelMode::DataLabel`) the x axis carries no
+metric, so the line is not drawn in that mode.
 
 #### SetShowTrendLine
 ```cpp
-void SetShowTrendLine(bool show)
-bool GetShowTrendLine() const
+void SetShowTrendLine(bool show);
+bool GetShowTrendLine() const;
 ```
 Enables/disables the correlation line (off by default).
 
@@ -49577,19 +50540,19 @@ scatterPlot->SetShowTrendLine(true);
 
 #### SetTrendLineColor / SetTrendLineWidth / SetTrendLineStyle
 ```cpp
-void SetTrendLineColor(const Color& color)   // default: Color(220, 60, 60)
-void SetTrendLineWidth(float width)          // default: 2.0f
-void SetTrendLineStyle(TrendLineStyle style) // default: Dashed
+void SetTrendLineColor(const Color& color);    // default: Color(220, 60, 60, 255)
+void SetTrendLineWidth(float width);           // default: 2.0f, at least 0.1f
+void SetTrendLineStyle(TrendLineStyle style);  // default: Dashed
 ```
 Styling of the fitted line.
 
 #### SetShowCorrelationInfo
 ```cpp
-void SetShowCorrelationInfo(bool show)
-void SetCorrelationInfoColor(const Color& color)
-void SetCorrelationInfoFontSize(float size)
+void SetShowCorrelationInfo(bool show);                // default: false
+void SetCorrelationInfoColor(const Color& color);      // default: Color(80, 80, 80, 255)
+void SetCorrelationInfoFontSize(float size);           // default: 11.0f, at least 1.0f
 ```
-When enabled (and the trend line is shown), draws `y = ax + b` and
+When enabled (and the trend line is drawn), draws `y = ax + b` and
 `r = …   r² = …` in the top-right corner of the plot area.
 
 #### ComputeLinearRegression
@@ -49597,7 +50560,8 @@ When enabled (and the trend line is shown), draws `y = ax + b` and
 bool ComputeLinearRegression(double& slope, double& intercept) const
 ```
 Computes the least-squares fit over the current data source. Returns `false`
-when there are fewer than 2 points or the x values have no variance.
+(and sets both to 0) when there is no data source, fewer than 2 points, or the
+x values have no variance.
 
 #### GetCorrelationCoefficient
 ```cpp
@@ -49620,9 +50584,9 @@ if (std::fabs(r) > 0.8) {
 
 ### Per-Point Colors
 
-A `ChartDataPoint` whose `color` member is non-transparent overrides the
-element point color for that point — useful for marking outliers or encoding
-a series/category:
+A `ChartDataPoint` whose `color` member is not transparent (alpha above 0)
+overrides the element point color for that point — useful for marking
+outliers or encoding a series/category:
 
 ```cpp
 ChartDataPoint p(x, y, 0, "Outlier 12");
@@ -49636,7 +50600,10 @@ data->AddPoint(p);
 ```cpp
 void SetDataSource(std::shared_ptr<IChartDataSource> data)
 ```
-Inherited from `UltraCanvasChartElementBase`. Sets the data source for the scatter plot.
+Inherited from `UltraCanvasChartElementBase`. Sets the data source for the
+scatter plot. A new source is shown whole: any zoom is reset. The axes run
+from the smallest to the largest x and y of the data, with 5 % added on each
+side.
 
 **Example:**
 ```cpp
@@ -49644,6 +50611,11 @@ auto correlationData = std::make_shared<ChartDataVector>();
 // Populate data...
 scatterPlot->SetDataSource(correlationData);
 ```
+
+`ChartDataVector::LoadFromCSV` reads lines of `x,y[,z[,label]]`; for large
+files `ChartDataStream` reads the CSV in chunks instead of holding it all.
+A line whose x or y is not a number - a header such as `x,y`, a blank line,
+or a row that cannot be read - is skipped wherever it stands.
 
 ### Chart Properties
 
@@ -49664,18 +50636,32 @@ scatterPlot->SetChartTitle("Marketing Spend vs Sales");
 ```cpp
 void SetEnableTooltips(bool enable)
 ```
-Enables/disables tooltips when hovering over data points.
+On by default. Hovering within the point size plus 5 px of a point shows its
+tooltip: the series name (`SetSeriesName`) when set, then `X:` and `Y:` - in
+`XAxisLabelMode::DataLabel` the `X:` line shows the point's label.
+`SetCustomTooltipGenerator` replaces the whole text. Turning tooltips off
+hides one that is showing, and also the hover ring.
+
+**Example:**
+```cpp
+scatterPlot->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index) {
+    return point.label + "\nSpend: " + std::to_string(static_cast<int>(point.x)) +
+           "\nSales: " + std::to_string(static_cast<int>(point.y));
+});
+```
 
 #### SetEnableZoom
 ```cpp
 void SetEnableZoom(bool enable)
 ```
 Wheel zoom of the x axis around the pointer: wheel up zooms in, wheel down
-zooms out, up to 50x. Off by default. A wheel turn that changes nothing (over
-the margins, or zooming out of the whole range) goes to the parent, so a
-scrolling container around the chart still scrolls. Turning it off shows the
-whole range again; `ResetZoom()` does that too, and `IsZoomed()` says whether
-the view is narrowed.
+zooms out, by 1.25x a notch, up to 50x. Off by default. The y axis keeps the
+range of the whole data. A wheel turn that changes nothing (over the margins,
+or zooming out of the whole range) goes to the parent, so a scrolling
+container around the chart still scrolls. Turning it off shows the whole range
+again; `ResetZoom()` does that too, and `IsZoomed()` says whether the view is
+narrowed. Works in both x-axis label modes: with `XAxisLabelMode::DataLabel`
+the evenly spaced points spread apart.
 
 #### SetEnablePan
 ```cpp
@@ -49684,26 +50670,46 @@ void SetEnablePan(bool enable)
 Dragging sideways with the left button moves a zoomed-in x axis. Off by
 default; it does nothing while the whole range is shown.
 
+#### ResetZoom / IsZoomed
+```cpp
+void ResetZoom();
+bool IsZoomed() const;
+```
+`ResetZoom` shows the whole x range again; `IsZoomed` is true while the view
+is narrowed.
+
 #### SetEnableSelection
 ```cpp
 void SetEnableSelection(bool enable)
 ```
-Enables/disables the ability to select individual data points.
+Turns the hover ring on or off: a red ring (8 px radius) around the point
+whose tooltip is showing. On by default for the scatter plot. It follows the
+pointer, so it needs tooltips on; there is no click selection and no
+selected-point API.
+
+`GetEnableTooltips()`, `GetEnableZoom()`, `GetEnablePan()` and
+`GetEnableSelection()` read the four settings back.
 
 ## Factory Function
 
 ```cpp
 std::shared_ptr<UltraCanvasScatterPlotElement> CreateScatterPlotElement(
-    const std::string& id, long uid, 
-    int x, int y, int width, int height)
+    const std::string& id, int x, int y, int width, int height)
 ```
 
 Convenience factory function for creating scatter plot instances.
 
 **Example:**
 ```cpp
-auto scatterPlot = CreateScatterPlotElement("correlationScatter", 1003, 
-                                            50, 100, 600, 400);
+auto scatterPlot = CreateScatterPlotElement("correlationScatter", 50, 100, 600, 400);
+```
+
+The generic `CreateChartElementWithData` from the chart base also sets the
+data source and an optional title in one call:
+
+```cpp
+auto scatterPlot = CreateChartElementWithData<UltraCanvasScatterPlotElement>(
+    "correlationScatter", 50, 100, 600, 400, correlationData, "Marketing Spend vs Sales");
 ```
 
 ## Rendering Implementation
@@ -49716,47 +50722,23 @@ virtual void RenderChart(IRenderContext* ctx) override
 ```
 
 **Rendering Process:**
-1. Transforms data coordinates to screen coordinates
-2. Iterates through all data points
-3. Renders each point according to the selected shape
-4. Applies the configured color and size settings
+1. The base class draws the background, plot area, grid, axes and title
+2. While zoomed, drawing is clipped to the plot's columns
+3. The trend line, when on, is drawn first, so the points sit on top of it
+4. Each point is placed at its numeric x (or, in `XAxisLabelMode::DataLabel`,
+   evenly spaced by index) and filled with its own color or the point color
+5. The base class draws the hover ring when selection is on
 
 ### Point Shape Rendering
 
-#### Circle
-```cpp
-ctx->FillCircle(screenPos.x, screenPos.y, currentPointSize);
-```
+With `s` the point size (`SetPointSize`), each shape is centred on the point:
 
-#### Square
-```cpp
-float halfSize = currentPointSize / 2;
-ctx->FillRectangle(screenPos.x - halfSize, screenPos.y - halfSize,
-                   currentPointSize, currentPointSize);
-```
-
-#### Triangle
-```cpp
-std::vector<Point2Df> trianglePoints = {
-    Point2Df(screenPos.x, screenPos.y - currentPointSize),
-    Point2Df(screenPos.x - currentPointSize * 0.866f, 
-             screenPos.y + currentPointSize * 0.5f),
-    Point2Df(screenPos.x + currentPointSize * 0.866f, 
-             screenPos.y + currentPointSize * 0.5f)
-};
-ctx->FillLinePath(trianglePoints);
-```
-
-#### Diamond
-```cpp
-std::vector<Point2Df> diamondPoints = {
-    Point2Df(screenPos.x, screenPos.y - currentPointSize),
-    Point2Df(screenPos.x + currentPointSize, screenPos.y),
-    Point2Df(screenPos.x, screenPos.y + currentPointSize),
-    Point2Df(screenPos.x - currentPointSize, screenPos.y)
-};
-ctx->FillLinePath(diamondPoints);
-```
+| Shape | Drawn as |
+|---|---|
+| Circle | a circle of radius `s` |
+| Square | a square `2s` wide |
+| Triangle | apex `s` above the point, base `s` below it, `2s` wide |
+| Diamond | corners `s` above, right of, below and left of the point |
 
 ## Mouse Interaction
 
@@ -49765,21 +50747,20 @@ ctx->FillLinePath(diamondPoints);
 virtual bool HandleChartMouseMove(const Point2Di& mousePos) override
 ```
 
-Handles mouse movement for tooltip display and hover effects.
+Handles mouse movement for tooltip display and the hover ring.
 
 **Functionality:**
-- Calculates distance to nearest point
-- Shows tooltip when mouse is within `pointSize * 2` pixels
-- Returns true if tooltip is shown
-- Hides tooltip when mouse moves away from points
+- Does nothing (returns false) when there is no data source or tooltips are off
+- Finds the nearest point in view within `pointSize + 5` pixels
+- Shows its tooltip and returns true
+- Hides a tooltip that is showing when no point is that close
 
 ## Usage Example
 
 ### Basic Setup
 ```cpp
 // Create scatter plot
-auto scatterPlot = CreateScatterPlotElement("salesCorrelation", 1001, 
-                                            50, 50, 800, 600);
+auto scatterPlot = CreateScatterPlotElement("salesCorrelation", 50, 50, 800, 600);
 
 // Generate sample correlation data
 auto data = std::make_shared<ChartDataVector>();
@@ -49798,10 +50779,10 @@ data->LoadFromArray(points);
 scatterPlot->SetDataSource(data);
 scatterPlot->SetChartTitle("Marketing Spend vs Sales Revenue");
 scatterPlot->SetPointColor(Color(255, 140, 0, 255));  // Orange
-scatterPlot->SetPointSize(10.0f);
+scatterPlot->SetPointSize(10.0);
 scatterPlot->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Circle);
 
-// Enable interactive features
+// Interactive features (tooltips and the hover ring are on already)
 scatterPlot->SetEnableTooltips(true);
 scatterPlot->SetEnableZoom(true);
 scatterPlot->SetEnablePan(true);
@@ -49839,7 +50820,7 @@ btnCycleShapes->SetOnClick([scatterPlot, shapes]() {
 // Helper function for custom scatter plot creation
 std::shared_ptr<UltraCanvasScatterPlotElement> CreateCustomScatterPlot(
     const std::string& id, int x, int y, int width, int height,
-    const Color& pointColor, float pointSize,
+    const Color& pointColor, double pointSize,
     UltraCanvasScatterPlotElement::PointShape shape) {
     
     auto chart = CreateScatterPlotElement(id, x, y, width, height);
@@ -49860,35 +50841,43 @@ std::shared_ptr<UltraCanvasScatterPlotElement> CreateCustomScatterPlot(
 1. **Large Datasets**: For datasets with >1000 points, consider:
    - Reducing point size for better visibility
    - Implementing data aggregation or sampling
-   - Using simpler shapes (Circle) for faster rendering
+   - Keeping in mind that every mouse move over the chart measures the
+     distance to each point to find the tooltip's
 
 2. **Memory Management**: Use shared_ptr for data sources to ensure proper cleanup
 
 3. **Visual Clarity**: 
    - Choose contrasting colors for points vs background
    - Adjust point size based on data density
-   - Use different shapes to distinguish multiple series
+   - Use per-point colors to distinguish groups (one shape applies to all points)
 
 ### Data Preparation
+Each point is a `ChartDataPoint`:
+
 ```cpp
-// Optimal data structure for scatter plots
-struct ScatterDataPoint {
-    double x;        // X-axis value
-    double y;        // Y-axis value
-    double z;        // Optional: for bubble charts (future)
-    std::string label;  // Tooltip label
-    double value;    // Additional value for tooltips
+struct ChartDataPoint {
+    double x, y, z;          // x and y are plotted; z is not used by the 2D plot
+    std::string label;       // x-axis label and tooltip "X:" text in XAxisLabelMode::DataLabel
+    std::string category;    // not used by the scatter plot
+    double value;            // not used by the scatter plot
+    Color color;             // not transparent: overrides SetPointColor for this point
+
+    ChartDataPoint(double x_val, double y_val, double z_val = 0.0,
+                   const std::string& lbl = "", double val = 0.0, const Color& c = Colors::Transparent);
 };
 ```
 
-### Error Handling
+### Empty Data and Undefined Fits
+With no data source, or one without points, the chart draws "No data to
+display" in place of the plot. A trend line needs at least two points with
+different x values:
+
 ```cpp
-// Always check data validity before setting
-if (data && data->GetPointCount() > 0) {
-    scatterPlot->SetDataSource(data);
+double slope = 0.0, intercept = 0.0;
+if (scatterPlot->ComputeLinearRegression(slope, intercept)) {
+    // y = slope * x + intercept
 } else {
-    // Handle empty or invalid data
-    ShowErrorMessage("No data available for scatter plot");
+    // fewer than 2 points, or all at one x: no trend line is drawn
 }
 ```
 
@@ -49896,13 +50885,12 @@ if (data && data->GetPointCount() > 0) {
 
 ### Inherited Features
 From `UltraCanvasChartElementBase`:
-- Grid display and customization
-- Axis rendering and labels
-- Background and plot area colors
+- Grid display and customization (`SetShowGrid`, `SetGridColor`)
+- Axis rendering and labels (`SetShowAxes`, `SetXAxisLabelMode`, `SetRotateXAxisLabels`)
+- Background and plot area colors (`SetBackgroundColor`, `SetPlotAreaColor`)
 - Coordinate transformation
-- Tooltip management
-- Animation support
-- Zoom/Pan infrastructure
+- Tooltip management (`SetSeriesName`, `SetCustomTooltipGenerator`)
+- X-axis zoom and pan (`SetEnableZoom`, `SetEnablePan`, `ResetZoom`, `IsZoomed`)
 
 ### Coordinate System
 The scatter plot uses the `ChartCoordinateTransform` class to convert between:
@@ -49911,10 +50899,12 @@ The scatter plot uses the `ChartCoordinateTransform` class to convert between:
 
 ### Event Handling
 Integrates with the UltraCanvas event system:
-- `HandleMouseMove`: Tooltip and hover effects
-- `HandleMouseDown`: Selection and drag start
-- `HandleMouseUp`: Selection completion
-- `HandleMouseWheel`: Zoom in/out
+- `HandleMouseMove`: Tooltip and hover ring; moves the view during a pan drag
+- `HandleMouseDown`: Starts a pan when pan is on, the chart is zoomed in and
+  the press is in the plot area; any other left press is left to the parent
+- `HandleMouseUp`: Ends the pan (a release that ends none is left to the
+  parent)
+- `HandleMouseWheel`: Zooms the x axis in/out when zoom is on
 
 ## Typical Use Cases
 
@@ -49941,9 +50931,12 @@ Integrates with the UltraCanvas event system:
 ## Limitations and Considerations
 
 1. **Current Limitations**:
-   - Point size is uniform (not data-driven; use `UltraCanvasBubbleChart`
-     for value-scaled points)
-   - No automatic axis scaling options
+   - Point size is uniform (not data-driven; use
+     [`UltraCanvasBubbleChartElement`](UltraCanvasBubbleChart.md) for
+     value-scaled points)
+   - One shape for all points
+   - Axis ranges always follow the data (plus 5 % padding); they cannot be
+     set by hand, and only the x axis zooms
    - This element renders 2D only; use
      [`UltraCanvasScatterPlot3DElement`](UltraCanvasScatterPlot3D.md) for
      (x, y, z) data
@@ -49959,12 +50952,22 @@ Integrates with the UltraCanvas event system:
 - `UltraCanvasLineChartElement`: For continuous data visualization
 - `UltraCanvasBarChartElement`: For categorical comparisons
 - `UltraCanvasAreaChartElement`: For cumulative data display
-- `UltraCanvasBubbleChart`: Scatter with value-scaled point sizes
+- `UltraCanvasBubbleChartElement`: Scatter with value-scaled point sizes
 - `ChartDataVector`: Standard data source implementation
 - `ChartCoordinateTransform`: Coordinate transformation utility
 
 ## Version History
 
+- **1.1.2** (2026-10-07): the page matches the code
+  - The constructor and `CreateScatterPlotElement` take no numeric id
+  - `SetPointSize` takes a `double` and is the point's radius (6 by default);
+    the shape geometry and the tooltip's pick distance (size + 5 px) are as
+    drawn
+  - Selection is the hover ring, on by default; there is no click selection
+  - The trend line and correlation-info listings compile; `ResetZoom` /
+    `IsZoomed` and the tooltip generator are listed
+  - An invented `ShowErrorMessage` and `ScatterDataPoint` gave way to the
+    empty state and the real `ChartDataPoint`
 - **1.1.1** (2026-10-07): zoom and pan are off by default, and work when
   turned on (the wheel zooms the x axis, a drag pans it)
 - **1.1.0** (2026-07-29): Correlation line and per-point colors
@@ -54744,8 +55747,8 @@ orientation, optional thumb icons (built-in checkmark or custom images), and
 state texts that can be drawn inside the track, next to it, or as two permanent
 labels with the switch between them (`Backup [switch] Auto-Save`).
 
-**Version:** 1.3.0
-**Last Modified:** 2026-08-04
+**Version:** 1.3.2
+**Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Header:** `include/UltraCanvasSwitch.h`
 **Implementation:** `core/UltraCanvasSwitch.cpp`
@@ -54761,8 +55764,9 @@ labels with the switch between them (`Backup [switch] Auto-Save`).
   each side of the track
 - **Main label**: inherited from `UltraCanvasLabeledToggleBase`, drawn after the
   indicator
-- **Keyboard**: Space / Enter activate when focused; focus ring follows the
-  track shape
+- **Keyboard**: takes the focus (Tab, or a press); Space activates it while
+  focused, and Enter is left to the window (a dialog's default button); the
+  focus ring follows the track shape
 - **Content sizing**: the natural size is measured from track + texts + label
 
 ## Class Definition
@@ -54916,6 +55920,8 @@ container->AddChild(sw);
 
 ### Two texts with the switch between them
 
+<!-- doc-check: void UseAutoSave(bool on); -->
+
 ```cpp
 // Renders as:  Backup  (=O)  Auto-Save
 auto mode = UltraCanvasSwitch::CreateWithSideLabels(
@@ -54989,7 +55995,9 @@ volume->SetTrackSize(40.0f, 18.0f);   // long axis 40, short axis 18 — ON is a
 
 ## Related Components
 
-- `UltraCanvasCheckbox` — checkbox / radio styles on the same toggle base
+- `UltraCanvasCheckbox` — the checkbox (two or three states) on the same toggle base
+- `UltraCanvasRadio` / `UltraCanvasRadioGroup` — radio buttons on that base, made
+  exclusive by a group (documented in [UltraCanvasCheckbox.md](UltraCanvasCheckbox.md))
 - `UltraCanvasLabeledToggleBase` — shared state, layout and event plumbing
 
 ## See Also
@@ -58712,6 +59720,15 @@ this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
 
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
+
 ## Enumerations
 
 ### ToolbarOrientation
@@ -60737,7 +61754,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
@@ -61601,6 +62618,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 
 # UltraCanvas Vector Format Converters
 
+<!-- doc-check: std::string dwgBytes; -->
+
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
 **Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
@@ -61643,6 +62662,13 @@ The survey of what each converter reads and writes, the dead model surface and t
 ## Usage
 
 ```cpp
+#include "UltraCanvasVectorConverter.h"      // SVGConverter, PDFVectorConverter
+#include "UltraCanvasXARConverter.h"
+#include "UltraCanvasEPSConverter.h"
+#include "UltraCanvasCDRConverter.h"
+#include "UltraCanvasMetafileConverters.h"   // EMFConverter, WMFConverter, AIConverter
+#include "UltraCanvasCADConverters.h"        // DXFConverter, DWGConverter
+
 using namespace UltraCanvas::VectorConverter;
 
 SVGConverter svg;
@@ -61775,6 +62801,8 @@ and remains the only writer, since save dispatch matches on
 `GetSaveExtensions` rather than the extension map.
 
 ```cpp
+#include "UltraCanvasAllFormats.h"   // Plugins/
+
 // An application does this and nothing else:
 //     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
 //                                         UltraCanvasAllFormats)
@@ -62639,7 +63667,13 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
 
@@ -63954,6 +64988,79 @@ than a missing piece of the backend.
 So: if a host application hangs before its first window on Windows, check what
 it is built against before looking anywhere else.
 
+## Slow to start, or a window that stays black
+
+A window is never shown black on Windows: `Show()` draws its first frame
+before the window appears (`UltraCanvasWindowBase::RenderBeforeShow()`, the
+layout and paint of `UpdateAndRender()` for a window not yet shown), and a
+window's surface starts in its `backgroundColor`. Before, `Show()` painted the
+window from a surface nothing had been drawn into - zeros, black - and the
+content came with the event loop's first frame. So what remains to find is
+why the window is late, and an application can help itself by doing before
+`Show()` only what its first frame shows, and the rest after it (UltraMail's
+`FinishStartup`).
+
+Nor does a cold font cache hold the first window any longer. The generated
+`fonts.conf` names `C:\Windows\Fonts` and the user's font folder; with a cold
+fontconfig cache (the first start on a computer, after Windows changed its
+fonts, after the cache was cleaned) fontconfig opens every font file in them
+before any text can be laid out - many seconds. So fontconfig starts with the
+bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
+scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
+(`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
+set is used from the start. Otherwise the application starts with the bundled
+fonts and Windows' two symbol fonts, and every window switches to the full set
+when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+`SetSystemFontsSwitchedHandler()` hears of the switch.
+
+An application that starts but takes ten seconds to show anything - its
+console window alone on screen, or nothing - spends that time in one of
+three places: the framework's own initialisation, the application's start-up
+work, or the first frame. Two hooks tell them apart without a profiler; both
+work on every platform and in Release builds.
+
+**`UltraCanvasApplicationBase::GetStartupTimings()`** lists each step of
+`Initialize()` with its time, in the order they ran: `fontconfig setup`,
+`image subsystem`, `native backend`, `bundled and system fonts` (on Windows
+the scan of the system font folder, which takes seconds when fontconfig has
+to rebuild its cache), `clipboard`, `default window icon`. The same lines go to
+`debugOutput` ("UltraCanvas: startup step ... took N ms"), so
+`ULTRACANVAS_DEBUG_LOG` shows them too.
+
+**`UltraCanvasWindowBase::onFrameRendered`** is called after every frame that
+laid out or painted something, with a `WindowFrameTiming`: `layoutMs`
+(measure and arrange; 0 when the layout was still valid), `paintMs` (the
+elements in the dirty rectangles, and popups), `compositeMs` (popups, caret
+and tooltip onto the native surface), `dirtyRects` and `laidOut`. While it is
+unset nothing is timed.
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include <iostream>
+
+int main() {
+    UltraCanvas::UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) return 1;
+    for (const auto& step : app.GetStartupTimings())
+        std::cerr << "startup step " << step.stage << ": " << step.ms << " ms\n";
+
+    UltraCanvas::WindowConfig config;
+    auto window = UltraCanvas::CreateWindow(config);
+    window->onFrameRendered = [](const UltraCanvas::WindowFrameTiming& frame) {
+        const double total = frame.layoutMs + frame.paintMs + frame.compositeMs;
+        if (total >= 100)
+            std::cerr << "slow frame: layout " << frame.layoutMs << " ms, painting "
+                      << frame.paintMs << " ms\n";
+    };
+    window->Show();
+    app.Run();
+}
+```
+
+UltraMail prints both, with its own steps, in its timing trace
+(`Apps/UltraMail/engine/UltraMailTrace.h`, `Docs/UltraMail/CHANGELOG.md`
+0.10.35).
+
 ## "Windows cannot access the specified device, path, or file"
 
 Explorer shows this dialog (Thai: *Windows ไม่สามารถเข้าถึงอุปกรณ์ เส้นทาง หรือแฟ้มที่ระบุได้*)
@@ -64108,6 +65215,21 @@ Declared in `UltraCanvas/include/UltraCanvasDebug.h`:
 bool IsDebugOutputEnabled();                     // is anything reaching a sink?
 void SetDebugOutputFile(const std::string& path); // redirect; "" returns to stderr
 void SetDebugOutputEnabled(bool enabled);
+```
+
+Declared in `UltraCanvas/include/UltraCanvasApplication.h` and
+`UltraCanvasWindow.h` (every platform; see *Slow to start* above):
+
+```cpp
+void UltraCanvasWindowBase::RenderBeforeShow();   // a backend's Show() draws the first frame first
+bool AdoptSystemFontsWithin(int waitMs);           // Windows: the background font scan, if it ends in time
+SystemFontScanStatus GetSystemFontScanStatus();    // started, finished, succeeded, adoptedAtStart, ms
+void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler);
+struct StartupStageTiming { std::string stage; double ms; };
+const std::vector<StartupStageTiming>& UltraCanvasApplicationBase::GetStartupTimings() const;
+
+struct WindowFrameTiming { double layoutMs, paintMs, compositeMs; int dirtyRects; bool laidOut; };
+std::function<void(const WindowFrameTiming&)> UltraCanvasWindowBase::onFrameRendered;
 ```
 
 Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
@@ -69789,7 +70911,7 @@ FILE: Docs/Modules/UltraAI/Adapters.md
 # UltraAI Adapters
 
 **Version:** 0.1.0
-**Last Modified:** 2026-08-24
+**Last Modified:** 2026-10-07
 
 ## Overview
 
@@ -69825,6 +70947,7 @@ and friends report what this build actually has.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
+| *text-LLM translator* | `ITranslator` through any of the `ITextLLM` providers above, under the same id | wherever that LLM runs |
 
 ---
 
@@ -70276,6 +71399,89 @@ remote and the video is large.
 
 ---
 
+## Text-LLM translator — `ITranslator` through any chat model
+
+Header: `UltraAITextLLMTranslator.h`. Not a provider of its own: it serves
+`ITranslator` with whatever `ITextLLM` it is given, and the registry knows
+one translator provider for every text-LLM provider except `mock`, under
+the same id. Always built — it has no dependency beyond the interfaces.
+
+```cpp
+TranslatorConfig cfg;
+cfg.providerId = "qwen";             // or "anthropic", "openai", "llama-cpp"
+                                     // empty -> routing: local LLMs first
+auto tr = CreateTranslator(cfg);
+
+TranslateRequest req;
+req.texts = { "Guten Morgen", "<b>Speichern</b> Sie die Datei." };
+req.targetLanguage = "en";           // required, BCP-47
+req.formality = TranslationFormality::Formal;
+TranslateResponse resp = tr->Translate(req);
+for (const auto& r : resp.results)
+    std::cout << r.detectedSourceLanguage << ": " << r.text << '\n';
+```
+
+**How it works.** Each batch goes to the model as one chat: a system
+message with the task and the rules (register, domain, glossary, keep
+markup and placeholders, report the source language) and a user message
+holding the texts as a JSON object of numbered segments. The reply is asked
+for as JSON (`ResponseFormat::JsonObject`, which every shipped text-LLM
+adapter enforces) in the same numbering, so a batch comes back in order
+whatever the model does with it; a reply wrapped in a code fence or a
+sentence is still read, and a single text answered with the bare
+translation is accepted as it is. `DetectLanguage` is the same exchange
+with a detection prompt and up to `topN` guesses per text. The prompts and
+the parsers are public (`BuildTranslationPrompt`, `ParseTranslationReply`,
+`BuildDetectionPrompt`, `ParseDetectionReply`) so a test or an application
+can see exactly what is sent.
+
+**Configuration.** `apiKey`, `apiKeyVaultRef`, `baseUrl`, `defaultModel`,
+`timeoutMs` and `providerOptions` go to the text LLM unchanged, so whatever
+configures the chat provider configures the translator; `TranslateRequest::
+model` names the chat model per call. The translator reads these keys of
+`providerOptions` itself (and strips `textllm.*` from the per-request
+`options` before they reach the LLM):
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `textllm.provider` | string | the translator's `providerId` | the text-LLM provider to translate with; `CreateTextLLMTranslator(config)` with this set and an empty `providerId` follows the `textllm` route |
+| `textllm.batchSize` | int | 20 | texts per chat request; longer lists are split and the usage summed |
+| `textllm.temperature` | double | 0 | sampling temperature |
+| `textllm.maxOutputTokens` | int | none | cap on each reply |
+| `textllm.glossary` (per-request `options`) | string | — | `source = translation` lines the model is told to use |
+
+To wrap a chat model the application already holds — a mock in a test, or
+an instance with vendor settings applied through `RawProvider()` — use
+`CreateTextLLMTranslator(std::move(llm), config)`; the translator owns it,
+and its own `RawProvider()` returns that `ITextLLM*`.
+
+**What comes back.** `TranslateResult::detectedSourceLanguage` is what the
+model reports, or the request's `sourceLanguage` when it reports none;
+`confidence` is 0 unless the model volunteers one. `usage` holds the chat
+tokens summed over the batches and the input's character count in `units`.
+A reply the model cut off (`FinishReason::Length`) is
+`ErrorCode::ContextLengthExceeded` and says to lower `textllm.batchSize`
+or raise `textllm.maxOutputTokens`; a refusal is `ContentFiltered`; a reply
+that is not the expected JSON, or misses segments, is `ProviderError` with
+the count. `GetCapabilities()` lists the LLM's models with `runsLocally`
+carried over, every one marked as auto-detecting, batching and
+formality-aware; `supportedLanguages` is left empty, as a chat model takes
+any language it was trained on, and `maxBatchSize` is 0 because batches
+are split internally.
+
+**Routing.** `KnownLocalProviders("translator")` is `llama-cpp` then
+`qwen`, so an empty `providerId` translates through a local model when one
+is registered and goes to a cloud LLM only when cloud fallback is allowed
+or `ULTRAAI_DEFAULT_TRANSLATOR` names it.
+
+**Limits.** Translation quality, speed and cost are the chosen model's; a
+small local model may paraphrase or drop a placeholder where a translation
+service would not. `glossaryId` (a vendor glossary) is ignored — use
+`textllm.glossary`. A provider registered with `RegisterTranslatorProvider`
+under a text-LLM provider's id replaces the LLM-backed one for that id.
+
+---
+
 ## Related documents
 
 * [`README.md`](README.md) — the module, its interfaces and architecture.
@@ -70344,6 +71550,7 @@ tests run without any network or external model.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
+| *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
@@ -70390,6 +71597,7 @@ UltraAI/
 │   ├── UltraAIImageGen.h
 │   ├── UltraAIVisionAnalyzer.h
 │   ├── UltraAITranslator.h
+│   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
@@ -70479,7 +71687,8 @@ cmake -S UltraAI -B build \
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
-| Unit tests | Complete (11 executables, all passing) |
+| Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
+| Unit tests | Complete (12 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -74843,10 +76052,32 @@ never resized, to hold them, so the faces stay in shot through the whole move
 and not just at its ends. A `Still` photo stays still but looks at them —
 the band of a tall photo a `Cover` crop shows is the one with the faces.
 
-VideoFX does not find faces itself. An application plugs its own detector
-into the slideshow: UltraAI's vision analyser (`VisionTask::FaceDetection`),
-the operating system's (Vision on macOS, `Windows.Media.FaceAnalysis`), or a
-tap in its own UI. It is asked once per photo that has no regions given:
+**Faces found for you.** A slideshow finds the faces itself
+(`keepFacesInView`, on by default), and a photo segment does when its
+`keepFacesInView` is set. `VideoFX_DetectFaces(image, faces)` gives the
+detector on its own — it works without FFmpeg too:
+
+```cpp
+std::vector<VideoFXRect> faces;
+VideoFX_DetectFaces(photo, faces);              // fractions of the photo, largest first
+```
+
+It is a Viola-Jones detector running OpenCV's trained frontal-face model
+(`haarcascade_frontalface_alt`, compiled in; VideoFX's own code evaluates it,
+no OpenCV is linked) and finds what OpenCV's `CascadeClassifier` finds:
+faces looking roughly towards the camera, from about 1/40 of the photo's
+longer side upwards, in some 0.1–0.2 s a photo. Profiles, heads tilted far
+over and faces behind sunglasses or masks are often missed. The model's
+stray hits on clothing and textures are thinned out: in a colour photo a box
+needs skin colour in its middle, and one that too few overlapping windows
+agree on is dropped. A black and white photo cannot use the skin test, so an
+occasional stray box survives there; it only makes the move frame a little
+more of the picture. Set `keepFacesInView = false` for plain motion.
+
+An application with a better detector plugs it in instead: UltraAI's vision
+analyser (`VisionTask::FaceDetection`), the operating system's (Vision on
+macOS, `Windows.Media.FaceAnalysis`), or a tap in its own UI. It is asked
+once per photo that has no regions given, and wins over the built-in one:
 
 ```cpp
 VideoFXSlideshowOptions options;
@@ -75259,6 +76490,8 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
 videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
+videofx slideshow trip.mp4 *.jpg --no-faces                # plain motion, no face finding
+videofx faces family.jpg                                 # the faces the detector finds
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -75296,6 +76529,7 @@ generates its own clips, so it needs no media files.
 | 3b | Song lists, each song crossfading into the next | **Done** |
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
+| 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

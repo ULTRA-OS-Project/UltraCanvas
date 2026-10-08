@@ -122,6 +122,10 @@ Apps/UltraMail/
     UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
                                   highest UID before the sync) and the
                                   notification's words
+    UltraMailOneTimeCode.{h,cpp}  the one-time codes in a message (a sign-in
+                                  code), in any language: by their shape, and
+                                  the word for "code" beside them or in the
+                                  subject; the reading pane's copy buttons
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
@@ -137,7 +141,9 @@ Apps/UltraMail/
                                   group box with the preview
     UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
                                   HTMLReader/CSSLayout, text in a read-only area),
-                                  attachment strip
+                                  attachment strip; the text selectable and
+                                  copyable (header and body, right-click Copy /
+                                  Select All), a copy button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
@@ -305,6 +311,55 @@ add the delegated *Office 365 Exchange Online* permissions
 *Application (client) ID*. The redirect is `http://127.0.0.1:<port>/` —
 Microsoft ignores the port of a loopback URI. For a Microsoft 365 tenant the
 admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
+
+## Timing trace: where the start and an account switch spend their time
+
+UltraMail writes what it is doing, step by step and with its times, to
+`trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log` on Windows,
+`~/.local/share/UltraMail/trace.log` on Linux), which is emptied at each
+start, and to the console it was started from. Windows Release builds open no
+console window of their own; started from a command prompt they write into
+it, and Debug builds keep their console window. Every line carries the time of day, the seconds since the
+process started and the thread (`ui`, or `w<n>` for a worker):
+
+```
+[UltraMail 17:46:02.118 +   0.412 s ui] UltraMail 0.10.35 starting; the process started 412 ms before main() ...
+[UltraMail 17:46:02.118 +   0.412 s ui] > Startup: framework initialisation (fonts, images, windowing)
+[UltraMail 17:46:11.630 +   9.924 s ui] < Startup: framework initialisation (fonts, images, windowing): 9.51 s
+[UltraMail 17:46:11.630 +   9.924 s ui]   framework step bundled and system fonts: 9.38 s
+...
+[UltraMail 17:46:12.940 +  11.234 s ui] Frame 1 of the main window: 310 ms (layout 120 ms, painting 180 ms in 1 area(s), compositing 10 ms) - on screen 11.23 s after the process started
+...
+[UltraMail 17:47:30.004 +  88.298 s ui] > Switch to account work
+[UltraMail 17:47:30.006 +  88.300 s ui]   < Status line: 0.1 ms
+...
+[UltraMail 17:47:40.004 +  98.298 s w2] ! UI thread blocked 1.00 s so far, in: Refresh > Read the address book (sender badges)
+```
+
+- **The start:** the time before `main()` (loading the program and its
+  libraries), the framework's initialisation with each of its steps (fonts,
+  images, the windowing backend, the clipboard), whether Windows' system
+  fonts were ready or are still being scanned in the background (and when
+  they arrive), opening the mailbox,
+  building and filling the window with the list and the selected message,
+  the first frames with their layout and painting times, each timed from the
+  start of the process - and then what follows once the window is on screen
+  ("After the window is on screen": the mail plug-ins, the vault, the cloud
+  accounts, the cache pruning, the first check).
+- **An account switch:** each step of the click on a tile (the folder tree,
+  each query of the store, the rows, the list, the reading pane's message),
+  the next frames timed from the click, and the inbox update from the server -
+  on its worker (sign-in, the fetch, what it brought) and back on the UI
+  thread.
+- **The mail checks:** one block per check on its worker; the work it causes
+  on the UI thread only when that took 50 ms or more.
+- **The watchdog** asks the UI thread to answer four times a second. When it
+  does not, a `!` line says for how long, and in which of the steps above the
+  UI thread is - or that it is in none, which is the framework's own work: an
+  event, a timer, layout or painting. Every slow frame (100 ms or more) is
+  reported too.
+
+`ULTRAMAIL_TRACE=0` turns it off.
 
 ## What the engine provides now
 

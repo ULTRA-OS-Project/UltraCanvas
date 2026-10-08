@@ -10,8 +10,15 @@
 #
 # Two modes:
 #
-#   --record   PostToolUse on mcp__github__create_pull_request and
-#              mcp__claude-code-remote__set_session_title. Remembers the PR a
+#   --record   PostToolUse on mcp__github__create_pull_request and the
+#              Claude Code Remote server's set_session_title. That server is
+#              registered as mcp__claude-code-remote__... in some builds and
+#              mcp__Claude_Code_Remote__... in others, and a matcher naming
+#              only one spelling never ran this for the other: the rename was
+#              never recorded, and the Stop check below flagged a title that
+#              was already right. So the matcher in .claude/settings.json
+#              takes either case and either separator, and the tool is
+#              recognised here by its name's ending. Remembers the PR a
 #              session opened and the number its title was last given, in a
 #              per-session file under .git/ (never in the tree: a state file in
 #              the checkout would show as uncommitted work and count towards
@@ -30,8 +37,8 @@
 # only place set_session_title exists; elsewhere rule 7 asks the session to
 # give the user the number instead, and a hook cannot check that.
 #
-# Version: 1.0.0
-# Last Modified: 2026-10-01
+# Version: 1.0.1
+# Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 set -u
 
@@ -125,7 +132,7 @@ else
 fi
 reason="This session has pull request #$pr, but $have.
 AGENTS.md, Branch and pull-request rules, rule 7: the chat title starts with
-the PR number. Call set_session_title (claude-code-remote) with
+the PR number. Call set_session_title (Claude Code Remote server) with
 \"#$pr <current title>\" - get_session gives the current title; replace an
 older #<n> rather than adding a second one, and keep the words after it.
 If the title already reads \"#$pr ...\" (set by hand) or the tool is not

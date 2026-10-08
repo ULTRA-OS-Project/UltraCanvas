@@ -9,11 +9,18 @@
 #
 # Imported targets:
 #   UltraCanvas::UltraCanvas     the framework: windows, elements, rendering,
-#                                FileLoader, UltraCanvasJSON; UltraDatabase and
-#                                UltraNet when the build enabled them
-#   UltraCanvas::UltraCrypt      cryptographic services, UI-free
-#   UltraCanvas::UltraVault      credential and secret storage, UI-free
-#   UltraCanvas::UltraDatabase   (when built) usable on its own, without the UI
+#                                FileLoader, UltraCanvasJSON, and - a shared
+#                                core, which every SDK is - the modules folded
+#                                into it whole: UltraCrypt, UltraVault,
+#                                UltraDatabase, UltraMessage, NetworkMonitor,
+#                                VirtualFS, UltraNet and UltraWin
+#   UltraCanvas::UltraCrypt      cryptographic services
+#   UltraCanvas::UltraVault      credential and secret storage
+#   UltraCanvas::UltraDatabase   (when built) the data-access module
+#                                These three are the modules' homes: with a
+#                                shared core they resolve to the core, which
+#                                exports the module's API; with a static core
+#                                they are the UI-free archives on their own.
 #   UltraCanvas::UltraNet        (when built against a system libcurl)
 #   UltraCanvas::UltraCanvas<X>Plugin
 #                                the file-format plug-ins this build produced

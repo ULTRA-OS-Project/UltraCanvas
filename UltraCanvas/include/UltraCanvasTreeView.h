@@ -1,6 +1,7 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-02 - GetRequiredWidth (the width the widest row on show needs)
+// Last Modified: 2026-10-08 - default bodies mark unused parameters (void)
+//                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -277,6 +278,10 @@ private:
 //    Point2Di lastMousePos;          // Last mouse position
     
 public:
+    // ===== ACCESSIBILITY =====
+    // A tree; like a list view, its nodes are drawn rather than elements.
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Tree; }
+
     // ===== EVENTS AND CALLBACKS =====
     std::function<void(TreeNode*)> onNodeSelected;
     std::function<void(TreeNode*)> onNodeDoubleClicked;
@@ -539,7 +544,7 @@ protected:
     // of the normal background/expander/label. Return true if the row was fully
     // handled, in which case RenderNode skips its own drawing for this node.
     virtual bool RenderNodeFullRow(IRenderContext* ctx, TreeNode* node, int nodeY,
-                                   const Rect2Di& contentRect, int rowWidth) { return false; }
+                                   const Rect2Di& contentRect, int rowWidth) { (void)ctx; (void)node; (void)nodeY; (void)contentRect; (void)rowWidth; return false; }
 
     // Draw the row's content to the right of the expander/left-icon. The base draws
     // a single text run + optional right icon (Classic). Subclasses override to draw
@@ -554,7 +559,7 @@ protected:
     // every layout/scroll/hit-test calculation below becomes a no-op. A subclass
     // (e.g. UltraCanvasColumnsTreeView) overrides both to draw column titles.
     virtual int  GetHeaderHeight() const { return 0; }
-    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) {}
+    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) { (void)ctx; (void)headerRect; }
 
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }

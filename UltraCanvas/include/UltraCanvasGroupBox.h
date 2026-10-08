@@ -5,8 +5,8 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, and optional collapsible behaviour.
-// Version: 1.1.0
-// Last Modified: 2026-06-15
+// Version: 1.2.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,6 +88,13 @@ namespace UltraCanvas {
 // ===== GROUP BOX =====
     class UltraCanvasGroupBox : public UltraCanvasContainer {
     public:
+        // ===== ACCESSIBILITY =====
+        // A group named by its title.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Group; }
+        std::string GetAccessibleName() const override {
+            return GetAccessibleNameOverride().empty() ? title : GetAccessibleNameOverride();
+        }
+
         // ===== CONSTRUCTORS =====
         UltraCanvasGroupBox(const std::string& identifier, float x, float y, float w, float h,
                             const std::string& title = "");

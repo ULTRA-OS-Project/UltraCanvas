@@ -348,8 +348,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default, `PlainTextLayout::Lines` keeps the text's line structure -
+  paragraphs, `<br>`, table rows and cells, list items, `<pre>` - and leaves
+  out hidden content).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -375,8 +378,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine; the tree's own scrollbars are off, the host scrolls.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
@@ -1073,12 +1078,21 @@ engine; these classes hold the pixels being edited and hand them to it.
   `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
-  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
-  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
-  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
-  the Text pattern), sharing the tree, ids, geometry and text diffing in
-  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `GetAccessibleTextInterface` and, since 1.2, `GetAccessibleDescription`,
+  `GetAccessibleToggleState`, `GetAccessibleRange` / `SetAccessibleValue`,
+  `GetAccessibleValueText` / `SetAccessibleValueText` and
+  `GetAccessibleActionName` / `DoAccessibleAction`, with
+  `SetAccessibleName` / `SetAccessibleDescription` overrides on every
+  element. The common widgets implement it (button, checkbox, radio, switch,
+  label, text input, dropdown, slider, spinner, busy indicator, group box,
+  tabbed container, toolbar, list and tree view, image, menu), as does
+  `UltraCanvasRichTextEdit`. Platform bridges: AT-SPI on Linux
+  (`OS/Linux/UltraCanvasLinuxAccessibility`, GIO D-Bus, tested end to end by
+  `Tests/AtspiBridgeTest`), UI Automation on Windows
+  (`OS/MSWindows/UltraCanvasWindowsAccessibility`: Text, Invoke, Toggle,
+  SelectionItem, RangeValue and Value patterns) and NSAccessibility on macOS
+  (`OS/MacOS/UltraCanvasMacOSAccessibility`, VoiceOver), sharing the tree, ids,
+  geometry and text diffing in `UltraCanvasAccessibilityBridge.h`. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
@@ -1109,7 +1123,11 @@ engine; these classes hold the pixels being edited and hand them to it.
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,
 image / video / music generation, translation, code assist). See
-`Docs/Modules/UltraAI/README.md`.
+`Docs/Modules/UltraAI/README.md`. Translation (`ITranslator`) is served
+through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
+`BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
+`ParseDetectionReply`), registered under each text-LLM provider's id;
+`Docs/Modules/UltraAI/Adapters.md` has the option keys.
 
 ### **3. FileLoader**
 
@@ -1964,8 +1982,8 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom (keeping given faces in
-shot) and one-call slideshows,
+frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
 changing on the beat,
@@ -1995,7 +2013,7 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
-  `VideoFX_DetectBeats`, `VideoFX_GenerateTestClip`
+  `VideoFX_DetectBeats`, `VideoFX_DetectFaces`, `VideoFX_GenerateTestClip`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2020,7 +2038,10 @@ automatically (VideoToolbox, Media Foundation), project files.
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
   CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
-  FocusBounds, FitMotionToFocus, KeepFocusInView}`
+  FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
+  DetectFaces}` (`core/VideoFXFaces.h` - the cascade compiled in as
+  `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
+  from `UltraCanvas/third_party/opencv_haarcascade/`)
   (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`
   have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version

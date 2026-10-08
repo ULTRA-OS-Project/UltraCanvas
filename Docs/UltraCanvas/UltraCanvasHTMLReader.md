@@ -47,7 +47,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
-| HTML text | its words, for a list, a search index or a reply quote | `HTML::ExtractPlainText` |
+| HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
 | HTML text | the links, images, headings or any other elements | `HTML::Parser::Parse`, then walk the `Document` or use `HTML::Matches` with a selector |
 | CSS text and your own tree (SVG, XML) | which rules apply to an element | `HTML::StyleSheet::ParseAppend`, then `HTML::MatchingRules<YourTraits>` |
@@ -96,17 +96,34 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
-Two helpers need no DOM:
+Two helpers need no DOM of the caller's:
 
 ```cpp
 std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<style> bodies dropped,
                                                      // entities decoded, whitespace collapsed
+std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
 ```
 
-`ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+`ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
+message list's preview line or a search index wants: block boundaries become
+spaces, everything is one line. `PlainTextLayout::Lines` is the text a
+person reads or quotes - an HTML mail shown as plain text, the quote in a
+reply. It parses the page and writes it the way a browser's `innerText`
+does, simplified:
+
+- a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
+  own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
+  `<hr>` - never more than one blank line in a row;
+- `<br>` a line break, two of them a blank line;
+- the cells of a table row a tab apart;
+- list items as `- item`, or `1. item` in an `<ol>` (from its `start`);
+- `<pre>` as written; elsewhere whitespace collapses to single spaces, and a
+  no-break space is a space;
+- what a browser does not show is left out: `<head>`, `<script>`, `<style>`,
+  `<template>`, `<select>`, `<svg>`, the `hidden` attribute, and an inline
+  `display: none`, `visibility: hidden` or `mso-hide: all` (a mail's hidden
+  preheader). A class that hides through a style sheet is not looked up.
 
 ## CSS: the style sheet model
 
@@ -255,6 +272,7 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
+opts.selectableText = true;                   // the text selects and copies, as in a browser
 
 HTML::ElementBuilder builder;
 HTML::BuildResult r = builder.Build(html, opts);     // or BuildDocument(doc, opts) for a parsed one
@@ -265,6 +283,14 @@ if (r.root) {
 }
 for (const std::string& w : r.warnings) Log(w);
 ```
+
+With `selectableText` every label of the tree joins one
+`UltraCanvasTextSelection` (`r.textSelection`): a drag runs on from
+paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
+once the text has been clicked, and a text link opens when it is released
+without a drag. Keep `r.textSelection` to offer Copy and Select All in a
+menu (its `onContextMenu` is asked on a right-click); see
+`UltraCanvasLabelExamples.md`, *Selectable text*.
 
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
@@ -305,7 +331,6 @@ and the check blocks new ones:
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
 | `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
 | `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
 | `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
 | `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |

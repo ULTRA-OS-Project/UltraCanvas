@@ -17,8 +17,9 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-09-27
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -110,17 +111,17 @@ public:
     virtual void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) = 0;
 
     // Optional extra margin (header chips, spill-out markers). Measure pass only.
-    virtual void MeasureContent(IRenderContext* ctx, ChartLayoutRequest& request) {}
+    virtual void MeasureContent(IRenderContext* ctx, ChartLayoutRequest& request) { (void)ctx; (void)request; }
 
     // Labels this chart wants placed. Called only when the label plan is
     // rebuilt; text must arrive measured (use ctx->GetTextLineDimensions).
-    virtual void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) {}
+    virtual void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) { (void)ctx; (void)broker; }
 
     // Phase 3 top: hover emphasis, crosshairs, brush bands, drag ghosts.
-    virtual void RenderInteractionOverlay(IRenderContext* ctx, const ChartEngineFrame& frame) {}
+    virtual void RenderInteractionOverlay(IRenderContext* ctx, const ChartEngineFrame& frame) { (void)ctx; (void)frame; }
 
     // React to a configured property (key already validated against the bag).
-    virtual void OnEnginePropertyChanged(const std::string& key, const UCPropertyValue& value) {}
+    virtual void OnEnginePropertyChanged(const std::string& key, const UCPropertyValue& value) { (void)key; (void)value; }
 
     // =========================================================================
     // ENGINE CONFIGURATION
@@ -188,7 +189,7 @@ public:
     // (repaint-only), clicking one toggles its enabled state (the entry
     // renders dimmed) and notifies the chart, which decides what "disabled"
     // means - typically hide the series and MarkEngineDirty(ChartDirty::Data).
-    virtual void OnLegendEntryToggled(size_t entryIndex, bool enabled) {}
+    virtual void OnLegendEntryToggled(size_t entryIndex, bool enabled) { (void)entryIndex; (void)enabled; }
 
     // =========================================================================
     // ANIMATION DRIVER
@@ -225,7 +226,7 @@ public:
     // The hovered region's id, -1 when none. Ids are chart-defined (encode a
     // series/category pair, a data index, ...).
     int64_t HoveredRegionId() const { return hoveredRegionId; }
-    virtual void OnHitRegionHoverChanged(int64_t regionId) {}
+    virtual void OnHitRegionHoverChanged(int64_t regionId) { (void)regionId; }
 
     bool OnEvent(const UCEvent& event) override;
 
@@ -254,7 +255,7 @@ public:
 
     // Legacy base-class pure virtuals, adapted onto the engine path.
     void RenderChart(IRenderContext* ctx) override;
-    bool HandleChartMouseMove(const Point2Di& mousePos) override { return false; }
+    bool HandleChartMouseMove(const Point2Di& mousePos) override { (void)mousePos; return false; }
 
 protected:
     // Subclasses register their configurable keys here (with defaults).

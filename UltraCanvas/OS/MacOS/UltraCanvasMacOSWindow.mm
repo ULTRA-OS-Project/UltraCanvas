@@ -1,14 +1,12 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.3.0 - InvalidateWindowNative() draws the layer-backed view now
-//   instead of only marking it dirty, so a frame rendered without any Cocoa
-//   event (async thumbnail / poster results, timers) is not left waiting for
-//   AppKit's own event cycle
-// Last Modified: 2026-08-11
+// Version: 2.4.0 - the content view hands VoiceOver the window's elements (children, hit test, focus)
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMacOSWindow.h"
+#include "UltraCanvasMacOSAccessibility.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 
@@ -90,6 +88,27 @@
 
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)isFlipped { return YES; }
+
+// ===== ACCESSIBILITY =====
+// VoiceOver reads the window's elements through this view: they are its
+// children (UltraCanvasMacOSAccessibility.mm), the view itself is only
+// their container.
+- (BOOL)isAccessibilityElement { return NO; }
+
+- (NSArray*)accessibilityChildren {
+    NSArray* children = UltraCanvas::MacOSAccessibility::WindowChildren(ultraCanvasWindow);
+    return children ? children : [super accessibilityChildren];
+}
+
+- (id)accessibilityHitTest:(NSPoint)point {
+    id hit = UltraCanvas::MacOSAccessibility::HitTest(ultraCanvasWindow, point);
+    return hit ? hit : [super accessibilityHitTest:point];
+}
+
+- (id)accessibilityFocusedUIElement {
+    id focused = UltraCanvas::MacOSAccessibility::FocusedElement(ultraCanvasWindow);
+    return focused ? focused : [super accessibilityFocusedUIElement];
+}
 
 // Override to prevent default NSView behavior (system beep) for unhandled keys.
 // Key events are handled through the UltraCanvas event system at the application level.
