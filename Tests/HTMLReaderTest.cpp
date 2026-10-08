@@ -271,6 +271,45 @@ static void TestExtractPlainText() {
     CHECK_EQ(text, std::string("Head One & two"));
 }
 
+// PlainTextLayout::Lines: the text as a reader sees it, line by line - what an
+// HTML mail shows as plain text and quotes in a reply.
+static void TestExtractPlainTextLines() {
+    auto lines = [](const std::string& html) {
+        return ExtractPlainText(html, PlainTextLayout::Lines);
+    };
+    // Paragraphs a blank line apart, blocks on lines of their own.
+    CHECK_EQ(lines("<html><head><title>T</title><style>p{color:red}</style></head>"
+                   "<body><h1>Head</h1><p>One &amp; two</p><div>a</div><div>b</div></body></html>"),
+             std::string("Head\n\nOne & two\n\na\nb"));
+    // <br> is a line break, two a blank line.
+    CHECK_EQ(lines("Hi,<br><br>see you<br>Anna"), std::string("Hi,\n\nsee you\nAnna"));
+    // Whitespace between inline elements stays one space; runs collapse.
+    CHECK_EQ(lines("<p>Hello <b>big</b>   <i>world</i>\n  again</p>"),
+             std::string("Hello big world again"));
+    // Table rows on lines, their cells a tab apart.
+    CHECK_EQ(lines("<table><tr><td>Name</td><td>Anna</td></tr>"
+                   "<tr><th>City</th><td>Berlin</td></tr></table>"),
+             std::string("Name\tAnna\nCity\tBerlin"));
+    // Lists: "- " and numbers, from the start attribute.
+    CHECK_EQ(lines("<ul><li>one</li><li>two</li></ul><ol start=\"3\"><li>third</li><li>fourth</li></ol>"),
+             std::string("- one\n- two\n3. third\n4. fourth"));
+    // <pre> as written.
+    CHECK_EQ(lines("<p>Code:</p><pre>a  b\n  c</pre><p>end</p>"),
+             std::string("Code:\n\na  b\n  c\n\nend"));
+    // What is not shown: a mail's hidden preheader, the hidden attribute,
+    // scripts. A no-break space is a space.
+    CHECK_EQ(lines("<div style=\"display: none; max-height:0\">Preview text</div>"
+                   "<span style=\"visibility:hidden\">x</span><p hidden>gone</p>"
+                   "<script>var a = 1;</script><p>Body&nbsp;text &#8211; &eacute;t&eacute;</p>"),
+             std::string("Body text \xE2\x80\x93 \xC3\xA9t\xC3\xA9"));
+    // A layout table of a mail: blocks inside cells, no stray blank lines.
+    CHECK_EQ(lines("<table><tr><td><p>Dear Anna,</p><p>your order shipped.</p></td></tr>"
+                   "<tr><td>&nbsp;</td></tr><tr><td><p>Thanks</p></td></tr></table>"),
+             std::string("Dear Anna,\n\nyour order shipped.\n\nThanks"));
+    // The default is still one line.
+    CHECK_EQ(ExtractPlainText("<p>a</p><p>b</p>"), std::string("a b"));
+}
+
 // ============================================================================
 // CSS VALUES
 // ============================================================================
@@ -1340,6 +1379,7 @@ int main() {
     TestParserUnquotedAttributes();
     TestParserForeignContent();
     TestExtractPlainText();
+    TestExtractPlainTextLines();
     TestCssColor();
     TestCssLength();
     TestCssNumbersIgnoreLocale();
