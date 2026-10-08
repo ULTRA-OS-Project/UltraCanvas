@@ -1251,6 +1251,12 @@ jobs:
     needs: gate
     if: needs.gate.outputs.pending == 'false'
     runs-on: ubuntu-latest
+    # The whole job, not only its apt step: without one only GitHub's 6-hour
+    # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
+    # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a
+    # slow-mirror day); the install step keeps its own 20 minutes inside this,
+    # and the NDK syntax check, the slowest of the rest, takes under a minute.
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
