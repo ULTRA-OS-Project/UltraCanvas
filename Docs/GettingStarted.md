@@ -296,6 +296,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 
 `Apps/MyApp/main.cpp`
 
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
+
 ```cpp
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
