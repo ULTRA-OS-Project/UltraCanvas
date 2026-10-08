@@ -55,6 +55,9 @@ def is_excluded(path: Path) -> bool:
 
 def extract_description(text: str, limit: int = 220) -> str:
     """First real prose paragraph, preferring the '## Overview' section."""
+    # HTML comments are not rendered (`<!-- doc-check: ... -->` notes for
+    # scripts/check_doc_examples.py), so they are never the description.
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
     lines = text.splitlines()
     start = 0
     for i, line in enumerate(lines):

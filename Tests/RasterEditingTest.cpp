@@ -442,6 +442,14 @@ static void TestSaveOverTheOpenFile() {
     CHECK(std::filesystem::file_size(UltraCanvas::PathFromUtf8(keep)) == 12);
     CHECK(strays() == 0);
 
+    // A name without an extension (saved under "All files") has no format to
+    // pick: it fails saying so, and writes nothing.
+    const std::string bare = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "untitled");
+    CHECK(!unsupported.SaveToFile(bare, err));
+    CHECK(err.find("no extension") != std::string::npos);
+    CHECK(!std::filesystem::exists(UltraCanvas::PathFromUtf8(bare)));
+    CHECK(strays() == 0);
+
     std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 

@@ -8,7 +8,7 @@
 // works for every scanner until someone names one "Lab.Scanner", so the
 // splitting is tested here rather than discovered there. None of it needs
 // Windows, or a network.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "MdnsNames.h"
@@ -225,6 +225,46 @@ int main() {
                                   0x02, 0x11, 0x22, 0xff, 0xfe, 0x33, 0x44, 0x55};
         CheckEqual(IPv6ToString(addr), "fe80::211:22ff:fe33:4455",
                    "a link-local address, lower case and without leading zeros");
+    }
+
+    // ---- one service answered more than once ------------------------------
+    std::cout << "\n=== Every address a service answers from ===\n";
+    {
+        std::vector<std::string> addresses;
+        AddAddress(addresses, "fe80::1");
+        AddAddress(addresses, "192.168.1.20");
+        AddAddress(addresses, "192.168.1.20");
+        AddAddress(addresses, "10.0.0.5");
+        AddAddress(addresses, "");
+        Check(addresses == std::vector<std::string>{"192.168.1.20", "10.0.0.5", "fe80::1"},
+              "IPv4 ahead of IPv6, in the order each family arrived, each once, "
+              "nothing empty");
+    }
+    {
+        // Avahi: the same printer, once over IPv6 and once over IPv4, each
+        // resolved to its own family's address.
+        Attributes first = {{"host", {"printer.local"}},
+                            {"port", {"631"}},
+                            {"ip", {"fe80::211:22ff:fe33:4455"}},
+                            {"txt", {"rp=ipp/print"}}};
+        const Attributes second = {{"host", {"other.local"}},
+                                   {"port", {"632"}},
+                                   {"ip", {"192.168.1.20"}},
+                                   {"txt", {"rp=different"}}};
+        MergeAnswer(first, second);
+        Check(first["ip"] == std::vector<std::string>{"192.168.1.20", "fe80::211:22ff:fe33:4455"},
+              "a second answer's address joins the first's, IPv4 first");
+        Check(first["host"] == std::vector<std::string>{"printer.local"} &&
+                  first["port"] == std::vector<std::string>{"631"} &&
+                  first["txt"] == std::vector<std::string>{"rp=ipp/print"},
+              "  and what the first answer said is kept");
+
+        Attributes bare = {{"host", {"printer.local"}}};
+        MergeAnswer(bare, {{"port", {"631"}}, {"txt", {"rp=ipp/print"}}, {"ip", {"10.0.0.5"}}});
+        Check(bare["port"] == std::vector<std::string>{"631"} &&
+                  bare["txt"] == std::vector<std::string>{"rp=ipp/print"} &&
+                  bare["ip"] == std::vector<std::string>{"10.0.0.5"},
+              "what the first answer lacked is taken from the second");
     }
 
     std::cout << "\n";

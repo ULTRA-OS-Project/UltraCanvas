@@ -52,20 +52,25 @@ string, and a button placed by a layout needs no position at all.
 ```cpp
 UltraCanvasButton(const std::string& identifier,
                   float x, float y, float w, float h,
-                  const std::string& buttonText = "Button");
+                  const std::string& buttonText = "");
 UltraCanvasButton(const std::string& identifier,
                   float w, float h,
-                  const std::string& buttonText = "Button");   // positioned by a layout
+                  const std::string& buttonText = "");         // positioned by a layout
 UltraCanvasButton(const std::string& identifier,
                   const std::string& buttonText);               // sized by a layout too
 ```
+
+A button made without a label has none, so an icon-only button needs no
+`""` argument: its icon is centred (`SetIcon` without text). The default
+used to be `"Button"`, which such a button carried and laid out as icon +
+text, its icon at the left padding instead of in the middle.
 
 ### Factories
 
 ```cpp
 std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
                                                 float x, float y, float w, float h,
-                                                const std::string& text = "Button");
+                                                const std::string& text = "");
 std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
                                                     float x, float y, float w, float h,
                                                     const std::string& iconPath,

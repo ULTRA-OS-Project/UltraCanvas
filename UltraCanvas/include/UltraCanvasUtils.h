@@ -36,6 +36,9 @@ namespace UltraCanvas {
     std::string FormatFileSize(size_t bytes);
 
     std::string GetExecutableDir();
+    // The path in the platform's form: on Windows with '\' for '/', elsewhere
+    // resolved by realpath (a path that does not exist stays as given). A path
+    // that ends in a separator ends in exactly one, so a name appends to it.
     std::string NormalizePath(const std::string& in);
 
     // Is the file/folder hidden by the conventions of the platform it lives

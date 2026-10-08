@@ -67,7 +67,7 @@ config.initialDirectory = startFolder;   // empty: the last used folder
 
 auto dialog = UltraCanvasDialogManager::CreateFileDialog(config);
 dialog->onFileSelected = [](const std::string& folder) { /* ... */ };
-UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow);
+UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parentWindow.get());
 ```
 
 A config starts without filters: the dialog then lists every file under an
@@ -78,6 +78,7 @@ A config starts without filters: the dialog then lists every file under an
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
 | `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
 | `defaultFileName` | Put into the name field (Save) |
+| `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
 | `allowMultipleSelection` | Set by `OpenMultiple`: the listing takes a multi-selection |
 | `showHiddenFiles` | List dot-files / hidden files |
@@ -96,9 +97,12 @@ between folders.
 
 - **Open** accepts a selected file, a name typed into the name field, a path
   typed relative to the folder shown, or a double-click / Enter in the
-  listing. A typed folder name opens that folder instead of accepting it.
-- **Save** accepts any name in a folder that exists, with the chosen file
-  type's extension - see [Save names](#save-names). A name that is already a
+  listing. A typed folder name opens that folder instead of accepting it. A
+  typed name that is not a file gets a **File Not Found** notice and the
+  dialog stays open on it, as the platforms' open dialogs do.
+- **Save** accepts any name in a folder that exists (a path typed into a
+  folder that is not there gets a **Folder Not Found** notice), with the
+  chosen file type's extension - see [Save names](#save-names). A name that is already a
   file gets a **Replace File** question first ("… already exists. Do you want
   to replace it?"), as the platforms' own save dialogs ask. **No** leaves the
   dialog open on that name. A caller that asks itself, or appends to the
@@ -140,6 +144,15 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- Under All files a name without an extension stays without one, so there
+  is no format to pick - unless the config names a `defaultExtension`, which
+  such a name then gets ("photo" -> "photo.png"), before the Replace File
+  question like the rest. Don't add a default extension of your own after
+  the dialog: it would bypass that question. The framework's savers
+  (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
+  refuse a name without one with a message asking for an extension.
+  `FileDialogOptions` has no `defaultExtension`: it is the framework
+  dialog's, for a caller that builds the dialog itself.
 - The native dialogs follow the same rule. Windows is given the chosen
   type's extension as its default (`SetDefaultExtension`) and the result is
   checked as above; the GTK chooser rewrites the name when the type changes
@@ -163,7 +176,7 @@ opts.SetTitle("Open media").SetFilterToggles(true)
     .AddFilter("Audio",  audioExtensions)
     .AddFilter("Video",  videoExtensions)
     .AddFilter("All files", std::vector<std::string>{ "*" })
-    .SetParentWindow(GetWindow());
+    .SetParentWindow(parentWindow.get());
 UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, onPicked);
 ```
 
@@ -195,7 +208,10 @@ on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
 elsewhere. Every application shares the file. The last used folder is either
 one for all applications (Global) or kept per application (Individual); ULTRA
 OS settings switches between them. A caller that names an
-`initialDirectory` always opens there.
+`initialDirectory` always opens there. The file is rewritten only when a
+close changed something in it; a file that cannot be written or read is
+reported once per run on `debugOutput`, and the dialog carries on with the
+defaults.
 
 ## Native or framework
 

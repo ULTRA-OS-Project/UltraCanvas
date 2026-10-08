@@ -18,6 +18,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSwitch.h"
@@ -248,6 +249,39 @@ void UltraClipboardWindow::Show() {
             SelectRow(model_->FindRow(id));
             EditEntry(id);
         });
+    }
+}
+
+void UltraClipboardWindow::Present(const std::string& search, int64_t editId) {
+    if (!window_) return;
+    if (window_->IsMinimized()) window_->Restore();
+    // A dialog that is open keeps what is typed in it: it comes forward, and
+    // the request waits for the user to finish there.
+    const auto dialogs = UltraCanvasDialogManager::GetActiveDialogs();
+    if (!dialogs.empty()) {
+        dialogs.back()->RaiseAndFocus();
+        return;
+    }
+    window_->RaiseAndFocus();
+    if (!history_) return;
+    if (!search.empty()) {
+        // The panel searched every kind; setting the text from here does not
+        // reach onTextChanged, so the list is filtered again here.
+        kinds_->SetSelectedIndex(All);
+        search_->SetText(search);
+        search_->SetFocus(true);
+        Reload();
+    }
+    if (editId != 0) {
+        // The entry being edited is shown behind the dialog, whatever the
+        // window was filtered by.
+        if (model_->FindRow(editId) < 0) {
+            kinds_->SetSelectedIndex(All);
+            search_->SetText("");
+            Reload();
+        }
+        SelectRow(model_->FindRow(editId));
+        EditEntry(editId);
     }
 }
 

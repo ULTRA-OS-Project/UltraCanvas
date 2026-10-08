@@ -1,7 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.3.0 - never shown black: the first frame is drawn before the
+//                  window appears, and a new surface starts in the window's
+//                  background colour instead of black
+// Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
-// Last Modified: 2026-10-05
+// Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -161,6 +166,12 @@ namespace UltraCanvas {
             case WindowType::Fullscreen:
                 style = WS_POPUP;
                 break;
+            case WindowType::Notification:
+                // A toast: above everything, out of the taskbar and Alt+Tab,
+                // never activated (shown with SW_SHOWNOACTIVATE below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                break;
             default: // Standard
                 break;
         }
@@ -262,6 +273,17 @@ namespace UltraCanvas {
         // 72 DPI, which would let Pango's draw-time pango_cairo_update_layout()
         // resync to a different scale than the cairo-xlib surface on Linux.
         cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
+
+        // A new image surface is all zeros - black - and WM_PAINT blits it as
+        // it is. Start it in the window's background colour, so whatever is
+        // shown before a frame has been drawn into it is never a black window.
+        if (cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface)) == CAIRO_STATUS_SUCCESS) {
+            cairo_t* fill = cairo_create(static_cast<cairo_surface_t *>(nativeSurface));
+            const Color& bg = config_.backgroundColor;
+            cairo_set_source_rgb(fill, bg.r / 255.0, bg.g / 255.0, bg.b / 255.0);
+            cairo_paint(fill);
+            cairo_destroy(fill);
+        }
 
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
@@ -561,7 +583,12 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsWindow::Show() {
         if (!_created || _windowVisible) return;
-        ShowWindow(hwnd, SW_SHOW);
+        // The first frame before the window appears: UpdateWindow below then
+        // puts the window on screen with its content. Shown first, it showed
+        // its empty surface - black - until the event loop drew the frame,
+        // for as long as anything kept the loop from getting there.
+        RenderBeforeShow();
+        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(hwnd);
 
         _windowVisible = true;

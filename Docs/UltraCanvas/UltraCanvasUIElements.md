@@ -155,6 +155,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
+| A notification on screen (a toast: app, summary, body, action buttons, close) - and `UltraCanvasNotificationToastHost`, which draws the UltraMessage notifications nothing else draws, stacked in a screen corner. For the desktop shell only: an application posts a `system.notification` instead ([doc](UltraCanvasNotificationToast.md)) | `UltraCanvasNotificationToast` | `Plugins/UltraMessage/UltraCanvasNotificationToast.h` |
 
 ## Charts, diagrams and codes — the plugin elements
 
@@ -236,10 +237,11 @@ Each takes its data through setters and renders itself; most have a
 | A PDF on its own, with thumbnail strip, zoom and search-hit overlay (`UltraCanvasMediaViewer` embeds this for `.pdf`) | `UltraCanvasPDFView` | `Plugins/Documents/UltraCanvasPDFView.h` |
 | Markdown rendered as a standalone display (`UltraCanvasTextArea`'s Markdown mode is the editable route) | `UltraCanvasMarkdownDisplay` | `Plugins/Text/UltraCanvasMarkdown.h` |
 
-The vector format plugins (`UltraCanvasSVGElement`, `UltraCanvasCDRElement`,
-`UltraCanvasEPSElement`, `UltraCanvasXARElement`) are **not** in these tables on
-purpose: they are decoders behind `UltraCanvasVectorElement` and
-`UltraCanvasImageElement`, which are what an application reaches for. Same for
+The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
+`UltraCanvasXARElement`) are **not** in these tables on purpose: they are
+decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
+are what an application reaches for. An SVG has no element of its own either:
+`UltraCanvasImageElement` shows it (through librsvg). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them

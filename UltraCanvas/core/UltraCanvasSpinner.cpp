@@ -1,7 +1,7 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
-// Version: 1.1.0
-// Last Modified: 2026-07-13
+// Version: 1.2.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
@@ -107,8 +107,28 @@ namespace UltraCanvas {
             if (valueType == SpinnerValueType::List && onSelectionChanged) {
                 onSelectionChanged(GetSelectedIndex(), GetSelectedText());
             }
+            NotifyAccessibility(AccessibilityEventType::ValueChanged);
         }
         RequestRedraw();
+    }
+
+    bool UltraCanvasSpinner::GetAccessibleRange(AccessibleRange& range) const {
+        range.value = value;
+        range.minimum = minValue;
+        range.maximum = maxValue;
+        range.step = valueType == SpinnerValueType::List ? 1.0 : step;
+        range.readOnly = IsDisabled();
+        return true;
+    }
+
+    bool UltraCanvasSpinner::SetAccessibleValue(double newValue) {
+        if (IsDisabled()) return false;
+        ApplyValue(newValue, true);
+        return true;
+    }
+
+    std::string UltraCanvasSpinner::GetAccessibleValueText() const {
+        return GetDisplayText();
     }
 
 // ===================================================================

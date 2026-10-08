@@ -145,8 +145,10 @@ before adding cross-module code.
   tell a string from a path - so a class member declared in its header and a
   call to a function declared as returning `std::string`
   (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
-  whole. A string it still cannot see the type of (an `auto`, a member of a
-  class declared further away) is review's to catch.
+  whole. A member access (`env.accountId`) is looked up through the whole
+  include chain, since the struct is often a header or two further down. A
+  string it still cannot see the type of (an `auto`, a member declared two
+  different ways, a type from outside the repository) is review's to catch.
   A string that is not UTF-8 to begin with is not fixed by wrapping it in
   `PathFromUtf8`. The environment is the common case: Windows keeps the
   profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
@@ -250,8 +252,13 @@ back-reference raw — `[button = button.get(), status]` — which is valid for 
 long as the callback can run, because the thing holding the callback is the
 thing being pointed at. Captures pointing the other way (a popup the lambda
 keeps alive, a sibling it updates, `make_shared` state) are ownership, not a
-cycle, and stay `shared_ptr`. `scripts/check_callback_cycles.py` enforces this
-and runs in CI; a genuine exception opts out with
+cycle, and stay `shared_ptr`. It makes no difference where the `shared_ptr`
+came from or how the lambda is stored: a parameter the function was handed
+(`AddRadioButton(std::shared_ptr<UltraCanvasRadio> button)` storing
+`[this, button]` on `button` leaked every radio), a setter
+(`x->SetOnClick(...)`) as much as an assignment (`x->onClick = ...`), and
+`[=]` or `[p = x]` as much as `[x]`. `scripts/check_callback_cycles.py`
+enforces this and runs in CI; a genuine exception opts out with
 `// callback-cycle-exempt: <why>`.
 
 ## Building and testing
@@ -281,9 +288,32 @@ alongside the existing deps. The build uses the system default linker (GNU ld,
 same as CI); with a newer Clang on an older distro it automatically drops to
 DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
-The full 3-OS dependency lists are in `.github/workflows/build.yml`.
+The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
+installs Ubuntu packages with `scripts/ci-apt.sh install`, not
+`sudo apt-get install`: it stops and retries a download that has stopped
+dead, which apt itself waits out for as long as the job lasts.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
+without most of the libraries CI installs, and CMake leaves a missing optional
+library out without a word - so `.claude/settings.json` also runs
+`.claude/hooks/session-start.sh` on `SessionStart`. In the cloud only
+(`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
+that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
+Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
+builds them from source. Without it, UltraCrypt built without libsodium and
+every credential-vault test failed here while passing in CI, and VideoFX, the
+PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
+were not built at all. A cold container takes about a minute, a warm one a
+fraction of a second; it never blocks the session, and when an install fails
+it says so in one line in the session's context. The services CI starts for
+its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
+tests skip. A test that fails here but passes in CI because a library is
+missing is fixed by adding the package to that list, not by treating the
+failure as expected; re-run `cmake` on a build directory configured before
+the install. To build what CI builds, configure with the options of CI's
+*Configure CMake (macOS/Linux)* step.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -330,7 +360,7 @@ NetworkMonitor and VirtualFS are each built as a static archive that the
 shared core absorbs whole (`$<LINK_LIBRARY:WHOLE_ARCHIVE,…>`, "MODULE HOMES" in
 `UltraCanvas/CMakeLists.txt`), so the core exports their complete API and
 every running application shares one copy of the code and its global state.
-Until 0.9.184 the core was static on macOS, so each of the ~20 `.app`
+Until October 2026 the core was static on macOS, so each of the ~20 `.app`
 executables carried the whole framework, and on Linux and Windows an app that
 linked a module archive next to the shared core got a second copy of that
 module - two registries, two connection tables. The rules:
@@ -360,7 +390,7 @@ single shared `Frameworks/` that every `.app` loads its dylibs from
 `dist/` folder) already shared their libraries; macOS gave each `.app` its own
 copy of the ~90 Homebrew dylibs, so every new app added ~95 MB to the
 download - two apps added in October 2026 took the macOS DMG from 431 MB back
-to 556 MB - and, until 0.9.184, its own statically linked copy of the
+to 556 MB - and, until October 2026, its own statically linked copy of the
 framework on top. The rules:
 
 - **Add an app with a `build_app_bundle` call** in `package-macos.sh`, above

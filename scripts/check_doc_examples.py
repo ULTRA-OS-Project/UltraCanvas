@@ -31,8 +31,10 @@ an HTML comment (not rendered):
     <!-- doc-check: void CreateFolder(); std::shared_ptr<UltraCanvasTreeView> tree; -->
 
 A function is declared for every block; a variable is given to the blocks
-that use it without declaring it. A snippet's `#include <...>` is honoured
-where this machine has the header.
+that use it without declaring it. A snippet's `#include <...>` or
+`#include "..."` is honoured where this machine has the header (the include
+paths cover the plugin directories, so a plugin header such as
+`#include "UltraCanvasVectorConverter.h"` resolves).
 
 Missing `#include` targets are reported too.
 
@@ -45,7 +47,7 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
 Exit status 1 when a doc has findings.
 """
-# Version: 1.0.0
+# Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
 # Last Modified: 2026-10-07
 # Author: UltraCanvas Framework
 
@@ -63,19 +65,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INCLUDE = ROOT / "UltraCanvas" / "include"
 
-# Headers that don't compile on their own, or clash with another header
-# (UltraCanvasConnectionRenderer's struct ConnectionStyle and the block
-# diagram's enum class ConnectionStyle): left out of the shared header, and
-# the block diagram gets a second one without the chart side.
+# Headers that don't compile on their own: left out of the shared header.
 STANDALONE_EXCLUDED = {
     "Plugins/LaTeX/UltraCanvasLaTeXBackend.h",
-    "UltraCanvasCairoDebugExtension.h",
-}
-CLASH_A = {"Plugins/Diagrams/UltraCanvasBlockDiagram.h"}
-CLASH_B = {
-    "Plugins/Charts/UltraCanvasConnectionRenderer.h",
-    "Plugins/Charts/UltraCanvasCircularInfoGraphic.h",
-    "Plugins/Charts/UltraCanvasChordChart.h",
 }
 
 SYSTEM_HEADERS = [
@@ -140,8 +132,8 @@ def public_headers():
     return sorted(str(p.relative_to(INCLUDE)).replace(os.sep, "/") for p in INCLUDE.rglob("*.h"))
 
 
-def build_pch(work, name, excluded, flags, clang):
-    headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED and h not in excluded]
+def build_pch(work, name, flags, clang):
+    headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED]
     text = "".join('#include "%s"\n' % (INCLUDE / h) for h in headers)
     text += "".join("#include <%s>\n" % h for h in SYSTEM_HEADERS)
     text += "using namespace UltraCanvas;\n"
@@ -703,6 +695,8 @@ def run_clang(clang, flags, pch_header, source, work, tag, doc=None):
     path.write_text(source, encoding="utf-8")
     cmd = [clang] + flags + ["-include-pch", str(pch_header) + ".pch", "-fsyntax-only", str(path)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if "has been modified since the precompiled header" in proc.stderr:
+        raise RuntimeError("a header changed while the docs were being checked; run again")
     errors = []
     for line in proc.stderr.splitlines():
         m = ERR.match(line)
@@ -729,6 +723,8 @@ def header_compiles(path, clang, flags, pch_header):
             return _header_ok[key]
     proc = subprocess.run([clang] + flags + ["-include-pch", str(pch_header) + ".pch", "-fsyntax-only",
                            "-x", "c++", "-include", str(path), os.devnull], capture_output=True, text=True)
+    if "has been modified since the precompiled header" in proc.stderr:
+        raise RuntimeError("a header changed while the docs were being checked; run again")
     first = next((l for l in proc.stderr.splitlines() if ": error:" in l or "fatal error" in l), "")
     result = (proc.returncode == 0, first)
     with _header_lock:
@@ -743,7 +739,7 @@ class Doc:
         self.index = index
         self.args = args
         self.flags = flags
-        self.pch = pch["B"] if "BlockDiagram" in path.name else pch["A"]
+        self.pch = pch
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
         self.tag = re.sub(r"\W", "_", path.stem) + "_" + hashlib.sha1(str(path).encode()).hexdigest()[:6]
@@ -925,9 +921,9 @@ class Doc:
         out = list(self.includes)
         for b in self.blocks:
             for kind, i, j in b.chunks:
-                m = re.match(r"\s*#\s*include\s*<([^>]+)>", b.lines[i]) if kind == "pp" else None
+                m = re.match(r"\s*#\s*include\s*(<[^>]+>|\"[^\"]+\")", b.lines[i]) if kind == "pp" else None
                 if m:
-                    out += ["#if __has_include(<%s>)" % m.group(1), "#include <%s>" % m.group(1), "#endif"]
+                    out += ["#if __has_include(%s)" % m.group(1), "#include %s" % m.group(1), "#endif"]
         for b in self.blocks:
             code = [c for c in b.chunks if c[0] != "pp"]
             if not code:
@@ -969,7 +965,10 @@ class Doc:
         assumed = []
         for m in re.finditer(r"<!--\s*doc-check:(.*?)-->", self.text, re.S):
             for st in statements(m.group(1)):
-                f = parse_field(st) if "(" not in st else None
+                # A type (`struct Message { ... };`) is declared as written;
+                # only `Type name;` gives a variable.
+                is_type = re.match(r"^\s*(struct|class|enum|union|using|typedef|template|namespace)\b", st)
+                f = parse_field(st) if "(" not in st and not is_type else None
                 if f:
                     body = st.rstrip(";").strip()
                     declared[f["name"]] = body[:body.rfind(f["name"])].strip()
@@ -1286,10 +1285,7 @@ def main():
     args.work.mkdir(parents=True, exist_ok=True)
 
     flags = base_flags()
-    with concurrent.futures.ThreadPoolExecutor(2) as pool:
-        fa = pool.submit(build_pch, args.work, "umbrellaA", CLASH_A, flags, args.clang)
-        fb = pool.submit(build_pch, args.work, "umbrellaB", CLASH_B, flags, args.clang)
-        pch = {"A": fa.result(), "B": fb.result()}
+    pch = build_pch(args.work, "umbrella", flags, args.clang)
     index = HeaderIndex()
 
     total = 0

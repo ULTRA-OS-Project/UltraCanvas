@@ -8,8 +8,8 @@
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.0.0  
-**Last Modified:** 2025-09-10  
+**Version:** 1.1.0  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -26,7 +26,7 @@ UltraCanvasUIElement
 - **Line Rendering:** High-quality line drawing with customizable colors and widths
 - **Data Point Display:** Optional visualization of individual data points with customizable appearance
 - **Smooth Curves:** Bezier curve smoothing for more aesthetic line representation
-- **Interactive Features:** Built-in support for zoom, pan, and data point tooltips
+- **Interactive Features:** Data point tooltips, and wheel zoom and drag pan of the x axis (off until enabled)
 - **Animation:** Smooth animated transitions when data changes
 - **Grid & Axes:** Automatic grid lines and axis labels with smart formatting
 
@@ -39,28 +39,26 @@ UltraCanvasUIElement
 
 ### Interactivity
 - Hover tooltips showing data point values
-- Mouse-based panning and zooming
+- Wheel zoom and drag pan of the x axis, once `SetEnableZoom(true)` / `SetEnablePan(true)`
 - Selection indicators for data points
 - Custom tooltip content generation
 
 ## Constructor
 
 ```cpp
-UltraCanvasLineChartElement(const std::string &id, long uid, 
-                            int x, int y, int width, int height)
+UltraCanvasLineChartElement(const std::string &id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 - **id:** Unique string identifier for the chart element
-- **uid:** Unique numeric identifier
 - **x:** X-coordinate position
 - **y:** Y-coordinate position
 - **width:** Width of the chart
 - **height:** Height of the chart
 
 ### Default Settings
-- Zoom enabled: `true`
-- Pan enabled: `true`
+- Zoom enabled: `false`
+- Pan enabled: `false`
 - Line color: Blue (RGB: 0, 102, 204)
 - Line width: 2.0f
 - Show data points: `false`
@@ -107,7 +105,8 @@ Sets the color of data point markers.
 ```cpp
 void SetPointRadius(float radius)
 ```
-Sets the radius of data point markers in pixels.
+Sets the radius of data point markers in pixels (4 by default for the line
+chart). It also sets how far the value labels sit from the points.
 
 ### Inherited Methods from Base Class
 
@@ -133,13 +132,21 @@ Enables or disables interactive tooltips.
 ```cpp
 void SetEnableZoom(bool enable)
 ```
-Enables or disables mouse wheel zoom functionality.
+Turns wheel zoom of the x axis on or off (off by default). Wheel up over the
+plot zooms in around the pointer, wheel down zooms back out, up to 50x. A
+wheel turn that changes nothing - over the axis margins, or zooming out of
+the whole range - is left to the parent, so a scrolling container around the
+chart still scrolls. Works in both x-axis label modes: with
+`XAxisLabelMode::DataLabel` the evenly spaced points spread apart. Turning
+zoom off, or setting a new data source, shows the whole range again; so does
+`ResetZoom()`, and `IsZoomed()` tells whether the view is narrowed.
 
 #### SetEnablePan
 ```cpp
 void SetEnablePan(bool enable)
 ```
-Enables or disables mouse drag panning.
+Turns dragging a zoomed x axis sideways with the left button on or off (off by
+default). A drag over a chart that is not zoomed in is left to the parent.
 
 ## Usage Examples
 
@@ -147,8 +154,7 @@ Enables or disables mouse drag panning.
 
 ```cpp
 // Create a line chart element
-auto lineChart = CreateLineChartElement("salesChart", 1001, 
-                                       50, 50, 600, 400);
+auto lineChart = CreateLineChartElement("salesChart", 50, 50, 600, 400);
 
 // Configure appearance
 lineChart->SetLineColor(Color(0, 102, 204, 255));  // Blue
@@ -172,8 +178,7 @@ container->AddChild(lineChart);
 
 ```cpp
 // Create smoothed line chart
-auto smoothChart = CreateLineChartElement("revenueChart", 2001,
-                                         100, 100, 800, 500);
+auto smoothChart = CreateLineChartElement("revenueChart", 100, 100, 800, 500);
 
 // Enable advanced features
 smoothChart->SetSmoothingEnabled(true);
@@ -197,8 +202,7 @@ smoothChart->SetGridColor(Color(220, 220, 220, 255));
 
 ```cpp
 // Create chart with initial data
-auto dynamicChart = CreateLineChartElement("liveData", 3001,
-                                          50, 50, 700, 450);
+auto dynamicChart = CreateLineChartElement("liveData", 50, 50, 700, 450);
 
 // Initial setup
 auto initialData = std::make_shared<ChartDataVector>();
@@ -217,8 +221,7 @@ void updateChartData() {
 
 ```cpp
 // Create highly interactive chart
-auto interactiveChart = CreateLineChartElement("analytics", 4001,
-                                              0, 0, 1024, 600);
+auto interactiveChart = CreateLineChartElement("analytics", 0, 0, 1024, 600);
 
 // Enable all interactive features
 interactiveChart->SetEnableTooltips(true);
@@ -280,15 +283,15 @@ The line chart follows this rendering sequence:
 
 ### Supported Events
 
-- **MouseMove:** Updates tooltips and hover states
-- **MouseDown:** Initiates pan operation
-- **MouseUp:** Completes pan operation
-- **MouseWheel:** Zooms in/out around cursor position
+- **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
+- **MouseUp:** Ends the pan
+- **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior
 
 Tooltips appear when:
-- Mouse hovers within 2× point radius of a data point
+- Mouse hovers within 20 px of a data point that is in view
 - Tooltips are enabled via `SetEnableTooltips(true)`
 - A valid data source is connected
 
@@ -299,7 +302,9 @@ Tooltips appear when:
 - **Render Caching:** Plot area and data bounds are cached
 - **Animation Throttling:** Smooth animations at 60 FPS
 - **Clipping:** Rendering is clipped to element bounds
-- **Lazy Evaluation:** Recalculations only on data/size changes
+- **Lazy Evaluation:** The plot area and ranges are worked out again when the
+  data source is set, the size changes (SetBounds or the layout), the label
+  mode changes or the view is zoomed or panned
 
 ### Best Practices
 
@@ -314,9 +319,7 @@ The recommended way to create line chart instances:
 
 ```cpp
 std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
-    const std::string &id, long uid, 
-    int x, int y, int width, int height
-)
+    const std::string &id, int x, int y, int width, int height)
 ```
 
 ## Integration with UltraCanvas
@@ -326,12 +329,11 @@ std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
 Line charts can be added to any UltraCanvas container:
 
 ```cpp
-auto mainWindow = std::make_shared<UltraCanvasWindow>();
-auto container = std::make_shared<UltraCanvasContainer>();
+auto chartArea = std::make_shared<UltraCanvasContainer>("chart-area");
 auto lineChart = CreateLineChartElement("chart1", 0, 0, 800, 600);
 
-container->AddChild(lineChart);
-mainWindow->SetContent(container);
+chartArea->AddChild(lineChart);
+window->AddChild(chartArea);
 ```
 
 ### Event Propagation
@@ -365,6 +367,12 @@ Events flow through the standard UltraCanvas event system:
 - **UltraCanvasAreaChartElement:** Area chart implementation
 
 ## Version History
+
+- **1.1.0** (2026-10-07):
+  - `SetPointRadius` sizes the line's dots (it used to reach only the area chart)
+  - Zoom and pan of the x axis work; both are off by default, and a wheel turn
+    or drag that does nothing is left to the parent
+  - The plot area follows a resize by the layout
 
 - **1.0.0** (2025-09-10): Initial release with full feature set
   - Line rendering with customizable style

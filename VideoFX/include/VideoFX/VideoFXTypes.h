@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.4.2
-// Last Modified: 2026-10-02
+// Version: 0.6.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -304,6 +304,21 @@ struct VideoFXImageMotion {
     }
 };
 
+// A region of a still image - a face, a person, whatever must stay in shot -
+// as fractions of the image as it is shown (after its EXIF rotation):
+// x, y the top-left corner, w, h the size, all 0..1
+struct VideoFXRect {
+    double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
+
+    static VideoFXRect Make(double x, double y, double w, double h) { return VideoFXRect{x, y, w, h}; }
+    // From pixels of an image `imageW` x `imageH` (what a face detector reports)
+    static VideoFXRect FromPixels(double x, double y, double w, double h, int imageW, int imageH) {
+        if (imageW <= 0 || imageH <= 0) return {};
+        return VideoFXRect{x / imageW, y / imageH, w / imageW, h / imageH};
+    }
+    bool IsEmpty() const { return !(w > 0.0 && h > 0.0); }
+};
+
 // How a still image whose shape differs from the frame's is framed
 enum class VideoFXImageFit {
     Auto,                           // Cover; BlurredBackground for an image much taller than
@@ -337,6 +352,13 @@ struct VideoFXSegment {
     VideoFXImageMotion motion;              // Image: camera movement over the still
     VideoFXImageFit imageFit = VideoFXImageFit::Auto;   // Image: framing when its shape differs
     VideoFXFrame image;                     // Image: pixels in memory, used instead of `path` when valid
+    // Image: regions the pan and zoom keep in shot all the way through -
+    // faces, typically. The zoom goes no closer than holds them all (with a
+    // little headroom) and the pan stays around them.
+    std::vector<VideoFXRect> keepInView;
+    // Image: with no keepInView given, find the faces with VideoFX's built-in
+    // detector (VideoFX_DetectFaces) and keep those in shot
+    bool keepFacesInView = false;
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
     // A photo / PNG / any image FFmpeg decodes, shown for `seconds`; JPEG
@@ -399,10 +421,17 @@ enum class VideoFXDuckingPreset {
 // a waterfall) holds the music down for its whole length with those values;
 // raise `duckingThresholdDb` so only sound well above the clip's own
 // background ducks, or set `duckingLevel` to 1 to never dip.
+//
+// Several songs play one after another: `path` (if set) first, then
+// `playlist` in order, each blending into the next over `crossfade` seconds.
+// A looping list crossfades from its last song back into its first.
 struct VideoFXMusic {
     std::string path;               // any file with sound (MP3, M4A, WAV, FLAC, OGG, a video ...); "" = none
+    std::vector<std::string> playlist;  // further songs, played after `path` in this order
+    double crossfade = 3.0;         // seconds one song blends into the next, 0..30 (0 = back to back);
+                                    // shortened where a song is under twice as long
     double volume = 0.8;            // linear gain, 0..4
-    double start = 0.0;             // seconds into the music file to begin at
+    double start = 0.0;             // seconds into the first song to begin at
     bool loop = true;               // repeat when shorter than the video (false: silence after it ends)
     double fadeIn = 1.0;            // seconds at the start of the export
     double fadeOut = 2.0;           // seconds at the end of the export
@@ -418,7 +447,21 @@ struct VideoFXMusic {
         m.volume = volume;
         return m;
     }
-    bool IsSet() const { return !path.empty(); }
+    // A song list, played in order
+    static VideoFXMusic FromFiles(const std::vector<std::string>& paths, double volume = 0.8) {
+        VideoFXMusic m;
+        m.playlist = paths;
+        m.volume = volume;
+        return m;
+    }
+    bool IsSet() const { return !path.empty() || !playlist.empty(); }
+    // Every song in playing order: `path`, then `playlist`
+    std::vector<std::string> Songs() const {
+        std::vector<std::string> songs;
+        if (!path.empty()) songs.push_back(path);
+        songs.insert(songs.end(), playlist.begin(), playlist.end());
+        return songs;
+    }
 
     void SetDuckingPreset(VideoFXDuckingPreset preset) {
         switch (preset) {
@@ -487,6 +530,29 @@ struct VideoFXSlideshowOptions {
     bool fadeInOut = true;                      // fade from and to black at the ends
     VideoFXMusic music;                         // background music; when set, used instead of settings.music
     bool matchMusicLength = false;              // choose secondsPerImage so the slideshow ends with the music
+    // Change images on the music's beats: each change (a cut, or the middle of
+    // a transition) moves to the beat nearest secondsPerImage after the last
+    bool beatSync = false;
+    // Regions to keep in shot, per image (see VideoFXSegment::keepInView)...
+    std::vector<std::vector<VideoFXRect>> keepInView;
+    // ...or found by the app's own detector - faces from UltraAI's vision
+    // analyser, the operating system, or a tap in the UI - asked once per
+    // image that has none above. Gets the image as it is shown and its index.
+    std::function<std::vector<VideoFXRect>(const VideoFXFrame& image, size_t index)> findKeepInView;
+    // ...and for the rest, VideoFX's own face detector: on by default, so a
+    // slideshow keeps faces in shot without any code. false = plain motion.
+    bool keepFacesInView = true;
+    int beatsPerImage = 0;                      // > 0: every image lasts exactly this many beats (4 = a bar
+                                                // in 4/4); implies beatSync. 0..64
+};
+
+// The beat of a piece of music (VideoFX_DetectBeats)
+struct VideoFXBeatInfo {
+    double bpm = 0.0;               // tempo, beats per minute; 0 = no steady beat found
+    double confidence = 0.0;        // 0..1, how clearly the music repeats at that tempo
+    std::vector<double> beats;      // seconds from the start of the file
+
+    bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then

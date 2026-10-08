@@ -1,5 +1,8 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.8.0 - the error placeholder shows after a failed load (it read the message
+//                 from the image SetError had just replaced); SetTintColor tints the
+//                 picture; LoadFromImage fires onImageLoaded / onImageLoadFailed
 // Version: 1.7.0 - onHoverEnter / onHoverLeave
 // Version: 1.6.0 - merged with main's 1.2.0 (a %-sized picture has no min-content
 //                 width: it can shrink to nothing)
@@ -9,7 +12,7 @@
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -93,13 +96,20 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
+        errorMessage.clear();
         loadedImage = img;
         SetupAnimation();
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
         InvalidateLayout();
         RequestRedraw();
-        if (loadedImage) {
+        if (loadedImage && loadedImage->IsValid()) {
+            if (onImageLoaded) onImageLoaded();
             return true;
+        }
+        // A decode that failed (UCImage::LoadFromMemory of bytes it could not
+        // read) reports as LoadFromFile does. A null or empty image clears.
+        if (loadedImage && !loadedImage->errorMessage.empty()) {
+            SetError(loadedImage->errorMessage);
         }
         return false;
     }
@@ -227,7 +237,9 @@ namespace UltraCanvas {
             DrawLoadedImage(ctx);
 //        } else if (loadedImage->IsLoading()) {
 //            DrawLoadingPlaceholder(ctx);
-        } else if (loadedImage && !loadedImage->errorMessage.empty() && showErrorPlaceholder) {
+        } else if (!errorMessage.empty() && showErrorPlaceholder) {
+            // The reason is the element's: SetError has replaced the image
+            // that carried it.
             DrawErrorPlaceholder(ctx);
         }
         ctx->PopState();
@@ -303,6 +315,38 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
+        if (!IsTinted()) {
+            DrawImageContent(ctx, contentRect);
+        } else {
+            // Tint: the picture multiplied by tintColor, painted through the
+            // picture's own coverage so the tint stays inside it. Compositing
+            // cannot un-premultiply, so a partly transparent pixel comes out a
+            // little closer to the tint colour than an exact multiply.
+            ctx->BeginGroup();
+            DrawImageContent(ctx, contentRect);   // at the element's opacity
+            auto coverage = ctx->EndGroupAsPattern();
+            // Without groups that drew straight through, untinted.
+            if (coverage) {
+                ctx->BeginGroup();
+                ctx->SetAlpha(1.0);
+                DrawImageContent(ctx, contentRect);
+                ctx->SetBlendMode(BlendMode::Multiply);
+                ctx->SetFillPaint(tintColor);
+                ctx->FillRectangle(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+                ctx->EndGroupMasked(coverage);
+            }
+        }
+
+        if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
+            ctx->PopState();
+        }
+    }
+
+    bool UltraCanvasImageElement::IsTinted() const {
+        return tintColor.a > 0 && (tintColor.r != 255 || tintColor.g != 255 || tintColor.b != 255);
+    }
+
+    void UltraCanvasImageElement::DrawImageContent(IRenderContext* ctx, const Rect2Df& contentRect) {
         // Repeating: one pattern fill over the tiled area, anchored on the
         // positioned tile.
         if (repeatX || repeatY) {
@@ -327,26 +371,18 @@ namespace UltraCanvas {
         else if (auto framePm = animator.GetCurrentFramePixmap()) {
             // Animated image: draw the controller's current frame directly.
             ctx->DrawPixmap(*framePm, contentRect, fitMode);
-        } else if (loadedImage->IsValid()) {
-            // Load from file path
+        } else if (loadedImage && loadedImage->IsValid()) {
             ctx->DrawImage(*loadedImage.get(), contentRect, fitMode);
         } else {
-            // For memory-loaded images, we'd need to save to a temporary file
-            // or extend the rendering interface to support raw data
-            // For now, draw a placeholder
-            DrawImagePlaceholder(contentRect, "IMG");
-        }
-
-        if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
-            ctx->PopState();
+            DrawImagePlaceholder(ctx, contentRect, "IMG");
         }
     }
 
     void UltraCanvasImageElement::DrawErrorPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetLocalBounds(), "ERR", errorColor);
+        DrawImagePlaceholder(ctx, GetLocalBounds(), "ERR", errorColor);
 
         // Draw error message (element-local coordinates)
-        if (!loadedImage->errorMessage.empty()) {
+        if (!errorMessage.empty()) {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
@@ -354,18 +390,19 @@ namespace UltraCanvas {
             textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
-            ctx->DrawTextInRect(loadedImage->errorMessage, textRect);
+            ctx->DrawTextInRect(errorMessage, textRect);
         }
     }
 
     void UltraCanvasImageElement::DrawLoadingPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetLocalBounds(), "...", Color(220, 220, 220));
+        DrawImagePlaceholder(ctx, GetLocalBounds(), "...", Color(220, 220, 220));
     }
 
-    void
-    UltraCanvasImageElement::DrawImagePlaceholder(const Rect2Di &rect, const std::string &text, const Color &bgColor) {
+    // Draws into the context Render was given - not GetRenderContext(), which
+    // is the window's (null outside one, and not an offscreen or print target).
+    void UltraCanvasImageElement::DrawImagePlaceholder(IRenderContext* ctx, const Rect2Di &rect,
+                                                       const std::string &text, const Color &bgColor) {
         // Draw background
-        auto ctx = GetRenderContext();
         ctx->DrawFilledRectangle(rect, bgColor, 1.0f, Colors::Gray);
 
         // Draw text

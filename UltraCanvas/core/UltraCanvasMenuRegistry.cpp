@@ -1,6 +1,6 @@
 // core/UltraCanvasMenuRegistry.cpp
 // Implementation of the id-addressable menu command catalog.
-// Version: 1.0.0
+// Version: 1.0.1 - the commented-out Input callback copy is gone
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenuRegistry.h"
@@ -98,7 +98,6 @@ namespace UltraCanvas {
         item.radioGroup = cmd->radioGroup;
         item.onClick = cmd->onClick;
         item.onToggle = cmd->onToggle;
-//        item.onTextInput = cmd->onTextInput;
         return item;
     }
 

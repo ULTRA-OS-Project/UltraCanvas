@@ -90,6 +90,14 @@ struct EsclScannerDescription {
 IODeviceResult ParseEsclCapabilities(const std::string& xml,
                                      EsclScannerDescription& outDescription);
 
+// Fills in what a scanner's ScannerCapabilities say about it that its entry
+// lacks: the model and serial number when empty, and the name when it is
+// empty or only the scanner's address (`connectionPath`) - the name a scanner
+// named in ULTRACANVAS_ESCL_SCANNERS is listed under until it has described
+// itself. A name discovery gave it (its DNS-SD instance) is kept. True when
+// anything changed.
+bool FillInEsclIdentity(IODeviceInfo& info, const EsclScannerDescription& described);
+
 // ============================================================================
 // SCAN SETTINGS
 // ============================================================================

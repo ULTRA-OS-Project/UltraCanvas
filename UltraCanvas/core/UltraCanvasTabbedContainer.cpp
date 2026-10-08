@@ -1,9 +1,10 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.4.0 - a tab switch is announced to screen readers as a new name
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
 //                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -257,6 +258,9 @@ namespace UltraCanvas {
 
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
+        if (oldIndex != index && GetAccessibleNameOverride().empty()) {
+            NotifyAccessibility(AccessibilityEventType::NameChanged);   // named after the open tab
+        }
 
         EnsureTabVisible(index);
         UpdateContentVisibility();
@@ -387,7 +391,7 @@ namespace UltraCanvas {
         overflowButton->SetBorder(0, Colors::Transparent);
 
         overflowButton->onClick = [this]() {
-            ShowSearchAutoComplete();
+            OpenOverflowList();
         };
 
         // Create AutoComplete for tab search
@@ -509,8 +513,56 @@ namespace UltraCanvas {
         overflowButton->SetElementSize(Size2Df(overflowDropdownWidth, tabBarBounds.height));
     }
 
+    void UltraCanvasTabbedContainer::OpenOverflowList() {
+        if (UsesDropdownSearch()) {
+            ShowSearchAutoComplete();
+        } else {
+            ShowOverflowListMenu();
+        }
+    }
+
+    bool UltraCanvasTabbedContainer::UsesDropdownSearch() const {
+        if (!enableDropdownSearch) return false;
+        int listed = 0;
+        for (const auto& tab : tabs) {
+            if (tab->visible) ++listed;
+        }
+        return listed >= dropdownSearchThreshold;
+    }
+
+    // Too few tabs to be worth searching, or search turned off: the tabs as
+    // a plain menu below the overflow button, the active one checked and the
+    // disabled ones greyed out. Choosing an entry activates its tab.
+    void UltraCanvasTabbedContainer::ShowOverflowListMenu() {
+        if (!window || !overflowButton) return;
+        if (!overflowListMenu) {
+            overflowListMenu = CreateMenu(GetIdentifier() + "_overflowList", 0, 0, 0, 0);
+            overflowListMenu->SetMenuType(MenuType::PopupMenu);
+        } else {
+            HideOverflowListMenu();
+        }
+        overflowListMenu->Clear();
+        for (int i = 0; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            MenuItemData item = MenuItemData::Radio(tabs[i]->title, 1, i == activeTabIndex,
+                                                    [this, i]() { SetActiveTab(i); });
+            item.enabled = tabs[i]->enabled;
+            overflowListMenu->AddItem(item);
+        }
+
+        // Below the button, like the search popup; Escape and a click outside
+        // close it (the default settings).
+        Point2Di pos = overflowButton->MapFromLocal(
+                Point2Di(0, overflowButton->GetBounds().height), nullptr);
+        overflowListMenu->OpenMenu(pos, *window, PopupElementSettings());
+    }
+
+    void UltraCanvasTabbedContainer::HideOverflowListMenu() {
+        if (overflowListMenu) overflowListMenu->CloseMenu();   // no-op when not open
+    }
+
     void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
-        if (!searchAutoComplete) return;
+        if (!searchAutoComplete || !window || !overflowButton) return;
 
         PopulateSearchAutoComplete();
 
@@ -540,7 +592,10 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
         if (!searchAutoComplete) return;
-        window->ClosePopup(*searchAutoComplete);
+        // Turning search off on a container that is in no window yet (the
+        // CreateTabbedContainerWithDropdown factory does) has nothing to close,
+        // and no window to call through.
+        if (window) window->ClosePopup(*searchAutoComplete);
         dropdownSearchActive = false;
         dropdownSearchText = "";
     }

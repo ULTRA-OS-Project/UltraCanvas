@@ -2,14 +2,14 @@
 # Build configuration for the VideoFX module (video editing / conversion).
 # FFmpeg is optional: without it the same API is built from a stub whose calls
 # return VideoFXResult::NotAvailable, so consumers never need an #ifdef.
-# Version: 0.4.2
-# Last Modified: 2026-10-02
+# Version: 0.6.0
+# Last Modified: 2026-10-07
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.4.2
+    VERSION 0.6.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -58,6 +58,11 @@ set(VIDEOFX_SOURCES
     core/VideoFXKenBurns.h
     core/VideoFXMusic.cpp
     core/VideoFXMusic.h
+    core/VideoFXBeats.cpp
+    core/VideoFXBeats.h
+    core/VideoFXFaces.cpp
+    core/VideoFXFaces.h
+    core/VideoFXFaceCascade.inc
     core/VideoFXJob.cpp
 )
 

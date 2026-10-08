@@ -1,7 +1,20 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.7.1
-// Last Modified: 2026-10-07
+// Version: 1.9.0
+// Last Modified: 2026-10-08
+// V1.8.0: SetFormatter fills the placeholder only when the field has none
+//   (it used to overwrite the caller's and leave an empty one empty); the rules
+//   SetInputType adds are replaced when the type changes instead of stacking,
+//   while rules added with AddValidationRule stay; the Currency formatter's
+//   unformat no longer reads front() of an empty string; the builder keeps
+//   float geometry (it stored long) and CreateTextInput, CreatePasswordInput
+//   and CreateRevealablePasswordInput take float x/y/w/h like the others.
+//   A new input type also replaces the formatter (and its placeholder) the
+//   previous type chose - Phone -> Text no longer stays phone-formatted - and
+//   the builder applies a placeholder or formatter only when it was given one,
+//   so a built Phone, Currency or Date field keeps its type's formatting. The
+//   format rules (Email, Phone, Numeric, Range, Pattern) accept an empty field:
+//   only Required says a field must be filled, as in HTML forms.
 // V1.7.1: SetFontSize and SetStyle show the new font: they re-clamp the
 //   horizontal scroll (every character, and the caret, moves with the font),
 //   invalidate the layout and redraw. Before, the field went on drawing the
@@ -24,6 +37,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include <optional>
 #include <string>
 #include <vector>
 #include <functional>
@@ -189,8 +203,10 @@ struct TextFormatter {
                 }
             },
             [](const std::string& value) {
+                // An empty field unformats to empty: front() of an empty
+                // string is undefined behaviour.
                 std::string result = value;
-                if (result.front() == '$') result = result.substr(1);
+                if (!result.empty() && result.front() == '$') result = result.substr(1);
                 return result;
             },
             "$0.00",
@@ -297,13 +313,21 @@ private:
     // ===== CORE PROPERTIES =====
     std::string text;
     std::string placeholderText;
+    bool placeholderFromFormatter = false;   // placeholderText is the formatter's, not the caller's
+    bool formatterFromInputType = false;     // SetInputType chose the formatter, so a new type replaces it
     TextInputType inputType;
     bool readOnly;
     bool passwordMode;
     int maxLength;
     
     // ===== VALIDATION =====
-    std::vector<ValidationRule> validationRules;
+    // Each rule remembers whether SetInputType added it: those are replaced
+    // when the type changes, the caller's own (AddValidationRule) stay.
+    struct RuleEntry {
+        ValidationRule rule;
+        bool addedByInputType = false;
+    };
+    std::vector<RuleEntry> validationRules;
     ValidationResult lastValidationResult;
     bool showValidationState;
     bool validateOnChange;
@@ -390,6 +414,7 @@ public:
     
     void SetPlaceholder(const std::string& placeholder) {
         placeholderText = placeholder;
+        placeholderFromFormatter = false;   // the caller's: no formatter replaces it
     }
     
     const std::string& GetPlaceholder() const { return placeholderText; }
@@ -401,6 +426,11 @@ public:
     // password field - revealed or not, the content is a secret.
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
     bool IsAccessiblePassword() const override { return passwordMode; }
+    // Named by SetAccessibleName(), else its placeholder; its value is the
+    // text - never in password mode.
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    bool SetAccessibleValueText(const std::string& newText) override;
 
     // ===== INPUT TYPE AND BEHAVIOR =====
     void SetInputType(TextInputType type);
@@ -416,10 +446,13 @@ public:
     int GetMaxLength() const { return maxLength; }
     
     // ===== VALIDATION =====
+    // A rule added here stays when SetInputType changes the type; only the
+    // rules a type brought with it are replaced.
     void AddValidationRule(const ValidationRule& rule) {
-        validationRules.push_back(rule);
+        validationRules.push_back({ rule, false });
     }
     
+    // Removes every rule, the caller's and the input type's.
     void ClearValidationRules() {
         validationRules.clear();
     }
@@ -464,6 +497,8 @@ public:
     }
     
     // ===== FORMATTING =====
+    // The formatter's placeholder ("(555) 123-4567", "$0.00", "MM/DD/YYYY")
+    // is used only while the field has none; a placeholder already set stays.
     void SetFormatter(const TextFormatter& textFormatter);
     
     const TextFormatter& GetFormatter() const { return formatter; }
@@ -650,6 +685,7 @@ private:
     size_t FindNextWordBoundary(size_t bytePos) const;
 
     void UpdateDisplayText();
+    void CharacterErased();   // after Backspace/Delete took one character
     
     // Placeholder clipboard functions - would need platform-specific implementation
     void CopyToClipboard(const std::string& text);
@@ -698,13 +734,14 @@ inline TextInputStyle TextInputStyle::Underlined() {
 }
 
 // ===== FACTORY FUNCTIONS =====
+// All take the identifier first and float geometry, as the constructor does.
 inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     return std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Password);
     return input;
@@ -713,7 +750,7 @@ inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
 // Password input that carries the in-field eye button for showing the typed text.
 // Every password input does now; kept so existing callers still read clearly.
 inline std::shared_ptr<UltraCanvasTextInput> CreateRevealablePasswordInput(
-    const std::string& identifier, int x, int y, int w, int h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreatePasswordInput(identifier, x, y, w, h);
     input->SetShowPasswordToggle(true);
     return input;
@@ -744,20 +781,21 @@ inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
 class TextInputBuilder {
 private:
     std::string identifier = "TextInput";
-    long x = 0, y = 0, w = 200, h = 32;
+    // Float like the element: a long here cut 150.5 down to 150.
+    float x = 0, y = 0, w = 200, h = 32;
     TextInputType type = TextInputType::Text;
-    std::string placeholder;
+    std::optional<std::string> placeholder;   // unset: the type's formatter may give one
     std::string initialText;
     TextInputStyle style = TextInputStyle::Default();
     std::vector<ValidationRule> rules;
-    TextFormatter formatter = TextFormatter::NoFormat();
+    std::optional<TextFormatter> formatter;   // unset: the one the type chose stays
     bool readOnly = false;
     int maxLength = -1;
     bool showPasswordToggle = true;
     
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }
-    TextInputBuilder& SetPosition(long px, long py) { x = px; y = py; return *this; }
+    TextInputBuilder& SetPosition(float px, float py) { x = px; y = py; return *this; }
     TextInputBuilder& SetSize(float width, float height) { w = width; h = height; return *this; }
     TextInputBuilder& SetType(TextInputType inputType) { type = inputType; return *this; }
     TextInputBuilder& SetPlaceholder(const std::string& text) { placeholder = text; return *this; }
@@ -791,10 +829,12 @@ public:
         auto input = std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
         
         input->SetInputType(type);
-        input->SetPlaceholder(placeholder);
+        if (placeholder) input->SetPlaceholder(*placeholder);
         input->SetText(initialText);
         input->SetStyle(style);
-        input->SetFormatter(formatter);
+        // Only a formatter the builder was given: SetFormatter(NoFormat) here
+        // took the Phone, Currency or Date formatting away from a typed field.
+        if (formatter) input->SetFormatter(*formatter);
         input->SetReadOnly(readOnly);
         input->SetMaxLength(maxLength);
         input->SetShowPasswordToggle(showPasswordToggle);

@@ -1,3 +1,120 @@
+#### 2026-10-08 *0.10.36*
+- **The message fills the pane.** Two things kept a message's body from
+  using the space it is given:
+  - **No empty band under the mail.** The attachment strip under the body
+    kept its 42 px, and the pane's gap above it, for every message - with
+    no attachment in it as well. It is hidden now while a message has no
+    attachments, and the body reaches the bottom of the pane.
+  - **No sideways scrolling by the scrollbar's width.** A newsletter whose
+    body asks to be at least as wide as the window (`min-width: 100%`, as
+    Reddit's digest does) was measured against the whole pane, including
+    the 12 px under the vertical scrollbar, so it scrolled sideways by
+    exactly that much and its centred layout sat off-centre. The body now
+    sits in a page as wide as the visible pane, the way a browser's window
+    works, so every width the message's CSS gives in percent is taken from
+    what the reader can see. Mails that do not ask for that (most) looked
+    right before and still do; content that really is wider than the pane
+    (a fixed-width table, a large picture) still gets its horizontal bar.
+
+#### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
+
+#### 2026-10-07 *0.10.34*
+- **New mail shows a notification on the screen.** When a sync brings new
+  mail into an inbox, UltraMail posts one notification through UltraMessage,
+  the desktop's message channel, and the desktop's own notification service
+  draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
+  Action Center on Windows, Notification Center on macOS - with its look, its
+  sound and do-not-disturb. One
+  message names its sender and subject ("New mail from Ada Lovelace" / "The
+  engine notes"); several are counted, with the newest three listed ("3 new
+  messages": "Grace: Moth" ...). With more than one account it says which.
+  A click on it brings UltraMail to the front with the message open - or the
+  account's inbox, for several. Until now new mail only reached the desktop's
+  message feed, where nothing showed it on screen.
+  - Only news counts: unread mail the sync stored above the highest UID the
+    inbox held before it. An account's first download, mail already read on
+    another computer, a gap repaired in an old part of the mailbox and an inbox
+    fetched again from scratch raise no notification, and overlapping syncs
+    of one account (a timer sync while the inbox is opened) announce once.
+  - The notification is not added to the desktop's message centre: each
+    message is listed there already.
+  - Settings > Display > Notifications switches it off.
+  - Needs the framework's UltraMessage presenters (the changes pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md` and
+    `ultramessage-macos-presenter.md`). On macOS the notification carries
+    UltraMail's name and icon when UltraMail hosts the message channel and
+    runs from its bundle; macOS asks once to allow it.
+
 #### 2026-10-06 *0.10.33*
 - **The account wizard explains how to set up iCloud mail.** Apple takes only
   an app-specific password in other mail programs, made on account.apple.com -

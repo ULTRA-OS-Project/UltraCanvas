@@ -1,5 +1,7 @@
 # UltraCanvasHTMLReader — HTML, CSS and entities, once
 
+<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
+
 The **HTMLReader** module (`UltraCanvas/{include,core}/HTMLReader/`) is the
 framework's one implementation of reading HTML and CSS: a tolerant parser, a
 DOM, a CSS parser with selector matching and a cascade, a builder that turns
@@ -84,7 +86,13 @@ body->ForEachElement([](HTML::Node& n) {
 
 `HTML::Node` is one struct for every node; `type` says whether `tag` and
 `attributes` or `text` are meaningful. **Tag and attribute names are stored
-lower-case**; attribute values, text, class names and ids keep their case.
+lower-case for HTML elements**; attribute values, text, class names and ids
+keep their case. Inside an inline `<svg>` or `<math>` (foreign content, HTML
+standard 13.2.6.5) names carry the case their vocabulary defines -
+`linearGradient`, `viewBox`, `definitionURL` - whatever case the source
+used, and HTML resumes inside `foreignObject`, `desc`, `title` and the MathML
+text elements. Attribute lookup is exact first and then ASCII
+case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
@@ -120,8 +128,9 @@ the selector, since nothing is hovered in a document.
 names and pseudo-class names. Class names and ids are kept as written, as CSS
 requires: `.Hot` and `.hot` are different classes. A tree with camelCase
 element names (SVG's `linearGradient`) therefore compares type selectors
-case-insensitively in its traits (below); the HTML DOM, already lower-case,
-compares directly.
+case-insensitively in its traits (below); the HTML DOM's traits do the same
+for a foreign element inside a page, and compare its lower-case HTML names
+directly.
 
 Values: `HTML::CssColor::Parse` (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`,
 `rgba()`, named colours), `HTML::CssLength::Parse` with `ToPx(em, rem,
@@ -136,7 +145,7 @@ for (const HTML::Rule& rule : sheet.rules)
     for (const HTML::Declaration& d : rule.declarations)
         ;   // d.property (lower-case), d.value (trimmed, "!important" removed), d.important
 
-auto inline = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
+auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
 ```
 
@@ -150,11 +159,13 @@ elements - matches through the same code as the HTML style resolver, and a
 selector feature added once (a new pseudo-class, an operator) reaches both.
 
 ```cpp
+namespace UltraCanvas { namespace HTML {
 template <class Traits> bool CompoundMatches(const SimpleSelector&, const typename Traits::Element&);
 template <class Traits> bool SelectorMatches(const Selector&, const typename Traits::Element&);
 template <class Traits> std::vector<const Rule*> MatchingRules(const StyleSheet&, const typename Traits::Element&);
 bool AttributeValueMatches(const AttributeSelector&, const std::string& value);
 bool NthPositionMatches(const PseudoClass&, int index, int count);
+} }
 ```
 
 `MatchingRules` returns the rules that match, weakest first: by the
@@ -297,15 +308,15 @@ and the check blocks new ones:
 | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
 | `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
 | `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp` (`SVGStyle::ParseFromStyle`) | a `style=""` splitter; not in the build | `HTML::StyleSheet::ParseDeclarationList` |
 | `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
 
 ## Limits
 
 - Not the HTML5 tree-construction algorithm: adoption-agency cases and
   misnested formatting elements are repaired heuristically.
-- No foreign content: an inline `<svg>` or `<math>` in a page is parsed as
-  HTML, lower-casing its names. The SVG file readers do not go through
+- Foreign content is parsed and named correctly, not rendered: the element
+  builder shows an inline `<svg>`'s first raster `<image>` (EPUB cover pages)
+  and skips its vector content. The SVG file readers do not go through
   `HTML::Parser`.
 - `>` is a descendant combinator; sibling combinators and `:hover`-style
   pseudo-classes are not matched.

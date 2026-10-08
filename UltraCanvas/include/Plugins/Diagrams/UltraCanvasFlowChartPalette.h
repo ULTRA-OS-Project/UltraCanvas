@@ -1,6 +1,9 @@
 // include/Plugins/Diagrams/UltraCanvasFlowChartPalette.h
 // Shape palette for FlowChart diagram creation
+// Version: 1.0.1 - SelectShape takes the clicked button raw (its click handler
+//                 held a shared_ptr to the button it was stored on)
 // Version: 1.0.0
+// Last Modified: 2026-10-07
 
 #pragma once
 
@@ -41,7 +44,7 @@ public:
 
 private:
     void CreateShapeButton(FlowChartShape shape, const std::string& label, int row);
-    void SelectShape(FlowChartShape shape, std::shared_ptr<UltraCanvasButton> button);
+    void SelectShape(FlowChartShape shape, UltraCanvasButton* button);
 };
 
 inline std::shared_ptr<UltraCanvasFlowChartPalette> CreateFlowChartPalette(

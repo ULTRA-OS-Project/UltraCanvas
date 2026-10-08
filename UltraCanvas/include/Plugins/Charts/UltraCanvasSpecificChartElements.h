@@ -1,7 +1,9 @@
 // include/Plugins/Charts/UltraCanvasSpecificChartElements.h
 // Specific chart element implementations inheriting from UltraCanvasChartElementBase
+// Version: 1.1.0 - line dots follow SetPointRadius; line/area/scatter zoom and
+//                  pan the x axis when enabled (off by default); bars rise from 0
 // Version: 1.0.0
-// Last Modified: 2025-09-10
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,14 +23,12 @@ namespace UltraCanvas {
         float lineWidth = 2.0f;
         bool showDataPoints = false;
         Color pointColor = Color(0, 102, 204, 255);
-        float pointRadius = 4.0f;
         bool enableSmoothing = false;
 
     public:
         UltraCanvasLineChartElement(const std::string &id, int x, int y, int width, int height)
                 : UltraCanvasChartElementBase(id, x, y, width, height) {
-            enableZoom = true;
-            enablePan = true;
+            pointRadius = 4.0f;   // the line's dots (SetPointRadius) start a little larger
         }
 
         // Line chart specific configuration
@@ -60,6 +60,9 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext *ctx) override;
 
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
+
+    protected:
+        bool SupportsXAxisZoom() const override { return true; }
 
     private:
         void DrawSmoothLine(IRenderContext *ctx, const std::vector<Point2Dd> &points);
@@ -110,6 +113,11 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext *ctx) override;
         double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
+
+    protected:
+        // The value axis always includes 0, so bars rise from (or hang
+        // below) the zero line.
+        ChartDataBounds CalculateDataBounds() override;
     };
 
 // =============================================================================
@@ -143,8 +151,6 @@ namespace UltraCanvas {
     public:
         UltraCanvasScatterPlotElement(const std::string &id, int x, int y, int width, int height)
                 : UltraCanvasChartElementBase(id, x, y, width, height) {
-            enableZoom = true;
-            enablePan = true;
             enableSelection = true;
         }
 
@@ -219,6 +225,9 @@ namespace UltraCanvas {
 
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
 
+    protected:
+        bool SupportsXAxisZoom() const override { return true; }
+
     private:
         void RenderTrendLine(IRenderContext *ctx);
         void RenderCorrelationInfo(IRenderContext *ctx, double slope, double intercept);
@@ -247,8 +256,6 @@ namespace UltraCanvas {
     public:
         UltraCanvasAreaChartElement(const std::string &id, int x, int y, int width, int height)
                 : UltraCanvasChartElementBase(id, x, y, width, height) {
-            enableZoom = true;
-            enablePan = true;
         }
 
 //    ChartType GetChartType() const override {
@@ -302,6 +309,9 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext *ctx) override;
 
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
+
+    protected:
+        bool SupportsXAxisZoom() const override { return true; }
     };
 
 // =============================================================================

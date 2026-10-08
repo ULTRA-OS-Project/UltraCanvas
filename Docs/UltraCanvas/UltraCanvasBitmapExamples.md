@@ -4,7 +4,7 @@
 
 **UltraCanvasImageElement** is a versatile image display component in the UltraCanvas framework that provides comprehensive image loading, caching, transformation, and interaction capabilities. It supports multiple image formats and offers various scaling modes for flexible image presentation.
 
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Header:** `include/UltraCanvasImageElement.h`  
@@ -15,7 +15,7 @@
 - **Multi-format Support**: every format the image loader reads (`UCImageLoadFormat`: PNG, JPEG, GIF, WebP, TIFF, BMP, SVG, ICO, AVIF, HEIF, JPEG XL and more)
 - **Flexible Loading**: Load from a file, or show an already-decoded `UCImage` (for example one decoded from memory)
 - **Fit Modes**: CSS-style `object-fit` (`ImageFitMode`), `object-position` and background repeat
-- **Transformations**: Rotation, scaling, offset, opacity
+- **Transformations**: Rotation, scaling, offset, opacity, tint
 - **Animation**: Animated GIF and WebP play automatically
 - **Interaction**: Click, hover and drag support
 - **Error Handling**: The reason for a failed load, and an error placeholder
@@ -96,15 +96,18 @@ Images are cached by path; `forceLoad = true` evicts the cached copy first
 bool LoadFromImage(std::shared_ptr<UCImage> img);
 ```
 Shows an image that is already decoded, for example one from
-`UCImage::LoadFromMemory()`. Returns false for a null image. It does not fire
-`onImageLoaded`.
+`UCImage::LoadFromMemory()`. It reports like `LoadFromFile()`: a valid image
+returns true and fires `onImageLoaded`; an image whose decode failed returns
+false, fires `onImageLoadFailed` with the reason and shows the error
+placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
+element and fires neither.
 
 ### GetLastError
 ```cpp
 const std::string& GetLastError() const;
 ```
-The reason the last `LoadFromFile()` failed (missing, locked, unsupported
-format); empty on success.
+The reason the last `LoadFromFile()` or `LoadFromImage()` failed (missing,
+locked, unsupported format, undecodable data); empty on success.
 
 ## Display Properties
 
@@ -131,13 +134,18 @@ Rect2Df ImageDrawRect() const;
 
 ### Visual Effects
 ```cpp
-void SetTintColor(const Color& color);         // Stored; the current renderer does not apply it
+void SetTintColor(const Color& color);         // Multiply the picture's colours (white = untinted)
 void SetOpacity(float alpha);                  // Set transparency (0.0-1.0)
 float GetOpacity() const;
 void SetRotation(float degrees);               // Rotate around the center
 void SetScale(float sx, float sy);             // Scale transformation
 void SetOffset(float ox, float oy);            // Position offset
 ```
+
+`SetTintColor` multiplies every pixel of the picture by the colour, inside the
+picture only: white (the default) leaves it unchanged, `Color(255, 0, 0)`
+keeps only its red, and the colour's alpha sets the strength. It is drawn with
+render-context groups; a context without groups draws the picture untinted.
 
 ## Image Information
 
@@ -179,7 +187,7 @@ step through `onImageDragged`.
 ## Event Callbacks
 
 ```cpp
-std::function<void()> onImageLoaded;                        // LoadFromFile succeeded
+std::function<void()> onImageLoaded;                        // LoadFromFile / LoadFromImage succeeded
 std::function<void(const std::string&)> onImageLoadFailed;  // Load failed with the reason
 std::function<void()> onClick;                              // Clicked (needs SetClickable(true))
 std::function<void()> onHoverEnter;                         // Pointer came onto the image
@@ -213,8 +221,10 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
     const std::vector<uint8_t>& imageData,
     UCImageLoadFormat format = UCImageLoadFormat::Autodetect);
 ```
-Creates an element and decodes the image from memory. The format is always
-detected from the data; the `format` argument is currently not used.
+Creates an element and decodes the image from memory. The loader detects the
+format from the data and takes no hint, so `format` is not used; it stays for
+source compatibility. Data that does not decode leaves the element showing the
+error placeholder, with the reason in `GetLastError()`.
 
 ### CreateScaledImage
 ```cpp
@@ -239,8 +249,9 @@ void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 ```
 
 1. **Loaded**: Draws the image (or the current animation frame) into the
-   content box with the fit mode, position, repeat, opacity and transformations
-2. **Failed**: Draws an "ERR" error placeholder
+   content box with the fit mode, position, repeat, tint, opacity and
+   transformations
+2. **Failed**: Draws the error placeholder: "ERR" and the reason
 3. **Nothing loaded**: Draws nothing beyond the element's own background and border
 
 Rounded corners (border radius) clip the picture as well.
@@ -326,6 +337,10 @@ auto logo = CreateImageFromFile("logo", 200, 200, 100, 100, "logo.svg");
 logo->SetRotation(45.0f);          // Rotate 45 degrees
 logo->SetScale(1.5f, 1.5f);        // Scale 150%
 logo->SetOpacity(0.8f);            // 80% opacity
+
+// Tint a white icon with the accent colour
+auto star = CreateImageFromFile("star", 10, 10, 32, 32, "icons/star-white.png");
+star->SetTintColor(Color(0, 120, 215));
 ```
 
 ### Positioned and Tiled Images
@@ -374,7 +389,7 @@ The reason for a failed load is passed to `onImageLoadFailed` and returned by `G
 2. **Preload critical images** before display
 3. **Handle loading errors** with appropriate fallbacks
 4. **Optimize image sizes** for target display dimensions
-5. **Set the callbacks before loading**: `LoadFromFile()` fires them before it returns
+5. **Set the callbacks before loading**: `LoadFromFile()` and `LoadFromImage()` fire them before they return
 6. **Use `forceLoad`** only when the file on disk changed: it bypasses the cache
 
 ## See Also
