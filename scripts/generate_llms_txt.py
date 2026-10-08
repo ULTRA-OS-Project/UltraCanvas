@@ -22,10 +22,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # tree, where the corpus and the Docs/Modules convention expect them. The
 # module copy is the one to edit; this script rewrites the mirror (relative
 # links adjusted to the new location) and CI fails when the mirror is stale,
-# exactly as for llms.txt. Before this, UltraAI/README.md and its docs copy
-# were edited by hand and drifted apart for weeks.
+# exactly as for llms.txt. Before this, each pair was edited by hand and
+# drifted apart: the UltraAI copies disagreed on the adapters, UltraNet's
+# module copy fell two weeks behind the docs copy, and VirtualFS's two copies
+# each had a section the other lacked.
 MIRRORED_READMES = {
-    "UltraAI/README.md": "Docs/Modules/UltraAI/README.md",
+    "UltraAI/README.md":   "Docs/Modules/UltraAI/README.md",
+    "UltraNet/README.md":  "Docs/Modules/UltraNet/README.md",
+    "VirtualFS/README.md": "Docs/Modules/VirtualFS/README.md",
 }
 MIRROR_NOTICE = ("<!-- Generated from {source} by scripts/generate_llms_txt.py; "
                  "edit that file, then rerun the script. -->")

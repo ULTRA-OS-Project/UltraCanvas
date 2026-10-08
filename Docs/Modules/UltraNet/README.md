@@ -1,3 +1,4 @@
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
