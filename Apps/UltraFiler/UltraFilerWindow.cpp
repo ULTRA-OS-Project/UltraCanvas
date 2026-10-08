@@ -34,10 +34,11 @@
 // favorites; persisted settings load at startup and configure the preview's
 // transparent-image backdrop, the width of the page thumbnails in the
 // preview's PDF page inventory and the folder tree's colours - the background
-// of the drive rows and the highlight of the selected folder. A backdrop
-// colour picked from the strip under a transparent image in the preview is
-// saved the same way. Esc closes the History or Favorites view, the Computer
-// page, or an open media preview.
+// of the drive rows and the highlight of the selected folder - and its width:
+// fitted to the rows on show, 10 px wider than the longest, or fixed
+// (ApplyTreeWidth). A backdrop colour picked from the strip under a
+// transparent image in the preview is saved the same way. Esc closes the
+// History or Favorites view, the Computer page, or an open media preview.
 // The tree's "Computer" entry - and Up from a drive root, and the
 // breadcrumb's leading "Computer" node - opens the Computer page in the folder
 // pane, in place of the active tab's folder display: the Home and Cloud
@@ -58,8 +59,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.25.0
-// Last Modified: 2026-10-04
+// Version: 1.26.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -232,6 +233,9 @@ namespace {
     // the strip carries no content area of its own).
     constexpr int kTabStripHeight  = 30;
     constexpr int kPreviewMinWidth = 260;
+    // A fitted folder tree (Display > Treeview > Width: Auto) leaves this
+    // much room after its longest row, as UltraMail's folder list does.
+    constexpr int kTreeFitSlack = 10;
 
     // Delay before a clicked folder's content is shown in the detail pane.
     // A double-click on a folder OPENS it, so the pane must not scan the
@@ -1150,6 +1154,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
 void UltraFilerWindow::Show() {
     if (window) window->Show();
+    // The first fit: the text is measured with the window's render context,
+    // which is there once the window is.
+    ScheduleTreeFit();
 }
 
 // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
@@ -1507,6 +1514,16 @@ void UltraFilerWindow::ApplySettings() {
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
     ApplyTreeColors();
+    // Display > Treeview: the tree's width, only when that setting moved - so
+    // an unrelated change does not undo a divider the user dragged. On the
+    // first call, before the split exists, a fixed width becomes the width
+    // the tree pane is built with.
+    if (treeWidthAutoApplied != settings.treeWidthAuto ||
+        treeFixedWidthApplied != settings.treeFixedWidth) {
+        treeWidthAutoApplied = settings.treeWidthAuto;
+        treeFixedWidthApplied = settings.treeFixedWidth;
+        ApplyTreeWidth();
+    }
 }
 
 // Re-derives the tree's Home children after the Display > Home folder setting
@@ -1540,6 +1557,7 @@ void UltraFilerWindow::RefreshHomeTreeChildren() {
         QueueSubfolderProbe(home);
     }
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
@@ -2274,6 +2292,7 @@ void UltraFilerWindow::RefreshRamDiskNodes() {
     section->data.visible = any;
     if (any) folderTree->ExpandNode(section);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
@@ -2380,6 +2399,7 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
         // will not list. Nothing below it, and no button promising there is.
         folderTree->RemoveNode(PlaceholderId(path));
         folderTree->RequestRedraw();
+        ScheduleTreeFit();
         return;
     }
 
@@ -2435,7 +2455,10 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
         treeChildrenLoaded.insert(path);
         folderTree->RemoveNode(PlaceholderId(path));
     }
-    if (added || !gone.empty() || listingReady) folderTree->RequestRedraw();
+    if (added || !gone.empty() || listingReady) {
+        folderTree->RequestRedraw();
+        ScheduleTreeFit();
+    }
 }
 
 void UltraFilerWindow::RefreshRemoteDriveNodes() {
@@ -2460,6 +2483,7 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     if (any) folderTree->ExpandNode(section);
     ApplyTreeColors();
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
     // The log button comes with the first drive.
     UpdateConnectionLogButton();
 }
@@ -3454,7 +3478,9 @@ void UltraFilerWindow::BuildFolderTree() {
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
+        ScheduleTreeFit();   // a fitted tree follows the rows on show
     };
+    folderTree->onNodeCollapsed = [this](TreeNode*) { ScheduleTreeFit(); };
     folderTree->onNodeSelected = [this](TreeNode* node) {
         if (syncingTree || !node) return;
         // "Computer" is not a folder: it opens the page of the machine's
@@ -3746,6 +3772,7 @@ void UltraFilerWindow::RefreshDriveNodes() {
     // The Computer page's drive cards follow the same mounts and unmounts.
     if (computerShown) RefreshComputerPage();
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::DropDriveNode(const std::string& path) {
@@ -3808,6 +3835,81 @@ void UltraFilerWindow::ApplyTreeColors() {
     folderTree->RequestRedraw();
 }
 
+// ===== FOLDER TREE: WIDTH =====
+
+void UltraFilerWindow::ApplyTreeWidth(bool allowRetry) {
+    int width = settings.treeFixedWidth;
+    if (settings.treeWidthAuto) {
+        // Before the tree is built there is nothing to fit: Show() asks again.
+        if (!folderTree) return;
+        const int rows = folderTree->GetRequiredWidth();
+        if (rows <= 0) {
+            // Not in a window yet, so nothing to measure the text with.
+            UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+            if (allowRetry && app) {
+                auto alive = probeAlive;
+                app->PostToUIThread([this, alive]() {
+                    if (alive->load()) ApplyTreeWidth(/*allowRetry=*/false);
+                });
+            }
+            return;
+        }
+        width = rows + kTreeFitSlack;
+    }
+    width = std::clamp(width, UltraFilerSettings::kMinTreeWidth,
+                       UltraFilerSettings::kMaxTreeWidth);
+
+    if (treePane && split) {
+        // The tree's own pane. A fixed pane is not held back by the minimum
+        // widths of the panes beside it, so it is kept to what they leave.
+        const int index = split->GetPaneIndex(treePane.get());
+        if (index < 0) return;
+        const int axis = static_cast<int>(split->GetWidth());
+        if (axis > 0) {
+            const int line = split->EffectiveSplitterThickness();
+            int room = axis - line - kFilerMinWidth;
+            if (previewPane && split->GetPaneIndex(previewPane.get()) >= 0)
+                room -= line + kPreviewMinWidth;
+            width = std::max(UltraFilerSettings::kMinTreeWidth, std::min(width, room));
+        }
+        treePaneWidth = width;
+        if (split->GetPaneFixedSize(static_cast<size_t>(index)) != width)
+            split->SetPaneFixedSize(static_cast<size_t>(index), width);
+    } else if (treeDockShown && folderTree) {
+        // Docked beside a display in the split view: the pane keeps its
+        // width and the display beside the tree takes the difference, down
+        // to the display's own minimum.
+        UltraCanvasContainer* pane = treeDockSide == SplitSide::Right
+                ? rightPane.get() : filerPane.get();
+        const int paneW = pane ? static_cast<int>(pane->GetWidth()) : 0;
+        if (paneW > 0)
+            width = std::max(UltraFilerSettings::kMinTreeWidth,
+                             std::min(width, paneW - kSplitPaneMinWidth));
+        if (width == treePaneWidth) return;
+        treePaneWidth = width;
+        folderTree->layoutItem.SetFlexBasis(
+                CSSLayout::Dimension::Px(static_cast<float>(width)));
+        folderTree->InvalidateLayout();
+        ApplySplitPaneMinSizes();
+    } else {
+        // Out of the split view, hidden: the width it comes back with.
+        treePaneWidth = width;
+    }
+}
+
+void UltraFilerWindow::ScheduleTreeFit() {
+    if (!settings.treeWidthAuto || treeFitPosted) return;
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    treeFitPosted = true;
+    auto alive = probeAlive;
+    app->PostToUIThread([this, alive]() {
+        if (!alive->load()) return;   // window destroyed meanwhile
+        treeFitPosted = false;
+        ApplyTreeWidth();
+    });
+}
+
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node) return;
     const std::string path = node->data.nodeId;
@@ -3831,10 +3933,12 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     for (const TreeChild& c : TreeChildrenOf(path, settings.homeShowPredefinedOnly))
         AddTreeFolderNode(path, c.path, c.label, c.icon);
     folderTree->RemoveNode(PlaceholderId(path));
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::DropTreeSubtree(const std::string& path) {
     if (folderTree) folderTree->RemoveNode(path);
+    ScheduleTreeFit();
     // Forget that anything at or below it was ever scanned: a folder of the
     // same name put back there later is a fresh subtree, not this one.
     for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
@@ -3916,7 +4020,10 @@ void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     // A pin into a folder that is gone leaves the Pinned section, exactly as
     // it does when the folder is deleted from the tree's own context menu.
     if (!gone.empty()) RefreshPinnedTreeNodes();
-    if (added || !gone.empty()) folderTree->RequestRedraw();
+    if (added || !gone.empty()) {
+        folderTree->RequestRedraw();
+        ScheduleTreeFit();
+    }
 }
 
 // What the window does with a folder the user changed the content of, from
@@ -4035,6 +4142,7 @@ void UltraFilerWindow::ApplyCloudStorageFolders(
     cloud->data.visible = true;
     folderTree->ExpandNode(cloud);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
     // The Computer page lists the same folders.
     if (computerShown) RefreshComputerFolders();
 }
@@ -4146,6 +4254,8 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
             idx = i;
         }
         if (!anchor) return;
+        // Opening the branch shows rows the tree was not fitted to.
+        ScheduleTreeFit();
         while (idx > 0) {
             EnsureTreeChildren(anchor);
             anchor->Expand();
@@ -4198,6 +4308,7 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     pinned->data.visible = !pinned->children.empty();
     if (pinned->data.visible) folderTree->ExpandNode(pinned);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::RevealPinnedTreeSection() {
@@ -4839,10 +4950,12 @@ void UltraFilerWindow::BuildSplitLayout() {
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     treePane = split->AddPane(1.0);
-    split->SetPaneMinSize(0, 170);
-    // The tree keeps an absolute width: 280px at startup, then whatever the
-    // user drags the splitter to. Maximizing or resizing the window changes
-    // only the folder display's share — the tree stays as wide as it is.
+    split->SetPaneMinSize(0, UltraFilerSettings::kMinTreeWidth);
+    // The tree keeps an absolute width: fitted to its rows or the fixed
+    // width of Display > Treeview (ApplyTreeWidth), then whatever the user
+    // drags the splitter to until the next fit. Maximizing or resizing the
+    // window changes only the folder display's share — the tree stays as
+    // wide as it is.
     split->SetPaneFixedSize(0, treePaneWidth);
     treePane->layout.SetFlexColumn()
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -6623,7 +6736,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             split->SetPaneMinSize(static_cast<size_t>(leftIndex), kFilerMinWidth);
 
         treePane = split->InsertPane(0, 1.0);
-        split->SetPaneMinSize(0, 170);
+        split->SetPaneMinSize(0, UltraFilerSettings::kMinTreeWidth);
         treePane->layout.SetFlexColumn()
                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -6641,7 +6754,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int line = split->EffectiveSplitterThickness();
             const int shared = leftW + line + rightW;
             int treeW = std::min(treePaneWidth, shared - line - kFilerMinWidth);
-            treeW = std::max(treeW, 170);
+            treeW = std::max(treeW, UltraFilerSettings::kMinTreeWidth);
             std::vector<int> next;
             next.push_back(treeW);
             next.push_back(shared - line - treeW);
@@ -6651,6 +6764,8 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         } else {
             split->SetPaneFixedSize(0, treePaneWidth);
         }
+        // Rows may have come and gone while the tree was out of sight.
+        ScheduleTreeFit();
         // The tree describes the active display again.
         if (filer && !filer->GetPath().empty() && !computerShown)
             SyncTreeSelection(filer->GetPath());
@@ -6770,6 +6885,8 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         folderTree->SetVisible(true);
         treeDockShown = true;
         treeDockSide = side;
+        // Fitted again to what the pane can spare beside its display.
+        ScheduleTreeFit();
         // It mirrors the display it sits beside.
         const FilerTabState* beside = side == SplitSide::Right ? secondPane.get()
                                                                : TabStripActiveState();

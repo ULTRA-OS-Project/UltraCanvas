@@ -1,3 +1,24 @@
+#### 2026-10-07 *1.68.0*
+- **The folder tree fits its names.** The tree on the left is now as wide as
+  the rows it shows, plus 10 px - the same as UltraMail's folder list - instead
+  of starting at 280 px whatever was in it; a tree of a few short names is
+  now narrower than that, so the divider goes down to 100 px (it stopped at
+  170 px). It fits again whenever a branch is opened or closed, a drive, RAM
+  disc or remote drive comes or goes, a folder appears or is removed, a pin
+  is added, or the tree opens a branch to follow the folder display. It
+  grows to 600 px at most, and never so wide that the file display (and the
+  preview pane, while it is up) drops below its minimum width. In the split view the tree docked beside a display is fitted the
+  same way, inside its pane. Dragging the divider still resizes the tree for
+  the moment; the next fit puts it back.
+- **Settings > Display > Treeview sets the width.** *Auto* is the fitted tree
+  above and the default; *Fixed width* keeps the tree at the pixels set beside
+  it (100 to 600, 280 to start with - typing a width chooses it), which is how
+  every earlier release behaved. Saved as `tree.width.mode` / `tree.width` in
+  `config.ini`; the page's *Restore defaults* (it used to be *Restore default
+  colours*) puts the colours back and the width back to *Auto*. Measuring the
+  rows is the framework's `UltraCanvasTreeView::GetRequiredWidth`, which
+  UltraMail's folder list uses.
+
 #### 2026-10-07 *1.67.1*
 - **Windows: History and Favorites no longer forget a file with a Thai, CJK
   or emoji name.** Before listing an entry, the History and Favorites views
