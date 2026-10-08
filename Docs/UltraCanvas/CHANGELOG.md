@@ -1,3 +1,106 @@
+#### 2026-10-07 *0.9.197*
+- **The file dialog says why OK did nothing.** In Open mode, OK on a typed
+  name that is not a file was swallowed, so the button read as dead; it now
+  shows a **File Not Found** notice naming the name and the folder, and the
+  dialog stays open on the name. A Save typed into a folder that does not
+  exist gets a **Folder Not Found** notice the same way.
+- **`FileDialog.conf` failures are reported, and it is written only when
+  something changed.** A settings folder that could not be written left the
+  file dialog forgetting its view, size and folder with no trace; the failed
+  write, and a file that is there but cannot be read, are now reported once
+  per run on `debugOutput`. `FileDialogSettings::Update` compares the
+  settings before and after the change and skips the temp-file-and-rename
+  when a close changed nothing, which is most closes.
+
+#### 2026-10-07 *0.9.196*
+- **`scripts/check_callback_cycles.py` now sees a `shared_ptr` the function
+  was handed, and a callback passed to a setter.** It passed
+  `UltraCanvasRadioGroup::AddRadioButton`, which leaked every radio it was
+  given: `button->onChecked = [this, button]` stored a copy of the by-value
+  `std::shared_ptr<UltraCanvasRadio> button` parameter on the radio it owns.
+  The check looked for the capture's type only inside the function body, and
+  a parameter is declared before the `{`, so it never knew `button` was a
+  `shared_ptr`.
+  - A parameter declared `shared_ptr<T>`, `const shared_ptr<T>&` or
+    `shared_ptr<T>&&` now counts, beside `make_shared`, declared locals and
+    factories. A pointer to one, a `weak_ptr` or a container of them does not.
+  - A lambda handed to a setter on the object (`x->SetOnClick(...)`,
+    `x->SetEventCallback(...)`, `x->SetValueFormatter(...)`,
+    `x->AddListener(...)`) is checked like an assignment to `x->onClick`.
+    Most of the framework's click handlers are wired this way, and none of
+    them were checked before.
+  - `[p = x]`, `[p = std::move(x)]` and a `[=]` whose body uses `x` are
+    reported like `[x]`, since each copies the `shared_ptr`. `[x = x.get()]`,
+    `[w = std::weak_ptr<T>(x)]` and by-reference captures (`[&x]`, `[&]`)
+    are not: they own nothing. A `[&x]` used to be read as `[x]`.
+  - Run against `AddRadioButton` as it stood before its fix, the check now
+    reports it. The DemoApp's earlier hand fixes of the same shapes
+    (`AttachStatus` in the mind-map examples, the `SetEventCallback` tiles in
+    the CDR, DWG, EPS, SVG and XAR examples) are now enforced rather than
+    merely done.
+- The check found two more leaks of this kind, both fixed: the DemoApp's git
+  graph page stored a file-list provider capturing `graph` on `graph`, and
+  `UltraCanvasFlowChartPalette` stored each shape button's click handler,
+  capturing the button, on that button. It now also scans
+  `UltraCanvas/Plugins` (where the palette leak sat unseen),
+  `UltraCanvas/OS`, `UltraCanvas/libspecific` and `Tests`, in CI as well.
+- Charts: the hover ring (`SetEnableSelection`) is drawn around the point
+  where the chart draws it. In `XAxisLabelMode::DataLabel` the points are
+  spaced by index, but the ring was placed by the x value, so it could sit
+  beside the point; it is also no longer drawn for a point the zoom has
+  scrolled out of the plot.
+- **Docs: `UltraCanvasCheckbox.md` describes the checkbox and radio API that
+  exists.** It documented the checkbox from before the radio and the switch
+  became their own classes: `Switch` and `Radio` styles, `CreateSwitch`,
+  `CreateRadioButton`, `SetAutoSize`, a numeric id and `long` coordinates,
+  label fields on the checkbox style, and a radio group of checkboxes. None
+  of these compile any more, and `check_doc_examples.py` found 31 problems on
+  the page. It now covers `UltraCanvasCheckbox`, `UltraCanvasRadio` (with
+  `UltraCanvasRadio::Create` and `RadioVisualStyle`) and the base they share,
+  the click cycle of the three states, sizing, and `UltraCanvasRadioGroup`,
+  which no other page documents: how the selection works, why the initial
+  choice is set with `SelectButton`, that a grouped radio's `onChecked` is
+  the group's, and the lifetime rules from this release (the group is not
+  owned by its radios; what happens when it goes first, when a radio is
+  removed, and when a group is moved or copied). Every C++ block on the page
+  compiles against the headers.
+- DemoApp: the checkbox page's tri-state section no longer leaks its boxes.
+  Each item's callback held `updateParentState`, which held the item, and the
+  parent's held `updateStatusLabel`, which held the parent; they name the
+  boxes raw now. The parent's handler was also assigned twice, the first
+  never taking effect; it is set once.
+- **A menu fades in as a whole.** With `MenuStyle::enableAnimations` a popup
+  menu or submenu faded only its entries in; the panel - background, border,
+  shadow - appeared at once. It now fades in whole over `animationDuration`:
+  the menu starts its popup at opacity 0 and steps it to 1 on a timer
+  (`UltraCanvasWindowBase::SetPopupOpacity`, below). A step only composites
+  the window again; the menu is not repainted. Animations stay off by
+  default.
+- **A popup can be shown at an opacity.** `UltraCanvasWindowBase::SetPopupOpacity()`
+  / `GetPopupOpacity()`, with the value kept on the window's `PopupElement`.
+  Each popup draws into a surface of its own, and the window copied that
+  surface over its content when compositing, so a popup could only be fully
+  there or not at all. Below 1 the window now mixes the popup with the
+  content and the popups already composited beneath it
+  (`IRenderContext::FlushToSurfaceWithOpacity`, new: each pixel moves from
+  the destination towards the popup's by the opacity). It works for any
+  popup opened with `OpenPopup()` - dropdown and autocomplete lists, date and
+  time pickers, menus - and a popup takes input at any opacity. Popups open
+  at 1, which is the copy exactly as before, so nothing changes for a popup
+  that does not ask. A render context that cannot blend draws the popup
+  opaque. A caret inside a popup below full opacity is redrawn with a full
+  composite, not restored from the popup's surface alone.
+- `Tests/MenuAndTabBehaviourTest.cpp` reads the opacity and the fade off a
+  window stand-in whose screen is an offscreen surface, so
+  `UpdateAndRender()` composites onto it as onto a real window.
+- Docs: `UltraCanvasScatterPlotElement.md` matches the code and passes
+  `check_doc_examples.py`. The constructor and `CreateScatterPlotElement`
+  take no numeric id; `SetPointSize` takes a `double` and is the point's
+  radius (6 by default); `SetEnableSelection` is the ring around the hovered
+  point, not click selection; the tooltip picks a point within its size plus
+  5 px; and an invented `ShowErrorMessage` and `ScatterDataPoint` gave way to
+  the chart's empty state and the real `ChartDataPoint`.
+
 #### 2026-10-07 *0.9.195*
 - **A button made without a label has none.** `UltraCanvasButton`'s
   constructors and `CreateButton` defaulted the label to "Button". An

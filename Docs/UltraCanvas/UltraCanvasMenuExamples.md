@@ -6,7 +6,7 @@
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.2.6  
+**Version:** 1.2.7  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -211,7 +211,7 @@ struct MenuStyle {
     int submenuDelay;        // Hover delay before opening (ms)
 
     // Animation
-    bool enableAnimations;   // Fade a popup's entries in as it opens (default false)
+    bool enableAnimations;   // Fade a popup in, panel and entries, as it opens (default false)
     float animationDuration; // Length of the fade (seconds)
     
     // Shadow
@@ -316,6 +316,18 @@ struct PopupElementSettings {
 ```
 
 Opening runs `onMenuOpened`, closing runs `onMenuClosed`.
+
+An open menu, like any popup, can be shown at an opacity through its window
+(0 = not seen, 1 = the default). The whole panel is mixed with what lies
+beneath it; the menu is not repainted, and it still takes input:
+
+```cpp
+// bool UltraCanvasWindowBase::SetPopupOpacity(UltraCanvasUIElement& popup, float opacity);
+// float UltraCanvasWindowBase::GetPopupOpacity(const UltraCanvasUIElement& popup) const;
+void ShowHalfSeen(UltraCanvasMenu& menu) {
+    if (auto* win = menu.GetWindow()) win->SetPopupOpacity(menu, 0.5f);
+}
+```
 
 ### Submenu Management
 
@@ -576,8 +588,8 @@ menu->SetStyle(customStyle);
 
 ## Animation Support
 
-With `enableAnimations` set, a popup menu or submenu fades its entries in
-over `animationDuration` seconds when it opens:
+With `enableAnimations` set, a popup menu or submenu fades in over
+`animationDuration` seconds when it opens:
 
 ```cpp
 auto menu = CreateMenu("ContextMenu", 0, 0, 200, 0);
@@ -587,11 +599,13 @@ style.animationDuration = 0.2f;  // 200ms
 menu->SetStyle(style);
 ```
 
-The panel itself (background and border) appears at once and the entries
-fade in over it: popups are composited onto the window as opaque blocks, so
-the panel has nothing beneath it to fade over. The menu bar does not
-animate, and closing is immediate. Animations are off by default; an
-`animationDuration` of 0 or less draws the entries in full at once.
+The whole panel fades - background, border, shadow and entries together -
+over the window content beneath it. The menu opens its popup at opacity 0 and
+steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
+(see Display Control), so a step only composites the window again and does
+not repaint the menu. The menu bar does not animate, and closing is
+immediate. Animations are off by default; an `animationDuration` of 0 or less
+shows the menu in full at once.
 
 ## Performance Considerations
 
@@ -625,7 +639,7 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 1. Maximum submenu depth is implementation-defined (typically 10 levels)
 2. `Custom` and `Input` items have no special drawing or behaviour yet
 3. Touch gesture support varies by platform
-4. Only opening animates, and only the entries fade (see Animation Support)
+4. Only opening animates (see Animation Support)
 
 ## Best Practices
 

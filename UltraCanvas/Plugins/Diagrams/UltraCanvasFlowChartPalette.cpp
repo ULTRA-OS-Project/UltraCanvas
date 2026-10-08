@@ -1,6 +1,8 @@
 // plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
 // Shape palette for FlowChart diagram creation
+// Version: 1.0.1 - a shape button's click handler no longer owns the button
 // Version: 1.0.0
+// Last Modified: 2026-10-07
 
 #include "Plugins/Diagrams/UltraCanvasFlowChartPalette.h"
 
@@ -81,8 +83,10 @@ void UltraCanvasFlowChartPalette::CreateShapeButton(FlowChartShape shape, const 
     button->SetCornerRadius(4.0f);
     button->SetTextAlign(TextAlignment::Left);
     
-    button->SetOnClick([this, shape, button]() {
-        SelectShape(shape, button);
+    // The handler is stored on the button, so it names the button raw: a
+    // shared_ptr would keep the button alive for ever. shapeButtons owns it.
+    button->SetOnClick([this, shape, btn = button.get()]() {
+        SelectShape(shape, btn);
     });
     
     AddChild(button);
@@ -94,15 +98,23 @@ void UltraCanvasFlowChartPalette::CreateShapeButton(FlowChartShape shape, const 
     }
 }
 
-void UltraCanvasFlowChartPalette::SelectShape(FlowChartShape shape, std::shared_ptr<UltraCanvasButton> button) {
+void UltraCanvasFlowChartPalette::SelectShape(FlowChartShape shape, UltraCanvasButton* button) {
     currentSelectedShape = shape;
     
     if (currentSelectedButton) {
         currentSelectedButton->SetColors(Color(255, 255, 255, 255), Color(240, 245, 250, 255));
     }
     
-    currentSelectedButton = button;
-    button->SetColors(Color(220, 235, 255, 255), Color(220, 235, 255, 255));
+    currentSelectedButton = nullptr;
+    for (const auto& candidate : shapeButtons) {
+        if (candidate.get() == button) {
+            currentSelectedButton = candidate;
+            break;
+        }
+    }
+    if (currentSelectedButton) {
+        currentSelectedButton->SetColors(Color(220, 235, 255, 255), Color(220, 235, 255, 255));
+    }
     
     if (targetDiagram) {
         targetDiagram->SetPendingNodeShape(shape);

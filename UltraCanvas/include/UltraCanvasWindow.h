@@ -1,8 +1,10 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.4.0 - popup opacity (SetPopupOpacity): a popup composited over what lies
+//                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -95,6 +97,10 @@ namespace UltraCanvas {
         UltraCanvasUIElement* element;
         PopupElementSettings settings;
         UltraCanvasDirtyRectManager dirtyRectManager;
+        // How opaque the popup is composited onto the window, 0..1 (see
+        // UltraCanvasWindowBase::SetPopupOpacity). 1, the default, copies the
+        // popup's surface over the window as it always has.
+        float opacity = 1.0f;
     };
 
     struct FilterFunction {
@@ -386,6 +392,18 @@ namespace UltraCanvas {
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
         PopupElement* GetActivePopupElement();
         void CloseAllPopups();
+
+        // How opaque an open popup is on screen, 0 (not seen) to 1 (the
+        // default). Below 1 the popup - background, border, shadow, content,
+        // all of it - is mixed with the window content and the popups beneath
+        // it, so a popup can fade in or out as a whole by stepping this. Only
+        // the window is composited again; the popup is not repainted, so
+        // animating it is cheap. A popup takes input at any opacity. Opening
+        // a popup starts it at 1. Returns false when `element` is not an open
+        // popup of this window.
+        bool SetPopupOpacity(UltraCanvasUIElement& element, float opacity);
+        // The popup's opacity; 1 for an element that is not an open popup here.
+        float GetPopupOpacity(const UltraCanvasUIElement& element) const;
 
         // event filters
         void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);
