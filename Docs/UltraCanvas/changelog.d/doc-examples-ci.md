@@ -32,5 +32,13 @@
     `auto x = UltraCanvas::CreateX(...)` is typed; and a doc-check comment
     may define a macro the application's build provides.
   - `--all`, `--strict`, `--baseline` and `--update-baseline` are new.
-    `scripts/doc_examples_baseline.txt` holds findings that predate the
-    check, and is empty.
+    `scripts/doc_examples_baseline.txt` holds findings the check lets
+    through.
+  - **The design documents are checked too.** `--all` first left out the
+    Proposal / Plan / Investigation docs, whose code is of APIs not written
+    yet. They are in now, with their findings baselined (one `<doc>::<message>`
+    line each): the file is the record of what each proposal still waits
+    for, and when an API is written its entries stop being found and the
+    strict run says so. The component docs stay at zero; only the changelog
+    is left out, being a record of what shipped rather than a description
+    of an API.
