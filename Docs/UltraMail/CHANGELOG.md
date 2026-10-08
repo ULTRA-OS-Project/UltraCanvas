@@ -1,3 +1,32 @@
+#### 2026-10-08 *0.10.37*
+- **A click anywhere on an account tile switches to that account.** Clicking
+  the other account's tile mostly did nothing: the window gave a click to
+  the innermost element under the pointer and to no other, and the tile's
+  name, address, avatar and counters are elements of their own that ignore a
+  click. The rows holding them stretch across the tile, so only its padding
+  and the strip between the two rows switched the account - on a tile in a
+  real window, 1 of 14 spots (the centre of each part of the tile) answered.
+  A click that missed looked like a switch that never came, or a slow one
+  when a later click happened to land on the padding; 0.10.21, 0.10.30 and
+  0.10.32 made the switch itself faster, which cannot help a click that never
+  reaches the tile. All 14 spots switch now, twice over: the framework hands
+  a press nobody under the pointer took on to the elements around it (see
+  the framework changelog, "A mouse press the element under the pointer does
+  not take climbs to its parents"), and the tile is one target for the
+  pointer. The counters' captions moved from each counter's tooltip into the
+  tile's: the address, then *New today*, *Unread (before today)* and *Waiting
+  for reply* with their numbers (`ClickSurface::PassPointerThroughContent`).
+  Tests:
+  `Tests/UltraMail/AccountBarClickTest.cpp` (`UltraMailAccountBarTest`, a
+  window under Xvfb; it skips without a display).
+
+- **A click on a group's or list's name in the address book selects it.**
+  The sidebar of the contacts window had the same dead spots as the account
+  tiles: the name stretches across the row and ignored the click, so only
+  the row's edges and its count answered. Fixed by the same framework change
+  (a press nobody under the pointer took goes on to the row), with no change
+  in UltraMail's code.
+
 #### 2026-10-08 *0.10.36*
 - **The message fills the pane.** Two things kept a message's body from
   using the space it is given:

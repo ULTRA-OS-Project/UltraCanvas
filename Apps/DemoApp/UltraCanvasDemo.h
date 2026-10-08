@@ -1,9 +1,12 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.5 - Run(showInfoWindow): the About window can be left out at start
+// Version: 1.0.4 - CreateListViewDashboardExamples: the domain dashboard, ported to
+//                 the list view
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -264,6 +267,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateListViewDashboardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
@@ -482,7 +486,10 @@ namespace UltraCanvas {
         );
 
         // ===== APPLICATION LIFECYCLE =====
-        void Run();
+        // showInfoWindow = false starts without the "About UltraCanvas" window
+        // (main.cpp: --no-about, and implied by --component), so a page can be
+        // opened and screenshotted without a click.
+        void Run(bool showInfoWindow = true);
         void Shutdown();
     };
 
