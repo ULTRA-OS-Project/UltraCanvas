@@ -123,6 +123,8 @@ nothing is ever reported: `IsNative()` says which.
 
 ### Global shortcuts
 
+<!-- doc-check: void TogglePanel(); -->
+
 `UltraCanvasGlobalShortcut` is a key combination that reaches the program
 whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
 panel:

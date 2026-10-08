@@ -1,5 +1,7 @@
 # UltraCanvasClipboardHistory
 
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); -->
+
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
 made it. UltraDesktop records into it and shows it in its quick panel
@@ -191,18 +193,19 @@ dark compact one of the desktop's panel
 (`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
 
 ```cpp
+auto listView = std::make_shared<UltraCanvasListView>("history");
 auto model = std::make_shared<ClipboardHistoryListModel>();
 auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
-list->SetModel(model);
-list->SetDelegate(rows);
-list->SetVariableRowHeights(true);          // headers are lower than rows
+listView->SetModel(model);
+listView->SetDelegate(rows);
+listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
@@ -212,7 +215,7 @@ list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, con
         default: break;
     }
 };
-list->tooltipProvider = [rows = rows.get()](int row, int) {
+listView->tooltipProvider = [rows = rows.get()](int row, int) {
     return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
 };
 ```
