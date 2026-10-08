@@ -640,15 +640,26 @@ button shows it).
 The model keeps records and answers text and tooltips per column; the delegate
 reads the record directly for what is not text (the sparkline's history):
 
+<!-- doc-check:
+struct DomainRecord { std::string domain; bool active = true; bool insightsEnabled = false; std::vector<float> history; int visitors = 0; std::string plan = "Free"; };
+enum DomainColumn { ColDomain, ColStatus, ColInsights, ColTrend, ColVisitors, ColPlan, ColMenu, ColCount };
+enum { kCellPadding = 10 };
+const Color kLinkColor(0, 102, 204);
+const Color kTextColor(40, 40, 40);
+void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box);
+std::shared_ptr<UltraCanvasListView> list;
+-->
+
 ```cpp
 class DomainListModel : public IListModel {
 public:
     std::vector<DomainRecord> rows;   // domain, active, history, visitors, plan
     int GetRowCount() const override { return static_cast<int>(rows.size()); }
-    int GetColumnCount() const override { return 7; }
+    int GetColumnCount() const override { return ColCount; }
     ListColumnDef GetColumnDef(int column) const override;   // titles, widths, header tooltips
     ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
     bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+    bool SortBy(int column, bool ascending);                  // reorders rows, NotifyDataChanged()
     void RowChanged(int row) { NotifyRowChanged(row); }
 };
 
@@ -660,19 +671,24 @@ public:
     void RenderItem(IRenderContext* ctx, const IListModel* model, int row, int column,
                     const ListItemStyleOption& option) override {
         const auto* domains = dynamic_cast<const DomainListModel*>(model);
-        const Rect2Dd cell(option.columnX + 10, option.rect.y,
-                           option.columnWidth - 20, option.rect.height);
-        if (column == kTrendColumn) {                     // not text: draw it
+        if (!domains || row < 0 || row >= domains->GetRowCount()) return;
+        const Rect2Dd cell(option.columnX + kCellPadding, option.rect.y,
+                           option.columnWidth - 2 * kCellPadding, option.rect.height);
+        if (column == ColTrend) {                         // not text: draw it
             DrawSparkline(ctx, domains->rows[row].history, cell);
             return;
         }
         ctx->SetTextAlignment(option.columnAlignment);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(ColorFor(row, column));         // link blue, status green, ...
+        ctx->SetTextPaint(column == ColDomain ? kLinkColor : kTextColor);   // and status green, ...
         ctx->DrawTextInRect(GetStringValue(model->GetData({row, column},
                                            ListDataRole::DisplayRole)), cell);
     }
     int GetRowHeight(const IListModel*, int) const override { return 44; }
+
+    // Whether a cell-local point is on what the cell lets you click: the
+    // link's or "Enable"'s text (its width measured while painting), or ⋮.
+    bool OnTarget(const DomainListModel& model, int row, int column, const Point2Di& inCell) const;
 };
 ```
 
@@ -686,6 +702,17 @@ space the delegate painted in - so the handler can tell the link text from the
 empty part of its cell:
 
 ```cpp
+struct DashboardState {                                   // what the callbacks share
+    std::shared_ptr<DomainListModel> model;
+    std::shared_ptr<DomainRowDelegate> delegate;
+    UltraCanvasListView* list = nullptr;                  // raw: the view owns the callbacks
+    int sortColumn = -1;
+    bool sortAscending = true;
+    void OpenRowMenu(const std::string& domain, const Point2Di& at);
+};
+auto state = std::make_shared<DashboardState>();
+state->list = list.get();
+
 list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
     state->delegate->hoverOnTarget = row >= 0 && state->delegate->OnTarget(*state->model, row, column, inCell);
     state->delegate->hoverRow = row;
@@ -696,8 +723,8 @@ list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
 };
 list->onCellClicked = [state](int row, int column, const Point2Di& inCell) {
     if (!state->delegate->OnTarget(*state->model, row, column, inCell)) return;
-    if (column == kDomainColumn) OpenURL("https://" + state->model->rows[row].domain);
-    if (column == kMenuColumn)
+    if (column == ColDomain) OpenURL("https://" + state->model->rows[row].domain);
+    if (column == ColMenu)
         state->OpenRowMenu(state->model->rows[row].domain,
                            UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
 };
@@ -705,8 +732,11 @@ list->onContextMenu = [state](int row, const UCEvent& event) {   // right-click 
     if (row >= 0) state->OpenRowMenu(state->model->rows[row].domain, event.pointerWindow);
 };
 list->onHeaderClicked = [state](int column) {             // the model orders its rows
-    state->model->SortBy(column, ascending);
-    state->list->SetSortIndicator(column, ascending);
+    if (column == ColMenu) return;
+    state->sortAscending = state->sortColumn == column ? !state->sortAscending : true;
+    state->sortColumn = column;
+    if (state->model->SortBy(column, state->sortAscending))
+        state->list->SetSortIndicator(column, state->sortAscending);
 };
 ```
 
