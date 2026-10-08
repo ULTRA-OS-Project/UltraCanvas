@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.0 - the sender's menu: a right-click on the sender's name or badge
+//                   offers copying the address, the sender's mail, the address
+//                   book and spam, above Copy and Select All (senderMenuItems)
 // Version: 0.17.1 - a look-alike sender domain or a letter in an agency's name is
 //                   told as phishing; the domain mismatch only while phishing
 //                   warnings are on (Settings > Spam/scam warnings)
@@ -409,6 +412,15 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
     avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // A right-click on the badge opens the sender's menu (the badge itself is
+    // rebuilt per message; its press reaches the host it sits in).
+    avatarHost_->SetEventCallback([this](const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown || event.button != UCMouseButton::Right ||
+            !hasMessage_)
+            return false;
+        ShowSenderMenu(event, /*withText=*/false, false, nullptr, nullptr);
+        return true;
+    });
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
@@ -757,15 +769,53 @@ void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
     textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }
 
+bool MessagePreview::PointerOnSender(const Point2Di& p) const {
+    for (const UltraCanvasUIElement* e : { static_cast<const UltraCanvasUIElement*>(from_.get()),
+                                           static_cast<const UltraCanvasUIElement*>(avatarHost_.get()) }) {
+        if (!e) continue;
+        const Rect2Df b = e->GetBoundsInWindow();
+        if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return true;
+    }
+    return false;
+}
+
+void MessagePreview::ShowSenderMenu(const UCEvent& event, bool withText, bool canCopy,
+                                    std::function<void()> copy, std::function<void()> selectAll) {
+    UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
+    if (!window) return;
+    textMenu_ = std::make_shared<UltraCanvasMenu>("prevSenderMenu", 0, 0, 220, 0);
+    textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Whose message this is, as the menu's title, as in the message list.
+    if (!curEnv_.fromAddr.empty()) {
+        textMenu_->AddItem(MenuItemData::Header(curEnv_.fromAddr));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
+    if (senderMenuItems)
+        for (auto& item : senderMenuItems(curEnv_)) textMenu_->AddItem(item);
+    if (withText) {
+        textMenu_->AddItem(MenuItemData::Separator());
+        MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
+        copyItem.enabled = canCopy;
+        textMenu_->AddItem(copyItem);
+        textMenu_->AddItem(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
+                                                            std::move(selectAll)));
+    }
+    textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
 void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSelection>& selection) {
     // Raw here - the selection holds these callbacks - and weak in the menu,
     // which can outlive the body the selection belongs to.
     UltraCanvasTextSelection* raw = selection.get();
     selection->onContextMenu = [this, raw](const UCEvent& event) {
         std::weak_ptr<UltraCanvasTextSelection> weak = raw->weak_from_this();
-        ShowTextMenu(event, raw->HasSelection(),
-                     [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); },
-                     [weak]() { if (auto s = weak.lock()) s->SelectAll(); });
+        auto copy = [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); };
+        auto selectAll = [weak]() { if (auto s = weak.lock()) s->SelectAll(); };
+        // On the sender's name: the sender's menu, Copy and Select All in it.
+        if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
+            ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
     };
     // One highlight at a time, as on a web page: selecting in the header lets
     // go of the body's selection, and the other way round.

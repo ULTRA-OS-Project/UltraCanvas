@@ -20,6 +20,7 @@
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the pane
 // there: a drag's selection, the sign-in code's button and the code bar
 // (message-preview-selection.ppm, -code.ppm, -code-bar.ppm).
+// Version: 1.2.0 - the sender's menu: a right-click on the sender's name or badge
 // Version: 1.1.0 - text selection and the one-time code's copy button
 // Version: 1.0.1 - the temp folder is named by a clock stamp (no getpid on Windows)
 // Last Modified: 2026-10-08
@@ -428,6 +429,11 @@ int main() {
         }
     }
     auto subjectLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(Find(root, "prevSubject"));
+    auto rightAt = [](UCEventType type, UltraCanvasLabel& label) {
+        UCEvent ev = MouseAt(type, label, 4, 4);
+        ev.button = UCMouseButton::Right;
+        return ev;
+    };
     auto fromLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(Find(root, "prevFrom"));
     TEST("selection: the subject and sender can be selected too",
          subjectLabel && fromLabel && subjectLabel->IsSelectable() &&
@@ -475,6 +481,44 @@ int main() {
     preview.Show(Envelope(1, "Weekly digest"));
     render();
     TEST("code: no code, no bar", preview.OneTimeCodes().empty() && !codeBar->IsVisible());
+
+    // 8. A right-click on the sender's name or badge opens the sender's menu:
+    // the pane asks for the sender's items (the mail view's address book and
+    // spam items) for the message shown. Elsewhere it is the text menu.
+    int senderMenus = 0;
+    std::string senderAsked;
+    preview.senderMenuItems = [&](const MessageEnvelope& m) {
+        ++senderMenus;
+        senderAsked = m.fromAddr;
+        return std::vector<MenuItemData>{ MenuItemData::Action("Add to contacts", []() {}) };
+    };
+    auto nameLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(Find(root, "prevFrom"));
+    auto avatarHost = Find(root, "prevAvatarHost");
+    TEST("sender menu: the pane has the sender's name and badge", nameLabel && avatarHost);
+    if (nameLabel && avatarHost) {
+        nameLabel->OnEvent(rightAt(UCEventType::MouseDown, *nameLabel));
+        nameLabel->OnEvent(rightAt(UCEventType::MouseUp, *nameLabel));
+        render();
+        TEST("sender menu: a right-click on the name asks for the sender's items",
+             senderMenus == 1 && senderAsked == "sender@example.com");
+        const Rect2Df badge = avatarHost->GetBoundsInWindow();
+        UCEvent press;
+        press.type = UCEventType::MouseDown;
+        press.button = UCMouseButton::Right;
+        press.pointerWindow = Point2Di(static_cast<int>(badge.x + 5), static_cast<int>(badge.y + 5));
+        press.pointer = Point2Di(5, 5);
+        TEST("sender menu: the badge takes the right-click", avatarHost->OnEvent(press));
+        render();
+        TEST("sender menu: a right-click on the badge asks too", senderMenus == 2);
+        // The subject is header text too, but not the sender: the text menu.
+        auto subjectText = std::dynamic_pointer_cast<UltraCanvasLabel>(Find(root, "prevSubject"));
+        if (subjectText) {
+            subjectText->OnEvent(rightAt(UCEventType::MouseDown, *subjectText));
+            subjectText->OnEvent(rightAt(UCEventType::MouseUp, *subjectText));
+            render();
+        }
+        TEST("sender menu: not for a right-click on the subject", subjectText && senderMenus == 2);
+    }
 
     std::error_code ec;
     fs::remove_all(mailDir, ec);

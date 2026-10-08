@@ -118,6 +118,16 @@
   each mail check, starting with one right away (`ThreatScanOptions`,
   `LocalStore::MarkVerdictsStale`; `warn_*` in `preferences.ini`). "Warn about
   all" restores the defaults.
+- **A sender menu in the reading pane.** A right-click on the sender's
+  name or badge above the message offered only Copy and Select All; the
+  contact and spam items were in the message list's menu alone. It opens the
+  sender's menu now, with the address as its title: Copy address, Show only
+  mail from this sender (Show all messages while that filter is on), Add to
+  contact group, Add to contacts - or Edit contact for an address already in
+  the address book - and Mark as spam (Not spam in the junk folder), with
+  Copy and Select All below when the click was on the name. The list's menu
+  and this one share the address-book items (`MailView::SenderMenuItems`,
+  `MessagePreview::senderMenuItems`). Test: `MessagePreviewLayoutTest`.
 - **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
   ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
   foxmail.com are free mailboxes, as gmail.com is.
