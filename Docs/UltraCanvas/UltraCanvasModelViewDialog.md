@@ -1,12 +1,14 @@
 # Importing a 3D model as a bitmap
 
+<!-- doc-check: std::string path; UltraCanvasWindowBase* parentWindow; void Place(const std::shared_ptr<UCRasterLayer>& layer, const std::string& actionId, const RasterPixel& background); void ShowError(const std::string& message); -->
+
 `UltraCanvasModelViewDialog` (`dialogs/UltraCanvasModelViewDialog.h`) is the
 dialog that stands between a 3D model file and a raster layer. It exists
 because a model, unlike a drawing, cannot be rasterized from a size alone —
 somebody has to say **where the camera stands**.
 
 ```cpp
-#include "UltraCanvasModelViewDialog.h"
+#include "dialogs/UltraCanvasModelViewDialog.h"
 
 ShowModelViewDialog(
         path,

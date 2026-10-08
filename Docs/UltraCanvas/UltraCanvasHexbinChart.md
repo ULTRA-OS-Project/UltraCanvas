@@ -18,11 +18,11 @@ as hexagons:
 ```cpp
 #include "Plugins/Charts/UltraCanvasHexbinChart.h"
 
-auto hex = UltraCanvas::CreateHexbinChartElement("hex1", 20, 20, 800, 500);
-hex->SetData(values, cols, rows);          // row-major
-hex->SetColormap(UltraCanvas::HeatmapColormap::Turbo);
-hex->SetChartTitle("Clustering of Supermarkets");
-container->AddChild(hex);
+auto hexbin = UltraCanvas::CreateHexbinChartElement("hex1", 20, 20, 800, 500);
+hexbin->SetData(values, cols, rows);          // row-major
+hexbin->SetColormap(UltraCanvas::HeatmapColormap::Turbo);
+hexbin->SetChartTitle("Clustering of Supermarkets");
+container->AddChild(hexbin);
 ```
 
 ### 2. Binning 2D points (hexbin density)
@@ -31,7 +31,7 @@ Bin a scatter of points into hexagon counts over a data range:
 
 ```cpp
 std::vector<UltraCanvas::Point2Dd> points = loadPoints();
-hex->SetBinnedData(points, /*cols*/ 40, /*rows*/ 25,
+hexbin->SetBinnedData(points, /*cols*/ 40, /*rows*/ 25,
                    /*xMin*/ 0, /*xMax*/ 100, /*yMin*/ 0, /*yMax*/ 100);
 ```
 
@@ -41,8 +41,8 @@ grid, is exactly the containing hexagon); the per-hex counts become the values.
 ## Configuration
 
 ```cpp
-hex->SetHexBorders(true, Color(255,255,255,200), 1.0f); // outline between hexes
-hex->SetShowColorBar(true);
+hexbin->SetHexBorders(true, Color(255,255,255,200), 1.0f); // outline between hexes
+hexbin->SetShowColorBar(true);
 ```
 
 All heatmap colour options apply: `SetColormap`, `SetCustomColormap`,

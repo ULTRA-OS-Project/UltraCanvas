@@ -1,5 +1,7 @@
 # UltraCanvasVolumeMonitor
 
+<!-- doc-check: void AddDriveRow(const std::string& path, const std::string& label); -->
+
 The mounted volumes of this machine, and a notification when that set changes —
 a USB stick plugged in or pulled out, a card reader, an optical disc, a network
 share mapped or dropped, a disk image attached.
@@ -90,7 +92,7 @@ Two tests, either of which is enough:
 
 - **The platform's mount table** (`ListPlatformMountPoints()`, also per
   platform: `/proc/self/mounts` on Linux, `getmntinfo()` on macOS,
-  `GetLogicalDrives()` on Windows). Exact, and touches no volume — which
+  `GetLogicalDrives` on Windows). Exact, and touches no volume — which
   matters, because stat'ing a wedged network mount blocks.
 - **A device that differs from the parent directory's.** Needs no table, but
   cannot see a mount that shares a device with what it is mounted on — a bind
@@ -110,7 +112,7 @@ Windows the mount table is the drive letters, and there is nothing to scan.
 
 The change notification says only *something moved* — diff the new
 `ListMountedVolumes()` against the last one you saw. UltraFiler's
-`RefreshDriveNodes()` is the worked example: it adds a tree row for every volume
+`RefreshDriveNodes` is the worked example: it adds a tree row for every volume
 that appeared, removes the rows of volumes that are gone along with everything
 the tree remembered about them, and moves any tab that was inside a vanished
 volume back to the home folder.

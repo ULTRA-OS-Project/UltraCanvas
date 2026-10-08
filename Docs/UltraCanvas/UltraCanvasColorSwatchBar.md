@@ -1,5 +1,7 @@
 # UltraCanvas Color Swatch Bar Documentation
 
+<!-- doc-check: void SetFillColor(const Color& color); struct BackdropView { void SetBackdropColor(const Color& color); void SetBackdropCheckered(); }; std::shared_ptr<BackdropView> view; -->
+
 ## Overview
 
 **UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a

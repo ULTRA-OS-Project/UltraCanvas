@@ -1,5 +1,7 @@
 # UltraCanvasSpellChecker Documentation
 
+<!-- doc-check: enum class TexterCommand { ToolsWordCount }; std::function<void()> cmd(TexterCommand command); void OnDictionaryPicked(const std::string& code); std::string GetConfigDir(); void Cut(); struct TextByteSpan { size_t startByte = 0; size_t byteLength = 0; }; std::vector<TextByteSpan> ScanMarkdownNoSpellRanges(const std::string& text); bool SpanCoversRange(const std::vector<TextByteSpan>& spans, size_t startByte, size_t byteLength); -->
+
 ## Overview
 **UltraCanvasSpellChecker** is the framework's cross-platform spell checking
 service. It owns a backend, a user dictionary, a session ignore list and one
@@ -170,7 +172,7 @@ positions.
 Because the UI thread manages the language and the worker thread runs the
 checks, **every backend is entered from two threads**. On Windows that is not
 just a locking question: COM objects belong to the apartment of the thread that
-created them, and UltraCanvas calls `OleInitialize()` on the UI thread, so
+created them, and UltraCanvas calls `OleInitialize` on the UI thread, so
 anything created there is single-threaded-apartment bound. The Windows backend
 therefore keeps its `ISpellCheckerFactory` and `ISpellChecker` **per thread**,
 created in that thread's own apartment and released when it exits; only the
@@ -336,27 +338,31 @@ static std::vector<MenuItemData> BuildSuggestionMenuItems(
 
 ### Text utilities — `namespace SpellCheckText`
 ```cpp
-std::vector<WordSpan> TokenizeWords(const std::string& text);
-size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
-size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
-size_t CountCodepoints(const std::string& text);
-bool ContainsDigit(const std::string& word);
-bool IsAllUpperCase(const std::string& word);
-bool IsMixedCase(const std::string& word);
-bool LooksLikeUrlOrEmail(const std::string& word);
-std::string ToLowerAscii(const std::string& word);
-const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+namespace SpellCheckText {
+    std::vector<WordSpan> TokenizeWords(const std::string& text);
+    size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
+    size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
+    size_t CountCodepoints(const std::string& text);
+    bool ContainsDigit(const std::string& word);
+    bool IsAllUpperCase(const std::string& word);
+    bool IsMixedCase(const std::string& word);
+    bool LooksLikeUrlOrEmail(const std::string& word);
+    std::string ToLowerAscii(const std::string& word);
+    const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+}
 ```
 
 ### Rendering — `namespace SpellCheckRendering`
 ```cpp
-void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
-                        const SpellCheckStyle& style,
-                        SpellErrorKind kind = SpellErrorKind::Misspelled);
-void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
-                       const Color& color, float amplitude, float waveLength, float strokeWidth);
-void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
-                         const Color& color, float strokeWidth);
+namespace SpellCheckRendering {
+    void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
+                            const SpellCheckStyle& style,
+                            SpellErrorKind kind = SpellErrorKind::Misspelled);
+    void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
+                           const Color& color, float amplitude, float waveLength, float strokeWidth);
+    void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
+                             const Color& color, float strokeWidth);
+}
 ```
 
 Any component that can produce a word rectangle can call these — they know
