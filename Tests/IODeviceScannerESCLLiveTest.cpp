@@ -35,7 +35,7 @@
 // and only the eSCL backend is run (ULTRACANVAS_DEVICE_BACKENDS): SANE, or
 // whatever else searches for scanners here, takes seconds and finds nothing
 // this test is about.
-// Version: 1.1.0
+// Version: 1.1.1
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -333,22 +333,37 @@ public:
         const std::string ready = requests + ".port";
         std::error_code ignored;
         fs::remove(PathFromUtf8(ready), ignored);
-        if (!process.Start({python, script, "--cert", certificate, "--key", key, "--ready", ready,
-                            "--log", requests, "--port", std::to_string(listenOn), "--pages", "3"},
+        // -u: unbuffered, so whatever it says before failing reaches the log.
+        if (!process.Start({python, "-u", script, "--cert", certificate, "--key", key, "--ready",
+                            ready, "--log", requests, "--port", std::to_string(listenOn),
+                            "--pages", "3"},
                            log)) {
+            failure = "it could not be started";
             return false;
         }
-        for (int attempt = 0; attempt < 150; ++attempt) {
+        // Up to a minute: a CI runner starting Python cold can be slow, and
+        // a scanner that is merely slow must not read as one that failed.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        while (std::chrono::steady_clock::now() < deadline) {
             const std::string written = ReadText(ready);
             if (!written.empty()) {
                 port = std::atoi(written.c_str());
-                return port > 0;
+                if (port > 0) return true;
+                failure = "it wrote no port number";
+                return false;
             }
-            if (!process.Running()) return false;
+            if (!process.Running()) {
+                failure = "it exited";
+                return false;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+        failure = "it was still running but not listening after 60 seconds";
         return false;
     }
+
+    // Why Start() failed.
+    const std::string& Failure() const { return failure; }
 
     int Port() const { return port; }
 
@@ -357,6 +372,7 @@ public:
 private:
     ChildProcess process;
     int port = 0;
+    std::string failure;
 };
 
 // What is kept for `address` now; an empty pin when nothing is.
@@ -410,7 +426,8 @@ int main(int argc, char** argv) {
     const std::string firstRequests = root + "/first-requests.log";
     TlsScanner scanner;
     if (!scanner.Start(python, script, firstCertificate, firstKey, firstRequests, 0, log)) {
-        std::cout << "SKIPPED: the scanner would not start:\n" << Tail(log) << "\n";
+        std::cout << "SKIPPED: the scanner would not start - " << scanner.Failure() << ":\n"
+                  << Tail(log) << "\n";
         fs::remove_all(PathFromUtf8(root));
         return SkipOrFail();
     }
@@ -519,7 +536,8 @@ int main(int argc, char** argv) {
     scanner.Stop();
     const std::string secondRequests = root + "/second-requests.log";
     if (!scanner.Start(python, script, secondCertificate, secondKey, secondRequests, port, log)) {
-        Check(false, "the scanner restarts on the same port with another key:\n" + Tail(log));
+        Check(false, "the scanner restarts on the same port with another key - " +
+                         scanner.Failure() + ":\n" + Tail(log));
     } else {
         const IODeviceResult refused = device->Connect();
         Check(!refused.success && refused.message.find("different certificate") != std::string::npos,

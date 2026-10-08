@@ -183,6 +183,14 @@ class TlsServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         super().__init__(address, Handler)
         self.context = context
 
+    def server_bind(self):
+        # HTTPServer's own server_bind asks socket.getfqdn() for the address's
+        # name - a reverse DNS lookup that stalled for more than fifteen
+        # seconds on a macOS CI runner, which the test took for a scanner that
+        # would not start. The name is never used here, so it is not asked.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
     def finish_request(self, request, client_address):
         # The handshake is done here, on the connection's own thread, rather
         # than by wrapping the listening socket, so a client that walks away
@@ -221,6 +229,7 @@ def main():
     with open(args.ready + ".tmp", "w", encoding="utf-8") as ready:
         ready.write(str(port))
     os.replace(args.ready + ".tmp", args.ready)
+    print(f"listening on 127.0.0.1:{port}", flush=True)
     server.serve_forever()
 
 
