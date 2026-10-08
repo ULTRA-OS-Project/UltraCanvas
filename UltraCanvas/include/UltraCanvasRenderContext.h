@@ -1,5 +1,6 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.8.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 2.8.0 - GetLineBoxHeight: a line of a font's height in fractional pixels
 //                  (GetTextLineHeight cuts it to whole ones), cached per font
 // Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
@@ -420,6 +421,7 @@ namespace UltraCanvas {
                                                                   const Rect2Dd& anchorRect,
                                                                   ImageFitMode fitMode = ImageFitMode::Cover,
                                                                   bool repeat = false) {
+            (void)imagePath; (void)anchorRect; (void)fitMode; (void)repeat;
             return nullptr;
         }
         // A conic (angular) gradient: the stops run round `centre` from
@@ -517,6 +519,7 @@ namespace UltraCanvas {
         // parts. Used for accents such as the underlined mnemonic letter on a
         // button; the two-argument form always draws the string literally.
         virtual void DrawTextInRect(const std::string &text, const Rect2Dd &rect, bool isMarkup) {
+            (void)isMarkup;
             DrawTextInRect(text, rect);
         }
         virtual Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) = 0;

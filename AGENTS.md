@@ -179,6 +179,14 @@ before adding cross-module code.
   `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
   sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **An inline body in a public header uses all its parameters.** It is
+  compiled into every file that includes the header, so a parameter it
+  leaves unused warns in every build with `-Wextra` (the Models plugin, the
+  tests, Texter, AnchorPoint). A default virtual body that ignores one marks
+  it `(void)name;`, as `UltraCanvasRenderContext.h` does; the signature and
+  the name stay. `PublicHeadersUnusedParamTest` (Tests/CMakeLists.txt)
+  includes the framework's public headers with `-Werror=unused-parameter`,
+  so a new one fails the build there.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.

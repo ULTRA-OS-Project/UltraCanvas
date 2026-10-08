@@ -1,7 +1,8 @@
 // include/Plugins/Charts/UltraCanvasNestedAreaChart.h
 // Nested Proportional Area Chart - Layered shapes with area proportional to values
+// Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.3.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
@@ -126,6 +127,7 @@ namespace UltraCanvas {
         bool SupportsStreaming() const override { return false; }
 
         void LoadFromCSV(const std::string& filePath) override {
+            (void)filePath;
             // CSV format: label,value[,unit[,category]] - not implemented yet
         }
 
