@@ -59,8 +59,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.26.0
-// Last Modified: 2026-10-07
+// Version: 1.27.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -583,6 +583,35 @@ namespace {
 
     private:
         bool buttonFits = true;
+    };
+
+    // The split under the toolbars, which says when the window gave it a new
+    // width - so the folder tree can be kept to the room the file display
+    // leaves it (UltraFilerWindow::FitTreeToRoom). Like the search box above,
+    // it reports from Arrange, where the new width is known (a resize
+    // callback would read the previous one), and the window acts on the
+    // report on the next turn of the event loop, not in the middle of the
+    // pass that is laying the panes out. The panes' sizes do not change the
+    // split's own width, so acting on it cannot report back.
+    class UltraFilerSplitPane : public UltraCanvasSplitPane {
+    public:
+        UltraFilerSplitPane(const std::string& id, SplitOrientation orient)
+                : UltraCanvasSplitPane(id, orient) {}
+
+        // Fired only when the width changed, not on every layout pass.
+        std::function<void(int width)> onWidthChanged;
+
+        void Arrange(const Rect2Df& finalRect,
+                     const CSSLayout::LayoutContext& ctx) override {
+            UltraCanvasSplitPane::Arrange(finalRect, ctx);
+            const int width = static_cast<int>(GetWidth());
+            if (width == lastWidth) return;
+            lastWidth = width;
+            if (onWidthChanged) onWidthChanged(width);
+        }
+
+    private:
+        int lastWidth = 0;
     };
 
     std::shared_ptr<UltraCanvasContainer> MakeToolRow(const std::string& id) {
@@ -3856,9 +3885,12 @@ void UltraFilerWindow::ApplyTreeWidth(bool allowRetry) {
         }
         width = rows + kTreeFitSlack;
     }
-    width = std::clamp(width, UltraFilerSettings::kMinTreeWidth,
-                       UltraFilerSettings::kMaxTreeWidth);
+    treeWantedWidth = std::clamp(width, UltraFilerSettings::kMinTreeWidth,
+                                 UltraFilerSettings::kMaxTreeWidth);
+    PlaceTreeWidth(treeWantedWidth);
+}
 
+void UltraFilerWindow::PlaceTreeWidth(int width) {
     if (treePane && split) {
         // The tree's own pane. A fixed pane is not held back by the minimum
         // widths of the panes beside it, so it is kept to what they leave.
@@ -3895,6 +3927,21 @@ void UltraFilerWindow::ApplyTreeWidth(bool allowRetry) {
         // Out of the split view, hidden: the width it comes back with.
         treePaneWidth = width;
     }
+}
+
+void UltraFilerWindow::FitTreeToRoom() {
+    // Not asked for yet: the fit still to come keeps itself to the room.
+    if (treeWantedWidth <= 0) return;
+    if (treePane && split) {
+        const int index = split->GetPaneIndex(treePane.get());
+        if (index < 0) return;
+        // A divider dragged since the last fit moved the pane's width away
+        // from what was placed: the dragged width is the one the window keeps
+        // to from here, until the next fit.
+        const int current = split->GetPaneFixedSize(static_cast<size_t>(index));
+        if (current > 0 && current != treePaneWidth) treeWantedWidth = current;
+    }
+    PlaceTreeWidth(treeWantedWidth);
 }
 
 void UltraFilerWindow::ScheduleTreeFit() {
@@ -4945,7 +4992,22 @@ void UltraFilerWindow::BuildSplitLayout() {
     contentBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    split = std::make_shared<UltraCanvasSplitPane>("ufl-split", SplitOrientation::Horizontal);
+    auto splitPane = std::make_shared<UltraFilerSplitPane>("ufl-split",
+                                                           SplitOrientation::Horizontal);
+    // A resized window changes the room beside the tree: keep the tree to it.
+    splitPane->onWidthChanged = [this](int) {
+        if (treeRoomFitPosted) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        treeRoomFitPosted = true;
+        auto alive = probeAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            treeRoomFitPosted = false;
+            FitTreeToRoom();
+        });
+    };
+    split = splitPane;
     split->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 

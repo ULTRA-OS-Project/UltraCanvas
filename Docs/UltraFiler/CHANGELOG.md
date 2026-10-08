@@ -1,3 +1,15 @@
+#### 2026-10-08 *1.68.1*
+- **The folder tree follows the window's size.** The tree is kept to the
+  room the file display leaves it (and the preview pane, while it is up) as
+  the window is resized, not only when its rows change: making the window
+  narrower narrows a tree that would otherwise squeeze the file display
+  below its minimum width, and making it wider again gives the tree back the
+  width it asked for - its fitted width under *Auto*, the set width under
+  *Fixed width*. In 1.68.0 a tree held back by a narrow window stayed that
+  narrow until a branch was next opened or closed. A divider dragged since
+  the last fit keeps its width, as far as the window allows. Resizing measures
+  nothing: the width the tree last asked for is simply placed again.
+
 #### 2026-10-07 *1.68.0*
 - **The folder tree fits its names.** The tree on the left is now as wide as
   the rows it shows, plus 10 px - the same as UltraMail's folder list - instead
