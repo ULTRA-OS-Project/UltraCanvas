@@ -270,8 +270,6 @@ jobs:
             ${{ matrix.msys_prefix }}-mupdf
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
-            # The openssl command, for IODeviceScannerESCLLiveTest's
-            # certificates (it comes with -python too; named for that test).
             ${{ matrix.msys_prefix }}-openssl
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
@@ -980,7 +978,10 @@ jobs:
       # a scanner the test starts with certificates it makes. The test needs
       # Python 3 and openssl and would skip without them, so a skip is made a
       # failure, and --no-tests=error catches it not being built at all.
-      # ULTRACANVAS_BUILD_DEVICE_TLS_TESTS builds it without BUILD_TESTS.
+      # ULTRACANVAS_BUILD_DEVICE_TLS_TESTS builds it without BUILD_TESTS. On
+      # Windows, openssl is MSYS2's -openssl package, in "Setup MSYS2" (no
+      # comment can sit beside it there: inside that block scalar a "#" line
+      # is not a comment but more package names).
       - name: Run the device TLS test (macOS/Windows)
         if: runner.os != 'Linux'
         working-directory: build
