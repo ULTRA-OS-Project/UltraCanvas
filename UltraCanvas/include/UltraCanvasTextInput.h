@@ -602,23 +602,6 @@ private:
         return IsDisabled() ? style.disabledBackgroundColor : style.backgroundColor;
     }
     
-    Color GetBorderColor() const {
-        if (showValidationState) {
-            switch (lastValidationResult.state) {
-                case ValidationState::Valid:
-                    return style.validBorderColor;
-                case ValidationState::Invalid:
-                    return style.invalidBorderColor;
-                case ValidationState::Warning:
-                    return style.warningBorderColor;
-                default:
-                    break;
-            }
-        }
-        
-        return IsFocused() ? style.focusBorderColor : style.borderColor;
-    }
-    
     Color GetTextColor() const {
         return IsDisabled() ? style.disabledTextColor : style.textColor;
     }

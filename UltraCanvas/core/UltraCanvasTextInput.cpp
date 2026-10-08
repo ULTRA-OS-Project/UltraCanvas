@@ -409,15 +409,20 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();
-        Color borderColor = GetBorderColor();
         Color textColor = GetTextColor();
 
         Rect2Di bounds = GetLocalBounds();
 
-        // Draw background. A disabled field takes the lighter disabled
-        // border with its disabled face (GetBackgroundColor).
-        ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth,
-                                 IsDisabled() ? style.disabledBorderColor : style.borderColor);
+        // Draw background and frame. The frame shows the state: the lighter
+        // disabled border, the focus colour while the field has the keyboard
+        // (as the dropdown, spinner, pickers and chip do - it used to stay
+        // in the normal colour, so a focused field looked like any other),
+        // else the normal border. Validation draws its own coloured border
+        // over this one (RenderValidationFeedback).
+        const Color frameColor = IsDisabled() ? style.disabledBorderColor
+                               : IsFocused()  ? style.focusBorderColor
+                                              : style.borderColor;
+        ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, frameColor);
 
         // Get text area (excluding padding)
         Rect2Dd textArea = GetTextArea();

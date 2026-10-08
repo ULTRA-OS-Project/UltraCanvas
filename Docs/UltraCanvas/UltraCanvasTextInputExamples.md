@@ -558,6 +558,11 @@ struct TextInputStyle {
 };
 ```
 
+The frame shows the field's state: `focusBorderColor` while it has the
+keyboard focus, `borderColor` otherwise. With `SetShowValidationState(true)`
+(the default) a validated field also draws `validBorderColor`,
+`invalidBorderColor` or `warningBorderColor` over the frame.
+
 A disabled field (`SetDisabled(true)`) recedes: it draws with
 `disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`
 instead of the normal face, border and text, hides the clear button (it would
