@@ -3,11 +3,12 @@
 // Handles real-world eBook markup: unclosed <p>/<li>, void elements,
 // self-closing XHTML syntax, comments, CDATA, doctype, entities, and
 // raw-text elements (<style>, <script>). Framework-independent.
+// Version: 1.3.0 - kMaxTreeDepth: elements nest at most 128 deep
 // Version: 1.2.0 - foreign content: inside <svg> and <math>, tag and attribute
 //                  names take the case their vocabulary defines (linearGradient,
 //                  viewBox), as the HTML standard adjusts them
 // Version: 1.1.0 - records the doctype (Document::doctype / quirksMode)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -15,6 +16,16 @@
 
 namespace UltraCanvas {
 namespace HTML {
+
+// How deep elements nest at most. Everything that reads the tree - the style
+// resolver, the element builder, the layout, the DOM's own destructor - walks
+// it recursively, so a page of ten thousand nested <div>s (a few kilobytes of
+// a hostile mail) overflowed the stack. An element that would open deeper is
+// kept, but as a leaf: what follows it lands beside it, as browsers flatten
+// past their own limit. 128 leaves the builder and the layout a wide margin
+// on a 1 MB stack (Windows' main thread, in a debug build) and is far beyond
+// what real mail or books nest.
+constexpr size_t kMaxTreeDepth = 128;
 
 struct ParseOptions {
     // Keep whitespace-only text nodes. Off by default: they are meaningless

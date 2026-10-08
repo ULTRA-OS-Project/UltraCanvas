@@ -347,7 +347,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   attribute lookup exact then case-insensitive) with `GetAttribute`, `HasClass`,
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
-  `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
+  `styleSheetLinks`. Elements nest at most `kMaxTreeDepth` (128) deep,
+  deeper ones are kept as leaves (a hostile mail's nesting cannot overflow
+  the stack). Helpers without a DOM: `DecodeEntities` (every HTML 4
   entity and numeric references), `ExtractPlainText` (tags gone,
   `<script>`/`<style>` bodies dropped, entities decoded).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
@@ -367,7 +369,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `Resolve(document, ResolverOptions)` / `StyleOf(node)` → `ComputedStyle`
   (display, inherited text properties, margins, padding, borders per side,
   backgrounds, sizes in px or percent, floats, `box-sizing`, `overflow`,
-  `object-fit`, links); user-agent defaults and the presentational
+  `object-fit`, flex and grid - `layoutMode`, the flex / grid container and
+  item fields, `GridTemplate`, `GridTrackSpec`, `GridLineSpec`, capped at
+  `kMaxGridLines` - links); user-agent defaults and the presentational
   attributes mail uses. `NodeSelectorTraits` is the DOM's view for the
   matcher; `Matches(selector, node)` the stand-alone test.
 - **HTMLElementBuilder** (`HTMLReader/HTMLElementBuilder.h`) —
@@ -378,7 +382,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
   Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
-  engine; the tree's own scrollbars are off, the host scrolls.
+  engine, `display: flex` / `grid` the CSSLayout flex and grid engines
+  (child elements are items, text between them anonymous items); the tree's
+  own scrollbars are off, the host scrolls. Fuzz targets for the parser, the
+  CSS and the builder with the layout: `Tests/Fuzz` (ctest smoke runs,
+  libFuzzer with `ULTRACANVAS_BUILD_FUZZERS`).
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,

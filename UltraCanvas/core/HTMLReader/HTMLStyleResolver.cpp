@@ -1,5 +1,11 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.19.0 - flex and grid: display: flex / grid / inline-flex / inline-grid set
+//                  BoxLayoutMode; flex, flex-*, order, gap, justify-* / align-* /
+//                  place-*, grid-template-columns / -rows / -areas (repeat(),
+//                  minmax(), fit-content(), auto-fill / auto-fit), grid-template,
+//                  grid-column / -row / -area, grid-auto-flow. Counts, lines and
+//                  spans are capped at kMaxGridLines.
 // Version: 1.18.0 - selector matching is CSSStyleSheet.h's (SelectorMatches /
 //                  MatchingRules over NodeSelectorTraits); the copy that lived
 //                  here is gone, so the SVG reader and this resolver match alike
@@ -45,7 +51,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -54,6 +60,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace UltraCanvas {
@@ -695,6 +702,262 @@ bool ContainsWord(const std::string& value, const char* word) {
     return false;
 }
 
+// ---- flex and grid --------------------------------------------------------
+
+// An integer, as a grid line or a repeat() count is written; nullopt for
+// anything else (1.5, 3px, a name).
+std::optional<int> ParseInteger(const std::string& word) {
+    if (word == "0") return 0;          // CssLength reads a bare 0 as 0px
+    auto len = CssLength::Parse(word);
+    if (!len || len->unit != CssUnit::Number) return std::nullopt;
+    if (len->value != std::floor(len->value)) return std::nullopt;
+    const float clamped = std::clamp(len->value, -1.0e6f, 1.0e6f);
+    return static_cast<int>(clamped);
+}
+
+// A plain non-negative number (flex-grow, flex-shrink).
+std::optional<float> ParseNumber(const std::string& word) {
+    if (word == "0") return 0.f;        // CssLength reads a bare 0 as 0px
+    auto len = CssLength::Parse(word);
+    if (!len || len->unit != CssUnit::Number || !(len->value >= 0.f)) return std::nullopt;
+    return std::min(len->value, 1.0e6f);
+}
+
+// One alignment value of justify-* / align-* / place-*: the keyword, with
+// safe / unsafe and first / last (baseline) dropped.
+std::optional<BoxAlignMode> ParseBoxAlign(const std::string& text) {
+    std::string word;
+    for (const auto& part : SplitParts(TrimLower(text))) {
+        if (part == "safe" || part == "unsafe" || part == "first" || part == "last") continue;
+        if (!word.empty()) return std::nullopt;
+        word = part;
+    }
+    if (word == "normal" || word == "auto") return BoxAlignMode::Unset;
+    if (word == "start" || word == "flex-start" || word == "self-start" || word == "left")
+        return BoxAlignMode::Start;
+    if (word == "end" || word == "flex-end" || word == "self-end" || word == "right")
+        return BoxAlignMode::End;
+    if (word == "center") return BoxAlignMode::Center;
+    if (word == "stretch") return BoxAlignMode::Stretch;
+    if (word == "baseline") return BoxAlignMode::Baseline;
+    if (word == "space-between") return BoxAlignMode::SpaceBetween;
+    if (word == "space-around") return BoxAlignMode::SpaceAround;
+    if (word == "space-evenly") return BoxAlignMode::SpaceEvenly;
+    return std::nullopt;
+}
+
+// place-items / place-content / place-self: "<align> [<justify>]", one value
+// meaning both. The parts may themselves be two words (safe center).
+bool ParsePlace(const std::string& text, BoxAlignMode& align, BoxAlignMode& justify) {
+    const std::vector<std::string> parts = SplitParts(TrimLower(text));
+    // Split where the first value ends: a modifier joins the word after it.
+    std::vector<std::string> values;
+    std::string pending;
+    for (const auto& part : parts) {
+        if (part == "safe" || part == "unsafe" || part == "first" || part == "last") {
+            pending += part + " ";
+            continue;
+        }
+        values.push_back(pending + part);
+        pending.clear();
+    }
+    if (values.empty() || values.size() > 2) return false;
+    auto a = ParseBoxAlign(values[0]);
+    auto j = ParseBoxAlign(values.size() > 1 ? values[1] : values[0]);
+    if (!a || !j) return false;
+    align = *a;
+    justify = *j;
+    return true;
+}
+
+// A gap length in px; percentages (of a size not known here) and normal are 0.
+std::optional<float> ParseGap(const std::string& word, float emPx, float remPx) {
+    if (word == "normal") return 0.f;
+    auto len = CssLength::Parse(word);
+    if (!len || len->unit == CssUnit::Auto) return std::nullopt;
+    if (len->unit == CssUnit::Number && len->value != 0.f) return std::nullopt;
+    if (len->unit == CssUnit::Percent) return 0.f;
+    return std::max(0.f, len->ToPx(emPx, remPx));
+}
+
+// One bound of a grid track: a length, a percentage, Nfr, auto,
+// min-content, max-content or fit-content(<length>).
+std::optional<GridTrackBound> ParseGridTrackBound(const std::string& word, float emPx, float remPx) {
+    using Kind = GridTrackBound::Kind;
+    if (word == "auto") return GridTrackBound{ Kind::Auto, 0.f };
+    if (word == "min-content") return GridTrackBound{ Kind::MinContent, 0.f };
+    if (word == "max-content") return GridTrackBound{ Kind::MaxContent, 0.f };
+    if (word.rfind("fit-content(", 0) == 0 && word.back() == ')') {
+        auto len = CssLength::Parse(word.substr(12, word.size() - 13));
+        if (!len || len->unit == CssUnit::Auto || len->unit == CssUnit::Percent) return std::nullopt;
+        return GridTrackBound{ Kind::FitContent, std::max(0.f, len->ToPx(emPx, remPx)) };
+    }
+    if (word.size() > 2 && word.compare(word.size() - 2, 2, "fr") == 0) {
+        auto n = ParseNumber(word.substr(0, word.size() - 2));
+        if (!n) return std::nullopt;
+        return GridTrackBound{ Kind::Fr, *n };
+    }
+    auto len = CssLength::Parse(word);
+    if (!len || len->unit == CssUnit::Auto) return std::nullopt;
+    if (len->unit == CssUnit::Number && len->value != 0.f) return std::nullopt;
+    if (len->unit == CssUnit::Percent) return GridTrackBound{ Kind::Percent, std::max(0.f, len->value) };
+    return GridTrackBound{ Kind::Px, std::clamp(len->ToPx(emPx, remPx), 0.f, 1.0e6f) };
+}
+
+// A track size: a bound, or minmax(<min>, <max>) - whose min cannot be fr.
+std::optional<GridTrackSpec> ParseGridTrack(const std::string& word, float emPx, float remPx) {
+    if (word.rfind("minmax(", 0) == 0 && word.back() == ')') {
+        const std::vector<std::string> args = SplitTopLevel(word.substr(7, word.size() - 8), ',');
+        if (args.size() != 2) return std::nullopt;
+        auto lo = ParseGridTrackBound(TrimLower(args[0]), emPx, remPx);
+        auto hi = ParseGridTrackBound(TrimLower(args[1]), emPx, remPx);
+        if (!lo || !hi || lo->kind == GridTrackBound::Kind::Fr) return std::nullopt;
+        return GridTrackSpec{ *lo, *hi };
+    }
+    auto bound = ParseGridTrackBound(word, emPx, remPx);
+    if (!bound) return std::nullopt;
+    return GridTrackSpec{ *bound, *bound };
+}
+
+// grid-template-columns / -rows: none, or a track list with repeat(N, ...)
+// and at most one repeat(auto-fill | auto-fit, ...). Line names ([a b]) are
+// dropped. subgrid, masonry and anything that does not parse give nullopt:
+// the declaration is then ignored, as an invalid one is in CSS.
+std::optional<GridTemplate> ParseGridTemplate(const std::string& lower, float emPx, float remPx) {
+    GridTemplate tpl;
+    if (lower == "none") return tpl;
+    std::string text;
+    int brackets = 0;
+    for (char c : lower) {
+        if (c == '[') { ++brackets; text += ' '; continue; }
+        if (c == ']') { if (brackets > 0) --brackets; text += ' '; continue; }
+        if (brackets == 0) text += c;
+    }
+    for (const auto& part : SplitParts(text)) {
+        if (part.rfind("repeat(", 0) == 0 && part.back() == ')') {
+            const std::string inner = part.substr(7, part.size() - 8);
+            const size_t comma = inner.find(',');
+            if (comma == std::string::npos) return std::nullopt;
+            const std::string count = TrimLower(inner.substr(0, comma));
+            std::vector<GridTrackSpec> group;
+            for (const auto& t : SplitParts(inner.substr(comma + 1))) {
+                auto track = ParseGridTrack(t, emPx, remPx);
+                if (!track) return std::nullopt;
+                group.push_back(*track);
+            }
+            if (group.empty()) return std::nullopt;
+            if (count == "auto-fill" || count == "auto-fit") {
+                if (!tpl.autoRepeat.empty()) return std::nullopt;   // only one
+                tpl.autoRepeat = std::move(group);
+                tpl.autoRepeatAt = tpl.tracks.size();
+                tpl.autoFit = (count == "auto-fit");
+                continue;
+            }
+            auto n = ParseInteger(count);
+            if (!n || *n < 1) return std::nullopt;
+            for (int i = 0; i < *n; ++i) {
+                for (const auto& track : group) {
+                    if (static_cast<int>(tpl.tracks.size()) >= kMaxGridLines) break;
+                    tpl.tracks.push_back(track);
+                }
+            }
+            continue;
+        }
+        auto track = ParseGridTrack(part, emPx, remPx);
+        if (!track) return std::nullopt;
+        if (static_cast<int>(tpl.tracks.size()) < kMaxGridLines) tpl.tracks.push_back(*track);
+    }
+    if (tpl.Empty()) return std::nullopt;
+    return tpl;
+}
+
+// grid-template-areas: one quoted string per row, each a list of area names
+// ("." or a run of dots for no area). Rows of unequal length are invalid.
+std::optional<std::vector<std::vector<std::string>>> ParseGridAreas(const std::string& value) {
+    std::vector<std::vector<std::string>> rows;
+    if (TrimLower(value) == "none") return rows;
+    size_t i = 0;
+    while (i < value.size()) {
+        const char quote = value[i];
+        if (quote != '"' && quote != '\'') {
+            if (!std::isspace(static_cast<unsigned char>(quote))) return std::nullopt;
+            ++i;
+            continue;
+        }
+        const size_t close = value.find(quote, i + 1);
+        if (close == std::string::npos) return std::nullopt;
+        std::vector<std::string> row;
+        for (const auto& cell : SplitParts(value.substr(i + 1, close - i - 1))) {
+            const bool dots = std::all_of(cell.begin(), cell.end(), [](char c) { return c == '.'; });
+            row.push_back(dots ? std::string() : cell);
+        }
+        if (row.empty()) return std::nullopt;
+        if (!rows.empty() && row.size() != rows.front().size()) return std::nullopt;
+        if (static_cast<int>(row.size()) > kMaxGridLines || static_cast<int>(rows.size()) >= kMaxGridLines)
+            return std::nullopt;
+        rows.push_back(std::move(row));
+        i = close + 1;
+    }
+    if (rows.empty()) return std::nullopt;
+    return rows;
+}
+
+// One end of grid-column / grid-row: auto, an integer line, span N (or span
+// <name>, taken as span 1), a name, or "<integer> <name>" (the line number).
+std::optional<GridLineSpec> ParseGridLine(const std::string& text) {
+    using Kind = GridLineSpec::Kind;
+    const std::vector<std::string> parts = SplitParts(TrimLower(text));
+    if (parts.empty() || parts.size() > 3) return std::nullopt;
+    GridLineSpec line;
+    if (parts.size() == 1 && parts[0] == "auto") return line;
+    bool span = false;
+    std::optional<int> number;
+    std::string name;
+    for (const auto& part : parts) {
+        if (part == "span") { if (span) return std::nullopt; span = true; continue; }
+        if (auto n = ParseInteger(part)) {
+            if (number || *n == 0) return std::nullopt;
+            number = *n;
+            continue;
+        }
+        if (!std::isalpha(static_cast<unsigned char>(part[0])) && part[0] != '_' && part[0] != '-')
+            return std::nullopt;
+        if (!name.empty()) return std::nullopt;
+        name = part;
+    }
+    if (span) {
+        if (number && *number < 0) return std::nullopt;
+        line.kind = Kind::Span;
+        line.value = std::clamp(number.value_or(1), 1, kMaxGridLines);
+        return line;
+    }
+    if (number) {
+        line.kind = Kind::Line;
+        line.value = std::clamp(*number, -kMaxGridLines, kMaxGridLines);
+        return line;
+    }
+    if (name.empty()) return std::nullopt;
+    line.kind = Kind::Name;
+    line.name = name;
+    return line;
+}
+
+// grid-column / grid-row: "<start> [/ <end>]". A name alone names both ends
+// (the area's start and end lines); anything else alone leaves the end auto.
+bool ParseGridLinePair(const std::string& value, GridLineSpec& start, GridLineSpec& end) {
+    const std::vector<std::string> halves = SplitTopLevel(value, '/');
+    if (halves.size() > 2) return false;
+    auto s = ParseGridLine(halves[0]);
+    if (!s) return false;
+    std::optional<GridLineSpec> e = GridLineSpec{};
+    if (halves.size() == 2) e = ParseGridLine(halves[1]);
+    else if (s->kind == GridLineSpec::Kind::Name) e = s;
+    if (!e) return false;
+    start = *s;
+    end = *e;
+    return true;
+}
+
 } // namespace
 
 void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
@@ -724,16 +987,175 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     if (lower == "initial" || lower == "unset") return;
 
     if (prop == "display") {
+        // A flex or grid container is a block (or, inline-, an inline
+        // block) that lays its children out as flex / grid items.
+        const DisplayMode before = s.display;
+        const BoxLayoutMode layoutBefore = s.layoutMode;
+        s.layoutMode = BoxLayoutMode::Flow;
         if (lower == "none") s.display = DisplayMode::Hidden;
-        else if (lower == "block" || lower == "flex" || lower == "grid") s.display = DisplayMode::Block;
+        else if (lower == "block") s.display = DisplayMode::Block;
+        else if (lower == "flex") { s.display = DisplayMode::Block; s.layoutMode = BoxLayoutMode::Flex; }
+        else if (lower == "grid") { s.display = DisplayMode::Block; s.layoutMode = BoxLayoutMode::Grid; }
         else if (lower == "inline") s.display = DisplayMode::Inline;
         else if (lower == "inline-block") s.display = DisplayMode::InlineBlock;
         else if (lower == "list-item") s.display = DisplayMode::ListItem;
         else if (lower == "table") s.display = DisplayMode::Table;
         else if (lower == "table-row") s.display = DisplayMode::TableRow;
         else if (lower == "table-cell") s.display = DisplayMode::TableCell;
-        else if (lower == "inline-table" || lower == "inline-flex" || lower == "inline-grid")
-            s.display = DisplayMode::InlineBlock;
+        else if (lower == "inline-table") s.display = DisplayMode::InlineBlock;
+        else if (lower == "inline-flex") { s.display = DisplayMode::InlineBlock; s.layoutMode = BoxLayoutMode::Flex; }
+        else if (lower == "inline-grid") { s.display = DisplayMode::InlineBlock; s.layoutMode = BoxLayoutMode::Grid; }
+        else { s.display = before; s.layoutMode = layoutBefore; }   // not a value: ignored
+    }
+    else if (prop == "flex-direction") {
+        if (lower == "row") s.flexDirection = FlexDirectionMode::Row;
+        else if (lower == "row-reverse") s.flexDirection = FlexDirectionMode::RowReverse;
+        else if (lower == "column") s.flexDirection = FlexDirectionMode::Column;
+        else if (lower == "column-reverse") s.flexDirection = FlexDirectionMode::ColumnReverse;
+    }
+    else if (prop == "flex-wrap") {
+        if (lower == "nowrap") s.flexWrap = FlexWrapMode::NoWrap;
+        else if (lower == "wrap") s.flexWrap = FlexWrapMode::Wrap;
+        else if (lower == "wrap-reverse") s.flexWrap = FlexWrapMode::WrapReverse;
+    }
+    else if (prop == "flex-flow") {
+        for (const auto& part : SplitParts(lower)) {
+            if (part == "row") s.flexDirection = FlexDirectionMode::Row;
+            else if (part == "row-reverse") s.flexDirection = FlexDirectionMode::RowReverse;
+            else if (part == "column") s.flexDirection = FlexDirectionMode::Column;
+            else if (part == "column-reverse") s.flexDirection = FlexDirectionMode::ColumnReverse;
+            else if (part == "nowrap") s.flexWrap = FlexWrapMode::NoWrap;
+            else if (part == "wrap") s.flexWrap = FlexWrapMode::Wrap;
+            else if (part == "wrap-reverse") s.flexWrap = FlexWrapMode::WrapReverse;
+        }
+    }
+    else if (prop == "flex") {
+        // none = 0 0 auto, auto = 1 1 auto; otherwise up to two numbers
+        // (grow, shrink) and a basis, which defaults to 0 when left out.
+        if (lower == "none") { s.flexGrow = 0.f; s.flexShrink = 0.f; s.flexBasisPx.reset(); s.flexBasisPercent.reset(); return; }
+        if (lower == "auto") { s.flexGrow = 1.f; s.flexShrink = 1.f; s.flexBasisPx.reset(); s.flexBasisPercent.reset(); return; }
+        std::vector<float> numbers;
+        bool haveBasis = false, basisAuto = false;
+        std::optional<float> basisPx, basisPercent;
+        for (const auto& part : SplitParts(lower)) {
+            if (auto n = ParseNumber(part); n && numbers.size() < 2 && !haveBasis) {
+                numbers.push_back(*n);
+                continue;
+            }
+            if (haveBasis) return;                     // two bases: invalid
+            haveBasis = true;
+            if (part == "auto" || part == "content") { basisAuto = true; continue; }
+            auto len = CssLength::Parse(part);
+            if (!len || len->unit == CssUnit::Number || len->unit == CssUnit::Auto) return;
+            if (len->unit == CssUnit::Percent) basisPercent = std::max(0.f, len->value);
+            else basisPx = std::max(0.f, len->ToPx(em, rem));
+        }
+        if (numbers.empty() && !haveBasis) return;
+        s.flexGrow = numbers.empty() ? 1.f : numbers[0];
+        s.flexShrink = numbers.size() > 1 ? numbers[1] : 1.f;
+        s.flexBasisPx.reset();
+        s.flexBasisPercent.reset();
+        if (!haveBasis) s.flexBasisPx = 0.f;           // flex: 1 is 1 1 0%
+        else if (!basisAuto) { s.flexBasisPx = basisPx; s.flexBasisPercent = basisPercent; }
+    }
+    else if (prop == "flex-grow") {
+        if (auto n = ParseNumber(lower)) s.flexGrow = *n;
+    }
+    else if (prop == "flex-shrink") {
+        if (auto n = ParseNumber(lower)) s.flexShrink = *n;
+    }
+    else if (prop == "flex-basis") {
+        if (lower == "auto" || lower == "content") { s.flexBasisPx.reset(); s.flexBasisPercent.reset(); return; }
+        auto len = CssLength::Parse(lower);
+        if (!len || len->unit == CssUnit::Auto || (len->unit == CssUnit::Number && len->value != 0.f)) return;
+        s.flexBasisPx.reset();
+        s.flexBasisPercent.reset();
+        if (len->unit == CssUnit::Percent) s.flexBasisPercent = std::max(0.f, len->value);
+        else s.flexBasisPx = std::max(0.f, len->ToPx(em, rem));
+    }
+    else if (prop == "order") {
+        if (auto n = ParseInteger(lower)) s.order = std::clamp(*n, -kMaxGridLines, kMaxGridLines);
+    }
+    else if (prop == "justify-content") { if (auto a = ParseBoxAlign(lower)) s.justifyContent = *a; }
+    else if (prop == "align-items")     { if (auto a = ParseBoxAlign(lower)) s.alignItems = *a; }
+    else if (prop == "align-content")   { if (auto a = ParseBoxAlign(lower)) s.alignContent = *a; }
+    else if (prop == "justify-items")   { if (auto a = ParseBoxAlign(lower)) s.justifyItems = *a; }
+    else if (prop == "align-self")      { if (auto a = ParseBoxAlign(lower)) s.alignSelf = *a; }
+    else if (prop == "justify-self")    { if (auto a = ParseBoxAlign(lower)) s.justifySelf = *a; }
+    else if (prop == "place-items")   ParsePlace(lower, s.alignItems, s.justifyItems);
+    else if (prop == "place-content") ParsePlace(lower, s.alignContent, s.justifyContent);
+    else if (prop == "place-self")    ParsePlace(lower, s.alignSelf, s.justifySelf);
+    else if (prop == "gap" || prop == "grid-gap") {
+        const std::vector<std::string> parts = SplitParts(lower);
+        if (parts.empty() || parts.size() > 2) return;
+        auto row = ParseGap(parts[0], em, rem);
+        auto column = ParseGap(parts.size() > 1 ? parts[1] : parts[0], em, rem);
+        if (!row || !column) return;
+        s.rowGapPx = *row;
+        s.columnGapPx = *column;
+    }
+    else if (prop == "row-gap" || prop == "grid-row-gap") {
+        if (auto g = ParseGap(lower, em, rem)) s.rowGapPx = *g;
+    }
+    else if (prop == "column-gap" || prop == "grid-column-gap") {
+        if (auto g = ParseGap(lower, em, rem)) s.columnGapPx = *g;
+    }
+    else if (prop == "grid-template-columns") {
+        if (auto t = ParseGridTemplate(lower, em, rem)) s.gridColumns = std::move(*t);
+    }
+    else if (prop == "grid-template-rows") {
+        if (auto t = ParseGridTemplate(lower, em, rem)) s.gridRows = std::move(*t);
+    }
+    else if (prop == "grid-template-areas") {
+        if (auto areas = ParseGridAreas(value)) s.gridAreas = std::move(*areas);
+    }
+    else if (prop == "grid-template" || prop == "grid") {
+        // "<rows> / <columns>" (and none). The forms with area strings or
+        // auto-flow are not read.
+        if (lower == "none") { s.gridRows = {}; s.gridColumns = {}; s.gridAreas.clear(); return; }
+        if (lower.find('"') != std::string::npos || lower.find('\'') != std::string::npos ||
+            lower.find("auto-flow") != std::string::npos) return;
+        const std::vector<std::string> halves = SplitTopLevel(lower, '/');
+        if (halves.size() != 2) return;
+        auto rows = ParseGridTemplate(TrimLower(halves[0]), em, rem);
+        auto columns = ParseGridTemplate(TrimLower(halves[1]), em, rem);
+        if (!rows || !columns) return;
+        s.gridRows = std::move(*rows);
+        s.gridColumns = std::move(*columns);
+    }
+    else if (prop == "grid-auto-flow") {
+        if (ContainsWord(lower, "column")) s.gridAutoFlowColumn = true;
+        else if (ContainsWord(lower, "row") || ContainsWord(lower, "dense")) s.gridAutoFlowColumn = false;
+    }
+    else if (prop == "grid-column") ParseGridLinePair(lower, s.gridColumnStart, s.gridColumnEnd);
+    else if (prop == "grid-row")    ParseGridLinePair(lower, s.gridRowStart, s.gridRowEnd);
+    else if (prop == "grid-column-start") { if (auto l = ParseGridLine(lower)) s.gridColumnStart = *l; }
+    else if (prop == "grid-column-end")   { if (auto l = ParseGridLine(lower)) s.gridColumnEnd = *l; }
+    else if (prop == "grid-row-start")    { if (auto l = ParseGridLine(lower)) s.gridRowStart = *l; }
+    else if (prop == "grid-row-end")      { if (auto l = ParseGridLine(lower)) s.gridRowEnd = *l; }
+    else if (prop == "grid-area") {
+        // <row-start> / <column-start> / <row-end> / <column-end>; a name
+        // alone is the area of that name, on both axes.
+        const std::vector<std::string> parts = SplitTopLevel(lower, '/');
+        if (parts.size() > 4) return;
+        std::vector<GridLineSpec> lines;
+        for (const auto& part : parts) {
+            auto l = ParseGridLine(part);
+            if (!l) return;
+            lines.push_back(*l);
+        }
+        // A missing value repeats the one it pairs with when that is a
+        // name, else it is auto.
+        auto orFrom = [&](size_t i, const GridLineSpec& from) {
+            if (i < lines.size()) return lines[i];
+            return from.kind == GridLineSpec::Kind::Name ? from : GridLineSpec{};
+        };
+        const GridLineSpec rowStart = lines[0];
+        const GridLineSpec columnStart = orFrom(1, rowStart);
+        s.gridRowStart = rowStart;
+        s.gridColumnStart = columnStart;
+        s.gridRowEnd = orFrom(2, rowStart);
+        s.gridColumnEnd = orFrom(3, columnStart);
     }
     else if (prop == "color") {
         if (opts.overrideAuthorColors) return;

@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.11.0 - flex and grid containers on the CSSLayout flex / grid engines:
+//                  BuildContentInto, BuildItemsInto, BuildItem, EstimateContentWidth
 // Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
 // Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
 //                  first block)
@@ -18,7 +20,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,8 +126,23 @@ private:
     std::shared_ptr<UltraCanvasContainer> MakeContainer(const std::string& hint);
 
     std::shared_ptr<UltraCanvasContainer> BuildBlock(Node& element);
+    // A box's content by its layout mode: normal flow (BuildChildrenInto) or,
+    // for display: flex / grid, its items (BuildItemsInto).
+    void BuildContentInto(UltraCanvasContainer& parent, Node& element);
     void BuildChildrenInto(UltraCanvasContainer& parent, Node& element,
                            int listItemIndex = -1);
+    // A flex or grid container: `parent` laid out by the CSSLayout flex or
+    // grid engine, every child element an item of its own (blockified, as CSS
+    // does: a <span> or <a> item is a box) and every run of text between them
+    // an anonymous item; whitespace between items renders nothing.
+    void BuildItemsInto(UltraCanvasContainer& parent, Node& element);
+    // One flex / grid item built from an element, at its own size (no 100%
+    // width) with its margins as real margins. Null when it shows nothing.
+    std::shared_ptr<UltraCanvasUIElement> BuildItem(Node& element);
+    // The content width of `element` estimated before layout, from the
+    // viewport down through its ancestors' widths, margins, padding and
+    // borders: what repeat(auto-fill, ...) is counted against.
+    float EstimateContentWidth(const Node& element) const;
     // `blockNode` is the element whose content the run is: a text node whose
     // parent is some other element (an inline the builder looked through,
     // because it wraps a block) takes that element's formatting.

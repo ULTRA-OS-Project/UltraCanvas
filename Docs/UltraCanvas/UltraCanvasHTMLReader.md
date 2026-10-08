@@ -96,6 +96,14 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
+**Depth.** Elements nest at most `HTML::kMaxTreeDepth` (128) deep. An element
+that would open deeper is kept as a leaf, and what follows it lands beside it,
+as browsers flatten past their own limit, and `Errors()` says so. The resolver,
+the builder, the layout and the DOM's own destructor all recurse per level, so
+without the cap a few kilobytes of nested `<div>`s in a mail overflowed the
+stack. 128 is far deeper than real mail or books nest, and leaves the builder
+and the layout a wide margin on a 1 MB stack.
+
 Two helpers need no DOM:
 
 ```cpp
@@ -220,7 +228,7 @@ properties and resolution of lengths to px. One `ComputedStyle` per element:
 display mode, font, colour, alignment, line height, margins, padding,
 borders per side, backgrounds (several layers, position, size, repeat),
 widths and heights in px or percent, floats, `box-sizing`, `overflow`,
-`object-fit`, links.
+`object-fit`, flex and grid (below), links.
 
 ```cpp
 HTML::StyleResolver resolver;
@@ -233,8 +241,33 @@ resolver.Resolve(doc, options);
 const HTML::ComputedStyle& s = resolver.StyleOf(heading);
 ```
 
-`Docs/UltraWeb/UltraWebProposal.md` §6 lists what the resolver does not map
-yet (flex and grid come out as blocks, no `position`, no viewport units).
+### Flex and grid
+
+`display: flex` / `grid` keep `display` a block (and `inline-flex` /
+`inline-grid` an inline block): how the box sits among its siblings does not
+change. What changes is `layoutMode` (`BoxLayoutMode::Flex` or `Grid`), which
+says how it lays out its children. The resolver reads:
+
+| Properties | Into |
+|---|---|
+| `flex-direction`, `flex-wrap`, `flex-flow` | `flexDirection`, `flexWrap` |
+| `justify-content`, `align-items`, `align-content`, `justify-items`, `place-items`, `place-content` | `BoxAlignMode` fields; `Unset` is CSS's `normal` (`safe` / `unsafe` dropped) |
+| `gap`, `row-gap`, `column-gap` (and the `grid-` names) | `rowGapPx`, `columnGapPx` (a percentage is 0) |
+| `flex`, `flex-grow`, `flex-shrink`, `flex-basis`, `order`, `align-self`, `justify-self`, `place-self` | the item fields; `flex: 1` is `1 1 0`, `none`, `auto` as in CSS |
+| `grid-template-columns`, `grid-template-rows`, `grid-template`, `grid` (rows / columns) | `GridTemplate`: px, %, `fr`, `auto`, `min-content`, `max-content`, `fit-content()`, `minmax()`, `repeat(N, ...)`, one `repeat(auto-fill / auto-fit, ...)`; line names dropped |
+| `grid-template-areas` | `gridAreas`, one row of names per string, `.` for none |
+| `grid-column`, `grid-row`, `grid-area` and the `-start` / `-end` longhands | `GridLineSpec`: auto, a line (negative from the end), `span N`, an area name |
+| `grid-auto-flow` | `gridAutoFlowColumn` |
+
+An invalid value (a `minmax()` with an `fr` minimum, two auto repeats,
+`subgrid`, rows of areas of unequal length) is ignored, as in CSS. Track
+counts, line numbers, spans and `order` are capped at `HTML::kMaxGridLines`
+(1000), so `grid-column: 99999` or `repeat(99999999, 1px)` cannot make the
+layout build a grid that size.
+
+`Docs/UltraWeb/UltraWebProposal.md` §5.2 lists what is still not mapped: no
+`position`, `float` only through the existing float path, no viewport units
+or `calc()` in the resolver.
 
 ## The element builder
 
@@ -265,6 +298,27 @@ if (r.root) {
 }
 for (const std::string& w : r.warnings) Log(w);
 ```
+
+**Flex and grid containers** are laid out by the CSSLayout flex and grid
+engines. Their children are items, as in CSS. Each child element is a box of
+its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
+margins that do not collapse. Each run of text between the elements is an
+anonymous item formatted as the container, and whitespace between items
+renders nothing. Flex items take `flex`, `order` and `align-self`, and
+`align-items: normal` stretches them, as in CSS. Grid items take their lines,
+spans and named areas: negative lines are counted from the end of the
+explicit grid, and `span N / <line>` counts back from the line. A `repeat(auto-fill, ...)` is written out as many
+times as fit the grid's width, estimated before layout from the viewport down
+through its ancestors' widths, margins, padding and borders
+(`EstimateContentWidth`); `auto-fit` keeps no more repetitions than there are
+items. A grid without columns gets one column as wide as the grid, as CSS's
+stretched implicit column is. `Tests/HTMLFlexGridLayoutTest.cpp` lays all of
+this out and checks the positions.
+
+Where the engines differ from CSS: `minmax(<min>, <n>fr)` is `<n>fr` (the
+minimum still counts for auto-fill); grid items' margins are not applied; no
+baseline alignment (`baseline` aligns to the start); `order` does not reorder
+grid items.
 
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
@@ -320,7 +374,8 @@ and the check blocks new ones:
   `HTML::Parser`.
 - `>` is a descendant combinator; sibling combinators and `:hover`-style
   pseudo-classes are not matched.
-- The resolver lays out flex and grid as blocks and knows no `position`.
+- The resolver knows no `position`, viewport units or `calc()`. Flex and
+  grid are mapped, with the differences listed under the element builder.
 - The builder is one-shot: it builds a tree, it does not patch one. A live
   DOM is UltraWeb's Phase 4 (`UltraWebProposal.md` §7.3).
 
@@ -335,4 +390,18 @@ and the check blocks new ones:
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
+
+## Fuzzing
+
+Everything this module reads comes from someone else: mail, books, web
+pages. `Tests/Fuzz` has a libFuzzer target for the parser and one for the
+CSS, plus a builder-and-layout target. In every `BUILD_TESTS` build they run
+as deterministic smoke tests in ctest (`HTMLParserFuzzSmoke`, `CSSFuzzSmoke`,
+`HTMLBuilderFuzzSmoke`). The `html-fuzz.yml` workflow fuzzes the first two
+under AddressSanitizer and UndefinedBehaviorSanitizer whenever this module
+changes. A change to the parser or the resolver keeps the smoke tests
+passing. A crash the fuzzer finds is fixed, and its input is added to
+`Tests/Fuzz/corpus`. The first run found the nesting overflow that
+`kMaxTreeDepth` now prevents.

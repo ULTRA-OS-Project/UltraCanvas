@@ -1,6 +1,8 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.20.0 - nesting depth capped (kMaxTreeDepth); flex and grid properties: display, the flex shorthand, alignment,
+//                  gaps, grid templates (repeat, minmax, auto-fill, areas), grid lines
 // Version: 1.19.0 - foreign content: inline <svg> / <math> keep their vocabulary's case
 // Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
 // Version: 1.17.0 - the !important cascade: inline !important beats a style
@@ -26,7 +28,7 @@
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -1332,6 +1334,178 @@ static void TestSelectorMatchingOnForeignTree() {
     CHECK(!Matches(domSheet.rules[1].selectors[0], *second));
 }
 
+static void TestParserDepthLimit() {
+    std::printf("nesting depth is capped\n");
+    // Ten thousand nested elements: kept, and the text at the bottom too,
+    // but no deeper than kMaxTreeDepth (+ html and body) - every reader of
+    // the tree recurses, and this used to overflow the stack.
+    std::string html;
+    for (int i = 0; i < 10000; ++i) html += (i % 2) ? "<span>" : "<div>";
+    html += "bottom";
+    Parser parser;
+    Document doc = parser.Parse(html);
+    std::function<size_t(const Node&)> depth = [&](const Node& n) -> size_t {
+        size_t deepest = 0;
+        for (const auto& c : n.children) deepest = std::max(deepest, depth(*c));
+        return deepest + 1;
+    };
+    CHECK(doc.root != nullptr);
+    if (!doc.root) return;
+    CHECK(depth(*doc.root) <= kMaxTreeDepth + 3);
+    CHECK(doc.CountElements() >= 10000);
+    CHECK(doc.root->TextContent().find("bottom") != std::string::npos);
+    StyleResolver resolver;
+    resolver.Resolve(doc);                                    // does not overflow
+    CHECK(!parser.Errors().empty());
+}
+
+// ============================================================================
+// FLEX AND GRID
+// ============================================================================
+
+// The computed style of the element with id `id` in `html`.
+static ComputedStyle StyleById(const std::string& html, const std::string& id) {
+    Parser parser;
+    Document doc = parser.Parse(html);
+    StyleResolver resolver;
+    for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+    resolver.Resolve(doc);
+    Node* node = doc.GetElementById(id);
+    return node ? resolver.StyleOf(node) : ComputedStyle{};
+}
+
+static void TestFlexProperties() {
+    std::printf("flex properties\n");
+    ComputedStyle s = StyleById("<div id='c' style='display:flex;flex-flow:column wrap;"
+                                "justify-content:space-between;align-items:safe center;gap:4px 8px'></div>", "c");
+    CHECK(s.display == DisplayMode::Block);
+    CHECK(s.layoutMode == BoxLayoutMode::Flex);
+    CHECK(s.flexDirection == FlexDirectionMode::Column);
+    CHECK(s.flexWrap == FlexWrapMode::Wrap);
+    CHECK(s.justifyContent == BoxAlignMode::SpaceBetween);
+    CHECK(s.alignItems == BoxAlignMode::Center);
+    CHECK(Near(s.rowGapPx, 4.f) && Near(s.columnGapPx, 8.f));
+
+    s = StyleById("<span id='c' style='display:inline-flex'></span>", "c");
+    CHECK(s.display == DisplayMode::InlineBlock && s.layoutMode == BoxLayoutMode::Flex);
+    s = StyleById("<div id='c' style='display:flex;display:block'></div>", "c");
+    CHECK(s.layoutMode == BoxLayoutMode::Flow);
+    s = StyleById("<div id='c' style='display:flex;display:bogus'></div>", "c");
+    CHECK(s.layoutMode == BoxLayoutMode::Flex);              // an invalid value is ignored
+
+    // The flex shorthand: one number, numbers and a basis, keywords. A bare
+    // 0 is a number (CssLength reads it as 0px).
+    s = StyleById("<i id='i' style='flex:1'></i>", "i");
+    CHECK(Near(s.flexGrow, 1.f) && Near(s.flexShrink, 1.f) && s.flexBasisPx && Near(*s.flexBasisPx, 0.f));
+    s = StyleById("<i id='i' style='flex:0 0 150px'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f) && Near(s.flexShrink, 0.f) && s.flexBasisPx && Near(*s.flexBasisPx, 150.f));
+    s = StyleById("<i id='i' style='flex:2 30%'></i>", "i");
+    CHECK(Near(s.flexGrow, 2.f) && Near(s.flexShrink, 1.f) && s.flexBasisPercent && Near(*s.flexBasisPercent, 30.f));
+    s = StyleById("<i id='i' style='flex:none'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f) && Near(s.flexShrink, 0.f) && !s.flexBasisPx && !s.flexBasisPercent);
+    s = StyleById("<i id='i' style='flex:auto'></i>", "i");
+    CHECK(Near(s.flexGrow, 1.f) && !s.flexBasisPx);
+    s = StyleById("<i id='i' style='flex:1;flex:1px 2px'></i>", "i");     // two bases: ignored
+    CHECK(Near(s.flexGrow, 1.f) && s.flexBasisPx && Near(*s.flexBasisPx, 0.f));
+    s = StyleById("<i id='i' style='flex-grow:3;flex-shrink:0;flex-basis:2em;order:-2;align-self:end'></i>", "i");
+    CHECK(Near(s.flexGrow, 3.f) && Near(s.flexShrink, 0.f));
+    CHECK(s.flexBasisPx && Near(*s.flexBasisPx, 32.f));
+    CHECK(s.order == -2);
+    CHECK(s.alignSelf == BoxAlignMode::End);
+    s = StyleById("<i id='i' style='flex-grow:-1;order:1.5;order:99999999'></i>", "i");
+    CHECK(Near(s.flexGrow, 0.f));                             // negative: invalid
+    CHECK(s.order == kMaxGridLines);                          // 1.5 ignored, huge capped
+
+    s = StyleById("<div id='c' style='place-items:end center;place-content:space-around'></div>", "c");
+    CHECK(s.alignItems == BoxAlignMode::End && s.justifyItems == BoxAlignMode::Center);
+    CHECK(s.alignContent == BoxAlignMode::SpaceAround && s.justifyContent == BoxAlignMode::SpaceAround);
+}
+
+static void TestGridProperties() {
+    std::printf("grid properties\n");
+    using K = GridTrackBound::Kind;
+    ComputedStyle s = StyleById(
+        "<div id='g' style='display:grid;grid-template-columns:[full] 100px repeat(2, 1fr) minmax(50px, 25%) "
+        "fit-content(80px) [end];grid-template-rows:auto min-content;row-gap:3px'></div>", "g");
+    CHECK(s.layoutMode == BoxLayoutMode::Grid);
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(5));
+    if (s.gridColumns.tracks.size() == 5) {
+        CHECK(s.gridColumns.tracks[0].max.kind == K::Px && Near(s.gridColumns.tracks[0].max.value, 100.f));
+        CHECK(s.gridColumns.tracks[1].max.kind == K::Fr && s.gridColumns.tracks[2].max.kind == K::Fr);
+        CHECK(s.gridColumns.tracks[3].IsMinMax());
+        CHECK(s.gridColumns.tracks[3].min.kind == K::Px && s.gridColumns.tracks[3].max.kind == K::Percent);
+        CHECK(s.gridColumns.tracks[4].max.kind == K::FitContent && Near(s.gridColumns.tracks[4].max.value, 80.f));
+    }
+    CHECK_EQ(s.gridRows.tracks.size(), static_cast<size_t>(2));
+    CHECK(Near(s.rowGapPx, 3.f) && Near(s.columnGapPx, 0.f));
+
+    s = StyleById("<div id='g' style='grid-template-columns:200px repeat(auto-fit, minmax(10em, 1fr))'></div>", "g");
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(1));
+    CHECK_EQ(s.gridColumns.autoRepeat.size(), static_cast<size_t>(1));
+    CHECK_EQ(s.gridColumns.autoRepeatAt, static_cast<size_t>(1));
+    CHECK(s.gridColumns.autoFit);
+    if (!s.gridColumns.autoRepeat.empty()) CHECK(Near(s.gridColumns.autoRepeat[0].min.value, 160.f));
+
+    // Invalid lists leave the template as it was: minmax with an fr minimum,
+    // two auto repeats, a zero count, subgrid, garbage.
+    for (const char* bad : { "minmax(1fr, 100px)", "repeat(auto-fill, 1px) repeat(auto-fit, 1px)",
+                             "repeat(0, 1px)", "subgrid", "10px banana", "repeat(2,)", "1fr)" }) {
+        s = StyleById(std::string("<div id='g' style='grid-template-columns:30px;grid-template-columns:") +
+                      bad + "'></div>", "g");
+        CHECK(s.gridColumns.tracks.size() == 1 && s.gridColumns.autoRepeat.empty());
+    }
+    // A huge repeat is capped.
+    s = StyleById("<div id='g' style='grid-template-columns:repeat(99999999, 1px 2px)'></div>", "g");
+    CHECK_EQ(s.gridColumns.tracks.size(), static_cast<size_t>(kMaxGridLines));
+
+    s = StyleById("<div id='g' style='grid-template:auto 1fr / 100px 1fr'></div>", "g");
+    CHECK(s.gridRows.tracks.size() == 2 && s.gridColumns.tracks.size() == 2);
+
+    s = StyleById("<div id='g' style=\"grid-template-areas:'head head' 'side main' '. foot'\"></div>", "g");
+    CHECK_EQ(s.gridAreas.size(), static_cast<size_t>(3));
+    if (s.gridAreas.size() == 3) {
+        CHECK(s.gridAreas[0][1] == "head" && s.gridAreas[1][0] == "side");
+        CHECK(s.gridAreas[2][0].empty());                     // "." is no area
+    }
+    s = StyleById("<div id='g' style=\"grid-template-areas:'a b' 'c'\"></div>", "g");
+    CHECK(s.gridAreas.empty());                               // rows of unequal length
+
+    s = StyleById("<div id='g' style='grid-auto-flow:column dense'></div>", "g");
+    CHECK(s.gridAutoFlowColumn);
+}
+
+static void TestGridLines() {
+    std::printf("grid lines\n");
+    using K = GridLineSpec::Kind;
+    ComputedStyle s = StyleById("<i id='i' style='grid-column:1 / -1;grid-row:span 2'></i>", "i");
+    CHECK(s.gridColumnStart.kind == K::Line && s.gridColumnStart.value == 1);
+    CHECK(s.gridColumnEnd.kind == K::Line && s.gridColumnEnd.value == -1);
+    CHECK(s.gridRowStart.kind == K::Span && s.gridRowStart.value == 2);
+    CHECK(s.gridRowEnd.kind == K::Auto);
+
+    s = StyleById("<i id='i' style='grid-area:main'></i>", "i");
+    CHECK(s.gridRowStart.kind == K::Name && s.gridRowStart.name == "main");
+    CHECK(s.gridColumnStart.kind == K::Name && s.gridRowEnd.kind == K::Name && s.gridColumnEnd.kind == K::Name);
+    s = StyleById("<i id='i' style='grid-area:2 / 3 / 4'></i>", "i");
+    CHECK(s.gridRowStart.value == 2 && s.gridColumnStart.value == 3 && s.gridRowEnd.value == 4);
+    CHECK(s.gridColumnEnd.kind == K::Auto);
+    s = StyleById("<i id='i' style='grid-column:side'></i>", "i");
+    CHECK(s.gridColumnStart.kind == K::Name && s.gridColumnEnd.kind == K::Name);   // both ends
+    s = StyleById("<i id='i' style='grid-column-start:2;grid-column-end:span 3;grid-row-start:3 name'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2 && s.gridColumnEnd.kind == K::Span && s.gridColumnEnd.value == 3);
+    CHECK(s.gridRowStart.kind == K::Line && s.gridRowStart.value == 3);
+
+    // Capped and invalid lines.
+    s = StyleById("<i id='i' style='grid-column:99999 / span 99999'></i>", "i");
+    CHECK(s.gridColumnStart.value == kMaxGridLines && s.gridColumnEnd.value == kMaxGridLines);
+    s = StyleById("<i id='i' style='grid-column:2;grid-column:0'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2);                      // line 0 does not exist
+    s = StyleById("<i id='i' style='grid-column:2;grid-column:1 / 2 / 3'></i>", "i");
+    CHECK(s.gridColumnStart.value == 2);
+    s = StyleById("<i id='i' style='grid-row:2;grid-row:span -1'></i>", "i");
+    CHECK(s.gridRowStart.value == 2);
+}
+
 int main() {
     TestSelectorMatchingOnForeignTree();
     TestParserBasics();
@@ -1360,6 +1534,10 @@ int main() {
     TestImageBorders();
     TestBorderSides();
     TestQuirksAndLineHeight();
+    TestParserDepthLimit();
+    TestFlexProperties();
+    TestGridProperties();
+    TestGridLines();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

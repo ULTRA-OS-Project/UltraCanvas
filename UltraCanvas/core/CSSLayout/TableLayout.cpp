@@ -24,6 +24,7 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
+// Version: 1.4.1 - a cell's changed percentage base clears all its cached measurements
 // Version: 1.4.0 - merged with main's 1.2.0 (MinContentWidth shared with block
 //                 layout for floats)
 // Version: 1.3.0 - a table's extra height goes to rows without a set height; a
@@ -32,7 +33,7 @@
 // Version: 1.2.0 - a percentage height resolves against a block parent's set height
 // Version: 1.2.0 (main) - MinContentWidth shared with block layout (floats)
 // Version: 1.1.0 - max-width caps the table's width
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -421,7 +422,7 @@ namespace UltraCanvas {
                 for (const auto& cell : ti.cells) {
                     if (cell.el->percentHeightBase != tableH) {
                         cell.el->percentHeightBase = tableH;
-                        cell.el->measured.valid = false;
+                        cell.el->ForgetMeasurements();
                     }
                     MeasureConstraints mc{
                         { ConstraintMode::Exact, cellWidth(cell) },

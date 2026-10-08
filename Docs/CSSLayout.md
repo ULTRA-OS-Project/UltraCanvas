@@ -24,7 +24,7 @@ The engine implements a useful subset of CSS, not the whole specification.
 **Supported layout modes:**
 
 - **Flex** (`display: flex`) — direction, wrap, grow/shrink/basis, justify/align, gap, order
-- **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps
+- **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps. Columns are sized first, then rows with each item measured at the width of the columns it spans, so wrapped text makes its row taller (CSS Grid §12.1). An auto-placed item spanning more columns than the grid has adds implicit columns.
 - **Block** (`display: block`, the default) — children stacked vertically; each in-flow
   child's margin offsets it and adds to the stack, and its left/right margin narrows the
   width it is offered (percentages resolve against the content width)
@@ -43,7 +43,8 @@ The engine implements a useful subset of CSS, not the whole specification.
 - Minor gaps: LTR writing-mode only; no margin collapsing (in Block as in Flex, two
   stacked siblings are separated by the *sum* of their facing margins); Block does not
   centre on `margin: auto` (an auto margin is 0 there); Grid named lines / template
-  areas / subgrid / masonry / dense packing are not implemented.
+  areas / subgrid / masonry / dense packing are not implemented (the HTML reader resolves
+  `grid-template-areas` to line numbers itself), and grid items' margins are not applied.
 
 ## How it integrates with the UI framework
 
@@ -145,7 +146,14 @@ sequenceDiagram
 
 - **Measure** (`Element::Measure`, `Element.cpp:187`) computes each node's content-box size
   given its constraints, bottom-up. Results are cached by constraints *and* layout context
-  (viewport, font size, DPI), so unchanged subtrees are skipped.
+  (viewport, font size, DPI), so unchanged subtrees are skipped. Besides the current result
+  (`measured`), each element keeps its last eight results under other constraints
+  (`measureCache`). A flex or grid parent measures a child several ways (at its max-content,
+  at its line's size, stretched), and does it again each time it is measured itself. With
+  one cached result, nested flex boxes re-measured their whole subtree at every level and
+  layout time doubled per level of nesting. `InvalidateLayout` / `InvalidateSubtree` clear
+  both; code that drops a cached size by hand calls `ForgetMeasurements()`, not
+  `measured.valid = false`.
 - **Arrange** (`Element::Arrange`, `Element.cpp:241`) walks top-down, writes each node's
   border-box into `finalBounds`, and dispatches to `ArrangeBlock` / `ArrangeFlex` /
   `ArrangeGrid` to place children.

@@ -901,18 +901,19 @@ endif()
 # ===== HTMLREADER CORE OBJECTS =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent: std C++
 # plus Trim() from UltraCanvasTextUtils.cpp, which is platform-free too. The
-# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest)
-# link these objects instead of each listing the sources again, so the files
-# compile once and a new HTMLReader source is added in one place.
-add_library(HTMLReaderTestCore OBJECT
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
-    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
-)
+# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest, the
+# fuzz smoke runs) link these objects instead of each listing the sources
+# again, so the files compile once; the list itself is in
+# HTMLReaderCoreSources.cmake, shared with the fuzz targets.
+include(${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderCoreSources.cmake)
+add_library(HTMLReaderTestCore OBJECT ${HTMLREADER_CORE_SOURCES})
 target_include_directories(HTMLReaderTestCore PUBLIC ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(HTMLReaderTestCore PUBLIC cxx_std_20)
+
+# ===== HTMLREADER FUZZING =====
+# The parser and the CSS on hostile input: deterministic smoke runs in ctest
+# on every build, and libFuzzer targets with ULTRACANVAS_BUILD_FUZZERS (clang).
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Fuzz ${CMAKE_CURRENT_BINARY_DIR}/Fuzz)
 
 # ===== HTMLREADER TEST =====
 # Parser, CSS, selector matcher and style resolver, without the UI library.

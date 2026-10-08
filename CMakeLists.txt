@@ -1696,6 +1696,36 @@ if (BUILD_TESTS)
     add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # display: flex and grid on the CSSLayout flex / grid engines: items,
+    # flex sizing, tracks, auto-fill, named areas, hostile values (builder +
+    # layout, headless).
+    add_executable(HTMLFlexGridLayoutTest Tests/HTMLFlexGridLayoutTest.cpp)
+    target_include_directories(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLFlexGridLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLFlexGridLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLFlexGridLayoutTest COMMAND HTMLFlexGridLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Mutated HTML through parser, builder and layout: a crash or a hang
+    # fails it (Tests/Fuzz/README.md; the parser and CSS have their own
+    # targets in Tests/Fuzz, which need no UI library).
+    add_executable(HTMLBuilderFuzzSmoke Tests/Fuzz/HTMLBuilderFuzz.cpp Tests/Fuzz/FuzzSmokeMain.cpp)
+    target_include_directories(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLBuilderFuzzSmoke PRIVATE cxx_std_20)
+    set_target_properties(HTMLBuilderFuzzSmoke PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLBuilderFuzzSmoke
+             COMMAND HTMLBuilderFuzzSmoke -runs=400 -max_len=16384
+                     -dict=${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/html.dict
+                     ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/html
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
+
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
     # module and its vendored engine, so it runs headless without the UI stack.
     add_executable(JSONTests

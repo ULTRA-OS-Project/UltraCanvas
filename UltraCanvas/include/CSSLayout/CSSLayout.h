@@ -1,5 +1,7 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
+// Version: 4.14.0 - Element::measureCache: the last measurements under other
+//                   constraints (ForgetMeasurements clears them with `measured`)
 // Version: 4.13.0 - nothing stretches unless the layout asks for it: flex
 //                   align-items and grid justify-items / align-items start at
 //                   Start, grid items at Auto (their container decides); a
@@ -11,12 +13,13 @@
 // Version: 4.10.0 - Dimension::offsetPx: a length plus pixels (calc(50% - 20px))
 // Version: 4.10.0 (main) - LayoutItem::floatSide (float: left / right in block layout)
 // Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasConfig.h"
+#include <array>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -425,6 +428,22 @@ namespace UltraCanvas {
             // caches
             MeasureResult  measured;    // extrinsic, keyed by MeasureConstraints
             IntrinsicSizes intrinsic;   // constraint-independent
+            // The last few measurements under other constraints, as a ring. A
+            // flex or grid parent measures a child several ways (at its
+            // max-content, at its line's size, stretched) and again each time
+            // it is measured itself; with `measured` alone, nested flex boxes
+            // re-measured their whole subtree at every level and layout time
+            // doubled with each level of nesting (an HTML page 20 flex boxes
+            // deep took a minute). Cleared with `measured` (ForgetMeasurements).
+            static constexpr int kMeasureCacheSize = 8;
+            std::array<MeasureResult, kMeasureCacheSize> measureCache{};
+            int measureCacheNext = 0;
+            // Drops `measured` and every cached measurement: the next Measure
+            // computes, whatever the constraints.
+            void ForgetMeasurements() {
+                measured.valid = false;
+                for (auto& m : measureCache) m.valid = false;
+            }
 
             // True once Arrange() has run and finalBounds (plus any subclass
             // post-layout setup performed in Arranged()) reflect the current

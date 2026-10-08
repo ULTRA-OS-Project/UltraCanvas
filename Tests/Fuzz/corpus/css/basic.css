@@ -1,0 +1,10 @@
+@charset "utf-8";
+/* comment */ html, body { margin: 0; padding: 0 } 
+body > div.a#b[data-x="1" i]:first-child:not(.c) ~ p + span::before { color: rgba(10, 20, 30, .5) !important }
+@media screen and (min-width: 600px) and (max-width: 1200px), print { .x { width: calc(100% - 2em) } }
+@font-face { font-family: X; src: url("x.woff2") format("woff2") }
+p { font: italic bold 12px/1.5 "Helvetica Neue", Arial, sans-serif; border: 1px dashed currentColor; border-radius: 50% }
+a:link, a:visited { color: #0645ad; text-decoration: underline }
+td { background: #fff url(bg.png) no-repeat right 10px bottom 20% / cover; padding: 1px 2px 3px }
+li:nth-child(2n+1):nth-last-of-type(-n+3) { list-style: square inside }
+.y { margin: 0 auto; max-width: 50%; min-height: 10vh; letter-spacing: -0.02em; line-height: 120% }

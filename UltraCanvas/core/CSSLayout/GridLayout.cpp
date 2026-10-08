@@ -5,6 +5,11 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
+// Version: 1.4.1 - rows are sized after the columns, each item measured at the
+//                 width of the columns it spans (text in a grid cell wraps and
+//                 its row grows with it, CSS Grid §12.1); an auto-placed item
+//                 spanning more tracks than the grid has adds implicit tracks
+//                 instead of hanging auto-placement
 // Version: 1.4.0 - justify-self / align-self Auto take the container's
 //                 justify-items / align-items (Start by default, so nothing
 //                 stretches unless asked); the container's stretch keeps a set
@@ -17,7 +22,7 @@
 //                 derives its content extent from the constraint rather than its
 //                 own explicit size, so a grown/stretched grid lays out its tracks
 //                 against its USED size, not its specified size.
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -217,6 +222,10 @@ namespace UltraCanvas {
 
                     // Re-scan first-axis length on each placement (it may have grown).
                     firstAxisLen = rowFlow ? std::max(1, numCols) : std::max(1, numRows);
+                    // An item spanning more tracks than the grid has makes
+                    // implicit ones, as in CSS - without this the cursor
+                    // looked for a row it fits in forever.
+                    firstAxisLen = std::max(firstAxisLen, rowFlow ? spanC : spanR);
 
                     bool placed = false;
                     while (!placed) {
@@ -287,88 +296,99 @@ namespace UltraCanvas {
             // Multi-span items distribute their unmet content size evenly over
             // their intrinsic tracks (simplified vs. the §12 distribution).
 
-            void resolveIntrinsicTracks(std::vector<Track>& cols, std::vector<Track>& rows,
-                                        const std::vector<Placement>& placements,
-                                        float gapColTotal, float gapRowTotal,
-                                        const LayoutContext& ctx) {
-                (void)gapColTotal; (void)gapRowTotal;
+            // Read the item's max-content dimensions. Prefers the cached
+            // intrinsic (published by widgets like UltraCanvasLabel via
+            // ComputeIntrinsicSizes) so we can skip the otherwise-redundant
+            // Measure(Unbounded) pass. Falls back to Measure when no
+            // intrinsic is available.
+            std::pair<float, float> itemMaxContent(Element* el, const LayoutContext& ctx) {
+                if (el->intrinsic.valid &&
+                    (el->intrinsic.maxContentWidth > 0 || el->intrinsic.maxContentHeight > 0)) {
+                    return { el->intrinsic.maxContentWidth, el->intrinsic.maxContentHeight };
+                }
+                MeasureConstraints mc{
+                    { ConstraintMode::Unbounded, INFINITY },
+                    { ConstraintMode::Unbounded, INFINITY }
+                };
+                el->Measure(mc, ctx);
+                return { el->measured.measuredWidth, el->measured.measuredHeight };
+            }
 
-                // Read the item's max-content dimensions. Prefers the cached
-                // intrinsic (published by widgets like UltraCanvasLabel via
-                // ComputeIntrinsicSizes) so we can skip the otherwise-redundant
-                // Measure(Unbounded) pass. Falls back to Measure when no
-                // intrinsic is available.
-                auto itemMaxContent = [&](Element* el) -> std::pair<float, float> {
-                    if (el->intrinsic.valid &&
-                        (el->intrinsic.maxContentWidth > 0 || el->intrinsic.maxContentHeight > 0)) {
-                        return { el->intrinsic.maxContentWidth, el->intrinsic.maxContentHeight };
-                    }
+            void distributeSpan(std::vector<Track>& tracks, int s, int e, float need) {
+                if (need <= 0) return;
+                float have = 0.f;
+                int intrCount = 0;
+                for (int i = s; i < e; ++i) { have += tracks[i].base; if (tracks[i].intrinsic) ++intrCount; }
+                if (intrCount == 0) return;
+                float deficit = need - have;
+                if (deficit <= 0) return;
+                float per = deficit / (float)intrCount;
+                for (int i = s; i < e; ++i) {
+                    if (!tracks[i].intrinsic) continue;
+                    tracks[i].base = std::min(tracks[i].maxPx, tracks[i].base + per);
+                }
+            }
+
+            // §12.5: an item whose span crosses a flexible track does not
+            // contribute to the base size of the intrinsic tracks it also
+            // spans — the fr track is what absorbs it. Without this rule a
+            // single full-width row in a [auto, 1fr] form grid forces the
+            // caption column as wide as that row, and every caption/control
+            // pair in the grid is pushed across the dialog.
+            bool spanHasFlexible(const std::vector<Track>& tracks, int s, int e) {
+                for (int i = s; i < e && i < (int)tracks.size(); ++i) {
+                    if (tracks[i].hasFr) return true;
+                }
+                return false;
+            }
+
+            // Columns first (CSS Grid §12.1): single-span items grow their
+            // intrinsic column to their max-content width, then multi-span
+            // items distribute what is still missing over theirs.
+            void resolveIntrinsicColumns(std::vector<Track>& cols,
+                                         const std::vector<Placement>& placements,
+                                         const LayoutContext& ctx) {
+                for (const auto& p : placements) {
+                    if (p.colEnd - p.colStart != 1 || !cols[p.colStart].intrinsic) continue;
+                    const float w = itemMaxContent(p.el, ctx).first;
+                    cols[p.colStart].base = std::min(cols[p.colStart].maxPx,
+                                                     std::max(cols[p.colStart].base, w));
+                }
+                for (const auto& p : placements) {
+                    if (p.colEnd - p.colStart <= 1 || spanHasFlexible(cols, p.colStart, p.colEnd)) continue;
+                    distributeSpan(cols, p.colStart, p.colEnd, itemMaxContent(p.el, ctx).first);
+                }
+            }
+
+            // Then rows, each item measured at the width of the columns it
+            // spans - text wraps there, and its row is as tall as the
+            // wrapped text, not as one unwrapped line. Where the column
+            // widths are not known yet (fr columns of a grid without a
+            // definite width) the max-content height stands in.
+            void resolveIntrinsicRows(std::vector<Track>& rows, const std::vector<Track>& cols,
+                                      float colGap, bool columnsKnown,
+                                      const std::vector<Placement>& placements,
+                                      const LayoutContext& ctx) {
+                auto itemHeight = [&](const Placement& p) {
+                    if (!columnsKnown) return itemMaxContent(p.el, ctx).second;
+                    float width = colGap * (float)std::max(0, p.colEnd - p.colStart - 1);
+                    for (int c = p.colStart; c < p.colEnd && c < (int)cols.size(); ++c) width += cols[c].base;
                     MeasureConstraints mc{
-                        { ConstraintMode::Unbounded, INFINITY },
+                        { ConstraintMode::AtMost, std::max(0.f, width) },
                         { ConstraintMode::Unbounded, INFINITY }
                     };
-                    el->Measure(mc, ctx);
-                    return { el->measured.measuredWidth, el->measured.measuredHeight };
+                    p.el->Measure(mc, ctx);
+                    return p.el->measured.measuredHeight;
                 };
-
-                // Pass 1: single-span items grow their tracks to max-content.
                 for (const auto& p : placements) {
-                    int spanC = p.colEnd - p.colStart;
-                    int spanR = p.rowEnd - p.rowStart;
-                    auto [w, h] = itemMaxContent(p.el);
-
-                    if (spanC == 1 && cols[p.colStart].intrinsic) {
-                        cols[p.colStart].base = std::min(
-                            cols[p.colStart].maxPx,
-                            std::max(cols[p.colStart].base, w));
-                    }
-                    if (spanR == 1 && rows[p.rowStart].intrinsic) {
-                        rows[p.rowStart].base = std::min(
-                            rows[p.rowStart].maxPx,
-                            std::max(rows[p.rowStart].base, h));
-                    }
+                    if (p.rowEnd - p.rowStart != 1 || !rows[p.rowStart].intrinsic) continue;
+                    const float h = itemHeight(p);
+                    rows[p.rowStart].base = std::min(rows[p.rowStart].maxPx,
+                                                     std::max(rows[p.rowStart].base, h));
                 }
-
-                // Pass 2: multi-span items — distribute remaining over intrinsic tracks.
-                auto distribute = [](std::vector<Track>& tracks, int s, int e, float need) {
-                    if (need <= 0) return;
-                    float have = 0.f;
-                    int intrCount = 0;
-                    for (int i = s; i < e; ++i) { have += tracks[i].base; if (tracks[i].intrinsic) ++intrCount; }
-                    if (intrCount == 0) return;
-                    float deficit = need - have;
-                    if (deficit <= 0) return;
-                    float per = deficit / (float)intrCount;
-                    for (int i = s; i < e; ++i) {
-                        if (!tracks[i].intrinsic) continue;
-                        tracks[i].base = std::min(tracks[i].maxPx, tracks[i].base + per);
-                    }
-                };
-
-                // §12.5: an item whose span crosses a flexible track does not
-                // contribute to the base size of the intrinsic tracks it also
-                // spans — the fr track is what absorbs it. Without this rule a
-                // single full-width row in a [auto, 1fr] form grid forces the
-                // caption column as wide as that row, and every caption/control
-                // pair in the grid is pushed across the dialog.
-                auto spanHasFlexible = [](const std::vector<Track>& tracks, int s, int e) {
-                    for (int i = s; i < e && i < (int)tracks.size(); ++i) {
-                        if (tracks[i].hasFr) return true;
-                    }
-                    return false;
-                };
-
                 for (const auto& p : placements) {
-                    int spanC = p.colEnd - p.colStart;
-                    int spanR = p.rowEnd - p.rowStart;
-                    if (spanC <= 1 && spanR <= 1) continue;
-                    auto [w, h] = itemMaxContent(p.el);
-                    if (spanC > 1 && !spanHasFlexible(cols, p.colStart, p.colEnd)) {
-                        distribute(cols, p.colStart, p.colEnd, w);
-                    }
-                    if (spanR > 1 && !spanHasFlexible(rows, p.rowStart, p.rowEnd)) {
-                        distribute(rows, p.rowStart, p.rowEnd, h);
-                    }
+                    if (p.rowEnd - p.rowStart <= 1 || spanHasFlexible(rows, p.rowStart, p.rowEnd)) continue;
+                    distributeSpan(rows, p.rowStart, p.rowEnd, itemHeight(p));
                 }
             }
 
@@ -540,14 +560,19 @@ namespace UltraCanvas {
                 padTracks(s.cols, numCols);
                 padTracks(s.rows, numRows);
 
-                // Intrinsic track sizing from item contributions.
+                // Intrinsic track sizing from item contributions: columns,
+                // their fr shares (only when the container's width is known),
+                // then rows measured at those widths.
                 float gapColTotal = s.colGap * std::max(0.f, (float)s.cols.size() - 1.f);
                 float gapRowTotal = s.rowGap * std::max(0.f, (float)s.rows.size() - 1.f);
-                resolveIntrinsicTracks(s.cols, s.rows, s.placements,
-                                       gapColTotal, gapRowTotal, ctx);
-
-                // Fr resolution (only when container extent is known).
+                resolveIntrinsicColumns(s.cols, s.placements, ctx);
                 if (s.widthKnown)  resolveFrTracks(s.cols, s.availW, gapColTotal);
+                bool columnsKnown = s.widthKnown;
+                if (!columnsKnown) {
+                    columnsKnown = true;
+                    for (const auto& t : s.cols) if (t.hasFr) { columnsKnown = false; break; }
+                }
+                resolveIntrinsicRows(s.rows, s.cols, s.colGap, columnsKnown, s.placements, ctx);
                 if (s.heightKnown) resolveFrTracks(s.rows, s.availH, gapRowTotal);
 
                 return s;
