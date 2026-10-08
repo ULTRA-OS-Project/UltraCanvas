@@ -1,7 +1,9 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
+// Version: 1.9.1 - a press of a button other than left or right leaves the
+//                  focus where it is and goes on to the elements around
 // Version: 1.9.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -1311,6 +1313,11 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseDown: {
+            // Left and right are the view's buttons. Another one leaves the
+            // focus where it is and goes on to the elements around the view.
+            if (event.button != UCMouseButton::Left && event.button != UCMouseButton::Right) {
+                break;
+            }
             // Clicking the view is what hands it the keyboard: without this the
             // page, zoom and selection keys only reach it in a host that focused
             // it itself.

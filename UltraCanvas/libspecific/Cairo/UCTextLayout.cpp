@@ -1,7 +1,10 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.1.5 - a new layout wraps a word too long for its line between
+//                  characters (Pango's own default left it whole, running
+//                  past the width it was given)
 // Version: 1.1.4
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-07
 // V1.1.4: text that is not valid UTF-8 is repaired before it reaches Pango,
 //   which would otherwise log "Invalid UTF-8 string passed to
 //   pango_layout_set_text()" and drop the string.
@@ -424,6 +427,12 @@ namespace UltraCanvas {
         if (!layout) {
             throw std::runtime_error("ERROR: UCTextLayout - Failed to create Pango layout");
         }
+        // Words first, then between characters when a word alone is wider
+        // than the line - the framework's default (TextStyle::wrap). Pango's
+        // own default wraps at words only, so a URL, a path or a hash given a
+        // width ran on past it: a tooltip drew a tracking link over its own
+        // border. A caller that wants another mode still sets it.
+        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
     }
 
     UCTextLayout::~UCTextLayout() {
@@ -630,7 +639,7 @@ namespace UltraCanvas {
     }
 
     TextWrap UCTextLayout::GetWrap() const {
-        if (!layout) return TextWrap::WrapWord;
+        if (!layout) return TextWrap::WrapWordChar;
         if (noWrap) return TextWrap::WrapNone;
         return FromPangoWrap(pango_layout_get_wrap(layout));
     }
