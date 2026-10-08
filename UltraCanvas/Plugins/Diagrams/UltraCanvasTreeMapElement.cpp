@@ -1,7 +1,9 @@
 // Plugins/Charts/UltraCanvasTreeMapElement.cpp
 // Interactive treemap component implementation
+// Version: 1.1.1 - a double-click on the background, which clears the
+//                  selection, is the map's
 // Version: 1.1.0
-// Last Modified: 2026-08-31
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasTreeMapElement.h"
@@ -226,7 +228,10 @@ bool UltraCanvasTreeMapElement::OnEvent(const UCEvent& event) {
             // user gets back to "everything" without hunting for a control.
             if (!node) {
                 ClearSelection();
-                return UltraCanvasChartElementBase::OnEvent(event);
+                // The base takes a press but not a double-click; the
+                // selection was cleared either way, so both are the map's.
+                UltraCanvasChartElementBase::OnEvent(event);
+                return true;
             }
 
             if (event.type == UCEventType::MouseDoubleClick) {

@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L and T arrangements, ordinal cell marks, roll-ups
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
@@ -64,14 +65,14 @@ namespace UltraCanvas {
         model = m;
         if (!model.title.empty()) chartTitle = model.title;
         RebuildLegend();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     MatrixItemSet& UltraCanvasMatrixDiagram::AddSet(const std::string& setId,
                                                     const std::string& title,
                                                     const std::vector<std::string>& itemLabels) {
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return model.AddSet(setId, title, itemLabels);
     }
@@ -81,7 +82,7 @@ namespace UltraCanvas {
                                                     const MatrixScale& scale) {
         MatrixPanel& panel = model.AddPanel(rowSetId, colSetId, scale);
         RebuildLegend();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return panel;
     }
@@ -111,13 +112,13 @@ namespace UltraCanvas {
     void UltraCanvasMatrixDiagram::SetShape(MatrixShape shape) {
         if (model.shape == shape) return;
         model.shape = shape;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasMatrixDiagram::SetSubtitle(const std::string& text) {
         model.subtitle = text;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -127,7 +128,7 @@ namespace UltraCanvas {
         selected = MatrixRef();
         levelFilter.clear();
         RebuildLegend();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -137,7 +138,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMatrixDiagram::SetStyle(const MatrixDiagramStyle& s) {
         style = s;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -152,28 +153,28 @@ namespace UltraCanvas {
             backgroundColor = Color(252, 252, 253, 255);
         }
         RebuildLegend();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasMatrixDiagram::SetHeaderFit(MatrixHeaderFit fit) {
         if (headerFit == fit) return;
         headerFit = fit;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasMatrixDiagram::SetTotals(MatrixTotals which) {
         if (totals == which) return;
         totals = which;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasMatrixDiagram::SetShowAxisTitles(bool on) {
         if (showAxisTitles == on) return;
         showAxisTitles = on;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -181,13 +182,13 @@ namespace UltraCanvas {
         if (showLegend == on) return;
         showLegend = on;
         if (legend) legend->SetVisible(on);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasMatrixDiagram::SetLegendPosition(ChartLegendPosition position) {
         if (legend) legend->SetPosition(position);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -275,7 +276,7 @@ namespace UltraCanvas {
 // LAYOUT
 // =============================================================================
 
-    void UltraCanvasMatrixDiagram::InvalidateLayout() {
+    void UltraCanvasMatrixDiagram::DropLayoutCache() {
         layout.valid = false;
         layout.panels.clear();
     }

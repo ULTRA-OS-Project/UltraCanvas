@@ -1,5 +1,7 @@
 // Plugins/Charts/UltraCanvasChartDataStructures.cpp
 // Essential data structures for chart rendering
+// Version: 1.0.3 - a CSV row whose x or y is not a number is skipped, wherever it is
+//                  (it was plotted at the origin)
 // Version: 1.0.2 - a CSV's first line is a header only when its x and y columns
 //                  are not numbers ("5,120,0,May" is data)
 // Version: 1.0.1
@@ -15,9 +17,10 @@ namespace UltraCanvas {
 
     namespace {
         // A CSV line is a data row when its first two columns (x and y) read
-        // as numbers; anything else on the first line ("x,y", "Month,Sales")
-        // is a header. Looking for the letters x or y anywhere dropped a first
-        // row labelled "May" or "July".
+        // as numbers. Anything else is skipped wherever it stands: a header
+        // ("x,y", "Month,Sales"), a blank line, or a row that cannot be read,
+        // which used to be plotted at the origin. Looking for the letters x or
+        // y anywhere dropped a first row labelled "May" or "July".
         bool IsCSVDataLine(const std::string& line) {
             std::stringstream ss(line);
             std::string cell;
@@ -38,16 +41,8 @@ namespace UltraCanvas {
 
         data.clear();
         std::string line;
-
-        // The first line is data unless it is a header
-        if (std::getline(file, line) && IsCSVDataLine(line)) {
-            data.push_back(ParseCSVLine(line));
-        }
-
         while (std::getline(file, line)) {
-            if (!line.empty()) {
-                data.push_back(ParseCSVLine(line));
-            }
+            if (IsCSVDataLine(line)) data.push_back(ParseCSVLine(line));
         }
     }
 
@@ -126,14 +121,8 @@ namespace UltraCanvas {
 
         std::string line;
         totalPoints = 0;
-
-        // Skip header if present
-        if (std::getline(file, line) && IsCSVDataLine(line)) {
-            totalPoints = 1;  // First line is data
-        }
-
         while (std::getline(file, line)) {
-            if (!line.empty()) totalPoints++;
+            if (IsCSVDataLine(line)) totalPoints++;
         }
     }
 
@@ -146,30 +135,15 @@ namespace UltraCanvas {
         cache.clear();
         cache.reserve(CHUNK_SIZE);
 
+        // Points are numbered over the data rows only, as CalculatePointCount
+        // counts them, so a header, a blank line or an unreadable row shifts
+        // neither the count nor the chunks.
         std::string line;
-        size_t currentIndex = 0;
-
-        // Skip header if present
-        if (std::getline(file, line)) {
-            if (IsCSVDataLine(line)) {
-                // First line is data, process it
-                if (currentIndex >= cacheStartIndex && cache.size() < CHUNK_SIZE) {
-                    cache.push_back(ParseCSVLine(line));
-                }
-                currentIndex++;
-            }
-        }
-
-        // Skip to target chunk
-        while (currentIndex < cacheStartIndex && std::getline(file, line)) {
-            currentIndex++;
-        }
-
-        // Load chunk data
+        size_t dataIndex = 0;
         while (cache.size() < CHUNK_SIZE && std::getline(file, line)) {
-            if (!line.empty()) {
-                cache.push_back(ParseCSVLine(line));
-            }
+            if (!IsCSVDataLine(line)) continue;
+            if (dataIndex >= cacheStartIndex) cache.push_back(ParseCSVLine(line));
+            ++dataIndex;
         }
     }
 

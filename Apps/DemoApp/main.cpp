@@ -1,6 +1,6 @@
 // UltraCanvas Framework Demonstration Program Entry Point
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1 - --no-about; --component starts without the About window
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -178,6 +178,7 @@ int main(int argc, char* argv[]) {
         // Process command line arguments
         bool verboseMode = false;
         bool testMode = false;
+        bool showAbout = true;
         std::string startupComponent = "";
 
         for (int i = 1; i < argc; i++) {
@@ -192,8 +193,13 @@ int main(int argc, char* argv[]) {
             } else if (arg == "--component" || arg == "-c") {
                 if (i + 1 < argc) {
                     startupComponent = argv[++i];
+                    // The About window is modal and opens over the page that
+                    // was asked for; whoever names a page wants to see it.
+                    showAbout = false;
                     debugOutput << "Startup component: " << startupComponent << std::endl;
                 }
+            } else if (arg == "--no-about") {
+                showAbout = false;
             } else if (arg == "--help" || arg == "-h") {
                 debugOutput << "UltraCanvas Demo Application" << std::endl;
                 debugOutput << "Usage: " << argv[0] << " [options]" << std::endl;
@@ -201,6 +207,8 @@ int main(int argc, char* argv[]) {
                 debugOutput << "  -v, --verbose     Enable verbose output" << std::endl;
                 debugOutput << "  -t, --test        Run in test mode" << std::endl;
                 debugOutput << "  -c, --component   Start with specific component selected" << std::endl;
+                debugOutput << "                    (implies --no-about)" << std::endl;
+                debugOutput << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
                 debugOutput << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
@@ -252,7 +260,7 @@ int main(int argc, char* argv[]) {
         debugOutput << std::endl;
 
         // Run the demo application
-        g_demoApp->Run();
+        g_demoApp->Run(showAbout);
 
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());

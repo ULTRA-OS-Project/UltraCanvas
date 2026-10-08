@@ -1,7 +1,17 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.7.0
+// Version: 1.8.1
 // Last Modified: 2026-10-08
+// V1.8.1: The caret and the selection cover the glyphs' last row. The line
+//   box was GetTextLineHeight("H") tall - whole pixels, the fraction cut off -
+//   so it ended up to a pixel above the descenders and the bottoms of
+//   parentheses; it is the font's line height in fractional pixels now
+//   (GetLineBoxHeight), and the caret covers every pixel row the box touches.
+// V1.8.0: A double-click selects the word under the pointer (all of a password
+//   field) and is taken, as a release over the field is: neither climbs to the
+//   elements around the input.
+// V1.7.0: The field describes itself to screen readers: its placeholder names
+//   it, its text is its value (never in password mode) and can be replaced.
 // V1.6.0: One key press is one undo step: typed characters, Space, typing over
 //   a selection, Backspace/Delete on a selection and a paste each saved two or
 //   three states, and a key press the length limit refused saved one with no
@@ -473,6 +483,41 @@ namespace UltraCanvas {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
 
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown. The input used to drop it, and a press an element
+            // does not take now climbs to the elements around it - a
+            // spreadsheet took it as a double-click on the cell and restarted
+            // the edit from the stored text, losing what had been typed. It
+            // is a press like the first (the clear and reveal buttons get
+            // their second click), and on the text it selects the word under
+            // the pointer - all of it in a password field, whose words are
+            // not to be told apart.
+            case UCEventType::MouseDoubleClick: {
+                if (!HandleMouseDown(event)) return false;
+                const bool onButton =
+                    (IsClearButtonVisible() && GetClearButtonBounds().Contains(event.pointer)) ||
+                    (IsPasswordToggleVisible() && GetPasswordToggleBounds().Contains(event.pointer));
+                if (onButton || event.shift || event.button != UCMouseButton::Left) return true;
+                if (passwordMode) {
+                    SelectAll();
+                } else {
+                    auto isWordChar = [](gunichar c) { return g_unichar_isalnum(c) || c == '_'; };
+                    const int length = utf8_length(text);
+                    int first = utf8_byte_to_cp(text, caretPosition);
+                    int last = first;
+                    while (first > 0 && isWordChar(utf8_get_cp(text, first - 1))) --first;
+                    while (last < length && isWordChar(utf8_get_cp(text, last))) ++last;
+                    if (first != last) {
+                        SetSelection(utf8_cp_to_byte(text, first), utf8_cp_to_byte(text, last));
+                    }
+                }
+                // A selected word stays selected: the press's drag ends here,
+                // or the slightest move would shrink it to the pointer.
+                if (hasSelection) isDragging = false;
+                RequestRedraw();
+                return true;
+            }
+
             case UCEventType::MouseMove:
                  return HandleMouseMove(event);
 
@@ -749,13 +794,19 @@ namespace UltraCanvas {
 
         // Report the caret rect (window coordinates) to the shared caret,
         // which owns blinking and painting from here on.
+        // The glyphs are drawn from the line box's exact (fractional) top, so
+        // the caret covers every pixel row the box touches: its top rounded
+        // down, its bottom up - never top and height rounded apart, which
+        // dropped the last row whenever both rounded down.
         int caretWidth = std::max(1, style.caretWidth);
         Point2Df winPos = GetPositionInWindow();
+        const int caretTop = static_cast<int>(std::floor(winPos.y + caretStartY));
+        const int caretBottom = static_cast<int>(std::ceil(winPos.y + caretStartY + lineHeight));
         Rect2Di caretRect(
                 static_cast<int>(std::lround(winPos.x + caretX - caretWidth * 0.5f)),
-                static_cast<int>(std::lround(winPos.y + caretStartY)),
+                caretTop,
                 caretWidth,
-                static_cast<int>(std::lround(lineHeight)));
+                std::max(1, caretBottom - caretTop));
         UltraCanvasCaret::GetInstance().Show(this, caretRect, style.caretColor, style.caretBlinkRate);
     }
 
@@ -1022,7 +1073,10 @@ namespace UltraCanvas {
             isDragging = false;
             return true;
         }
-        return false;
+        // A release over the field is the field's, whether or not it was
+        // dragging - after a double-click it is not - so it does not climb to
+        // the elements around the input.
+        return Contains(event.pointer);
     }
 
     bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
@@ -1462,8 +1516,10 @@ namespace UltraCanvas {
         // ascender and descender space too and so hung the text a shade below
         // the elements beside the field. The height is the font's, not the
         // current text's, so an empty or all-lowercase field measures the same.
+        // GetLineBoxHeight, not GetTextLineHeight: the latter is whole pixels,
+        // the fraction cut off, and the glyphs are drawn at the full height.
         ctx->SetFontStyle(style.fontStyle);
-        double lineHeight = ctx->GetTextLineHeight("H");
+        double lineHeight = ctx->GetLineBoxHeight(style.fontStyle);
         double top = ctx->TextTopCentredOnCaps(area, style.fontStyle);
         return Rect2Dd(area.x, top, area.width, lineHeight);
     }
