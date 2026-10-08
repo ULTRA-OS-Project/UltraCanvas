@@ -254,6 +254,13 @@ struct TextInputStyle {
     Color placeholderColor = Color(150, 150, 150, 255);
     Color selectionColor = Color(0, 120, 215, 100);
     Color caretColor = Colors::Black;
+
+    // Disabled (SetDisabled(true)): the field recedes - a lighter face, a
+    // lighter border and grey text - so a field that cannot be typed into
+    // does not look like one that can. The framework's disabled colours.
+    Color disabledBackgroundColor = Colors::ControlDisabled;
+    Color disabledBorderColor = Colors::ControlDisabledBorder;
+    Color disabledTextColor = Colors::TextDisabled;
     
     // Validation colors
     //Color validBorderColor = Color(76, 175, 80, 255);
@@ -592,7 +599,7 @@ private:
     Rect2Di GetTextArea() const;
     
     Color GetBackgroundColor() const {
-        return style.backgroundColor;
+        return IsDisabled() ? style.disabledBackgroundColor : style.backgroundColor;
     }
     
     Color GetBorderColor() const {
@@ -613,7 +620,7 @@ private:
     }
     
     Color GetTextColor() const {
-        return style.textColor;
+        return IsDisabled() ? style.disabledTextColor : style.textColor;
     }
     
     void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
@@ -719,6 +726,7 @@ inline TextInputStyle TextInputStyle::Flat() {
 inline TextInputStyle TextInputStyle::Outlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
+    style.disabledBackgroundColor = Colors::Transparent;   // no face to grey
     style.borderWidth = 2;
     style.borderRadius = 4;
     return style;
@@ -727,6 +735,7 @@ inline TextInputStyle TextInputStyle::Outlined() {
 inline TextInputStyle TextInputStyle::Underlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
+    style.disabledBackgroundColor = Colors::Transparent;
     style.borderWidth = 0;
     style.borderRadius = 0;
     // Would need special underline rendering

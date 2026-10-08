@@ -518,6 +518,12 @@ struct TextInputStyle {
     Color placeholderColor;
     Color selectionColor;
     Color caretColor;
+
+    // Disabled (SetDisabled(true)): Colors::ControlDisabled,
+    // ControlDisabledBorder and TextDisabled by default
+    Color disabledBackgroundColor;
+    Color disabledBorderColor;
+    Color disabledTextColor;
     
     // Validation colors
     Color validBorderColor;
@@ -551,6 +557,12 @@ struct TextInputStyle {
     float animationDuration;
 };
 ```
+
+A disabled field (`SetDisabled(true)`) recedes: it draws with
+`disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`
+instead of the normal face, border and text, hides the clear button (it would
+not answer the click), and takes no focus or keys. The `Outlined()` and
+`Underlined()` presets keep a transparent face when disabled.
 
 ### Predefined Styles
 

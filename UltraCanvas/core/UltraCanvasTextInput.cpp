@@ -414,8 +414,10 @@ namespace UltraCanvas {
 
         Rect2Di bounds = GetLocalBounds();
 
-        // Draw background
-        ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
+        // Draw background. A disabled field takes the lighter disabled
+        // border with its disabled face (GetBackgroundColor).
+        ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth,
+                                 IsDisabled() ? style.disabledBorderColor : style.borderColor);
 
         // Get text area (excluding padding)
         Rect2Dd textArea = GetTextArea();
@@ -600,7 +602,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::IsClearButtonVisible() const {
-        return showClearButton && !text.empty() && !readOnly;
+        // Not on a disabled field: it would not answer the click.
+        return showClearButton && !text.empty() && !readOnly && !IsDisabled();
     }
 
     Rect2Di UltraCanvasTextInput::GetClearButtonBounds() const {
