@@ -66,7 +66,7 @@ callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
 arity mismatch, wasm's strict indirect-call signature checking traps on it.
 
 ```bash
-source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.x
+source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.0.11 - the version CI builds with
 ./build-wasm-sysroot.sh /path/to/wasm-sysroot
 ```
 

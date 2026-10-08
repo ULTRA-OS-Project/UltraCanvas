@@ -15,10 +15,15 @@ name: WebAssembly build
 on:
   workflow_dispatch:
     inputs:
+      # Pinned, not 'latest': latest moves to a new release, major ones
+      # included, on emsdk's schedule, and the sysroot cache below is keyed on
+      # this string, so under 'latest' a new compiler kept linking against a
+      # sysroot built by whichever release 'latest' named first. Raise it
+      # together with the version named in UltraCanvas/OS/WASM/README.md.
       emsdk_version:
-        description: 'Emscripten SDK version (see OS/WASM/README.md for the validated one)'
+        description: 'Emscripten SDK version (default: the one UltraCanvas/OS/WASM/README.md names)'
         required: false
-        default: 'latest'
+        default: '6.0.11'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
