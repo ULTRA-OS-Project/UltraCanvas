@@ -32,6 +32,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextSelection.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailMessagePreview.h"
 
@@ -332,6 +333,21 @@ int main() {
     TEST("back to no attachments: the strip is hidden again", !strip->IsVisible());
     TEST("back to no attachments: the body reaches the pane's bottom",
          Bottom(*root) - Bottom(*body) < 6.0f);
+
+    // HTML mail as plain text (Settings > Reading): the paragraphs stay apart
+    // (HTML::ExtractPlainText's Lines layout), not one run of words.
+    preview.showHtml = false;
+    preview.ReRender();
+    render();
+    auto plain = std::dynamic_pointer_cast<UltraCanvasTextArea>(Find(root, "prevBodyText"));
+    TEST("as plain text: the HTML body is shown in the text area", plain != nullptr);
+    if (plain)
+        TEST("as plain text: a line per paragraph",
+             plain->GetText().rfind("Weekly digest\n\nParagraph 0 of a message long enough to scroll.\n\n"
+                                    "Paragraph 1 of", 0) == 0);
+    preview.showHtml = true;
+    preview.ReRender();
+    render();
 
     // 4. body { min-width: 100% }: the page stops at the vertical scrollbar,
     //    and nothing scrolls sideways.

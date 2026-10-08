@@ -16,6 +16,18 @@
   links are now the page's `<a href>`, `<area href>` and `<form action>`
   elements as the HTML reader parses them, each with the text it shows.
 
+#### 2026-10-08 *0.10.39*
+- **Formatted mail as plain text keeps its paragraphs.** With Settings >
+  Reading set to plain text, and in the quote of a formatted mail in a reply
+  or forward, the text was the HTML with its tags taken out: paragraphs ran
+  into one another or kept the HTML source's line breaks, only four entities
+  were decoded (`&eacute;`, `&#8211;` and the rest showed as written), and a
+  newsletter's hidden preview line appeared at the top. The text now comes
+  from the framework's HTML reader (`HTML::ExtractPlainText`, its new Lines
+  layout): a paragraph to a line with a blank line between, `<br>` as a line
+  break, table cells a tab apart, list items as `- `, every entity decoded,
+  and hidden text left out.
+
 #### 2026-10-08 *0.10.38*
 - **The mail's text can be selected and copied.** In formatted (HTML) mail a
   drag selects across the whole message, from paragraph to paragraph as in a

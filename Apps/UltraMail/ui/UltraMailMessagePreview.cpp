@@ -1,4 +1,9 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.16.1 - HTML mail as plain text (Settings > Reading) and the quote of
+//                   a formatted mail in a reply or forward come from the
+//                   HTMLReader module (HTML::ExtractPlainText, Lines layout):
+//                   paragraphs and line breaks kept, every entity decoded,
+//                   the hidden preheader left out
 // Version: 0.16.0 - the message's text can be selected and copied: a drag across
 //                   the HTML body (paragraph to paragraph), a double-click for
 //                   a word, Ctrl+C / Ctrl+A; the subject, sender, recipients
@@ -94,27 +99,6 @@ std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthC
     tag->SetTooltip(check.tooltip);
     tag->layoutItem.SetFlexShrink(0);
     return tag;
-}
-
-// Very small HTML-to-text reduction (for the quoted reply body): drop tags and
-// decode a few entities.
-std::string HtmlToText(const std::string& html) {
-    std::string out;
-    bool inTag = false;
-    for (std::size_t i = 0; i < html.size(); ++i) {
-        char c = html[i];
-        if (c == '<') { inTag = true; continue; }
-        if (c == '>') { inTag = false; out.push_back(' '); continue; }
-        if (inTag) continue;
-        if (c == '&') {
-            if (html.compare(i, 5, "&amp;") == 0) { out.push_back('&'); i += 4; continue; }
-            if (html.compare(i, 4, "&lt;") == 0)  { out.push_back('<'); i += 3; continue; }
-            if (html.compare(i, 4, "&gt;") == 0)  { out.push_back('>'); i += 3; continue; }
-            if (html.compare(i, 6, "&nbsp;") == 0){ out.push_back(' '); i += 5; continue; }
-        }
-        out.push_back(c);
-    }
-    return out;
 }
 
 // Opens a link of the message in the browser - web and mail addresses only,
@@ -738,7 +722,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         ts.scrollbarTrackColor   = modern.trackColor;
         ts.scrollbarColor        = modern.thumbColor;
     }
-    text->SetText(isHtml ? HtmlToText(body) : body);
+    text->SetText(isHtml ? HTML::ExtractPlainText(body, HTML::PlainTextLayout::Lines) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -1232,7 +1216,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         attachmentStrip_.SetAttachments(pm.attachments);
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
-        current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
+        current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)
+                                      : pm.body;
         current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
     }
