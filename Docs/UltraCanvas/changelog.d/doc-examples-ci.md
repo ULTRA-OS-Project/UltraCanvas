@@ -14,3 +14,13 @@
     findings, or a listed doc gaining some, fails. A listed doc with fewer
     findings than recorded is reported so its line can be lowered; one with
     none is stale and fails a strict run until it is dropped.
+  - **56 component docs fixed in the same change**, 289 findings between
+    them: API that had drifted from the headers (a `long uid` parameter
+    FinancialChart never had, a `CreateListView` factory that does not
+    exist, `AddElement` for `AddChild`, SpellChecker listings outside their
+    namespaces), includes for headers that live outside `include/`
+    (`dialogs/`, `OS/WASM/`, `libspecific/Video/`), ellipses and sketches
+    inside code, and reader-side helpers the snippets assumed, now declared
+    through `doc-check` comments. 24 docs stay on the baseline: proposals,
+    the changelog and investigation notes whose C++ was never written to
+    compile.
