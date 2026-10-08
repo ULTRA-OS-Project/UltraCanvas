@@ -1,7 +1,12 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.7.0
+// Version: 1.7.1
 // Last Modified: 2026-10-08
+// V1.7.1: The caret and the selection cover the glyphs' last row. The line
+//   box was GetTextLineHeight("H") tall - whole pixels, the fraction cut off -
+//   so it ended up to a pixel above the descenders and the bottoms of
+//   parentheses; it is the font's line height in fractional pixels now
+//   (GetLineBoxHeight), and the caret covers every pixel row the box touches.
 // V1.6.0: One key press is one undo step: typed characters, Space, typing over
 //   a selection, Backspace/Delete on a selection and a paste each saved two or
 //   three states, and a key press the length limit refused saved one with no
@@ -749,13 +754,19 @@ namespace UltraCanvas {
 
         // Report the caret rect (window coordinates) to the shared caret,
         // which owns blinking and painting from here on.
+        // The glyphs are drawn from the line box's exact (fractional) top, so
+        // the caret covers every pixel row the box touches: its top rounded
+        // down, its bottom up - never top and height rounded apart, which
+        // dropped the last row whenever both rounded down.
         int caretWidth = std::max(1, style.caretWidth);
         Point2Df winPos = GetPositionInWindow();
+        const int caretTop = static_cast<int>(std::floor(winPos.y + caretStartY));
+        const int caretBottom = static_cast<int>(std::ceil(winPos.y + caretStartY + lineHeight));
         Rect2Di caretRect(
                 static_cast<int>(std::lround(winPos.x + caretX - caretWidth * 0.5f)),
-                static_cast<int>(std::lround(winPos.y + caretStartY)),
+                caretTop,
                 caretWidth,
-                static_cast<int>(std::lround(lineHeight)));
+                std::max(1, caretBottom - caretTop));
         UltraCanvasCaret::GetInstance().Show(this, caretRect, style.caretColor, style.caretBlinkRate);
     }
 
@@ -1462,8 +1473,10 @@ namespace UltraCanvas {
         // ascender and descender space too and so hung the text a shade below
         // the elements beside the field. The height is the font's, not the
         // current text's, so an empty or all-lowercase field measures the same.
+        // GetLineBoxHeight, not GetTextLineHeight: the latter is whole pixels,
+        // the fraction cut off, and the glyphs are drawn at the full height.
         ctx->SetFontStyle(style.fontStyle);
-        double lineHeight = ctx->GetTextLineHeight("H");
+        double lineHeight = ctx->GetLineBoxHeight(style.fontStyle);
         double top = ctx->TextTopCentredOnCaps(area, style.fontStyle);
         return Rect2Dd(area.x, top, area.width, lineHeight);
     }
