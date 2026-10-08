@@ -1,5 +1,7 @@
 # UltraCanvasRenderContext — compositing, hit testing and paint sources
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 `IRenderContext` (`UltraCanvasRenderContext.h`) is the drawing interface every
 element renders through. Its everyday surface — paths, fills, strokes, text
 layouts, pixmaps, state and transforms — is used throughout the element

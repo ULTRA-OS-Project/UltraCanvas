@@ -1,5 +1,7 @@
 # UltraCanvasFinancialChartElement Documentation
 
+<!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
+
 ## Overview
 
 The `UltraCanvasFinancialChartElement` is a sophisticated financial charting component within the UltraCanvas framework designed for displaying stock market, cryptocurrency, and forex data. It provides professional-grade OHLC (Open, High, Low, Close) candlestick charts with integrated volume visualization, moving averages, and interactive features.
@@ -71,7 +73,6 @@ class FinancialChartDataVector : public IChartDataSource {
 ```cpp
 UltraCanvasFinancialChartElement(
     const std::string& id,  // Unique identifier
-    long uid,               // Unique numeric ID
     int x,                  // X position
     int y,                  // Y position
     int width,              // Chart width
@@ -142,7 +143,6 @@ Creates a basic financial chart element.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartElement(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height
 );
@@ -155,7 +155,6 @@ Creates a financial chart with pre-loaded data.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height,
     std::shared_ptr<FinancialChartDataVector> data,
@@ -171,7 +170,6 @@ std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
 // Create a financial chart element
 auto stockChart = CreateFinancialChartElement(
     "StockChart",  // ID
-    1001,          // UID
     20, 50,        // Position
     980, 400       // Size
 );
@@ -241,45 +239,58 @@ stockChart->SetGridColor(Color(210, 210, 210, 255));
 
 ### Complete Example Application
 
-```cpp
-class FinancialChartApp : public UltraCanvasApplication {
-private:
-    std::shared_ptr<UltraCanvasFinancialChartElement> chart;
-    std::shared_ptr<FinancialChartDataVector> data;
+`GenerateSampleStockData` stands for the application's own data source; the
+demo application's generator of that name is in
+`Apps/DemoApp/UltraCanvasFinancialChartExamples.cpp`.
 
-public:
-    bool Initialize() override {
-        // Generate sample data
-        data = GenerateSampleStockData("ULTR", 90);
-        
-        // Create chart
-        chart = CreateFinancialChartElement(
-            "MainChart", 1000, 20, 50, 980, 400
-        );
-        
-        // Configure chart
-        chart->SetFinancialDataSource(data);
-        chart->SetChartTitle("ULTR - UltraCanvas Inc.");
-        chart->SetCandleDisplayStyle(
-            UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick
-        );
-        
-        // Styling
-        chart->SetBullishCandleColor(Color(0, 150, 0, 255));
-        chart->SetBearishCandleColor(Color(200, 0, 0, 255));
-        
-        // Features
-        chart->SetShowVolumePanel(true);
-        chart->SetShowMovingAverage(true, 20);
-        chart->SetEnableTooltips(true);
-        chart->SetEnableZoom(true);
-        
-        // Add to container
-        mainContainer->AddChild(chart);
-        
-        return true;
-    }
-};
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include "Plugins/Charts/UltraCanvasFinancialChart.h"
+using namespace UltraCanvas;
+
+int main() {
+    UltraCanvasApplication app;
+    if (!app.Initialize("FinancialChartApp")) return 1;
+
+    WindowConfig config;
+    config.title = "Financial Chart";
+    config.width = 1020;
+    config.height = 480;
+    auto window = CreateWindow(config);
+
+    // Generate sample data
+    std::shared_ptr<FinancialChartDataVector> data = GenerateSampleStockData("ULTR", 90);
+
+    // Create chart
+    auto chart = CreateFinancialChartElement(
+        "MainChart", 20, 50, 980, 400
+    );
+
+    // Configure chart
+    chart->SetFinancialDataSource(data);
+    chart->SetChartTitle("ULTR - UltraCanvas Inc.");
+    chart->SetCandleDisplayStyle(
+        UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick
+    );
+
+    // Styling
+    chart->SetBullishCandleColor(Color(0, 150, 0, 255));
+    chart->SetBearishCandleColor(Color(200, 0, 0, 255));
+
+    // Features
+    chart->SetShowVolumePanel(true);
+    chart->SetShowMovingAverage(true, 20);
+    chart->SetEnableTooltips(true);
+    chart->SetEnableZoom(true);
+
+    // Add to the window
+    window->AddChild(chart);
+    window->Show();
+
+    app.Run();
+    return 0;
+}
 ```
 
 ## Rendering Pipeline

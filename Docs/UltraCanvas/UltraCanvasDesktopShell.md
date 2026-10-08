@@ -1,5 +1,7 @@
 # UltraCanvasDesktopShell
 
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
@@ -10,7 +12,9 @@ show beside its icon.
 #include "UltraCanvasDesktopShell.h"
 
 for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-    if (!w.skipTaskbar) taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
+    if (!w.skipTaskbar)
+        taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile,
+            [id = w.id](bool) { UltraCanvasDesktopShell::ActivateWindow(id); });
 
 UltraCanvasDesktopShell::ActivateWindow(id);
 UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);

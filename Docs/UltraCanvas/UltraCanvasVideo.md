@@ -1,5 +1,7 @@
 # UltraCanvas Video
 
+<!-- doc-check: namespace MyApp { std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); } -->
+
 Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
 three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
 and composite UI elements, all behind a pluggable platform backend.
@@ -185,6 +187,8 @@ container registers it with `RegisterVideoCodecPlugin`
 `IVideoDecodeSession`:
 
 ```cpp
+#include "../libspecific/Video/VideoCodecPlugin.h"
+
 MediaCodecRegistration codec;
 codec.extension   = "ivf";
 codec.description = "Indexed Video Format";

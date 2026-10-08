@@ -7,14 +7,14 @@ name: Doc examples
 # reader's build. scripts/check_doc_examples.py says what it checks and how a
 # doc declares what its snippets assume.
 #
-# Findings that predate the check are listed in
-# scripts/doc_examples_baseline.txt; only new ones fail. The file only
-# shrinks - fix a doc and rewrite it with
-#     python3 scripts/check_doc_examples.py --all --update-baseline
+# A finding fails unless it is listed in scripts/doc_examples_baseline.txt,
+# which held the findings that predated the check and is empty now that
+# they are fixed. Keep it empty: fix the doc, or declare what its snippets
+# assume in a <!-- doc-check: ... --> comment.
 #
-# Pinned to ubuntu-24.04: the baseline holds clang 18's messages and the
-# header set of that release's packages; another clang words its errors
-# differently and would read every baselined finding as new.
+# Pinned to ubuntu-24.04: the docs pass against clang 18 and that release's
+# library headers; a baseline entry, should one ever be needed, is clang's
+# wording, which another clang words differently.
 
 # Trigger policy matches path-strings.yml: `pull_request` covers feature
 # branches, so listing them under `push` too would run this check twice per

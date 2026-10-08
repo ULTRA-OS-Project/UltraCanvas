@@ -60,7 +60,7 @@ UltraCanvasAlert::Confirm("Delete this item?", "Confirm Delete",
 // Capture which button was pressed
 UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
                           [](DialogResult r) { /* r == DialogResult::OK ... */ },
-                          parentWindow);
+                          parentWindow.get());
 ```
 
 ## Alerts without the severity icon
@@ -104,7 +104,7 @@ opts.message       = "A new version is ready to install.";
 opts.details       = "Version 4.2.0 - the app will restart to finish.";
 opts.buttons       = DialogButtons::OKCancel;
 opts.defaultButton = DialogButton::OK;
-opts.parent        = parentWindow;
+opts.parent        = parentWindow.get();
 opts.onResult      = [](DialogResult r) { /* ... */ };
 UltraCanvasAlert::Show(opts);
 ```
@@ -132,9 +132,15 @@ class UltraCanvasAlert {
     static void Info      (const std::string& message, const std::string& title = "",
                            std::function<void(DialogResult)> onResult = nullptr,
                            UltraCanvasWindowBase* parent = nullptr);
-    static void Successful(/* same signature */);
-    static void Warning   (/* same signature */);
-    static void Error     (/* same signature */);
+    static void Successful(const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Warning   (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Error     (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
 
     // Icon-less message box: no severity badge, so the content column is
     // centred in the full width of the dialog.
