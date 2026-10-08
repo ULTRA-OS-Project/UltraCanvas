@@ -32,6 +32,15 @@ namespace UltraCanvas {
     using WindowOverlayRenderer = std::function<void(IRenderContext* ctx,
                                                      const Rect2Di& overlayRect)>;
 
+    // Where the time of one frame went (see onFrameRendered), in milliseconds.
+    struct WindowFrameTiming {
+        double layoutMs    = 0;   // measure and arrange; 0 when the layout was valid
+        double paintMs     = 0;   // the elements in the dirty rectangles, and popups
+        double compositeMs = 0;   // popups, caret and tooltip onto the native surface
+        int    dirtyRects  = 0;   // rectangles painted in the window's content
+        bool   laidOut     = false;
+    };
+
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, 
@@ -118,6 +127,9 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _windowVisible = false;
+        // RenderBeforeShow is drawing the first frame of a window not yet
+        // shown (UpdateAndRender otherwise skips a hidden window).
+        bool _renderingBeforeShow = false;
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
@@ -228,6 +240,11 @@ namespace UltraCanvas {
         std::function<void()> onWindowRestore;
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
+        // After every frame that laid out or painted anything: how long its
+        // layout, painting and compositing took. For finding a slow frame - a
+        // window that stays blank at start, or a view that is slow to appear;
+        // nothing is timed while it is unset.
+        std::function<void(const WindowFrameTiming&)> onFrameRendered;
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
@@ -474,6 +491,11 @@ namespace UltraCanvas {
         void RequestWindowComposition() { _needsWindowComposition = true; }
         void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
+        // Lays out and draws the window's first frame into its surface while
+        // it is still hidden, so a backend's Show() puts the window on screen
+        // with its content - not a surface nothing was drawn into yet (black
+        // on Windows) that the event loop's first frame replaces later.
+        void RenderBeforeShow();
 
         bool IsNeedsResize() const { return _needsResize; }
 
