@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.15.2 - the HTML body sits in a page box as wide as the visible pane,
+//                   so its percentage widths (Reddit's body { min-width: 100% })
+//                   no longer reach under the vertical scrollbar
 // Version: 0.15.1 - each step of showing a message in the timing trace
 //                  (UltraMailTrace.h)
 // Version: 0.15.0 - [DMARC] [DKIM] [SPF] in the header: the sender checks the
@@ -26,7 +29,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -128,24 +131,30 @@ void OpenMessageLink(const std::string& href) {
 // out again only when the bar comes or goes, so that settles in one extra
 // pass. Content that cannot reflow (a fixed-width table, a large picture) is
 // still wider than that and still gets the horizontal bar.
+//
+// What is narrowed is `page`, a box around the HTML body that stands for the
+// browser's viewport: every percentage the body's CSS carries resolves
+// against it. Narrowing the body's own width was not enough - a newsletter
+// with body { min-width: 100% } (Reddit's digest) measured that 100% against
+// the whole pane, under the bar, and scrolled sideways by the bar's 12 px.
 class BodyScrollView : public UltraCanvasContainer {
 public:
     using UltraCanvasContainer::UltraCanvasContainer;
 
-    std::shared_ptr<UltraCanvasUIElement> body;
+    std::shared_ptr<UltraCanvasUIElement> page;   // holds the HTML body
 
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
         UltraCanvasContainer::Arrange(finalRect, ctx);
-        if (!body) return;
+        if (!page) return;
         // calc(100% - track) while the vertical bar is shown, 100% otherwise.
         const float gutter = verticalScrollbar->IsVisible()
                                  ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
-        const CSSLayout::Dimension& cur = body->size.width;
+        const CSSLayout::Dimension& cur = page->size.width;
         if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
             cur.offsetPx == -gutter)
             return;
-        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
-        body->InvalidateSubtree();
+        page->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        page->InvalidateSubtree();
         UltraCanvasContainer::Arrange(finalRect, ctx);
     }
 };
@@ -590,12 +599,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane). The
-            // scroll view narrows it by the vertical bar once that is shown.
+            // than laying out over-wide (responsive emails fill the pane). It
+            // sits in a page box the scroll view narrows by the vertical bar
+            // once that is shown, so its own percentages (width, min-width)
+            // stay beside the bar too.
+            auto page = std::make_shared<UltraCanvasContainer>("prevBodyPage", 0, 0, 0, 0);
+            page->size.width = CSSLayout::Dimension::Pct(100.0f);
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
-            scroll->body = r.root;
+            page->AddChild(r.root);
+            scroll->page = page;
             bodyHost_->AddChild(scroll);
-            scroll->AddChild(r.root);
+            scroll->AddChild(page);
             scroll->ScrollToVertical(0);
             return;
         }
