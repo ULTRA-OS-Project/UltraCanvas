@@ -14,6 +14,8 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.8.0 - link-domain-lookalike; look-alike letters of another script
+//                  ("pаypal.com" in Cyrillic) in sender and link domains
 // Version: 0.7.0 - look-alike sender domains (sender-domain-lookalike), letters in
 //                  an agency's name (government-impersonation); ThreatScanOptions:
 //                  each kind of warning can be switched off (Settings > Spam/scam

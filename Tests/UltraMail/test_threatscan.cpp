@@ -1073,7 +1073,10 @@ TEST(lookalike_sender_domains_are_recognised) {
 }
 
 TEST(ordinary_domains_with_a_brand_word_are_not_lookalikes) {
-    for (const char* d : { "applewood-estates.com", "amazonas-reisen.de", "pineapple-shop.example",
+    for (const char* d : { "zoomcare.com", "cdn.discordapp.com", "redditmail.com",
+                           "myhermes.de", "dropboxmail.com", "spotify-news.example",
+                           "netflix-online.example", "applewood-estates.com",
+                           "amazonas-reisen.de", "pineapple-shop.example",
                            "hermes.uni-example.de", "telecom-services.example", "interact.example",
                            "canvas-studio.example", "goggles-shop.example", "revolt.example",
                            "paypal.xyz", "gmail.com", "facebookmail.com", "mail.paypal.de",
@@ -1167,6 +1170,7 @@ TEST(every_finding_belongs_to_a_switch) {
                               "link-userinfo", "link-ip-host", "link-punycode",
                               "link-nonascii-host", "link-shortener", "link-target-mismatch",
                               "link-brand-mismatch", "link-brand-lookalike",
+                              "link-domain-lookalike",
                               "insecure-login-link", "many-foreign-domains",
                               "credential-request", "advance-fee-fraud", "reply-to-mismatch",
                               "reply-elsewhere", "attachment-disguised-executable",
@@ -1191,4 +1195,74 @@ TEST(the_process_wide_options_reach_raw_scans) {
     SetThreatScanOptions(ThreatScanOptions{});       // back for the other tests
     REQUIRE(!reported);
     REQUIRE(GetThreatScanOptions() == ThreatScanOptions{});
+}
+
+// ---------------------------------------------------------------------------
+// Look-alike letters of another script, and look-alike link targets
+// ---------------------------------------------------------------------------
+TEST(punycode_labels_are_decoded) {
+    // "pаypal" with a Cyrillic "а" (U+0430), as it travels: xn--pypal-4ve.
+    REQUIRE_EQ(DomainToUnicode("xn--pypal-4ve.com"), std::string("p\xD0\xB0ypal.com"));
+    REQUIRE_EQ(DomainToUnicode("mail.xn--mnchen-3ya.de"), std::string("mail.m\xC3\xBCnchen.de"));
+    REQUIRE_EQ(DomainToUnicode("example.com"), std::string("example.com"));
+    REQUIRE_EQ(DomainToUnicode("xn--$$$.com"), std::string("xn--$$$.com"));   // kept as written
+}
+
+TEST(a_brand_in_lookalike_letters_is_a_homograph) {
+    // A brand's own domain in Cyrillic letters, as punycode and as text.
+    const DomainLookalike paypal = BrandImitatedByDomain("xn--pypal-4ve.com");
+    REQUIRE(paypal.brand != nullptr);
+    REQUIRE_EQ(paypal.brand->id, std::string("paypal"));
+    REQUIRE(paypal.kind == LookalikeKind::Homograph);
+    REQUIRE_EQ(paypal.letters, std::string("Cyrillic"));
+    REQUIRE_EQ(paypal.unicode, std::string("p\xD0\xB0ypal.com"));
+    REQUIRE_EQ(Imitated("\xD0\xB0pple.com"), std::string("apple"));          // "аpple.com"
+    REQUIRE_EQ(Imitated("xn--pple-43d.com"), std::string("apple"));
+    REQUIRE_EQ(Imitated("xn--facebok-fjg.net"), std::string("facebook"));      // "faceboоk" + "net"
+    // The bare name under another suffix, in foreign letters, is a claim too.
+    REQUIRE(BrandImitatedByDomain("p\xD0\xB0ypal.xyz").kind == LookalikeKind::Homograph);
+    // Greek and accented letters.
+    REQUIRE_EQ(Imitated("\xCE\xBFpenai.com"), std::string("openai"));       // Greek omicron
+    REQUIRE_EQ(BrandImitatedByDomain("\xCE\xBFpenai.com").letters, std::string("Greek"));
+    REQUIRE_EQ(Imitated("amaz\xC3\xB6n-login.com"), std::string("amazon")); // "amazön"
+    // Real words in other scripts are not imitations.
+    for (const char* d : { "xn--mnchen-3ya.de", "m\xC3\xBCnchen.de", "xn--80adxhks.xn--p1ai",
+                           "\xE6\x9D\xB1\xE4\xBA\xAC.jp", "b\xC3\xBC" "cher.de" })
+        REQUIRE_EQ(Imitated(d), std::string());
+    // Nor is a mailbox provider's name, which is no brand.
+    REQUIRE_EQ(Imitated("gm\xD0\xB0il.com"), std::string());
+}
+
+TEST(a_homograph_sender_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("PayPal <service@xn--pypal-4ve.com>",
+        "Your account", "Please confirm your details."));
+    REQUIRE(r.Has("sender-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("Cyrillic") != std::string::npos);
+    REQUIRE(r.Summary().find("p\xD0\xB0ypal.com") != std::string::npos);
+}
+
+TEST(a_link_to_a_lookalike_domain_is_flagged) {
+    const ThreatReport r = ScanMessage(Html("news@club.example",
+        "<p>Your friend tagged you.</p>"
+        "<a href=\"https://faceebook-login.com/photo\">See the photo</a>"));
+    REQUIRE(r.Has("link-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("See the photo") != std::string::npos);
+    REQUIRE(r.Summary().find("faceebook-login.com") != std::string::npos);
+    REQUIRE(ScanMessage(Html("news@club.example",
+        "<a href=\"https://xn--pypal-4ve.com/\">Pay</a>")).Has("link-domain-lookalike"));
+    REQUIRE(ScanMessage(Html("news@club.example",
+        "<a href=\"https://paypal-secure-login.com/\">Log in</a>")).Has("link-domain-lookalike"));
+}
+
+TEST(links_to_brands_and_ordinary_sites_are_not_lookalikes) {
+    const ThreatReport r = ScanMessage(Html("news@club.example",
+        "<a href=\"https://www.facebook.com/club\">Facebook</a>"
+        "<a href=\"https://cdn.discordapp.com/x.png\">Discord</a>"
+        "<a href=\"https://www.zoomcare.com/\">Book a visit</a>"
+        "<a href=\"https://applewood-estates.com/\">Homes</a>"
+        "<a href=\"https://www.redditmail.com/x\">Digest</a>"
+        "<a href=\"https://www.m\xC3\xBCnchen.de/\">M\xC3\xBCnchen</a>"));
+    REQUIRE(!r.Has("link-domain-lookalike"));
 }

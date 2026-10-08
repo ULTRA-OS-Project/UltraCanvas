@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.8.0 - link-domain-lookalike: link targets dressed up as a brand's;
+//                  names in look-alike letters of another script, sender and link
 // Version: 0.7.0 - sender-domain-lookalike, government-impersonation;
 //                  ThreatScanOptions (a kind switched off is dropped)
 // Version: 0.6.0 - romance scams (romance-scam) and cryptocurrency (crypto-content,
@@ -516,6 +518,23 @@ const std::vector<std::string>& JobApplicationPhrases() {
     return v;
 }
 
+// How a domain imitates a brand, for a reason: "imitates Facebook:
+// \"faceebook\" is Facebook's name misspelt".
+std::string DescribeLookalike(const DomainLookalike& l) {
+    const std::string& name = l.brand->name;
+    switch (l.kind) {
+        case LookalikeKind::Misspelt:
+            return "imitates " + name + ": \"" + l.worn + "\" is " + name + "'s name misspelt";
+        case LookalikeKind::OwnDomain:
+            return "puts " + name + "'s own domain (" + l.worn + ") in front of an unrelated one";
+        case LookalikeKind::Homograph:
+            return "reads \"" + l.unicode + "\" - " + name + "'s name written with " +
+                   l.letters + " letters that look like Latin ones";
+        default:
+            return "wears " + name + "'s name (\"" + l.worn + "\") padded with other words";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Government agencies and international organisations
 // ---------------------------------------------------------------------------
@@ -760,7 +779,8 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
         "auth-failure", "brand-impersonation", "sender-domain-lookalike",
         "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
         "link-nonascii-host", "link-shortener", "link-target-mismatch",
-        "link-brand-mismatch", "link-brand-lookalike", "insecure-login-link",
+        "link-brand-mismatch", "link-brand-lookalike", "link-domain-lookalike",
+        "insecure-login-link",
         "many-foreign-domains", "credential-request", "reply-to-mismatch",
     };
     if (phishing.count(code)) return o.phishing;
@@ -1048,25 +1068,10 @@ ThreatReport ScanMessage(const ScanInput& input) {
     {
         const DomainLookalike lookalike = BrandImitatedByDomain(senderDomain);
         if (lookalike.brand) {
-            const std::string& name = lookalike.brand->name;
-            std::string why = "The sender's domain " + senderDomain + " ";
-            switch (lookalike.kind) {
-                case LookalikeKind::Misspelt:
-                    why += "imitates " + name + ": \"" + lookalike.worn + "\" is " + name +
-                           "'s name misspelt";
-                    break;
-                case LookalikeKind::OwnDomain:
-                    why += "puts " + name + "'s own domain (" + lookalike.worn +
-                           ") in front of an unrelated one";
-                    break;
-                default:
-                    why += "wears " + name + "'s name (\"" + lookalike.worn +
-                           "\") padded with other words";
-                    break;
-            }
-            why += ", but it is not one of " + name + "'s domains.";
             Add(report, lookalike.kind == LookalikeKind::Name ? 45 : 50,
-                "sender-domain-lookalike", why);
+                "sender-domain-lookalike",
+                "The sender's domain " + senderDomain + " " + DescribeLookalike(lookalike) +
+                ", but it is not one of " + lookalike.brand->name + "'s domains.");
         }
     }
 
@@ -1117,6 +1122,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
 
     // ---- Link rules --------------------------------------------------------
     std::set<std::string> foreignDomains;
+    std::set<std::string> lookalikeHostsChecked;   // once per host, not per link
     for (const auto& link : links) {
         if (link.host.empty()) continue;
         const std::string linkReg = RegistrableDomain(link.host);
@@ -1176,6 +1182,21 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 Add(report, 20, "link-brand-mismatch",
                     "A link labelled \"" + Trim(link.text) + "\" does not go to " +
                     linkBrand->name + " but to " + link.host + ".");
+            }
+        }
+
+        // A link to a domain dressed up as a brand's - "faceebook-login.com",
+        // "paypa1.com", "pаypal.com" in Cyrillic letters (BrandImitatedByDomain,
+        // as for the sender). The sender's own domain is the sender rule's.
+        if (!ownDomain && !report.Has("link-domain-lookalike") &&
+            lookalikeHostsChecked.insert(link.host).second) {
+            const DomainLookalike l = BrandImitatedByDomain(link.host);
+            if (l.brand) {
+                Add(report, l.kind == LookalikeKind::Name ? 40 : 50, "link-domain-lookalike",
+                    "A link" + (link.text.empty() ? std::string()
+                                                  : " labelled \"" + Trim(link.text) + "\"") +
+                    " goes to " + link.host + ", which " + DescribeLookalike(l) +
+                    " - not one of " + l.brand->name + "'s domains.");
             }
         }
 

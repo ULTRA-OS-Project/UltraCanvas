@@ -18,6 +18,8 @@
 //    GMX, so those domains resolve to no brand at all — only a Google *service*
 //    domain (google.com, youtube.com) is Google.
 //
+// Version: 0.4.0 - DomainToUnicode (punycode); BrandImitatedByDomain finds
+//                  names written with look-alike letters of another script
 // Version: 0.3.0 - BrandImitatedByDomain: a domain dressed up as a brand's
 // Version: 0.2.0 - banking, crypto, cloud/hosting, domain, government, telecom,
 //                  gaming and security categories
@@ -124,14 +126,28 @@ const SenderBrand* BrandNamedIn(const std::string& text);
 //    ("facebok"), with or without padding: "faceebookinbox.biz".
 //  * OwnDomain: one of the brand's own domains in front of an unrelated one:
 //    "paypal.com.account-check.ru".
-// Personal mailbox domains and every brand's own domains are never flagged.
-enum class LookalikeKind { None, Name, Misspelt, OwnDomain };
+//  * Homograph: the name written with letters of another script that look
+//    like Latin ones - "pаypal.com" with a Cyrillic "а", which arrives as
+//    "xn--pypal-4ve.com" - bare or padded with any word: such a domain is
+//    made to deceive.
+// The real brand names are padded with phishing words only; a misspelt or
+// foreign-lettered name with ordinary ones too ("faceboookmail.com"), since
+// no brand misspells itself. Personal mailbox domains and every brand's own
+// domains are never flagged.
+enum class LookalikeKind { None, Name, Misspelt, OwnDomain, Homograph };
 struct DomainLookalike {
     const SenderBrand* brand = nullptr;
     LookalikeKind      kind  = LookalikeKind::None;
-    std::string        worn;   // the part that looks like the brand: "faceebook"
+    std::string        worn;      // the part that looks like the brand: "faceebook", "pаypal"
+    std::string        letters;   // Homograph: whose letters - "Cyrillic", "Greek and accented"
+    std::string        unicode;   // Homograph: the domain as it reads ("pаypal.com")
 };
 DomainLookalike BrandImitatedByDomain(const std::string& domain);
+
+// An internationalised domain as it reads: every punycode label ("xn--…",
+// RFC 3492) decoded to UTF-8; other labels as they are. A label that does not
+// decode is kept as written.
+std::string DomainToUnicode(const std::string& domain);
 
 // Every brand in the registry, in table order (the icon cache warms from this).
 const std::vector<SenderBrand>& KnownBrands();

@@ -246,6 +246,7 @@ their weights:
 | `link-ip-host` | 35 | A link straight to a numeric address |
 | `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
 | `sender-domain-lookalike` | 45 / 50 | The From domain is dressed up as a brand's — see *Look-alike sender domains* below. 45 for the name padded with phishing words, 50 for a misspelt name or a brand's own domain in front of a foreign one |
+| `link-domain-lookalike` | 40 / 50 | A link goes to a domain dressed up as a brand's — the same check as `sender-domain-lookalike`, once per host, not for the sender's own domain |
 | `government-impersonation` | 45 / 30 | A government agency or international organisation (FBI, Interpol, IMF, UN …) claimed from an address that is not a government one: 45 in the sender's name or domain, 30 in the subject or text when it addresses the reader about money, a case or an arrest |
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
@@ -323,17 +324,20 @@ that turns to crypto counts it as its request for money.
 
 ### Look-alike sender domains
 
-`BrandImitatedByDomain` (`UltraMailSenderBrands`) reads the From domain the
-way a hurried eye does. It flags a domain that is none of a brand's own in
-three ways:
+`BrandImitatedByDomain` (`UltraMailSenderBrands`) reads a domain the way a
+hurried eye does — the From domain (`sender-domain-lookalike`) and every
+link's host (`link-domain-lookalike`). It flags a domain that is none of a
+brand's own in four ways:
 
 * **The name padded with phishing words** — the brand's name or keyword
   plus only words such as secure, login, verify, account, support, inbox,
-  billing, update, service, id, my: `paypal-secure-login.com`,
+  billing, update, service, id: `paypal-secure-login.com`,
   `appleidverify.com`. A name beside any other word is a business of its
   own (`applewood-estates.com`, `amazonas-reisen.de`,
-  `paypal-community.com`), and the bare name under another suffix
-  (`paypal.xyz`) is left unclaimed, as the brand table leaves it.
+  `paypal-community.com`) or the brand's own second domain (`redditmail.com`,
+  `cdn.discordapp.com`, `zoomcare.com` is a clinic), and the bare name under
+  another suffix (`paypal.xyz`) is left unclaimed, as the brand table leaves
+  it.
 * **The name misspelt** — look-alike characters (`0` for o, `1` or `i` for
   l, `3` e, `4` a, `5` s, `7` t, `rn` m, `vv` w: `amaz0n`, `paypa1`,
   `rnicrosoft`), a doubled letter (`paypall`, `faceebook`), or — for names of
@@ -342,6 +346,18 @@ three ways:
   (`facebok`). Padded or bare: `faceebookinbox.biz`, `faceboook.com`.
 * **A brand's own domain in front of a foreign one** —
   `paypal.com.account-check.ru`.
+* **The name in letters of another script** — `pаypal.com` with a Cyrillic
+  "а", which travels as `xn--pypal-4ve.com`. Punycode labels are decoded
+  (`DomainToUnicode`, RFC 3492) and every Cyrillic, Greek, accented or
+  full-width letter that looks like a Latin one is read as that letter; a
+  domain whose reading is a brand's own domain, or its name bare or padded
+  with any word, was written to deceive. A domain with a letter that has no
+  Latin look-alike (`москва.рф`, `東京.jp`) is no imitation, nor is one that
+  reads as an ordinary word (`münchen.de`) or as a mailbox provider.
+
+A misspelt or foreign-lettered name may be padded with ordinary words too
+(mail, app, online, my, shop …: `faceboookmail.com`), since no brand
+misspells itself.
 
 Each label is read on its own, so `uncollatednessi.faceebookinbox.biz`
 finds Facebook in its second; a bare name as a host label is no claim

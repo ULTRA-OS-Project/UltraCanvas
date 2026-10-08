@@ -65,6 +65,33 @@
   ("hermes.uni-example.de") or the bare name under another suffix
   ("paypal.xyz"), which the brand table leaves unclaimed on purpose. The
   reading pane tells it as phishing (`BrandImitatedByDomain`).
+- **Brand names in the letters of another script.** "pаypal.com" with a
+  Cyrillic "а" reads exactly like PayPal's domain and travels as
+  `xn--pypal-4ve.com`; only links in such a domain were noticed (as a
+  punycode host), never a sender. Punycode labels are decoded now
+  (`DomainToUnicode`, RFC 3492) and every letter of another script that
+  looks like a Latin one - Cyrillic, Greek, accented and full-width letters
+  - is read as that Latin letter; a domain whose reading is a brand's own,
+  or its name bare or padded with any word, is flagged as written to deceive
+  (the reason says "reads \"pаypal.com\" - PayPal's name written with
+  Cyrillic letters that look like Latin ones"). Real words in other scripts
+  stay clean ("münchen.de", "москва.рф", "東京.jp"), and so does a mailbox
+  provider's name ("gmаil.com" names no brand).
+- **The links are checked the same way.** A button that goes to
+  "faceebook-login.com", "paypa1.com", "paypal-secure-login.com" or the
+  Cyrillic "pаypal.com" is flagged with its label and its host
+  (`link-domain-lookalike`, 40-50 points, a scam on its own; once per host,
+  the sender's own domain being the sender rule's). The older checks of link
+  hosts stay. On a newsletter of 200 links to 60 sites the scan takes about
+  2 ms longer.
+- **A real name is padded with phishing words only.** The look-alike check
+  read "mail", "app", "online", "care", "my" and other ordinary words as
+  padding, so a brand's own second domain that the brand table does not
+  list, or a business named after its trade - "zoomcare.com" (a clinic),
+  "cdn.discordapp.com" - would have been called an imitation; with links
+  checked, that would have reached every newsletter. Those words now pad
+  only a misspelt or foreign-lettered name ("faceboookmail.com"), which no
+  brand does to itself.
 - **Letters in the FBI's, Interpol's or the IMF's name.** The FBI letter was
   caught only by its money story. Now a message that presents itself as a
   government agency or an international organisation - the FBI, Interpol, the
