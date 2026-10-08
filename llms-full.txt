@@ -3706,8 +3706,8 @@ FILE: Docs/GettingStarted.md
 
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.1
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -3883,6 +3883,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -3998,6 +4002,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 
 `Apps/MyApp/main.cpp`
 
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
+
 ```cpp
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
@@ -4088,10 +4094,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -4265,6 +4273,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>
@@ -4308,7 +4326,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 
@@ -17263,6 +17281,46 @@ Rect2Di MyElement::SidebarArea() const {
 
 Drag deltas (`pointer - anchor`) are frame‑independent, so panning logic that
 only uses differences is safe in any frame.
+
+### Which element gets a press
+
+A mouse press (`MouseDown`, `MouseUp`, `MouseDoubleClick`) goes first to the
+innermost interactive element under the pointer. If its `OnEvent` returns
+`false`, the press climbs to that element's parent, then the grandparent, and
+so on — each one gets it with `event.pointer` mapped into *its own* local
+space — until one returns `true`. The climb stops below the window, which
+still gets a press nobody took, once, at the end. A popup is a child of the
+window, so a press inside a popup never reaches what lies under it.
+
+So a container that acts on clicks — a clickable card, a row, a tile — hears
+a click on the label or icon inside it without any extra work, and:
+
+- **Return `true` for a press you acted on**, `false` for one you did not.
+  A press you used but report as untaken goes on to your parents, which may
+  act on it again — clearing a selection or taking the focus is acting on
+  it. A press you have no use for (a middle press on an editor) is better
+  left alone entirely: do not take the focus first, and return `false`.
+  A right press you have no menu for goes on on purpose, so the menu of the
+  element around you can open (a button does this).
+- **A container gets the presses its children did not take**, with the
+  pointer over that child. A view that hit‑tests its own painted content
+  must not treat such a press as a click on whatever is painted under the
+  child.
+- A press whose element left the tree while handling it (a click that
+  closed its row) stops there; the elements it left do not get it.
+- Hit‑testing skips an element that is not interactive
+  (`SetInteractive(false)`) together with everything inside it: the press
+  lands on the element around it directly, and so does the hover — and with
+  it the tooltip.
+- A window event filter (`InstallEventFilter`) sees every step of the climb,
+  `event.targetElement` set to the element of that step — as it already did
+  for the wheel — so a filter that acts on a press must act once, or return
+  `true` to stop the press.
+
+Before October 2026 a press went to the innermost element and then straight
+to the window, so a card answered only on its padding - UltraMail's account
+tiles switched the account from 1 of 14 spots (framework changelog: "A mouse
+press the element under the pointer does not take climbs to its parents").
 
 ---
 
@@ -31523,6 +31581,22 @@ FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 
 # UltraCanvas Image Performance Test Documentation
 
+<!-- doc-check:
+double NowMs();
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
+std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeQOIFile(const std::string& path);
+std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeBMPFile(const std::string& path);
+using Step = std::function<void()>;
+Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
+CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
+std::string outPath; std::string stablePath; int globalIdx; int slot; int activeCount;
+double t0; double t1; double d0; double d1;
+UltraCanvasWindowBase* win; IRenderContext* ctx;
+std::shared_ptr<UltraCanvasImageElement> imageElement;
+-->
+
 ## Overview
 
 The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
@@ -31543,7 +31617,7 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.7
+**Version:** 2.5.9
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -31555,10 +31629,11 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"
+#include "UltraCanvasModalDialog.h"   // FileFilter
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 
@@ -31628,10 +31703,14 @@ struct ImageExportOptions {
 ```cpp
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 public:
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                            long x = 0, long y = 0, long w = 100, long h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                            float x, float y, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
-    bool LoadFromFile(const std::string& filePath);
+    // Both return true when the element shows a valid image. LoadFromFile
+    // goes through UCImage's path-keyed cache unless forceLoad is set.
+    bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     void SetFitMode(ImageFitMode mode);   // Contain, Cover, Stretch, ...
@@ -31690,16 +31769,93 @@ struct CodecResult {
 };
 ```
 
+### Helpers (file-local)
+
+Every timed region reads one monotonic millisecond clock, and every libvips
+codec is saved with the same options builder - the struct defaults already
+carry each codec's quality (85 / 80 / 65 / 50 / ...):
+
+```cpp
+double NowMs() {
+    using namespace std::chrono;
+    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
+}
+
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
+    UCImageSave::ImageExportOptions opt;
+    opt.format = f;
+    opt.preserveMetadata = false;
+    opt.preserveTransparency = true;
+    return opt;
+}
+```
+
+The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
+and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
+success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
+and return whether that worked. All of them live in an anonymous namespace
+in the source file; none is part of the framework.
+
+### CodecComparisonChartElement (the grouped bar chart, file-local)
+
+```cpp
+class CodecComparisonChartElement : public UltraCanvasUIElement {
+public:
+    CodecComparisonChartElement(const std::string& identifier)
+            : UltraCanvasUIElement(identifier) {}
+
+    void SetCodecNames(const std::vector<std::string>& names);   // one bar group per name
+    void SetResults(const std::vector<CodecResult>& newResults);  // the rows so far; repaints
+    void SetThumbnailImages(const std::vector<std::shared_ptr<UltraCanvasImageElement>>& thumbs);
+
+    // Fired from Render() when the chart's bounds changed since the last
+    // paint: the demo moves the thumbnails under their bar groups.
+    std::function<void()> onGeometryChanged;
+
+    // Geometry, for aligning the thumbnails with the bar groups.
+    Rect2Di GetPlotArea() const;
+    int GetGroupCenterX(int index) const;
+    int GetGroupInnerWidth() const;
+    int GetXAxisBottomY() const;
+};
+```
+
+### PanelState (shared by every lambda of the page)
+
+```cpp
+struct PanelState {
+    std::string sourcePath;
+    UCImagePtr  sourceImage;
+    int         sourceWidth = 0;
+    int         sourceHeight = 0;
+    std::vector<CodecResult> results;
+
+    std::shared_ptr<UltraCanvasButton>   chooseBtn;
+    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasLabel>    infoLabel;
+    std::shared_ptr<UltraCanvasLabel>    statusLabel;
+    std::shared_ptr<CodecComparisonChartElement> chartElem;
+    std::shared_ptr<UltraCanvasContainer> thumbsRow;
+    std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
+
+    std::vector<std::string> codecNames;   // chart groups, in display order
+    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    bool benchmarkRunning = false;         // re-entry guard while a run is in flight
+    std::string runStamp;                  // temp-file prefix, new for every run
+};
+auto state = std::make_shared<PanelState>();
+```
+
 ## Events / Callbacks
 
 The benchmark wires up the following user-facing actions:
 
-| Control            | Callback              | Behavior                                                          |
-|--------------------|----------------------|-------------------------------------------------------------------|
-| `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
-| `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
+| Control              | Callback            | Behavior                                                          |
+|----------------------|---------------------|-------------------------------------------------------------------|
+| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
+| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
+| `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
 
@@ -31773,7 +31929,8 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
     state->chartElem->SetResults(state->results);
     resetThumbnails();
 
-    std::string fileName = std::filesystem::path(path).filename().string();
+    // File names are UTF-8 on every platform: never path.string().
+    std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
     std::ostringstream info;
     info << fileName << "  -  " << state->sourceWidth << " x " << state->sourceHeight << " px";
     state->infoLabel->SetText(info.str());
@@ -31797,8 +31954,10 @@ double t1 = NowMs();
 if (err.empty()) {
     r.encodeTimeMs    = t1 - t0;
     r.encodedFilePath = outPath;
-    r.encodedSizeBytes =
-        static_cast<size_t>(std::filesystem::file_size(outPath));
+    std::error_code ec;
+    r.encodedSizeBytes = static_cast<size_t>(
+            std::filesystem::file_size(PathFromUtf8(outPath), ec));
+    if (ec) r.encodedSizeBytes = 0;
 
     // Force eager decode so libvips doesn't lazy-defer the work.
     double d0 = NowMs();
@@ -35806,6 +35965,132 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 };
 ```
 
+### A custom delegate with clickable cells (the domain dashboard)
+
+The DemoApp's *Domain Dashboard* page
+(`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) is a table whose
+cells are more than text: a link, a status, an action, a sparkline, a figure, a
+plan and a row-menu button. A list view does not hold elements per row; one
+`IItemDelegate` paints every cell from the model, and the view's cell
+callbacks make parts of the cells clickable. That is what keeps it fast at any
+size: only the rows on screen are painted (the page's *Add 1,000 domains*
+button shows it).
+
+The model keeps records and answers text and tooltips per column; the delegate
+reads the record directly for what is not text (the sparkline's history):
+
+<!-- doc-check:
+struct DomainRecord { std::string domain; bool active = true; bool insightsEnabled = false; std::vector<float> history; int visitors = 0; std::string plan = "Free"; };
+enum DomainColumn { ColDomain, ColStatus, ColInsights, ColTrend, ColVisitors, ColPlan, ColMenu, ColCount };
+enum { kCellPadding = 10 };
+const Color kLinkColor(0, 102, 204);
+const Color kTextColor(40, 40, 40);
+void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box);
+std::shared_ptr<UltraCanvasListView> list;
+-->
+
+```cpp
+class DomainListModel : public IListModel {
+public:
+    std::vector<DomainRecord> rows;   // domain, active, history, visitors, plan
+    int GetRowCount() const override { return static_cast<int>(rows.size()); }
+    int GetColumnCount() const override { return ColCount; }
+    ListColumnDef GetColumnDef(int column) const override;   // titles, widths, header tooltips
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+    bool SortBy(int column, bool ascending);                  // reorders rows, NotifyDataChanged()
+    void RowChanged(int row) { NotifyRowChanged(row); }
+};
+
+class DomainRowDelegate : public IItemDelegate {
+public:
+    int hoverRow = -1, hoverColumn = -1;
+    bool hoverOnTarget = false;
+
+    void RenderItem(IRenderContext* ctx, const IListModel* model, int row, int column,
+                    const ListItemStyleOption& option) override {
+        const auto* domains = dynamic_cast<const DomainListModel*>(model);
+        if (!domains || row < 0 || row >= domains->GetRowCount()) return;
+        const Rect2Dd cell(option.columnX + kCellPadding, option.rect.y,
+                           option.columnWidth - 2 * kCellPadding, option.rect.height);
+        if (column == ColTrend) {                         // not text: draw it
+            DrawSparkline(ctx, domains->rows[row].history, cell);
+            return;
+        }
+        ctx->SetTextAlignment(option.columnAlignment);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(column == ColDomain ? kLinkColor : kTextColor);   // and status green, ...
+        ctx->DrawTextInRect(GetStringValue(model->GetData({row, column},
+                                           ListDataRole::DisplayRole)), cell);
+    }
+    int GetRowHeight(const IListModel*, int) const override { return 44; }
+
+    // Whether a cell-local point is on what the cell lets you click: the
+    // link's or "Enable"'s text (its width measured while painting), or ⋮.
+    bool OnTarget(const DomainListModel& model, int row, int column, const Point2Di& inCell) const;
+};
+```
+
+The view paints the row background (selection, hover) before the delegate
+runs, so the delegate draws content only. The default selection is a strong
+blue; a dashboard with coloured text sets a light one in its `ListViewStyle`
+(`selectionBackgroundColor`) so the colours stay readable.
+
+Clicks and hover come per cell, with the point inside the cell - the same
+space the delegate painted in - so the handler can tell the link text from the
+empty part of its cell:
+
+```cpp
+struct DashboardState {                                   // what the callbacks share
+    std::shared_ptr<DomainListModel> model;
+    std::shared_ptr<DomainRowDelegate> delegate;
+    UltraCanvasListView* list = nullptr;                  // raw: the view owns the callbacks
+    int sortColumn = -1;
+    bool sortAscending = true;
+    void OpenRowMenu(const std::string& domain, const Point2Di& at);
+};
+auto state = std::make_shared<DashboardState>();
+state->list = list.get();
+
+list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
+    state->delegate->hoverOnTarget = row >= 0 && state->delegate->OnTarget(*state->model, row, column, inCell);
+    state->delegate->hoverRow = row;
+    state->delegate->hoverColumn = column;
+    state->list->SetMouseCursor(state->delegate->hoverOnTarget ? UCMouseCursor::Hand
+                                                               : UCMouseCursor::Default);
+    state->list->RequestRedraw();                         // the link underlines
+};
+list->onCellClicked = [state](int row, int column, const Point2Di& inCell) {
+    if (!state->delegate->OnTarget(*state->model, row, column, inCell)) return;
+    if (column == ColDomain) OpenURL("https://" + state->model->rows[row].domain);
+    if (column == ColMenu)
+        state->OpenRowMenu(state->model->rows[row].domain,
+                           UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
+};
+list->onContextMenu = [state](int row, const UCEvent& event) {   // right-click a row
+    if (row >= 0) state->OpenRowMenu(state->model->rows[row].domain, event.pointerWindow);
+};
+list->onHeaderClicked = [state](int column) {             // the model orders its rows
+    if (column == ColMenu) return;
+    state->sortAscending = state->sortColumn == column ? !state->sortAscending : true;
+    state->sortColumn = column;
+    if (state->model->SortBy(column, state->sortAscending))
+        state->list->SetSortIndicator(column, state->sortAscending);
+};
+```
+
+`state` is a small struct the callbacks share; it holds the list view as a raw
+pointer, because the view owns the callbacks that hold `state` (a
+`shared_ptr` back to the view would be a cycle). The menu's actions find their
+row again by name when they run: sorting or removing rows while a menu is open
+moves the row it was opened on.
+
+What a delegate gives up is a real element per cell: the "Enable" action and
+the ⋮ button are drawn and hit-tested, not `UltraCanvasButton`s, so they do not
+take the keyboard focus one by one - the row does. That is how list views on
+every desktop do it. When each row needs live controls of its own (a text
+field, a slider), use a container of elements instead, for a short list.
+
 ## Keyboard Navigation
 
 | Key                | Action                              |
@@ -35836,6 +36121,7 @@ first Down after it selects the first row.
 
 ## See Also
 
+- DemoApp → *Domain Dashboard* (`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
@@ -46789,6 +47075,25 @@ ctx->Rect(path.x, path.y, path.width, path.height);
 ctx->SetStrokeWidth(strokeWidth);
 ctx->Stroke();
 ```
+
+## Wrapping
+
+```cpp
+auto layout = ctx->CreateTextLayout(text, false);
+layout->SetExplicitWidth(300);              // wraps to 300 px
+layout->SetWrap(TextWrap::WrapWord);        // only to change the default
+```
+
+Every text layout wraps the same way unless told otherwise, whether it came
+from `CreateTextLayout` or from `DrawText` / `DrawTextInRect` (whose mode is
+`TextStyle::wrap`): at word boundaries first, and between two characters
+where a word alone is wider than the line (`TextWrap::WrapWordChar`). A URL,
+a file path or a hash therefore stays inside the width it was given. A
+layout from `CreateTextLayout` used to wrap at words only (Pango's own
+default), so such a word ran on past its width - a tooltip drew a tracking
+link over its own border (framework changelog, "New text layouts wrap a long
+word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
+breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 
 ## Centring text on its capitals
 
@@ -59260,6 +59565,15 @@ this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
 
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
+
 ## Enumerations
 
 ### ToolbarOrientation
@@ -63198,7 +63512,13 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
 

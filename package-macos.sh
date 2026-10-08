@@ -201,6 +201,103 @@ generate_icns() {
     echo "  Generated icon: $(basename "$output_icns")"
 }
 
+# ── Helper: Privacy - camera, microphone, local network ─────────────────────
+#
+# macOS asks the user before an app opens the camera or the microphone, and
+# (from macOS 15) before it reaches the local network; the prompt shows the
+# reason the app's Info.plist gives. A signed app needs two things to open a
+# camera or a microphone, and without either one it cannot:
+#   - the usage description (NSCameraUsageDescription,
+#     NSMicrophoneUsageDescription): TCC terminates an app that opens the
+#     device without one;
+#   - the hardened-runtime entitlement (com.apple.security.device.camera,
+#     com.apple.security.device.audio-input): every app here is signed with
+#     --options runtime, under which the request is refused before the user
+#     is even asked.
+# Neither was written until October 2026, so UltraAuthenticator's QR scan and
+# the demo's recorders could not open a device in the signed, notarized suite.
+# Both now follow from the one line per app below, so they cannot disagree:
+# the reason goes into Info.plist (privacy_plist_entries) and the entitlement
+# into what the app is signed with (write_app_entitlements).
+#
+# Only the apps that open a device are listed. An app that starts recording
+# gets a line here; the text is what the user reads in the prompt, so it says
+# what the app does with the device.
+camera_usage() {
+    case "$1" in
+        UltraAuthenticator) echo "UltraAuthenticator uses the camera to read the QR code of an account you add. No picture is saved." ;;
+        UltraCanvasDemo)    echo "The UltraCanvas Demo shows and records the camera in its video examples." ;;
+    esac
+}
+
+microphone_usage() {
+    case "$1" in
+        UltraCanvasDemo) echo "The UltraCanvas Demo records from the microphone and shows its level in its audio and video examples." ;;
+    esac
+}
+
+# The local network is every app's: an app that prints looks for IPP printers
+# on it (IODeviceManager's printer enumeration browses Bonjour), and
+# DeviceExplorer looks for eSCL scanners as well. NSBonjourServices lists each
+# service type the framework browses - keep it in step with
+# UltraCanvasIODevicePrinterIPP.cpp and UltraCanvasIODeviceScannerESCL.cpp.
+# Apple's TN3179, "Understanding local network privacy", has the rules.
+BONJOUR_SERVICES=(_ipp._tcp _ipps._tcp _uscan._tcp _uscans._tcp)
+
+# $1 with &, < and > escaped for a plist <string>. sed rather than ${s//...}:
+# bash 5.2 reads an & in a substitution's replacement as the matched text.
+xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# The privacy keys of app $1 (display name $2), as Info.plist lines.
+privacy_plist_entries() {
+    local exe_name="$1" display_name="$2" reason service
+    printf '    <key>NSLocalNetworkUsageDescription</key>\n'
+    printf '    <string>%s</string>\n' "$(xml_escape "$display_name looks for printers and scanners on your network and connects to the devices and servers on it that you choose.")"
+    printf '    <key>NSBonjourServices</key>\n'
+    printf '    <array>\n'
+    for service in "${BONJOUR_SERVICES[@]}"; do
+        printf '        <string>%s</string>\n' "$service"
+    done
+    printf '    </array>\n'
+    reason="$(camera_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSCameraUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+    reason="$(microphone_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSMicrophoneUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+}
+
+# Where write_app_entitlements leaves each app's entitlements for
+# codesign_bundle.
+APP_ENTITLEMENTS_DIR=$(mktemp -d)
+
+# Write the entitlements app $1 is signed with: MacOS/entitlements.plist plus
+# the device entitlement of each device the app gives a reason for. A
+# --no-sign run (every pull request) signs ad hoc with the same file
+# (sign_code), so a pull request already carries what the release will.
+write_app_entitlements() {
+    local exe_name="$1"
+    local out="$APP_ENTITLEMENTS_DIR/$exe_name.entitlements"
+    local devices=""
+    cp "$SCRIPT_DIR/$ENTITLEMENTS_PATH" "$out"
+    if [ -n "$(camera_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.camera bool true" "$out"
+        devices+=" camera"
+    fi
+    if [ -n "$(microphone_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.audio-input bool true" "$out"
+        devices+=" microphone"
+    fi
+    plutil -lint "$out"
+    echo "  Entitlements written (devices:${devices:- none})"
+}
+
 # ── Helper: Generate Info.plist ──────────────────────────────────────────────
 
 generate_plist() {
@@ -211,6 +308,9 @@ generate_plist() {
     local version="$5"
     local category="$6"
     local extra_plist_entries="$7"
+
+    local privacy_entries
+    privacy_entries="$(privacy_plist_entries "$exe_name" "$display_name")"
 
     # LSMinimumSystemVersion is not written here: finish_suite adds it once
     # every app and the shared Frameworks/ are in place and their minimum macOS
@@ -247,10 +347,12 @@ generate_plist() {
     <string>Copyright (C) 2026 ULTRA OS Development GmbH. All rights reserved.</string>
     <key>LSApplicationCategoryType</key>
     <string>${category}</string>
+${privacy_entries}
 ${extra_plist_entries}
 </dict>
 </plist>
 PLIST
+    plutil -lint "$plist_path"
     echo "  Generated Info.plist"
 }
 
@@ -613,11 +715,15 @@ codesign_bundle() {
     # Sign the main executable with hardened runtime + secure timestamp
     sign_code "$app_bundle/Contents/MacOS/"*
 
-    # Sign the outer bundle with hardened runtime, secure timestamp, and entitlements
-    sign_code --entitlements "$ENTITLEMENTS_PATH" "$app_bundle"
+    # Sign the outer bundle with hardened runtime, secure timestamp, and the
+    # app's entitlements (write_app_entitlements)
+    sign_code --entitlements \
+        "$APP_ENTITLEMENTS_DIR/$(basename "$app_bundle" .app).entitlements" \
+        "$app_bundle"
 
-    # Verify the final bundle
+    # Verify the final bundle, and log the entitlements it was signed with
     codesign --verify --verbose=4 --strict "$app_bundle"
+    codesign --display --entitlements - "$app_bundle"
 
     echo "  Bundle signed"
 }
@@ -806,9 +912,10 @@ build_app_bundle() {
     # Generate .icns
     generate_icns "$SCRIPT_DIR/$icon_src" "$contents_dir/Resources/AppIcon.icns"
 
-    # Generate Info.plist
+    # Generate Info.plist, and the entitlements codesign_bundle signs with
     generate_plist "$contents_dir/Info.plist" \
         "$exe_name" "$display_name" "$bundle_id" "$VERSION" "$category" "$extra_plist"
+    write_app_entitlements "$exe_name"
 
     # Copy executable
     cp "$exe_path" "$contents_dir/MacOS/$exe_name"
