@@ -9,7 +9,7 @@
 # (or the header it describes). Regenerate from a run over every doc with:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
 Docs/UltraCanvas/AndroidPortInvestigation.md::1
-Docs/UltraCanvas/CHANGELOG.md::66
+Docs/UltraCanvas/CHANGELOG.md::65
 Docs/UltraCanvas/CircleDiagramInfographicVariants.md::5
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::4
 Docs/UltraCanvas/SVGRenderingOptimizationPlan.md::1
@@ -33,7 +33,7 @@ Docs/UltraCanvas/UltraCanvasDiagramRouting.md::1
 Docs/UltraCanvas/UltraCanvasDiagramViewport.md::10
 Docs/UltraCanvas/UltraCanvasDialogKeyboard.md::3
 Docs/UltraCanvas/UltraCanvasDumbbellChart.md::5
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::15
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::12
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::12
 Docs/UltraCanvas/UltraCanvasElementPlugins.md::3
 Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md::3
@@ -48,14 +48,12 @@ Docs/UltraCanvas/UltraCanvasHeatmapChart.md::2
 Docs/UltraCanvas/UltraCanvasHexbinChart.md::3
 Docs/UltraCanvas/UltraCanvasHostFileIcons.md::2
 Docs/UltraCanvas/UltraCanvasIconResource.md::1
-Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md::22
 Docs/UltraCanvas/UltraCanvasKanbanBoard.md::8
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::2
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::1
 Docs/UltraCanvas/UltraCanvasLabelPlacement.md::3
 Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md::7
-Docs/UltraCanvas/UltraCanvasMatrixDiagram.md::3
-Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::11
+Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::7
 Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md::5
 Docs/UltraCanvas/UltraCanvasMediaViewer.md::1
 Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md::4
@@ -72,7 +70,6 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md::1
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::21
 Docs/UltraCanvas/UltraCanvasProgressDialog.md::2
 Docs/UltraCanvas/UltraCanvasPropertyList.md::1
-Docs/UltraCanvas/UltraCanvasRenderContext.md::8
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::5
 Docs/UltraCanvas/UltraCanvasRichTextEdit.md::9
 Docs/UltraCanvas/UltraCanvasScatterPlot3D.md::3
