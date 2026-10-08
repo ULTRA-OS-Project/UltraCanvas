@@ -46,6 +46,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailFeedPublisher.cpp
     engine/UltraMailNewMail.cpp
     engine/UltraMailTrace.cpp
+    engine/UltraMailOneTimeCode.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────

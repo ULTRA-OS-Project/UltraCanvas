@@ -1,3 +1,30 @@
+#### 2026-10-08 *0.10.38*
+- **The mail's text can be selected and copied.** In formatted (HTML) mail a
+  drag selects across the whole message, from paragraph to paragraph as in a
+  browser, a double-click takes a word and a triple-click a paragraph;
+  Ctrl+C copies and Ctrl+A selects the whole message once it has been
+  clicked. The subject, the sender, the recipients and the date can be
+  selected too. A right-click on the text offers Copy and Select All, over
+  formatted and plain-text mail alike. Only one part is highlighted at a
+  time, as on a web page. A link still opens on a click; a drag that starts
+  on a link selects instead. (The framework's selectable labels, see the
+  framework changelog.)
+- **A copy button on sign-in codes.** A one-time code - the code a sign-in,
+  a payment or an address check sends to be typed in elsewhere - gets a copy
+  button: inside the code's own box when the mail puts it in one
+  (Papierkram's "Dein Anmelde-Code"), otherwise in a bar above the message
+  with the code and a Copy button (plain-text mail, a code inside a
+  sentence). A click copies the code - without the spaces of "649 082" - and
+  the button shows a check mark for a moment.
+  - Found in any language: the code by its shape (4 to 10 digits, or
+    capitals and digits, alone or in groups) and the word for "code" beside
+    it or in the subject - Code, código, codice, kod, kód, koodi, код,
+    κωδικός, 验证码, 認証コード, 인증번호, รหัส, رمز, קוד, कोड, OTP, PIN, TAN and
+    more (`UltraMailOneTimeCode.h`).
+  - Numbers that only look like codes get no button: years, prices, times,
+    IP addresses, phone numbers, "#order" numbers, parts of links and
+    addresses, and what follows "postal code", "error code" and the like.
+
 #### 2026-10-08 *0.10.37*
 - **A click anywhere on an account tile switches to that account.** Clicking
   the other account's tile mostly did nothing: the window gave a click to

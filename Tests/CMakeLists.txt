@@ -833,6 +833,29 @@ else()
     message(STATUS "  Utf8FindAllTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== LABEL SELECTION TEST =====
+# Selectable labels and a selection shared by several labels: press, drag,
+# release on text and on links, what is copied, and labels nobody made
+# selectable left as they were. Needs the real framework (the text layout).
+# Skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LabelSelectionTest...")
+    add_executable(LabelSelectionTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LabelSelectionTest.cpp
+    )
+    target_include_directories(LabelSelectionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LabelSelectionTest PRIVATE cxx_std_20)
+    target_link_libraries(LabelSelectionTest PRIVATE UltraCanvas)
+    set_target_properties(LabelSelectionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LabelSelectionTest COMMAND LabelSelectionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LabelSelectionTest")
+else()
+    message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CARET STACKING ORDER TEST =====
 # Where the shared caret lands in the window's compositing order: under a menu
 # opened over it, back on top once the menu closes. Needs the real framework -

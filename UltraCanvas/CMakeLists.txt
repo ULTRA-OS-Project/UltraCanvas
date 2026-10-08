@@ -483,6 +483,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBreadcrumb.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSyntaxTokenizer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabeledToggleBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCheckbox.cpp

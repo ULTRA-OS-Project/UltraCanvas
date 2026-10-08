@@ -21,6 +21,10 @@ its text unless it is given a size.
   borders and rounded corners, padding, margin.
 - **Pango markup** (`SetTextIsMarkup`) and **text links** (`SetTextLinks`).
 - **Inline images** flowing in the text like a browser's `<img>`.
+- **Selectable text** (`SetSelectable`): drag to select, double-click a word,
+  triple-click all of it, Ctrl+C to copy - and with an
+  `UltraCanvasTextSelection` one selection across many labels, as in a
+  browser.
 - **Events:** click, hover, link activated and hovered, text changed.
 - **Disabled look:** `disabledTextColor` while the label `IsDisabled()`.
 
@@ -199,6 +203,91 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
+### Selectable text
+
+A label's text can be selected and copied the way text on a web page can.
+It is off by default - a caption beside a control should not take the press
+meant for the control.
+
+```cpp
+void SetSelectable(bool selectable);   // a selection of its own
+bool IsSelectable() const;
+void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);   // a shared one
+const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const;
+
+void SetSelectedRange(int startByte, int endByte);   // an end past the text = its end
+void ClearSelectedRange();
+bool HasSelectedRange() const;
+int GetSelectionStart() const;
+int GetSelectionEnd() const;
+std::string GetSelectedText();     // as a reader copies it
+std::string GetRenderedText();     // markup parsed, entities decoded
+int TextIndexAtPoint(const Point2Df& localPoint);   // nearest text position, -1 before the first layout
+std::pair<int, int> WordRangeAt(int byteIndex);     // [first, second)
+```
+
+On a selectable label:
+
+- **A drag selects**, a **double-click** takes the word under the pointer (a
+  dot or apostrophe between letters stays in it: `example.com`, `don't`), a
+  **triple-click** the whole text, and **Shift+click** extends the selection.
+- **Ctrl+C** (or Ctrl+Insert, or Cmd+C) copies, **Ctrl+A** selects all. The
+  pressed label takes the keyboard focus for them; only that one label of a
+  selection accepts the focus, so a page of paragraphs is one stop in the Tab
+  order, not one per paragraph.
+- The highlight is drawn under the text in `LabelStyle::selectionColor`.
+- `GetSelectedText()` leaves out the U+FFFC placeholders of inline images and
+  soft hyphens, and copies a no-break space as a plain space.
+- A **text link** opens when the button is released on it without having
+  dragged, rather than on the press - otherwise a drag that starts on a link
+  could never select it. A label with `onClick` stays a button: a press on it
+  clicks, it does not select.
+- The pointer is the text I-beam over the label (the hand over a link).
+- Byte offsets are those of the rendered text, as for links and inline
+  images. `SetText` and `SetTextIsMarkup` clear the selection.
+
+```cpp
+auto address = CreateLabel("address", "anna.berg@example.com");
+address->SetSelectable(true);   // the reader can copy the address
+```
+
+#### One selection across many labels
+
+`UltraCanvasTextSelection` (`UltraCanvasTextSelection.h`) is a selection that
+several labels share, in reading order. A drag that starts in one label runs
+on through the next ones, and a copy joins their parts: a line break between
+labels above one another, a tab between labels side by side (the cells of a
+table row). Create it with `std::make_shared` - every label keeps it alive,
+while it holds the labels weakly and a label leaves it as it is destroyed.
+
+```cpp
+auto selection = std::make_shared<UltraCanvasTextSelection>();
+selection->AddLabel(*subject);          // the order added is the reading order
+selection->AddLabel(*sender);
+selection->AddLabelsIn(*articleRoot);   // every label below, depth first
+
+selection->onContextMenu = [](const UCEvent& event) {
+    // A right-click on one of the labels: show Copy / Select All.
+};
+bool any = selection->HasSelection();
+std::string text = selection->GetSelectedText();
+selection->CopyToClipboard();
+selection->SelectAll();
+selection->ClearSelection();
+```
+
+- With the pointer between labels, the selection runs to the nearest text: a
+  label beside the pointer on its line, otherwise the end of the last label
+  above it. Dragged past the top or bottom of the scroll view the labels sit
+  in, that view scrolls, faster the further the pointer is past its edge.
+- A right-click inside the selection keeps it (for the menu's Copy); outside
+  it, it clears it first. `onContextMenu` is then called - a right-click on
+  a selectable label never opens a link. `onSelectionChanged` is raised
+  whenever what is selected changes.
+- `HTML::BuildOptions::selectableText` gives every label of a tree built from
+  HTML one such selection (`HTML::BuildResult::textSelection`); UltraMail
+  selects a mail's body that way.
+
 ## Event Callbacks
 
 ```cpp
@@ -211,6 +300,10 @@ std::function<void(const std::string&)> onTextChanged;    // after SetText chang
 std::function<void(const std::string&)> onLinkActivated;
 std::function<void(const std::string&)> onLinkHovered;
 ```
+
+In a selectable label (`SetSelectable`) `onLinkActivated` fires when the
+button is released on the link it was pressed on, without a drag that
+selected text in between.
 
 `SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
 beside the pointer, following it along the link and hidden again as the
