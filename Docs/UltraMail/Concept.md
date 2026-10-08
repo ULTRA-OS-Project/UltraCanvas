@@ -185,7 +185,10 @@ reading window, no Toolbox grid — laid out from UltraCanvas elements:
   row shows it on the right.
 - **Message** group box: the `MessagePreview` — subject, from, to, date,
   a Reply button, the body (HTML rendered through HTMLReader / CSSLayout,
-  plain text in a read-only text area) and the attachment strip.
+  plain text in a read-only text area) and the attachment strip, shown
+  only when the message has attachments. The HTML body sits in a page as
+  wide as the visible pane (less the vertical scrollbar), so a message's
+  percentage widths are taken from what the reader sees.
 - Both boxes sit in an `UltraCanvasSplitPane`; the whole account view is
   a flex column sized to the window, so it follows a resize.
 

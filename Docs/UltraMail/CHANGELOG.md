@@ -27,6 +27,24 @@
   (a press nobody under the pointer took goes on to the row), with no change
   in UltraMail's code.
 
+#### 2026-10-08 *0.10.36*
+- **The message fills the pane.** Two things kept a message's body from
+  using the space it is given:
+  - **No empty band under the mail.** The attachment strip under the body
+    kept its 42 px, and the pane's gap above it, for every message - with
+    no attachment in it as well. It is hidden now while a message has no
+    attachments, and the body reaches the bottom of the pane.
+  - **No sideways scrolling by the scrollbar's width.** A newsletter whose
+    body asks to be at least as wide as the window (`min-width: 100%`, as
+    Reddit's digest does) was measured against the whole pane, including
+    the 12 px under the vertical scrollbar, so it scrolled sideways by
+    exactly that much and its centred layout sat off-centre. The body now
+    sits in a page as wide as the visible pane, the way a browser's window
+    works, so every width the message's CSS gives in percent is taken from
+    what the reader can see. Mails that do not ask for that (most) looked
+    right before and still do; content that really is wider than the pane
+    (a fixed-width table, a large picture) still gets its horizontal bar.
+
 #### 2026-10-07 *0.10.35*
 - **The window first, with the mail in it.** UltraMail opens its window as
   soon as it can show the stored mail - the accounts, the folder tree, the
