@@ -20,3 +20,6 @@
   `CMakeLists.txt` give the same two exports. The sysroot is cached as soon
   as it is built rather than only when the whole job passes, so a failure
   in the demo no longer costs the next run a 20-minute rebuild.
+- **CI: the WebAssembly demo builds with one job per core.** A bare
+  `cmake --build --parallel` is `make -j` without a limit, and the demo's
+  build ran out of memory with hundreds of compilers at once.
