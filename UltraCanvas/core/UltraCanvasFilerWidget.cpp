@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.37.0 - an .html file's preview is the page as a browser lays it out
+//                  (HTML::ExtractPlainText, PlainTextLayout::Lines): a line per
+//                  paragraph, hidden text left out; TextPreviewLines (public)
 // Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
@@ -1288,10 +1291,10 @@ namespace UltraCanvas {
             }
         }
 
-        // Text of a markup document with the tags removed. `breakTags` names
-        // the elements that end a preview line (paragraphs, headings, rows);
-        // everything else is treated as inline. `<script>` / `<style>` bodies
-        // are dropped so an HTML preview shows the page, not its code.
+        // Text of a spreadsheet's XML (a cell, a shared string) with the tags
+        // removed. `breakTags` names the elements that end a preview line
+        // (an ODS cell's text:p); everything else is treated as inline. HTML
+        // is not read here: it goes through HTML::ExtractPlainText.
         void MarkupToPreviewLines(const std::string& markup,
                                   const std::vector<std::string>& breakTags,
                                   std::vector<std::string>& lines) {
@@ -1314,13 +1317,7 @@ namespace UltraCanvas {
                 std::string name = tag.substr(0, tag.find_first_of(" \t\r\n/"));
                 std::transform(name.begin(), name.end(), name.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                if (!closing && (name == "script" || name == "style")) {
-                    const std::string closeTag = "</" + name;
-                    size_t skip = markup.find(closeTag, i);
-                    i = (skip == std::string::npos) ? markup.size() : skip;
-                    continue;
-                }
-                if (isBreakTag(name) || name == "br") {
+                if (isBreakTag(name)) {
                     AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
@@ -1560,9 +1557,12 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "html" || ext == "htm") {
-                MarkupToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
-                                     {"p", "div", "li", "tr", "h1", "h2", "h3",
-                                      "h4", "h5", "h6", "title"}, lines);
+                // The page as a browser lays it out: a line per paragraph,
+                // list item or table row, its cells a tab apart, the head,
+                // scripts and hidden text left out.
+                SplitPreviewLines(HTML::ExtractPlainText(ReadFileHead(path, kPreviewReadBytes),
+                                                         HTML::PlainTextLayout::Lines),
+                                  lines);
                 return true;
             }
             if (ext == "rtf") {
@@ -11216,6 +11216,13 @@ namespace UltraCanvas {
             if (previews.size() >= kFolderPreviewCount) break;
         }
         return previews;
+    }
+
+    bool UltraCanvasFilerWidget::TextPreviewLines(const std::string& path,
+                                                  std::vector<std::string>& lines,
+                                                  bool& tabular) {
+        lines.clear();
+        return ExtractTextPreview(path, lines, tabular);
     }
 
     std::vector<Rect2Di> UltraCanvasFilerWidget::FolderPreviewCardRects(

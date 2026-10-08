@@ -1,6 +1,6 @@
 # Tests/FilerTests.cmake
-# FilerFolderPreviewTest, FilerNameEncodingTest, FilerHostIconsTest,
-# FilerShortcutEntryTest and FilerHistoryTest. Included by
+# FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
+# FilerHostIconsTest, FilerShortcutEntryTest and FilerHistoryTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
 # which builds no full test suite, runs the file display against Thai, CJK and
@@ -44,6 +44,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFolderPreviewTest")
 else()
     message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER TEXT PREVIEW TEST =====
+# The page a document's preview card shows (TextPreviewLines): an .html file
+# as a browser lays it out (HTML::ExtractPlainText's Lines layout) - a line
+# per paragraph, list item and table row, the head, scripts and hidden text
+# left out - plain text line for line, CSV as rows of cells.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerTextPreviewTest...")
+    add_executable(FilerTextPreviewTest
+        ${_FT_DIR}/FilerTextPreviewTest.cpp
+    )
+    target_include_directories(FilerTextPreviewTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerTextPreviewTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerTextPreviewTest PRIVATE UltraCanvas)
+    set_target_properties(FilerTextPreviewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerTextPreviewTest COMMAND FilerTextPreviewTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerTextPreviewTest")
+else()
+    message(STATUS "  FilerTextPreviewTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== FILER NAME ENCODING TEST =====
