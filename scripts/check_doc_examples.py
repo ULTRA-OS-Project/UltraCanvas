@@ -35,10 +35,13 @@ an HTML comment (not rendered):
 A function is declared for every block; a variable is given to the blocks
 that use it without declaring it. A line of the comment that starts with
 `#define` defines a macro the build would (`#define MYAPP_VERSION "1.0.0"`
-for a `target_compile_definitions`). A snippet's `#include <...>` is
-honoured where this machine has the header, and its `#if` / `#ifdef` /
-`#else` / `#endif` and `#define` lines stay where they are, so code for
-another platform (`#ifdef _WIN32 ... WinMain ... #endif`) is left out.
+for a `target_compile_definitions`). A snippet's `#include <...>` or
+`#include "..."` is honoured where this machine has the header (the include
+paths cover the plugin directories, so a plugin header such as
+`#include "UltraCanvasVectorConverter.h"` resolves), and its `#if` /
+`#ifdef` / `#else` / `#endif` and `#define` lines stay where they are, so
+code for another platform (`#ifdef _WIN32 ... WinMain ... #endif`) is left
+out.
 
 Missing `#include` targets are reported too.
 
@@ -55,6 +58,7 @@ Exit status 1 when a doc has findings.
 #                 doc-check comment can #define a macro, and prose may name
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
+# Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
 # Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 
@@ -956,9 +960,9 @@ class Doc:
             out.append(macro)
         for b in self.blocks:
             for kind, i, j in b.chunks:
-                m = re.match(r"\s*#\s*include\s*<([^>]+)>", b.lines[i]) if kind == "pp" else None
+                m = re.match(r"\s*#\s*include\s*(<[^>]+>|\"[^\"]+\")", b.lines[i]) if kind == "pp" else None
                 if m:
-                    out += ["#if __has_include(<%s>)" % m.group(1), "#include <%s>" % m.group(1), "#endif"]
+                    out += ["#if __has_include(%s)" % m.group(1), "#include %s" % m.group(1), "#endif"]
         for b in self.blocks:
             code = [c for c in b.chunks if c[0] != "pp"]
             if not code:

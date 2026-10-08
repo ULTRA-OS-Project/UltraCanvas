@@ -5,7 +5,8 @@
 // the window opens, so it opens on the start page: what the sections hold.
 // Pages: Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
-// opens the colour picker in a popup window), Display > Home folder (what the
+// opens the colour picker in a popup window, and the tree's width - fitted
+// to its rows or fixed), Display > Home folder (what the
 // Home folder shows), Display > Files (whether hidden files are listed),
 // Display > File extensions (whether a displayed name
 // still ends in its extension, and whether a thumbnail tile carries that
@@ -38,8 +39,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.15.0
-// Last Modified: 2026-10-06
+// Version: 1.16.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -59,6 +60,7 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasSpinner.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTrash.h"   // TrashDisplayName
@@ -67,6 +69,7 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -151,6 +154,11 @@ namespace {
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
         std::shared_ptr<UltraCanvasButton> selectedColorBox;
+        // ... and the tree's width: fitted to its rows, or [ 280 px ].
+        std::shared_ptr<UltraCanvasRadio>   treeFitRadio;
+        std::shared_ptr<UltraCanvasRadio>   treeFixedRadio;
+        UltraCanvasRadioGroup               treeWidthGroup;
+        std::shared_ptr<UltraCanvasSpinner> treeWidthSpinner;
 
         // Display > Home folder: what the Home folder shows.
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
@@ -677,7 +685,8 @@ namespace {
 
     std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-treeview", "Treeview",
-                "Colours of the folder tree on the left of the main window:");
+                "Colours and width of the folder tree on the left of the main "
+                "window:");
 
         d->driveColorBox = MakeColorBox("ufl-set-tv-drive-color",
                 d->settings->treeDriveBackgroundColor,
@@ -719,22 +728,82 @@ namespace {
         parts.body->AddChild(MakeColorRow("ufl-set-tv-selected-row",
                 "Selected folder colour:", d->selectedColorBox));
 
+        // ----- the tree's width: fitted, or [ 280 px ] -----
+        AddBodyCaption(parts, "ufl-set-tv-width-caption",
+                       "Width of the folder tree:");
+        const bool fit = d->settings->treeWidthAuto;
+        d->treeFitRadio = MakeChoice("ufl-set-tv-width-fit",
+                "Auto - 10 px wider than the longest name shown", fit);
+        d->treeFixedRadio = MakeChoice("ufl-set-tv-width-fixed", "Fixed width:",
+                                       !fit, 110);
+        d->treeWidthGroup.AddRadioButton(d->treeFitRadio);
+        d->treeWidthGroup.AddRadioButton(d->treeFixedRadio);
+        d->treeWidthGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->treeWidthAuto = (selected == d->treeFitRadio);
+            ApplyAndSave(d);
+        };
+
+        d->treeWidthSpinner = CreateIntSpinner("ufl-set-tv-width", 0, 0, 90,
+                static_cast<float>(kControlHeight),
+                UltraFilerSettings::kMinTreeWidth,
+                UltraFilerSettings::kMaxTreeWidth,
+                d->settings->treeFixedWidth, 10);
+        d->treeWidthSpinner->SetSuffix(" px");
+        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = kTextFontSize;
+        d->treeWidthSpinner->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Setting a width is choosing a fixed one.
+        d->treeWidthSpinner->onValueChanged = [d](double value) {
+            if (d->syncing || !d->settings) return;
+            d->settings->treeFixedWidth = static_cast<int>(std::lround(value));
+            if (d->settings->treeWidthAuto) {
+                d->settings->treeWidthAuto = false;
+                d->syncing = true;
+                d->treeWidthGroup.SelectButton(d->treeFixedRadio);
+                d->syncing = false;
+            }
+            ApplyAndSave(d);
+        };
+
+        auto fixedRow = std::make_shared<UltraCanvasContainer>(
+                "ufl-set-tv-width-fixed-row");
+        fixedRow->layout.SetFlexRow().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        fixedRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        fixedRow->AddChild(d->treeFixedRadio);
+        fixedRow->AddChild(d->treeWidthSpinner);
+        parts.body->AddChild(d->treeFitRadio);
+        parts.body->AddChild(fixedRow);
+
         AddNote(parts, "ufl-set-tv-note1",
                 "Click a colour box to pick a colour. The folder tree shows "
                 "the colour while it is being picked; Cancel puts the previous "
                 "one back.");
+        AddNote(parts, "ufl-set-tv-note2",
+                "Auto fits the tree to the drives and folders it shows, and "
+                "fits it again whenever a branch is opened or closed or a "
+                "drive comes or goes - up to 600 px, and never so wide that "
+                "the file display falls below its own minimum. Dragging the "
+                "divider still resizes the tree for the moment.");
 
-        d->resets[kPageTreeview] = PageReset{"Restore default colours", 170,
+        d->resets[kPageTreeview] = PageReset{"Restore defaults", 170,
                 [d]() {
             if (!d->settings) return;
             d->settings->treeDriveBackgroundColor =
                     UltraFilerSettings::kDefaultTreeDriveBackgroundColor;
             d->settings->treeSelectedFolderColor =
                     UltraFilerSettings::kDefaultTreeSelectedFolderColor;
+            d->settings->treeWidthAuto = true;
+            d->settings->treeFixedWidth = UltraFilerSettings::kDefaultTreeWidth;
             SetColorBoxColor(d->driveColorBox,
                              d->settings->treeDriveBackgroundColor);
             SetColorBoxColor(d->selectedColorBox,
                              d->settings->treeSelectedFolderColor);
+            d->syncing = true;
+            d->treeWidthGroup.SelectButton(d->treeFitRadio);
+            d->treeWidthSpinner->SetValue(d->settings->treeFixedWidth);
+            d->syncing = false;
             ApplyAndSave(d);
         }};
 

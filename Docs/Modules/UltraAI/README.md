@@ -52,6 +52,7 @@ tests run without any network or external model.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
+| *text-LLM translator* | `ITranslator` through any `ITextLLM` above, under that provider's id (`anthropic`, `openai`, `qwen`, `llama-cpp`, …) | wherever the LLM runs | always built (`UltraAITextLLMTranslator.h`) |
 
 `Docs/Modules/UltraAI/Adapters.md` documents each adapter's configuration,
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
@@ -98,6 +99,7 @@ UltraAI/
 │   ├── UltraAIImageGen.h
 │   ├── UltraAIVisionAnalyzer.h
 │   ├── UltraAITranslator.h
+│   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
 │   └── UltraAICodeAssist.h
@@ -187,7 +189,8 @@ cmake -S UltraAI -B build \
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
-| Unit tests | Complete (11 executables, all passing) |
+| Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
+| Unit tests | Complete (12 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---

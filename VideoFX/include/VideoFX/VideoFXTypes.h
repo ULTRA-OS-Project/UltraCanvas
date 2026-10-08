@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
@@ -356,6 +356,9 @@ struct VideoFXSegment {
     // faces, typically. The zoom goes no closer than holds them all (with a
     // little headroom) and the pan stays around them.
     std::vector<VideoFXRect> keepInView;
+    // Image: with no keepInView given, find the faces with VideoFX's built-in
+    // detector (VideoFX_DetectFaces) and keep those in shot
+    bool keepFacesInView = false;
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
     // A photo / PNG / any image FFmpeg decodes, shown for `seconds`; JPEG
@@ -536,6 +539,9 @@ struct VideoFXSlideshowOptions {
     // analyser, the operating system, or a tap in the UI - asked once per
     // image that has none above. Gets the image as it is shown and its index.
     std::function<std::vector<VideoFXRect>(const VideoFXFrame& image, size_t index)> findKeepInView;
+    // ...and for the rest, VideoFX's own face detector: on by default, so a
+    // slideshow keeps faces in shot without any code. false = plain motion.
+    bool keepFacesInView = true;
     int beatsPerImage = 0;                      // > 0: every image lasts exactly this many beats (4 = a bar
                                                 // in 4/4); implies beatSync. 0..64
 };

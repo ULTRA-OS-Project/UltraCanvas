@@ -115,6 +115,7 @@ their *License* is likewise marked **—** (OS component).
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
+| OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
 | OpenJPEG (openjp2) | [openjpeg.org](https://www.openjpeg.org/) | [github.com/uclouvain/openjpeg](https://github.com/uclouvain/openjpeg) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | OpenSSL | [openssl.org](https://www.openssl.org/) | [github.com/openssl/openssl](https://github.com/openssl/openssl) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
@@ -149,7 +150,8 @@ their *License* is likewise marked **—** (OS component).
 | zlib | [zlib.net](https://zlib.net/) | [github.com/madler/zlib](https://github.com/madler/zlib) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | zstd | [facebook.github.io/zstd](https://facebook.github.io/zstd/) | [github.com/facebook/zstd](https://github.com/facebook/zstd) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 
-> qrcodegen, miniz, KissFFT and miniaudio are **bundled** (vendored in-tree); the
+> qrcodegen, miniz, KissFFT, miniaudio and OpenCV's frontal-face Haar cascade
+> (data only, for VideoFX) are **bundled** (vendored in-tree); the
 > links above point to their upstream projects for reference and updates.
 
 ---
@@ -506,6 +508,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Probe, decode, effects (libavfilter), encode, mux | FFmpeg ≥ 4.4 — libavformat, libavcodec, libavfilter, libavutil, libswscale (optional) | FFmpeg (optional) | FFmpeg (optional) |
+| Face detection (slideshows keeping faces in shot) | OpenCV's frontal-face Haar cascade (bundled data; VideoFX's own evaluator, no OpenCV linked) | the same | the same |
 
 > Found through pkg-config and linked as shared system libraries, never
 > vendored; no FFmpeg type appears in a VideoFX public header. Without it the

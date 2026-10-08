@@ -1,3 +1,13 @@
+#### 2026-10-07 *0.2.10*
+- **Save as keeps the file type you chose.** Save as added `.png` to a name
+  typed without an extension, whatever type was chosen: "photo" with JPEG
+  chosen was saved as a PNG called `photo.png`, after the dialog had asked
+  about replacing "photo" rather than that file. The save dialog now gives
+  the name the chosen type's extension itself (UltraCanvas 0.9.176, PR #694),
+  so UltraPaint saves the name it hands back as it is. A name without an
+  extension saved under "All files" is refused with a message saying it
+  needs one, instead of quietly becoming a PNG.
+
 #### 2026-10-06 *0.2.9*
 - **Paste takes an image file copied in a file manager.** Copying a picture
   file in UltraFiler, Explorer, Finder or Files and pressing Ctrl+V in

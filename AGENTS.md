@@ -252,8 +252,13 @@ back-reference raw — `[button = button.get(), status]` — which is valid for 
 long as the callback can run, because the thing holding the callback is the
 thing being pointed at. Captures pointing the other way (a popup the lambda
 keeps alive, a sibling it updates, `make_shared` state) are ownership, not a
-cycle, and stay `shared_ptr`. `scripts/check_callback_cycles.py` enforces this
-and runs in CI; a genuine exception opts out with
+cycle, and stay `shared_ptr`. It makes no difference where the `shared_ptr`
+came from or how the lambda is stored: a parameter the function was handed
+(`AddRadioButton(std::shared_ptr<UltraCanvasRadio> button)` storing
+`[this, button]` on `button` leaked every radio), a setter
+(`x->SetOnClick(...)`) as much as an assignment (`x->onClick = ...`), and
+`[=]` or `[p = x]` as much as `[x]`. `scripts/check_callback_cycles.py`
+enforces this and runs in CI; a genuine exception opts out with
 `// callback-cycle-exempt: <why>`.
 
 ## Building and testing
@@ -283,7 +288,10 @@ alongside the existing deps. The build uses the system default linker (GNU ld,
 same as CI); with a newer Clang on an older distro it automatically drops to
 DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
-The full 3-OS dependency lists are in `.github/workflows/build.yml`.
+The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
+installs Ubuntu packages with `scripts/ci-apt.sh install`, not
+`sudo apt-get install`: it stops and retries a download that has stopped
+dead, which apt itself waits out for as long as the job lasts.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 

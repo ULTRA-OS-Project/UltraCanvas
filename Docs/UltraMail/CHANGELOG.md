@@ -1,4 +1,4 @@
-#### 2026-10-07 *0.10.35*
+#### 2026-10-08 *0.10.37*
 - **A click anywhere on an account tile switches to that account.** Clicking
   the other account's tile mostly did nothing: the window gave a click to
   the innermost element under the pointer and to no other, and the tile's
@@ -26,6 +26,78 @@
   the row's edges and its count answered. Fixed by the same framework change
   (a press nobody under the pointer took goes on to the row), with no change
   in UltraMail's code.
+
+#### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
 
 #### 2026-10-07 *0.10.34*
 - **New mail shows a notification on the screen.** When a sync brings new

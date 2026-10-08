@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.15.1 - each step of showing a message in the timing trace
+//                  (UltraMailTrace.h)
 // Version: 0.15.0 - [DMARC] [DKIM] [SPF] in the header: the sender checks the
 //                   receiving server made, a bordered label each, details as
 //                   tooltips; a verified sender in the sender's tooltip
@@ -24,10 +26,11 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
+#include "UltraMailTrace.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -50,6 +53,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -531,9 +535,13 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (!bodyHost_) return;
     if (&body != &lastBody_) lastBody_ = body;
     lastIsHtml_ = isHtml;
+    std::optional<Trace::Stage> step;
+    step.emplace("Remove the last message's body", 0);
     bodyHost_->ClearChildren();
     // The links the reader can check before clicking one.
+    step.emplace("Links in the message, for the status line", 0);
     if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
+    step.reset();
 
     // Settings > Reading > "as plain text": no layout and nothing fetched.
     if (isHtml && showHtml) {
@@ -556,7 +564,10 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         };
         opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
+        step.emplace("HTML body (" + std::to_string(body.size() / 1024) +
+                     " KB): elements, styles, pictures", 0);
         HTML::BuildResult r = builder.Build(body, opts);
+        step.reset();
         if (r.root) {
             // Host the tree in a dedicated scroll container (the proven pattern
             // from UltraCanvasEBookViewer): a plain container sized by the flex
@@ -592,6 +603,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     }
 
     // The text area is sized by the host's flex column, so it follows the pane.
+    step.emplace("Plain-text body (" + std::to_string(body.size() / 1024) + " KB)", 0);
     auto text = std::make_shared<PlainBodyArea>("prevBodyText", 0, 0, 0, 0);
     text->onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href);
@@ -905,6 +917,8 @@ void MessagePreview::IconCached(const std::string& key) {
 }
 
 void MessagePreview::Show(const MessageEnvelope& env) {
+    std::optional<Trace::Stage> step;
+    step.emplace("Header fields", 0);
     hasMessage_ = true;
     ++showToken_;
     curHtml_.clear();
@@ -957,6 +971,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
+    step.emplace("Load and decode the body (.eml)", 0);
     fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
                   / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
@@ -996,6 +1011,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Who the message is from, in the same badge the list row wears, and the
     // warning strip when the scan found something.
+    step.emplace("Scam and spam scan, sender badge, sender checks", 0);
     const MessageSecurity security = SecurityFor(env, raw);
     const SenderStatus    status   = badges_.Classify(env, security, junkFolder_);
     if (avatarHost_) {
@@ -1030,6 +1046,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // The body, with its images: the message's own always, remote ones when
     // the reader has allowed this sender - never for a suspicious message.
+    step.emplace("Body", 0);
     if (havePending) {
         remoteDangerous_ = status.Dangerous() || junkFolder_;
         remoteAllowed_ = !remoteDangerous_ && remoteImagesAllowed &&
@@ -1039,6 +1056,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
             inlineImages_ = CollectInlineImages(raw);
         }
         RenderBody(pendingBody, pendingHtml);
+        step.emplace("Start loading pictures from the web", 0);
         if (remoteAllowed_ && !blockedRemote_.empty()) {
             remoteAllowed_ = false;      // FetchRemoteImages sets it once loaded
             FetchRemoteImages();
@@ -1047,6 +1065,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         }
     }
     UpdateRemoteBar();
+    step.reset();
 
     // Capture the selection for a possible Reply (decoded, so the quoted reply
     // header and Re: subject read correctly).

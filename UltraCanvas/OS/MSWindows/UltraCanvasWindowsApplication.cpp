@@ -1,7 +1,9 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.5.0 - the system fonts are not waited for: with a cold font cache the
+//                  start goes on with the bundled fonts and Windows' symbol fonts
 // Version: 1.4.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-07-20
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 // winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
@@ -1009,6 +1011,15 @@ namespace UltraCanvas {
     void UltraCanvasWindowsApplication::LoadBundledFontsNative() {
         const std::string dir = GetBundledFontsDir();
 
+        // The system fonts are scanned on a thread (SetupBundledFontconfig).
+        // With a warm font cache the scan ends within this wait and its full
+        // set is used from the start, as before. With a cold one - which
+        // opens every file in C:\Windows\Fonts and takes many seconds - the
+        // start goes on with the bundled fonts, and the windows switch to the
+        // full set when the scan ends.
+        constexpr int kSystemFontsWaitMs = 400;
+        const bool systemFonts = AdoptSystemFontsWithin(kSystemFontsWaitMs);
+
         FcConfig* cfg = FcConfigGetCurrent();
 
         // Packaged builds ship no fonts.conf, so the current FcConfig usually
@@ -1059,6 +1070,26 @@ namespace UltraCanvas {
                 if (!FcConfigAppFontAddFile(cfg,
                         reinterpret_cast<const FcChar8*>(path.c_str()))) {
                     debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+                }
+            }
+        }
+
+        // Starting before the system fonts: the bundled ones lack symbols the
+        // UI draws (● ↩ ✓ ▲ ▼ ←) and every emoji, so Windows' two symbol fonts
+        // are added by file - two files, not the whole folder - until the
+        // full set arrives.
+        if (!systemFonts && cfg) {
+            wchar_t windowsDir[MAX_PATH] = {};
+            const UINT n = GetWindowsDirectoryW(windowsDir, MAX_PATH);
+            if (n > 0 && n < MAX_PATH) {
+                const std::string fontsDir = Utf16ToUtf8(std::wstring(windowsDir, n)) + "\\Fonts\\";
+                for (const char* name : { "seguisym.ttf", "seguiemj.ttf" }) {
+                    const std::string path = fontsDir + name;
+                    std::error_code fontEc;
+                    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path), fontEc)) continue;
+                    if (!FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()))) {
+                        debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+                    }
                 }
             }
         }

@@ -200,10 +200,32 @@ never resized, to hold them, so the faces stay in shot through the whole move
 and not just at its ends. A `Still` photo stays still but looks at them —
 the band of a tall photo a `Cover` crop shows is the one with the faces.
 
-VideoFX does not find faces itself. An application plugs its own detector
-into the slideshow: UltraAI's vision analyser (`VisionTask::FaceDetection`),
-the operating system's (Vision on macOS, `Windows.Media.FaceAnalysis`), or a
-tap in its own UI. It is asked once per photo that has no regions given:
+**Faces found for you.** A slideshow finds the faces itself
+(`keepFacesInView`, on by default), and a photo segment does when its
+`keepFacesInView` is set. `VideoFX_DetectFaces(image, faces)` gives the
+detector on its own — it works without FFmpeg too:
+
+```cpp
+std::vector<VideoFXRect> faces;
+VideoFX_DetectFaces(photo, faces);              // fractions of the photo, largest first
+```
+
+It is a Viola-Jones detector running OpenCV's trained frontal-face model
+(`haarcascade_frontalface_alt`, compiled in; VideoFX's own code evaluates it,
+no OpenCV is linked) and finds what OpenCV's `CascadeClassifier` finds:
+faces looking roughly towards the camera, from about 1/40 of the photo's
+longer side upwards, in some 0.1–0.2 s a photo. Profiles, heads tilted far
+over and faces behind sunglasses or masks are often missed. The model's
+stray hits on clothing and textures are thinned out: in a colour photo a box
+needs skin colour in its middle, and one that too few overlapping windows
+agree on is dropped. A black and white photo cannot use the skin test, so an
+occasional stray box survives there; it only makes the move frame a little
+more of the picture. Set `keepFacesInView = false` for plain motion.
+
+An application with a better detector plugs it in instead: UltraAI's vision
+analyser (`VisionTask::FaceDetection`), the operating system's (Vision on
+macOS, `Windows.Media.FaceAnalysis`), or a tap in its own UI. It is asked
+once per photo that has no regions given, and wins over the built-in one:
 
 ```cpp
 VideoFXSlideshowOptions options;
@@ -616,6 +638,8 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
 videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
+videofx slideshow trip.mp4 *.jpg --no-faces                # plain motion, no face finding
+videofx faces family.jpg                                 # the faces the detector finds
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
@@ -653,6 +677,7 @@ generates its own clips, so it needs no media files.
 | 3b | Song lists, each song crossfading into the next | **Done** |
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
+| 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

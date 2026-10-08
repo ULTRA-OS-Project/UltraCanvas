@@ -77,6 +77,16 @@ The desktop's quick panel starts UltraClipboard for what does not fit in it:
 The desktop looks for `UltraClipboard` next to its own executable first, then
 on `PATH`.
 
+There is one UltraClipboard at a time. A start while it is open - from the
+panel, the app starter or the command line - hands its search or its entry
+to the open window, which comes forward, and quits. A dialog already open
+there comes forward instead and keeps what is typed in it. The hand-off goes
+over UltraMessage, the per-user message bus: a request on the topic
+`org.ultraos.ultraclipboard.show` (`search`, `editId`) to the running
+instance, which answers before it acts; the first instance hosts the bus when
+nothing else does. Without the bus (a build without UltraDatabase, a bus that
+cannot be reached) every start opens its own window.
+
 ## Command line
 
 ```

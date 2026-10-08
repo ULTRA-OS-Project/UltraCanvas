@@ -1,8 +1,10 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.4.0 - popup opacity (SetPopupOpacity): a popup composited over what lies
+//                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -29,6 +31,15 @@ namespace UltraCanvas {
     // coordinates; the context is the window's, untranslated.
     using WindowOverlayRenderer = std::function<void(IRenderContext* ctx,
                                                      const Rect2Di& overlayRect)>;
+
+    // Where the time of one frame went (see onFrameRendered), in milliseconds.
+    struct WindowFrameTiming {
+        double layoutMs    = 0;   // measure and arrange; 0 when the layout was valid
+        double paintMs     = 0;   // the elements in the dirty rectangles, and popups
+        double compositeMs = 0;   // popups, caret and tooltip onto the native surface
+        int    dirtyRects  = 0;   // rectangles painted in the window's content
+        bool   laidOut     = false;
+    };
 
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
@@ -95,6 +106,10 @@ namespace UltraCanvas {
         UltraCanvasUIElement* element;
         PopupElementSettings settings;
         UltraCanvasDirtyRectManager dirtyRectManager;
+        // How opaque the popup is composited onto the window, 0..1 (see
+        // UltraCanvasWindowBase::SetPopupOpacity). 1, the default, copies the
+        // popup's surface over the window as it always has.
+        float opacity = 1.0f;
     };
 
     struct FilterFunction {
@@ -112,6 +127,9 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _windowVisible = false;
+        // RenderBeforeShow is drawing the first frame of a window not yet
+        // shown (UpdateAndRender otherwise skips a hidden window).
+        bool _renderingBeforeShow = false;
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
@@ -222,6 +240,11 @@ namespace UltraCanvas {
         std::function<void()> onWindowRestore;
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
+        // After every frame that laid out or painted anything: how long its
+        // layout, painting and compositing took. For finding a slow frame - a
+        // window that stays blank at start, or a view that is slow to appear;
+        // nothing is timed while it is unset.
+        std::function<void(const WindowFrameTiming&)> onFrameRendered;
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
@@ -387,6 +410,18 @@ namespace UltraCanvas {
         PopupElement* GetActivePopupElement();
         void CloseAllPopups();
 
+        // How opaque an open popup is on screen, 0 (not seen) to 1 (the
+        // default). Below 1 the popup - background, border, shadow, content,
+        // all of it - is mixed with the window content and the popups beneath
+        // it, so a popup can fade in or out as a whole by stepping this. Only
+        // the window is composited again; the popup is not repainted, so
+        // animating it is cheap. A popup takes input at any opacity. Opening
+        // a popup starts it at 1. Returns false when `element` is not an open
+        // popup of this window.
+        bool SetPopupOpacity(UltraCanvasUIElement& element, float opacity);
+        // The popup's opacity; 1 for an element that is not an open popup here.
+        float GetPopupOpacity(const UltraCanvasUIElement& element) const;
+
         // event filters
         void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);
         void UnInstallWindowEventFilter(const std::string& uniqueFilterId);
@@ -456,6 +491,11 @@ namespace UltraCanvas {
         void RequestWindowComposition() { _needsWindowComposition = true; }
         void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
+        // Lays out and draws the window's first frame into its surface while
+        // it is still hidden, so a backend's Show() puts the window on screen
+        // with its content - not a surface nothing was drawn into yet (black
+        // on Windows) that the event loop's first frame replaces later.
+        void RenderBeforeShow();
 
         bool IsNeedsResize() const { return _needsResize; }
 

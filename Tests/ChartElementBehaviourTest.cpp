@@ -16,10 +16,12 @@
 //     running totals are not recomputed on every read; LoadFromArray and
 //     LoadFromCSV load steps.
 //  8. CreatePopulationPyramid lays out its row labels as rows.
+//  9. The hover ring is drawn around the point where the chart draws it,
+//     by index in DataLabel mode.
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
-// Version: 1.0.0
+// Version: 1.1.0 - the hover ring in DataLabel mode
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
@@ -135,6 +137,8 @@ public:
         this->UpdateRenderingCache();
         return ChartCoordinateTransform(this->cachedPlotArea, this->cachedDataBounds).DataToScreenY(value);
     }
+
+    void HoverPoint(size_t index) { this->hoveredPointIndex = index; }
 
     double DataXAt(double screenX) {
         this->UpdateRenderingCache();
@@ -445,6 +449,34 @@ void TestPopulationPyramidRows() {
           "AddDataRow fills the row of that label");
 }
 
+void TestHoverRingOnThePoint() {
+    std::cout << "9. the hover ring sits on the point in DataLabel mode\n";
+    // x values that are not the indexes: by value the second point would sit
+    // near the left edge, by index it sits a third of the way across.
+    auto chart = std::make_shared<Probe<UltraCanvasScatterPlotElement>>("scatter", 0, 0, 400, 300);
+    chart->SetDataSource(Series({{0, 10}, {1, 20}, {2, 15}, {30, 12}}));
+    chart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    chart->SetShowGrid(false);
+    chart->SetShowAxes(false);
+    chart->SetPointColor(Color(0, 0, 255));
+    chart->SetEnableSelection(true);
+    chart->HoverPoint(1);
+
+    Canvas canvas(400, 300);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, 400, 300));
+    Point2Dd dot = chart->ScreenOf(1);
+    // The ring: radius 8, stroked 2 px wide, in red - a red pixel 6 to 10 px
+    // to each side of the point (the point need not sit on a pixel centre).
+    auto redBeside = [&](int side) {
+        for (int d = 6; d <= 10; ++d) {
+            if (Near(canvas.At(dot.x + side * d, dot.y), Color(255, 0, 0), 30)) return true;
+        }
+        return false;
+    };
+    Check(redBeside(-1) && redBeside(1),
+          "the red ring is drawn around the hovered point where it is drawn");
+}
+
 } // namespace
 
 int main() {
@@ -459,6 +491,7 @@ int main() {
     TestBackgroundIsTheElements();
     TestWaterfall(dir);
     TestPopulationPyramidRows();
+    TestHoverRingOnThePoint();
 
     std::error_code ec;
     fs::remove_all(dir, ec);

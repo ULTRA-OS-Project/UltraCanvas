@@ -3,12 +3,18 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
+// Version: 0.6.2 - WinMain: Windows Release builds have no console window
+// Version: 0.6.1 - says whether the system fonts were ready at the start
+// Version: 0.6.0 - the timing trace: each step of the start, with its time, on
+//                  the console and in trace.log (UltraMailTrace.h)
 // Version: 0.5.2 - the data folder's location is read as UTF-8
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
 #include "ui/UltraMailAlerts.h"
+
+#include "UltraMailTrace.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
@@ -16,6 +22,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <string>
 
 namespace {
@@ -39,11 +46,53 @@ std::string UserDataDir() {
     return "./UltraMail";
 }
 
+// The timing trace (UltraMailTrace.h) is on unless ULTRAMAIL_TRACE says
+// otherwise ("0", "off", "no", "false").
+bool TraceWanted() {
+    const std::string value = UltraCanvas::GetEnvUtf8("ULTRAMAIL_TRACE");
+    return !(value == "0" || value == "off" || value == "no" || value == "false");
+}
+
 } // namespace
 
 int main() {
+    namespace Trace = UltraMail::Trace;
+    Trace::Enable(TraceWanted());
+    Trace::MarkUiThread();
+    {
+        const double beforeMain = Trace::ProcessStartToTraceMs();
+        Trace::Line("UltraMail " ULTRAMAIL_VERSION " starting" +
+                    (beforeMain >= 0 ? "; the process started " + Trace::FormatMs(beforeMain) +
+                                       " before main() (loading the program and its libraries)"
+                                     : std::string()));
+        Trace::Line("Timing trace on: every line has the time of day, the seconds since "
+                    "the process started and the thread; ULTRAMAIL_TRACE=0 turns it off");
+    }
+
+    std::optional<Trace::Stage> step;
+    step.emplace("Startup: framework application object");
     UltraCanvas::UltraCanvasApplication app;
-    if (!app.Initialize("UltraMail")) {
+    step.emplace("Startup: framework initialisation (fonts, images, windowing)");
+    const bool initialised = app.Initialize("UltraMail");
+    step.reset();
+    for (const auto& timing : app.GetStartupTimings())
+        Trace::Line("  framework step " + timing.stage + ": " + Trace::FormatMs(timing.ms));
+    // Windows scans the system fonts on a thread: in use from the start when
+    // the font cache was warm, else the window starts with the bundled fonts
+    // and switches when the scan ends (UltraCanvas::AdoptSystemFontsWithin).
+    if (const UltraCanvas::SystemFontScanStatus fonts = UltraCanvas::GetSystemFontScanStatus(); fonts.started) {
+        if (fonts.adoptedAtStart)
+            Trace::Line("  system fonts: scanned in the background in " + Trace::FormatMs(fonts.ms) +
+                        ", in use from the start");
+        else
+            Trace::Line("  system fonts: still being scanned (a cold font cache) - the window "
+                        "starts with the bundled fonts and switches when they are ready");
+        UltraCanvas::SetSystemFontsSwitchedHandler([](const UltraCanvas::SystemFontScanStatus& done) {
+            Trace::Line("System fonts ready after " + Trace::FormatMs(done.ms) +
+                        " of scanning: every window now uses them");
+        });
+    }
+    if (!initialised) {
         // There is no UI to alert with yet — this is the one failure that has
         // to go to the console.
         std::fprintf(stderr,
@@ -60,7 +109,12 @@ int main() {
 
     UltraMail::UltraMailApp mail;
     std::string storeError;
-    if (!mail.Initialize(UserDataDir(), &storeError)) {
+    step.emplace("Startup: open the mailbox, settings and vault (UltraMailApp::Initialize)");
+    const bool opened = mail.Initialize(UserDataDir(), &storeError);
+    step.reset();
+    // Everything said so far goes into the file too.
+    if (Trace::Enabled()) Trace::SetLogFile(UserDataDir() + "/trace.log");
+    if (!opened) {
         // The UltraCanvas application is up, so alert properly instead of
         // exiting to a blank screen. Alerts are non-blocking and need the event
         // loop to draw, so run it and leave when the alert is dismissed.
@@ -79,12 +133,38 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    step.emplace("Startup: build the main window (UltraMailApp::CreateMainWindow)");
     auto window = mail.CreateMainWindow();
+    step.emplace("Startup: show the main window");
     window->Show();
+    step.reset();
 
+    // From here the event loop runs: the first frame, the first mail check
+    // and every account switch are reported by the app as they happen, and
+    // the watchdog says when the window stops answering.
+    Trace::StartUiWatchdog([&app](std::function<void()> task) { app.PostToUIThread(std::move(task)); });
+    Trace::Line("Startup: event loop starting");
     app.Run();
+    Trace::StopUiWatchdog();
+    Trace::Line("UltraMail closing");
     // The settings window's widgets go while the application is still alive,
     // not at static destruction after main() returns.
     UltraMail::SettingsDialog::Shutdown();
     return EXIT_SUCCESS;
 }
+
+// ===== WINDOWS ENTRY POINT =====
+// Release builds are GUI-subsystem programs (no console window; see
+// CMakeLists.txt), which Windows enters through WinMain. <windows.h> is
+// included only here, below everything else, so none of its macros
+// (CreateWindow, SendMessage ...) renames a name above.
+#ifdef _WIN32
+#include <windows.h>
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    (void)hInstance;
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    (void)nCmdShow;
+    return main();
+}
+#endif
