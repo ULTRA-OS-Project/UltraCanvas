@@ -13,7 +13,7 @@
 //
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY.
-// Version: 1.0.0
+// Version: 1.0.1 - the temp folder is named by a clock stamp (no getpid on Windows)
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -23,6 +23,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraMailMessagePreview.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -164,7 +165,8 @@ int main() {
     if (!std::getenv("DISPLAY")) SKIP_ALL("no DISPLAY");
 
     const fs::path mailDir = fs::temp_directory_path() /
-                             ("ultramail-preview-test-" + std::to_string(::getpid()));
+                             ("ultramail-preview-test-" +
+                              std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     if (!WriteMessage(mailDir, 1, HtmlMessage()) || !WriteMessage(mailDir, 2, MessageWithAttachment()) ||
         !WriteMessage(mailDir, 3, WideBodyMessage()))
         SKIP_ALL("could not write the test messages");
