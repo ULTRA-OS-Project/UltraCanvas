@@ -3573,6 +3573,10 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
             }
             return true;
         }
+        // No menu of its own: the right press goes on to the elements around
+        // the editor, so the menu of the pane or card it sits in can open -
+        // as a button without a context menu lets it. Taking the focus and
+        // selecting a picture above are what that menu then acts on.
         return false;
     }
 
