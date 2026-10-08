@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.17.0 - the warning strip names a romance scam and a cryptocurrency
+//                   scam, each with a footnote saying what it is; any mail about
+//                   crypto gets a caution strip, whoever sent it
 // Version: 0.16.0 - the message's text can be selected and copied: a drag across
 //                   the HTML body (paragraph to paragraph), a double-click for
 //                   a word, Ctrl+C / Ctrl+A; the subject, sender, recipients
@@ -1013,6 +1016,7 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
         sec.reason = report.Summary();
         sec.verifiedDomain = report.verifiedDomain;
         sec.verifiedBy     = report.verifiedBy;
+        sec.findings       = report.Codes();
         sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
@@ -1033,10 +1037,31 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
+    const bool romance = security.HasFinding("romance-scam");
+    const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
+                            security.HasFinding("crypto-payment-demand") ||
+                            security.HasFinding("crypto-investment-lure");
+    const bool crypto = cryptoScam || security.HasFinding("crypto-content");
+    const char* cryptoAdvice =
+        "A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
+        "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
+        "private key, and no genuine investment guarantees a profit. Never send crypto to "
+        "someone you only know from email or the internet.";
+
     // Only the two verdicts worth interrupting a reader for. Advertisements and
-    // unknown senders are the badge's business, not a banner's.
+    // unknown senders are the badge's business, not a banner's - except that
+    // any mail about crypto gets a word of caution, whoever sent it.
     if (!status.Dangerous()) {
-        warning_->SetVisible(false);
+        if (!crypto) {
+            warning_->SetVisible(false);
+            return;
+        }
+        warning_->SetBackgroundColor(Theme::kTrustSpamSoft);
+        warning_->SetBorders(1.0f, Theme::kTrustSpam, Theme::kControlRadius);
+        warningTitle_->SetTextColor(Theme::kTrustSpam);
+        warningTitle_->SetText("\xE2\x9A\xA0 Caution: this message is about cryptocurrency");
+        warningText_->SetText(cryptoAdvice);
+        warning_->SetVisible(true);
         return;
     }
 
@@ -1049,16 +1074,23 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
 
+    // The scam the scan named comes first: a love letter that links to a
+    // "verification" site is a romance scam, and is told as one.
     const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
+    const char* what = romance    ? "romance scam"
+                     : phishing   ? "phishing"
+                     : cryptoScam ? "cryptocurrency scam"
+                     : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+        (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
+                    what + "\xC2\xB2 email!"
          : status.cls == SenderClass::Scam
-              ? "This message looks like a scam or phishing attempt"
-              : "Parts of this message do not add up"));
+              ? std::string("This message looks like a scam or phishing attempt")
+              : std::string("Parts of this message do not add up")));
 
     std::string text;
     if (phishing) {
@@ -1073,11 +1105,28 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         text = status.reason;
     }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
-    text += "\nDo not sign in, pay or reply through the links in this message unless you "
-            "are sure who sent it.";
-    if (phishing)
+    if (romance)
+        text += "\nDo not send money, gift cards or crypto to someone you only know from "
+                "email or the internet, and do not sign up or give card details on a site "
+                "they send you to.";
+    else
+        text += "\nDo not sign in, pay or reply through the links in this message unless "
+                "you are sure who sent it.";
+    if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
+    if (romance)
+        text += "\n\n\xC2\xB2 Romance scams are love letters from strangers - a made-up "
+                "profile, someone else's photos, \"destiny\" - written to win your trust "
+                "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
+                "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
+                "search of the photo often finds it under another name.";
+    else if (phishing)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
+    else if (cryptoScam)
+        text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
+                "demand payment to a wallet address (blackmail, fake invoices) or promise "
+                "profits on an \"investment platform\" that shows made-up gains and keeps "
+                "what is paid in.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }

@@ -20,7 +20,7 @@ developer notes in [`Apps/UltraMail/README.md`](../../Apps/UltraMail/README.md).
 | **Black outline** | New sender | Never seen in the address book |
 | **Dark blue outline** | Likely advertisement | Bulk/marketing markers (`List-Unsubscribe`, `Precedence: bulk`, `Auto-Submitted`) |
 | **Orange outline** | Likely spam | Server-side spam markers, the junk folder, or a content scan that did not add up |
-| **Red outline** | Likely scam | Phishing markers — above all, links that lie about where they go |
+| **Red outline** | Likely scam | Phishing markers — above all, links that lie about where they go — or the pattern of a known scam: a romance scam, an advance-fee letter, a cryptocurrency scam |
 
 Two rules decide which one wins:
 
@@ -43,8 +43,20 @@ failing that, a bare link) leads off the sender's domain, the strip is titled
 *"Warning: This is likely a phishing² email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
-accounts on other websites (`FindDomainMismatch` in the scan). Nothing is ever hidden, moved or deleted — UltraMail labels, the
-reader decides.
+accounts on other websites (`FindDomainMismatch` in the scan). A message the
+scan reads as a **romance scam** is titled *"Warning: This is likely a romance
+scam² email!"* instead ("may be" when the verdict is only suspicious), even
+when it also links elsewhere, and its footnote says what a romance scam is and
+that a reverse image search often finds the photo under another name; a
+**cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
+into, promised profit) gets its own title and footnote the same way. **Any
+message about cryptocurrency** that is not otherwise flagged — a newsletter, an
+exchange's own mail — still gets an orange *"Caution: this message is about
+cryptocurrency"* strip: a crypto payment cannot be called back, no genuine
+service asks for a recovery phrase, no genuine investment guarantees a
+profit. The strip knows which scam it is from the finding codes stored with
+the verdict (`MessageSecurity::findings`). Nothing is ever hidden, moved or
+deleted — UltraMail labels, the reader decides.
 
 ## 2. The known-sender registry
 
@@ -233,13 +245,19 @@ their weights:
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
 | `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
-| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate, taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential") — 50 when two of those appear |
+| `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
+| `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
+| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
+| `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
 | `reply-to-mismatch` | 15 | Replies would go to a different domain than the sender's |
+| `reply-elsewhere` | 15 | The text asks for answers at another free mailbox than the one it came from ("my contact email for us to proceed: x@yahoo.com") |
+| `crypto-content` | 10 (0 from a proven exchange) | Any mention of cryptocurrency (bitcoin, BTC, USDT, a wallet, a seed phrase …): alone it changes no verdict, but the reading pane shows its caution strip |
 | `link-shortener` | 12 | The destination cannot be seen |
 | `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
 | `spam-flag` | 40 | The receiving server already said so |
@@ -247,6 +265,59 @@ their weights:
 
 45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
 with bulk markers is an **Advertisement** and everything else is **Clean**.
+
+### Romance scams
+
+A romance scam starts as a love letter from a stranger: a pet name, talk of
+fate, a short self-introduction (name, age, divorced, a nurse in Russia), how
+they came to write ("I saw your profile", "it is destiny"), a photo or two,
+and a push to answer — often at a private address, or on a site that "only
+verifies" with a bank card. Later mails of the same thread add assurances ("I
+am for real", a "scan passport") and the request: a ticket, a visa, the rent,
+a laptop for the webcam, Western Union, crypto. No one phrase gives it away,
+so `romance-scam` counts **kinds of signs**, each kind once:
+
+| Kind | For example |
+|---|---|
+| Pet names | "my dear", "honey", "kisses", "truly yours" |
+| Love or attraction | "true love", "future husband", "I am attracted", "drawn to you" |
+| An offer of sex or a meeting | "meeting up", "escorts", "your desires" |
+| A self-introduction | "my name is", "I'm 31 years old", "divorced", "I live in Russia", "Im lawyer", "I have blue eyes" |
+| How they came to write | "your profile", "dating site", "destiny", "are you real?", "among the millions", "are you still looking for friend?" |
+| A site to sign up on or be "verified" at | "get my number … login there", "they never charge", "criminal history" |
+| Guilt or pressure | "don't upset Shui98 or make her bored" (a screen name speaking of herself), "no playing fool" |
+| A pretended acquaintance | "so good to see you again", "we emailed each other a long time ago", "did you get my …" |
+| Assurances of being real | "I am for real", "honest to you", "scan passport" |
+| Photos, a push to write back | "two pictures", "hope you like them"; "write me at", "await your earliest response" |
+| A request for money | "send me the money", "Western Union", "pay my rent", "a cheap laptop", any crypto |
+| A hardship or far-away story | "my old mother", "Luhansk", "oil rig", "deployed" |
+
+Two more signs count: **a photo** — an attached picture, or one shown in the
+body — which these letters nearly always carry, and a sender at a **free
+mailbox** (gmail.com, hotmail.com, i.ua, ukr.net, mail.ru …).
+
+The rule fires only when the letter has both **something romantic** (pet
+names, love, sex, or a guilt trip) and **something only a stranger writes**
+(an introduction, how they "found" you, a site to sign up on, assurances of
+being real, or a guilt trip). A partner's "my dear, here are the photos,
+write back" has the first and not the second, and stays clean. It never
+fires for a proven brand's mail (a dating service writing about matches), a
+newsletter from a domain of its own, a job application ("job posting", "my
+CV") or a mail over 60 000 characters. Three signs make the message
+suspicious, five a scam. The tests are real letters one reader received
+between 2011 and 2019 (`Tests/UltraMail/test_threatscan.cpp`).
+
+### Cryptocurrency
+
+Any message that mentions cryptocurrency gets `crypto-content`: 10 points
+(none from a proven registry exchange), which alone changes no verdict but
+puts the caution strip above the body. Three patterns are scams outright and
+weigh accordingly — a request for a wallet's recovery phrase
+(`crypto-wallet-secret`), a wallet address to pay into
+(`crypto-payment-demand`: the "I recorded you through your camera" blackmail,
+fake invoices) and promised profit (`crypto-investment-lure`: the
+"investment platform" a new online acquaintance recommends). A romance letter
+that turns to crypto counts it as its request for money.
 
 ### Mail authentication
 

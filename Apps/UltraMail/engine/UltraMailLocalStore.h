@@ -3,6 +3,8 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.12.0 - schema 11: the codes of a verdict's findings
+//                   (MessageSecurity::findings, HasFinding)
 // Version: 0.11.0 - schema 10: the verified sender domain with each verdict
 //                   (MessageSecurity::verifiedDomain / verifiedBy);
 //                   ListStaleVerdicts (verdicts of older rules, to re-scan)
@@ -70,8 +72,12 @@ struct MessageSecurity {
     // how; "" when nothing proved it (ThreatReport::verifiedDomain).
     std::string verifiedDomain;
     std::string verifiedBy;
+    // The codes of the findings (ThreatReport::Codes), comma-separated: what
+    // the reading pane names the scam by ("romance-scam", "crypto-content").
+    std::string findings;
 
     bool Scanned() const { return level != ThreatLevel::Unscanned; }
+    bool HasFinding(const std::string& code) const { return HasFindingCode(findings, code); }
 };
 
 class LocalStore {

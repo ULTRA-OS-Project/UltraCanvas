@@ -14,6 +14,11 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.6.0 - romance scams (romance-scam: a stranger's love letter, with
+//                  photos, from a free mailbox) and cryptocurrency (crypto-content
+//                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
+//                  crypto-investment-lure); ScanInput::pictureNames;
+//                  ThreatReport::Has / Codes, so the reading pane can name the scam
 // Version: 0.5.0 - mail authentication: the receiving server's (topmost)
 //                  Authentication-Results header is parsed
 //                  (ParseAuthenticationResults); a sender whose domain DMARC
@@ -68,6 +73,10 @@ struct ThreatReport {
 
     // The findings as one human-readable block ("• …\n• …"); empty when clean.
     std::string Summary() const;
+    // The findings' codes, comma-separated ("romance-scam,crypto-content"):
+    // what the store keeps so the reading pane can say which scam it is.
+    std::string Codes() const;
+    bool Has(const std::string& code) const;
     bool Suspicious() const { return level >= ThreatLevel::Suspicious; }
 };
 
@@ -108,6 +117,11 @@ struct ScanInput {
     std::string body;
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
+    // The pictures `attachmentNames` does not show as such, by file name (""
+    // when one has none): the body's own pictures (cid:), and an image
+    // attached under a name that is not a picture's. An attachment named
+    // like one ("IMG_942.jpg") counts from `attachmentNames` already.
+    std::vector<std::string> pictureNames;
 };
 
 // When the rules last changed (epoch seconds). A stored verdict made before it
@@ -115,7 +129,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1791244800;   // 2026-10-06 00:00 UTC
+constexpr long long kThreatRulesRevision = 1791504000;   // 2026-10-09 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication
@@ -179,6 +193,9 @@ std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.
 ThreatReport ScanMessage(const ScanInput& input);
+
+// Whether `codes` (ThreatReport::Codes, as the store keeps it) holds `code`.
+bool HasFindingCode(const std::string& codes, const std::string& code);
 
 // Convenience: parse a raw RFC 5322 message (the cached .eml) and scan it.
 ThreatReport ScanRawMessage(const std::string& rawMessage);

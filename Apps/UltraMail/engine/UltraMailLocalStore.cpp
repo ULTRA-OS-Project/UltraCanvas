@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.5.0 - schema 11 (findings: the codes of a verdict's findings)
 // Version: 0.4.0 - schema 10 (verified_domain, verified_by); ListStaleVerdicts
 // Version: 0.3.0 - WeighSentRecipients (recent mail weighs more)
 // Version: 0.2.0 - schema 8: the account's signature (SetAccountSignature)
@@ -210,6 +211,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // '' = nothing proved the From domain (or scanned before this).
           "ALTER TABLE message_security ADD COLUMN verified_domain TEXT DEFAULT '';"
           "ALTER TABLE message_security ADD COLUMN verified_by TEXT DEFAULT '';" },
+        { 11, "finding codes",
+          // '' = no findings (or scanned before this; kThreatRulesRevision
+          // has every older verdict scanned again).
+          "ALTER TABLE message_security ADD COLUMN findings TEXT DEFAULT '';" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -721,19 +726,20 @@ UltraDbResult LocalStore::SetSecurity(const std::string& accountId,
                                            : static_cast<int64_t>(std::time(nullptr));
     return UltraDb_Exec(connection_,
         "INSERT INTO message_security(account_id, folder, uid, level, score, bulk, "
-        "  reason, scanned_at, attachments, verified_domain, verified_by) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "  reason, scanned_at, attachments, verified_domain, verified_by, findings) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
         "level=excluded.level, score=excluded.score, bulk=excluded.bulk, "
         "reason=excluded.reason, scanned_at=excluded.scanned_at, "
         "verified_domain=excluded.verified_domain, verified_by=excluded.verified_by, "
+        "findings=excluded.findings, "
         // A verdict without a count keeps the count already stored.
         "attachments=CASE WHEN excluded.attachments >= 0 THEN excluded.attachments "
         "                 ELSE message_security.attachments END",
         { accountId, folder, uid, ToString(sec.level),
           static_cast<int64_t>(sec.score), static_cast<int64_t>(sec.bulk ? 1 : 0),
           sec.reason, when, static_cast<int64_t>(sec.attachments),
-          sec.verifiedDomain, sec.verifiedBy });
+          sec.verifiedDomain, sec.verifiedBy, sec.findings });
 }
 
 UltraDbResult LocalStore::SetAttachmentCount(const std::string& accountId,
@@ -792,11 +798,12 @@ MessageSecurity RowToSecurity(const UltraDbRow& row) {
     sec.attachments = static_cast<int>(row["attachments"].AsInt64());
     sec.verifiedDomain = row["verified_domain"].AsString();
     sec.verifiedBy     = row["verified_by"].AsString();
+    sec.findings       = row["findings"].AsString();
     return sec;
 }
 
 const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at, attachments, "
-                               "verified_domain, verified_by";
+                               "verified_domain, verified_by, findings";
 
 } // namespace
 

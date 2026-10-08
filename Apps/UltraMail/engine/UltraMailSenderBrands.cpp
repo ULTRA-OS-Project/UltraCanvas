@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailSenderBrands.cpp
+// Version: 0.3.1 - the Russian, Ukrainian and Belarusian mailbox providers
+//                  (i.ua, ukr.net, bk.ru, rambler.ru, ...) and foxmail.com are
+//                  mailboxes
 // Version: 0.3.0 - the table moves to UltraMailSenderBrandTable.cpp and grows to
 //                  ~400 brands; indexed lookup; keyword-only claims; a
 //                  mailbox-provider address in a display name claims nothing
@@ -63,7 +66,11 @@ const std::set<std::string>& PersonalMailboxDomains() {
         "proton.me", "protonmail.com", "protonmail.ch", "pm.me",
         "tutanota.com", "tutamail.com",
         "fastmail.com", "zoho.com", "mail.com", "mail.ru", "yandex.ru",
-        "qq.com", "163.com", "126.com", "naver.com", "seznam.cz",
+        // Russia, Ukraine and Belarus: where the "bride" letters write from.
+        "bk.ru", "list.ru", "inbox.ru", "internet.ru", "rambler.ru", "yandex.com",
+        "yandex.ua", "ya.ru", "i.ua", "ukr.net", "meta.ua", "bigmir.net", "email.ua",
+        "tut.by",
+        "qq.com", "foxmail.com", "163.com", "126.com", "naver.com", "seznam.cz",
         "orange.fr", "wanadoo.fr", "free.fr", "laposte.net",
         "libero.it", "virgilio.it", "tiscali.it", "bluewin.ch",
         "btinternet.com", "sky.com", "comcast.net", "verizon.net", "att.net",

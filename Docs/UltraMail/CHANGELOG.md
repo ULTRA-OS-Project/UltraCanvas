@@ -1,3 +1,62 @@
+#### 2026-10-08 *0.10.39*
+- **Romance scams are flagged.** A love letter from a stranger - "Where are
+  you my dear?", a nurse from Russia who found your profile on a dating site,
+  "it is destiny", two photos attached, "I shall await your earliest
+  response" - passed the scan as clean: it has no links that lie and asks for
+  no password. Its pattern does it now (`romance-scam`). The scan counts
+  kinds of signs, each once: pet names, talk of love or attraction, an offer
+  of sex or a meeting, a self-introduction (name, age, divorced, "Im lawyer",
+  "I live in Russia"), how they came to write (your profile, a dating site,
+  destiny, "are you real?"), a site to sign up on or be "verified" at ("they
+  never charge you, they just check you have no criminal history"), guilt or
+  pressure ("don't upset Shui98 or make her bored"), a pretended
+  acquaintance, assurances of being real ("I am for real", a "scan
+  passport"), photos, a push to write back, a request for money (Western
+  Union, the rent, a laptop for the webcam, crypto) and a hardship story. A
+  **photo** - attached, or in the body - counts as a sign of its own, since
+  these letters nearly always carry one, and so does a **free mailbox**.
+  - It needs something romantic *and* something only a stranger writes, so a
+    partner's "my dear, here are the holiday photos, write back" stays
+    clean; never for a proven brand's mail, a newsletter from a domain of its
+    own, a job application or a mail over 60 000 characters. Three signs make
+    the message suspicious, five a scam.
+  - The reading pane says *"Warning: This is likely a romance scam² email!"*
+    with a footnote on what romance scams are after, and that a reverse image
+    search often finds the photo under another name.
+  - Tests: ten letters one reader received between 2011 and 2019, as sent,
+    plus the mail that must stay quiet.
+- **Cryptocurrency.** Any mail about crypto (bitcoin, BTC, USDT, a wallet, a
+  seed phrase …) gets an orange *"Caution: this message is about
+  cryptocurrency"* strip above the body - a crypto payment cannot be called
+  back, no genuine service asks for a recovery phrase, no genuine investment
+  guarantees a profit - whoever sent it (`crypto-content`, 10 points, none
+  from a proven exchange). Three patterns are scams outright: asking for a
+  wallet's recovery phrase or private key (`crypto-wallet-secret`, 50 - not a
+  sentence warning never to give it), a wallet address to pay into
+  (`crypto-payment-demand`, 40: the "I recorded you through your camera"
+  blackmail, fake invoices) and promised profit (`crypto-investment-lure`,
+  35: "guaranteed returns", "30% daily", a "trading platform"). Apple's
+  AirDrop is not a crypto airdrop, and a token inside a link is not a wallet
+  address.
+- **More advance-fee letters are caught.** The "abandoned baggage" letter
+  from an airport's "baggage dispute" office - $7.5 million, "your own share",
+  "50% by 50%", "God fearing" - matched none of the rule's ingredients and
+  passed as clean; money nobody claimed, the share-and-blessing phrases and
+  the FBI's "ATM card for scam victims" are ingredients now.
+- **"Write to me at this other address."** A new sign, 15 points
+  (`reply-elsewhere`): the text asks for answers at a free mailbox other than
+  the one it came from ("Please find my contact email address for us to
+  proceed: (l.byrne96@yahoo.com)") - how advance-fee and romance letters move
+  to an address their provider has not closed yet.
+- **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
+  ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
+  foxmail.com are free mailboxes, as gmail.com is.
+- The verdict keeps the codes of its findings (`MessageSecurity::findings`,
+  schema 11), which is how the reading pane knows which scam it is; stored
+  verdicts are scanned again by the new rules (`kThreatRulesRevision`). A
+  scam's badge tooltip says "scam or phishing markers" rather than phishing
+  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`.
+
 #### 2026-10-08 *0.10.38*
 - **The mail's text can be selected and copied.** In formatted (HTML) mail a
   drag selects across the whole message, from paragraph to paragraph as in a

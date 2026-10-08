@@ -504,6 +504,25 @@ TEST(attachment_count_kept_beside_the_scan_verdict) {
     REQUIRE_EQ(all[2].attachments, 4);
 }
 
+TEST(a_verdict_keeps_its_finding_codes) {
+    LocalStore s = FreshStore("findings");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "a@x.com", {"erika@example.com"})).success);
+    MessageSecurity verdict;
+    verdict.level = ThreatLevel::Scam;
+    verdict.findings = "romance-scam,crypto-content";
+    REQUIRE(s.SetSecurity("erika", "INBOX", 1, verdict).success);
+    MessageSecurity got;
+    REQUIRE(s.GetSecurity("erika", "INBOX", 1, got).success);
+    REQUIRE_EQ(got.findings, std::string("romance-scam,crypto-content"));
+    REQUIRE(got.HasFinding("romance-scam"));
+    REQUIRE(got.HasFinding("crypto-content"));
+    REQUIRE(!got.HasFinding("crypto"));          // a whole code, not a part of one
+    std::map<int64_t, MessageSecurity> all;
+    REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
+    REQUIRE(all[1].HasFinding("romance-scam"));
+}
+
 TEST(verified_sender_and_stale_verdicts) {
     LocalStore s = FreshStore("verified");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
