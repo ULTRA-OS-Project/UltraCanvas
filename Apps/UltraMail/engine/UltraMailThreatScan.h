@@ -16,6 +16,8 @@
 // or blocks mail, and the reasons are always shown so the user can disagree.
 // Version: 0.5.3 - ExtractImageHosts reads the parsed page, its CSS through the
 //                  HTMLReader's cascade
+// Version: 0.5.2 - kThreatRulesRevision 2026-10-08: links and texts read through the
+//                  HTMLReader module, so older verdicts are made again
 // Version: 0.5.0 - mail authentication: the receiving server's (topmost)
 //                  Authentication-Results header is parsed
 //                  (ParseAuthenticationResults); a sender whose domain DMARC
@@ -117,7 +119,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1791244800;   // 2026-10-06 00:00 UTC
+constexpr long long kThreatRulesRevision = 1791417600;   // 2026-10-08 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication

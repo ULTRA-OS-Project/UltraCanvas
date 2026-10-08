@@ -15,6 +15,9 @@
   mail's "button" (a table inside a link) gave its words run together. The
   links are now the page's `<a href>`, `<area href>` and `<form action>`
   elements as the HTML reader parses them, each with the text it shows.
+  Mail checked before this version is checked again, by the next sync and
+  when it is opened, so a fake link the old check let through is caught in
+  mail already received.
 
 #### 2026-10-08 *0.10.39*
 - **Formatted mail as plain text keeps its paragraphs.** With Settings >
