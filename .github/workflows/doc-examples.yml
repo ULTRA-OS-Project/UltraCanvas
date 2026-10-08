@@ -10,8 +10,15 @@ name: Doc examples compile
 # every change to a doc or a public header - a header change that breaks an
 # example is caught too.
 #
+# Docs that predate the check are listed in scripts/doc_examples_baseline.txt
+# with their finding counts (83 docs, 682 findings when the check was
+# introduced; proposals, the changelog and guides never written to compile
+# among them). Only a new doc with findings, or a listed doc gaining some,
+# fails; a listed doc that is fixed has its line lowered or dropped.
+#
 # The checker builds a precompiled header of every public header first
-# (about a minute); it is cached, keyed by the headers' content.
+# (about a minute); it is cached, keyed by the headers' content. The run
+# over all 215 docs takes about ten minutes on four cores.
 
 # Trigger policy matches build.yml / llms-txt.yml: `pull_request` covers
 # feature branches, so listing them under `push` too would run this check
@@ -25,6 +32,7 @@ on:
       - 'UltraCanvas/Plugins/**/*.h'
       - 'VirtualFS/include/**'
       - 'scripts/check_doc_examples.py'
+      - 'scripts/doc_examples_baseline.txt'
       - '.github/workflows/doc-examples.yml'
   pull_request:
     # Stacked pull requests. `branches` filters the BASE branch here - the
@@ -82,4 +90,5 @@ jobs:
           fi
 
       - name: Compile every doc's C++ against the headers
-        run: python3 scripts/check_doc_examples.py Docs/UltraCanvas/*.md
+        timeout-minutes: 30
+        run: python3 scripts/check_doc_examples.py --all --strict

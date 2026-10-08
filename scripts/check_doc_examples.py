@@ -43,12 +43,22 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
     python3 scripts/check_doc_examples.py                 # all Examples docs
     python3 scripts/check_doc_examples.py Docs/UltraCanvas/UltraCanvasButtonExamples.md
+    python3 scripts/check_doc_examples.py --all           # every doc under Docs/UltraCanvas
     python3 scripts/check_doc_examples.py --show-context  # also untyped names
 
-Exit status 1 when a doc has findings.
+Docs that predate the check are listed in scripts/doc_examples_baseline.txt,
+one `<doc>::<findings>` per line, so CI (`--all --strict`) can block a new
+doc with findings, or a listed doc gaining some, while those are worked off.
+A listed doc that has fewer findings than recorded is reported so the line
+can be lowered; one with none is stale and fails a `--strict --all` run
+until it is dropped. `--update-baseline` rewrites the file from a run over
+every doc; `--no-baseline` reports everything as new.
+
+Exit status 1 when a doc has findings the baseline does not cover (and,
+with --strict, when a baseline entry is stale).
 """
-# Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-07
+# Version: 1.1.0 - a per-doc baseline (--strict, --all, --update-baseline)
+# Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 
 import argparse
@@ -1270,17 +1280,69 @@ def check_doc(path, args, index, flags, pch):
                 "notes": []}
 
 
+BASELINE_HEADER = """\
+# Docs whose C++ does not compile against the headers, recorded so CI can
+# block *new* ones while these are worked off. Each line is
+# <doc>::<findings>, the count scripts/check_doc_examples.py reports for it.
+#
+# These are debt, not exceptions: every line is a doc whose examples or API
+# listing no longer match the headers, which is what a reader copies from.
+# Fixing a doc lowers or removes its line; a doc that gains findings fails
+# the check. Do not add to this file to silence a new finding - fix the doc
+# (or the header it describes). Regenerate from a run over every doc with:
+#     python3 scripts/check_doc_examples.py --all --update-baseline
+"""
+
+
+def load_baseline(path):
+    """{doc: findings} from the baseline file; {} when there is none."""
+    known = {}
+    if not path.exists():
+        return known
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        doc, _, count = line.rpartition("::")
+        if doc and count.isdigit():
+            known[doc] = int(count)
+    return known
+
+
+def doc_key(doc):
+    try:
+        return doc.relative_to(ROOT).as_posix()
+    except ValueError:
+        return doc.as_posix()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("docs", nargs="*", type=Path)
+    parser.add_argument("--all", action="store_true",
+                        help="every *.md under Docs/UltraCanvas, not only the Examples docs")
     parser.add_argument("--work", type=Path, default=ROOT / "build" / "doc-examples",
                         help="where the shared header and generated sources go")
     parser.add_argument("--clang", default=shutil.which("clang++") or "clang++")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     parser.add_argument("--show-context", action="store_true",
                         help="also list the names a doc's snippets use without declaring")
+    parser.add_argument("--baseline", type=Path,
+                        default=ROOT / "scripts" / "doc_examples_baseline.txt",
+                        help="docs already known to have findings (default: scripts/doc_examples_baseline.txt)")
+    parser.add_argument("--no-baseline", action="store_true",
+                        help="report every finding as new, ignoring the baseline")
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="rewrite the baseline from this run (use with --all) and exit")
+    parser.add_argument("--strict", action="store_true",
+                        help="CI gate: also fail on a stale baseline entry (a listed doc now clean)")
     args = parser.parse_args()
-    docs = args.docs or sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
+    if args.docs:
+        docs = args.docs
+    elif args.all:
+        docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*.md"))
+    else:
+        docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
     docs = [d.resolve() for d in docs]
     args.work.mkdir(parents=True, exist_ok=True)
 
@@ -1288,12 +1350,45 @@ def main():
     pch = build_pch(args.work, "umbrella", flags, args.clang)
     index = HeaderIndex()
 
-    total = 0
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         results = list(pool.map(lambda d: check_doc(d, args, index, flags, pch), docs))
-    for r in results:
-        total += len(r["findings"])
-        status = "ok" if not r["findings"] else "%d finding(s)" % len(r["findings"])
+
+    if args.update_baseline:
+        if not args.all:
+            print("--update-baseline records only the docs checked; run it with --all "
+                  "so the file covers every doc.")
+        keys = sorted("%s::%d" % (doc_key(d), len(r["findings"]))
+                      for d, r in zip(docs, results) if r["findings"])
+        args.baseline.write_text(BASELINE_HEADER + "\n".join(keys) + ("\n" if keys else ""),
+                                 encoding="utf-8")
+        print("wrote %d entries to %s" % (len(keys), doc_key(args.baseline)))
+        return 0
+
+    baseline = {} if args.no_baseline else load_baseline(args.baseline)
+    total = 0
+    fresh = []      # (key, count, known) - a doc the baseline does not cover
+    known = []      # (key, count, recorded) - covered, at or under its line
+    improved = []   # (key, count, recorded) - covered, and fewer than recorded
+    for d, r in zip(docs, results):
+        count = len(r["findings"])
+        total += count
+        key = doc_key(d)
+        recorded = baseline.get(key)
+        if count:
+            if recorded is None:
+                fresh.append((key, count, None))
+                status = "%d finding(s)" % count
+            elif count > recorded:
+                fresh.append((key, count, recorded))
+                status = "%d finding(s), up from the %d the baseline records" % (count, recorded)
+            elif count < recorded:
+                improved.append((key, count, recorded))
+                status = "%d finding(s), down from the %d the baseline records" % (count, recorded)
+            else:
+                known.append((key, count, recorded))
+                status = "%d finding(s), as the baseline records" % count
+        else:
+            status = "ok"
         print("%s: %d blocks, %s" % (r["doc"], r["blocks"], status))
         for line, msg in r["findings"]:
             print("  %s:%d: %s" % (r["doc"], line, msg) if line else "  %s: %s" % (r["doc"], msg))
@@ -1303,7 +1398,39 @@ def main():
             print("  context (untyped names): " + ", ".join(
                 "%s@%s" % (k, ",".join(map(str, v[:3]))) for k, v in sorted(r["context"].items())))
     print("%d doc(s), %d finding(s)" % (len(results), total))
-    return 1 if total else 0
+
+    if fresh:
+        print("\n%d doc(s) with findings the baseline (%s) does not cover - fix the doc, "
+              "or the header it describes:" % (len(fresh), args.baseline.name))
+        for key, count, recorded in fresh:
+            print("  %s: %d finding(s)%s" % (key, count,
+                  "" if recorded is None else " (baseline records %d)" % recorded))
+    if improved:
+        print("\n%d doc(s) have fewer findings than the baseline records - lower the line "
+              "(or run --all --update-baseline):" % len(improved))
+        for key, count, recorded in improved:
+            print("  %s::%d  (was %d)" % (key, count, recorded))
+    if known:
+        print("\n%d doc(s) still on the baseline; fixing one is always welcome." % len(known))
+
+    # A partial run cannot tell "fixed" from "not looked at", so stale entries
+    # are only reported for a run over every doc.
+    checked = {doc_key(d) for d in docs}
+    failing = {doc_key(d) for d, r in zip(docs, results) if r["findings"]}
+    stale = sorted(k for k in baseline if k not in failing) if args.all and not args.docs else []
+    stale = [k for k in stale if k in checked or not (ROOT / k).exists()]
+    if stale:
+        print("\n%d baseline entr%s no longer found - drop %s with --all --update-baseline:"
+              % (len(stale), "y is" if len(stale) == 1 else "ies are",
+                 "it" if len(stale) == 1 else "them"))
+        for key in stale:
+            print("  %s" % key)
+
+    if fresh:
+        return 1
+    if stale and args.strict:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

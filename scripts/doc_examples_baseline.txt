@@ -1,0 +1,93 @@
+# Docs whose C++ does not compile against the headers, recorded so CI can
+# block *new* ones while these are worked off. Each line is
+# <doc>::<findings>, the count scripts/check_doc_examples.py reports for it.
+#
+# These are debt, not exceptions: every line is a doc whose examples or API
+# listing no longer match the headers, which is what a reader copies from.
+# Fixing a doc lowers or removes its line; a doc that gains findings fails
+# the check. Do not add to this file to silence a new finding - fix the doc
+# (or the header it describes). Regenerate from a run over every doc with:
+#     python3 scripts/check_doc_examples.py --all --update-baseline
+Docs/UltraCanvas/AndroidPortInvestigation.md::1
+Docs/UltraCanvas/CHANGELOG.md::66
+Docs/UltraCanvas/CircleDiagramInfographicVariants.md::5
+Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::4
+Docs/UltraCanvas/SVGRenderingOptimizationPlan.md::1
+Docs/UltraCanvas/UltraCanvasAccessibility.md::12
+Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md::3
+Docs/UltraCanvas/UltraCanvasAlert.md::5
+Docs/UltraCanvas/UltraCanvasAudio.md::3
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::19
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::83
+Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::2
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::7
+Docs/UltraCanvas/UltraCanvasClipboardHistory.md::8
+Docs/UltraCanvas/UltraCanvasColorPicker.md::1
+Docs/UltraCanvas/UltraCanvasColorSwatchBar.md::3
+Docs/UltraCanvas/UltraCanvasContourChartProposal.md::2
+Docs/UltraCanvas/UltraCanvasCoordinateSystemGuide.md::18
+Docs/UltraCanvas/UltraCanvasCurveEditor.md::4
+Docs/UltraCanvas/UltraCanvasDatePicker.md::1
+Docs/UltraCanvas/UltraCanvasDesktopShell.md::2
+Docs/UltraCanvas/UltraCanvasDiagramRouting.md::1
+Docs/UltraCanvas/UltraCanvasDiagramViewport.md::10
+Docs/UltraCanvas/UltraCanvasDialogKeyboard.md::3
+Docs/UltraCanvas/UltraCanvasDumbbellChart.md::5
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::15
+Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::12
+Docs/UltraCanvas/UltraCanvasElementPlugins.md::3
+Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md::3
+Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::5
+Docs/UltraCanvas/UltraCanvasFilerWidget.md::23
+Docs/UltraCanvas/UltraCanvasFinancialChart.md::7
+Docs/UltraCanvas/UltraCanvasFontFile.md::4
+Docs/UltraCanvas/UltraCanvasGanttChart.md::4
+Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::12
+Docs/UltraCanvas/UltraCanvasGradientEditor.md::1
+Docs/UltraCanvas/UltraCanvasHeatmapChart.md::2
+Docs/UltraCanvas/UltraCanvasHexbinChart.md::3
+Docs/UltraCanvas/UltraCanvasHostFileIcons.md::2
+Docs/UltraCanvas/UltraCanvasIconResource.md::1
+Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md::22
+Docs/UltraCanvas/UltraCanvasKanbanBoard.md::8
+Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::2
+Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::1
+Docs/UltraCanvas/UltraCanvasLabelPlacement.md::3
+Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md::7
+Docs/UltraCanvas/UltraCanvasMatrixDiagram.md::3
+Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::11
+Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md::5
+Docs/UltraCanvas/UltraCanvasMediaViewer.md::1
+Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md::4
+Docs/UltraCanvas/UltraCanvasMekkoChart.md::2
+Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md::7
+Docs/UltraCanvas/UltraCanvasMindMapProposal.md::4
+Docs/UltraCanvas/UltraCanvasModelFormats.md::1
+Docs/UltraCanvas/UltraCanvasModelRaster.md::3
+Docs/UltraCanvas/UltraCanvasModelViewDialog.md::10
+Docs/UltraCanvas/UltraCanvasMoney.md::4
+Docs/UltraCanvas/UltraCanvasPacketDiagram.md::1
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::62
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md::1
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::21
+Docs/UltraCanvas/UltraCanvasProgressDialog.md::2
+Docs/UltraCanvas/UltraCanvasPropertyList.md::1
+Docs/UltraCanvas/UltraCanvasRenderContext.md::8
+Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::5
+Docs/UltraCanvas/UltraCanvasRichTextEdit.md::9
+Docs/UltraCanvas/UltraCanvasScatterPlot3D.md::3
+Docs/UltraCanvas/UltraCanvasSmoothScroll.md::7
+Docs/UltraCanvas/UltraCanvasSpellChecker.md::21
+Docs/UltraCanvas/UltraCanvasSplashScreen.md::4
+Docs/UltraCanvas/UltraCanvasSplitPane.md::3
+Docs/UltraCanvas/UltraCanvasSystemDialogs.md::7
+Docs/UltraCanvas/UltraCanvasTimelineChart.md::2
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::9
+Docs/UltraCanvas/UltraCanvasUIElements.md::3
+Docs/UltraCanvas/UltraCanvasVectorCanvas.md::13
+Docs/UltraCanvas/UltraCanvasVectorRaster.md::3
+Docs/UltraCanvas/UltraCanvasVideo.md::2
+Docs/UltraCanvas/UltraCanvasVolumeMonitor.md::3
+Docs/UltraCanvas/UltraCanvasWebAssembly.md::12
+Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md::8
+Docs/UltraCanvas/WYSIWYGElementInvestigation.md::8
