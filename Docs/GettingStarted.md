@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.1
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -177,6 +177,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -382,10 +386,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -602,7 +608,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 
