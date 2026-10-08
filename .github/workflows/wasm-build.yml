@@ -54,11 +54,28 @@ jobs:
           pipx install meson==1.12.1
           meson --version
 
+      # emsdk itself, not mymindstorm/setup-emsdk: v14 of that action targets
+      # Node.js 20, which the runners no longer run, and it only wrapped these
+      # same commands. The later steps get what the action exported: emsdk and
+      # emcc on PATH, EMSDK and EMSDK_NODE. Not cached - the download is a
+      # minute or two on a manually dispatched job, while a cached toolchain
+      # would take a share of the repository's 10 GB cache from the Build
+      # workflow's ccache.
       - name: Set up Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: ${{ inputs.emsdk_version }}
-          actions-cache-folder: emsdk-cache
+        timeout-minutes: 15
+        env:
+          EMSDK_VERSION: ${{ inputs.emsdk_version }}
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          cd "$RUNNER_TEMP/emsdk"
+          ./emsdk install "$EMSDK_VERSION"
+          ./emsdk activate "$EMSDK_VERSION"
+          source ./emsdk_env.sh
+          echo "$EMSDK" >> "$GITHUB_PATH"
+          echo "$EMSDK/upstream/emscripten" >> "$GITHUB_PATH"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+          echo "EMSDK_NODE=$EMSDK_NODE" >> "$GITHUB_ENV"
+          emcc --version
 
       # Restore and save are separate steps so a sysroot is kept as soon as it
       # is built: the combined action saves only when the whole job passes, so
