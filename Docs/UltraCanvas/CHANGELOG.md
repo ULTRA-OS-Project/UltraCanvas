@@ -1,3 +1,85 @@
+#### 2026-10-08 *0.9.208*
+- **Eleven charts and diagrams pass a layout change on to their parent.**
+  The chord, circular progress, polar, radial bar and timeline charts and
+  the fishbone, matrix, parliament, SWOT, timeline and word-cloud diagrams
+  each declared a private `InvalidateLayout()` that only cleared their own
+  layout cache. It had the name of the layout engine's virtual
+  (`CSSLayout::Element::InvalidateLayout`), so it overrode it without
+  calling it: whenever the framework invalidated one of these elements - a
+  new size, `SetVisible`, a style change - the element's measure stayed
+  valid and the change never reached its parent. Clang warned about it as
+  a missing `override`. The cache-clearing helper is `DropLayoutCache()`
+  now, used where the charts called it themselves, and `InvalidateLayout()`
+  is a real override that drops the cache and calls the engine's.
+  `ChartElementBehaviourTest` checks all eleven; each fails without it.
+- `UltraCanvasSyntaxTokenizer.h` writes Dart's `??=` operator as `"?\?="`,
+  so the string no longer reads as a trigraph and Clang stops warning in
+  every file that includes the header.
+- Tests: `PublicHeadersUnusedParamTest` includes the framework's 315 public
+  headers (313 without GL) in one file compiled with
+  `-Werror=unused-parameter`, so an inline body that leaves a parameter
+  unused fails the build instead of warning in every `-Wextra` build. It
+  leaves out the optional subsystems whose headers need libraries a build
+  may lack (UltraNet, UltraVault, PixelFX, LaTeX, the databases, IO devices,
+  network monitor, messaging and window-server clients), and the GL surface
+  headers when GL is off. GCC and Clang only - every CI leg, Windows
+  included through MSYS2's clang; checked here with clang and GCC on Linux
+  and with MinGW GCC against the Windows headers. `AGENTS.md` states the
+  rule.
+- `scripts/check_doc_examples.py` checks a copied type against every type
+  of its name and judges it by the best match. A short name can name
+  several types - `BlendMode` is the render context's enum, a PixelFX one
+  and a VectorStorage one - and the checker took the first in sorted order,
+  `PixelFX::BlendMode`, so `UltraCanvasRenderContext.md`'s correct listing
+  of the render context's modes read as seven missing enumerators. A
+  planted wrong enumerator is still reported, against
+  `UltraCanvas::BlendMode`. The page's mask example declares the
+  application's `DrawContent` it calls; the page passes the checker.
+- Docs: `UltraCanvasMatrixDiagram.md` passes the doc checker. The roll-up
+  example used `row` and `col` without saying what they were, and the
+  checker read `row` as a container (a common name for one in the other
+  docs); the example now declares them as the item indices the score
+  functions take. The validation example's `Log` is marked as the
+  application's logger and declared for the checker.
+- **Checkboxes, radios and switches take the keyboard focus.**
+  `UltraCanvasLabeledToggleBase` never overrode `AcceptsFocus()`, so Tab
+  skipped every toggle and their Space handling and focus ring were never
+  reached. They take the focus like buttons now: Tab reaches them, a press
+  focuses them, and Space activates the focused one. Enter is no longer
+  handled by a toggle, so in a dialog it still presses the default button,
+  as in HTML and the native toolkits. `SetAcceptsFocus(false)` keeps a toggle
+  out of the Tab order. Apps whose dialogs hold toggles gain Tab stops.
+- **A radio added to a group already checked becomes its selection.**
+  `UltraCanvasRadioGroup::AddRadioButton` ignored a radio's checked state, so
+  one created with `checked = true` showed its dot while
+  `GetSelectedButton()` returned null, and two such radios both stayed
+  checked. The last checked radio added wins and the others are cleared, as
+  in an HTML group; building the group does not call `onSelectionChanged`.
+- **Charts leave a left press to the parent unless it starts a pan.** The
+  chart base took every left press and release, so a chart in a scrolling or
+  draggable container swallowed its clicks. It takes them only to start and
+  end a pan of a zoomed chart; charts that react to clicks handle them
+  first, as before.
+- **A CSV row that cannot be read is skipped, not plotted at (0,0).**
+  `ChartDataVector` and `ChartDataStream` turned a row after the first whose
+  x or y is not a number into a point at the origin. Every line is now kept
+  only when its x and y read as numbers - headers, blank lines and broken
+  rows are skipped wherever they stand - and `ChartDataStream` numbers its
+  points over the data rows, so its count and chunks agree.
+- `IsFocused()` on an element whose window has no application (a test, a
+  tool) called through a null pointer and crashed;
+  `UltraCanvasWindowBase::IsWindowFocused()` is false then.
+- Tests: `TextInputFontTest` checks `IRenderContext::GetLineBoxHeight`
+  headless: it is the font's line height unrounded, `GetTextLineHeight` is
+  the same height in whole pixels and never more, a line's descenders end
+  inside it, and a second ask comes from the cache.
+- The public headers' inline default bodies mark their unused parameters
+  `(void)`, as `UltraCanvasRenderContext.h` already did in places: a build
+  with `-Wextra` (the Models plugin, the tests, Texter, AnchorPoint) saw 48
+  `-Wunused-parameter` warnings from 17 headers - the render context's on
+  every file - and now sees none. Signatures and parameter names are
+  unchanged.
+
 #### 2026-10-08 *0.9.207*
 - **A text field's caret and selection reach the bottom of the text.** The
   field's line box was `GetTextLineHeight("H")` tall: whole pixels, with the
