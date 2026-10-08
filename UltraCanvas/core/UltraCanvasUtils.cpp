@@ -995,21 +995,22 @@ namespace UltraCanvas {
     }
 
     std::string NormalizePath(const std::string& in) {
-        std::string result;
 #if defined(_WIN32) || defined(_WIN64)
-        result = in;
+        constexpr char kSeparator = '\\';
+        std::string result = in;
         std::replace(result.begin(), result.end(), '/', '\\');
 #else
+        constexpr char kSeparator = '/';
+        // A path that does not exist stays as it was given: realpath leaves
+        // its buffer undefined then (glibc cuts it at the first missing part).
         char real[PATH_MAX];
-        realpath(in.c_str(), real);
-        result = real;
+        std::string result = realpath(in.c_str(), real) ? std::string(real) : in;
 #endif
-        if (!in.empty() && (in.back() == '/' || in.back() == '\\')) {
-#if defined(_WIN32) || defined(_WIN64)
-            result.push_back('\\');
-#else
-            result.push_back('/');
-#endif
+        // A folder given with a separator at its end keeps exactly one, so a
+        // file name appends to it as it is.
+        const bool endsInSeparator = !in.empty() && (in.back() == '/' || in.back() == '\\');
+        if (endsInSeparator && (result.empty() || result.back() != kSeparator)) {
+            result.push_back(kSeparator);
         }
         return result;
     }

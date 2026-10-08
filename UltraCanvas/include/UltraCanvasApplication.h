@@ -31,13 +31,16 @@
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
 
-    // Bundled DejaVu font registration tables. Defined in UltraCanvasApplication.cpp.
+    // The bundled fonts' file names (the Ubuntu and Ubuntu Mono families), in
+    // GetBundledFontsDir(). Defined in UltraCanvasApplication.cpp.
     extern const char* const kEmbeddedAllFonts[];
     extern const size_t kEmbeddedAllFontsCount;
     extern const char* const kEmbeddedMonoFonts[];
     extern const size_t kEmbeddedMonoFontsCount;
 
-    // Returns absolute path to media/fonts/dejavu/ in the resources dir.
+    // The folder of the fonts the framework ships: media/fonts/ in the
+    // resources dir (GetResourcesDir), absolute and ending in a separator, so
+    // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
 
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
@@ -60,7 +63,43 @@ namespace UltraCanvas {
     // has its own fonts.conf. No-op on macOS (CoreText) and whenever a usable
     // config already exists, so a normal Linux desktop is unaffected. Called
     // first thing by UltraCanvasApplicationBase::Initialize().
+    //
+    // On Windows that config names C:\Windows\Fonts and the user's font
+    // folder, and with a cold font cache - the first start on a computer, or
+    // after Windows changed its fonts - fontconfig opens every font file in
+    // them before the first text can be laid out: many seconds in which no
+    // window could appear. So there, when the bundled fonts are present,
+    // fontconfig starts with them alone (fonts-startup.conf) and the system
+    // fonts are scanned on a thread of their own (fonts.conf, the full set);
+    // see AdoptSystemFontsWithin.
     void SetupBundledFontconfig();
+
+    // The system fonts' scan that SetupBundledFontconfig started, called by
+    // the platform's LoadBundledFontsNative: waits up to `waitMs` for it and,
+    // when it has ended, makes the full set the current one and returns true
+    // - with a warm font cache the scan ends well within the wait and the
+    // application starts exactly as it did with one config. False while the
+    // scan still runs: the application starts with the bundled fonts, and
+    // when the scan ends every window is switched to the full set on the UI
+    // thread (fonts, Pango's font map, the text caches, a new layout).
+    // True wherever no scan was started (every other platform, a system
+    // fonts.conf, no bundled fonts).
+    bool AdoptSystemFontsWithin(int waitMs);
+
+    // How the system fonts' background scan went, for a start-up report.
+    struct SystemFontScanStatus {
+        bool   started = false;         // a scan was started (Windows, generated config)
+        bool   finished = false;        // it has ended
+        bool   succeeded = false;       // ... with a usable font set
+        bool   adoptedAtStart = false;  // its set was current before the first window
+        double ms = 0;                  // how long it took, once finished
+    };
+    SystemFontScanStatus GetSystemFontScanStatus();
+
+    // Called on the UI thread after the windows were switched to the system
+    // fonts that a scan still running at the start brought later (not when
+    // they were adopted at the start). For a start-up trace.
+    void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler);
 
     // Tells the text stack that the set of available fonts just changed.
     // A font file added after start-up is invisible to Pango until this is
@@ -79,6 +118,13 @@ namespace UltraCanvas {
     enum class FdWatchType { Read, Write };
     using FdWatchId = std::uint64_t;
 
+    // One step of UltraCanvasApplicationBase::Initialize() and how long it
+    // took (see GetStartupTimings).
+    struct StartupStageTiming {
+        std::string stage;
+        double ms = 0;
+    };
+
     class UltraCanvasApplicationBase {
     friend UltraCanvasWindowBase;
     protected:
@@ -86,6 +132,7 @@ namespace UltraCanvas {
         bool volatile initialized = false;
         std::string appName;
         std::string defaultWindowIconPath;
+        std::vector<StartupStageTiming> startupTimings;
 
         std::deque<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
@@ -356,6 +403,12 @@ namespace UltraCanvas {
         // calling Run(). Assumes Initialize() succeeded and the app is running.
         void RunOnce();
         bool Initialize(const std::string& app);
+        // How long each step of Initialize() took, in the order they ran:
+        // fontconfig, the image subsystem, the native backend, the bundled
+        // fonts, the clipboard and the default icon. For an application that
+        // starts slowly, to tell the framework's share of the wait from its
+        // own; the same numbers go to debugOutput.
+        const std::vector<StartupStageTiming>& GetStartupTimings() const { return startupTimings; }
         bool RequestExit();
         virtual void Exit();
         // The one call a signal handler may make. RequestExit() logs and runs

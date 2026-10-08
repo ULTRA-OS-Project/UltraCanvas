@@ -1,7 +1,21 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.5.0
-// Last Modified: 2026-09-15
+// Version: 1.7.0
+// Last Modified: 2026-10-08
+// V1.6.0: One key press is one undo step: typed characters, Space, typing over
+//   a selection, Backspace/Delete on a selection and a paste each saved two or
+//   three states, and a key press the length limit refused saved one with no
+//   change. Losing the focus validates (validateOnBlur was never read), so a
+//   required field tabbed through shows its error. SetInputType replaces the
+//   rules the previous type added instead of stacking them; SetFormatter fills
+//   an empty placeholder and keeps one the caller set (it did the reverse).
+//   A new input type also drops the formatter (and its placeholder) the old
+//   one chose. Backspace/Delete of one character validate like every other
+//   edit and report the change once; on a selection they reported it twice,
+//   and at the start or end of the field they reported a change that was
+//   not one. Email, Phone, Numeric, Range and Pattern accept an empty field.
+// V1.5.1: SetFontSize / SetStyle re-clamp the scroll, invalidate the layout
+//   and redraw (FontChanged), as the Label and Button font setters do.
 // V1.5.0: Every byte offset the field keeps is now a character boundary. Caret
 //   movement, Backspace and Delete step a whole character, hit testing snaps to
 //   one, the password mask draws one '*' per character, the length limit counts
@@ -68,6 +82,23 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::TextChanged() {
         if (onTextChanged) onTextChanged(text);
+        NotifyAccessibility(AccessibilityEventType::ValueChanged);
+    }
+
+    std::string UltraCanvasTextInput::GetAccessibleName() const {
+        // The placeholder says what belongs in the field when nothing else does.
+        return GetAccessibleNameOverride().empty() ? placeholderText : GetAccessibleNameOverride();
+    }
+
+    std::string UltraCanvasTextInput::GetAccessibleValueText() const {
+        return passwordMode ? std::string() : text;
+    }
+
+    bool UltraCanvasTextInput::SetAccessibleValueText(const std::string& newText) {
+        if (readOnly || IsDisabled()) return false;
+        SetText(newText);
+        TextChanged();   // as typing would: the owner hears of it
+        return true;
     }
 
     std::string UltraCanvasTextInput::GetRenderText() const {
@@ -126,6 +157,7 @@ namespace UltraCanvas {
         }
 
         UpdateScrollOffset();
+        NotifyAccessibility(AccessibilityEventType::ValueChanged);
     }
 
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
@@ -136,28 +168,47 @@ namespace UltraCanvas {
         passwordMode = (type == TextInputType::Password);
         if (!passwordMode) passwordRevealed = false;
 
+        // The rules the previous type brought go: switching Email -> Text must
+        // not leave the email check behind, and setting a type twice must not
+        // run its check twice. The caller's own rules stay where they are.
+        validationRules.erase(
+                std::remove_if(validationRules.begin(), validationRules.end(),
+                               [](const RuleEntry& entry) { return entry.addedByInputType; }),
+                validationRules.end());
+        // So does a formatter it chose, with the placeholder that came with
+        // it (Phone -> Text must not stay phone-formatted); a formatter the
+        // caller set stays.
+        if (formatterFromInputType) SetFormatter(TextFormatter::NoFormat());
+        auto setTypeFormatter = [this](const TextFormatter& typeFormatter) {
+            SetFormatter(typeFormatter);
+            formatterFromInputType = true;
+        };
+        auto addTypeRule = [this](const ValidationRule& rule) {
+            validationRules.push_back({ rule, true });
+        };
+
         // Configure based on type
         switch (type) {
             case TextInputType::Password:
                 break;
             case TextInputType::Email:
-                AddValidationRule(ValidationRule::Email());
+                addTypeRule(ValidationRule::Email());
                 break;
             case TextInputType::Phone:
-                SetFormatter(TextFormatter::Phone());
-                AddValidationRule(ValidationRule::Phone());
+                setTypeFormatter(TextFormatter::Phone());
+                addTypeRule(ValidationRule::Phone());
                 break;
             case TextInputType::Number:
             case TextInputType::Integer:
             case TextInputType::Decimal:
-                AddValidationRule(ValidationRule::Numeric());
+                addTypeRule(ValidationRule::Numeric());
                 break;
             case TextInputType::Currency:
-                SetFormatter(TextFormatter::Currency());
-                AddValidationRule(ValidationRule::Numeric());
+                setTypeFormatter(TextFormatter::Currency());
+                addTypeRule(ValidationRule::Numeric());
                 break;
             case TextInputType::Date:
-                SetFormatter(TextFormatter::Date());
+                setTypeFormatter(TextFormatter::Date());
                 break;
             default:
                 break;
@@ -192,13 +243,15 @@ namespace UltraCanvas {
 
         ValidationResult result = ValidationResult::Valid();
 
-        // Check all rules in priority order
-        std::sort(validationRules.begin(), validationRules.end(),
-                  [](const ValidationRule& a, const ValidationRule& b) {
-                      return a.priority > b.priority;
-                  });
+        // Check all rules in priority order; equal priorities keep the order
+        // the rules were added in.
+        std::stable_sort(validationRules.begin(), validationRules.end(),
+                         [](const RuleEntry& a, const RuleEntry& b) {
+                             return a.rule.priority > b.rule.priority;
+                         });
 
-        for (const auto& rule : validationRules) {
+        for (const auto& entry : validationRules) {
+            const ValidationRule& rule = entry.rule;
             if (!rule.validator(text)) {
                 result = ValidationResult::Invalid(rule.errorMessage, rule.name);
                 break;
@@ -214,8 +267,13 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::SetFormatter(const TextFormatter &textFormatter) {
         formatter = textFormatter;
-        if (!placeholderText.empty() && !formatter.placeholder.empty()) {
+        formatterFromInputType = false;
+        // The formatter's placeholder is a default: it fills an empty one, and
+        // replaces one an earlier formatter brought, but never a placeholder
+        // the caller chose.
+        if (placeholderText.empty() || placeholderFromFormatter) {
             placeholderText = formatter.placeholder;
+            placeholderFromFormatter = !formatter.placeholder.empty();
         }
 
         // Reformat current text
@@ -443,6 +501,25 @@ namespace UltraCanvas {
 
         // Clear redo stack when new state is saved
         redoStack.clear();
+    }
+
+    void UltraCanvasTextInput::SetStyle(const TextInputStyle& inputStyle) {
+        style = inputStyle;
+        FontChanged();
+    }
+
+    void UltraCanvasTextInput::SetFontSize(float size) {
+        style.fontStyle.fontSize = size;
+        FontChanged();
+    }
+
+    // Every character, and with them the caret, moves with the font: the
+    // horizontal scroll is clamped again, the layout told (for a parent that
+    // sizes from it) and the field redrawn.
+    void UltraCanvasTextInput::FontChanged() {
+        UpdateScrollOffset();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::UpdateScrollOffset() {
@@ -1055,16 +1132,10 @@ namespace UltraCanvas {
         // Handle printable characters from KeyDown events
         // UCEvent already has 'character' and 'text' fields populated by X11
         if (event.character != 0 && event.character >= 32 && event.character < 127) {
-            // Handle regular printable character input
-            SaveState();
-
-            if (hasSelection) {
-                DeleteSelection();
-            }
-
+            // One key press, one undo step: InsertText() replaces the
+            // selection and saves the state itself, so nothing is saved here.
             std::string charStr(1, event.character);
             InsertText(charStr);
-//            InvalidateLayout();
             return true;
         }
 
@@ -1087,8 +1158,7 @@ namespace UltraCanvas {
 
             case UCKeys::Backspace:
                 if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
+                    DeleteSelection();   // saves the undo state, validates, reports the change
                 } else if (caretPosition > 0) {
                     SaveState();
                     // Erase the whole character before the caret, not its last
@@ -1097,10 +1167,8 @@ namespace UltraCanvas {
                     const size_t from = utf8_prev_boundary(text, caretPosition);
                     text.erase(from, caretPosition - from);
                     caretPosition = from;
-                    UpdateDisplayText();
+                    CharacterErased();
                 }
-                UpdateScrollOffset();
-                TextChanged();
                 return true;
 
             case UCKeys::Delete:
@@ -1110,17 +1178,14 @@ namespace UltraCanvas {
                     return true;
                 }
                 if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
+                    DeleteSelection();   // saves the undo state, validates, reports the change
                 } else if (caretPosition < text.length()) {
                     SaveState();
                     // The whole character after the caret (see Backspace).
                     const size_t to = utf8_next_boundary(text, caretPosition);
                     text.erase(caretPosition, to - caretPosition);
-                    UpdateDisplayText();
+                    CharacterErased();
                 }
-                UpdateScrollOffset();
-                TextChanged();
                 return true;
 
             case UCKeys::X:
@@ -1169,9 +1234,7 @@ namespace UltraCanvas {
                 break;
 
             case UCKeys::Space:
-                // Handle space as a regular character
-                SaveState();
-                if (hasSelection) DeleteSelection();
+                // A regular character: InsertText() saves the one undo step.
                 InsertText(" ");
                 return true;
 
@@ -1189,9 +1252,7 @@ namespace UltraCanvas {
                     }
 
                     if (!filteredText.empty()) {
-                        SaveState();
-                        if (hasSelection) DeleteSelection();
-                        InsertText(filteredText);
+                        InsertText(filteredText);   // one undo step
                         return true;
                     }
                 }
@@ -1215,6 +1276,15 @@ namespace UltraCanvas {
         isDragging = false;
         isClearButtonHovered = false;
         isPasswordToggleHovered = false;
+
+        // The user has left the field: judge what is in it. Typing validates
+        // as it goes, but a required field tabbed through without a keystroke
+        // was never checked. A field that loses the focus because it is being
+        // hidden or disabled was not left by the user, and is not judged.
+        // Before onFocusLost, so the callback reads the fresh result.
+        if (validateOnBlur && IsVisible() && !IsDisabled()) {
+            Validate();
+        }
         RequestRedraw();
 
         if (onFocusLost) onFocusLost();
@@ -1224,18 +1294,30 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::InsertText(const std::string &rawInsertText) {
         if (readOnly) return;
 
-        SaveState();
-
         // Typed characters arrive as UTF-8 from every backend's input method,
         // but a paste - or a keyboard backend falling back to a byte lookup -
         // can carry bytes that are not: repair them rather than storing text
         // the renderer will refuse.
         const std::string insertText = utf8_make_valid(rawInsertText);
 
-        // Check max length (in characters - see SetMaxLength)
-        if (maxLength > 0 && utf8_length(text) + utf8_length(insertText) > maxLength) {
-            return;
+        // Check max length (in characters - see SetMaxLength). The selection
+        // is replaced, so its characters do not count: typing over a
+        // selection in a full field still works.
+        if (maxLength > 0) {
+            int selectedChars = 0;
+            if (hasSelection) {
+                auto [begin, end] = GetSelectionRange();
+                selectedChars = utf8_length(text.substr(begin, end - begin));
+            }
+            if (utf8_length(text) - selectedChars + utf8_length(insertText) > maxLength) {
+                return;
+            }
         }
+
+        // The one undo step for this edit - selection replaced and text
+        // inserted together - saved only now that the edit will happen, so a
+        // refused key press leaves no empty step (and keeps the redo stack).
+        SaveState();
 
         // Delete selection if any (normalized so a backward span erases correctly)
         if (hasSelection) {
@@ -1280,6 +1362,18 @@ namespace UltraCanvas {
         TextChanged();
     }
 
+    // After Backspace / Delete took one character: what DeleteSelection does
+    // after it erased a selection - the display, the scroll, validation, and
+    // one change notification.
+    void UltraCanvasTextInput::CharacterErased() {
+        UpdateDisplayText();
+        UpdateScrollOffset();
+        if (validateOnChange) {
+            Validate();
+        }
+        TextChanged();
+    }
+
     void UltraCanvasTextInput::UpdateDisplayText() {
         displayText = formatter.formatFunction ? formatter.formatFunction(text) : text;
         RequestRedraw();
@@ -1317,8 +1411,8 @@ namespace UltraCanvas {
 
         if (clipboardText.empty()) return;
 
-        // DeleteSelection()/InsertText() save undo state themselves.
-        if (hasSelection) DeleteSelection();
+        // InsertText() replaces the selection and saves the undo state: one
+        // paste, one undo step.
         InsertText(clipboardText);
     }
 
@@ -1399,6 +1493,7 @@ namespace UltraCanvas {
 
     ValidationRule ValidationRule::Email(const std::string &message) {
         return ValidationRule("Email", message, [](const std::string& value) {
+            if (value.empty()) return true;   // only Required says a field must be filled
             std::regex emailRegex(R"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})");
             return std::regex_match(value, emailRegex);
         });
@@ -1406,6 +1501,7 @@ namespace UltraCanvas {
 
     ValidationRule ValidationRule::Phone(const std::string &message) {
         return ValidationRule("Phone", message, [](const std::string& value) {
+            if (value.empty()) return true;   // only Required says a field must be filled
             std::regex phoneRegex(R"(\+?[\d\s\-\(\)\.]{10,})");
             return std::regex_match(value, phoneRegex);
         });
@@ -1413,6 +1509,7 @@ namespace UltraCanvas {
 
     ValidationRule ValidationRule::Numeric(const std::string &message) {
         return ValidationRule("Numeric", message, [](const std::string& value) {
+            if (value.empty()) return true;   // only Required says a field must be filled
             try {
                 std::stod(value);   // locale-ok: the user typed this into the field
                 return true;
@@ -1426,6 +1523,7 @@ namespace UltraCanvas {
         std::string msg = message.empty() ?
                           "Must be between " + std::to_string(min) + " and " + std::to_string(max) : message;
         return ValidationRule("Range", msg, [min, max](const std::string& value) {
+            if (value.empty()) return true;   // only Required says a field must be filled
             try {
                 double val = std::stod(value);   // locale-ok: the user typed this into the field
                 return val >= min && val <= max;
@@ -1437,6 +1535,7 @@ namespace UltraCanvas {
 
     ValidationRule ValidationRule::Pattern(const std::string &pattern, const std::string &message) {
         return ValidationRule("Pattern", message, [pattern](const std::string& value) {
+            if (value.empty()) return true;   // only Required says a field must be filled
             try {
                 std::regex regex(pattern);
                 return std::regex_match(value, regex);

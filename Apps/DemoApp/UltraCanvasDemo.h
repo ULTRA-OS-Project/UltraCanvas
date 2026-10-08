@@ -1,7 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
+//                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -232,6 +234,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateDatePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTimePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAlertExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateNotificationToastExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePaginationExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRatingExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateStepperExamples();
@@ -300,7 +303,6 @@ namespace UltraCanvas {
         // mixed-direction lines.
         std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGInternationalExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
-        std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
         // Media Elements
         std::shared_ptr<UltraCanvasUIElement> CreateAudioExamples();

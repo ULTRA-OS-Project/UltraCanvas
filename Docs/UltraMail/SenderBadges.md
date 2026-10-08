@@ -130,30 +130,58 @@ phishing scan reasons about:
 ## 3. The sender-icon cache
 
 `UltraMailSenderIconCache` owns one folder — `<dataDir>/cache/sender-icons` —
-holding the icon of each registry entry, named after the brand id with the
-extension sniffed from the downloaded bytes (`facebook.png`, `apple.ico`, …).
+holding two kinds of icon, each under a key:
 
-* **Only the curated registry is ever fetched.** UltraMail does not ask the
-  internet about a stranger's domain; that would tell a third party who writes
-  to the user. The set of possible requests is the brand table, and each is
-  made at most once.
+* **A registry service's icon**, from the URL in the brand table, named after
+  the brand id with the extension sniffed from the downloaded bytes
+  (`facebook.png`, `apple.ico`, …). Key: the brand id.
+* **A website's icon**, for a sender that is no known service: the home page
+  of the registrable domain it writes from (`https://example.com/`, then
+  `https://www.example.com/`) is read for its `<link rel="icon">` — a size a
+  badge can use first, then the home-screen icon, an icon of no stated size,
+  SVG, tiny ones — and `/favicon.ico` is the fallback (`FindSiteIconUrls`).
+  Filed under `sites/example.com.png`. Key: `site:example.com` (`SiteIconKey`).
+
+How it is filled:
+
+* **Lazily, in the background.** The message list's item delegate asks for an
+  icon (`SenderBadge::iconKey`, `SenderIconCache::Request`) when it paints a
+  row whose badge has none cached, and the reading pane when it shows such a
+  sender; up to three loader threads of the cache's own fetch them and the
+  app is told of each icon stored (`SetReadyHandler`), whereupon the waiting
+  rows and the pane show it. Neither the sync nor the window waits for a
+  download, and only senders actually on screen are fetched. (Until 0.10.32
+  the sync worker fetched a registry icon as each new header arrived, holding
+  the sync for the round trip.)
+* **Website icons only for mail that passed the scan.** A website icon is
+  asked for only when the message has been scanned and is clean or an
+  advertisement, is not in the junk folder, and its domain is not a mailbox
+  provider (a friend's Gmail address is not Google's mail). Reading a site's
+  home page tells the sender's web server that someone looked — not which
+  message — which is why it is a setting of its own and never done for spam,
+  scams or the junk folder.
+* **No icon on a spam or scam badge.** An icon is drawn without the badge's
+  frame, and on a dangerous message the frame is the warning: a forged
+  `paypal.com` address must not wear PayPal's logo.
 * **The fetch is injected.** The engine has no network dependency of its own:
-  `SetFetcher()` takes the HTTPS GET (the app supplies one built on
-  `UltraNet_HttpGet`, TLS verified, 10 s timeout, 512 KB cap), the test suite
-  supplies a fake, and a build that sets none downloads nothing.
-* **Fetching happens on the sync worker**, as each new message's header
-  arrives — never on the UI thread, which only ever reads the folder.
-* **A miss is remembered** in a `<brand>.missing` marker and not retried for a
-  week, so an offline machine does not spend every sync on the same failures.
+  `SetFetcher()` takes the HTTPS GET for an icon (the app supplies one built
+  on `UltraNet_HttpGet`, TLS verified, 10 s timeout, 512 KB cap),
+  `SetPageFetcher()` the one for a home page (256 KB, and a page cut off there
+  is still read: its head comes first); the test suite supplies fakes, and a
+  build that sets none downloads nothing.
+* **A miss is remembered** in a `.missing` marker and not retried for a week,
+  nor a second time in one session, so an offline machine does not spend its
+  time on the same failures.
 * **Bytes that are not an image are rejected** (a captive portal's HTML login
   page, an error page), and a file the image loader cannot decode falls back to
   the monogram rather than leaving an empty square.
 
 No icon is a normal state, not an error: the badge then shows the sender's
-initial in the brand's own colour. The whole feature can be turned off in
-**Settings → Download icons of known senders** (stored as
-`fetch_sender_icons` in `preferences.ini`); icons already in the folder keep
-being shown.
+initial in the brand's own colour. **Settings → Privacy → Sender icons** has
+both switches: *Download the icons of known senders* (`fetch_sender_icons` in
+`preferences.ini`; off, nothing at all is downloaded) and *Show other senders'
+website icons* (`fetch_site_icons`); icons already in the folder keep being
+shown.
 
 ## 4. The registry as a source of business contacts
 
@@ -186,8 +214,10 @@ score and the reasons, in the words the tooltip and the warning strip show.
 It runs **once per message, where the body is cached during sync**, and the
 verdict is stored in the `message_security` table — its own table, so that an
 envelope upsert (which happens on every header sync, long before a body
-exists) can never reset a scan that has already run. A message whose body was
-cached by an older build is scanned the first time it is opened.
+exists) can never reset a scan that has already run. A verdict made by older
+rules (`kThreatRulesRevision`) is made again: by the sync, a batch of up to
+300 cached bodies per folder sync (`SyncEngine::RescanStaleVerdicts`), and
+when the message is opened.
 
 Links are pulled out of both HTML (`<a href>`, `<area href>`, `<form action>`,
 with their anchor text) and plain-text bodies (bare URLs). The rules, with
@@ -202,7 +232,7 @@ their weights:
 | `link-brand-lookalike` | 40 | `apple-id-verify.delivery-update.example` |
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
-| `auth-failure` | 30 | `Authentication-Results` reports `spf=fail` / `dkim=fail` / `dmarc=fail` |
+| `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate, taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential") — 50 when two of those appear |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
@@ -213,10 +243,54 @@ their weights:
 | `link-shortener` | 12 | The destination cannot be seen |
 | `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
 | `spam-flag` | 40 | The receiving server already said so |
-| *(`dmarc=pass`)* | −10 | The From address is at least genuinely theirs |
+| *(verified sender)* | −10 | DMARC passed for the From domain, or a DKIM signature of it verified: the From address is genuinely theirs |
 
 45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
 with bulk markers is an **Advertisement** and everything else is **Clean**.
+
+### Mail authentication
+
+The receiving server checks the sending domain's own records when a message
+arrives and writes what it found into an `Authentication-Results` header
+(RFC 8601): **DKIM** (a signature by the domain over the message), **SPF**
+(whether the delivering server is one the envelope sender's domain allows) and
+**DMARC** (whether the From domain's own policy was met by an aligned DKIM or
+SPF pass). The scan reads the **topmost** such header only — the one the
+user's own server prepended; one further down may have been written by anyone,
+the sender included (`TopHeaderValue`, `ParseAuthenticationResults`).
+
+A sender is **verified** when DMARC passed for the From domain, or a DKIM
+signature by the From address's registrable domain verified — a mail
+service's own signature (`sendgrid.net`) proves nothing about the From
+address (`VerifiedSenderDomain`). Verified is not the same as harmless: a
+fraudster can sign for a domain of their own. So a verified sender keeps
+every rule that catches a lie, and loses only the ones that misfire on
+genuine mail:
+
+* `link-target-mismatch` when the text names the sender's own, verified site
+  and the link goes through its mail service's click tracker;
+* `reply-to-mismatch` (replies to a help desk on another domain) and
+  `many-foreign-domains`;
+* for a verified **registry brand** (the From domain is the brand's own, e.g.
+  `paypal.com` proven by DKIM), also `credential-request` and
+  `link-brand-mismatch` — the bank asking to update account details is the
+  bank.
+
+A look-alike domain that signs its own mail (`paypa1-alerts.example`) still
+trips `link-target-mismatch`, `brand-impersonation` and `credential-request`.
+The verified domain and how it was proven are stored with the verdict
+(`message_security.verified_domain` / `verified_by`, schema 10) and named in
+the badge's and the sender's tooltips ("✓ Verified sender: paypal.com (DKIM
+signature and DMARC)").
+
+The reading pane shows the checks beside the sender as small bordered labels
+— **[DMARC] [DKIM] [SPF]**, green when passed, red when failed, grey with no
+verdict — each with a tooltip saying what was checked, for which domain, what
+that proves and which server checked it (`DescribeAuthentication`). A message
+the server recorded no checks for shows a grey **[Not checked]**; that is not
+a warning. A message signed by its author shows **[S/MIME]** or **[OpenPGP]**
+in grey: the signature is detected (`MessageSignatureKind`) but not yet
+verified, so it counts for nothing.
 
 The scan is deliberately asymmetric — a false "suspicious" costs the reader a
 second look, a missed phishing mail can cost them their account — but it is
@@ -234,7 +308,7 @@ clean, and each of those is a test in
 | Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
 | Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
 | Collecting a sender into the address book | `Apps/UltraMail/engine/UltraMailContactCollector.{h,cpp}` |
-| Stored verdicts (`message_security`, schema 4) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
+| Stored verdicts (`message_security`, schema 4; verified sender, schema 10) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
 | Scan at download time | `Apps/UltraMail/engine/UltraMailSyncEngine.cpp` (`WriteBody`) |
 | The badge itself (painting + element) | `Apps/UltraMail/ui/UltraMailSenderBadge.{h,cpp}` |
 | Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |

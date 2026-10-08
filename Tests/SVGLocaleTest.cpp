@@ -19,8 +19,8 @@
 //
 // Usage: SVGLocaleTest
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0 - transforms (SerializeTransform)
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -193,10 +193,53 @@ void CheckExportRoundTrip() {
     Check(Near(backRect->Bounds.x, 10.5), "x survives the round trip as 10.5");
 }
 
+// SerializeTransform wrote std::to_string(double), which renders through
+// LC_NUMERIC: on a comma-decimal desktop every transform the SVG writer saved
+// (groups, gradients, patterns) came out as `matrix(0,866025,0,500000,...)`,
+// whose commas also separate the six numbers - so a saved drawing reopened
+// with its rotated and moved groups somewhere else.
+void CheckTransforms() {
+    const Matrix3x3 m = Matrix3x3::Translate(250000.5, -12.25) * Matrix3x3::RotateDegrees(30) *
+                        Matrix3x3::Scale(1.5, 0.75);
+    const std::string t = SerializeTransform(m);
+    size_t commas = 0;
+    for (char ch : t) commas += ch == ',';
+    Check(t.rfind("matrix(", 0) == 0 && commas == 5, "SerializeTransform writes six dot-decimal numbers: " + t);
+    const Matrix3x3 back = ParseTransformString(t);
+    bool same = true;
+    for (int r = 0; r < 2; ++r)
+        for (int c = 0; c < 3; ++c) same = same && Near(back.m[r][c], m.m[r][c], 1e-6);
+    Check(same, "a transform reads back as the same matrix");
+    Check(Near(back.m[0][2], 250000.5, 1e-6), "a CAD-sized translation keeps its half unit");
+
+    // The way a user meets it: a rotated group saved and reopened.
+    VectorConverter::SVGConverter converter;
+    VectorConverter::ConversionOptions options;
+    auto doc = std::make_shared<VectorDocument>();
+    doc->Size = Size2Dd{200, 100};
+    auto layer = doc->AddLayer("Artwork");
+    auto group = std::make_shared<VectorGroup>();
+    group->Transform = Matrix3x3::Translate(100.5, 50.25) * Matrix3x3::RotateDegrees(30);
+    auto rect = std::make_shared<VectorRect>();
+    rect->Bounds = Rect2Dd{-10, -5, 20, 10};
+    rect->Style.Fill = Color(0, 0, 255, 255);
+    group->AddChild(rect);
+    layer->AddChild(group);
+    auto reopened = converter.ImportFromString(converter.ExportToString(*doc, options), options);
+    auto backLayer = (reopened && !reopened->Layers.empty()) ? reopened->Layers[0] : nullptr;
+    auto backGroup = (backLayer && !backLayer->Children.empty())
+            ? std::dynamic_pointer_cast<VectorGroup>(backLayer->Children[0]) : nullptr;
+    Check(backGroup && backGroup->Transform && Near(backGroup->Transform->m[0][2], 100.5) &&
+          Near(backGroup->Transform->m[1][2], 50.25) && Near(backGroup->Transform->m[0][0], 0.866025, 1e-5) &&
+          Near(backGroup->Transform->m[1][0], 0.5, 1e-5),
+          "a rotated group keeps its place and angle through save and reopen");
+}
+
 void RunAllChecks() {
     CheckSharedParser();
     CheckImport();
     CheckExportRoundTrip();
+    CheckTransforms();
 }
 
 // Returns the name of a comma-decimal locale this machine can actually set, or

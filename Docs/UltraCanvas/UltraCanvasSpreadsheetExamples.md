@@ -1,13 +1,16 @@
 # UltraCanvasSpreadsheet Documentation
 
+<!-- doc-check: int MyTextMetrics(const std::string& text, const CellFont& font); -->
+
 ## Overview
 
 **UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`) and CSV/TSV. Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
+**Last Modified:** 2026-10-07
 **Header:** `include/UltraCanvasSpreadsheet.h`
 **Namespace:** `UltraCanvas`
-**Base Class:** `UltraCanvasUIElement`
+**Base Class:** `UltraCanvasContainer`
 
 ## Features
 
@@ -37,14 +40,19 @@
 ### Constructors and Factory
 
 ```cpp
-UltraCanvasSpreadsheet();
-UltraCanvasSpreadsheet(const std::string& id, float x, float y, float width, float height);
+class UltraCanvasSpreadsheet : public UltraCanvasContainer {
+public:
+    UltraCanvasSpreadsheet();
+    UltraCanvasSpreadsheet(const std::string& id, float x, float y, float width, float height);
+};
+```
 
+```cpp
 // Preferred: UI elements are created as shared_ptr.
-std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
+inline std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
     const std::string& id, float x, float y, float width, float height);
 
-std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
+inline std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
     const std::string& id, float width, float height);   // auto-position (x = y = -1)
 ```
 
@@ -265,51 +273,56 @@ std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;  // hea
 `GetCell(row, col)` returns a `SpreadsheetCell*` exposing typed setters, formatting, and getters.
 
 ```cpp
-// Typed value setters
-void SetText(const std::string& text);
-void SetNumber(double value);
-void SetBoolean(bool value);
-void SetFormula(const std::string& formula);
-void SetDate(int year, int month, int day);
-void SetTime(int hour, int minute, int second);
-void SetCurrency(double amount, const std::string& currencyCode = "USD");
-void SetPercentage(double value);                 // 0.5 = 50%
-void SetValueFromString(const std::string& input); // auto-detects type
+class SpreadsheetCell {
+public:
+    // Typed value setters
+    void SetText(const std::string& text);
+    void SetNumber(double value);
+    void SetBoolean(bool value);
+    void SetFormula(const std::string& formula);
+    void SetDate(int year, int month, int day);
+    void SetTime(int hour, int minute, int second);
+    void SetCurrency(double amount, const std::string& currencyCode = "USD");
+    void SetPercentage(double value);                 // 0.5 = 50%
+    void SetValueFromString(const std::string& input); // auto-detects type
 
-// Formatting
-void SetBold(bool bold = true);
-void SetItalic(bool italic = true);
-void SetUnderline(UnderlineStyle style = UnderlineStyle::Single);
-void SetFontFamily(const std::string& family);
-void SetFontSize(float size);
-void SetFontColor(const Color& color);
-void SetBackgroundColor(const Color& color);
-void SetNumberFormat(const NumberFormat& format);
-void SetAlignment(HorizontalAlignment h, VerticalAlignment v);
-void SetTextWrap(bool wrap = true);
+    // Formatting
+    void SetBold(bool bold = true);
+    void SetItalic(bool italic = true);
+    void SetUnderline(UnderlineStyle style = UnderlineStyle::Single);
+    void SetFontFamily(const std::string& family);
+    void SetFontSize(float size);
+    void SetFontColor(const Color& color);
+    void SetBackgroundColor(const Color& color);
+    void SetNumberFormat(const NumberFormat& format);
+    void SetAlignment(HorizontalAlignment h, VerticalAlignment v);
+    void SetTextWrap(bool wrap = true);
 
-// Getters
-CellValueType GetValueType() const;
-std::string GetText() const;
-double      GetNumber() const;
-std::string GetDisplayValue() const;
-const std::string& GetFormulaText() const;
-bool IsEmpty() const;
-bool HasFormula() const;
+    // Getters
+    CellValueType GetValueType() const;
+    std::string GetText() const;
+    double      GetNumber() const;
+    std::string GetDisplayValue() const;
+    const std::string& GetFormulaText() const;
+    bool IsEmpty() const;
+    bool HasFormula() const;
+};
 ```
 
 ### NumberFormat factories (`UltraCanvasSpreadsheetTypes.h`)
 
 ```cpp
-NumberFormat::General();
-NumberFormat::Number(int decimals = 2, bool thousands = false);
-NumberFormat::Currency(const std::string& symbol = "$", int decimals = 2,
-                       bool symbolAfter = false);   // symbolAfter => "1,234.00 €"
-NumberFormat::Percentage(int decimals = 0);
-NumberFormat::Date(const std::string& format = "YYYY-MM-DD");
-NumberFormat::Time(const std::string& format = "HH:MM:SS");
-NumberFormat::Scientific(int decimals = 2);
-NumberFormat::Text();
+struct NumberFormat {
+    static NumberFormat General();
+    static NumberFormat Number(int decimals = 2, bool thousands = false);
+    static NumberFormat Currency(const std::string& symbol = "$", int decimals = 2,
+                                 bool symbolAfter = false);   // symbolAfter => "1,234.00 €"
+    static NumberFormat Percentage(int decimals = 0);
+    static NumberFormat Date(const std::string& format = "YYYY-MM-DD");
+    static NumberFormat Time(const std::string& format = "HH:MM:SS");
+    static NumberFormat Scientific(int decimals = 2);
+    static NumberFormat Text();
+};
 ```
 
 ### Addresses and Ranges
@@ -392,6 +405,8 @@ void SeedSampleData(UltraCanvasSpreadsheet* sheet) {
         ++r;
     }
 }
+
+SeedSampleData(sheet.get());
 ```
 
 ### 3. Formulas and Recalculation

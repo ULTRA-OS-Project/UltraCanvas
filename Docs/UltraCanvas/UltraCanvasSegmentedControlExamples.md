@@ -4,7 +4,7 @@
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -31,16 +31,16 @@
 ### Constructor
 
 ```cpp
-UltraCanvasSegmentedControl(const std::string& identifier = "SegmentedControl",
-                            long x = 0, long y = 0,
-                            long w = 300, long h = 32);
+UltraCanvasSegmentedControl(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasSegmentedControl(const std::string& identifier, float w, float h);
+explicit UltraCanvasSegmentedControl(const std::string& identifier);
 ```
 
 ### Factory Functions
 
 ```cpp
 std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-    const std::string& identifier, long x, long y, long w, long h);
+    const std::string& identifier, float x, float y, float w, float h);
 
 std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
     const std::string& identifier, const Rect2Di& bounds);

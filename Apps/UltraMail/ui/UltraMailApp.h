@@ -3,6 +3,14 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.2 - FinishStartup: the window and the stored mail first, the
+//                   plug-ins, the vault and the first check after it is shown
+// Version: 0.12.1 - the timing trace: the stages of the start and of an
+//                   account switch, and the frames that follow, with their
+//                   times (TraceFrame, UltraMailTrace.h)
+// Version: 0.12.0 - new mail on screen: a notification through UltraMessage
+//                   after a sync brings mail (BeginNewMail / AnnounceNewMail),
+//                   and its click opens the mail (OpenFromNotification)
 // Version: 0.11.0 - SwitchToAccount (the account's stored mail at once, its
 //                   inbox refreshed in the background); FetchMissingBody;
 //                   ForgetDownloadedMail on a change of incoming server
@@ -15,7 +23,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -44,6 +52,7 @@
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailFeedPublisher.h"
+#include "UltraMailNewMail.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -59,6 +68,7 @@
 #include <ctime>
 #include <functional>
 #include <map>
+#include <optional>
 #include <memory>
 #include <set>
 #include <string>
@@ -102,6 +112,18 @@ public:
     bool ApplyNeedsAnswerRules();
 
 private:
+    // The start page, built the first time there is no account to show.
+    void EnsureStartPage();
+    // The rest of the start, once the window is on screen with the stored
+    // mail: the cloud accounts, the mail plug-ins, the vault, the cache
+    // pruning (on a thread), the sync timer and the first check. Idempotent;
+    // an action that needs any of it before then runs it first.
+    void FinishStartup();
+    // The timing trace (UltraMailTrace.h): every main-window frame that is
+    // slow, and the next few in full after the start or an account switch,
+    // with how long after it each came.
+    void TraceFrame(const UltraCanvas::WindowFrameTiming& timing);
+    void TraceNextFrames(const std::string& after, double sinceSeconds);
     // Build the account view (everything shown once an account exists).
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAccountView(float width, float height);
     // Size the start page and the account view to the window's client area.
@@ -405,6 +427,9 @@ private:
     // call again after an account was added: accounts already registered keep
     // their last-sync time and the timer is started once.
     void StartBackgroundSync();
+    // Every account's check interval from the preferences (Settings > Mail >
+    // New mail): the next tick of the sync timer follows it.
+    void ApplyCheckMailInterval();
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
@@ -442,6 +467,17 @@ private:
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
     void SyncAccounts(const std::vector<ScheduledAccount>& targets, bool userInitiated);
+    // Before a sync of the account's inbox: what it already holds, so the
+    // mail above that is news (NewMailTracker).
+    void BeginNewMail(const std::string& accountId);
+    // After it, done or failed: put a notification on screen for the new
+    // mail it stored (Settings > Display > Notifications), through
+    // UltraMessage, which hands it to the desktop's notification server.
+    void AnnounceNewMail(const std::string& accountId, const SyncOutcome& outcome);
+    // A click on one of those notifications: the window to the front and the
+    // mail it announced on screen - the message, or the account's inbox when
+    // it announced several.
+    void OpenFromNotification(const std::string& notificationId);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
     // Explain that no mail can be fetched because the IMAP plug-in was not
@@ -467,9 +503,10 @@ private:
     // Under WAL (LocalStore::Open) the UI's reads never wait for these writes.
     LocalStore workerStore_;
     ContactStore contacts_;
-    // Icons of the known services in the sender registry, under
-    // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
-    // the sync worker; the class is internally locked for exactly that.
+    // Sender icons (the registry's services, and other senders' websites),
+    // under <cacheDir>/sender-icons. Read by the badge on the UI thread,
+    // filled by the cache's own loader threads when the list asks for a row
+    // it paints; the class is internally locked for exactly that.
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
@@ -588,6 +625,10 @@ private:
     int                                                statusReceived_ = 0;
     std::string     selectedAccount_;   // the account the mail view shows
     int             syncsInFlight_ = 0;
+    // The accounts whose sync (SyncAccounts) is running: a check that falls
+    // due while the last one has not finished - a short interval, a slow
+    // server, a first download - is skipped, not run a second time beside it.
+    std::set<std::string> accountSyncsInFlight_;
     StartPage       startPage_;
     AccountBar      accountBar_;
     MailView        mailView_;
@@ -602,8 +643,18 @@ private:
     std::vector<ComposeSession> composers_;
     SyncScheduler   scheduler_;
     // New mail to the desktop feed (UltraMessage mail.message); fed from the
-    // sync workers' progress callbacks.
+    // sync workers' progress callbacks. Also posts the new-mail notification.
     FeedPublisher   feed_;
+    // Which of the stored messages are news, per account, until its sync ends.
+    NewMailTracker  newMail_;
+    // What a click on a notification opens, by the notification's bus id
+    // (UI thread only).
+    struct NotificationTarget {
+        std::string accountId;
+        std::string folder;     // empty: the account's inbox
+        int64_t     uid = 0;    // 0: no single message
+    };
+    std::map<std::string, NotificationTarget> notificationTargets_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;
@@ -615,6 +666,15 @@ private:
     // Attachments open in the framework's media viewer (images, PDF, office
     // sheets, text, audio, video, fonts, …); one window, reused per attachment.
     std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;
+    bool            startupFinished_ = false;
+    // A body the message shown at start lacks, fetched by FinishStartup.
+    std::optional<MessageEnvelope> pendingBodyFetch_;
+    // TraceFrame: frames still to report in full, what they are timed from
+    // ("the click on work") and when that was (Trace::NowSeconds).
+    int             traceFramesLeft_ = 0;
+    int             traceFrameCount_ = 0;
+    std::string     traceAfter_;
+    double          traceSince_ = 0;
 };
 
 } // namespace UltraMail

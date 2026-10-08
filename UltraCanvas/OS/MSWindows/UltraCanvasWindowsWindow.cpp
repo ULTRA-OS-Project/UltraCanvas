@@ -1,7 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.3.0 - never shown black: the first frame is drawn before the
+//                  window appears, and a new surface starts in the window's
+//                  background colour instead of black
+// Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
+// Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-07-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -161,6 +166,12 @@ namespace UltraCanvas {
             case WindowType::Fullscreen:
                 style = WS_POPUP;
                 break;
+            case WindowType::Notification:
+                // A toast: above everything, out of the taskbar and Alt+Tab,
+                // never activated (shown with SW_SHOWNOACTIVATE below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                break;
             default: // Standard
                 break;
         }
@@ -262,6 +273,17 @@ namespace UltraCanvas {
         // 72 DPI, which would let Pango's draw-time pango_cairo_update_layout()
         // resync to a different scale than the cairo-xlib surface on Linux.
         cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
+
+        // A new image surface is all zeros - black - and WM_PAINT blits it as
+        // it is. Start it in the window's background colour, so whatever is
+        // shown before a frame has been drawn into it is never a black window.
+        if (cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface)) == CAIRO_STATUS_SUCCESS) {
+            cairo_t* fill = cairo_create(static_cast<cairo_surface_t *>(nativeSurface));
+            const Color& bg = config_.backgroundColor;
+            cairo_set_source_rgb(fill, bg.r / 255.0, bg.g / 255.0, bg.b / 255.0);
+            cairo_paint(fill);
+            cairo_destroy(fill);
+        }
 
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
@@ -561,7 +583,12 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsWindow::Show() {
         if (!_created || _windowVisible) return;
-        ShowWindow(hwnd, SW_SHOW);
+        // The first frame before the window appears: UpdateWindow below then
+        // puts the window on screen with its content. Shown first, it showed
+        // its empty surface - black - until the event loop drew the frame,
+        // for as long as anything kept the loop from getting there.
+        RenderBeforeShow();
+        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(hwnd);
 
         _windowVisible = true;
@@ -616,57 +643,13 @@ namespace UltraCanvas {
         uint32_t* pixels = pixmap->GetPixelData();
         if (!pixels || w <= 0 || h <= 0) return;
 
-        // Helper lambda to create HICON from ARGB pixel data at a given size
+        // An icon at a given size. IconFromPixmap converts cairo's
+        // premultiplied pixels to the straight alpha an icon carries; copied
+        // as they were, the soft edges came out too dark.
         auto createIcon = [&](int targetW, int targetH) -> HICON {
-            // Get pixmap at target size
             auto sizedPixmap = img->GetPixmap(targetW, targetH);
             if (!sizedPixmap || !sizedPixmap->IsValid()) return nullptr;
-
-            int pw = sizedPixmap->GetWidth();
-            int ph = sizedPixmap->GetHeight();
-            uint32_t* px = sizedPixmap->GetPixelData();
-            if (!px) return nullptr;
-
-            // Create a 32-bit ARGB DIB section
-            BITMAPV5HEADER bi = {};
-            bi.bV5Size = sizeof(BITMAPV5HEADER);
-            bi.bV5Width = pw;
-            bi.bV5Height = -ph; // top-down
-            bi.bV5Planes = 1;
-            bi.bV5BitCount = 32;
-            bi.bV5Compression = BI_BITFIELDS;
-            bi.bV5RedMask   = 0x00FF0000;
-            bi.bV5GreenMask = 0x0000FF00;
-            bi.bV5BlueMask  = 0x000000FF;
-            bi.bV5AlphaMask = 0xFF000000;
-
-            void* dibBits = nullptr;
-            HDC screenDC = GetDC(nullptr);
-            HBITMAP hBitmap = CreateDIBSection(screenDC,
-                reinterpret_cast<BITMAPINFO*>(&bi),
-                DIB_RGB_COLORS, &dibBits, nullptr, 0);
-            ReleaseDC(nullptr, screenDC);
-
-            if (!hBitmap || !dibBits) return nullptr;
-
-            // Copy pixel data — Cairo ARGB32 premultiplied to Windows ARGB
-            // Both use the same byte layout (BGRA in memory on little-endian)
-            memcpy(dibBits, px, pw * ph * 4);
-
-            // Create mask bitmap (all zeros = fully opaque, alpha is in the color bitmap)
-            HBITMAP hMask = CreateBitmap(pw, ph, 1, 1, nullptr);
-
-            ICONINFO iconInfo = {};
-            iconInfo.fIcon = TRUE;
-            iconInfo.hbmColor = hBitmap;
-            iconInfo.hbmMask = hMask;
-
-            HICON icon = CreateIconIndirect(&iconInfo);
-
-            DeleteObject(hBitmap);
-            DeleteObject(hMask);
-
-            return icon;
+            return UltraCanvasWindowsApplication::IconFromPixmap(*sizedPixmap, false, 0, 0);
         };
 
         // Clean up previous icons

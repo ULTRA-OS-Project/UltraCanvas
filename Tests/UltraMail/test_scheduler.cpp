@@ -38,6 +38,21 @@ TEST(scheduler_respects_interval) {
     REQUIRE_EQ(s.DueAccounts(2100).size(), (size_t)0);   // reset
 }
 
+// A new interval from Settings keeps the time of the last sync: an account
+// that has waited that long already is due at once, the others later.
+TEST(scheduler_new_interval_keeps_the_last_sync) {
+    SyncScheduler s;
+    s.SetAccount("erika", "imaps://x/", 300);
+    s.MarkSynced("erika", 1000);
+    REQUIRE_EQ(s.DueAccounts(1030).size(), (size_t)0);
+    s.SetAccount("erika", "imaps://x/", 20);
+    REQUIRE_EQ(s.DueAccounts(1030).size(), (size_t)1);   // 30 s waited, 20 s asked
+    REQUIRE_EQ(s.DueAccounts(1010).size(), (size_t)0);
+    s.SetAccount("erika", "imaps://x/", 600);
+    REQUIRE_EQ(s.DueAccounts(1500).size(), (size_t)0);
+    REQUIRE_EQ(s.DueAccounts(1600).size(), (size_t)1);
+}
+
 TEST(scheduler_remove) {
     SyncScheduler s;
     s.SetAccount("erika", "imaps://x/", 300);

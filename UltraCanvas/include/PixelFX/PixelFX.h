@@ -1,7 +1,7 @@
 // PixelFX/include/PixelFX.h
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
-// Version: 1.2.0
-// Last Modified: 2026-09-13
+// Version: 1.3.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -223,6 +223,11 @@ namespace PixelFX {
         PFXImage LoadRaw(const std::string& filename, int width, int height, int bands);
 
         // ===== SAVING FUNCTIONS =====
+        // Every saver below that takes a file name writes a temporary file in
+        // the same folder and moves it over `filename` only once the encoder
+        // has finished (UltraCanvas::WriteFileAtomically): a failed save leaves
+        // no file behind and the one already there as it was. A failure throws
+        // PixelFXException with the reason; success returns true.
         bool Save(const PFXImage& image, const std::string& filename);
         bool SaveWithOptions(const PFXImage& image, const std::string& filename, vips::VOption* options);
         std::vector<uint8_t> SaveToBuffer(const PFXImage& image, const std::string& format);

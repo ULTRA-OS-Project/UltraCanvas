@@ -1,8 +1,11 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
-// Version: 2.7.0
-// Last Modified: 2026-07-02
+// Version: 2.7.1
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
+// V2.7.1 changelog: the cards and their gauges have no size of their own -
+//   they were built at 272 x 374 (kCardW / kCardH) and placed in 1fr grid
+//   cells of about 180 x 247, so that size was never the one they had.
 // V2.7.0 changelog: Download Progress card demonstrates the new LinearBar
 //   low-value warnings: red circle at 0% (ShowZeroValueWarning) and a red
 //   blinking fill at or below 10% (LowLevelWarning + LowLevelLimit).
@@ -51,8 +54,6 @@ namespace UltraCanvas {
 // =============================================================================
 
 namespace {
-    constexpr float kCardW = 272;
-    constexpr float kCardH = 374;
     constexpr float kSliderH = 22;
     constexpr float kValueLabelH = 20;
     constexpr float kCardPadding = 10;
@@ -80,7 +81,9 @@ namespace {
         c->layout.SetGrid()
                  .SetGridColumns({fr(), fr(), fr()})
                  .SetGridRows({fr(), fr()})
-                 .SetGridGap(gap);
+                 .SetGridGap(gap)
+                 .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                 .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
     }
     // 3-column x 3-row equal (1fr) grid.
     inline void SetGrid3x3(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
@@ -89,7 +92,9 @@ namespace {
         c->layout.SetGrid()
                  .SetGridColumns({fr(), fr(), fr()})
                  .SetGridRows({fr(), fr(), fr()})
-                 .SetGridGap(gap);
+                 .SetGridGap(gap)
+                 .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+                 .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
     }
     inline void AddGrid(const std::shared_ptr<UltraCanvasContainer>& parent,
                         const std::shared_ptr<UltraCanvasUIElement>& child, int row, int col) {
@@ -102,9 +107,10 @@ namespace {
 // HELPER: Create gauge + slider + label card
 // =============================================================================
 
+// The card has no size of its own: it is placed in a stretching 1fr grid cell
+// (SetGrid2x3 / SetGrid3x3), and the cell is its size.
 static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     const std::string& id,
-    float w, float h,
     std::shared_ptr<UltraCanvasGaugeDiagramElement> gauge,
     float sliderMin, float sliderMax, float sliderInit,
     const std::string& valueSuffix,
@@ -112,7 +118,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     float sliderStep = -1.0f,
     bool showValueLabel = true) {
 
-    auto card = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
+    auto card = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, 0);
     card->SetBackgroundColor(Color(255, 255, 255, 255));
     card->SetBorders(1.0f, Color(218, 219, 228, 255));
     // Label-less showcase cards use tighter padding/row-gap so the enlarged gauge
@@ -188,7 +194,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     SetGrid2x3(gridContainer, 12);
 
     // --- Speedometer with RPM sub-dial ---
-    auto speedo = CreateGaugeDiagramElement("speedo", 0, 0, kCardW, kCardH);
+    auto speedo = CreateGaugeDiagramElement("speedo", 0, 0, 0, 0);
     speedo->SetMode(GaugeMode::Speedometer);
     speedo->SetTitle("Speed");
     speedo->SetUnit("km/h");
@@ -197,11 +203,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     speedo->SetValue(109.0);  // V2.2: non-zero so the orange needle + LCD read like the photo
     // V2.3: sub-dial removed for the dark Speedometer (V2.6.1 renderer omits it).
 
-    auto speedoCard = CreateGaugeCard("speedo_c", kCardW, kCardH, speedo, 0.0f, 240.0f, 0.0f, "km/h");
+    auto speedoCard = CreateGaugeCard("speedo_c", speedo, 0.0f, 240.0f, 0.0f, "km/h");
     AddGrid(gridContainer, speedoCard, 0, 0);
 
     // --- Semicircular Sales Assessment ---
-    auto semi = CreateGaugeDiagramElement("semi", 0, 0, kCardW, kCardH);
+    auto semi = CreateGaugeDiagramElement("semi", 0, 0, 0, 0);
     semi->SetMode(GaugeMode::Semicircular);
     semi->SetTitle("Sales Assessment");
     semi->SetUnit("k$");
@@ -211,10 +217,10 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     semi->AddRange(GaugeRangeSegment(0.0, 50.0, Color(100, 180, 255, 255), ""));
     semi->AddRange(GaugeRangeSegment(50.0, 100.0, Color(80, 200, 120, 255), ""));
 
-    auto semiCard = CreateGaugeCard("semi_c", kCardW, kCardH, semi, 0.0f, 100.0f, 73.0f, "k$");
+    auto semiCard = CreateGaugeCard("semi_c", semi, 0.0f, 100.0f, 73.0f, "k$");
     AddGrid(gridContainer, semiCard, 0, 1);
 
-    auto compass = CreateGaugeDiagramElement("compass", 0, 0, kCardW, kCardH);
+    auto compass = CreateGaugeDiagramElement("compass", 0, 0, 0, 0);
     compass->SetMode(GaugeMode::Compass);
     compass->SetTitle("Wind Direction");
     compass->SetMaxValue(360.0);
@@ -230,15 +236,15 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     wind.unit = "m/s";
     compass->SetSubDial(wind);
 
-    auto compassCard = CreateGaugeCard("compass_c", kCardW, kCardH, compass, 0.0f, 360.0f, 120.0f, "\xC2\xB0");
+    auto compassCard = CreateGaugeCard("compass_c", compass, 0.0f, 360.0f, 120.0f, "\xC2\xB0");
     AddGrid(gridContainer, compassCard, 0, 2);
 
     // --- Analog Clock ---
-    auto clock = CreateGaugeDiagramElement("clock", 0, 0, kCardW, kCardH);
+    auto clock = CreateGaugeDiagramElement("clock", 0, 0, 0, 0);
     clock->SetMode(GaugeMode::AnalogClock);
     clock->SetTitle("Clock");
 
-    auto clockCard = std::make_shared<UltraCanvasContainer>("clock_c", 0, 0, kCardW, kCardH);
+    auto clockCard = std::make_shared<UltraCanvasContainer>("clock_c", 0, 0, 0, 0);
     clockCard->SetBackgroundColor(Color(255, 255, 255, 255));
     clockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     clockCard->SetPadding(kCardPadding);
@@ -253,7 +259,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     AddGrid(gridContainer, clockCard, 1, 0);
 
     // --- Stopwatch ---
-    auto stopwatch = CreateGaugeDiagramElement("sw", 0, 0, kCardW, kCardH);
+    auto stopwatch = CreateGaugeDiagramElement("sw", 0, 0, 0, 0);
     stopwatch->SetMode(GaugeMode::Stopwatch);
     stopwatch->SetTitle("Stopwatch");
     stopwatch->SetMaxValue(60.0);
@@ -269,7 +275,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     mins.unit = "m";
     stopwatch->SetSubDial(mins);
 
-    auto swCard = std::make_shared<UltraCanvasContainer>("sw_c", 0, 0, kCardW, kCardH);
+    auto swCard = std::make_shared<UltraCanvasContainer>("sw_c", 0, 0, 0, 0);
     swCard->SetBackgroundColor(Color(255, 255, 255, 255));
     swCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     swCard->SetPadding(kCardPadding);
@@ -317,7 +323,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     AddGrid(gridContainer, swCard, 1, 1);
 
     // --- Quadrant Power ---
-    auto quad = CreateGaugeDiagramElement("quad", 0, 0, kCardW, kCardH);
+    auto quad = CreateGaugeDiagramElement("quad", 0, 0, 0, 0);
     quad->SetMode(GaugeMode::Quadrant);
     quad->SetTitle("Power");
     quad->SetUnit("kW");
@@ -326,7 +332,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     quad->AddRange(GaugeRangeSegment(0.0, 30.0, Color(0, 200, 140, 255)));
     quad->AddRange(GaugeRangeSegment(30.0, 50.0, Color(255, 160, 60, 255)));
 
-    auto quadCard = CreateGaugeCard("quad_c", kCardW, kCardH, quad, 0.0f, 50.0f, 0.0f, "kW", 1);
+    auto quadCard = CreateGaugeCard("quad_c", quad, 0.0f, 50.0f, 0.0f, "kW", 1);
     AddGrid(gridContainer, quadCard, 1, 2);
 
     AddFlex(tab, gridContainer, 1);
@@ -355,7 +361,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     SetGrid2x3(gridContainer, 12);
 
     // --- Linear Bar download progress ---
-    auto bar = CreateGaugeDiagramElement("bar", 0, 0, kCardW, kCardH);
+    auto bar = CreateGaugeDiagramElement("bar", 0, 0, 0, 0);
     bar->SetMode(GaugeMode::LinearBar);
     bar->SetTitle("Download Progress");
     bar->SetUnit("%");
@@ -363,11 +369,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     bar->SetShowZeroValueWarning(true);  // 0%: red circle instead of no fill
     bar->SetLowLevelWarning(true);       // blink the fill red...
     bar->SetLowLevelLimit(10.0);         // ...while the value is <= 10%
-    auto barCard = CreateGaugeCard("bar_c", kCardW, kCardH, bar, 0.0f, 100.0f, 65.0f, "%");
+    auto barCard = CreateGaugeCard("bar_c", bar, 0.0f, 100.0f, 65.0f, "%");
     AddGrid(gridContainer, barCard, 0, 0);
 
     // --- LED Segmented VU Meter ---
-    auto led = CreateGaugeDiagramElement("led", 0, 0, kCardW, kCardH);
+    auto led = CreateGaugeDiagramElement("led", 0, 0, 0, 0);
     led->SetMode(GaugeMode::LinearLED);
     led->SetOrientation(GaugeOrientation::Vertical);
     led->SetTitle("VU Meter");
@@ -377,11 +383,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     led->SetGaugeColor(Color(0, 200, 255, 255));
     led->AddRange(GaugeRangeSegment(0.0, 80.0, Color(0, 200, 255, 255)));
     led->AddRange(GaugeRangeSegment(80.0, 100.0, Color(255, 100, 80, 255)));
-    auto ledCard = CreateGaugeCard("led_c", kCardW, kCardH, led, 0.0f, 100.0f, 65.0f, "%");
+    auto ledCard = CreateGaugeCard("led_c", led, 0.0f, 100.0f, 65.0f, "%");
     AddGrid(gridContainer, ledCard, 0, 1);
 
     // --- Segmented Brick Revenue ---
-    auto brick = CreateGaugeDiagramElement("brick", 0, 0, kCardW, kCardH);
+    auto brick = CreateGaugeDiagramElement("brick", 0, 0, 0, 0);
     brick->SetMode(GaugeMode::LinearSegmented);
     brick->SetTitle("Revenue");
     brick->SetUnit("M$");
@@ -390,11 +396,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     brick->AddRange(GaugeRangeSegment(0.0, 10.0, Color(255, 140, 80, 255)));
     brick->AddRange(GaugeRangeSegment(10.0, 20.0, Color(0, 180, 220, 255)));
     brick->SetDecimalPlaces(2);
-    auto brickCard = CreateGaugeCard("brick_c", kCardW, kCardH, brick, 0.0f, 20.0f, 12.45f, "M$", 2);
+    auto brickCard = CreateGaugeCard("brick_c", brick, 0.0f, 20.0f, 12.45f, "M$", 2);
     AddGrid(gridContainer, brickCard, 0, 2);
 
     // --- Multi-pointer Recipe Layers ---
-    auto multi = CreateGaugeDiagramElement("multi", 0, 0, kCardW, kCardH);
+    auto multi = CreateGaugeDiagramElement("multi", 0, 0, 0, 0);
     multi->SetMode(GaugeMode::LinearMultiPointer);
     multi->SetOrientation(GaugeOrientation::Vertical);
     multi->SetTitle("Recipe Layers");
@@ -404,11 +410,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     multi->AddExternalPointer(GaugeExternalPointer(1500.0, Color(0, 160, 255, 255), "Base"));
     multi->AddExternalPointer(GaugeExternalPointer(1660.0, Color(255, 180, 60, 255), "Fill"));
     multi->AddExternalPointer(GaugeExternalPointer(2000.0, Color(180, 180, 190, 255), "Max"));
-    auto multiCard = CreateGaugeCard("multi_c", kCardW, kCardH, multi, 0.0f, 2000.0f, 1500.0f, "ml");
+    auto multiCard = CreateGaugeCard("multi_c", multi, 0.0f, 2000.0f, 1500.0f, "ml");
     AddGrid(gridContainer, multiCard, 1, 0);
 
     // --- Linear With Arrow Glucose ---
-    auto arrow = CreateGaugeDiagramElement("arrow", 0, 0, kCardW, kCardH);
+    auto arrow = CreateGaugeDiagramElement("arrow", 0, 0, 0, 0);
     arrow->SetMode(GaugeMode::LinearWithArrow);
     arrow->SetOrientation(GaugeOrientation::Vertical);
     arrow->SetTitle("Glucose Level");
@@ -418,11 +424,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     arrow->AddRange(GaugeRangeSegment(0.0, 5.6, Color(80, 200, 120, 255), "Normal"));
     arrow->AddRange(GaugeRangeSegment(5.6, 7.0, Color(255, 190, 60, 255), "Borderline"));
     arrow->AddRange(GaugeRangeSegment(7.0, 15.0, Color(255, 100, 80, 255), "Elevated"));
-    auto arrowCard = CreateGaugeCard("arrow_c", kCardW, kCardH, arrow, 0.0f, 15.0f, 5.7f, "mmol/l", 1);
+    auto arrowCard = CreateGaugeCard("arrow_c", arrow, 0.0f, 15.0f, 5.7f, "mmol/l", 1);
     AddGrid(gridContainer, arrowCard, 1, 1);
 
     // --- Linear Scale Radio Tuner ---
-    auto scale = CreateGaugeDiagramElement("scale", 0, 0, kCardW, kCardH);
+    auto scale = CreateGaugeDiagramElement("scale", 0, 0, 0, 0);
     scale->SetMode(GaugeMode::LinearScale);
     scale->SetTitle("Radio Tuner");
     scale->SetUnit("MHz");
@@ -432,7 +438,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     scale->AddThreshold(GaugeThreshold(571.0, Color(180, 180, 190, 255), "Dukes"));
     scale->AddThreshold(GaugeThreshold(780.0, Color(180, 180, 190, 255), "Frasier"));
     scale->AddThreshold(GaugeThreshold(970.0, Color(180, 180, 190, 255), "Simpsons"));
-    auto scaleCard = CreateGaugeCard("scale_c", kCardW, kCardH, scale, 180.0f, 970.0f, 571.0f, "MHz");
+    auto scaleCard = CreateGaugeCard("scale_c", scale, 180.0f, 970.0f, 571.0f, "MHz");
     AddGrid(gridContainer, scaleCard, 1, 2);
 
     AddFlex(tab, gridContainer, 1);
@@ -461,25 +467,25 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     SetGrid2x3(gridContainer, 12);
 
     // --- Battery Bar pointer ---
-    auto bat1 = CreateGaugeDiagramElement("bat1", 0, 0, kCardW, kCardH);
+    auto bat1 = CreateGaugeDiagramElement("bat1", 0, 0, 0, 0);
     bat1->SetMode(GaugeMode::Battery);
     bat1->SetTitle("Battery (Bar)");
     bat1->SetBatteryStyle(GaugeBatteryStyle::BarPointer);
     bat1->SetShowBolt(true);
-    auto bat1Card = CreateGaugeCard("bat1_c", kCardW, kCardH, bat1, 0.0f, 100.0f, 75.0f, "%");
+    auto bat1Card = CreateGaugeCard("bat1_c", bat1, 0.0f, 100.0f, 75.0f, "%");
     AddGrid(gridContainer, bat1Card, 0, 0);
 
     // --- Battery LED ---
-    auto bat2 = CreateGaugeDiagramElement("bat2", 0, 0, kCardW, kCardH);
+    auto bat2 = CreateGaugeDiagramElement("bat2", 0, 0, 0, 0);
     bat2->SetMode(GaugeMode::Battery);
     bat2->SetTitle("Battery (LED)");
     bat2->SetBatteryStyle(GaugeBatteryStyle::LedPointer);
     bat2->SetSegmentCount(10);
-    auto bat2Card = CreateGaugeCard("bat2_c", kCardW, kCardH, bat2, 0.0f, 100.0f, 100.0f, "%");
+    auto bat2Card = CreateGaugeCard("bat2_c", bat2, 0.0f, 100.0f, 100.0f, "%");
     AddGrid(gridContainer, bat2Card, 0, 1);
 
     // --- Thermometer ---
-    auto thermo = CreateGaugeDiagramElement("thermo", 0, 0, kCardW, kCardH);
+    auto thermo = CreateGaugeDiagramElement("thermo", 0, 0, 0, 0);
     thermo->SetMode(GaugeMode::Thermometer);
     thermo->SetTitle("Temperature");
     thermo->SetUnit("C");
@@ -487,28 +493,28 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     thermo->SetMaxValue(25.0);
     thermo->SetGaugeColor(Color(0, 180, 255, 255));
     thermo->SetDecimalPlaces(0);
-    auto thermoCard = CreateGaugeCard("thermo_c", kCardW, kCardH, thermo, -25.0f, 25.0f, 12.0f, "C");
+    auto thermoCard = CreateGaugeCard("thermo_c", thermo, -25.0f, 25.0f, 12.0f, "C");
     AddGrid(gridContainer, thermoCard, 0, 2);
 
     // --- Cylinder Water ---
-    auto cyl = CreateGaugeDiagramElement("cyl", 0, 0, kCardW, kCardH);
+    auto cyl = CreateGaugeDiagramElement("cyl", 0, 0, 0, 0);
     cyl->SetMode(GaugeMode::Cylinder);
     cyl->SetTitle("Water");
     cyl->SetUnit("ml");
     cyl->SetMaxValue(1000.0);
     cyl->SetGaugeColor(Color(0, 200, 200, 255));
-    auto cylCard = CreateGaugeCard("cyl_c", kCardW, kCardH, cyl, 0.0f, 1000.0f, 1000.0f, "ml");
+    auto cylCard = CreateGaugeCard("cyl_c", cyl, 0.0f, 1000.0f, 1000.0f, "ml");
     AddGrid(gridContainer, cylCard, 1, 0);
 
     // --- Digital Clock (LED-style live clock) ---
-    auto dclock = CreateGaugeDiagramElement("dclock", 0, 0, kCardW, kCardH);
+    auto dclock = CreateGaugeDiagramElement("dclock", 0, 0, 0, 0);
     dclock->SetMode(GaugeMode::Digital);
     dclock->SetTitle("Clock");
     dclock->SetDigitalClock(true);
     // Prefer an LED-style font if installed; fall back to Monospace otherwise.
     dclock->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
     dclock->SetGaugeColor(Color(0, 230, 80, 255)); // classic LED green
-    auto dclockCard = std::make_shared<UltraCanvasContainer>("dclock_c", 0, 0, kCardW, kCardH);
+    auto dclockCard = std::make_shared<UltraCanvasContainer>("dclock_c", 0, 0, 0, 0);
     dclockCard->SetBackgroundColor(Color(255, 255, 255, 255));
     dclockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     dclockCard->SetPadding(kCardPadding);
@@ -528,7 +534,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     AddGrid(gridContainer, dclockCard, 1, 1);
 
     // --- Digital LED ---
-    auto digital = CreateGaugeDiagramElement("digital", 0, 0, kCardW, kCardH);
+    auto digital = CreateGaugeDiagramElement("digital", 0, 0, 0, 0);
     digital->SetMode(GaugeMode::Digital);
     digital->SetTitle("LED Display");
     digital->SetUnit("Hz");
@@ -538,7 +544,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     digital->AddRange(GaugeRangeSegment(0.0, 5000.0, Color(0, 180, 255, 255)));
     digital->AddRange(GaugeRangeSegment(5000.0, 8000.0, Color(255, 200, 60, 255)));
     digital->AddRange(GaugeRangeSegment(8000.0, 9999.0, Color(255, 80, 80, 255)));
-    auto digCard = CreateGaugeCard("dig_c", kCardW, kCardH, digital, 0.0f, 9999.0f, 1234.5f, "Hz", 1);
+    auto digCard = CreateGaugeCard("dig_c", digital, 0.0f, 9999.0f, 1234.5f, "Hz", 1);
     AddGrid(gridContainer, digCard, 1, 2);
 
     AddFlex(tab, gridContainer, 1);
@@ -781,7 +787,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     // matches the dropdown-to-title spacing exactly.
     constexpr float kPanelSliderH = 16.0f;
 
-    auto playGauge = CreateGaugeDiagramElement("round_play", 0, 0, kCardW, kCardH);
+    auto playGauge = CreateGaugeDiagramElement("round_play", 0, 0, 0, 0);
     playGauge->SetMode(GaugeMode::CircularRing);
     // No title on the playground gauge: it lets the ring use the full panel
     // height so the main gauge stays clearly the largest one on the tab.
@@ -1021,91 +1027,91 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     SetGrid3x3(grid, 12);
 
     // 1) Thick solid round gauge
-    auto g1 = CreateGaugeDiagramElement("rp1", 0, 0, kCardW, kCardH);
+    auto g1 = CreateGaugeDiagramElement("rp1", 0, 0, 0, 0);
     ApplyRoundPreset(g1, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 36, Color(160, 230, 40, 255));
     g1->SetTitle("Solid Arc");
     g1->SetUnit("%");
     g1->SetTrackColor(Color(50, 60, 30, 255));
-    AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%", 0, -1.0f, false), 0, 0);
+    AddGrid(grid, CreateGaugeCard("rp1_c", g1, 0.0f, 100.0f, 74.0f, "%", 0, -1.0f, false), 0, 0);
 
     // 2) Spectrum fade through 100 colours (maximum-indication option)
-    auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
+    auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, 0, 0);
     ApplyRoundPreset(g2, GaugeRingStyle::Spectrum, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
     g2->SetRingGradientColors(MakeSpectrumColors(100));  // up to 100 colour stops
     g2->SetTitle("Spectrum (100 colours)");
     g2->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 72.0f, "%", 0, -1.0f, false), 0, 1);
+    AddGrid(grid, CreateGaugeCard("rp2_c", g2, 0.0f, 100.0f, 72.0f, "%", 0, -1.0f, false), 0, 1);
 
     // 3) Dashed radial bars (tachymeter)
-    auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, kCardW, kCardH);
+    auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, 0, 0);
     ApplyRoundPreset(g3, GaugeRingStyle::Dashed, GaugeRingSegmentStyle::Bars,
                      GaugeFillStyle::NoFill, 14.0f, 60, Color(40, 130, 245, 255));
     g3->SetTitle("Dashed Bars");
     g3->SetUnit("%");
     g3->SetTrackColor(Color(40, 46, 60, 255));
-    AddGrid(grid, CreateGaugeCard("rp3_c", kCardW, kCardH, g3, 0.0f, 100.0f, 62.0f, "%", 0, -1.0f, false), 0, 2);
+    AddGrid(grid, CreateGaugeCard("rp3_c", g3, 0.0f, 100.0f, 62.0f, "%", 0, -1.0f, false), 0, 2);
 
     // 4) Dots ring — 12 dots, each with a small border, the null (zero) position
     // at the bottom of the circle, and dot colour driven by the current value
     // (green when high, fading through yellow/orange to red when low).
-    auto g4 = CreateGaugeDiagramElement("rp4", 0, 0, kCardW, kCardH);
+    auto g4 = CreateGaugeDiagramElement("rp4", 0, 0, 0, 0);
     ApplyRoundPreset(g4, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Dots,
                      GaugeFillStyle::NoFill, 12.0f, 12, Color(120, 90, 240, 255));
     g4->SetRingStartAngleDeg(90.0f);     // value 0 sits at the bottom (6 o'clock)
     g4->SetRingValueColorBands(true);    // green -> yellow -> orange -> red by value
     g4->SetTitle("Dots");
     g4->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%", 0, -1.0f, false), 1, 0);
+    AddGrid(grid, CreateGaugeCard("rp4_c", g4, 0.0f, 100.0f, 55.0f, "%", 0, -1.0f, false), 1, 0);
 
     // 5) Straight liquid fill with faded fill colour
-    auto g5 = CreateGaugeDiagramElement("rp5", 0, 0, kCardW, kCardH);
+    auto g5 = CreateGaugeDiagramElement("rp5", 0, 0, 0, 0);
     ApplyRoundPreset(g5, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::StraightLevel, 8.0f, 36, Color(0, 150, 230, 255));
     g5->SetFillFaded(true);
     g5->SetTitle("Straight Fill (faded)");
     g5->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp5_c", kCardW, kCardH, g5, 0.0f, 100.0f, 60.0f, "%", 0, -1.0f, false), 1, 1);
+    AddGrid(grid, CreateGaugeCard("rp5_c", g5, 0.0f, 100.0f, 60.0f, "%", 0, -1.0f, false), 1, 1);
 
     // 6) Waved liquid fill (battery look) with faded fill colour
-    auto g6 = CreateGaugeDiagramElement("rp6", 0, 0, kCardW, kCardH);
+    auto g6 = CreateGaugeDiagramElement("rp6", 0, 0, 0, 0);
     ApplyRoundPreset(g6, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::WavedLevel, 8.0f, 36, Color(255, 90, 30, 255));
     g6->SetFillFaded(true);
     g6->SetTitle("Waved Fill (faded)");
     g6->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp6_c", kCardW, kCardH, g6, 0.0f, 100.0f, 18.0f, "%", 0, -1.0f, false), 1, 2);
+    AddGrid(grid, CreateGaugeCard("rp6_c", g6, 0.0f, 100.0f, 18.0f, "%", 0, -1.0f, false), 1, 2);
 
     // 7) Segmented ring, rounded ends + battery icon centre (reference image 1)
-    auto g7 = CreateGaugeDiagramElement("rp7", 0, 0, kCardW, kCardH);
+    auto g7 = CreateGaugeDiagramElement("rp7", 0, 0, 0, 0);
     ApplyRoundPreset(g7, GaugeRingStyle::SegmentedRing, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 18.0f, 8, Color(0, 220, 0, 255));
     g7->SetRingSegmentRounded(true);
     g7->SetRingCenterIcon(GaugeRingIcon::Battery);
     g7->SetRingCenterContent(GaugeRingCenterContent::Icon);
     g7->SetTitle("Segmented Ring + Icon");
-    AddGrid(grid, CreateGaugeCard("rp7_c", kCardW, kCardH, g7, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 0);
+    AddGrid(grid, CreateGaugeCard("rp7_c", g7, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 0);
 
     // 8) Segmented ring, sharp ends + text label centre (reference image 2)
-    auto g8 = CreateGaugeDiagramElement("rp8", 0, 0, kCardW, kCardH);
+    auto g8 = CreateGaugeDiagramElement("rp8", 0, 0, 0, 0);
     ApplyRoundPreset(g8, GaugeRingStyle::SegmentedRing, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 18.0f, 8, Color(0, 220, 0, 255));
     g8->SetRingSegmentRounded(false);
     g8->SetRingCenterLabel("Battery");
     g8->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
     g8->SetTitle("Segmented Ring + Label");
-    AddGrid(grid, CreateGaugeCard("rp8_c", kCardW, kCardH, g8, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 1);
+    AddGrid(grid, CreateGaugeCard("rp8_c", g8, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 1);
 
     // 9) Faded ring colour (soft two-tone gradient sweep)
-    auto g9 = CreateGaugeDiagramElement("rp9", 0, 0, kCardW, kCardH);
+    auto g9 = CreateGaugeDiagramElement("rp9", 0, 0, 0, 0);
     ApplyRoundPreset(g9, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 14.0f, 36, Color(120, 200, 40, 255));
     g9->SetRingFaded(true);
     g9->SetTrackColor(Color(60, 70, 35, 255));
     g9->SetTitle("Faded Ring");
     g9->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp9_c", kCardW, kCardH, g9, 0.0f, 100.0f, 47.0f, "%", 0, -1.0f, false), 2, 2);
+    AddGrid(grid, CreateGaugeCard("rp9_c", g9, 0.0f, 100.0f, 47.0f, "%", 0, -1.0f, false), 2, 2);
 
     AddFlex(body, grid, 1);
     AddFlex(tab, body, 1);

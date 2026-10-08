@@ -1,11 +1,12 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.8.0 - an image to screen readers (name it with SetAccessibleName)
 // Version: 1.6.0 - onHoverEnter / onHoverLeave
 // Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -87,6 +88,10 @@ private:
     bool animationEnabled = true;
 
 public:
+    // ===== ACCESSIBILITY =====
+    // An image; describe it with SetAccessibleName() (its alt text).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Image; }
+
     // ===== EVENTS =====
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;
@@ -107,11 +112,16 @@ public:
     UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
     // ===== IMAGE LOADING =====
+    // Both return true when the element now shows a valid image, and fire
+    // onImageLoaded (success) or onImageLoadFailed (failure) before returning.
+    // LoadFromImage takes an already decoded image (UCImage::LoadFromMemory):
+    // one whose decode failed counts as a failure; a null or empty image just
+    // clears the element, firing neither callback.
     bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
-    // Human-readable reason for the most recent failed LoadFromFile (e.g. the
-    // file was locked, missing, or the format is unsupported). Empty on success.
+    // Human-readable reason for the most recent failed load (e.g. the file was
+    // locked, missing, or the format is unsupported). Empty on success.
     const std::string& GetLastError() const { return errorMessage; }
 
     // ===== IMAGE PROPERTIES =====
@@ -139,7 +149,11 @@ public:
     // fit mode and position; it may reach past the content box (Cover,
     // NoScale), which clips it. Empty without an image.
     Rect2Df ImageDrawRect() const;
-    void SetTintColor(const Color& color) { tintColor = color; }
+    // Multiplies the picture's colours by `color`: white, the default, leaves
+    // it as it is, (255, 0, 0) keeps only its red. The colour's alpha sets the
+    // strength. Drawn with render-context groups (the Cairo context has them);
+    // a context without groups draws the picture untinted.
+    void SetTintColor(const Color& color) { tintColor = color; RequestRedraw(); }
     void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
     void SetRotation(float degrees) { rotation = degrees; RequestRedraw(); }
@@ -214,9 +228,13 @@ private:
     void SetupAnimation();
 
     void DrawLoadedImage(IRenderContext* ctx);
+    // The picture itself (repeated, positioned or fitted), at the current alpha.
+    void DrawImageContent(IRenderContext* ctx, const Rect2Df& contentRect);
+    bool IsTinted() const;
     void DrawErrorPlaceholder(IRenderContext* ctx);
     void DrawLoadingPlaceholder(IRenderContext* ctx);
-    void DrawImagePlaceholder(const Rect2Di& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240));
+    void DrawImagePlaceholder(IRenderContext* ctx, const Rect2Di& rect, const std::string& text,
+                              const Color& bgColor = Color(240, 240, 240));
 
     void HandleMouseDown(const UCEvent& event);
     void HandleMouseMove(const UCEvent& event);
@@ -241,9 +259,14 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
     return image;
 }
 
+// The loader always detects the format from the bytes and takes no hint, so
+// `format` is not used; it stays for source compatibility. Bytes that do not
+// decode leave the element showing the error placeholder, with the reason in
+// GetLastError().
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
-    const std::string& identifier, float x, float y, float w, float h, 
-    const std::vector<uint8_t>& imageData, UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
+    const std::string& identifier, float x, float y, float w, float h,
+    const std::vector<uint8_t>& imageData,
+    [[maybe_unused]] UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
     auto image = CreateImageElement(identifier, x, y, w, h);
     auto img = UCImageRaster::LoadFromMemory(imageData);
     image->LoadFromImage(img);

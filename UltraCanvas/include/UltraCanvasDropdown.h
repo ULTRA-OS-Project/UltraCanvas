@@ -134,6 +134,12 @@ namespace UltraCanvas {
 // ===== DROPDOWN COMPONENT =====
     class UltraCanvasDropdown : public UltraCanvasUIElement {
     public:
+        // ===== ACCESSIBILITY =====
+        // A combo box whose value is the shown selection. Name it with
+        // SetAccessibleName() - usually after the label beside it.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::ComboBox; }
+        std::string GetAccessibleValueText() const override { return GetDisplayText(); }
+
         // ===== CALLBACKS =====
         std::function<void(int, const DropdownItem&)> onSelectionChanged;
         std::function<void(int, const DropdownItem&)> onItemHovered;

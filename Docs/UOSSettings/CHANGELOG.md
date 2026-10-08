@@ -1,3 +1,25 @@
+#### 2026-10-05 *0.3.0*
+- **Trusted certificates names each device.** The list showed only the
+  address a key is kept under, so two printers on one subnet read as two
+  numbers. It now shows the name the device was discovered under -
+  "Office Printer", "Front Desk Scanner" - with the address in a column of
+  its own, and *Forget* says which device it forgot by name. A key learned
+  before any name was known reads *(name not known)* until the device is
+  listed again.
+
+#### 2026-10-05 *0.2.0*
+- **Devices > Trusted certificates.** A new page lists the network scanners
+  and printers whose self-signed HTTPS certificate was trusted the first time
+  they were reached: the device's address and the SHA-256 of its key (in
+  full in the tooltip), each with a *Forget* button. A device that was reset
+  or replaced presents a new certificate and is refused until its old key is
+  forgotten; *Forget* does that here instead of by editing
+  `DeviceCertificates.conf`, and says which device it forgot. The page notes
+  that the new key is trusted on the same terms as the first, so forget a
+  device only when you know why its key changed.
+- The two table pages and the notes boxes are built by the same code now,
+  so the tables look and scroll alike.
+
 #### 2026-10-01 *0.1.0*
 - **UOS-Settings, the ULTRA OS settings application.** Settings that belong
   to the system rather than to one application get their own program,

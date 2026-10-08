@@ -15,8 +15,8 @@
 // select() loop services through an fd watch on that context's wake-up fd, so
 // every call is answered on the UI thread, between events, with no thread of
 // our own and no GLib main loop in the application.
-// Version: 1.0.0
-// Last Modified: 2026-10-01
+// Version: 1.1.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -52,16 +52,19 @@ constexpr const char* kNullPath = "/org/a11y/atspi/null";
 constexpr const char* kObjectPrefix = "/org/a11y/atspi/accessible";
 
 enum Role : uint32_t {
-    RoleCheckBox = 7, RoleFiller = 20, RoleFrame = 23, RoleImage = 27, RoleLabel = 29, RoleList = 31,
-    RoleListItem = 32, RoleMenu = 33, RoleMenuItem = 35, RolePanel = 39, RolePushButton = 43,
-    RoleTable = 55, RoleText = 61, RoleUnknown = 67, RoleApplication = 75, RoleEntry = 79,
-    RoleLink = 88, RoleDocumentText = 94
+    RoleCheckBox = 7, RoleComboBox = 11, RoleFiller = 20, RoleFrame = 23, RoleImage = 27, RoleLabel = 29,
+    RoleList = 31, RoleListItem = 32, RoleMenu = 33, RoleMenuItem = 35, RolePageTab = 37, RolePageTabList = 38,
+    RolePanel = 39, RolePasswordText = 40, RoleProgressBar = 42, RolePushButton = 43, RoleRadioButton = 44,
+    RoleSlider = 51, RoleSpinButton = 52, RoleTable = 55, RoleText = 61, RoleToggleButton = 62, RoleToolBar = 63,
+    RoleTree = 65, RoleUnknown = 67, RoleApplication = 75, RoleEntry = 79, RoleLink = 88, RoleTreeItem = 91,
+    RoleDocumentText = 94, RoleGrouping = 99
 };
 
 enum State : uint32_t {
-    StateActive = 1, StateEditable = 7, StateEnabled = 8, StateFocusable = 11, StateFocused = 12,
+    StateActive = 1, StateChecked = 4, StateEditable = 7, StateEnabled = 8, StateFocusable = 11, StateFocused = 12,
     StateMultiLine = 17, StateResizable = 21, StateSensitive = 24, StateShowing = 25,
-    StateSingleLine = 26, StateVisible = 30, StateSelectableText = 38, StateReadOnly = 43
+    StateSingleLine = 26, StateVisible = 30, StateIndeterminate = 32, StateSelectableText = 38,
+    StateCheckable = 41, StateReadOnly = 43, StatePressed = 20
 };
 
 enum CoordType : uint32_t { CoordScreen = 0, CoordWindow = 1, CoordParent = 2 };
@@ -140,6 +143,22 @@ constexpr const char* kIntrospection = R"XML(<node>
     <method name="ScrollSubstringTo"><arg name="startOffset" direction="in" type="i"/><arg name="endOffset" direction="in" type="i"/><arg name="type" direction="in" type="u"/><arg direction="out" type="b"/></method>
     <method name="ScrollSubstringToPoint"><arg name="startOffset" direction="in" type="i"/><arg name="endOffset" direction="in" type="i"/><arg name="type" direction="in" type="u"/><arg name="x" direction="in" type="i"/><arg name="y" direction="in" type="i"/><arg direction="out" type="b"/></method>
   </interface>
+  <interface name="org.a11y.atspi.Value">
+    <property name="MinimumValue" type="d" access="read"/>
+    <property name="MaximumValue" type="d" access="read"/>
+    <property name="MinimumIncrement" type="d" access="read"/>
+    <property name="CurrentValue" type="d" access="readwrite"/>
+    <property name="Text" type="s" access="read"/>
+  </interface>
+  <interface name="org.a11y.atspi.Action">
+    <property name="NActions" type="i" access="read"/>
+    <method name="GetDescription"><arg name="index" direction="in" type="i"/><arg direction="out" type="s"/></method>
+    <method name="GetName"><arg name="index" direction="in" type="i"/><arg direction="out" type="s"/></method>
+    <method name="GetLocalizedName"><arg name="index" direction="in" type="i"/><arg direction="out" type="s"/></method>
+    <method name="GetKeyBinding"><arg name="index" direction="in" type="i"/><arg direction="out" type="s"/></method>
+    <method name="GetActions"><arg direction="out" type="a(sss)"/></method>
+    <method name="DoAction"><arg name="index" direction="in" type="i"/><arg direction="out" type="b"/></method>
+  </interface>
   <interface name="org.a11y.atspi.Cache">
     <method name="GetItems"><arg direction="out" name="nodes" type="a((so)(so)(so)iiassusau)"/></method>
   </interface>
@@ -150,6 +169,8 @@ constexpr const char* kApplication = "org.a11y.atspi.Application";
 constexpr const char* kComponent = "org.a11y.atspi.Component";
 constexpr const char* kText = "org.a11y.atspi.Text";
 constexpr const char* kCache = "org.a11y.atspi.Cache";
+constexpr const char* kValue = "org.a11y.atspi.Value";
+constexpr const char* kAction = "org.a11y.atspi.Action";
 constexpr const char* kCachePath = "/org/a11y/atspi/cache";
 
 // ===== STATE =====
@@ -254,10 +275,16 @@ uint32_t RoleOf(const Node& node) {
     if (AB::AsWindow(node.element)) return RoleFrame;
     switch (node.element->GetAccessibleRole()) {
         case AccessibleRole::Window:    return RoleFrame;
-        case AccessibleRole::Button:    return RolePushButton;
+        case AccessibleRole::Button:
+            // A button that stays down is a toggle button to AT-SPI.
+            return node.element->GetAccessibleToggleState() == AccessibleToggleState::NotToggleable
+                   ? RolePushButton : RoleToggleButton;
         case AccessibleRole::CheckBox:  return RoleCheckBox;
         case AccessibleRole::Label:     return RoleLabel;
-        case AccessibleRole::TextField: return RoleEntry;
+        // AT-SPI has no password state, only a role: Orca then says
+        // "password text" and speaks no character typed into it.
+        case AccessibleRole::TextField:
+            return node.element->IsAccessiblePassword() ? RolePasswordText : RoleEntry;
         case AccessibleRole::TextArea:  return RoleText;
         case AccessibleRole::Document:  return RoleDocumentText;
         case AccessibleRole::List:      return RoleList;
@@ -267,6 +294,16 @@ uint32_t RoleOf(const Node& node) {
         case AccessibleRole::Link:      return RoleLink;
         case AccessibleRole::Menu:      return RoleMenu;
         case AccessibleRole::MenuItem:  return RoleMenuItem;
+        case AccessibleRole::RadioButton: return RoleRadioButton;
+        case AccessibleRole::Switch:      return RoleToggleButton;
+        case AccessibleRole::ComboBox:    return RoleComboBox;
+        case AccessibleRole::Slider:      return RoleSlider;
+        case AccessibleRole::SpinButton:  return RoleSpinButton;
+        case AccessibleRole::ProgressBar: return RoleProgressBar;
+        case AccessibleRole::Toolbar:     return RoleToolBar;
+        case AccessibleRole::TabList:     return RolePageTabList;
+        case AccessibleRole::Tree:        return RoleTree;
+        case AccessibleRole::Group:       return RoleGrouping;
         case AccessibleRole::Unknown:   break;
     }
     // An element that has not described itself: a panel when it holds
@@ -282,6 +319,7 @@ const char* RoleName(uint32_t role) {
         case RoleCheckBox:     return "check box";
         case RoleLabel:        return "label";
         case RoleEntry:        return "entry";
+        case RolePasswordText: return "password text";
         case RoleText:         return "text";
         case RoleDocumentText: return "document text";
         case RoleList:         return "list";
@@ -293,6 +331,18 @@ const char* RoleName(uint32_t role) {
         case RoleMenuItem:     return "menu item";
         case RolePanel:        return "panel";
         case RoleFiller:       return "filler";
+        case RoleComboBox:     return "combo box";
+        case RolePageTab:      return "page tab";
+        case RolePageTabList:  return "page tab list";
+        case RoleProgressBar:  return "progress bar";
+        case RoleRadioButton:  return "radio button";
+        case RoleSlider:       return "slider";
+        case RoleSpinButton:   return "spin button";
+        case RoleToggleButton: return "toggle button";
+        case RoleToolBar:      return "tool bar";
+        case RoleTree:         return "tree";
+        case RoleTreeItem:     return "tree item";
+        case RoleGrouping:     return "grouping";
         default:               return "unknown";
     }
 }
@@ -314,13 +364,30 @@ GVariant* StateSet(const Node& node) {
             if (element->AcceptsFocus()) set(StateFocusable);
             if (element->IsFocused()) set(StateFocused);
         }
-        if (IAccessibleText* text = element->GetAccessibleTextInterface()) {
+        const AccessibleRole role = element->GetAccessibleRole();
+        const bool textRole = role == AccessibleRole::TextField || role == AccessibleRole::TextArea ||
+                              role == AccessibleRole::Document;
+        if (IAccessibleText* text = AB::TextInterface(element); text && textRole) {
             set(StateSelectableText);
-            const AccessibleRole role = element->GetAccessibleRole();
             if (role == AccessibleRole::TextField) set(StateSingleLine);
             else set(StateMultiLine);
-            if (text->IsReadOnly()) set(StateReadOnly);
+            if (text->IsReadOnly() || element->IsDisabled()) set(StateReadOnly);
             else set(StateEditable);
+        }
+        switch (element->GetAccessibleToggleState()) {
+            case AccessibleToggleState::NotToggleable: break;
+            case AccessibleToggleState::On:
+                set(StateCheckable);
+                set(StateChecked);
+                if (role == AccessibleRole::Button) set(StatePressed);
+                break;
+            case AccessibleToggleState::Mixed:
+                set(StateCheckable);
+                set(StateIndeterminate);
+                break;
+            case AccessibleToggleState::Off:
+                set(StateCheckable);
+                break;
         }
     }
     GVariantBuilder builder;
@@ -466,7 +533,7 @@ void EmitObject(UltraCanvasUIElement* element, const char* member, const char* d
 }
 
 void RememberText(UltraCanvasUIElement* element) {
-    if (IAccessibleText* text = element ? element->GetAccessibleTextInterface() : nullptr) {
+    if (IAccessibleText* text = element ? AB::TextInterface(element) : nullptr) {
         gBridge->textCache[gBridge->ids.IdOf(element)] = text->GetAccessibleText();
     }
 }
@@ -490,7 +557,7 @@ void OnFocus(UltraCanvasUIElement* element) {
 }
 
 void OnTextChanged(UltraCanvasUIElement* element) {
-    IAccessibleText* text = element ? element->GetAccessibleTextInterface() : nullptr;
+    IAccessibleText* text = element ? AB::TextInterface(element) : nullptr;
     if (!text) return;
     const uint32_t id = gBridge->ids.IdOf(element);
     std::string after = text->GetAccessibleText();
@@ -530,13 +597,33 @@ void OnAccessibilityEvent(const AccessibilityEvent& event) {
             break;
         case AccessibilityEventType::CaretMoved:
         case AccessibilityEventType::SelectionChanged: {
-            IAccessibleText* text = element ? element->GetAccessibleTextInterface() : nullptr;
+            IAccessibleText* text = element ? AB::TextInterface(element) : nullptr;
             if (!text) break;
             const int caret = event.offset >= 0 ? event.offset : text->GetCaretOffset();
             if (event.type == AccessibilityEventType::SelectionChanged) {
                 EmitObject(element, "TextSelectionChanged", "", 0, 0);
             }
             EmitObject(element, "TextCaretMoved", "", caret, 0);
+            break;
+        }
+        case AccessibilityEventType::StateChanged: {
+            const AccessibleToggleState state = element ? element->GetAccessibleToggleState()
+                                                        : AccessibleToggleState::NotToggleable;
+            EmitObject(element, "StateChanged", "checked", state == AccessibleToggleState::On ? 1 : 0, 0);
+            EmitObject(element, "StateChanged", "indeterminate", state == AccessibleToggleState::Mixed ? 1 : 0, 0);
+            if (element && element->GetAccessibleRole() == AccessibleRole::Button) {
+                EmitObject(element, "StateChanged", "pressed", state == AccessibleToggleState::On ? 1 : 0, 0);
+            }
+            break;
+        }
+        case AccessibilityEventType::ValueChanged: {
+            if (!element) break;
+            AccessibleRange range;
+            if (element->GetAccessibleRange(range)) {
+                EmitObject(element, "PropertyChange", "accessible-value", 0, 0, g_variant_new_double(range.value));
+            }
+            // A text field's or combo box's value is its text.
+            if (!element->GetAccessibleTextInterface() && AB::TextInterface(element)) OnTextChanged(element);
             break;
         }
         case AccessibilityEventType::NameChanged:
@@ -589,7 +676,10 @@ void AccessibleCall(const Node& node, const char* method, GVariant* parameters, 
             g_variant_builder_add(&builder, "s", kApplication);
         } else {
             g_variant_builder_add(&builder, "s", kComponent);
-            if (node.element->GetAccessibleTextInterface()) g_variant_builder_add(&builder, "s", kText);
+            if (AB::TextInterface(node.element)) g_variant_builder_add(&builder, "s", kText);
+            AccessibleRange range;
+            if (node.element->GetAccessibleRange(range)) g_variant_builder_add(&builder, "s", kValue);
+            if (!node.element->GetAccessibleActionName().empty()) g_variant_builder_add(&builder, "s", kAction);
         }
         g_dbus_method_invocation_return_value(invocation, g_variant_new("(@as)", g_variant_builder_end(&builder)));
     } else {
@@ -768,6 +858,29 @@ void TextCall(UltraCanvasUIElement* element, IAccessibleText* text, const char* 
     }
 }
 
+// The one action an element offers (Action interface, index 0).
+void ActionCall(UltraCanvasUIElement* element, const char* method, GVariant* parameters,
+                GDBusMethodInvocation* invocation) {
+    const std::string name = element->GetAccessibleActionName();
+    if (!std::strcmp(method, "GetActions")) {
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("a(sss)"));
+        if (!name.empty()) g_variant_builder_add(&builder, "(sss)", name.c_str(), name.c_str(), "");
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(@a(sss))", g_variant_builder_end(&builder)));
+        return;
+    }
+    gint32 index = 0;
+    g_variant_get(parameters, "(i)", &index);
+    const bool valid = index == 0 && !name.empty();
+    if (!std::strcmp(method, "DoAction")) {
+        ReturnBool(invocation, valid && element->DoAccessibleAction());
+    } else if (!std::strcmp(method, "GetKeyBinding") || !std::strcmp(method, "GetDescription")) {
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", ""));
+    } else {   // GetName, GetLocalizedName
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", valid ? name.c_str() : ""));
+    }
+}
+
 void HandleMethodCall(GDBusConnection*, const gchar*, const gchar* objectPath, const gchar* interfaceName,
                       const gchar* methodName, GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
     const Node node = NodeFromPath(objectPath);
@@ -782,8 +895,10 @@ void HandleMethodCall(GDBusConnection*, const gchar*, const gchar* objectPath, c
         g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", Locale().c_str()));   // GetLocale
     } else if (!std::strcmp(interfaceName, kComponent) && node.element) {
         ComponentCall(node.element, methodName, parameters, invocation);
-    } else if (!std::strcmp(interfaceName, kText) && node.element && node.element->GetAccessibleTextInterface()) {
-        TextCall(node.element, node.element->GetAccessibleTextInterface(), methodName, parameters, invocation);
+    } else if (!std::strcmp(interfaceName, kText) && node.element && AB::TextInterface(node.element)) {
+        TextCall(node.element, AB::TextInterface(node.element), methodName, parameters, invocation);
+    } else if (!std::strcmp(interfaceName, kAction) && node.element) {
+        ActionCall(node.element, methodName, parameters, invocation);
     } else {
         g_dbus_method_invocation_return_dbus_error(invocation, "org.freedesktop.DBus.Error.UnknownInterface", interfaceName);
     }
@@ -809,7 +924,10 @@ GVariant* HandleGetProperty(GDBusConnection*, const gchar*, const gchar* objectP
             }
             return g_variant_new_string(name.c_str());
         }
-        if (property == "Description" || property == "HelpText") return g_variant_new_string("");
+        if (property == "Description") {
+            return g_variant_new_string(node.root ? "" : node.element->GetAccessibleDescription().c_str());
+        }
+        if (property == "HelpText") return g_variant_new_string("");
         if (property == "Parent") return ParentReference(node);
         if (property == "ChildCount") return g_variant_new_int32(static_cast<gint32>(ChildrenOf(node).size()));
         if (property == "Locale") return g_variant_new_string(Locale().c_str());
@@ -820,10 +938,21 @@ GVariant* HandleGetProperty(GDBusConnection*, const gchar*, const gchar* objectP
         if (property == "AtspiVersion") return g_variant_new_string("2.1");
         if (property == "Id") return g_variant_new_int32(gBridge->applicationId);
     } else if (!std::strcmp(interfaceName, kText) && node.element) {
-        if (IAccessibleText* text = node.element->GetAccessibleTextInterface()) {
+        if (IAccessibleText* text = AB::TextInterface(node.element)) {
             if (property == "CharacterCount") return g_variant_new_int32(text->GetCharacterCount());
             if (property == "CaretOffset") return g_variant_new_int32(text->GetCaretOffset());
         }
+    } else if (!std::strcmp(interfaceName, kValue) && node.element) {
+        AccessibleRange range;
+        if (node.element->GetAccessibleRange(range)) {
+            if (property == "CurrentValue") return g_variant_new_double(range.value);
+            if (property == "MinimumValue") return g_variant_new_double(range.minimum);
+            if (property == "MaximumValue") return g_variant_new_double(range.maximum);
+            if (property == "MinimumIncrement") return g_variant_new_double(range.step);
+            if (property == "Text") return g_variant_new_string(node.element->GetAccessibleValueText().c_str());
+        }
+    } else if (!std::strcmp(interfaceName, kAction) && node.element) {
+        if (property == "NActions") return g_variant_new_int32(node.element->GetAccessibleActionName().empty() ? 0 : 1);
     }
     g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "No property %s", propertyName);
     return nullptr;
@@ -836,6 +965,13 @@ gboolean HandleSetProperty(GDBusConnection*, const gchar*, const gchar* objectPa
         NodeFromPath(objectPath).root) {
         gBridge->applicationId = g_variant_get_int32(value);
         return TRUE;
+    }
+    // A screen reader moving a slider or spin button.
+    if (!std::strcmp(interfaceName, kValue) && !std::strcmp(propertyName, "CurrentValue")) {
+        const Node node = NodeFromPath(objectPath);
+        if (node.element && node.element->SetAccessibleValue(g_variant_get_double(value))) return TRUE;
+        g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_FAILED, "The value cannot be set");
+        return FALSE;
     }
     g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY, "%s is read-only", propertyName);
     return FALSE;
@@ -862,7 +998,10 @@ GDBusInterfaceInfo** IntrospectNode(GDBusConnection*, const gchar*, const gchar*
         names.push_back(kApplication);
     } else {
         names.push_back(kComponent);
-        if (target.element->GetAccessibleTextInterface()) names.push_back(kText);
+        if (AB::TextInterface(target.element)) names.push_back(kText);
+        AccessibleRange range;
+        if (target.element->GetAccessibleRange(range)) names.push_back(kValue);
+        if (!target.element->GetAccessibleActionName().empty()) names.push_back(kAction);
     }
     GDBusInterfaceInfo** infos = g_new0(GDBusInterfaceInfo*, names.size() + 1);
     for (size_t i = 0; i < names.size(); i++) {

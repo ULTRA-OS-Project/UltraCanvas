@@ -7,8 +7,8 @@
 // Both render *at* the requested size rather than rendering small and
 // scaling up: the whole point of a vector source is that the resolution is
 // chosen at rasterization time.
-// Version: 1.0.0
-// Last Modified: 2026-09-12
+// Version: 1.1.0 - RasterizeVectorElements
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -19,6 +19,8 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasDebug.h"
+#include "DataFormats/UltraCanvasVectorEdit.h"       // DocumentBounds, ParentToDocument
+#include "DataFormats/UltraCanvasVectorRenderer.h"
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
@@ -197,6 +199,42 @@ namespace {
     }
 #endif
 
+    // A region of premultiplied ARGB32 pixels (the backend's surface format)
+    // as a layer of straight RGBA. `stride` is in pixels.
+    std::shared_ptr<UCRasterLayer> LayerFromPremultiplied(const uint32_t* src, int stride,
+                                                          int x0, int y0, int w, int h,
+                                                          const std::string& name,
+                                                          std::string& error) {
+        auto layer = std::make_shared<UCRasterLayer>(w, h, name);
+        if (!layer->IsValid()) {
+            error = "Could not allocate the raster layer";
+            return nullptr;
+        }
+        for (int y = 0; y < h; ++y) {
+            const uint32_t* srcRow = src + static_cast<size_t>(y0 + y) * stride + x0;
+            uint8_t* dstRow = layer->Row(y);
+            for (int x = 0; x < w; ++x) {
+                const uint32_t p = srcRow[x];
+                const uint8_t a = static_cast<uint8_t>((p >> 24) & 0xFF);
+                uint8_t r = static_cast<uint8_t>((p >> 16) & 0xFF);
+                uint8_t g = static_cast<uint8_t>((p >>  8) & 0xFF);
+                uint8_t b = static_cast<uint8_t>( p        & 0xFF);
+                if (a != 0 && a != 255) {
+                    r = static_cast<uint8_t>(std::min(255, (r * 255 + a / 2) / a));
+                    g = static_cast<uint8_t>(std::min(255, (g * 255 + a / 2) / a));
+                    b = static_cast<uint8_t>(std::min(255, (b * 255 + a / 2) / a));
+                } else if (a == 0) {
+                    r = g = b = 0;
+                }
+                dstRow[4 * x + 0] = r;
+                dstRow[4 * x + 1] = g;
+                dstRow[4 * x + 2] = b;
+                dstRow[4 * x + 3] = a;
+            }
+        }
+        return layer;
+    }
+
     // ===== THE OFFSCREEN PATH =====
     // A plugin element knows how to draw itself into an IRenderContext, so an
     // offscreen context of the target size plus a read-back is all a
@@ -248,35 +286,7 @@ namespace {
             error = "The offscreen surface exposed no pixels";
             return nullptr;
         }
-
-        auto layer = std::make_shared<UCRasterLayer>(w, h, StemOf(path));
-        if (!layer->IsValid()) {
-            error = "Could not allocate the raster layer";
-            return nullptr;
-        }
-        for (int y = 0; y < h; ++y) {
-            const uint32_t* srcRow = src + static_cast<size_t>(y) * w;
-            uint8_t* dstRow = layer->Row(y);
-            for (int x = 0; x < w; ++x) {
-                const uint32_t p = srcRow[x];
-                const uint8_t a = static_cast<uint8_t>((p >> 24) & 0xFF);
-                uint8_t r = static_cast<uint8_t>((p >> 16) & 0xFF);
-                uint8_t g = static_cast<uint8_t>((p >>  8) & 0xFF);
-                uint8_t b = static_cast<uint8_t>( p        & 0xFF);
-                if (a != 0 && a != 255) {
-                    r = static_cast<uint8_t>(std::min(255, (r * 255 + a / 2) / a));
-                    g = static_cast<uint8_t>(std::min(255, (g * 255 + a / 2) / a));
-                    b = static_cast<uint8_t>(std::min(255, (b * 255 + a / 2) / a));
-                } else if (a == 0) {
-                    r = g = b = 0;
-                }
-                dstRow[4 * x + 0] = r;
-                dstRow[4 * x + 1] = g;
-                dstRow[4 * x + 2] = b;
-                dstRow[4 * x + 3] = a;
-            }
-        }
-        return layer;
+        return LayerFromPremultiplied(src, w, 0, 0, w, h, StemOf(path), error);
     }
 
 } // namespace
@@ -422,6 +432,117 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
     error = "Rasterizing " + path + " needs libvips (HAS_LIBVIPS)";
     return nullptr;
 #endif
+}
+
+std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
+        const VectorStorage::VectorDocument& document,
+        const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& elements,
+        double pixelsPerPoint,
+        std::string& error,
+        Rect2Dd* documentArea,
+        size_t maxPixels) {
+    error.clear();
+    if (!(pixelsPerPoint > 0) || !std::isfinite(pixelsPerPoint)) {
+        error = "The rasterization scale must be positive";
+        return nullptr;
+    }
+    bool any = false;
+    Rect2Dd bounds;
+    for (const auto& element : elements) {
+        if (!element) continue;
+        const Rect2Dd b = VectorEdit::DocumentBounds(element);
+        if (!(b.width >= 0) || !(b.height >= 0) || !std::isfinite(b.x) || !std::isfinite(b.y)) continue;
+        bounds = any ? bounds.Union(b) : b;
+        any = true;
+    }
+    if (!any) {
+        error = "Nothing to rasterize";
+        return nullptr;
+    }
+
+    // The bounds are the geometry's: a thick stroke, a shadow or a glow
+    // reaches past them. Render with a margin and crop to what was painted.
+    // The area starts on a whole pixel, so an edge on a whole point stays
+    // crisp instead of smearing across two pixels.
+    const double margin = 32.0 + 0.05 * std::max(bounds.width, bounds.height);
+    const double left = std::floor((bounds.x - margin) * pixelsPerPoint);
+    const double top = std::floor((bounds.y - margin) * pixelsPerPoint);
+    const double pixelsW = std::ceil((bounds.x + bounds.width + margin) * pixelsPerPoint) - left;
+    const double pixelsH = std::ceil((bounds.y + bounds.height + margin) * pixelsPerPoint) - top;
+    const Rect2Dd area(left / pixelsPerPoint, top / pixelsPerPoint,
+                       pixelsW / pixelsPerPoint, pixelsH / pixelsPerPoint);
+    if (pixelsW > 32767 || pixelsH > 32767) {
+        error = "The elements are too large to rasterize at this scale";
+        return nullptr;
+    }
+    const int w = std::max(1, static_cast<int>(pixelsW));
+    const int h = std::max(1, static_cast<int>(pixelsH));
+    if (!SizeIsSane(w, h, maxPixels, error)) return nullptr;
+
+    UCPixmap pixmap;
+    if (!pixmap.Init(w, h)) {
+        error = "Could not allocate a " + std::to_string(w) + " x " + std::to_string(h) + " pixel buffer";
+        return nullptr;
+    }
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) {
+        error = "Could not create an offscreen render context";
+        return nullptr;
+    }
+    ctx->Clear(Color(0, 0, 0, 0));
+    ctx->PushState();
+    ctx->Scale(pixelsPerPoint, pixelsPerPoint);
+    ctx->Translate(-area.x, -area.y);
+
+    VectorRenderer renderer;
+    VectorRenderOptions options = renderer.GetOptions();
+    options.EnableCulling = false;
+    options.ClipToViewport = false;
+    renderer.SetOptions(options);
+    renderer.SetDocument(&document);
+    for (const auto& element : elements) {
+        if (!element) continue;
+        // The renderer applies the element's own transform; its ancestors'
+        // put it where it sits in the document.
+        const auto toDocument = VectorEdit::ParentToDocument(element);
+        ctx->PushState();
+        ctx->Transform(toDocument.m[0][0], toDocument.m[1][0], toDocument.m[0][1],
+                       toDocument.m[1][1], toDocument.m[0][2], toDocument.m[1][2]);
+        renderer.RenderElement(ctx.get(), *element);
+        ctx->PopState();
+    }
+    renderer.SetDocument(nullptr);
+    ctx->PopState();
+    ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+    pixmap.MarkDirty();
+    pixmap.Flush();
+
+    const uint32_t* src = pixmap.GetPixelData();
+    if (!src) {
+        error = "The offscreen surface exposed no pixels";
+        return nullptr;
+    }
+    int minX = w, minY = h, maxX = -1, maxY = -1;
+    for (int y = 0; y < h; ++y) {
+        const uint32_t* row = src + static_cast<size_t>(y) * w;
+        for (int x = 0; x < w; ++x) {
+            if (row[x] >> 24) {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+    if (maxX < 0) {
+        error = "The elements paint nothing visible";
+        return nullptr;
+    }
+    if (documentArea) {
+        *documentArea = Rect2Dd(area.x + minX / pixelsPerPoint, area.y + minY / pixelsPerPoint,
+                                (maxX - minX + 1) / pixelsPerPoint, (maxY - minY + 1) / pixelsPerPoint);
+    }
+    return LayerFromPremultiplied(src, w, minX, minY, maxX - minX + 1, maxY - minY + 1, "Drawing", error);
 }
 
 } // namespace UltraCanvas

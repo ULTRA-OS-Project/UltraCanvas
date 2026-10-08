@@ -647,9 +647,9 @@ character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
 selection changes and focus are announced to listeners, and the platform
 bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
-Automation on Windows (Narrator, NVDA, JAWS) - see
-[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
-is no macOS bridge yet.
+Automation on Windows (Narrator, NVDA, JAWS) and NSAccessibility on macOS
+(VoiceOver) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges).
 
 ## Drag and drop
 
@@ -983,8 +983,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
-  Automation) have one; VoiceOver does not see the element yet.
+- **Screen readers on Windows and macOS are untested.** The UI Automation
+  and NSAccessibility bridges compile but have not yet been run against
+  Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

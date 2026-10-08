@@ -1,7 +1,9 @@
 // include/UltraCanvasVectorRaster.h
 // Turning vector artwork into pixels: inspect a vector file for its natural
 // size and page count, then rasterize it into an editable UCRasterLayer at a
-// chosen pixel size.
+// chosen pixel size - or rasterize some elements of a drawing that is already
+// loaded (RasterizeVectorElements), which is how a drawing program's copy
+// gives other programs a picture.
 //
 // Two rasterizers sit behind one call, picked per file:
 //
@@ -18,18 +20,24 @@
 //
 // Which one applies to a given file — and whether this build can rasterize it
 // at all — is what InspectVectorFile() reports; nothing here throws.
-// Version: 1.0.0
-// Last Modified: 2026-09-12
+// Version: 1.1.0 - RasterizeVectorElements
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasRasterLayer.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+
+namespace VectorStorage {
+    class VectorDocument;
+    class VectorElement;
+}
 
 // ===== WHICH RASTERIZER HANDLES A FILE =====
 enum class VectorRasterSource {
@@ -91,5 +99,25 @@ VectorSourceInfo InspectVectorFile(const std::string& path);
 std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
                                                    const VectorRasterOptions& options,
                                                    std::string& error);
+
+// ===== ELEMENTS OF A LOADED DRAWING =====
+// Rasterizes `elements` of `document` - an editor's selection, say - into a
+// fresh layer at `pixelsPerPoint` pixels per document point (1 gives a pixel
+// a point, the size RasterizeVectorFile renders a drawing at naturally). Each
+// element is drawn where it sits in the document, its ancestors' transforms
+// applied, in the order given, over a transparent background; definitions
+// (gradients, clip paths, symbols) resolve against `document`. The layer is
+// cropped to the pixels the elements paint, so a stroke, a shadow or a glow
+// reaching past their bounds is kept and empty margin is not.
+// `documentArea`, when given, receives the document rectangle the layer
+// covers. Null with `error` set when there is nothing visible to draw or the
+// result would be larger than `maxPixels`.
+std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
+        const VectorStorage::VectorDocument& document,
+        const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& elements,
+        double pixelsPerPoint,
+        std::string& error,
+        Rect2Dd* documentArea = nullptr,
+        size_t maxPixels = 64u * 1024u * 1024u);
 
 } // namespace UltraCanvas

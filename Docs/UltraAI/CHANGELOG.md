@@ -1,3 +1,28 @@
+#### 2026-10-07 *0.1.10*
+- **Translation works through every chat model.** `ITranslator` had only the
+  mock behind it; the module now serves it with any `ITextLLM`
+  (`UltraAITextLLMTranslator.h`): the texts go to the model as numbered JSON
+  segments with the register, domain, glossary and markup rules in the
+  system prompt, and the reply is asked for as JSON in the same numbering,
+  so batches come back in order. Every text-LLM provider but the mock is a
+  translator provider under its own id — `anthropic`, `openai`, `qwen`,
+  `llama-cpp` — so the dashboard's Translation dialog lists them, and an
+  empty provider follows the routing policy, local LLMs first
+  (`KnownLocalProviders("translator")`). `DetectLanguage` goes the same way.
+  Options: `textllm.provider`, `textllm.batchSize`, `textllm.temperature`,
+  `textllm.maxOutputTokens`, and a per-request `textllm.glossary`. Doc:
+  `Docs/Modules/UltraAI/Adapters.md`; test: `test_textllm_translator`.
+
+#### 2026-10-05 *0.1.9*
+- **The dashboard keeps its settings and endpoints in a Windows profile
+  named in any script.** Its configuration folder was read with the narrow
+  `getenv("APPDATA")`, which answers in the ANSI code page, and handed to the
+  JSON file helpers, which open it as UTF-8; for a user name outside the code
+  page `endpoints.json` and `config.ini` were neither saved nor read back. The
+  folder is read with the framework's `GetEnvUtf8` now and every file in it
+  opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`).
+
 #### 2026-10-04 *0.1.8*
 - **The chat dialog sends on Enter.** Its message box only sent through the
   Send button; now Enter sends and Shift+Enter starts a new line, through the

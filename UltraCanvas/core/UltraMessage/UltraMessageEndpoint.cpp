@@ -3,6 +3,8 @@
 // election, one reader thread per endpoint, delivery through the UI
 // dispatcher or the pending queue, subscriptions, the Wimp send set, and the
 // journal calls forwarded to the broker as control RPCs.
+// Version: 0.1.1 - a delivery queued for the UI thread is dropped once its
+//   subscription ends (UltraMsg_Unsubscribe / UltraMsg_Disconnect)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -58,6 +60,13 @@ struct SubscriptionRec {
     UltraMsgCallback callback;
     UltraMsgSubscribeOptions options;
     std::weak_ptr<EndpointRec> endpoint;
+    // Cleared by UltraMsg_Unsubscribe and UltraMsg_Disconnect. A delivery
+    // already handed to the UI dispatcher holds this record and runs later;
+    // it checks the flag first, so nothing reaches a subscriber once it has
+    // unsubscribed. The callback usually captures an object that is gone by
+    // then: a Message Centre left on the page while its seeded messages were
+    // still queued called back into freed memory.
+    std::atomic<bool> active{true};
 };
 
 struct PendingControl {
@@ -245,6 +254,9 @@ void HandleDeliver(const EndpointPtr& endpoint, const JSONValue& frame) {
     std::weak_ptr<EndpointRec> weak = endpoint;
     Dispatch(endpoint, subscription->options.onWorkerThread,
              [subscription, message, autoAck, weak] {
+                 // Unsubscribed since this was queued: drop it, unacknowledged,
+                 // as if it had arrived a moment later with no subscriber.
+                 if (!subscription->active.load()) return;
                  if (subscription->callback) subscription->callback(message);
                  if (autoAck) {
                      if (EndpointPtr ep = weak.lock()) SendAck(ep, message.envelope.id);
@@ -680,8 +692,12 @@ UltraMsgResult UltraMsg_Disconnect(UltraMsgHandle handle) {
         endpoint = it->second;
         module.endpoints.erase(it);
         for (auto s = module.subscriptions.begin(); s != module.subscriptions.end();) {
-            if (s->second->endpoint.lock() == endpoint) s = module.subscriptions.erase(s);
-            else ++s;
+            if (s->second->endpoint.lock() == endpoint) {
+                s->second->active.store(false);
+                s = module.subscriptions.erase(s);
+            } else {
+                ++s;
+            }
         }
     }
     if (endpoint->connected.load()) {
@@ -696,6 +712,7 @@ UltraMsgResult UltraMsg_Disconnect(UltraMsgHandle handle) {
     }
     {
         std::lock_guard<std::mutex> lock(endpoint->mutex);
+        for (auto& entry : endpoint->subscriptions) entry.second->active.store(false);
         endpoint->subscriptions.clear();
         endpoint->pending.clear();
     }
@@ -956,6 +973,8 @@ UltraMsgResult UltraMsg_Unsubscribe(UltraMsgHandle subscriptionHandle) {
         subscription = it->second;
         module.subscriptions.erase(it);
     }
+    // First, so a delivery already queued for the UI thread is dropped too.
+    subscription->active.store(false);
     EndpointPtr endpoint = subscription->endpoint.lock();
     if (!endpoint) return UltraMsgResult::Ok();
     {

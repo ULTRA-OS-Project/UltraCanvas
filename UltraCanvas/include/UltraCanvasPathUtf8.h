@@ -28,15 +28,38 @@
 // builds use it without linking the UltraCanvas core.
 // PathFromUtf8 also takes a C string, a string_view or a path (passed
 // through), so wrapping any spelling of a name in it is always correct.
-// Version: 1.1.0
-// Last Modified: 2026-10-01
+//
+// GetEnvUtf8(name) is the same for an environment variable - where Windows
+// keeps the profile folders (APPDATA, LOCALAPPDATA, USERPROFILE, TEMP) and
+// the user's name. The narrow getenv answers in the ANSI code page, so the
+// characters it lacks are '?' before PathFromUtf8 ever sees them. GetEnvUtf8
+// asks the process itself (GetEnvironmentVariableW) and returns UTF-8, the
+// form every consumer takes. Over _wgetenv it saves the conversion at each
+// call and reads the live environment block rather than the C runtime's
+// copy, which misses what SetEnvironmentVariableW changed (see getenv in
+// Microsoft's CRT documentation). scripts/check_path_string.py reports a
+// narrow read (env-narrow).
+// Version: 1.2.0 - GetEnvUtf8
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <string_view>
+
+#if defined(_WIN32) || defined(_WIN64)
+// Declared here rather than by including <windows.h>: this header is read
+// by most of the code base, and windows.h #defines thousands of names
+// (CreateFile, LoadImage, DrawText ...) that would then rename our own
+// functions in every file that includes it. The declaration is the one
+// windows.h makes (DWORD is unsigned long, LPCWSTR const wchar_t*), so the
+// two agree wherever both are seen.
+extern "C" __declspec(dllimport) unsigned long __stdcall GetEnvironmentVariableW(
+        const wchar_t* lpName, wchar_t* lpBuffer, unsigned long nSize);
+#endif
 
 namespace UltraCanvas {
 
@@ -167,6 +190,34 @@ namespace PathUtf8Detail {
         return PathUtf8Detail::Utf16ToUtf8(p.native());
 #else
         return p.string();   // path-string-ok: the native string is the bytes
+#endif
+    }
+
+    // The value of the environment variable `name` as UTF-8; empty when it is
+    // not set (or set to nothing). On Windows from the process's UTF-16
+    // environment block - see the file header for why not getenv.
+    inline std::string GetEnvUtf8(const char* name) {
+        if (!name || !*name) return {};
+#if defined(_WIN32) || defined(_WIN64)
+        const std::wstring wideName = PathUtf8Detail::Utf8ToUtf16<std::wstring>(name);
+        std::wstring value(260, L'\0');
+        // Asked again when the value grew between the two calls - another
+        // thread can set it - but not for ever.
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            const unsigned long n = ::GetEnvironmentVariableW(
+                    wideName.c_str(), value.data(), static_cast<unsigned long>(value.size()));
+            if (n == 0) return {};                  // not set, or empty
+            if (n < value.size()) {                 // fitted: n characters, no terminator
+                value.resize(n);
+                return PathUtf8Detail::Utf16ToUtf8(value);
+            }
+            value.assign(n, L'\0');                 // n is the size needed, terminator included
+        }
+        return {};
+#else
+        // Elsewhere the environment is bytes, and UTF-8 by convention.
+        const char* value = std::getenv(name);   // path-string-ok: GetEnvUtf8 itself
+        return value ? std::string(value) : std::string();
 #endif
     }
 

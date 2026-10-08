@@ -248,6 +248,14 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+A disc's name is at most **23 characters on Windows** (64 elsewhere;
+`VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
+name, so an ImDisk disc keeps it in its NTFS volume label - that is how
+`VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
+nine of them the `ultravfs-` prefix. The fallback directory takes the same
+limit, so a name does not work on one machine and fail on the next only
+because ImDisk is installed there.
+
 ### Privacy and lifetime
 
 Discs are private to the calling user - mode `0700` on POSIX, an ACL
@@ -399,4 +407,4 @@ zlib; the affected features are compiled out with a warning.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

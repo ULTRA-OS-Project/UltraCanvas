@@ -1,7 +1,10 @@
 // UltraCanvasCheckboxExamples.cpp
 // Interactive checkbox component demonstration
+// Version: 1.2.1 - the tri-state section's callbacks name the boxes raw (they held
+//                 shared_ptrs to the boxes they were stored on, so the boxes
+//                 were never freed); the parent's handler is set once
 // Version: 1.2.0
-// Last Modified: 2026-05-07
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -125,19 +128,28 @@ namespace UltraCanvas {
         subItem2->SetChecked(false);
         subItem3->SetChecked(true);
 
+        // The callbacks below are stored on these boxes, and every box lives in
+        // mainContainer, so they name the boxes raw: a shared_ptr to a box in
+        // its own callback - directly, or through updateParentState - would
+        // keep the boxes alive for ever.
+        UltraCanvasCheckbox* parentBox = triStateCheckbox.get();
+        UltraCanvasCheckbox* item1 = subItem1.get();
+        UltraCanvasCheckbox* item2 = subItem2.get();
+        UltraCanvasCheckbox* item3 = subItem3.get();
+
         // Update parent state based on children
-        auto updateParentState = [triStateCheckbox, subItem1, subItem2, subItem3]() {
+        auto updateParentState = [parentBox, item1, item2, item3]() {
             int checkedCount = 0;
-            if (subItem1->IsChecked()) checkedCount++;
-            if (subItem2->IsChecked()) checkedCount++;
-            if (subItem3->IsChecked()) checkedCount++;
+            if (item1->IsChecked()) checkedCount++;
+            if (item2->IsChecked()) checkedCount++;
+            if (item3->IsChecked()) checkedCount++;
 
             if (checkedCount == 0) {
-                triStateCheckbox->SetCheckState(CheckedState::Unchecked);
+                parentBox->SetCheckState(CheckedState::Unchecked);
             } else if (checkedCount == 3) {
-                triStateCheckbox->SetCheckState(CheckedState::Checked);
+                parentBox->SetCheckState(CheckedState::Checked);
             } else {
-                triStateCheckbox->SetCheckState(CheckedState::Indeterminate);
+                parentBox->SetCheckState(CheckedState::Indeterminate);
             }
         };
 
@@ -145,19 +157,6 @@ namespace UltraCanvas {
         subItem1->onStateChanged = [updateParentState](CheckedState, CheckedState) { updateParentState(); };
         subItem2->onStateChanged = [updateParentState](CheckedState, CheckedState) { updateParentState(); };
         subItem3->onStateChanged = [updateParentState](CheckedState, CheckedState) { updateParentState(); };
-
-        // Parent checkbox callback
-        triStateCheckbox->onStateChanged = [subItem1, subItem2, subItem3](CheckedState oldState, CheckedState newState) {
-            if (newState == CheckedState::Checked) {
-                subItem1->SetChecked(true);
-                subItem2->SetChecked(true);
-                subItem3->SetChecked(true);
-            } else if (newState == CheckedState::Unchecked) {
-                subItem1->SetChecked(false);
-                subItem2->SetChecked(false);
-                subItem3->SetChecked(false);
-            }
-        };
 
         mainContainer->AddChild(triStateCheckbox);
         mainContainer->AddChild(subItem1);
@@ -171,29 +170,30 @@ namespace UltraCanvas {
         mainContainer->AddChild(triStateStatus);
 
         // Update status label
-        auto updateStatusLabel = [triStateStatus, triStateCheckbox]() {
-            switch(triStateCheckbox->GetCheckState()) {
+        auto updateStatusLabel = [status = triStateStatus.get(), parentBox]() {
+            switch(parentBox->GetCheckState()) {
                 case CheckedState::Unchecked:
-                    triStateStatus->SetText("State: Unchecked (0 selected)");
+                    status->SetText("State: Unchecked (0 selected)");
                     break;
                 case CheckedState::Checked:
-                    triStateStatus->SetText("State: Checked (all selected)");
+                    status->SetText("State: Checked (all selected)");
                     break;
                 case CheckedState::Indeterminate:
-                    triStateStatus->SetText("State: Indeterminate (partially selected)");
+                    status->SetText("State: Indeterminate (partially selected)");
                     break;
             }
         };
 
-        triStateCheckbox->onStateChanged = [subItem1, subItem2, subItem3, updateStatusLabel](CheckedState oldState, CheckedState newState) {
+        // Parent checkbox callback: checks or clears every item, and reports
+        triStateCheckbox->onStateChanged = [item1, item2, item3, updateStatusLabel](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
-                subItem1->SetChecked(true);
-                subItem2->SetChecked(true);
-                subItem3->SetChecked(true);
+                item1->SetChecked(true);
+                item2->SetChecked(true);
+                item3->SetChecked(true);
             } else if (newState == CheckedState::Unchecked) {
-                subItem1->SetChecked(false);
-                subItem2->SetChecked(false);
-                subItem3->SetChecked(false);
+                item1->SetChecked(false);
+                item2->SetChecked(false);
+                item3->SetChecked(false);
             }
             updateStatusLabel();
         };

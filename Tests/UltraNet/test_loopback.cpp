@@ -274,3 +274,41 @@ TEST(loopback_per_request_progress_isolates_concurrent_transfers) {
     CHECK(bytesB.load() > 0);
     CHECK(bytesA.load() != bytesB.load());
 }
+
+// A response cut off after its status line used to reach an async caller as
+// a plain 200 with a partial body. transferError now says it did not finish.
+TEST(loopback_async_reports_an_incomplete_transfer) {
+    if (!EnsureServer()) SKIP("python3 not available");
+    struct Outcome { std::atomic<bool> done{false}; int status = -1; size_t bytes = 0; std::string error; bool overLimit = false; };
+    auto fetch = [](int64_t maxReceiveSize, Outcome& out) {
+        UltraNetHttpRequest req;
+        req.url = Base() + "/big.bin";
+        req.options.maxReceiveSize = maxReceiveSize;
+        UltraNetHandle h = UltraNet_HttpRequestAsync(req, [&out](const UltraNetResponse& resp) {
+            out.status = resp.statusCode;
+            out.bytes = resp.body.size();
+            out.error = resp.transferError;
+            out.overLimit = resp.exceededReceiveLimit;
+            out.done = true;
+        });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (h != UltraNetInvalidHandle && !out.done.load() && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    };
+
+    Outcome whole;
+    fetch(0, whole);
+    REQUIRE(whole.done.load());
+    REQUIRE_EQ(whole.status, 200);
+    REQUIRE_EQ(whole.bytes, size_t(4096));
+    CHECK(whole.error.empty());
+    CHECK(!whole.overLimit);
+
+    Outcome cut;
+    fetch(1000, cut);
+    REQUIRE(cut.done.load());
+    CHECK(cut.bytes < 4096);
+    CHECK(!cut.error.empty());
+    CHECK(cut.overLimit);
+}

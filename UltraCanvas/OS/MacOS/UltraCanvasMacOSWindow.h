@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.2.0 - HiDPI scaling moved to UltraCanvasWindowBase (deviceScale)
-// Last Modified: 2026-07-03
+// Version: 2.3.0 - GetContentView() for the VoiceOver (NSAccessibility) bridge
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -98,6 +98,9 @@ namespace UltraCanvas {
 
         // ===== GETTERS =====
         NSWindow* GetNSWindow() const { return nsWindow; }
+        // The flipped NSView the window draws into: window coordinates are its
+        // coordinates (points). The accessibility bridge places elements in it.
+        NSView* GetContentView() const { return contentView; }
 
         // ===== WINDOW DELEGATE CALLBACKS =====
         void OnWindowWillClose();

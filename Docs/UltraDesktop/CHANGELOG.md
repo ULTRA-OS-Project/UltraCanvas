@@ -1,3 +1,66 @@
+#### 2026-10-07 *0.2.0*
+- **Notifications appear on screen.** On ULTRA OS no notification server runs
+  besides UltraMessage, which serves `org.freedesktop.Notifications` itself, so
+  every application's notification - Telegram, the browser, UltraMail's new
+  mail - reached the message feed and nothing drew it. The desktop now draws
+  each one as a toast in the top-right corner, beside the right bar (below the
+  taskbar when it runs along the top): icon, application, summary, body, the
+  notification's own buttons and a close button, newest on top, four at most.
+  - A click on the text does what the notification offers by default (UltraMail
+    opens the mail), a button does what it says, × dismisses; the application
+    is told either way, as any notification server tells it.
+  - A toast goes after 8 seconds (5 for a low-priority one), not while the
+    pointer rests on it; a critical one stays until closed. The feed keeps
+    every notification.
+  - The toasts never take the keyboard focus, and on a desktop with its own
+    notification server (GNOME, Plasma, dunst) the desktop draws nothing, so
+    nothing appears twice.
+  - Built on the framework's new `UltraCanvasNotificationToast` element and
+    host and `WindowType::Notification` (the change pending in
+    `Docs/UltraCanvas/changelog.d/notification-toasts.md`).
+
+#### 2026-10-06 *0.1.4*
+- **A clipboard history that lasts.** Every copy - texts, links, colours,
+  code, formatted text, images and files - is recorded into a history on
+  disk, encrypted, instead of the last hundred texts of this session in
+  memory. It survives logging out, and copies of images and files are kept
+  too (framework changelog: `clipboard-history`).
+- **The clipboard quick panel replaces the clipboard menu.** The clipboard
+  button, or `Super+V` from any window, opens a panel beside the bar: a
+  search field, the pinned entries and the ten latest - typing searches the
+  whole history - each with a thumbnail and Copy, Edit and Delete. The
+  keyboard does everything (Up / Down, Enter copies, F2 edits, Delete
+  deletes with Undo, Escape closes). The *Recording* switch pauses the
+  history, and *Open UltraClipboard* shows all of it in the new UltraClipboard
+  application, which also edits an entry (framework changelog:
+  `global-shortcut`).
+- Right-click the clipboard button for *Pause recording*, *Open
+  UltraClipboard* and *Clear history*; while recording is paused the button
+  is crossed out.
+- **A copy outlives the program it came from.** On X11 the clipboard goes
+  with the program that owns it; when that program quits, the desktop puts
+  its last copy back, so it can still be pasted.
+- **The clipboard menu lists the newest copies, not the oldest.** The menu
+  walked the history from the back, believing the newest entry was last; the
+  history keeps the newest first, so once more than fifteen things had been
+  copied the menu showed the fifteen oldest, oldest first, and nothing copied
+  since could be chosen from it.
+- **A password copied from UltraPassword is no longer kept.** The desktop's
+  clipboard monitor recorded every text it saw, so a password stayed in the
+  clipboard history, and its first characters in the clipboard menu, after
+  UltraPassword had cleared the clipboard. Copies marked secret by their
+  source are not recorded now - UltraPassword's, and those of KeePassXC and
+  other password managers that mark theirs (framework changelog:
+  `clipboard-secret-hint`).
+
+#### 2026-10-05 *0.1.3*
+- **The desktop keeps its settings in a Windows profile named in any
+  script.** `desktop.json` lives under `%APPDATA%\ultraos`, and `APPDATA`
+  was read through the narrow `getenv`, which answers in the ANSI code page;
+  for a user name outside it the settings were neither saved nor read. It is
+  read with the framework's `GetEnvUtf8` now (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-01 *0.1.2*
 - **The desktop's settings moved to UOS-Settings.** The system's settings now
   have an application of their own, UOS-Settings, and the taskbar's *ULTRA OS

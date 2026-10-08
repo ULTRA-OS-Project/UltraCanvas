@@ -35,7 +35,6 @@ UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::GetCurrentDir
 UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::GetMessage
 UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::SetCurrentDirectory
 UltraCanvas/core/UltraCanvasTextArea.cpp::win32-name-qualified::ReplaceText
-UltraCanvas/core/UltraCanvasToast.cpp::win32-name-qualified::GetMessage
 UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp::win32-name-declaration::SendMessage
 UltraCanvas/include/Plugins/Diagrams/UltraCanvasERDiagram.h::win32-name-declaration::GetRoleText
 UltraCanvas/include/Plugins/Diagrams/UltraCanvasSequenceModel.h::win32-name-declaration::GetMessage

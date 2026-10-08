@@ -1163,6 +1163,116 @@ namespace UltraCanvas {
     void UltraCanvasInputDialog::OnInputValidation() {
     }
 
+// ===== SAVE NAMES =====
+    namespace {
+        // An extension as a filter lists it, lower case and without a dot.
+        std::string BareLowerExtension(const std::string& ext) {
+            size_t start = 0;
+            while (start < ext.size() && ext[start] == '.') ++start;
+            std::string bare = ext.substr(start);
+            for (char& c : bare) {
+                if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            }
+            return bare;
+        }
+
+        bool TakesAllFiles(const FileFilter& filter) {
+            for (const std::string& ext : filter.extensions) {
+                if (BareLowerExtension(ext) == "*") return true;
+            }
+            return false;
+        }
+
+        // The length of ".ext" at the end of `leaf` (lower case), or 0 when
+        // the leaf does not end in it. A leaf that is nothing but the
+        // extension (".png") is a name, not a name with an extension.
+        size_t ExtensionSuffixLength(const std::string& leaf, const std::string& ext) {
+            const std::string bare = BareLowerExtension(ext);
+            if (bare.empty() || bare == "*") return 0;
+            const std::string suffix = "." + bare;
+            if (leaf.size() <= suffix.size()) return 0;
+            return leaf.compare(leaf.size() - suffix.size(), suffix.size(), suffix) == 0
+                   ? suffix.size() : 0;
+        }
+
+        // The last path component of `name`, in lower case.
+        std::string LowerLeaf(const std::string& name) {
+            const size_t sep = name.find_last_of("/\\");
+            std::string leaf = sep == std::string::npos ? name : name.substr(sep + 1);
+            for (char& c : leaf) {
+                if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            }
+            return leaf;
+        }
+
+        bool EndsInExtensionOf(const std::string& leaf, const FileFilter& filter) {
+            for (const std::string& ext : filter.extensions) {
+                if (ExtensionSuffixLength(leaf, ext) > 0) return true;
+            }
+            return false;
+        }
+
+        // `name` with `extension` added when its last component has none
+        // (FileDialogConfig::defaultExtension). Trailing dots are dropped
+        // first; a leading dot (".profile") is part of the name.
+        std::string WithDefaultExtension(const std::string& name, const std::string& extension) {
+            size_t start = 0;
+            while (start < extension.size() && extension[start] == '.') ++start;
+            if (start == extension.size()) return name;
+            const size_t sep = name.find_last_of("/\\");
+            const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
+            std::string result = name;
+            while (result.size() > leafStart && result.back() == '.') result.pop_back();
+            if (result.size() == leafStart) return name;   // no file name to extend
+            const size_t dot = result.find_last_of('.');
+            if (dot != std::string::npos && dot > leafStart) return result;
+            return result + "." + extension.substr(start);
+        }
+    }
+
+    std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
+                                   const std::vector<FileFilter>& offered) {
+        if (TakesAllFiles(type)) return name;
+        std::string first;
+        for (const std::string& ext : type.extensions) {
+            size_t start = 0;
+            while (start < ext.size() && ext[start] == '.') ++start;
+            if (start < ext.size()) { first = ext.substr(start); break; }
+        }
+        if (first.empty()) return name;
+
+        // "photo." is "photo": Windows drops trailing dots from a file name.
+        const size_t sep = name.find_last_of("/\\");
+        const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
+        std::string result = name;
+        while (result.size() > leafStart && result.back() == '.') result.pop_back();
+        if (result.size() == leafStart) return name;   // no file name to extend
+
+        const std::string leaf = LowerLeaf(result);
+        if (EndsInExtensionOf(leaf, type)) return result;
+
+        // The extension of another type on offer gives way to the chosen
+        // one's; the longest that matches, so ".tar.gz" goes whole.
+        size_t swap = 0;
+        for (const FileFilter& other : offered) {
+            for (const std::string& ext : other.extensions) {
+                swap = std::max(swap, ExtensionSuffixLength(leaf, ext));
+            }
+        }
+        result.erase(result.size() - swap);
+        return result + "." + first;
+    }
+
+    int FindFilterForName(const std::string& name, const std::vector<FileFilter>& filters) {
+        const std::string leaf = LowerLeaf(name);
+        for (size_t i = 0; i < filters.size(); ++i) {
+            if (!TakesAllFiles(filters[i]) && EndsInExtensionOf(leaf, filters[i])) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
 // ===== FILE DIALOG IMPLEMENTATION =====
     namespace {
         // Folder-tree node ids. The same folder can be reached both from a
@@ -1190,13 +1300,14 @@ namespace UltraCanvas {
             return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
 
+        // UTF-8, as the dialog's paths are - on Windows from the wide
+        // environment, where getenv would answer in the ANSI code page.
         std::string UserHomeDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-            const char* home = std::getenv("USERPROFILE");
+            return GetEnvUtf8("USERPROFILE");
 #else
-            const char* home = std::getenv("HOME");
+            return GetEnvUtf8("HOME");
 #endif
-            return home ? std::string(home) : std::string();
         }
 
         bool IsHiddenName(const std::string& name) {
@@ -1278,6 +1389,17 @@ namespace UltraCanvas {
         if (fileConfig.filters.empty() && fileConfig.dialogType != FileDialogType::SelectFolder) {
             fileConfig.filters = { FileFilter("All Files", "*") };
             fileConfig.selectedFilterIndex = 0;
+        }
+        // Save opens on the type of the name it suggests: "photo.jpg" with
+        // PNG first in the list would otherwise be saved as "photo.png".
+        if (fileConfig.dialogType == FileDialogType::Save && !fileConfig.defaultFileName.empty()) {
+            const int count = static_cast<int>(fileConfig.filters.size());
+            const int chosen = fileConfig.selectedFilterIndex;
+            const bool fits = chosen >= 0 && chosen < count &&
+                    ApplySaveExtension(fileConfig.defaultFileName, fileConfig.filters[chosen],
+                                       fileConfig.filters) == fileConfig.defaultFileName;
+            const int named = FindFilterForName(fileConfig.defaultFileName, fileConfig.filters);
+            if (!fits && named >= 0) fileConfig.selectedFilterIndex = named;
         }
         // Opens the way the user left it last time: same view, same size
         // (UltraCanvasFileDialogSettings.h, FileDialog.conf).
@@ -1450,6 +1572,7 @@ namespace UltraCanvas {
         filerView->SetDetailsColumnWidth(FilerDetailsColumn::ModifiedDate, modifiedColumnWidth);
         filerView->SetShowHiddenFiles(showHiddenFiles);
         filerView->SetSelectionInfoVisible(false);
+        filerView->SetHoverIconMenuEnabled(fileConfig.hoverIconMenu);
         filerView->SetActivateOpensWithDefaultApp(false);
         filerView->SetBorders(1.0f, kFileDialogBorderColor);
         filerView->onSelectionChanged = [this](const std::vector<FilerEntry>& selected) {
@@ -1544,6 +1667,13 @@ namespace UltraCanvas {
                     if (index == fileConfig.selectedFilterIndex) return;
                     fileConfig.selectedFilterIndex = index;
                     ApplyListingFilter();
+                    // The name follows the type, as in the platforms' own
+                    // save dialogs: "photo.png" becomes "photo.jpg".
+                    if (fileConfig.dialogType == FileDialogType::Save && fileNameInput) {
+                        const std::string name = fileNameInput->GetText();
+                        const std::string renamed = WithSaveExtension(name);
+                        if (!name.empty() && renamed != name) fileNameInput->SetText(renamed);
+                    }
                 };
                 inputColumn->AddChild(filterDropdown);
                 RebuildFilterDropdown();
@@ -1788,7 +1918,7 @@ namespace UltraCanvas {
                                       kFileDialogMinHeight, kFileDialogMaxSide);
         const int view = viewIndex;
         const std::string appName = CurrentApplicationName();
-        FileDialogSettings::Update([&](FileDialogSettings& s) {
+        const bool written = FileDialogSettings::Update([&](FileDialogSettings& s) {
             s.view = view;
             s.width = width;
             s.height = height;
@@ -1797,6 +1927,20 @@ namespace UltraCanvas {
             s.modifiedColumn = modifiedColumn;
             if (!folder.empty()) s.SetLastFolderFor(appName, folder);
         });
+        if (!written) {
+            // A settings folder that cannot be written (read-only, full, a
+            // locked-down profile) used to fail without a trace, and the
+            // dialog forgot its view, size and folder every time with no
+            // hint why. Said once per run: every close would say the same.
+            static bool reported = false;
+            if (!reported) {
+                reported = true;
+                debugOutput << "UltraCanvasFileDialog: could not write "
+                            << PathToUtf8(FileDialogSettings::FilePath())
+                            << "; the file dialog's view, size and last folder are not remembered"
+                            << std::endl;
+            }
+        }
         UltraCanvasModalDialog::PerformClose();
     }
 
@@ -2056,15 +2200,38 @@ namespace UltraCanvas {
             return;
         }
         if (fileConfig.dialogType == FileDialogType::Save) {
-            std::filesystem::path parent = PathFromUtf8(full).parent_path();
-            if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) return;
-            Accept({full});
+            // The chosen type's extension goes on before anything else, so
+            // the "Replace it?" question is asked about the file that will
+            // be written. The field shows the name as it will be saved.
+            const std::string named = WithSaveExtension(typed);
+            if (named != typed) fileNameInput->SetText(named);
+            const std::string target = CombinePath(currentDirectory, named);
+            std::filesystem::path parent = PathFromUtf8(target).parent_path();
+            if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) {
+                // A name typed with a folder in front of it that is not
+                // there: say so, as the platforms' save dialogs do, rather
+                // than leave OK doing nothing.
+                UltraCanvasDialogManager::ShowInformation(
+                        "The folder \"" + PathToUtf8(parent) + "\" does not exist.\n"
+                        "Check the path, or choose a folder from the tree.",
+                        "Folder Not Found", nullptr, this);
+                return;
+            }
+            Accept({target});
             return;
         }
         // Open: only a file that is there.
         if (std::filesystem::is_regular_file(PathFromUtf8(full), ec)) {
             Accept({full});
+            return;
         }
+        // Nothing of that name here. Before this a click on OK was simply
+        // swallowed, which read as a dead button; the platforms' open dialogs
+        // all say what was wrong. The dialog stays open on the name typed.
+        UltraCanvasDialogManager::ShowInformation(
+                "\"" + typed + "\" was not found in\n" + currentDirectory + ".\n\n"
+                "Check the name, or choose a file from the list.",
+                "File Not Found", nullptr, this);
     }
 
     void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
@@ -2119,6 +2286,33 @@ namespace UltraCanvas {
         if (!parentPath.empty() && parentPath != current) {
             GoToDirectory(PathToUtf8(parentPath), true);
         }
+    }
+
+    std::string UltraCanvasFileDialog::WithSaveExtension(const std::string& name) const {
+        const auto& filters = fileConfig.filters;
+        const int count = static_cast<int>(filters.size());
+        std::string named = name;
+        if (fileConfig.filterToggles) {
+            // Several types can be on: a name of any of them stands, any
+            // other takes the first one's extension.
+            int first = -1;
+            bool fits = false;
+            for (int i : activeFilters) {
+                if (i < 0 || i >= count) continue;
+                if (ApplySaveExtension(name, filters[i], filters) == name) { fits = true; break; }
+                if (first < 0) first = i;
+            }
+            if (!fits && first >= 0) named = ApplySaveExtension(name, filters[first], filters);
+        } else {
+            const int chosen = fileConfig.selectedFilterIndex;
+            if (chosen >= 0 && chosen < count) named = ApplySaveExtension(name, filters[chosen], filters);
+        }
+        // A type that names no extension (All files) leaves a bare name
+        // bare: the caller's default extension, if it gave one, goes on.
+        if (!fileConfig.defaultExtension.empty()) {
+            named = WithDefaultExtension(named, fileConfig.defaultExtension);
+        }
+        return named;
     }
 
     bool UltraCanvasFileDialog::IsFileMatchingFilter(const std::string& fileName) const {
@@ -2279,12 +2473,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
-        for (auto& dialog : activeDialogs) {
+        // Close from a copy. Closing a dialog unregisters it - erases it from
+        // activeDialogs - and runs its result callback, which may open or close
+        // dialogs itself. Walking activeDialogs itself skipped every second
+        // dialog (each erase moved the next one under the loop's iterator) and
+        // went on to read the vacated slots past its end; and the clear()
+        // after it unregistered a dialog a callback had just opened, which
+        // stayed on screen out of the manager's reach.
+        const std::vector<std::shared_ptr<UltraCanvasModalDialog>> closing = activeDialogs;
+        for (const auto& dialog : closing) {
             if (dialog) {
                 dialog->CloseDialog(DialogResult::Cancel);
             }
         }
-        activeDialogs.clear();
+        // Drop whatever of those is still registered (a dialog that was never
+        // shown cannot close), but keep a dialog a result callback opened.
+        std::erase_if(activeDialogs, [&closing](const std::shared_ptr<UltraCanvasModalDialog>& dialog) {
+            return std::find(closing.begin(), closing.end(), dialog) != closing.end();
+        });
     }
 
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::GetCurrentModalDialog() {

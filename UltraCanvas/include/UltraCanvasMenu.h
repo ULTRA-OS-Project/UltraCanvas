@@ -1,7 +1,10 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.1
-// Last Modified: 2026-08-31
+// Version: 1.12.0 - a menu to screen readers
+// Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
+//                  MenuItemData::Input() declarations, never defined, are gone
+// Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,6 +12,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -57,7 +61,7 @@ namespace UltraCanvas {
         Checkbox,
         Radio,
         Submenu,
-        Input,
+        Input,      // Reserved: no text-input item is implemented, and there is no factory for one
         Custom,
         Header
     };
@@ -90,7 +94,6 @@ namespace UltraCanvas {
         // submenu entry only opens its list.
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
-//        std::function<void(const std::string&)> onTextInput;
 
         // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
         // If subItemsProvider is set, it is invoked each time the submenu opens,
@@ -145,8 +148,6 @@ namespace UltraCanvas {
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
-        static MenuItemData Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback);
 
         bool HasSubmenu() const { return type == MenuItemType::Submenu; }
     };
@@ -158,6 +159,24 @@ namespace UltraCanvas {
         Round,      // a circle, as UltraCanvasRadio draws it (the default)
         Square      // the same box a Checkbox item gets (the earlier look)
     };
+
+    // Outline of a Checkbox item's indicator. The tick inside is the same
+    // either way, so a round checkbox still reads as "on / off" rather than
+    // as one choice of several.
+    enum class MenuCheckboxShape {
+        Square,     // a box, as UltraCanvasCheckbox draws it (the default)
+        Round       // a circle, the outline a Round Radio item gets
+    };
+
+    // ===== APPLICATION-WIDE CHECKBOX SHAPE =====
+    // The checkboxShape every MenuStyle starts with. An application that wants
+    // one look in every menu it shows sets it once at start-up, and it reaches
+    // the menus elements build for themselves (a file display's context menu)
+    // as well as the application's own - UltraFiler draws only round
+    // indicators this way. Square until an application changes it, so
+    // nothing changes for one that never calls it.
+    void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape);
+    MenuCheckboxShape GetDefaultMenuCheckboxShape();
 
     struct MenuStyle {
         // Colors
@@ -191,11 +210,15 @@ namespace UltraCanvas {
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
         MenuRadioShape radioShape = MenuRadioShape::Round;   // Outline of a Radio item's indicator
+        MenuCheckboxShape checkboxShape = GetDefaultMenuCheckboxShape();   // Outline of a Checkbox item's indicator
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
 
-        // Animation
+        // Animation. When enabled, a popup or submenu fades in as a whole -
+        // background, border, shadow and entries - over animationDuration
+        // seconds as it opens, by stepping its opacity on the window
+        // (UltraCanvasWindowBase::SetPopupOpacity) from 0 to 1.
         bool enableAnimations = false;
         float animationDuration = 0.15f;
 
@@ -248,12 +271,19 @@ namespace UltraCanvas {
         int clampedMenuHeight = 0;
         bool needsScrollbar = false;
 
-        // Animation
+        // Opening fade (MenuStyle::enableAnimations). Progress runs 0 -> 1 over
+        // style.animationDuration from OpenMenu(); 1 means fully shown. It is
+        // the popup's opacity on the window. Each timer tick reads the clock,
+        // so the fade follows real time however late a tick is.
         std::chrono::steady_clock::time_point animationStartTime;
-        float animationProgress = 0.0f;
+        float animationProgress = 1.0f;
+        TimerId animationTimerId = InvalidTimerId;
 
         // Events
     public:
+        // ===== ACCESSIBILITY =====
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Menu; }
+
         std::function<void()> onMenuOpened;
         std::function<void()> onMenuClosed;
         std::function<void(int)> onItemSelected;
@@ -272,6 +302,7 @@ namespace UltraCanvas {
                 : UltraCanvasMenu(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasMenu() {
+            StopAnimation();   // its timer captures `this`
             CloseAllSubmenus();
         }
 
@@ -364,6 +395,17 @@ namespace UltraCanvas {
 
         int CalculateItemWidth(const MenuItemData& item) const;
 
+        // The columns in front of the labels of a vertical menu: one for the
+        // Checkbox / Radio indicators when any visible item has one, one for
+        // icons when any has an icon. Every label starts after both, so the
+        // labels line up down the menu whichever items carry what.
+        struct LeadingColumns {
+            bool check = false;
+            bool icon = false;
+        };
+        LeadingColumns GetLeadingColumns() const;
+        LeadingColumns leadingColumns;   // taken at the start of each Render()
+
 
         // ===== POSITIONING =====
         Point2Di GetPositionSubmenu(const UltraCanvasMenu& submenu, int itemIndex);
@@ -418,6 +460,9 @@ namespace UltraCanvas {
         void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
+        // Hands animationProgress to the window as this popup's opacity.
+        void ApplyAnimationOpacity();
+        void StopAnimation();
     };
 
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
@@ -780,22 +825,5 @@ namespace UltraCanvas {
         item.subItemsProvider = std::move(provider);
         return item;
     }
-
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.onTextInput = callback;
-//        return item;
-//    }
-//
-//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
-//        MenuItemData item;
-//        item.type = MenuItemType::Input;
-//        item.label = label;
-//        item.font = font;
-//        item.onTextInput = callback;
-//        return item;
-//    }
 
 } // namespace UltraCanvas

@@ -1,3 +1,20 @@
+#### 2026-10-06 *0.1.2*
+- **A copied password stays out of clipboard histories.** It goes to the
+  clipboard marked secret, so the ULTRA OS desktop's clipboard history,
+  KDE's Klipper and Windows' `Win+V` history leave it out. Clearing the
+  clipboard after 30 seconds emptied the clipboard, but not a history that
+  had already recorded the password: the desktop's clipboard menu kept
+  showing it. User names are copied as before (framework changelog:
+  `clipboard-secret-hint`).
+
+#### 2026-10-05 *0.1.1*
+- **The vault is found in a Windows profile named in any script.** The
+  default vault folder and the folder the open and save dialogs start in
+  were read through the narrow `getenv` (`APPDATA`, `USERPROFILE`), which
+  answers in the ANSI code page; for a user name outside it the vault was
+  looked for in a folder that does not exist. Both are read with the
+  framework's `GetEnvUtf8` now (framework changelog: `env-narrow`).
+
 #### 2026-10-03 *0.1.0*
 - **First release of UltraPassword, the password vault.** Passwords live in
   one encrypted file (`vault.upwvault`): Argon2id key derivation from the

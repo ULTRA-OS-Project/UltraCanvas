@@ -252,4 +252,37 @@ namespace UltraCanvas {
         std::unique_ptr<Impl> impl;
     };
 
+    // ===== A SHORTCUT FOR THE WHOLE DESKTOP =====
+    // A key combination that reaches this program whichever window has the
+    // focus - the desktop's Super+V for its clipboard panel. On X11 a passive
+    // grab on the root window, on a connection and a thread of its own. The
+    // callback runs on that thread: hand it to the UI thread
+    // (UltraCanvasApplicationBase::PostToUIThread). Elsewhere Start fails and
+    // says why.
+    class UltraCanvasGlobalShortcut {
+    public:
+        using PressedCallback = std::function<void()>;
+
+        UltraCanvasGlobalShortcut();
+        ~UltraCanvasGlobalShortcut();
+
+        UltraCanvasGlobalShortcut(const UltraCanvasGlobalShortcut&) = delete;
+        UltraCanvasGlobalShortcut& operator=(const UltraCanvasGlobalShortcut&) = delete;
+
+        // "Super+V", "Ctrl+Alt+H": Super, Ctrl, Alt and Shift, then one key.
+        // False when the combination cannot be read, the platform has no
+        // global shortcuts, or another program holds it; `error` says which.
+        bool Start(const std::string& accelerator, PressedCallback onPressed, std::string* error = nullptr);
+        // Joins the thread, so no callback runs after this returns. Safe twice.
+        void Stop();
+        bool IsRunning() const { return running.load(); }
+
+    private:
+        std::atomic<bool> running{false};
+        std::thread worker;
+        PressedCallback callback;
+        struct Impl;
+        std::unique_ptr<Impl> impl;
+    };
+
 } // namespace UltraCanvas

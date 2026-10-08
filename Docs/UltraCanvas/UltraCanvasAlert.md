@@ -170,6 +170,11 @@ class UltraCanvasAlert {
   width, which is what makes a centred element in the alert body — a progress
   ring, a chart — centre in the window. It applies to the internal dialog;
   native OS message boxes draw their own icon.
-- For transient, non-blocking status messages that should *not* interrupt the
-  user, prefer a Toast (`UltraCanvasToast`) instead — an Alert is intentionally
-  interruptive.
+- For transient, non-blocking messages that should *not* interrupt the user,
+  use a toast instead — an Alert is intentionally interruptive: modal,
+  centred on its window, holding the keyboard focus until a button answers
+  it. [`UltraCanvasNotificationToast`](UltraCanvasNotificationToast.md) is the
+  toast: in a screen corner, never focused, gone by itself after a few
+  seconds; post a `system.notification` on UltraMessage and the desktop's
+  notification service (or the toast host) shows it. A critical notification
+  takes the red the Error alert uses.

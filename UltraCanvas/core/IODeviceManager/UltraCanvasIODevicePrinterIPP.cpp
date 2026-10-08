@@ -12,7 +12,8 @@
 // Linux or macOS build may have no CUPS - and it reaches a printer CUPS does
 // not know about. Where CUPS is present and already offers a printer, the
 // printer is left to CUPS rather than listed twice (see
-// IppCupsQueueReachesPrinter).
+// IppCupsQueueReachesPrinter). On Windows the same goes for a printer that is
+// already a print queue there (IppPrinterIsWindowsQueue).
 //
 // The protocol arithmetic lives next door in ...IPPProtocol.cpp and the page
 // format in ...PwgRaster.cpp, so both can be tested without a network; this
@@ -21,7 +22,7 @@
 // The Windows spooler backend borrows one piece of it: when a queue's driver
 // keeps its ink levels to itself, QueryIppSupplyLevels asks the printer
 // behind the queue directly.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
@@ -34,6 +35,7 @@
 #include "IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRaster.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.h"
+#include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetPlugins.h"
@@ -144,19 +146,20 @@ IODeviceResult SendIpp(const std::string& printerUri, IppMessage request,
         options.timeoutMs = timeoutMs;
         options.connectTimeoutMs = 5000;
 
+        // Through the device trust, so a printer reached over ipps:// with
+        // the self-signed certificate nearly every printer has is trusted on
+        // first use (UltraCanvasIODeviceTlsTrust.h).
+        UltraNetHttpRequest post;
+        post.url = url;
+        post.method = UltraNetHttpMethod::Post;
+        post.body = std::move(body);
+        post.options = options;
         UltraNetResponse http;
-        const UltraNetResult sent = UltraNet_HttpPost(url, body, http, options);
+        const UltraNetResult sent = Internal::DeviceHttpRequest(post, http);
 
         if (!sent.success && http.statusCode == 0) {
             std::string message = "Could not reach the printer at " + url;
             if (!sent.message.empty()) message += ": " + sent.message;
-            if (url.rfind("https://", 0) == 0) {
-                // Nearly every printer's certificate is self-signed, and TLS
-                // verification stays on; say so, because the failure reads
-                // like a network fault otherwise.
-                message += ". If the printer uses a self-signed certificate, "
-                           "reach it through its ipp:// address instead";
-            }
             return IODeviceResult::BackendError(IODeviceResultCode::ConnectionFailed, message,
                                                 0, deviceId);
         }
@@ -745,7 +748,12 @@ private:
                 }
             }
         }
-        if (changed) UpdateDeviceInfo(info);
+        if (changed) {
+            UpdateDeviceInfo(info);
+            // A printer named only by its address in configuration has a
+            // name now; a trusted certificate kept for it takes it on.
+            Internal::NoteDeviceTlsName(IppHttpUrlFor(info.connectionPath), info.name);
+        }
     }
 
     std::shared_ptr<IppPrinterFacts> facts;
@@ -808,6 +816,12 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
     // seconds that a network with no printers should not spend.
     std::vector<std::string> cupsQueues;
     bool cupsAsked = false;
+#if defined(_WIN32)
+    // The same for the Windows spooler: a printer the machine already has a
+    // queue for is reached through that queue and its driver.
+    std::vector<std::string> windowsQueueHosts;
+    bool windowsAsked = false;
+#endif
 
     // Plain IPP first. A printer offering both is used over plain IPP: its
     // certificate is self-signed in all but a few cases, and TLS verification
@@ -865,6 +879,20 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
                 });
             if (cupsHasIt) continue;
 
+#if defined(_WIN32)
+            if (!windowsAsked) {
+                windowsQueueHosts = Internal::WindowsQueuePrinterHosts();
+                windowsAsked = true;
+            }
+            // Every address the printer answered from, not only the first:
+            // a queue set up by IPv4 address must still match a printer whose
+            // IPv6 answer arrived first.
+            auto ip = entry.attributes.find("ip");
+            const std::vector<std::string> addresses =
+                ip != entry.attributes.end() ? ip->second : std::vector<std::string>();
+            if (IppPrinterIsWindowsQueue(windowsQueueHosts, host->second[0], addresses)) continue;
+#endif
+
             IODeviceInfo info;
             info.deviceId = deviceId;
             // The instance name, which is unique on the network and is what
@@ -920,6 +948,9 @@ std::vector<IODevicePtr> EnumerateIppPrinters() {
     std::vector<IODevicePtr> devices;
     devices.reserve(infos.size());
     for (const IODeviceInfo& info : infos) {
+        // So a printer reached over ipps:// is listed under its name among
+        // the trusted certificates, not only its address.
+        Internal::NoteDeviceTlsName(IppHttpUrlFor(info.connectionPath), info.name);
         devices.push_back(std::make_shared<IppPrinterDevice>(info));
     }
     return devices;

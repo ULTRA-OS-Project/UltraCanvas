@@ -78,8 +78,11 @@ namespace UltraCanvas {
                 MiniDumpWithDataSegs | MiniDumpWithHandleData |
                 MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
+        // Narrow on purpose: the value is an ASCII 0/1 switch, never a path
+        // or a name, and this is read on the way to a crash report, where
+        // nothing should allocate.
         bool EnvFlagSet(const char* name) {
-            const char* value = std::getenv(name);
+            const char* value = std::getenv(name);   // path-string-ok: ASCII 0/1 flag, no allocation on the crash path
             if (!value || !*value) return false;
             return !(value[0] == '0' && value[1] == '\0');
         }
@@ -511,6 +514,228 @@ namespace UltraCanvas {
             std::wmemcpy(gCrashDumpDir, dir.c_str(), dir.size() + 1);
         }
 
+        // ===== NAMING THE CODE =====
+        // "at 0x00007FFB1212C86D in libUltraCanvas.dll" cannot be traced to a
+        // function: the DLL loads at a different address every start (ASLR), so
+        // the number means nothing without the dump and the matching build in a
+        // debugger. The report therefore names, for the fault and for every
+        // caller on the stack, the module, the offset inside it - the same on
+        // every start - and the function.
+        //
+        // The function comes from the module's export table. The framework DLL
+        // is linked with WINDOWS_EXPORT_ALL_SYMBOLS, so every function with
+        // external linkage is in it: the nearest export at or below an address
+        // is the function the address is in - or, for code with internal
+        // linkage (a lambda, a helper in an anonymous namespace), the exported
+        // function compiled just before it, which is still the right file. No
+        // dbghelp, no symbol file and no heap: only the module's own headers,
+        // which stay mapped while the module is loaded.
+
+        // Appends at most `length` characters of `text`; `out` stays terminated.
+        size_t AppendText(char* out, size_t capacity, size_t used, const char* text, size_t length) {
+            while (length-- && *text && used + 1 < capacity) out[used++] = *text++;
+            out[used] = '\0';
+            return used;
+        }
+
+        // "_ZN11UltraCanvas20UltraCanvasTextInput5PasteEv" ->
+        // "UltraCanvas::UltraCanvasTextInput::Paste". The name only: the
+        // parameters are dropped, and where the mangling goes beyond nested
+        // names (template arguments, operators) the name ends in "...". Anything
+        // that is not an Itanium name (a C function, an MSVC "?" name) is kept
+        // as it is.
+        void DemangledName(const char* mangled, char* out, size_t capacity) {
+            if (!capacity) return;
+            out[0] = '\0';
+            const char* p = mangled;
+            bool nested = false;
+            if (std::strncmp(p, "_ZN", 3) == 0) {
+                p += 3;
+                nested = true;
+                while (*p == 'r' || *p == 'V' || *p == 'K' || *p == 'R' || *p == 'O') ++p;
+            } else if (std::strncmp(p, "_Z", 2) == 0 && p[2] >= '1' && p[2] <= '9') {
+                p += 2;
+            } else {
+                AppendText(out, capacity, 0, mangled, std::strlen(mangled));
+                return;
+            }
+            size_t used = 0;
+            const char* last = nullptr;      // the enclosing class, for "Class::Class"
+            size_t lastLength = 0;
+            while (*p) {
+                if (*p >= '0' && *p <= '9') {
+                    size_t length = 0;
+                    while (*p >= '0' && *p <= '9') length = length * 10 + static_cast<size_t>(*p++ - '0');
+                    if (length == 0 || std::strlen(p) < length) break;
+                    if (used) used = AppendText(out, capacity, used, "::", 2);
+                    used = AppendText(out, capacity, used, p, length);
+                    last = p;
+                    lastLength = length;
+                    p += length;
+                    if (!nested) return;
+                } else if (nested && *p == 'S' && p[1] == 't') {
+                    used = AppendText(out, capacity, used, "std", 3);
+                    p += 2;
+                } else if (nested && last && (*p == 'C' || *p == 'D') && p[1] >= '0' && p[1] <= '5') {
+                    used = AppendText(out, capacity, used, *p == 'D' ? "::~" : "::", *p == 'D' ? 3 : 2);
+                    used = AppendText(out, capacity, used, last, lastLength);
+                    p += 2;
+                } else if (nested && *p == 'E') {
+                    return;
+                } else {
+                    break;
+                }
+            }
+            if (!used) {
+                AppendText(out, capacity, 0, mangled, std::strlen(mangled));
+                return;
+            }
+            AppendText(out, capacity, used, "...", 3);
+        }
+
+        // The exported name nearest at or below `rva` inside the code section
+        // that holds `rva`, and that export's own RVA. Null when the module has
+        // no export table or `rva` is not code.
+        const char* NearestExport(const BYTE* base, DWORD rva, DWORD& exportRva) {
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+            if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+            if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+            const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
+            const IMAGE_SECTION_HEADER* code = nullptr;
+            for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+                const DWORD size = section->Misc.VirtualSize ? section->Misc.VirtualSize
+                                                             : section->SizeOfRawData;
+                if (rva >= section->VirtualAddress && rva - section->VirtualAddress < size) {
+                    if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) code = section;
+                    break;
+                }
+            }
+            if (!code) return nullptr;
+
+            const IMAGE_DATA_DIRECTORY& directory =
+                    nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+            if (!directory.VirtualAddress || !directory.Size) return nullptr;
+            const auto* exports =
+                    reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + directory.VirtualAddress);
+            const auto* functions = reinterpret_cast<const DWORD*>(base + exports->AddressOfFunctions);
+            const auto* names     = reinterpret_cast<const DWORD*>(base + exports->AddressOfNames);
+            const auto* ordinals  = reinterpret_cast<const WORD*>(base + exports->AddressOfNameOrdinals);
+
+            // Data exports (vtables, type info) and forwarders lie outside the
+            // code section, so staying inside it keeps only functions.
+            const char* best = nullptr;
+            exportRva = 0;
+            for (DWORD i = 0; i < exports->NumberOfNames; ++i) {
+                if (ordinals[i] >= exports->NumberOfFunctions) continue;
+                const DWORD function = functions[ordinals[i]];
+                if (function > rva || function < code->VirtualAddress) continue;
+                if (!best || function > exportRva) {
+                    best = reinterpret_cast<const char*>(base + names[i]);
+                    exportRva = function;
+                }
+            }
+            return best;
+        }
+
+        // "libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasTextInput::Paste+0x3D",
+        // or the bare address when no module holds it. A return address is
+        // looked up one byte back, inside the call it returns from: a call can
+        // be the last instruction of its function, and the return address then
+        // already belongs to the next one.
+        void DescribeCodeAddress(DWORD64 address, bool isReturnAddress, char* out, size_t capacity) {
+            const DWORD64 lookup = isReturnAddress && address ? address - 1 : address;
+            HMODULE module = nullptr;
+            if (!lookup ||
+                !GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                    reinterpret_cast<LPCSTR>(lookup), &module) ||
+                !module) {
+                std::snprintf(out, capacity, "0x%016llX", static_cast<unsigned long long>(address));
+                return;
+            }
+            char path[MAX_PATH] = "";
+            GetModuleFileNameA(module, path, MAX_PATH);
+            const char* file = path;
+            for (const char* c = path; *c; ++c) {
+                if (*c == '\\' || *c == '/') file = c + 1;
+            }
+
+            const auto* base = reinterpret_cast<const BYTE*>(module);
+            const auto offset = static_cast<unsigned long>(address - reinterpret_cast<DWORD64>(base));
+            DWORD exportRva = 0;
+            const char* symbol =
+                    NearestExport(base, static_cast<DWORD>(lookup - reinterpret_cast<DWORD64>(base)), exportRva);
+            if (!symbol) {
+                std::snprintf(out, capacity, "%s+0x%lX", file, offset);
+                return;
+            }
+            char name[160];
+            DemangledName(symbol, name, sizeof(name));
+            std::snprintf(out, capacity, "%s+0x%lX %s+0x%lX", file, offset, name,
+                          offset - static_cast<unsigned long>(exportRva));
+        }
+
+        // Room for the call stack's text: sixteen lines of module, offset and
+        // function name.
+        constexpr size_t kCrashCallStackText = 4096;
+
+        // The faulting thread's return addresses, walked from the fault with the
+        // unwind tables Windows' own exception dispatch uses. x64 only: that is
+        // where the unwinder's interface is the same on every toolchain; an
+        // ARM64 report names the faulting function and stops there.
+#if defined(__x86_64__) || defined(_M_X64)
+    #define ULTRACANVAS_CRASH_CALL_STACK 1
+#endif
+
+#if defined(ULTRACANVAS_CRASH_CALL_STACK)
+        constexpr int kCrashStackFrames = 16;
+
+        // Stops after `capacity` frames, at a frame with no unwind data past the
+        // first, when the stack pointer stops moving up, or when it leaves this
+        // thread's stack: a smashed stack ends the list instead of being read.
+        int CaptureCallStack(const CONTEXT& fault, DWORD64* frames, int capacity) {
+            static CONTEXT context;   // static: 1.2 KB of stack the filter may not have
+            context = fault;
+            const auto* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
+            const auto stackLow  = reinterpret_cast<DWORD64>(tib->StackLimit);
+            const auto stackHigh = reinterpret_cast<DWORD64>(tib->StackBase);
+
+            int count = 0;
+            while (count < capacity && context.Rip) {
+                frames[count++] = context.Rip;
+                const DWORD64 sp = context.Rsp;
+                if (sp < stackLow || sp + sizeof(DWORD64) > stackHigh) break;
+                DWORD64 imageBase = 0;
+                PRUNTIME_FUNCTION function = RtlLookupFunctionEntry(context.Rip, &imageBase, nullptr);
+                if (function) {
+                    void* handlerData = nullptr;
+                    DWORD64 establisherFrame = 0;
+                    RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Rip, function, &context,
+                                     &handlerData, &establisherFrame, nullptr);
+                } else if (count == 1) {
+                    // The faulting frame may be a leaf function, or a call that
+                    // landed where no module is - through a freed object's
+                    // vtable, say. Either way the return address is on top of
+                    // the stack, and the caller it names is the one that matters.
+                    context.Rip = *reinterpret_cast<const DWORD64*>(sp);
+                    context.Rsp = sp + sizeof(DWORD64);
+                } else {
+                    break;
+                }
+                if (context.Rsp <= sp || context.Rsp > stackHigh) break;
+            }
+            return count;
+        }
+
+        // Set while the stack is walked. A walk over a stack corrupt enough to
+        // make the unwinder fault raises a second exception, which brings the
+        // process back into this filter; finding the flag set, it reports
+        // without walking again instead of recursing.
+        std::atomic<bool> gWalkingCallStack{false};
+#endif
+
         LONG WINAPI UnhandledExceptionReporter(EXCEPTION_POINTERS* info) {
             const DWORD code = info && info->ExceptionRecord
                                    ? info->ExceptionRecord->ExceptionCode
@@ -577,21 +802,56 @@ namespace UltraCanvas {
                               gCrashMarchAdvice);
             }
 
-            char message[512];
+            // The offset into the module and the function the fault is in.
+            char location[260] = "";
+            if (module) {
+                char described[256] = "";
+                DescribeCodeAddress(reinterpret_cast<DWORD64>(address), false, described,
+                                    sizeof(described));
+                std::snprintf(location, sizeof(location), " (%s)", described);
+            }
+
+            char message[1024];
             std::snprintf(message, sizeof(message),
-                          "%s crashed: exception 0x%08lX (%s) at 0x%016llX in %s. %s",
+                          "%s crashed: exception 0x%08lX (%s) at 0x%016llX%s in %s. %s",
                           gCrashAppName, static_cast<unsigned long>(code),
                           ExceptionCodeName(code),
                           static_cast<unsigned long long>(
                               reinterpret_cast<std::uintptr_t>(address)),
-                          moduleName, gCrashOsVersion);
+                          location, moduleName, gCrashOsVersion);
+
+            // How the thread got there, one caller per line. Not for a stack
+            // overflow, whose filter runs on what is left of the exhausted
+            // stack. Static buffers: the box text is a few kilobytes.
+            static char callStack[kCrashCallStackText] = "";
+            callStack[0] = '\0';
+#if defined(ULTRACANVAS_CRASH_CALL_STACK)
+            if (code != EXCEPTION_STACK_OVERFLOW && info && info->ContextRecord &&
+                !gWalkingCallStack.exchange(true)) {
+                DWORD64 frames[kCrashStackFrames] = {};
+                const int count = CaptureCallStack(*info->ContextRecord, frames, kCrashStackFrames);
+                gWalkingCallStack = false;
+                size_t used = AppendText(callStack, sizeof(callStack), 0, "Call stack:", 11);
+                for (int i = 0; i < count; ++i) {
+                    char frame[320];
+                    char line[340];
+                    DescribeCodeAddress(frames[i], i > 0, frame, sizeof(frame));
+                    std::snprintf(line, sizeof(line), "\n  #%d %s", i, frame);
+                    used = AppendText(callStack, sizeof(callStack), used, line, sizeof(line));
+                }
+                if (count == 0) callStack[0] = '\0';
+            }
+#endif
 
             CrashLogLine(message);
             if (detail[0]) CrashLogLine(detail);
+            if (callStack[0]) CrashLogLine(callStack);
             CrashLogLine(dumpLine);
             if (gCrashDialogAllowed) {
-                char full[2048];
-                std::snprintf(full, sizeof(full), "%s%s%s", message, detail, dumpNote);
+                static char full[sizeof(message) + sizeof(detail) + kCrashCallStackText +
+                                 sizeof(dumpNote) + 8];
+                std::snprintf(full, sizeof(full), "%s%s%s%s%s", message, detail,
+                              callStack[0] ? "\n" : "", callStack, dumpNote);
                 MessageBoxA(nullptr, full, gCrashAppName,
                             MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
             }

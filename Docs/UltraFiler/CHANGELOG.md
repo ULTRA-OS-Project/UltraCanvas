@@ -1,3 +1,179 @@
+#### 2026-10-07 *1.68.0*
+- **The folder tree fits its names.** The tree on the left is now as wide as
+  the rows it shows, plus 10 px - the same as UltraMail's folder list - instead
+  of starting at 280 px whatever was in it; a tree of a few short names is
+  now narrower than that, so the divider goes down to 100 px (it stopped at
+  170 px). It fits again whenever a branch is opened or closed, a drive, RAM
+  disc or remote drive comes or goes, a folder appears or is removed, a pin
+  is added, or the tree opens a branch to follow the folder display. It
+  grows to 600 px at most, and never so wide that the file display (and the
+  preview pane, while it is up) drops below its minimum width. In the split view the tree docked beside a display is fitted the
+  same way, inside its pane. Dragging the divider still resizes the tree for
+  the moment; the next fit puts it back.
+- **Settings > Display > Treeview sets the width.** *Auto* is the fitted tree
+  above and the default; *Fixed width* keeps the tree at the pixels set beside
+  it (100 to 600, 280 to start with - typing a width chooses it), which is how
+  every earlier release behaved. Saved as `tree.width.mode` / `tree.width` in
+  `config.ini`; the page's *Restore defaults* (it used to be *Restore default
+  colours*) puts the colours back and the width back to *Auto*. Measuring the
+  rows is the framework's `UltraCanvasTreeView::GetRequiredWidth`, which
+  UltraMail's folder list uses.
+
+#### 2026-10-07 *1.67.1*
+- **Windows: History and Favorites no longer forget a file with a Thai, CJK
+  or emoji name.** Before listing an entry, the History and Favorites views
+  check that its file is still on disk, and they handed the path to Windows
+  as a plain string, which Windows reads in the ANSI code page. A name that
+  code page cannot hold was "not found", so the entry was dropped - and
+  written out of `history.txt` / `favorites.txt`, so it stayed gone: a file
+  pinned to Favorites disappeared the first time the Favorites view was
+  opened. The check now passes the path as UTF-8, like every other file call
+  in UltraFiler. `FilerHistoryTest` records and pins such a file, and the
+  Windows CI job runs it under code page 1252.
+- **Windows: *Extras > Access > Read-only* works on a file with a Thai, CJK
+  or emoji name.** It set the attribute through the same plain-string path,
+  so on such a name it failed with "no such file" and left the file as it
+  was. The Access window now passes the path as UTF-8 on every platform.
+
+#### 2026-10-06 *1.67.0*
+- **The host's file icons are the default.** *Settings > Display > File
+  icons* now starts on **Host OS icons**, so a folder listing draws each type
+  with the icon the rest of the desktop uses for it - the shell's on Windows,
+  Finder's on macOS, the installed icon theme's on Linux and BSD - instead of
+  UltraFiler's own folder shape and coloured sheet. **UltraFiler simple** is
+  still one click away on the same page, or under *Display > File icons* in
+  a file display's context menu. Nothing else about the choice changed: a
+  file that shows a thumbnail of its own content keeps showing it, a program
+  or shortcut keeps the icon it carries, and a type the system has no icon
+  for keeps the simple one.
+
+  Existing installations change too. Every save of 1.66.1 and earlier wrote
+  `display.file.icons = simple` into the config file, whether or not anyone
+  had chosen it, so the choice is now saved under
+  `display.file.icons.style` and the old key is no longer read - otherwise
+  every config written before today would have kept the simple icons for
+  good. Someone who had picked the simple icons on purpose picks them again
+  once. A system with no desktop to ask (WebAssembly, Android) draws the
+  simple icons whatever the setting says, and the settings page now ticks
+  that choice there rather than the greyed-out one.
+- **The context menu has icons, and every tick is round.** Each entry of a
+  file display's right-click menu - Open with, Copy, Cut, Paste, Delete,
+  Delete Permanently, Duplicate, Rename, New, Compress, Extract, Print,
+  Extras, Display, Settings - and of its *Display* submenu now has an icon,
+  and *Display > Type* shows each layout with the same picture as the view
+  selector in the toolbar. The labels line up behind the icons: the switches
+  at the foot of *Display* (Icon-Menu, Folder previews, Info-Bar, Hidden
+  files) used to start one column to the right of the submenus above them.
+  A disabled entry's icon is greyed with its label.
+
+  Every on/off entry in UltraFiler's menus - those switches, the
+  *Thumbnails*, *Detail view* and *Dataset* lists, *Show in names*, the
+  *Pin / Unpin* entries under *Extras* and in the folder tree's menu - is now
+  drawn as a circle with its tick inside, like the round choice entries
+  (*Sort*, *Type*, *File icons*) beside them, instead of a square box. Both
+  are framework changes - see
+  `Docs/UltraCanvas/changelog.d/menu-icons-round-checkboxes.md`.
+
+#### 2026-10-06 *1.66.1*
+- **Windows: Paste of a picture copied in another program writes a picture.**
+  It wrote the clipboard's raw bitmap block as `Pasted image.bmp`, a file
+  with no bitmap header that no viewer could open; it is now
+  `Pasted image.png`. Copied files also go on the clipboard with the formats
+  Explorer adds beside the file list, so a program that pastes files copied
+  in Explorer pastes them from UltraFiler too. Both are framework changes -
+  see `Docs/UltraCanvas/changelog.d/windows-clipboard-images.md`.
+
+#### 2026-10-04 *1.66.0*
+- **Every step of a remote-drive connection is on screen, and a failure can
+  be read with its codes.** When an FTP connection failed, the status bar
+  said "cannot list this folder" and nothing about where it stopped or what
+  the server answered. Now:
+  - While a drive is busy, the status bar shows the step its connection is
+    at, as it happens - *Opening "pub" - Connecting to 203.0.113.7:21...*,
+    *- Response: 230 Logged in*, *- Command: MLSD* - and the folder view's
+    *Loading folder* notice names the same step with how long it has
+    waited, so a stalled connection shows where it stalls. Uploads,
+    downloads, deletes and renames show their steps until the bytes start
+    moving.
+  - A new **connection log** button sits at the right of the status bar
+    once there is a remote drive. It counts in red the failures not looked
+    at yet and opens the connection log window: an *Errors* tab with a
+    Markdown report of each failed connection - the message, the error
+    class with its UltraCloud code, libcurl's error number and the server's
+    last reply, the likely cause (a firewall blocking the passive data
+    connection, a refused password, an unknown host, a closed port, a 550,
+    ...), the last steps and the diagnostics chain - and a *Message log*
+    tab listing every step of every connection the way FileZilla does
+    (`12:03:04  Response: 227 Entering Passive Mode (...)`), following the
+    newest line. *Copy* takes the tab on show to the clipboard; passwords
+    never appear (`PASS ********`). *Clear* empties it. The log is in memory
+    only and keeps the last 200 connections; folders fetched ahead are
+    logged too, marked as background work, and are not counted as errors.
+  - A folder that could not be listed keeps its error on the status line
+    ("Error: cannot list this folder: ... - every step and the error codes
+    are in the connection log") instead of giving way to "0 items".
+  - The *Remote drive* alert for a failed upload, delete or rename points at
+    the connection log.
+  - A server that goes quiet now fails after 30 seconds of inactivity, once,
+    instead of being asked up to three times (or, for a data connection
+    that opened and carried nothing, waited on indefinitely); a refused
+    password is no longer sent three times; and an empty folder costs one
+    request instead of three (framework changelog: UltraNet's FTP session
+    log).
+  - FTP and SFTP drives log every step; cloud drives log each job and its
+    outcome.
+- **Remote drives work on the very first start.** On a fresh profile
+  UltraFiler's configuration folder does not exist until something is saved
+  (a setting, the History), and the drive list - a database file in that
+  folder - could not be created without it: the log said "remote drives
+  unavailable: ... unable to open database file", the Remote Drives section
+  stayed empty, and *+ Drive* answered "cannot open the drive list" until
+  UltraFiler was restarted, because the failure was kept for the whole
+  session. The folder is now created before the drive list is opened, and a
+  failed open is tried again by the next *+ Drive* instead of being
+  remembered.
+- **When the credential vault cannot open, the message says why.** It said
+  only "cannot open the credential vault in ..."; it now adds the reason -
+  "this build has no encryption library (UltraCrypt was built without
+  libsodium), so it cannot keep passwords", a folder that cannot be written,
+  or a vault made with a master password (framework changelog:
+  `DeviceKeyVault::GetLastUnlockStatus`). A profile folder named in Thai or
+  Cyrillic now opens its vault on Windows too (same entry).
+- **Settings, History, Favorites, folder icons and views, and the drive list
+  are kept in a Windows profile named in any script.** UltraFiler took its
+  configuration folder from the narrow `getenv("APPDATA")`, which answers in
+  the ANSI code page: for a user name the code page cannot spell (Thai under
+  code page 1252) the folder came back with '?' in it, nothing was saved and
+  nothing read back, and the drive list and the vault - which read the
+  folder as UTF-8 - could not open it even where the code page could spell
+  it. The folder is read with the framework's `GetEnvUtf8` and every file in
+  it opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`). So are the home folder the tree marks
+  (`USERPROFILE`) and the System32 folder the *Open with* dialog starts in
+  (`SystemRoot`).
+- **A remote file named in any script can be previewed.** A preview is
+  downloaded under a temporary name and then moved into the preview cache;
+  that move handed the cache name to `fs::rename` as a plain string, which
+  Windows reads in the ANSI code page, so for a file name outside it the
+  preview failed with "cannot store the preview". It goes through
+  `PathFromUtf8` now.
+
+#### 2026-10-05 *1.65.3*
+- **A RAM disc made on Windows can always be found and ejected again.** The
+  name field took up to 64 characters, but on Windows a RAM disc's name has
+  to fit its volume label: a longer name made a disc that was neither listed
+  nor ejectable. The field now holds what the system can keep - 23
+  characters on Windows, 64 elsewhere - and a name past that is refused with
+  "At most 23 characters." rather than the letters-and-digits hint (framework
+  changelog: a RAM disc's name fits its volume label).
+
+#### 2026-10-05 *1.65.2*
+- **Published by ULTRA OS Development GmbH.** The Windows file properties
+  of `UltraFiler.exe` (Company and Copyright) and its application manifest
+  (`Apps/UltraFiler/UltraFiler.{rc,manifest}`) now name the company's new name
+  instead of Cloverleaf UG. See
+  `Docs/UltraCanvas/changelog.d/company-name-ultra-os-development.md`.
+
 #### 2026-10-04 *1.65.1*
 - **Display > Sort is greyed out in the History and Favorites views.** Their
   lists keep their own order (most recently used first, pin order), so the

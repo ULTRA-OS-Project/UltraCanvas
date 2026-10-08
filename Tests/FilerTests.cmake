@@ -1,12 +1,13 @@
 # Tests/FilerTests.cmake
-# FilerFolderPreviewTest, FilerNameEncodingTest, FilerHostIconsTest and
-# FilerShortcutEntryTest. Included by
+# FilerFolderPreviewTest, FilerNameEncodingTest, FilerHostIconsTest,
+# FilerShortcutEntryTest and FilerHistoryTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
 # which builds no full test suite, runs the file display against Thai, CJK and
 # emoji names on the platform where a name goes through UTF-16 and a code page
-# (the runner's is 1252), asks the Windows shell for its icons, and reads
-# .lnk shortcuts where they are native. Paths are relative to this file, so either includer
+# (the runner's is 1252), asks the Windows shell for its icons, reads
+# .lnk shortcuts where they are native, and keeps UltraFiler's history under
+# %APPDATA%. Paths are relative to this file, so either includer
 # works.
 
 set(_FT_DIR "${CMAKE_CURRENT_LIST_DIR}")
@@ -79,12 +80,16 @@ endif()
 # host's, so the test asserts that asking is harmless rather than what any one
 # desktop answers; it therefore passes on a build machine with no icon theme -
 # and on Windows it asks the real shell (SHGetFileInfo) the same questions.
+# It also reads UltraFiler's saved choice back from a temporary config folder
+# (Apps/UltraFiler/UltraFilerSettings.h, header-only), which defaults to the
+# host's icons.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerHostIconsTest...")
     add_executable(FilerHostIconsTest
         ${_FT_DIR}/FilerHostIconsTest.cpp
     )
-    target_include_directories(FilerHostIconsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_include_directories(FilerHostIconsTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
     target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
     target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
     set_target_properties(FilerHostIconsTest PROPERTIES
@@ -119,4 +124,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerShortcutEntryTest")
 else()
     message(STATUS "  FilerShortcutEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER HISTORY TEST =====
+# UltraFiler's recently-used lists (Apps/UltraFiler/UltraFilerHistory.h,
+# header-only): the Files / Folders / Apps lists survive a restart, and each
+# keeps the number of entries Settings > Extras > History & Favorites asks
+# for - while recording, when the file is read back and the moment the limit
+# is lowered - and History and Favorites keep a file named in Thai with an
+# emoji (UltraFilerFavorites.h too). Writes its config into a temporary
+# folder, never a real one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerHistoryTest...")
+    add_executable(FilerHistoryTest
+        ${_FT_DIR}/FilerHistoryTest.cpp
+    )
+    target_include_directories(FilerHistoryTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
+    target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerHistoryTest PRIVATE UltraCanvas)
+    set_target_properties(FilerHistoryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerHistoryTest")
+else()
+    message(STATUS "  FilerHistoryTest skipped (UltraCanvas target not present)")
 endif()

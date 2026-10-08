@@ -24,6 +24,7 @@
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -302,11 +303,120 @@ static void TestSamples(const std::string& mediaRoot) {
     std::filesystem::remove(target.parent_path() / "ultracanvas-dispatch.mtl");
 }
 
+// ConversionOptions::ForceUpAxis is part of the dispatch's contract: a caller
+// that asks for Y-up must get Y-up whichever reader the extension picked,
+// because the caller cannot know which one that was. The .blend and .ms3d
+// readers used to ignore it, so a .blend asked for Y-up still arrived Z-up.
+// Asked for each axis in turn, every reader must say so in Up and must
+// have turned the geometry with it - the height measured along Y in one must
+// be the height measured along Z in the other.
+static void TestEveryReaderHonoursForceUpAxis(const std::string& mediaRoot) {
+    std::printf("Every reader honours ForceUpAxis\n");
+
+    for (const Sample& sample : Samples()) {
+        if (!sample.ImportsGeometry) continue;
+        const std::string path =
+                UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(mediaRoot) / sample.RelativePath);
+
+        ConversionOptions yUp;
+        yUp.ForceUpAxis = ModelStorage::UpAxis::YUp;
+        ConversionOptions zUp;
+        zUp.ForceUpAxis = ModelStorage::UpAxis::ZUp;
+        auto asYUp = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, yUp);
+        auto asZUp = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, zUp);
+        if (!asYUp || !asZUp) {
+            Check(false, std::string(sample.Extension) + " loads, asked for either up axis");
+            continue;
+        }
+        Check(asYUp->Up == ModelStorage::UpAxis::YUp && asZUp->Up == ModelStorage::UpAxis::ZUp,
+              std::string(sample.Extension) + " arrives with the up axis it was asked for");
+
+        // A B-rep sample has no mesh to measure until it is tessellated.
+        if (asYUp->Meshes.empty()) continue;
+        const ModelStorage::Bounds3D yBounds = asYUp->ComputeBounds();
+        const ModelStorage::Bounds3D zBounds = asZUp->ComputeBounds();
+        const double height = yBounds.Size().y;
+        Check(std::fabs(height - zBounds.Size().z) <= 1e-6 * std::max(1.0, height),
+              std::string(sample.Extension) + " and its geometry turned with it");
+    }
+}
+
+// The other three mesh options are the same contract. Each is checked by
+// doing it twice: once by the reader, through the option, and once by hand on
+// a plain load - and the two must agree. That holds for a reader that applies
+// the option and for no other, without the test having to know what a given
+// file looks like. The .blend and .ms3d readers ignored all three until they
+// were brought in line with the rest.
+static void TestEveryReaderHonoursMeshOptions(const std::string& mediaRoot) {
+    std::printf("Every reader honours TriangulateOnImport, WeldTolerance and GenerateMissingNormals\n");
+    const double tolerance = 1e-4;
+
+    auto isSurface = [](const ModelStorage::MeshPrimitive& prim) {
+        return prim.Mode != ModelStorage::PrimitiveMode::Lines &&
+               prim.Mode != ModelStorage::PrimitiveMode::Points;
+    };
+
+    for (const Sample& sample : Samples()) {
+        if (!sample.ImportsGeometry) continue;
+        const std::string path =
+                UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(mediaRoot) / sample.RelativePath);
+        const std::string name(sample.Extension);
+
+        ConversionOptions plainOptions;
+        auto plain = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!plain || plain->Meshes.empty()) continue;   // a B-rep sample has no mesh yet
+
+        // Normals: on by default, so every surface arrives with one per vertex.
+        bool everySurfaceHasNormals = true;
+        for (const auto& mesh : plain->Meshes)
+            for (const auto& prim : mesh.Primitives)
+                if (isSurface(prim) && prim.Normals.size() != prim.Positions.size())
+                    everySurfaceHasNormals = false;
+        Check(everySurfaceHasNormals, name + " generates the normals a surface is missing");
+
+        // Triangulation: the reader's result is the plain one, triangulated.
+        ConversionOptions triangulate;
+        triangulate.TriangulateOnImport = true;
+        auto triangulated = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, triangulate);
+        auto byHand = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!triangulated || !byHand) {
+            Check(false, name + " loads with TriangulateOnImport");
+            continue;
+        }
+        byHand->TriangulateAll();
+        bool onlyTriangles = true;
+        for (const auto& mesh : triangulated->Meshes)
+            for (const auto& prim : mesh.Primitives)
+                if (isSurface(prim) && (prim.Mode != ModelStorage::PrimitiveMode::Triangles ||
+                                        !prim.FaceStarts.empty()))
+                    onlyTriangles = false;
+        Check(onlyTriangles && triangulated->TotalFaceCount() == byHand->TotalFaceCount(),
+              name + " triangulates on import when asked");
+
+        // Welding: the reader's result is the plain one, welded.
+        ConversionOptions weld;
+        weld.WeldTolerance = tolerance;
+        auto welded = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, weld);
+        auto weldedByHand = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, plainOptions);
+        if (!welded || !weldedByHand) {
+            Check(false, name + " loads with WeldTolerance");
+            continue;
+        }
+        weldedByHand->WeldVertices(tolerance);
+        Check(welded->TotalVertexCount() == weldedByHand->TotalVertexCount(),
+              name + " welds on import when asked (" +
+                      std::to_string(plain->TotalVertexCount()) + " -> " +
+                      std::to_string(welded->TotalVertexCount()) + " vertices)");
+    }
+}
+
 int main(int argc, char** argv) {
     TestDispatchTable();
     TestDxfIsNotClaimed();
     TestEveryClaimedExtensionReachesTheFramework();
     if (argc > 1) TestSamples(argv[1]);
+    if (argc > 1) TestEveryReaderHonoursForceUpAxis(argv[1]);
+    if (argc > 1) TestEveryReaderHonoursMeshOptions(argv[1]);
     else std::printf("Samples: skipped (pass the media/3D path to run them)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

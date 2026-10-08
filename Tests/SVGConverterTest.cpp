@@ -6,12 +6,18 @@
 // real SVG rendering pipeline (UCImage) and pixel-checked, which proves the
 // output is valid SVG to an independent renderer, not just to our importer.
 // A hand-written snippet exercises importer robustness (inline style,
-// percentages, entities, tspans, defs-referenced gradients).
+// percentages, entities, tspans, defs-referenced gradients), a styled
+// one the <style> cascade (class/id/descendant rules, !important, CDATA),
+// and a marked one <marker> drawing (placement, orient, viewBox, units,
+// context paint, clipping, inheritance, a self-referencing marker); line-
+// gallery arrowheads go out as markers and come back as arrowheads, and
+// width profiles and brushes go out as what they draw and come back as
+// strokes.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Version: 1.5.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -22,6 +28,7 @@
 #include <functional>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -401,6 +408,389 @@ int main(int argc, char** argv) {
         Check(innerRect && innerRect->Style.ClipPath && *innerRect->Style.ClipPath != "c" &&
               cdoc->GetDefinition(*innerRect->Style.ClipPath) != nullptr,
               "the nested image's clip path is carried over under its own name");
+    }
+
+    // ===== CSS STYLE SHEETS =====
+    // Diagrams style their boxes by class from a <style> block; skipping it
+    // imported every such box black (an architecture diagram whose page
+    // background, `.container { fill: #f8f9fa; rx: 8 }`, came in black).
+    {
+        const char* styled = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs>
+    <style>
+      /* a comment */
+      .box { fill: #f8f9fa; stroke: #343a40; stroke-width: 2; rx: 8; }
+      rect.hot { fill: #ff0000; }
+      #special { fill: #00ff00; }
+      .forced { fill: #111111 !important; }
+      g .inner { fill: #0000ff; }
+      .label { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; fill: #2c3e50; }
+    </style>
+  </defs>
+  <style type="text/css"><![CDATA[ .late { fill: #123456; } ]]></style>
+  <style media="print">.box { fill: #ff00ff; }</style>
+  <rect class="box" x="0" y="0" width="400" height="200"/>
+  <rect class="box hot" x="10" y="10" width="20" height="20" fill="#000000"/>
+  <rect id="special" class="hot box" x="40" y="10" width="20" height="20"/>
+  <rect class="box" x="70" y="10" width="20" height="20" style="fill: #abcdef"/>
+  <rect class="forced" x="100" y="10" width="20" height="20" style="fill: #abcdef"/>
+  <g><circle class="inner" cx="150" cy="20" r="10"/></g>
+  <circle class="inner" cx="180" cy="20" r="10"/>
+  <rect class="late" x="200" y="10" width="20" height="20"/>
+  <text class="label" x="200" y="100">Title</text>
+</svg>)SVG";
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions cssOptions;
+        cssOptions.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+        auto sdoc = converter.ImportFromString(styled, cssOptions);
+        auto sl = (sdoc && !sdoc->Layers.empty()) ? sdoc->Layers[0] : nullptr;
+        Check(sl && sl->Children.size() == 9, "styled SVG: nine elements");
+        auto fillOf = [](const std::shared_ptr<VectorElement>& e) -> const Color* {
+            return (e && e->Style.Fill) ? std::get_if<Color>(&*e->Style.Fill) : nullptr;
+        };
+        auto isColor = [&](const std::shared_ptr<VectorElement>& e, uint8_t r, uint8_t g, uint8_t b) {
+            const Color* c = fillOf(e);
+            return c && c->r == r && c->g == g && c->b == b;
+        };
+
+        auto bg = ChildAs<VectorRect>(sl, 0);
+        Check(isColor(bg, 0xf8, 0xf9, 0xfa), "a class rule fills the shape (not black)");
+        Check(bg && bg->Style.Stroke && std::fabs(bg->Style.Stroke->Width - 2.0f) < 0.01f,
+              "a class rule sets stroke and stroke-width");
+        Check(bg && std::fabs(bg->RadiusX - 8.0f) < 0.01f && bg->Type == VectorElementType::RoundedRectangle,
+              "rx from a style sheet rounds the rect (SVG 2 geometry property)");
+        Check(isColor(ChildAs<VectorRect>(sl, 1), 255, 0, 0),
+              "a more specific rule wins, and beats the presentation attribute");
+        Check(isColor(ChildAs<VectorRect>(sl, 2), 0, 255, 0), "an id rule beats class rules");
+        Check(isColor(ChildAs<VectorRect>(sl, 3), 0xab, 0xcd, 0xef), "style=\"...\" beats the style sheet");
+        Check(isColor(ChildAs<VectorRect>(sl, 4), 0x11, 0x11, 0x11), "!important in the sheet beats style=\"...\"");
+        auto g = ChildAs<VectorGroup>(sl, 5);
+        Check(g && !g->Children.empty() && isColor(g->Children[0], 0, 0, 255),
+              "a descendant selector matches inside its ancestor");
+        Check(isColor(ChildAs<VectorCircle>(sl, 6), 0, 0, 0),
+              "a descendant selector does not match outside its ancestor");
+        Check(isColor(ChildAs<VectorRect>(sl, 7), 0x12, 0x34, 0x56),
+              "a top-level <style> in CDATA applies");
+        auto label = ChildAs<VectorText>(sl, 8);
+        Check(label && label->BaseStyle.Anchor == TextAnchor::Middle &&
+              std::fabs(label->BaseStyle.FontSize - 16.0f) < 0.01f &&
+              label->BaseStyle.Weight == FontWeight::Bold && label->BaseStyle.FontFamily == "Arial" &&
+              isColor(label, 0x2c, 0x3e, 0x50),
+              "a class rule styles text (anchor, size, weight, family, fill)");
+        bool styleNote = false;
+        for (const auto& n : notes) styleNote = styleNote || n.find("style") != std::string::npos;
+        Check(!styleNote, "no reader note about <style>");
+    }
+
+    // The selectors the HTMLReader's matcher brings, answered by the SVG
+    // tree's own traits: structural pseudo-classes, attribute operators on a
+    // camelCase attribute (the CSS parser lower-cases the name), :root.
+    {
+        const char* sel = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    g rect:nth-of-type(2) { fill: #020202; }
+    g :first-child { fill: #010101; }
+    rect[pathLength] { fill: #030303; }
+    rect[data-kind^="pri"] { fill: #040404; }
+    :root .deep { fill: #050505; }
+  </style>
+  <g>
+    <rect x="0" y="0" width="5" height="5"/>
+    <circle cx="10" cy="10" r="2"/>
+    <rect x="20" y="0" width="5" height="5"/>
+  </g>
+  <rect pathLength="10" x="30" y="0" width="5" height="5"/>
+  <rect data-kind="primary" x="40" y="0" width="5" height="5"/>
+  <g><g><circle class="deep" cx="50" cy="50" r="2"/></g></g>
+</svg>)SVG";
+        auto sdoc = converter.ImportFromString(sel, VectorConverter::ConversionOptions());
+        auto sl = (sdoc && !sdoc->Layers.empty()) ? sdoc->Layers[0] : nullptr;
+        auto fillIs = [](const std::shared_ptr<VectorElement>& e, uint8_t v) {
+            const Color* c = (e && e->Style.Fill) ? std::get_if<Color>(&*e->Style.Fill) : nullptr;
+            return c && c->r == v && c->g == v && c->b == v;
+        };
+        auto first = ChildAs<VectorGroup>(sl, 0);
+        Check(first && first->Children.size() == 3, "selectors: the first group keeps its three shapes");
+        if (first && first->Children.size() == 3) {
+            Check(fillIs(first->Children[0], 1), ":first-child matches the group's first shape");
+            Check(fillIs(first->Children[1], 0), "the circle in between matches nothing");
+            Check(fillIs(first->Children[2], 2), ":nth-of-type(2) counts the rects only");
+        }
+        Check(fillIs(ChildAs<VectorRect>(sl, 1), 3), "[pathLength] finds the camelCase attribute");
+        Check(fillIs(ChildAs<VectorRect>(sl, 2), 4), "[data-kind^=\"pri\"] matches a prefix");
+        auto outer = ChildAs<VectorGroup>(sl, 3);
+        auto inner = (outer && !outer->Children.empty())
+                         ? std::dynamic_pointer_cast<VectorGroup>(outer->Children[0]) : nullptr;
+        Check(inner && !inner->Children.empty() && fillIs(inner->Children[0], 5),
+              ":root .deep (two classes' worth) beats g :first-child on the same circle");
+    }
+
+    // ===== MARKERS =====
+    // Diagram connectors draw their arrowheads with <marker>; skipping it
+    // left every arrow a bare line. Each marker is drawn as shapes grouped
+    // with its line.
+    {
+        const char* marked = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+  <style>.arrow { stroke: #ff0000; stroke-width: 2; marker-end: url(#head); }</style>
+  <defs>
+    <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50"/>
+    </marker>
+    <marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" markerUnits="userSpaceOnUse">
+      <circle cx="5" cy="5" r="5" fill="context-stroke"/>
+    </marker>
+    <marker id="rev" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L5 0"/></marker>
+    <marker id="big" markerWidth="2" markerHeight="2"><rect width="10" height="10"/></marker>
+    <marker id="self" markerWidth="5" markerHeight="5"><line x2="5" y2="5" stroke="black" marker-end="url(#self)"/></marker>
+  </defs>
+  <line class="arrow" x1="10" y1="10" x2="10" y2="50"/>
+  <polyline points="20 10, 60 10, 60 50" fill="none" stroke="#00ff00" marker-mid="url(#dot)"/>
+  <path d="M100 10 L140 10" stroke="black" marker-start="url(#rev)" marker-end="url(#rev)"/>
+  <path d="M100 50 C 120 50 140 70 140 90" fill="none" stroke="black" marker-end="url(#head)"/>
+  <line x1="150" y1="10" x2="190" y2="10" stroke="black" marker-end="url(#big)"/>
+  <g marker-end="url(#head)"><line x1="0" y1="90" x2="40" y2="90" stroke="blue"/></g>
+  <line x1="150" y1="50" x2="190" y2="50" stroke="black" marker-end="url(#self)"/>
+  <line x1="0" y1="0" x2="5" y2="5" stroke="black"/>
+</svg>)SVG";
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions markerOptions;
+        markerOptions.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+        auto mdoc = converter.ImportFromString(marked, markerOptions);
+        auto ml = (mdoc && !mdoc->Layers.empty()) ? mdoc->Layers[0] : nullptr;
+        Check(ml && ml->Children.size() == 8, "marked SVG: eight elements");
+        // The marker drawings of top-level element i (the group's children
+        // after the shape itself).
+        auto drawings = [&](size_t i) {
+            std::vector<std::shared_ptr<VectorGroup>> out;
+            auto g = ChildAs<VectorGroup>(ml, i);
+            if (g) for (size_t k = 1; k < g->Children.size(); ++k)
+                if (auto d = std::dynamic_pointer_cast<VectorGroup>(g->Children[k])) out.push_back(d);
+            return out;
+        };
+        auto near = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
+            if (!d || !d->Transform) return false;
+            const Point2Dd p = d->Transform->Transform(content);
+            return std::fabs(p.x - x) < 1e-6 && std::fabs(p.y - y) < 1e-6;
+        };
+
+        auto arrow = ChildAs<VectorGroup>(ml, 0);
+        auto head = drawings(0);
+        Check(arrow && arrow->Children.size() == 2 && std::dynamic_pointer_cast<VectorLine>(arrow->Children[0]) &&
+              head.size() == 1, "marker-end from a CSS class: the line and its arrowhead become one group");
+        Check(!head.empty() && near(head[0], Point2Dd(9, 3.5), 10, 50) && near(head[0], Point2Dd(10, 3.5), 10, 52),
+              "the arrowhead's refX/refY sits on the line's end, turned along it and scaled by stroke-width");
+        const Color* hc = (!head.empty() && !head[0]->Children.empty() && head[0]->Children[0]->Style.Fill)
+                ? std::get_if<Color>(&*head[0]->Children[0]->Style.Fill) : nullptr;
+        Check(hc && hc->r == 0x2c && hc->g == 0x3e && hc->b == 0x50, "the arrowhead keeps the marker's own fill");
+
+        auto dot = drawings(1);
+        Check(dot.size() == 1 && near(dot[0], Point2Dd(5, 5), 60, 10) && near(dot[0], Point2Dd(10, 5), 62, 10),
+              "marker-mid on the middle vertex only, viewBox mapped, markerUnits=userSpaceOnUse unscaled");
+        const Color* dc = (!dot.empty() && !dot[0]->Children.empty() && dot[0]->Children[0]->Style.Fill)
+                ? std::get_if<Color>(&*dot[0]->Children[0]->Style.Fill) : nullptr;
+        Check(dc && dc->g == 255 && dc->r == 0, "fill=\"context-stroke\" takes the line's stroke");
+
+        auto rev = drawings(2);
+        Check(rev.size() == 2 && near(rev[0], Point2Dd(5, 0), 95, 10) && near(rev[1], Point2Dd(5, 0), 145, 10),
+              "orient=auto-start-reverse turns the start marker round, not the end one");
+        auto curve = drawings(3);
+        Check(curve.size() == 1 && near(curve[0], Point2Dd(10, 3.5), 140, 91),
+              "an arrowhead on a curve follows the curve's tangent at its end");
+        auto big = drawings(4);
+        Check(big.size() == 1 && big[0]->Style.ClipPath &&
+              std::dynamic_pointer_cast<VectorClipPath>(mdoc->GetDefinition(*big[0]->Style.ClipPath)) != nullptr,
+              "content larger than the marker is clipped to its viewport");
+        Check(head.size() == 1 && !head[0]->Style.ClipPath, "content inside the viewport is not clipped");
+        auto inGroup = ChildAs<VectorGroup>(ml, 5);
+        auto inherited = (inGroup && !inGroup->Children.empty())
+                ? std::dynamic_pointer_cast<VectorGroup>(inGroup->Children[0]) : nullptr;
+        Check(inherited && inherited->Children.size() == 2, "marker-end inherits from a <g>");
+        auto self = drawings(6);
+        Check(self.size() == 1 && !self[0]->Children.empty() &&
+              std::dynamic_pointer_cast<VectorLine>(self[0]->Children[0]) != nullptr,
+              "a marker that uses itself is drawn once, not forever");
+        Check(ChildAs<VectorLine>(ml, 7) != nullptr, "a line without markers stays a plain line");
+        bool markerNote = false;
+        for (const auto& n : notes) markerNote = markerNote || n.find("marker") != std::string::npos;
+        Check(!markerNote, "no reader note about <marker>");
+    }
+
+    // ===== ARROWHEADS OUT AND BACK =====
+    // The line gallery's arrowheads were not written at all, so an arrow
+    // drawn in ArtCreator lost its heads when saved as SVG. They are written
+    // as markers every SVG reader draws, and come back as arrowheads.
+    {
+        auto adoc = std::make_shared<VectorDocument>();
+        adoc->Size = Size2Dd{400, 300};
+        auto al = adoc->AddLayer("Arrows");
+        auto arrowStroke = [](Color c, float width) {
+            StrokeData st;
+            st.Fill = c;
+            st.Width = width;
+            return st;
+        };
+        auto line = std::make_shared<VectorLine>();
+        line->Start = Point2Dd(40, 150);
+        line->End = Point2Dd(140, 150);
+        line->Style.Stroke = arrowStroke(Color(255, 0, 0, 255), 2.0f);
+        line->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 3.0f};
+        line->Style.Stroke->StartArrow = ArrowheadData{ArrowheadKind::OpenArrow, 1.0f};
+        al->AddChild(line);
+        auto curve = std::make_shared<VectorPath>();
+        curve->Path = ParsePathString("M 40 220 C 80 200 120 240 160 220");
+        curve->Style.Stroke = arrowStroke(Color(0, 0, 255, 255), 3.0f);
+        curve->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::StraightArrow, 1.0f};
+        al->AddChild(curve);
+        auto closed = std::make_shared<VectorPolygon>();
+        closed->Points = {Point2Dd(250, 50), Point2Dd(300, 50), Point2Dd(275, 90)};
+        closed->Style.Stroke = arrowStroke(Color(0, 0, 0, 255), 1.0f);
+        closed->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 1.0f};
+        al->AddChild(closed);
+        auto twin = std::make_shared<VectorLine>();
+        twin->Start = Point2Dd(40, 100);
+        twin->End = Point2Dd(140, 100);
+        twin->Style.Stroke = arrowStroke(Color(255, 0, 0, 255), 2.0f);
+        twin->Style.Stroke->EndArrow = ArrowheadData{ArrowheadKind::Triangle, 3.0f};
+        al->AddChild(twin);
+
+        const std::string out = converter.ExportToString(*adoc, options);
+        auto count = [&](const std::string& what) {
+            size_t n = 0;
+            for (size_t at = out.find(what); at != std::string::npos; at = out.find(what, at + 1)) ++n;
+            return n;
+        };
+        Check(out.find("marker-end=\"url(#") != std::string::npos &&
+              out.find("marker-start=\"url(#") != std::string::npos &&
+              out.find("data-ultracanvas-arrowhead=\"triangle\"") != std::string::npos,
+              "arrowheads are written as marker-start / marker-end");
+        Check(count("<marker ") == 3, "the same arrowhead in the same colour is written once");
+        const size_t poly = out.find("<polygon");
+        Check(poly != std::string::npos &&
+              out.substr(poly, out.find("/>", poly) - poly).find("marker-") == std::string::npos,
+              "a closed shape gets no markers (the renderer draws none on it)");
+
+        auto back = converter.ImportFromString(out, options);
+        auto bl = (back && !back->Layers.empty()) ? back->Layers[0] : nullptr;
+        Check(bl && bl->Children.size() == 4, "arrowed shapes come back as four shapes, not groups");
+        auto bline = ChildAs<VectorLine>(bl, 0);
+        Check(bline && bline->Style.Stroke && bline->Style.Stroke->EndArrow.Kind == ArrowheadKind::Triangle &&
+              std::fabs(bline->Style.Stroke->EndArrow.Scale - 3.0f) < 1e-4f &&
+              bline->Style.Stroke->StartArrow.Kind == ArrowheadKind::OpenArrow,
+              "the line's arrowheads come back as arrowheads, kind and size");
+        auto bcurve = ChildAs<VectorPath>(bl, 1);
+        Check(bcurve && bcurve->Style.Stroke &&
+              bcurve->Style.Stroke->EndArrow.Kind == ArrowheadKind::StraightArrow &&
+              !bcurve->Style.Stroke->StartArrow.IsSet(),
+              "a Xara arrowhead on a curve comes back, and only at its end");
+
+        // Another SVG reader draws them: the triangle's body below the line.
+        std::vector<uint8_t> bytes(out.begin(), out.end());
+        auto img = UCImage::LoadFromMemory(bytes);
+        auto pm = img ? img->GetPixmap(400, 300, ImageFitMode::Contain, 1.0f) : nullptr;
+        if (pm) {
+            const uint32_t px = pm->GetPixelData()[153 * pm->GetRawWidth() + 124];
+            Check(((px >> 16) & 0xFF) > 200 && ((px >> 8) & 0xFF) < 80,
+                  "librsvg draws the end arrowhead from the marker");
+        } else {
+            Check(false, "the export with arrowheads rasterizes");
+        }
+    }
+
+    // ===== WIDTH PROFILES AND BRUSHES OUT AND BACK =====
+    // SVG has neither, and the writer wrote a plain constant-width stroke:
+    // a tapered line came out as a uniform one and a brushed line as a bare
+    // stroke. They are written as what the renderer draws, and the reader
+    // rebuilds the stroke from the group's data.
+    {
+        auto gdoc = std::make_shared<VectorDocument>();
+        gdoc->Size = Size2Dd{400, 300};
+        auto gl = gdoc->AddLayer("Gallery");
+        auto taper = std::make_shared<VectorPath>();
+        // A vertex mid-way: the band follows the profile at the vertices of
+        // the flattened path (VariableWidthOutline), as the renderer draws it.
+        taper->Path = ParsePathString("M 40 60 L 200 60 L 360 60");
+        StrokeData taperStroke;
+        taperStroke.Fill = Color(255, 0, 0, 255);
+        taperStroke.Width = 6.0f;
+        taperStroke.WidthProfile = {{0.0f, 0.2f}, {0.5f, 2.0f}, {1.0f, 0.2f}};
+        taperStroke.EndArrow = ArrowheadData{ArrowheadKind::Triangle, 1.0f};
+        taper->Style.Stroke = taperStroke;
+        gl->AddChild(taper);
+        auto brushed = std::make_shared<VectorLine>();
+        brushed->Start = Point2Dd(40, 150);
+        brushed->End = Point2Dd(360, 150);
+        auto stamp = std::make_shared<VectorGroup>();
+        auto dot = std::make_shared<VectorCircle>();
+        dot->Center = Point2Dd(0, 0);
+        dot->Radius = 5;
+        dot->Style.Fill = Color(0, 0, 255, 255);
+        stamp->AddChild(dot);
+        StrokeData brushStroke;
+        brushStroke.Fill = Color(0, 0, 255, 255);
+        brushStroke.Width = 8.0f;
+        BrushData brush;
+        brush.Stamp = stamp;
+        brush.Spacing = 1.5f;
+        brushStroke.Brush = brush;
+        brushed->Style.Stroke = brushStroke;
+        gl->AddChild(brushed);
+        auto ring = std::make_shared<VectorRect>();
+        ring->Bounds = Rect2Dd{40, 220, 100, 50};
+        ring->Style.Fill = Color(255, 255, 0, 255);
+        StrokeData ringStroke;
+        ringStroke.Width = 4.0f;
+        ringStroke.WidthProfile = {{0.0f, 1.0f}, {1.0f, 3.0f}};
+        ring->Style.Stroke = ringStroke;
+        gl->AddChild(ring);
+
+        const std::string out = converter.ExportToString(*gdoc, options);
+        Check(out.find("data-ultracanvas-width-profile=\"0 0.2 0.5 2 1 0.2\"") != std::string::npos &&
+              out.find("data-ultracanvas-brush=\"ucstamp") != std::string::npos &&
+              out.find("<use href=\"#ucstamp") != std::string::npos,
+              "a width profile and a brush are written with their data, the stamps as <use>s");
+        Check(out.find("stroke=\"#ff0000\"") == std::string::npos && out.find("stroke=\"#0000ff\"") == std::string::npos,
+              "no constant-width stroke is drawn in place of the profile or the brush");
+
+        auto back = converter.ImportFromString(out, options);
+        auto bl = (back && !back->Layers.empty()) ? back->Layers[0] : nullptr;
+        Check(bl && bl->Children.size() == 3, "the three shapes come back as three shapes, not groups");
+        auto btaper = ChildAs<VectorPath>(bl, 0);
+        const StrokeData* ts = (btaper && btaper->Style.Stroke) ? &*btaper->Style.Stroke : nullptr;
+        const Color* tc = ts ? std::get_if<Color>(&ts->Fill) : nullptr;
+        Check(ts && ts->WidthProfile.size() == 3 && std::fabs(ts->WidthProfile[1].T - 0.5f) < 1e-4f &&
+              std::fabs(ts->WidthProfile[1].Factor - 2.0f) < 1e-4f && std::fabs(ts->Width - 6.0f) < 1e-4f &&
+              tc && tc->r == 255 && tc->b == 0 && ts->EndArrow.Kind == ArrowheadKind::Triangle,
+              "the width profile comes back on the stroke, with its width, colour and arrowhead");
+        auto bbrushed = ChildAs<VectorLine>(bl, 1);
+        const StrokeData* bs = (bbrushed && bbrushed->Style.Stroke) ? &*bbrushed->Style.Stroke : nullptr;
+        auto bdot = (bs && bs->HasBrush() && !bs->Brush->Stamp->Children.empty())
+                ? std::dynamic_pointer_cast<VectorCircle>(bs->Brush->Stamp->Children[0]) : nullptr;
+        Check(bs && bs->HasBrush() && std::fabs(bs->Brush->Spacing - 1.5f) < 1e-4f && bs->Brush->Rotate &&
+              bdot && std::fabs(bdot->Radius - 5.0f) < 1e-4f,
+              "the brush comes back with its spacing and its stamp");
+        bool stampLeft = false;
+        if (back) for (const auto& [id, def] : back->Definitions) stampLeft = stampLeft || id.rfind("ucstamp", 0) == 0;
+        Check(!stampLeft, "the stamp moves into the brush, not into the document's definitions");
+        auto bring = ChildAs<VectorRect>(bl, 2);
+        const Color* rf = (bring && bring->Style.Fill) ? std::get_if<Color>(&*bring->Style.Fill) : nullptr;
+        Check(bring && rf && rf->r == 255 && rf->g == 255 && bring->Style.Stroke &&
+              bring->Style.Stroke->WidthProfile.size() == 2,
+              "a closed shape keeps its fill and its profiled stroke");
+
+        // Another SVG reader draws the band and the stamps.
+        std::vector<uint8_t> bytes(out.begin(), out.end());
+        auto img = UCImage::LoadFromMemory(bytes);
+        auto pm = img ? img->GetPixmap(400, 300, ImageFitMode::Contain, 1.0f) : nullptr;
+        if (pm) {
+            auto at = [&](int x, int y) { return pm->GetPixelData()[y * pm->GetRawWidth() + x]; };
+            const uint32_t wide = at(200, 65), stamped = at(40, 152), gap = at(46, 150);
+            Check(((wide >> 16) & 0xFF) > 200 && ((wide >> 8) & 0xFF) < 80,
+                  "librsvg draws the band twice the width at the middle");
+            Check((stamped & 0xFF) > 200 && ((stamped >> 16) & 0xFF) < 80, "librsvg draws a stamp");
+            Check((gap & 0xFF) < 128, "between the stamps there is no stroke");
+        } else {
+            Check(false, "the export with a profile and a brush rasterizes");
+        }
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

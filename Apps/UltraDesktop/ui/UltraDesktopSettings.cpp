@@ -43,7 +43,9 @@ bool ParseTaskbarEdge(const std::string& text, TaskbarEdge& out) {
 std::string DesktopSettings::DefaultPath() {
     fs::path root;
 #if defined(_WIN32)
-    if (const char* appData = std::getenv("APPDATA"); appData && *appData) root = PathFromUtf8(appData);
+    // UTF-8 from the wide environment, as PathFromUtf8 expects: getenv would
+    // answer in the ANSI code page and miss a profile folder named outside it.
+    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) root = PathFromUtf8(appData);
 #else
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) root = PathFromUtf8(xdg);
     else if (const char* home = std::getenv("HOME"); home && *home) root = PathFromUtf8(home) / ".config";

@@ -1,7 +1,9 @@
 // core/HTMLReader/HTMLDocument.cpp
 // DOM helpers and entity decoding for the HTMLReader module.
+// Version: 1.2.0 - attribute lookup by name is exact, then ASCII case-insensitive
+//                  (viewBox inside <svg> is found as "viewbox" too)
 // Version: 1.1.0 - every HTML 4 named entity (&acute; &eth; &alpha; ...)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLDocument.h"
@@ -17,26 +19,48 @@ namespace HTML {
 // NODE
 // ============================================================================
 
-bool Node::HasAttribute(const std::string& name) const {
-    for (const auto& attr : attributes) {
-        if (attr.first == name) return true;
+namespace {
+
+bool EqualsIgnoreAsciiCase(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i]))) return false;
     }
-    return false;
+    return true;
+}
+
+// The attribute called `name`: the exact name first, then any ASCII case of
+// it. HTML attribute names are lower-case and match at once; a foreign one
+// (viewBox) is found by its own spelling and by the lower-case one a CSS
+// attribute selector or a caller written for HTML uses.
+template <class Attributes>
+auto FindAttribute(Attributes& attributes, const std::string& name) -> decltype(attributes.begin()) {
+    for (auto it = attributes.begin(); it != attributes.end(); ++it) {
+        if (it->first == name) return it;
+    }
+    for (auto it = attributes.begin(); it != attributes.end(); ++it) {
+        if (EqualsIgnoreAsciiCase(it->first, name)) return it;
+    }
+    return attributes.end();
+}
+
+} // namespace
+
+bool Node::HasAttribute(const std::string& name) const {
+    return FindAttribute(attributes, name) != attributes.end();
 }
 
 std::string Node::GetAttribute(const std::string& name) const {
-    for (const auto& attr : attributes) {
-        if (attr.first == name) return attr.second;
-    }
-    return "";
+    auto it = FindAttribute(attributes, name);
+    return it == attributes.end() ? std::string() : it->second;
 }
 
 void Node::SetAttribute(const std::string& name, const std::string& value) {
-    for (auto& attr : attributes) {
-        if (attr.first == name) {
-            attr.second = value;
-            return;
-        }
+    auto it = FindAttribute(attributes, name);
+    if (it != attributes.end()) {
+        it->second = value;
+        return;
     }
     attributes.emplace_back(name, value);
 }

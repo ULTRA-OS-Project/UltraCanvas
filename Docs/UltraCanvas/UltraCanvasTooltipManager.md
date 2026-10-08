@@ -1,7 +1,7 @@
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.3.0  
-**Last Modified:** 2026-08-07  
+**Version:** 2.4.0  
+**Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -13,6 +13,15 @@ composition. Any element with a tooltip — plain text via
 `UltraCanvasUIElement::SetTooltip` or structured content via
 `SetTooltipContent` — gets a tooltip automatically; application code normally
 never calls the manager directly.
+
+**Placement.** The tooltip sits above and to the right of the pointer: its
+body ends `offsetY` (20 px) above the pointer's tip and starts `offsetX`
+(12 px) to its right, so the line under the pointer — the text being read —
+and the pointer's arrow stay in view, and it follows the pointer as it moves.
+With no room above (near the top of the window) it goes below the pointer's
+arrow instead, and with no room on the right, to the left of the pointer.
+The position passed to `UpdateAndShowTooltip` is the pointer's; an element
+showing a tooltip for a fixed spot passes that spot's top edge.
 
 The default look is a modern dark tooltip: dark neutral background, light
 text, 6 px rounded corners and a soft drop shadow. A light preset is available
@@ -205,7 +214,7 @@ struct TooltipStyle {
     // Behavior
     unsigned int showDelay = 300;  // ms before showing
     unsigned int hideDelay = 200;  // ms before hiding
-    int offsetX = 10, offsetY = 10;  // offset from cursor
+    int offsetX = 12, offsetY = 20;  // gap right of / above the pointer
     bool followCursor = false;
 };
 ```
@@ -275,6 +284,11 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 - Tooltip text is laid out with Pango markup; the text passed in is wrapped
   in a `<span>` carrying `fontSize`/`fontFamily`, so tooltip strings may
   themselves contain markup (e.g. `<b>`, `<span foreground="...">`).
+- Text wider than `maxWidth` (less the padding) wraps at word boundaries and,
+  where a word alone is too long - a URL, a file path, a hash - between any
+  two of its characters. The box is sized to the wrapped text, so nothing a
+  tooltip draws runs past its border. Over-wide table cells wrap the same way
+  inside their column.
 
 ## Dependencies
 

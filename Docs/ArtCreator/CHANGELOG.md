@@ -1,3 +1,65 @@
+#### 2026-10-07 *0.6.8*
+- **Save as and Export keep the file type you chose.** Both added an
+  extension of their own to a name typed without one - `.xar` on Save as,
+  `.pdf` on Export - whatever type was chosen, so "drawing" with SVG chosen
+  was saved as Xara, after the dialog had asked about replacing "drawing"
+  rather than that file. The save dialog now gives the name the chosen
+  type's extension itself (UltraCanvas 0.9.176, PR #694), so ArtCreator saves
+  the name it hands back as it is. A name without an extension saved under
+  "All files" is refused with a message saying it needs one.
+
+#### 2026-10-07 *0.6.7*
+- **Arrowheads are saved in SVG files.** An arrow drawn with the line
+  gallery's arrowheads lost them when saved as SVG: every other program, and
+  ArtCreator itself on reopening, showed a bare line. They are now saved as
+  SVG markers, so browsers, Inkscape and UltraFiler's thumbnails draw them,
+  and reopening the file in ArtCreator gives back the arrowheads you chose,
+  still editable in the line panel. The fix is in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-arrowheads.md`).
+- **Tapered lines and brushes are saved in SVG files.** A line with a width
+  profile (taper, thick-thin, ...) was saved with an even width, and a
+  brushed line as a plain stroke. Both are now saved as the shapes they
+  draw, so other programs show them as ArtCreator does, and reopening the
+  file in ArtCreator gives back the line with its profile or brush, still
+  editable. Also in the framework's SVG writer
+  (`Docs/UltraCanvas/changelog.d/svg-export-width-profiles-brushes.md`).
+
+#### 2026-10-06 *0.6.6*
+- **SVG files styled with CSS open in their colours.** A drawing that sets
+  its fills, strokes, corner radii and text styles from a `<style>` block
+  (diagram tools and hand-written SVG do) opened with every such shape black
+  and the status bar saying "SVG import: `<style>` is not supported,
+  skipped": an architecture diagram's light grey page came in as a black
+  one. The style sheet now applies. The fix is in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-style-sheets.md`).
+- **Arrowheads on imported SVG lines.** Lines that end in an SVG marker -
+  the arrows connecting the boxes of a diagram - opened as bare lines, with
+  "`<marker>` is not supported, skipped" in the status bar. The marker is
+  now drawn: each line and its arrowheads come in as one group, so the arrow
+  moves as one object, and ungrouping it gives the arrowhead as an editable
+  shape. Also in the framework's SVG reader
+  (`Docs/UltraCanvas/changelog.d/svg-import-markers.md`).
+
+#### 2026-10-06 *0.6.5*
+- **Copy and paste work with other programs.** Copy and Paste only ever
+  used ArtCreator's own in-app list of objects: nothing copied here could be
+  pasted anywhere else, and a picture or a file copied anywhere else pasted
+  nothing here.
+  - *Copy* now also puts a picture of the selection on the system clipboard,
+    a pixel a point and cropped to what it draws, so UltraPaint, Paint Shop
+    Pro, a word processor or a chat can paste it (UltraCanvas
+    `RasterizeVectorElements`).
+  - *Paste* takes what was copied last. A picture another program put on the
+    clipboard becomes an image object in the middle of the page, shrunk to
+    the page if it is larger. So does an image file copied in UltraFiler,
+    Explorer or Finder, and a drawing file (SVG, CorelDRAW, Xara, ...) comes
+    in as one group with its gradients and symbols. ArtCreator's own copy
+    still pastes as the editable objects, offset as before - it recognises
+    the picture it put on the clipboard byte for byte.
+  - On Windows this needs the framework's clipboard fix in the same release
+    (`Docs/UltraCanvas/changelog.d/windows-clipboard-images.md`): before it,
+    no picture crossed the Windows clipboard in either direction.
+
 #### 2026-10-02 *0.6.4*
 - **The selection box fits the selected shape.** Selecting a part of an SVG
   drawn with relative curves (`astronaut.svg`) drew a box much larger than

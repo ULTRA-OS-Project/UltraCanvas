@@ -14,7 +14,6 @@
 
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasZipPackage.h"
-#include "UltraCanvasFileError.h"
 #include "DataFormats/UltraCanvasJSON.h"
 
 #ifdef HAS_LIBVIPS
@@ -807,6 +806,14 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
 bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
                                   const UCImageSave::ImageExportOptions* options) {
     if (IsProjectFile(path)) return SaveProject(path, error);
+    // The extension picks the format, so a name without one (saved under
+    // "All files") has none to pick; libvips would only say it is "not a
+    // known file format".
+    if (LowerExt(path).empty()) {
+        error = "The file name has no extension, so there is no format to save it in. "
+                "Add one, such as .png, or choose the file type.";
+        return false;
+    }
 #ifdef HAS_LIBVIPS
     try {
         auto flat = Flatten();
@@ -822,27 +829,17 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
         // is what makes saving over it fail. See LoadFromFile().
         PixelFX::ReleaseCachedFiles();
 
-        // The export path stages its own write (ExportVImage), so it is
-        // handed the caller's file and does the staging once. A plain save
-        // goes straight to libvips' write_to_file, which truncates what it
-        // opens, so it is staged here: a failure after that point - no space
-        // left, a codec error, a destination another program holds - would
-        // otherwise leave the user with the remains of the write instead of
-        // the image they had.
+        // Both paths stage the write: ExportVImage and PixelFX::FileIO::Save
+        // encode into a temporary file and move it over the caller's only once
+        // it is complete. A failure - no space left, a codec error, a
+        // destination another program holds - therefore leaves the image the
+        // user had, not the remains of the write.
         if (options) {
             const std::string err = ExportVImage(img, path, *options);
             if (!err.empty()) { error = err; return false; }
         } else {
-            error = WriteFileAtomically(path, [&img](const std::string& staged) -> std::string {
-                try {
-                    if (PixelFX::FileIO::Save(img, staged)) return std::string();
-                } catch (const std::exception& e) {
-                    return e.what();
-                }
-                const std::string vipsError = PixelFX::GetLastError();
-                return vipsError.empty() ? std::string("The image could not be encoded.") : vipsError;
-            });
-            if (!error.empty()) return false;
+            // FileIO::Save throws with the reason; the catch below reports it.
+            PixelFX::FileIO::Save(img, path);
         }
         filePath = path;
         SetModified(false);

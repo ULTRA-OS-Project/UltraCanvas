@@ -142,7 +142,7 @@ StoreResult SealAccountExport(const std::vector<UltraCryptSecureBuffer>& uris,
     }
 
     std::error_code ec;
-    fs::permissions(tempPath,
+    fs::permissions(UltraCanvas::PathFromUtf8(tempPath),
                     fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
     fs::rename(UltraCanvas::PathFromUtf8(tempPath), UltraCanvas::PathFromUtf8(path), ec);

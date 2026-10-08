@@ -1,7 +1,9 @@
 // UltraCanvasDivergingBarChart.h
 // Diverging bar chart component for multi-valued categorical data (population pyramid, likert scales, etc.)
+// Version: 1.2.0 - CreatePopulationPyramid lays out its rowLabels as rows;
+//                  AddDataRow fills a row of that label instead of adding a second
 // Version: 1.1.0
-// Last Modified: 2025-09-23
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -74,8 +76,16 @@ namespace UltraCanvas {
             categoryPositions[category] = isPositive;
         }
 
+        // Adds a row, or - when a row with this label is already there, such
+        // as one CreatePopulationPyramid laid out - replaces that row's
+        // values in its place.
         void AddDataRow(const std::string& rowLabel, const std::map<std::string, float>& values) {
-            double xPos = divergingData.size();
+            auto existing = std::find_if(divergingData.begin(), divergingData.end(),
+                                         [&rowLabel](const DivergingChartPoint& row) {
+                                             return row.rowLabel == rowLabel;
+                                         });
+            double xPos = existing != divergingData.end()
+                          ? existing->x : static_cast<double>(divergingData.size());
             double totalValue = 0;
 
             // Calculate total value
@@ -90,7 +100,11 @@ namespace UltraCanvas {
                 point.AddCategoryValue(category, value);
             }
 
-            divergingData.push_back(point);
+            if (existing != divergingData.end()) {
+                *existing = point;
+            } else {
+                divergingData.push_back(point);
+            }
         }
 
         void AddDataMatrix(const std::vector<std::string>& rowLabels,
@@ -232,7 +246,7 @@ namespace UltraCanvas {
         // Set custom categories
         void SetCategories(const std::vector<DivergingCategory>& cats);
 
-        // Add a data row
+        // Add a data row; a label that is already a row replaces its values
         void AddDataRow(const std::string& rowLabel, const std::map<std::string, float>& values);
 
         // Load data matrix (rows x categories)
@@ -291,6 +305,8 @@ namespace UltraCanvas {
         return std::make_shared<UltraCanvasDivergingBarChart>(id, x, y, width, height);
     }
 
+    // A population pyramid with one empty row per rowLabel, in that order;
+    // AddDataRow(label, values) then fills the row of that label.
     inline std::shared_ptr<UltraCanvasDivergingBarChart> CreatePopulationPyramid(
             const std::string& id, int x, int y, int width, int height,
             const std::vector<std::string>& rowLabels,
@@ -299,6 +315,9 @@ namespace UltraCanvas {
         auto chart = CreateDivergingBarChart(id, x, y, width, height);
         chart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         chart->SetCategories(categories);
+        for (const auto& label : rowLabels) {
+            chart->AddDataRow(label, {});
+        }
         return chart;
     }
 

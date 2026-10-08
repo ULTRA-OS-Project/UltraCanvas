@@ -1,4 +1,14 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.15.2 - the HTML body sits in a page box as wide as the visible pane,
+//                   so its percentage widths (Reddit's body { min-width: 100% })
+//                   no longer reach under the vertical scrollbar
+// Version: 0.15.1 - each step of showing a message in the timing trace
+//                  (UltraMailTrace.h)
+// Version: 0.15.0 - [DMARC] [DKIM] [SPF] in the header: the sender checks the
+//                   receiving server made, a bordered label each, details as
+//                   tooltips; a verified sender in the sender's tooltip
+// Version: 0.14.0 - the sender badge's icon is asked for, and shown when it
+//                   arrives (IconCached)
 // Version: 0.13.0 - the HTML body is laid out beside the vertical scrollbar (no
 //                 text under the bar, no stray horizontal bar); thin, round
 //                 scrollbars as in the message list
@@ -19,10 +29,11 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
+#include "UltraMailTrace.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
@@ -45,6 +56,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -62,6 +74,20 @@ constexpr float kDateWidth    = 110.0f;
 // The header row holds two stacked auto-height text lines (from / to) plus the
 // 1px gap, and must be tall enough for both so neither is cropped.
 constexpr float kHeaderHeight = 44.0f;
+
+// One sender check as a small bordered label: the method's name, in the
+// colour of its result, the details as its tooltip.
+std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthCheck& check) {
+    const Color color = check.state == AuthCheckState::Passed ? Theme::kTrustFriend
+                      : check.state == AuthCheckState::Failed ? Theme::kTrustScam
+                                                              : Theme::kTextMuted;
+    auto tag = Theme::MakeText(id, check.label, Theme::kSizeSmall, color, FontWeight::Bold);
+    tag->SetBorders(1.0f, color, 3.0f);
+    tag->SetPadding(1.0f, 4.0f);
+    tag->SetTooltip(check.tooltip);
+    tag->layoutItem.SetFlexShrink(0);
+    return tag;
+}
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -105,24 +131,30 @@ void OpenMessageLink(const std::string& href) {
 // out again only when the bar comes or goes, so that settles in one extra
 // pass. Content that cannot reflow (a fixed-width table, a large picture) is
 // still wider than that and still gets the horizontal bar.
+//
+// What is narrowed is `page`, a box around the HTML body that stands for the
+// browser's viewport: every percentage the body's CSS carries resolves
+// against it. Narrowing the body's own width was not enough - a newsletter
+// with body { min-width: 100% } (Reddit's digest) measured that 100% against
+// the whole pane, under the bar, and scrolled sideways by the bar's 12 px.
 class BodyScrollView : public UltraCanvasContainer {
 public:
     using UltraCanvasContainer::UltraCanvasContainer;
 
-    std::shared_ptr<UltraCanvasUIElement> body;
+    std::shared_ptr<UltraCanvasUIElement> page;   // holds the HTML body
 
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
         UltraCanvasContainer::Arrange(finalRect, ctx);
-        if (!body) return;
+        if (!page) return;
         // calc(100% - track) while the vertical bar is shown, 100% otherwise.
         const float gutter = verticalScrollbar->IsVisible()
                                  ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
-        const CSSLayout::Dimension& cur = body->size.width;
+        const CSSLayout::Dimension& cur = page->size.width;
         if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
             cur.offsetPx == -gutter)
             return;
-        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
-        body->InvalidateSubtree();
+        page->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        page->InvalidateSubtree();
         UltraCanvasContainer::Arrange(finalRect, ctx);
     }
 };
@@ -367,13 +399,14 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     }
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
-    avatarHost_->layout.SetFlexRow();
+    avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(1)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     // Auto-height labels so each sizes to its own glyph line — a fixed-height
     // box cropped the second line regardless of the row height.
     from_ = Theme::MakeText("prevFrom", "", Theme::kSizeBody,
@@ -384,6 +417,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     who->AddChild(to_);
     header->AddChild(who);
     who->layoutItem.SetFlexGrow(1);
+
+    authRow_ = CreateContainer("prevAuth", 0, 0, 0, 0);
+    authRow_->layout.SetFlexRow()
+                    .SetFlexGap(4)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    header->AddChild(authRow_);
+    authRow_->layoutItem.SetFlexShrink(0);
 
     date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::kSizeSecondary,
                             Theme::kTextSecondary);
@@ -403,7 +443,8 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // what and why — never "blocked", because the message is still readable.
     warning_ = CreateContainer("prevWarning", 0, 0, 0, 0);
     warning_->layout.SetFlexColumn()
-                    .SetFlexGap(2);
+                    .SetFlexGap(2)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     warning_->SetPadding(8.0f, 10.0f);
     warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::kSizeBody,
                                     Theme::kTrustScam, FontWeight::Bold);
@@ -503,9 +544,13 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (!bodyHost_) return;
     if (&body != &lastBody_) lastBody_ = body;
     lastIsHtml_ = isHtml;
+    std::optional<Trace::Stage> step;
+    step.emplace("Remove the last message's body", 0);
     bodyHost_->ClearChildren();
     // The links the reader can check before clicking one.
+    step.emplace("Links in the message, for the status line", 0);
     if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
+    step.reset();
 
     // Settings > Reading > "as plain text": no layout and nothing fetched.
     if (isHtml && showHtml) {
@@ -528,7 +573,10 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         };
         opts.linkTooltips = linkTooltips;
         HTML::ElementBuilder builder;
+        step.emplace("HTML body (" + std::to_string(body.size() / 1024) +
+                     " KB): elements, styles, pictures", 0);
         HTML::BuildResult r = builder.Build(body, opts);
+        step.reset();
         if (r.root) {
             // Host the tree in a dedicated scroll container (the proven pattern
             // from UltraCanvasEBookViewer): a plain container sized by the flex
@@ -551,12 +599,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane). The
-            // scroll view narrows it by the vertical bar once that is shown.
+            // than laying out over-wide (responsive emails fill the pane). It
+            // sits in a page box the scroll view narrows by the vertical bar
+            // once that is shown, so its own percentages (width, min-width)
+            // stay beside the bar too.
+            auto page = std::make_shared<UltraCanvasContainer>("prevBodyPage", 0, 0, 0, 0);
+            page->size.width = CSSLayout::Dimension::Pct(100.0f);
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
-            scroll->body = r.root;
+            page->AddChild(r.root);
+            scroll->page = page;
             bodyHost_->AddChild(scroll);
-            scroll->AddChild(r.root);
+            scroll->AddChild(page);
             scroll->ScrollToVertical(0);
             return;
         }
@@ -564,6 +617,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     }
 
     // The text area is sized by the host's flex column, so it follows the pane.
+    step.emplace("Plain-text body (" + std::to_string(body.size() / 1024) + " KB)", 0);
     auto text = std::make_shared<PlainBodyArea>("prevBodyText", 0, 0, 0, 0);
     text->onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href);
@@ -746,6 +800,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
         sec.score  = report.score;
         sec.bulk   = report.bulk;
         sec.reason = report.Summary();
+        sec.verifiedDomain = report.verifiedDomain;
+        sec.verifiedBy     = report.verifiedBy;
         sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
@@ -859,11 +915,24 @@ void MessagePreview::Clear() {
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");
     if (avatarHost_) avatarHost_->ClearChildren();
+    if (authRow_) authRow_->ClearChildren();
+    shownBadge_ = SenderBadge{};
     if (bodyHost_) bodyHost_->ClearChildren();
     attachmentStrip_.SetAttachments({});
 }
 
+void MessagePreview::IconCached(const std::string& key) {
+    if (!hasMessage_ || !avatarHost_ || !icons_ || key.empty() || shownBadge_.iconKey != key)
+        return;
+    shownBadge_.iconPath = icons_->IconForKey(key);
+    shownBadge_.iconKey.clear();
+    avatarHost_->ClearChildren();
+    avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
+}
+
 void MessagePreview::Show(const MessageEnvelope& env) {
+    std::optional<Trace::Stage> step;
+    step.emplace("Header fields", 0);
     hasMessage_ = true;
     ++showToken_;
     curHtml_.clear();
@@ -916,6 +985,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
+    step.emplace("Load and decode the body (.eml)", 0);
     fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
                   / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
@@ -955,25 +1025,42 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Who the message is from, in the same badge the list row wears, and the
     // warning strip when the scan found something.
+    step.emplace("Scam and spam scan, sender badge, sender checks", 0);
     const MessageSecurity security = SecurityFor(env, raw);
     const SenderStatus    status   = badges_.Classify(env, security, junkFolder_);
     if (avatarHost_) {
+        shownBadge_ = badges_.Resolve(env, security, junkFolder_);
         avatarHost_->ClearChildren();
-        avatarHost_->AddChild(MakeSenderBadgeElement(
-            "prevBadge", badges_.Resolve(env, security, junkFolder_), kAvatarSide));
+        avatarHost_->AddChild(MakeSenderBadgeElement("prevBadge", shownBadge_, kAvatarSide));
+        if (shownBadge_.iconPath.empty() && !shownBadge_.iconKey.empty() && requestIcon_)
+            requestIcon_(shownBadge_.iconKey);
     }
     if (from_) {
         // The sender line carries the verdict in words, so the badge's colour
         // is never the only place it is said.
         std::string tip = sender + "\n" + DisplayName(status.cls);
         if (!status.reason.empty()) tip += " \xE2\x80\x94 " + status.reason;
+        if (!security.verifiedDomain.empty())
+            tip += "\n\xE2\x9C\x93 Verified sender: " + security.verifiedDomain + " (" +
+                   security.verifiedBy + ")";
         if (!security.reason.empty()) tip += "\n" + security.reason;
         from_->SetTooltip(tip);
+    }
+    // [DMARC] [DKIM] [SPF]: read from the message itself (the receiving
+    // server's topmost Authentication-Results); none until its body is here.
+    if (authRow_) {
+        authRow_->ClearChildren();
+        if (!raw.empty()) {
+            int n = 0;
+            for (const AuthCheck& check : DescribeMessageAuthentication(raw))
+                authRow_->AddChild(MakeAuthTag("prevAuth" + std::to_string(n++), check));
+        }
     }
     ShowSecurityWarning(status, security, raw);
 
     // The body, with its images: the message's own always, remote ones when
     // the reader has allowed this sender - never for a suspicious message.
+    step.emplace("Body", 0);
     if (havePending) {
         remoteDangerous_ = status.Dangerous() || junkFolder_;
         remoteAllowed_ = !remoteDangerous_ && remoteImagesAllowed &&
@@ -983,6 +1070,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
             inlineImages_ = CollectInlineImages(raw);
         }
         RenderBody(pendingBody, pendingHtml);
+        step.emplace("Start loading pictures from the web", 0);
         if (remoteAllowed_ && !blockedRemote_.empty()) {
             remoteAllowed_ = false;      // FetchRemoteImages sets it once loaded
             FetchRemoteImages();
@@ -991,6 +1079,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         }
     }
     UpdateRemoteBar();
+    step.reset();
 
     // Capture the selection for a possible Reply (decoded, so the quoted reply
     // header and Re: subject read correctly).

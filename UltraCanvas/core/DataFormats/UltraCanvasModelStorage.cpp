@@ -1,8 +1,8 @@
 // core/DataFormats/UltraCanvasModelStorage.cpp
 // Implementation of the universal 3D scene structure declared in
 // include/DataFormats/UltraCanvasModelStorage.h.
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasModelStorage.h"
@@ -686,6 +686,80 @@ void ModelDocument::FlattenTransforms(size_t* outDroppedAnimations) {
     for (auto& node : Nodes) node.Skin = -1;
 }
 
+// A root's animated translation or rotation *replaces* the static value the
+// turn was just folded into, so playing it would undo the turn. The keys get
+// the same treatment instead: R * (T * Q * S) = (R t) * (R * Q) * S, so
+// translation keys are rotated, rotation keys pre-multiplied, and scale keys
+// stay as they are, being in the node's own frame. Both are linear in the
+// stored values, which makes it exact for cubic-spline tangents as well - they
+// sit in the same array in the same layout as the values.
+static void RotateRootAnimation(ModelDocument& document, const Quatd& rotation) {
+    const std::vector<ModelNode>& nodes = document.Nodes;
+    for (ModelAnimation& animation : document.Animations) {
+        auto turns = [&nodes](const AnimationChannel& channel) {
+            return channel.TargetNode >= 0 &&
+                   static_cast<size_t>(channel.TargetNode) < nodes.size() &&
+                   nodes[static_cast<size_t>(channel.TargetNode)].Parent < 0 &&
+                   (channel.Path == AnimationPath::Translation ||
+                    channel.Path == AnimationPath::Rotation);
+        };
+        const size_t samplerCount = animation.Samplers.size();
+        auto valid = [samplerCount](int sampler) {
+            return sampler >= 0 && static_cast<size_t>(sampler) < samplerCount;
+        };
+
+        // A sampler may be shared, and one that also drives something that
+        // does not turn - a child node, or a root's scale - must stay as it
+        // is; the turning channel gets its own copy, taken from the keys as
+        // they were before anything here changed them.
+        const std::vector<AnimationSampler> original = animation.Samplers;
+        std::vector<bool> keep(samplerCount, false);
+        for (const AnimationChannel& channel : animation.Channels)
+            if (!turns(channel) && valid(channel.Sampler))
+                keep[static_cast<size_t>(channel.Sampler)] = true;
+
+        std::map<std::pair<int, AnimationPath>, int> turned;   // (sampler, path) -> result
+        std::set<int> turnedInPlace;
+        for (AnimationChannel& channel : animation.Channels) {
+            if (!turns(channel) || !valid(channel.Sampler)) continue;
+            const auto key = std::make_pair(channel.Sampler, channel.Path);
+            const auto found = turned.find(key);
+            if (found != turned.end()) {
+                channel.Sampler = found->second;
+                continue;
+            }
+
+            int target = channel.Sampler;
+            if (keep[static_cast<size_t>(target)] || turnedInPlace.count(target)) {
+                animation.Samplers.push_back(original[static_cast<size_t>(target)]);
+                target = static_cast<int>(animation.Samplers.size() - 1);
+            } else {
+                turnedInPlace.insert(target);
+            }
+            std::vector<float>& values = animation.Samplers[static_cast<size_t>(target)].Values;
+            if (channel.Path == AnimationPath::Translation) {
+                for (size_t k = 0; k + 2 < values.size(); k += 3) {
+                    const Vec3d turnedKey = rotation.Rotate(Vec3d(values[k], values[k + 1], values[k + 2]));
+                    values[k] = static_cast<float>(turnedKey.x);
+                    values[k + 1] = static_cast<float>(turnedKey.y);
+                    values[k + 2] = static_cast<float>(turnedKey.z);
+                }
+            } else {
+                for (size_t k = 0; k + 3 < values.size(); k += 4) {
+                    const Quatd turnedKey = rotation * Quatd(values[k], values[k + 1],
+                                                             values[k + 2], values[k + 3]);
+                    values[k] = static_cast<float>(turnedKey.x);
+                    values[k + 1] = static_cast<float>(turnedKey.y);
+                    values[k + 2] = static_cast<float>(turnedKey.z);
+                    values[k + 3] = static_cast<float>(turnedKey.w);
+                }
+            }
+            turned[key] = target;
+            channel.Sampler = target;
+        }
+    }
+}
+
 void ModelDocument::ConvertUpAxis(UpAxis target) {
     if (target == Up) return;
 
@@ -717,6 +791,7 @@ void ModelDocument::ConvertUpAxis(UpAxis target) {
             root.Translation = rotation.Rotate(root.Translation);
         }
     }
+    RotateRootAnimation(*this, rotation);
     Up = target;
 }
 

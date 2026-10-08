@@ -4,7 +4,7 @@
 
 **UltraCanvasAutoComplete** is a text input control with a popup suggestion list. It inherits from `UltraCanvasTextInput` and uses an internal `UltraCanvasListView` to display filtered suggestions as the user types. Items can be supplied as a static list or generated on demand through a dynamic suggestion provider callback.
 
-**Version:** 4.0.0
+**Version:** 4.0.1
 **Header:** `include/UltraCanvasAutoComplete.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasTextInput`
@@ -31,14 +31,16 @@
 
 ```cpp
 UltraCanvasAutoComplete(const std::string& identifier,
-                        long x, long y, long w, long h = 28);
+                        float x, float y, float w, float h);
+UltraCanvasAutoComplete(const std::string& identifier, float w, float h);   // position -1, -1
+explicit UltraCanvasAutoComplete(const std::string& identifier);            // size -1, -1 (layout decides)
 ```
 
 ### Factory Function
 
 ```cpp
 std::shared_ptr<UltraCanvasAutoComplete> CreateAutoComplete(
-    const std::string& identifier, long x, long y, long w, long h = 28);
+    const std::string& identifier, float x, float y, float w, float h = 28);
 ```
 
 ### AutoCompleteItem Structure

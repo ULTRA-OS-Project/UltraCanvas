@@ -3,6 +3,8 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
+// Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
+//                  database in WAL mode, as the mail index is
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -12,6 +14,7 @@
 #include <UltraDatabase/UltraDatabaseCore.h>
 #include <UltraDatabase/UltraDatabaseValue.h>
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -29,6 +32,15 @@ public:
     // Insert (id == 0) or update a contact together with its emails/phones,
     // atomically. On insert, `contact.id` is filled with the new id.
     UltraDbResult Save(Contact& contact);
+
+    // Save every contact in `contacts` as Save does, in ONE transaction: all
+    // of them, or none. A contact saved alone is a commit of its own, and a
+    // sync that collected hundreds of senders one by one paid for each.
+    UltraDbResult SaveAll(std::vector<Contact>& contacts);
+
+    // Every email address in the address book, lower-cased - whether a sender
+    // is known, for a whole batch of senders, in one query.
+    UltraDbResult KnownAddresses(std::set<std::string>& out) const;
 
     UltraDbResult Get(int64_t id, Contact& out) const;
     UltraDbResult Remove(int64_t id);
@@ -76,6 +88,8 @@ private:
     // and their emails/phones in three queries rather than two per contact.
     UltraDbResult ListWhere(const std::string& where, const UltraDbParams& params,
                             std::vector<Contact>& out) const;
+    // Insert or update `c` and its children inside `tx` (Save's work).
+    UltraDbResult SaveInTx(UltraDbHandle tx, Contact& c);
     UltraDbResult ReplaceChildren(UltraDbHandle tx, int64_t contactId,
                                   const Contact& c);
 

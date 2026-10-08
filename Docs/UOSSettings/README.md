@@ -55,6 +55,28 @@ one.
 The table has a header and scrolls vertically when there are more
 applications than fit.
 
+### Devices > Trusted certificates
+
+The network scanners and printers whose self-signed HTTPS certificate was
+trusted the first time they were reached (IODeviceManager's trust on first
+use - see `Docs/Modules/IODeviceManager/Architecture.md`). From then on each
+is reached only while it presents the same key; a device that was reset or
+replaced presents a new one and is refused until its old key is forgotten.
+
+| Column | What it shows |
+|---|---|
+| **Device** | The name the device was discovered under - its DNS-SD instance name, or, for a device named by its address in configuration, the name a printer gives itself or the make and model a scanner reports - kept beside its key. *(name not known)* for a key learned before any name was, until the device is listed again. |
+| **Address** | The address the key is kept under, `host:port`. |
+| **Key** | The SHA-256 of the device's public key, base64; the tooltip has it in full. |
+| **Forget** | Removes the key. The device's new key is learned the next time it is reached - on the same terms as the first time, so forget one only when you know it was reset or replaced. |
+
+A device whose certificate a certificate authority vouches for is never
+listed: it is checked the ordinary way. With nothing trusted yet, the page
+says when a device will appear. The keys are kept in
+`DeviceCertificates.conf` in the same settings folder as `FileDialog.conf`
+(below), read and written through `UltraCanvasIODeviceTlsTrust.h`, so
+UOS-Settings and the applications that reach the devices agree on it.
+
 ## Where the settings live
 
 `FileDialog.conf` in the UltraCanvas settings folder - `%APPDATA%\UltraCanvas`
@@ -76,6 +98,6 @@ app.UltraMail.folder=/home/me/Mail attachments
 | File | What it is |
 |---|---|
 | `main.cpp` | Starts the application and the window |
-| `ui/UOSSettingsWindow.*` | The window: page tree, the Desktop page, the Last used folder table |
+| `ui/UOSSettingsWindow.*` | The window: page tree, the Desktop page, the Last used folder and Trusted certificates tables |
 | `UOS-Settings.desktop` | The freedesktop entry |
 | `media/appicon/UOS-Settings.{svg,png}` | The application icon |

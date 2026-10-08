@@ -6,6 +6,9 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.6.0 - mail authentication: Authentication-Results parsing, DKIM /
+//                  DMARC alignment, the topmost header, genuine mail with
+//                  tracking links, forged and look-alike senders still caught
 // Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
 // Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
@@ -430,4 +433,233 @@ TEST(a_mail_address_in_plain_text_raises_no_link_finding) {
     in.body = "Questions? Write to helpdesk@other-service.example any time.";
     in.bodyIsHtml = false;
     REQUIRE(ScanMessage(in).level == ThreatLevel::Clean);
+}
+
+// ---------------------------------------------------------------------------
+// Mail authentication
+// ---------------------------------------------------------------------------
+TEST(authentication_results_are_parsed) {
+    const AuthResults a = ParseAuthenticationResults(
+        "mx.google.com;\r\n"
+        "       dkim=pass header.i=@paypal.com header.s=pp-dkim1 header.b=Ab1+;\r\n"
+        "       dkim=fail (bad signature; really) header.d=esp-mailer.net;\r\n"
+        "       spf=pass (google.com: domain of bounce@mail.paypal.com designates "
+        "1.2.3.4 as permitted sender (nested)) smtp.mailfrom=bounce@mail.paypal.com;\r\n"
+        "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=PayPal.com");
+    REQUIRE_EQ(a.authservId, std::string("mx.google.com"));
+    REQUIRE_EQ(a.dmarc, std::string("pass"));
+    REQUIRE_EQ(a.dmarcFrom, std::string("paypal.com"));
+    REQUIRE_EQ(a.spf, std::string("pass"));
+    REQUIRE_EQ(a.spfDomain, std::string("mail.paypal.com"));
+    REQUIRE_EQ(a.dkim.size(), static_cast<std::size_t>(2));
+    REQUIRE_EQ(a.dkim[0].first, std::string("pass"));
+    REQUIRE_EQ(a.dkim[0].second, std::string("paypal.com"));
+    REQUIRE_EQ(a.dkim[1].first, std::string("fail"));
+    REQUIRE_EQ(a.dkim[1].second, std::string("esp-mailer.net"));
+
+    // A quoted value may hold a ';'; a method may carry a version.
+    const AuthResults b = ParseAuthenticationResults(
+        "mail.example.org 1; dkim/1=pass reason=\"good; fine\" header.d=example.com; spf=none");
+    REQUIRE_EQ(b.authservId, std::string("mail.example.org"));
+    REQUIRE_EQ(b.dkim.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(b.dkim[0].second, std::string("example.com"));
+    REQUIRE_EQ(b.spf, std::string("none"));
+    REQUIRE(b.dmarc.empty());
+
+    REQUIRE(ParseAuthenticationResults("mx.example.org; none").dkim.empty());
+    REQUIRE(ParseAuthenticationResults("").authservId.empty());
+}
+
+TEST(only_the_senders_own_domain_proves_the_sender) {
+    std::string how;
+    // The mail service's signature says nothing about the From address.
+    REQUIRE(VerifiedSenderDomain(
+        ParseAuthenticationResults("mx.test; dkim=pass header.d=sendgrid.net"),
+        "shop.example").empty());
+    REQUIRE_EQ(VerifiedSenderDomain(
+        ParseAuthenticationResults("mx.test; dkim=pass header.d=mail.shop.example"),
+        "news.shop.example", &how), std::string("news.shop.example"));
+    REQUIRE_EQ(how, std::string("DKIM signature"));
+    REQUIRE_EQ(VerifiedSenderDomain(
+        ParseAuthenticationResults("mx.test; spf=pass; dmarc=pass header.from=shop.example"),
+        "shop.example", &how), std::string("shop.example"));
+    REQUIRE_EQ(how, std::string("DMARC"));
+    REQUIRE_EQ(VerifiedSenderDomain(
+        ParseAuthenticationResults(
+            "mx.test; dkim=pass header.d=shop.example; dmarc=pass header.from=shop.example"),
+        "shop.example", &how), std::string("shop.example"));
+    REQUIRE_EQ(how, std::string("DKIM signature and DMARC"));
+    // DMARC for another domain, or a DMARC failure, proves nothing.
+    REQUIRE(VerifiedSenderDomain(
+        ParseAuthenticationResults("mx.test; dmarc=pass header.from=other.example"),
+        "shop.example").empty());
+    REQUIRE(VerifiedSenderDomain(
+        ParseAuthenticationResults(
+            "mx.test; dkim=pass header.d=shop.example; dmarc=fail header.from=shop.example"),
+        "shop.example").empty());
+}
+
+TEST(the_receiving_servers_header_is_the_topmost) {
+    const std::string raw =
+        "Authentication-Results: mx.real.example;\r\n"
+        "\tdmarc=fail (p=REJECT) header.from=paypal.com\r\n"
+        "Received: from somewhere\r\n"
+        "Authentication-Results: forged.example; dkim=pass header.d=paypal.com;\r\n"
+        "  dmarc=pass header.from=paypal.com\r\n"
+        "From: PayPal <service@paypal.com>\r\n"
+        "Subject: Your account\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "Authentication-Results: in.the.body; dmarc=pass\r\n";
+    REQUIRE_EQ(TopHeaderValue(raw, "authentication-results"),
+               std::string("mx.real.example; dmarc=fail (p=REJECT) header.from=paypal.com"));
+    REQUIRE(TopHeaderValue(raw, "X-Missing").empty());
+    const ThreatReport r = ScanRawMessage(raw);
+    REQUIRE(HasFinding(r, "auth-failure"));
+    REQUIRE(r.verifiedDomain.empty());
+}
+
+TEST(forwarded_mail_and_a_foreign_signature_are_not_forgery) {
+    // A forwarder fails SPF; the sender's own signature still passes.
+    ScanInput fwd = Html("someone@example.org", "<p>hello</p>");
+    fwd.authResults = "mx.test; spf=fail smtp.mailfrom=lists.example.net; "
+                      "dkim=pass header.d=example.org";
+    ThreatReport r = ScanMessage(fwd);
+    REQUIRE(!HasFinding(r, "auth-failure"));
+    REQUIRE_EQ(r.verifiedDomain, std::string("example.org"));
+
+    // A second signature, by the mail service, fails; the sender's passes.
+    ScanInput two = Html("someone@example.org", "<p>hello</p>");
+    two.authResults = "mx.test; dkim=fail header.d=esp.example; dkim=pass header.d=example.org";
+    REQUIRE(!HasFinding(ScanMessage(two), "auth-failure"));
+
+    // Nothing passes and SPF fails: as before, possibly forged.
+    ScanInput bad = Html("someone@example.org", "<p>hello</p>");
+    bad.authResults = "mx.test; spf=fail smtp.mailfrom=example.org; dkim=fail header.d=example.org";
+    REQUIRE(HasFinding(ScanMessage(bad), "auth-failure"));
+}
+
+TEST(a_proven_senders_tracking_links_are_not_a_scam) {
+    // A newsletter: the text names the shop's own site, the link goes through
+    // its mail service's click tracker; replies go to its help desk; links to
+    // many sites.
+    const std::string body =
+        "<p>Our autumn sale has started.</p>"
+        "<a href=\"https://click.esp-tracker.example/ls/abc\">www.shop.example/sale</a>"
+        "<a href=\"https://a.example/1\">A</a><a href=\"https://b.example/1\">B</a>"
+        "<a href=\"https://c.example/1\">C</a><a href=\"https://d.example/1\">D</a>";
+    ScanInput plain = Html("news@shop.example", body);
+    plain.replyTo = "support@helpdesk.example";
+    const ThreatReport unproven = ScanMessage(plain);
+    REQUIRE(HasFinding(unproven, "link-target-mismatch"));
+    REQUIRE(unproven.Suspicious());
+
+    ScanInput signedIn = plain;
+    signedIn.authResults = "mx.test; dkim=pass header.d=shop.example; "
+                           "dmarc=pass header.from=shop.example";
+    const ThreatReport proven = ScanMessage(signedIn);
+    REQUIRE(!HasFinding(proven, "link-target-mismatch"));
+    REQUIRE(!HasFinding(proven, "reply-to-mismatch"));
+    REQUIRE(!HasFinding(proven, "many-foreign-domains"));
+    REQUIRE(!proven.Suspicious());
+    REQUIRE_EQ(proven.verifiedDomain, std::string("shop.example"));
+    REQUIRE_EQ(proven.verifiedBy, std::string("DKIM signature and DMARC"));
+}
+
+TEST(a_proven_lookalike_domain_is_still_caught) {
+    // A fraudster can sign for a domain of their own: proven, but not PayPal.
+    ScanInput in = Html("PayPal <service@paypa1-alerts.example>",
+        "<p>Your account will be suspended.</p>"
+        "<a href=\"https://collector.example/x\">www.paypal.com</a>");
+    in.fromName = "PayPal";
+    in.authResults = "mx.test; dkim=pass header.d=paypa1-alerts.example; "
+                     "dmarc=pass header.from=paypa1-alerts.example";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE_EQ(r.verifiedDomain, std::string("paypa1-alerts.example"));
+    REQUIRE(HasFinding(r, "link-target-mismatch"));
+    REQUIRE(HasFinding(r, "brand-impersonation"));
+    REQUIRE(HasFinding(r, "credential-request"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(the_proven_brand_may_ask_to_update_details) {
+    const std::string body =
+        "<p>Your account will be suspended unless you update your payment details.</p>"
+        "<a href=\"https://click.paypal-mailer.example/r/1\">Log in</a>";
+    ScanInput spoofed = Html("service@paypal.com", body);
+    REQUIRE(HasFinding(ScanMessage(spoofed), "credential-request"));
+
+    ScanInput genuine = spoofed;
+    genuine.authResults = "mx.test; dkim=pass header.d=paypal.com; dmarc=pass header.from=paypal.com";
+    const ThreatReport r = ScanMessage(genuine);
+    REQUIRE(!HasFinding(r, "credential-request"));
+    REQUIRE(!r.Suspicious());
+    REQUIRE_EQ(r.verifiedDomain, std::string("paypal.com"));
+}
+
+namespace {
+const AuthCheck* CheckNamed(const std::vector<AuthCheck>& checks, const std::string& label) {
+    for (const auto& c : checks) if (c.label == label) return &c;
+    return nullptr;
+}
+bool Says(const AuthCheck* c, const std::string& text) {
+    return c && c->tooltip.find(text) != std::string::npos;
+}
+} // namespace
+
+TEST(the_sender_checks_become_labels_with_their_details) {
+    const auto checks = DescribeAuthentication(ParseAuthenticationResults(
+        "mx.google.com; dkim=pass header.d=paypal.com; dkim=pass header.d=esp-mailer.net; "
+        "spf=fail smtp.mailfrom=bounce@lists.example.net; dmarc=pass header.from=paypal.com"),
+        "paypal.com");
+    REQUIRE_EQ(checks.size(), static_cast<std::size_t>(3));
+    REQUIRE_EQ(checks[0].label, std::string("DMARC"));   // the strongest first
+    REQUIRE_EQ(checks[1].label, std::string("DKIM"));
+    REQUIRE_EQ(checks[2].label, std::string("SPF"));
+    REQUIRE(checks[0].state == AuthCheckState::Passed);
+    REQUIRE(checks[1].state == AuthCheckState::Passed);
+    REQUIRE(checks[2].state == AuthCheckState::Failed);
+    REQUIRE(Says(&checks[0], "The From address is genuine"));
+    REQUIRE(Says(&checks[1], "Signature of paypal.com: passed"));
+    REQUIRE(Says(&checks[1], "esp-mailer.net (a mail service) sent it"));
+    REQUIRE(Says(&checks[2], "lists.example.net is the envelope sender"));
+    for (const auto& c : checks) REQUIRE(Says(&c, "Checked by mx.google.com"));
+
+    // Only a mail service signed: passed, but not the sender's own.
+    const auto esp = DescribeAuthentication(ParseAuthenticationResults(
+        "mx.test; dkim=pass header.d=sendgrid.net"), "shop.example");
+    REQUIRE(Says(CheckNamed(esp, "DKIM"), "No signature is shop.example's own"));
+
+    // A forged From: DMARC fails.
+    const auto forged = DescribeAuthentication(ParseAuthenticationResults(
+        "mx.test; dmarc=fail header.from=paypal.com"), "paypal.com");
+    REQUIRE(CheckNamed(forged, "DMARC")->state == AuthCheckState::Failed);
+    REQUIRE(Says(CheckNamed(forged, "DMARC"), "likely forged"));
+
+    // Nothing recorded: one grey label, not a warning.
+    const auto none = DescribeAuthentication(AuthResults{}, "example.org");
+    REQUIRE_EQ(none.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(none[0].label, std::string("Not checked"));
+    REQUIRE(none[0].state == AuthCheckState::Neutral);
+}
+
+TEST(a_signed_message_is_recognised_but_not_vouched_for) {
+    const std::string smime =
+        "From: Erika <erika@example.org>\r\n"
+        "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\";\r\n"
+        "  micalg=sha-256; boundary=\"b1\"\r\n"
+        "\r\n--b1\r\n\r\nhello\r\n--b1--\r\n";
+    REQUIRE_EQ(MessageSignatureKind(smime), std::string("S/MIME"));
+    const auto checks = DescribeMessageAuthentication(smime);
+    REQUIRE_EQ(checks.size(), static_cast<std::size_t>(2));   // Not checked + S/MIME
+    REQUIRE(CheckNamed(checks, "S/MIME")->state == AuthCheckState::Neutral);
+    REQUIRE(Says(CheckNamed(checks, "S/MIME"), "does not check such signatures yet"));
+
+    REQUIRE_EQ(MessageSignatureKind(
+        "Content-Type: multipart/signed; protocol=\"application/pgp-signature\"\r\n\r\n"),
+        std::string("OpenPGP"));
+    REQUIRE_EQ(MessageSignatureKind(
+        "Content-Type: application/pkcs7-mime; smime-type=signed-data\r\n\r\n"),
+        std::string("S/MIME"));
+    REQUIRE(MessageSignatureKind("Content-Type: text/plain\r\n\r\nhi").empty());
 }

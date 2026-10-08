@@ -239,6 +239,24 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **Every connection step is shown, and kept.** While a drive is busy the
+    status bar shows the step its connection is at — *Connecting to
+    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
+    folder view's *Loading folder* notice names the same step with how long
+    it has waited. Every job (opening a folder, an upload, a delete, a
+    folder fetched ahead) is recorded in the **connection log**: the button
+    with the clipboard icon at the right of the status bar opens it, and
+    counts in red the failures not looked at yet. Its *Errors* tab is a
+    Markdown report of each failure — the message, the error class, the
+    codes (libcurl's error number, the server's last reply), the likely
+    cause, the last steps and the diagnostics chain; its *Message log* tab
+    lists every step of every connection the way an FTP client does
+    (`12:03:04  Response: 227 Entering Passive Mode (...)`). *Copy* takes
+    the tab on show for a mail to whoever runs the server; passwords never
+    appear (`PASS ********`). A folder that could not be listed keeps its
+    error on the status line. The log is in memory only (the last 200
+    connections). FTP and SFTP drives log every step; cloud drives log the
+    job and its outcome.
   - **Remote files preview too.** A picture, a vector drawing (SVG, DXF,
     CorelDRAW, EPS, ...) or a 3D model (STL, OBJ, ...) selected on an FTP or
     cloud drive is downloaded into `remote-previews` under UltraCanvas's
@@ -436,11 +454,11 @@ to the running application immediately and is saved to the config file
 
 | Page | Setting |
 |---|---|
-| Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
+| Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker`. And its width: **Auto** (the default) fits the tree to the rows it shows, 10 px wider than the longest, and fits it again as branches open and close and drives come and go - up to 600 px, never squeezing the file display below its minimum; **Fixed width** keeps it at the pixels set beside it (100–600, 280 to start with). Dragging the divider still resizes the tree for the moment |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > Files | **Show hidden files** — whether the file displays list what the platform calls hidden: a dot name everywhere, the hidden attribute on Windows (`NTUSER.DAT`, the profile junctions), the hidden flag on macOS. Off by default, as every file manager ships. It is what each folder display *starts* with: one display can still be switched on its own (its **Display > Hidden files** context-menu entry, or the Home folder's **Show hidden files** button) without changing the setting. Showing hidden files also shows the Home folder whole, whatever *Display > Home folder* says; the folder tree leaves hidden folders out either way |
 | Display > Ignored files | **Hide known clutter files** — the built-in pattern list (`Sti_Trace.log`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `ntuser.dat*`, `ntuser.ini`, `.DS_Store`, `._*`, `.Trash-*`, `.directory`), each switchable on its own — plus **own patterns** typed into the field below it (globs: `*` any run, `?` one character, matched ignoring case), and whether they apply **only in the Home folder** (the default) or **in every folder**. This is what leaves out the clutter no hidden-file setting can reach, because the system gave it an ordinary unhidden name. Nothing is moved or deleted: an ignored file is only left out of the display, a search still finds it, and *Show hidden files* brings it back |
-| Display > File icons | Whose icons the file display draws for a file that shows no picture of its own: **UltraFiler simple** — the drawn folder shape and the coloured sheet with the extension on it, the default and what every earlier release drew — or **Host OS icons**, what this desktop draws for the type (the shell's icons on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD), so a folder listing looks like the rest of the desktop. Either way a file that shows a thumbnail of its own content keeps showing it, and a program or shortcut keeps the icon it carries inside itself. A type this system has no icon for keeps the simple one, and so does every icon until its lookup lands — the display never waits for the host. With host icons on, a folder is drawn with the system's folder icon, so the pictures inside it no longer peek out of it |
+| Display > File icons | Whose icons the file display draws for a file that shows no picture of its own: **Host OS icons**, what this desktop draws for the type (the shell's icons on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD), so a folder listing looks like the rest of the desktop — the default since 1.67.0 — or **UltraFiler simple**, the drawn folder shape and the coloured sheet with the extension on it, the same on every platform and what releases before 1.67.0 drew. A system with no desktop to ask (WebAssembly, Android) draws the simple icons either way. Either way a file that shows a thumbnail of its own content keeps showing it, and a program or shortcut keeps the icon it carries inside itself. A type this system has no icon for keeps the simple one, and so does every icon until its lookup lands — the display never waits for the host. With host icons on, a folder is drawn with the system's folder icon, so the pictures inside it no longer peek out of it |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |

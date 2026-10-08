@@ -10,11 +10,13 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.4.2
-// Last Modified: 2026-10-02
+// Version: 0.6.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
+#include "VideoFXBeats.h"
+#include "VideoFXFaces.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
 #include "VideoFXMusic.h"
@@ -27,7 +29,9 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <locale>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -320,6 +324,66 @@ static void TestKenBurnsMath() {
     std::vector<uint8_t> c(32 * 8 * 4);
     RenderView(ramp, 10.0, 0, 32, 8, 32, 8, c.data(), 32 * 4, 4);
     CHECK(c == a, "threaded rendering matches single-threaded");
+
+    // ---- keeping faces in shot ----
+    CHECK(ValidateKeepInView({VideoFXRect::Make(0.4, 0.4, 0.2, 0.2)}, error), "a face region is valid");
+    CHECK(!ValidateKeepInView({VideoFXRect::Make(0.9, 0.4, 0.2, 0.2)}, error), "a region past the edge refused");
+    CHECK(!ValidateKeepInView({VideoFXRect::Make(0.4, 0.4, 0.0, 0.2)}, error), "an empty region refused");
+    VideoFXRect box = FocusBounds({VideoFXRect::Make(0.4, 0.4, 0.2, 0.2)});
+    CHECK(Near(box.x, 0.37, 1e-9) && Near(box.w, 0.26, 1e-9), "headroom: 15 % of the face each side");
+    box = FocusBounds({VideoFXRect::Make(0.0, 0.1, 0.1, 0.1), VideoFXRect::Make(0.5, 0.6, 0.1, 0.1)});
+    CHECK(Near(box.x, 0.0, 1e-9) && Near(box.y, 0.085, 1e-9) && Near(box.x + box.w, 0.615, 1e-9) &&
+          Near(box.y + box.h, 0.715, 1e-9), "two faces: one box round both, clipped at the edge");
+    CHECK(FocusBounds({}).IsEmpty(), "no regions: no box");
+
+    // Does the view at `fraction` - ends fitted, every frame slid - hold `focus`?
+    auto holds = [](const VideoFXImageMotion& m, const VideoFXRect& focus, int iw, int ih, int ow, int oh,
+                    VideoFXImageFit fit, bool slide) {
+        for (int k = 0; k <= 40; ++k) {
+            double x, y, w, h;
+            const KenBurnsView v = ViewAt(m, k / 40.0);
+            if (fit == VideoFXImageFit::Cover) ViewRect(v, iw, ih, ow, oh, x, y, w, h);
+            else ContainViewRect(v, iw, ih, ow, oh, x, y, w, h);
+            if (slide) KeepFocusInView(focus, iw, ih, x, y, w, h);
+            const double e = 1e-6;
+            if (x > focus.x * iw + e || y > focus.y * ih + e || x + w < (focus.x + focus.w) * iw - e ||
+                y + h < (focus.y + focus.h) * ih - e)
+                return false;
+        }
+        return true;
+    };
+    const VideoFXRect face = FocusBounds({VideoFXRect::Make(0.8, 0.3, 0.1, 0.13)});
+    const VideoFXImageMotion zoomIn = ResolveMotion(VideoFXImageMotion::Make(VideoFXMotionStyle::ZoomIn),
+                                                    4000, 3000, 1920, 1080, 0);
+    CHECK(!holds(zoomIn, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, false),
+          "a face near the edge: a plain zoom-in loses it");
+    VideoFXImageMotion fitted = FitMotionToFocus(zoomIn, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(Near(fitted.endZoom, zoomIn.endZoom, 1e-9) && fitted.endX > 0.5, "fitted: same zoom, moved towards the face");
+    CHECK(holds(fitted, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, true), "and it holds the face throughout");
+    const VideoFXRect group = FocusBounds({VideoFXRect::Make(0.1, 0.2, 0.8, 0.5)});
+    fitted = FitMotionToFocus(zoomIn, group, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(Near(fitted.endZoom, 1.0, 1e-9), "a wide group: no closer than holds them all");
+    const VideoFXImageMotion panRight = ResolveMotion(VideoFXImageMotion::Make(VideoFXMotionStyle::PanRight),
+                                                      4000, 3000, 1920, 1080, 0);
+    fitted = FitMotionToFocus(panRight, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover);
+    CHECK(fitted.startX > 0.0 && fitted.endX > fitted.startX, "a pan: narrowed round the face, still a pan");
+    CHECK(holds(fitted, face, 4000, 3000, 1920, 1080, VideoFXImageFit::Cover, true), "holding it all the way");
+    const VideoFXRect top = FocusBounds({VideoFXRect::Make(0.4, 0.05, 0.2, 0.07)});
+    fitted = FitMotionToFocus(VideoFXImageMotion::Make(VideoFXMotionStyle::Still), top, 1200, 4800, 1600, 1200,
+                              VideoFXImageFit::Cover);
+    CHECK(Near(fitted.startZoom, 1.0, 1e-9) && Near(fitted.endZoom, 1.0, 1e-9) && fitted.startY < 0.2 &&
+          Near(fitted.startY, fitted.endY, 1e-9), "Still on a tall photo: still, but looking at the face");
+    // Any motion, any face that fits: held in every frame
+    bool always = true;
+    for (int i = 0; i < 200 && always; ++i) {
+        const double fx = (i * 37 % 90) / 100.0, fy = (i * 53 % 90) / 100.0;
+        const VideoFXRect f = FocusBounds({VideoFXRect::Make(fx, fy, 0.08, 0.08)});
+        const VideoFXImageMotion m = VideoFXImageMotion::Custom(1.0 + (i % 7) * 0.4, (i % 5) / 4.0, (i % 3) / 2.0,
+                                                                1.0 + (i % 4) * 0.5, (i % 2), ((i + 1) % 5) / 4.0);
+        const VideoFXImageFit fit = i % 2 ? VideoFXImageFit::Cover : VideoFXImageFit::BlurredBackground;
+        always = holds(FitMotionToFocus(m, f, 3000, 2000, 1280, 720, fit), f, 3000, 2000, 1280, 720, fit, true);
+    }
+    CHECK(always, "200 motions and faces: the face in every frame");
 }
 
 static void TestMusicMath() {
@@ -419,11 +483,198 @@ static void TestMusicMath() {
     CHECK(Near(SlideshowSecondsForMusic(10.0, 3, 1.0), 4.0, 1e-9), "3 photos, 1 s overlaps, 10 s song: 4 s each");
     CHECK(Near(SlideshowSecondsForMusic(10.0, 1, 0.0), 10.0, 1e-9), "one photo lasts the song");
     CHECK(Near(SlideshowSecondsForMusic(5.0, 100, 1.0), 2.0, 1e-9), "too many photos: at least twice the transition");
+
+    // ---- song lists ----
+    VideoFXMusic list = VideoFXMusic::FromFiles({"a.mp3", "b.mp3"});
+    CHECK(list.IsSet() && list.path.empty(), "a playlist alone is music");
+    list.path = "intro.mp3";
+    CHECK(list.Songs() == std::vector<std::string>({"intro.mp3", "a.mp3", "b.mp3"}), "path plays first, then the list");
+    CHECK(ValidateMusic(list, error), "a playlist is valid");
+    list.crossfade = 31.0;
+    CHECK(!ValidateMusic(list, error), "crossfade 31 s refused");
+    list.crossfade = 3.0;
+    list.playlist.push_back("");
+    CHECK(!ValidateMusic(list, error), "a playlist entry without a path refused");
+
+    CHECK(Near(CrossfadeSeconds(3.0, 180.0, 200.0), 3.0, 1e-9), "long songs: the crossfade asked for");
+    CHECK(Near(CrossfadeSeconds(3.0, 4.0, 200.0), 2.0, 1e-9), "a 4 s song: at most half of it");
+    CHECK(Near(CrossfadeSeconds(3.0, 0.0, 0.0), 3.0, 1e-9), "unknown lengths do not limit it");
+    CHECK(Near(PlaylistSeconds({60.0, 60.0, 60.0}, 3.0, 0.0), 174.0, 1e-9), "three songs, two 3 s overlaps");
+    CHECK(Near(PlaylistSeconds({60.0, 60.0}, 3.0, 10.0), 107.0, 1e-9), "the start offset cuts the first song");
+    CHECK(Near(PlaylistSeconds({60.0, 0.0}, 3.0, 0.0), 0.0, 1e-9), "a length unknown: unknown");
+    double gOut = 0.0, gIn = 0.0;
+    CrossfadeGains(0.0, gOut, gIn);
+    CHECK(Near(gOut, 1.0, 1e-9) && Near(gIn, 0.0, 1e-9), "crossfade start: only the outgoing song");
+    CrossfadeGains(0.5, gOut, gIn);
+    CHECK(Near(gOut * gOut + gIn * gIn, 1.0, 1e-9) && Near(gOut, gIn, 1e-9), "half-way: equal power, both alike");
+    CrossfadeGains(1.0, gOut, gIn);
+    CHECK(Near(gOut, 0.0, 1e-9) && Near(gIn, 1.0, 1e-9), "crossfade end: only the incoming song");
 }
 
 // ============================================================================
 // PART 2 - ENGINE
 // ============================================================================
+
+// A click track: a short low thump every beat from `offset`, over optional noise
+static std::vector<float> ClickTrack(int rate, double bpm, double offset, double seconds, float noise = 0.0f) {
+    std::vector<float> s(static_cast<size_t>(seconds * rate), 0.0f);
+    std::mt19937 gen(7);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+    if (noise > 0.0f) for (float& v : s) v = noise * dist(gen);
+    for (double t = offset; t < seconds; t += 60.0 / bpm) {
+        const size_t at = static_cast<size_t>(t * rate);
+        const int length = rate / 30;
+        for (int i = 0; i < length && at + i < s.size(); ++i)
+            s[at + i] += static_cast<float>(0.8 * std::exp(-i * 280.0 / rate) * std::sin(2.0 * 3.14159265 * 150.0 * i / rate));
+    }
+    return s;
+}
+
+static void TestBeatMath() {
+    std::printf("Beat detection: tempo, beats, changes on the beat\n");
+    const int r = kBeatSampleRate;
+    BeatAnalysis a = AnalyseBeats(ClickTrack(r, 120.0, 0.25, 12.0), r);
+    CHECK(Near(a.bpm, 120.0, 1.0) && a.confidence > 0.5, "120 BPM clicks: 120 BPM");
+    CHECK(!a.beats.empty() && Near(a.beats.front(), 0.25, 0.02), "the first beat on the first click");
+    bool onClicks = a.beats.size() >= 20;
+    for (double b : a.beats) {
+        const double phase = std::fmod(b - 0.25 + 100.0, 0.5);
+        onClicks = onClicks && (phase < 0.02 || phase > 0.48);
+    }
+    CHECK(onClicks, "every beat within 20 ms of a click");
+    a = AnalyseBeats(ClickTrack(r, 150.0, 0.05, 12.0, 0.02f), r);
+    CHECK(Near(a.bpm, 150.0, 2.0), "150 BPM over noise: 150, not half of it");
+    a = AnalyseBeats(ClickTrack(r, 90.0, 0.4, 12.0), r);
+    CHECK(Near(a.bpm, 90.0, 1.5), "90 BPM");
+    a = AnalyseBeats(std::vector<float>(static_cast<size_t>(4 * r), 0.0f), r);
+    CHECK(a.bpm == 0.0 && a.beats.empty(), "silence: no beat");
+    std::vector<float> noise(static_cast<size_t>(12 * r));
+    std::mt19937 gen(3);
+    std::normal_distribution<float> dist(0.0f, 0.2f);
+    for (float& v : noise) v = dist(gen);
+    a = AnalyseBeats(noise, r);
+    CHECK(a.bpm == 0.0 && a.beats.empty(), "white noise: no beat");
+
+    std::vector<double> beats;
+    for (int k = 0; k < 24; ++k) beats.push_back(0.25 + 0.5 * k);
+    auto same = [](const std::vector<double>& got, const std::vector<double>& want) {
+        if (got.size() != want.size()) return false;
+        for (size_t i = 0; i < got.size(); ++i) if (!Near(got[i], want[i], 1e-9)) return false;
+        return true;
+    };
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 0), {1.75, 3.25, 4.75}),
+          "1.7 s per image: each change on the nearest beat");
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 4), {2.25, 4.25, 6.25}), "4 beats per image: one bar each");
+    CHECK(same(BeatAlignedChanges(beats, 4, 1.7, 1.0, 1), {1.25, 2.25, 3.25}),
+          "1 beat per image is under the 1 s minimum: 2 beats");
+    CHECK(same(BeatAlignedChanges({0.25, 0.75, 1.25, 1.75}, 4, 1.0, 1.0, 0), {1.25, 2.25, 3.25}),
+          "past the last beat: on the beat grid");
+    CHECK(same(BeatAlignedChanges({}, 4, 1.7, 1.0, 0), {1.7, 3.4, 5.1}), "no beats: every 1.7 s");
+    std::vector<double> wobbly = beats;
+    wobbly[8] = 4.247;                      // 3 ms early, as detected beats are
+    CHECK(same(BeatAlignedChanges(wobbly, 3, 2.0, 2.0, 0), {2.25, 4.247}),
+          "a beat 3 ms short of the minimum gap still takes the change");
+    CHECK(BeatAlignedChanges(beats, 1, 1.7, 1.0, 0).empty(), "one image: no change");
+}
+
+// ---- the built-in face detector ----
+
+// The test photo (a real face, public domain - Tests/data/videofx/README.md)
+// as RGBA, read from its binary PPM without any decoder
+static bool ReadPpm(const std::string& path, VideoFXFrame& frame) {
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    std::string magic;
+    int w = 0, h = 0, maxValue = 0;
+    if (!(f >> magic >> w >> h >> maxValue) || magic != "P6" || maxValue != 255 || w <= 0 || h <= 0) return false;
+    f.get();
+    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+    if (!f.read(reinterpret_cast<char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()))) return false;
+    frame.width = w;
+    frame.height = h;
+    frame.pixels.resize(static_cast<size_t>(w) * h * 4);
+    for (size_t i = 0; i < static_cast<size_t>(w) * h; ++i) {
+        frame.pixels[i * 4] = rgb[i * 3];
+        frame.pixels[i * 4 + 1] = rgb[i * 3 + 1];
+        frame.pixels[i * 4 + 2] = rgb[i * 3 + 2];
+        frame.pixels[i * 4 + 3] = 255;
+    }
+    return true;
+}
+
+// BT.601 grey, as OpenCV's RGB2GRAY
+static std::vector<uint8_t> Grey(const VideoFXFrame& f) {
+    std::vector<uint8_t> g(static_cast<size_t>(f.width) * f.height);
+    for (size_t i = 0; i < g.size(); ++i)
+        g[i] = static_cast<uint8_t>((f.pixels[i * 4] * 4899 + f.pixels[i * 4 + 1] * 9617 + f.pixels[i * 4 + 2] * 1868 +
+                                     8192) >> 14);
+    return g;
+}
+
+static const std::string kAstronaut = std::string(VIDEOFX_TEST_DATA_DIR) + "/astronaut-200.ppm";
+
+static void TestFaceDetector() {
+    std::printf("Face detector: a real face, mirrored, several, none\n");
+    VideoFXFrame photo;
+    CHECK(ReadPpm(kAstronaut, photo) && photo.width == 200 && photo.height == 200, "read the test photo");
+    if (!photo.IsValid()) return;
+    const int w = photo.width, h = photo.height;
+    const std::vector<uint8_t> px = Grey(photo);
+    // OpenCV's CascadeClassifier, same model and settings, finds (66, 24) 43 x 43
+    std::vector<FaceBox> boxes = DetectFacesGray(px.data(), w, h, w);
+    CHECK(boxes.size() == 1, "one face, as OpenCV finds");
+    if (boxes.size() == 1)
+        CHECK(std::abs(boxes[0].x - 66) <= 3 && std::abs(boxes[0].y - 24) <= 3 && std::abs(boxes[0].w - 43) <= 3,
+              "where OpenCV finds it, within 3 pixels");
+    std::vector<uint8_t> mirrored(px.size());
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) mirrored[static_cast<size_t>(y) * w + x] = px[static_cast<size_t>(y) * w + (w - 1 - x)];
+    boxes = DetectFacesGray(mirrored.data(), w, h, w);
+    CHECK(boxes.size() == 1 && std::abs(boxes[0].x - 91) <= 3, "mirrored: found on the other side (OpenCV: x 91)");
+
+    std::vector<VideoFXRect> faces;
+    CHECK(VideoFX_DetectFaces(photo, faces) == VideoFXResult::Ok && faces.size() == 1, "VideoFX_DetectFaces: one face");
+    if (faces.size() == 1)
+        CHECK(Near(faces[0].x, 0.335, 0.02) && Near(faces[0].y, 0.12, 0.02) && Near(faces[0].w, 0.21, 0.02),
+              "as fractions of the photo");
+    CHECK(VideoFX_DetectFaces(VideoFXFrame{}, faces) == VideoFXResult::InvalidArgument, "no image: refused");
+    // In colour a face needs skin: the same face tinted blue is no face
+    VideoFXFrame blue = photo;
+    for (int y = 20; y < 70; ++y)
+        for (int x = 60; x < 115; ++x) {
+            uint8_t* p = &blue.pixels[(static_cast<size_t>(y) * w + x) * 4];
+            const int v = (p[0] + p[1] + p[2]) / 3;
+            p[0] = static_cast<uint8_t>(v / 2); p[1] = static_cast<uint8_t>(v * 3 / 4); p[2] = static_cast<uint8_t>(std::min(255, v + 60));
+        }
+    CHECK(VideoFX_DetectFaces(blue, faces) == VideoFXResult::Ok && faces.empty(), "colour photo, blue face: no skin, no face");
+    VideoFXFrame mono = photo;
+    for (size_t i = 0; i < px.size(); ++i) mono.pixels[i * 4] = mono.pixels[i * 4 + 1] = mono.pixels[i * 4 + 2] = px[i];
+    CHECK(VideoFX_DetectFaces(mono, faces) == VideoFXResult::Ok && faces.size() == 1,
+          "black and white photo: found without the skin test");
+
+    // Four people: the photo at four sizes on one canvas
+    VideoFXFrame group;
+    group.width = 640;
+    group.height = 400;
+    group.pixels.assign(static_cast<size_t>(640) * 400 * 4, 128);
+    const int places[4][3] = {{10, 10, 200}, {250, 20, 170}, {440, 180, 190}, {120, 250, 140}};
+    for (const auto& p : places)                // all four found by OpenCV too
+        for (int y = 0; y < p[2]; ++y)
+            for (int x = 0; x < p[2]; ++x) {
+                const uint8_t* s0 = &photo.pixels[(static_cast<size_t>(y * h / p[2]) * w + x * w / p[2]) * 4];
+                uint8_t* d = &group.pixels[(static_cast<size_t>(p[1] + y) * 640 + p[0] + x) * 4];
+                d[0] = s0[0]; d[1] = s0[1]; d[2] = s0[2];
+            }
+    CHECK(VideoFX_DetectFaces(group, faces) == VideoFXResult::Ok && faces.size() == 4, "four faces on one picture");
+    CHECK(faces.size() == 4 && faces[0].w >= faces[3].w, "largest first");
+
+    VideoFXFrame flat;
+    flat.width = 320; flat.height = 240;
+    flat.pixels.assign(static_cast<size_t>(320) * 240 * 4, 180);
+    CHECK(VideoFX_DetectFaces(flat, faces) == VideoFXResult::Ok && faces.empty(), "a flat picture: none");
+    std::mt19937 gen(5);
+    for (size_t i = 0; i < flat.pixels.size(); ++i) flat.pixels[i] = (i % 4 == 3) ? 255 : static_cast<uint8_t>(gen());
+    CHECK(VideoFX_DetectFaces(flat, faces) == VideoFXResult::Ok && faces.empty(), "noise: none");
+}
 
 #ifdef VIDEOFX_HAS_FFMPEG
 
@@ -997,6 +1248,104 @@ static void TestStillImages(const VideoFXExportSettings& base) {
     PixelAt(f, 4, f.height / 2, pr, pg, pb);
     CHECK(pr > 200, "Cover: fills the frame");
 
+    // ---- faces kept in shot: a tall photo with a red "face" near its top ----
+    VideoFXFrame person = SolidFrame(120, 480, 90, 90, 90);
+    for (int yy = 24; yy < 58; ++yy)
+        for (int xx = 48; xx < 72; ++xx) {
+            uint8_t* p = &person.pixels[(static_cast<size_t>(yy) * 120 + xx) * 4];
+            p[0] = 230; p[1] = 20; p[2] = 20;
+        }
+    const VideoFXRect faceBox = VideoFXRect::FromPixels(48, 24, 24, 34, 120, 480);
+    auto redPixels = [](const std::string& file, double t) {
+        VideoFXFrame fr;
+        if (VideoFX_ExtractFrame(file, t, fr) != VideoFXResult::Ok) return -1;
+        int n = 0;
+        for (size_t i = 0; i + 3 < fr.pixels.size(); i += 4)
+            if (fr.pixels[i] > 170 && fr.pixels[i + 1] < 90 && fr.pixels[i + 2] < 90) ++n;
+        return n;
+    };
+    VideoFXSegment pan = VideoFXSegment::FromImageFrame(person, 2.0,
+                                                        VideoFXImageMotion::Custom(1.2, 0.5, 0.0, 1.2, 0.5, 1.0));
+    pan.imageFit = VideoFXImageFit::Cover;
+    const std::string lost = TempPath("face-lost.mkv");
+    CHECK_OK(VideoFX_Export({pan}, lost, s), "a pan down a tall photo");
+    CHECK(redPixels(lost, 0.05) > 20 && redPixels(lost, 1.9) == 0, "without: the face scrolls out of shot");
+    pan.keepInView = {faceBox};
+    const std::string kept = TempPath("face-kept.mkv");
+    CHECK_OK(VideoFX_Export({pan}, kept, s), "the same, keeping the face in view");
+    CHECK(redPixels(kept, 0.05) > 20 && redPixels(kept, 1.0) > 20 && redPixels(kept, 1.9) > 20,
+          "with: the face in shot at the start, middle and end");
+    VideoFXSegment closer = VideoFXSegment::FromImageFrame(person, 2.0,
+                                                           VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 3.0, 0.5, 0.9));
+    closer.imageFit = VideoFXImageFit::Cover;
+    closer.keepInView = {faceBox};
+    const std::string zoomed = TempPath("face-zoom.mkv");
+    CHECK_OK(VideoFX_Export({closer}, zoomed, s), "a zoom aimed away from the face");
+    CHECK(redPixels(zoomed, 1.9) > 20, "ends on the face instead");
+
+    const std::string personPng = TempPath("person.png");
+    CHECK_OK(VideoFX_SaveFrameImage(person, personPng), "save the tall photo");
+    VideoFXSlideshowOptions faces;
+    faces.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+    faces.secondsPerImage = 1.5;
+    faces.imageFit = VideoFXImageFit::Cover;
+    faces.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::PanDown);
+    faces.fadeInOut = false;
+    int asked = 0;
+    faces.findKeepInView = [&](const VideoFXFrame& shown, size_t) {
+        ++asked;
+        return std::vector<VideoFXRect>{VideoFXRect::FromPixels(48, 24, 24, 34, shown.width, shown.height)};
+    };
+    const std::string faceShow = TempPath("face-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow({personPng, personPng}, faceShow, faces, s), "slideshow with a face finder");
+    CHECK(asked == 2, "the finder asked once per image");
+    CHECK(redPixels(faceShow, 1.4) > 20 && redPixels(faceShow, 2.9) > 20, "each image ends with its face in shot");
+    VideoFXSegment outside = VideoFXSegment::FromImageFrame(person, 1.0);
+    outside.keepInView = {VideoFXRect::Make(0.9, 0.1, 0.2, 0.1)};
+    CHECK(VideoFX_Export({outside}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument,
+          "a region past the image edge refused");
+
+    // ---- the built-in detector frames a real face ----
+    {
+        VideoFXFrame astronaut;
+        if (ReadPpm(kAstronaut, astronaut)) {
+            VideoFXExportSettings big = s;
+            big.width = 320;
+            big.height = 240;
+            auto facesAt = [](const std::string& file, double t) {
+                VideoFXFrame fr;
+                std::vector<VideoFXRect> found;
+                if (VideoFX_ExtractFrame(file, t, fr) == VideoFXResult::Ok) VideoFX_DetectFaces(fr, found);
+                return found.size();
+            };
+            // Zooming into the suit, bottom right: the face leaves the frame
+            VideoFXSegment away = VideoFXSegment::FromImageFrame(
+                astronaut, 2.0, VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 2.0, 0.8, 0.85));
+            const std::string suit = TempPath("astro-suit.mkv");
+            CHECK_OK(VideoFX_Export({away}, suit, big), "a zoom into the suit");
+            CHECK(facesAt(suit, 0.05) == 1 && facesAt(suit, 1.95) == 0, "without: no face in the last frame");
+            away.keepFacesInView = true;
+            const std::string framed = TempPath("astro-framed.mkv");
+            CHECK_OK(VideoFX_Export({away}, framed, big), "the same, the built-in detector framing the face");
+            CHECK(facesAt(framed, 1.0) == 1 && facesAt(framed, 1.95) == 1, "with: the face in the middle and last frames");
+
+            const std::string astroPng = TempPath("astronaut.png");
+            CHECK_OK(VideoFX_SaveFrameImage(astronaut, astroPng), "save the photo");
+            VideoFXSlideshowOptions show;
+            show.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+            show.secondsPerImage = 2.0;
+            show.fadeInOut = false;
+            show.motion = VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 2.0, 0.8, 0.85);
+            const std::string withFaces = TempPath("astro-show.mkv");
+            CHECK_OK(VideoFX_CreateSlideshow({astroPng}, withFaces, show, big), "a slideshow, no face code at all");
+            CHECK(facesAt(withFaces, 1.95) == 1, "keeps the face in shot by default");
+            show.keepFacesInView = false;
+            const std::string plain = TempPath("astro-plain.mkv");
+            CHECK_OK(VideoFX_CreateSlideshow({astroPng}, plain, show, big), "the same with keepFacesInView off");
+            CHECK(facesAt(plain, 1.95) == 0, "plain motion: into the suit");
+        }
+    }
+
     // ---- errors ----
     CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");
     CHECK(VideoFX_CreateSlideshow({TempPath("none.jpg")}, TempPath("x.mkv")) == VideoFXResult::FileNotFound,
@@ -1038,6 +1387,23 @@ struct Wav {
         return std::sqrt(sum / static_cast<double>(b - a));
     }
 };
+
+// 16-bit stereo WAV of a mono signal
+static bool WriteWav(const std::string& path, const std::vector<float>& mono, int rate) {
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return false;
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) std::fputc(static_cast<int>((v >> (8 * i)) & 0xFF), f); };
+    auto u16 = [&](uint16_t v) { std::fputc(v & 0xFF, f); std::fputc(v >> 8, f); };
+    const uint32_t bytes = static_cast<uint32_t>(mono.size() * 4);
+    std::fputs("RIFF", f); u32(36 + bytes); std::fputs("WAVEfmt ", f);
+    u32(16); u16(1); u16(2); u32(static_cast<uint32_t>(rate)); u32(static_cast<uint32_t>(rate * 4)); u16(4); u16(16);
+    std::fputs("data", f); u32(bytes);
+    for (float v : mono) {
+        const int16_t s16 = static_cast<int16_t>(std::lround(std::clamp(v, -1.0f, 1.0f) * 32767.0f));
+        u16(static_cast<uint16_t>(s16)); u16(static_cast<uint16_t>(s16));
+    }
+    return std::fclose(f) == 0;
+}
 
 static Wav ReadWav(const std::string& path) {
     Wav w;
@@ -1111,6 +1477,7 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK_OK(VideoFX_Export(talk, dry, duck), "the segments' sound alone");
     duck.music = VideoFXMusic::FromFile(longSong, 1.0);
     duck.music.fadeIn = duck.music.fadeOut = 0.0;
+    duck.music.crossfade = 0.0;             // steady music: no loop blend inside the 4 s
     duck.music.duckingLevel = 1.0;
     const std::string full = TempPath("full.wav");
     CHECK_OK(VideoFX_Export(talk, full, duck), "music, never ducked");
@@ -1143,12 +1510,122 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK_OK(VideoFX_Probe(show, info), "probe it");
     CHECK(Near(info.duration, 6.0, 0.1) && info.HasAudio(), "6 s song, 6 s slideshow, with sound");
 
+    // ---- song lists: a loud song A and a quiet song B, 2 s each ----
+    const std::string songA = TempPath("songA.wav"), songB = TempPath("songB.wav");
+    VideoFXSegment toneA = VideoFXSegment::TestPattern(2.0), toneB = VideoFXSegment::TestPattern(2.0);
+    toneB.effects = {VideoFXEffect::Volume(0.25)};
+    CHECK_OK(VideoFX_Export({toneA}, songA, VideoFXExportSettings::AudioOnlyWAV()), "make song A");
+    CHECK_OK(VideoFX_Export({toneB}, songB, VideoFXExportSettings::AudioOnlyWAV()), "make song B, a quarter as loud");
+    const std::vector<VideoFXSegment> six = {VideoFXSegment::SolidColor(0, 6.0)};
+    VideoFXExportSettings songs = VideoFXExportSettings::AudioOnlyWAV();
+    songs.music = VideoFXMusic::FromFiles({songA, songB}, 1.0);
+    songs.music.fadeIn = songs.music.fadeOut = 0.0;
+    songs.music.loop = false;
+    songs.music.crossfade = 0.0;
+    const std::string backToBack = TempPath("list-cut.wav");
+    CHECK_OK(VideoFX_Export(six, backToBack, songs), "two songs back to back");
+    w = ReadWav(backToBack);
+    const double loudA = w.Rms(0.3, 1.7), quietB = w.Rms(2.3, 3.7);
+    CHECK(loudA > 0.05 && Near(quietB, loudA * 0.25, loudA * 0.05), "A for 2 s, then B");
+    CHECK(w.Rms(4.1, 5.9) < 0.001, "then silence: the list does not loop");
+
+    songs.music.crossfade = 1.0;
+    const std::string blended = TempPath("list-xfade.wav");
+    CHECK_OK(VideoFX_Export(six, blended, songs), "the same with a 1 s crossfade");
+    w = ReadWav(blended);
+    CHECK(Near(w.Rms(0.2, 0.8), loudA, loudA * 0.05), "A alone before the crossfade");
+    CHECK(Near(w.Rms(2.2, 2.8), quietB, quietB * 0.1), "B alone after it - 1 s earlier than back to back");
+    CHECK(w.Rms(1.4, 1.6) < loudA * 0.95 && w.Rms(1.4, 1.6) > quietB, "in the crossfade: between the two");
+    CHECK(w.Rms(3.1, 5.9) < 0.001 && w.Rms(2.7, 2.9) > 0.01, "3 s in all: 2 + 2 - 1");
+
+    songs.music.crossfade = 0.0;
+    songs.music.loop = true;
+    const std::string around = TempPath("list-loop.wav");
+    CHECK_OK(VideoFX_Export(six, around, songs), "the list, looping");
+    w = ReadWav(around);
+    CHECK(Near(w.Rms(4.3, 5.7), loudA, loudA * 0.05), "after B comes A again");
+
+    VideoFXSlideshowOptions listShow;
+    listShow.transition = VideoFXTransition::Crossfade(0.5);
+    listShow.music = VideoFXMusic::FromFiles({songA, songB});
+    listShow.music.crossfade = 1.0;
+    listShow.matchMusicLength = true;
+    const std::string listShowPath = TempPath("list-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow({photo, photo, photo}, listShowPath, listShow, small), "slideshow fitted to a list");
+    CHECK_OK(VideoFX_Probe(listShowPath, info), "probe it");
+    CHECK(Near(info.duration, 3.0, 0.1), "2 s + 2 s songs, 1 s crossfade: a 3 s slideshow");
+
+    // ---- beats: detected in a file, and a slideshow changing on them ----
+    const std::string click = TempPath("click120.wav");
+    CHECK(WriteWav(click, ClickTrack(44100, 120.0, 0.25, 12.0), 44100), "write a 120 BPM click track");
+    VideoFXBeatInfo beatInfo;
+    CHECK_OK(VideoFX_DetectBeats(click, beatInfo), "detect its beats");
+    CHECK(beatInfo.HasBeat() && Near(beatInfo.bpm, 120.0, 1.0), "120 BPM");
+    CHECK(!beatInfo.beats.empty() && Near(beatInfo.beats.front(), 0.25, 0.02), "first beat at 0.25 s");
+    CHECK_OK(VideoFX_DetectBeats(longSong, beatInfo), "detect the beats of a steady tone");
+    CHECK(!beatInfo.HasBeat(), "a steady tone has no beat");
+    CHECK(VideoFX_DetectBeats(TempPath("none.wav"), beatInfo) == VideoFXResult::FileNotFound, "missing file");
+
+    const uint32_t colours[4] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF};
+    std::vector<std::string> cardsOnBeat;
+    for (int i = 0; i < 4; ++i) {
+        VideoFXFrame card;
+        card.width = 64; card.height = 36;
+        card.pixels.resize(64 * 36 * 4);
+        for (size_t p = 0; p < card.pixels.size(); p += 4) {
+            card.pixels[p] = (colours[i] >> 16) & 0xFF;
+            card.pixels[p + 1] = (colours[i] >> 8) & 0xFF;
+            card.pixels[p + 2] = colours[i] & 0xFF;
+            card.pixels[p + 3] = 255;
+        }
+        cardsOnBeat.push_back(TempPath("beat-card" + std::to_string(i) + ".png"));
+        CHECK_OK(VideoFX_SaveFrameImage(card, cardsOnBeat.back()), "a coloured card");
+    }
+    auto colourAt = [&](const std::string& file, double t) {
+        VideoFXFrame f;
+        if (VideoFX_ExtractFrame(file, t, f) != VideoFXResult::Ok) return -1;
+        double cr, cg, cb;
+        CentreColour(f, cr, cg, cb);
+        for (int i = 0; i < 4; ++i) {
+            const double er = (colours[i] >> 16) & 0xFF, eg = (colours[i] >> 8) & 0xFF, eb = colours[i] & 0xFF;
+            if (std::fabs(cr - er) < 60 && std::fabs(cg - eg) < 60 && std::fabs(cb - eb) < 60) return i;
+        }
+        return -1;
+    };
+    VideoFXSlideshowOptions onBeat;
+    onBeat.transition = VideoFXTransition::Make(VideoFXTransitionType::Cut);
+    onBeat.secondsPerImage = 1.7;
+    onBeat.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+    onBeat.fadeInOut = false;
+    onBeat.music = VideoFXMusic::FromFile(click);
+    onBeat.beatSync = true;
+    const std::string beatShow = TempPath("beat-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow(cardsOnBeat, beatShow, onBeat, small), "slideshow on the beat");
+    CHECK(colourAt(beatShow, 1.67) == 0 && colourAt(beatShow, 1.83) == 1, "first change on the beat at 1.75 s");
+    CHECK(colourAt(beatShow, 3.17) == 1 && colourAt(beatShow, 3.33) == 2, "second at 3.25 s");
+    CHECK(colourAt(beatShow, 4.67) == 2 && colourAt(beatShow, 4.83) == 3, "third at 4.75 s");
+    onBeat.beatsPerImage = 4;
+    onBeat.beatSync = false;                // implied
+    const std::string barShow = TempPath("bar-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow(cardsOnBeat, barShow, onBeat, small), "slideshow, one bar per image");
+    CHECK(colourAt(barShow, 2.17) == 0 && colourAt(barShow, 2.33) == 1, "4 beats per image: change at 2.25 s");
+    CHECK(colourAt(barShow, 6.17) == 2 && colourAt(barShow, 6.33) == 3, "and at 6.25 s");
+    VideoFXSlideshowOptions noBeatMusic;
+    noBeatMusic.beatSync = true;
+    CHECK(VideoFX_CreateSlideshow(cardsOnBeat, TempPath("x.mkv"), noBeatMusic) == VideoFXResult::InvalidArgument,
+          "beat sync without music refused");
+    onBeat.beatsPerImage = 65;
+    CHECK(VideoFX_CreateSlideshow(cardsOnBeat, TempPath("x.mkv"), onBeat, small) == VideoFXResult::InvalidArgument,
+          "65 beats per image refused");
+
     // ---- errors ----
     VideoFXExportSettings bad = VideoFXExportSettings::AudioOnlyWAV();
     bad.music = VideoFXMusic::FromFile(TempPath("none.mp3"));
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::FileNotFound, "missing music file");
     bad.music = VideoFXMusic::FromFile(photo);
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::NoMediaStreams, "music without sound");
+    bad.music = VideoFXMusic::FromFiles({longSong, TempPath("none.mp3")});
+    CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::FileNotFound, "a missing song in the list");
     bad.music = VideoFXMusic::FromFile(longSong, 9.0);
     CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::InvalidArgument, "volume 9");
     VideoFXSlideshowOptions noMusic;
@@ -1178,6 +1655,8 @@ int main() {
     TestTransitionAndOverlayText();
     TestKenBurnsMath();
     TestMusicMath();
+    TestBeatMath();
+    TestFaceDetector();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

@@ -17,28 +17,26 @@ namespace UltraCanvas {
 ### Header Information
 - **File**: `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`
 - **Implementation**: `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`
-- **Version**: 1.0.0
-- **Last Modified**: 2025-09-10
+- **Version**: 1.1.0
+- **Last Modified**: 2026-10-07
 - **Author**: UltraCanvas Framework
 
 ## Constructor
 
 ```cpp
-UltraCanvasAreaChartElement(const std::string &id, long uid, 
-                            int x, int y, int width, int height)
+UltraCanvasAreaChartElement(const std::string &id, int x, int y, int width, int height)
 ```
 
 ### Parameters
 - `id`: Unique string identifier for the element
-- `uid`: Unique numeric identifier
 - `x`: X coordinate position
 - `y`: Y coordinate position  
 - `width`: Width of the chart area
 - `height`: Height of the chart area
 
 ### Default Settings
-- Zoom enabled by default
-- Pan enabled by default
+- Zoom off by default (`SetEnableZoom(true)` turns it on)
+- Pan off by default (`SetEnablePan(true)` turns it on)
 - Semi-transparent blue fill color (0, 102, 204, 128)
 - Solid blue line color (0, 102, 204, 255)
 - Line width: 2.0f
@@ -97,7 +95,7 @@ Sets the color of the line drawn along the top edge of the area.
 
 #### SetLineWidth
 ```cpp
-void SetLineWidth(float width)
+void SetLineWidth(double width)
 ```
 Sets the width of the top edge line in pixels.
 
@@ -152,25 +150,11 @@ Handles mouse movement for interactive features like tooltips. Finds the closest
 
 **Returns:** `true` if the event was handled, `false` otherwise
 
-## Helper Methods
+## Helper Steps
 
-### SmoothAreaPoints (Private)
-```cpp
-std::vector<Point2Df> SmoothAreaPoints(const std::vector<Point2Df> &points) const
-```
-Applies interpolation to create smoother curves between data points.
-
-### RenderDataPoints (Private)
-```cpp
-void RenderDataPoints(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const
-```
-Renders circular markers at each data point position with optional white border.
-
-### RenderGradientFill (Private)
-```cpp
-void RenderGradientFill(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const
-```
-Creates and applies a vertical gradient fill from the top to bottom of the area.
+`RenderChart` does the smoothing (a Catmull-Rom curve through the points),
+the data point markers and the gradient fill (a vertical gradient from the
+highest to the lowest point) itself; there are no separate helper methods.
 
 ## Factory Function
 
@@ -226,9 +210,13 @@ The area chart inherits numerous features from its base class:
 
 ### Interactive Features
 - **Tooltips**: Display data values on hover
-- **Zoom**: Mouse wheel zoom in/out
-- **Pan**: Click and drag to pan the view
-- **Keyboard shortcuts**: R (reset), +/- (zoom)
+- **Zoom**: with `SetEnableZoom(true)`, wheel up over the plot zooms the x
+  axis in around the pointer and wheel down zooms back out (up to 50x). A
+  wheel turn that changes nothing - over the margins, or out of the whole
+  range - is left to the parent, so a scrolling container still scrolls.
+  `ResetZoom()` shows the whole range again
+- **Pan**: with `SetEnablePan(true)`, dragging a zoomed plot sideways moves
+  the view; a drag over a chart that is not zoomed is left to the parent
 
 ### Visual Configuration
 - Chart title display

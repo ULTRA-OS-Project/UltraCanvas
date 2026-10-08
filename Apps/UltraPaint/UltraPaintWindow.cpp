@@ -152,12 +152,6 @@ namespace {
         return copy;
     }
 
-    std::string HexOf(const RasterPixel& p) {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", p.r, p.g, p.b);
-        return buf;
-    }
-
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
         if (!win) return false;
         UltraCanvasUIElement* f = win->GetFocusedElement();
@@ -1288,10 +1282,9 @@ void UltraPaintWindow::CmdSaveAs() {
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        std::string p = path;
-        if (PathFromUtf8(p).extension().empty()) p += ".png";
-        SaveToPath(p);
+        SaveToPath(path);
     });
 }
 
@@ -1355,10 +1348,13 @@ void UltraPaintWindow::CmdCopy(bool merged) {
     if (!layer || !layer->IsValid()) return;
     clipboardLayer = layer;
     clipboardOrigin = origin;
+    clipboardPng.clear();
 #ifdef HAS_LIBVIPS
     try {
         std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(layer->ToPixelFX(), ".png");
-        if (!png.empty()) if (auto* cb = GetClipboard()) cb->SetImage(png, "image/png");
+        if (!png.empty()) {
+            if (auto* cb = GetClipboard(); cb && cb->SetImage(png, "image/png")) clipboardPng = std::move(png);
+        }
     } catch (...) {}
 #endif
     if (statusHint) statusHint->SetText("Copied " + std::to_string(layer->GetWidth()) + " x " + std::to_string(layer->GetHeight()) + " pixels");
@@ -1379,50 +1375,113 @@ void UltraPaintWindow::CmdFill(bool fg) {
 }
 
 namespace {
-    // The clipboard image as a layer: the system clipboard first (another
-    // application may have put a picture there), then the in-app copy.
-    std::shared_ptr<UCRasterLayer> ClipboardImage(const std::shared_ptr<UCRasterLayer>& internal) {
+    // A picture from the system clipboard as a layer; null when it cannot be
+    // decoded. Every backend hands images over as encoded file bytes (PNG
+    // on Windows, whatever the source offered elsewhere).
+    std::shared_ptr<UCRasterLayer> DecodeClipboardImage(std::vector<uint8_t>& bytes) {
 #ifdef HAS_LIBVIPS
-        if (auto* cb = GetClipboard()) {
-            std::vector<uint8_t> bytes;
-            std::string format;
-            if (cb->GetImage(bytes, format) && !bytes.empty()) {
-                try {
-                    auto layer = std::make_shared<UCRasterLayer>();
-                    if (layer->FromPixelFX(PixelFX::FileIO::LoadFromMemory(bytes, ""))) {
-                        // Prefer the in-app copy when it is byte-identical in size
-                        // (it carries straight alpha exactly); otherwise the system one.
-                        if (!internal || internal->GetWidth() != layer->GetWidth() || internal->GetHeight() != layer->GetHeight())
-                            return layer;
-                    }
-                } catch (...) {}
+        try {
+            auto layer = std::make_shared<UCRasterLayer>();
+            if (layer->FromPixelFX(PixelFX::FileIO::LoadFromMemory(bytes, ""))) return layer;
+        } catch (...) {}
+#else
+        (void)bytes;
+#endif
+        return nullptr;
+    }
+}
+
+// What a paste brings in, in the order a person expects. First the picture
+// on the system clipboard - copied in another application, or here. Then an
+// image file copied in a file manager (UltraFiler, Explorer, Finder): a file
+// list is all the clipboard holds then, and paste used to ignore it and
+// report "Nothing to paste". Last this window's own copy, which is the only
+// one there is when no system clipboard is. The picture this window put on
+// the clipboard itself comes back as the in-app copy: it holds the pixels
+// exactly and knows where they were copied from. That used to be decided by
+// size, so a different picture of the same size copied in another
+// application pasted this window's old copy instead.
+UltraPaintWindow::PasteSource UltraPaintWindow::ReadPasteSource() {
+    PasteSource source;
+    if (auto* cb = GetClipboard()) {
+        std::vector<uint8_t> bytes;
+        std::string format;
+        if (cb->GetImage(bytes, format) && !bytes.empty()) {
+            if (clipboardLayer && !clipboardPng.empty() && bytes == clipboardPng) {
+                source.image = clipboardLayer;
+                source.fromHere = true;
+                return source;
+            }
+            source.image = DecodeClipboardImage(bytes);
+            if (source.image && source.image->IsValid()) return source;
+            source.image.reset();
+        }
+        std::vector<std::string> files;
+        if (cb->GetFiles(files)) {
+            for (const auto& file : files) {
+                if (IsOpenablePath(file)) {
+                    source.file = file;
+                    return source;
+                }
             }
         }
-#endif
-        return internal;
     }
+    source.image = clipboardLayer;
+    source.fromHere = clipboardLayer != nullptr;
+    return source;
 }
 
 void UltraPaintWindow::CmdPaste() {
     if (!document) return;
-    auto img = ClipboardImage(clipboardLayer);
+    PasteSource source = ReadPasteSource();
+    std::string layerName = "Pasted";
+    if (!source.file.empty()) {
+        // A copied file comes in whole, flattened, at its natural size -
+        // drawings and models included, rendered the way a drop renders the
+        // extra files it carries.
+        auto incoming = LoadDocument(source.file, UltraPaintImportResult{});
+        if (!incoming) return;   // LoadDocument said why
+        source.image = incoming->Flatten();
+        layerName = FileNameOf(source.file);
+    }
+    auto img = source.image;
     if (!img || !img->IsValid()) { if (statusHint) statusHint->SetText("Nothing to paste"); return; }
-    auto layer = std::make_shared<UCRasterLayer>(document->GetWidth(), document->GetHeight(), "Pasted");
+    auto layer = std::make_shared<UCRasterLayer>(document->GetWidth(), document->GetHeight(), layerName);
     // paste where it was copied from when that still fits, else centred
     int ox = clipboardOrigin.x, oy = clipboardOrigin.y;
-    if (img != clipboardLayer || ox + img->GetWidth() > document->GetWidth() || oy + img->GetHeight() > document->GetHeight()) {
+    if (!source.fromHere || ox + img->GetWidth() > document->GetWidth() || oy + img->GetHeight() > document->GetHeight()) {
         ox = (document->GetWidth() - img->GetWidth()) / 2;
         oy = (document->GetHeight() - img->GetHeight()) / 2;
     }
     layer->CopyFrom(*img, ox, oy);
     document->AddLayer(layer);
     SelectTool(PaintToolId::Move);
+    if (statusHint) {
+        statusHint->SetText("Pasted " + (source.file.empty() ? std::string() : FileNameOf(source.file) + ", ") +
+                            std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) + " pixels");
+    }
 }
 
 void UltraPaintWindow::CmdPasteAsNew() {
-    auto img = ClipboardImage(clipboardLayer);
-    if (!img || !img->IsValid()) { if (statusHint) statusHint->SetText("Nothing to paste"); return; }
-    auto go = [this, img]() {
+    PasteSource source = ReadPasteSource();
+    std::shared_ptr<UCRasterDocument> fromFile;
+    if (!source.file.empty()) {
+        // The file's own layers come along, but not its path: this is a new,
+        // unsaved image, so Save asks where to put it instead of writing
+        // over the file that was copied.
+        fromFile = LoadDocument(source.file, UltraPaintImportResult{});
+        if (!fromFile) return;   // LoadDocument said why
+        fromFile->SetFilePath("");
+        fromFile->ClearHistory();
+        fromFile->SetModified(true);
+    }
+    auto img = source.image;
+    if (!fromFile && (!img || !img->IsValid())) { if (statusHint) statusHint->SetText("Nothing to paste"); return; }
+    auto go = [this, img, fromFile]() {
+        if (fromFile) {
+            SetDocument(fromFile, "Untitled");
+            return;
+        }
         auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
         doc->GetLayer(0)->CopyFrom(*img, 0, 0);
         doc->InvalidateComposite();

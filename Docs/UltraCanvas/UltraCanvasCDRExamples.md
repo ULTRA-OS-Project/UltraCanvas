@@ -1,5 +1,7 @@
 # UltraCanvasCDRElement Documentation
 
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> document; -->
+
 ## Overview
 
 The `UltraCanvasCDRElement` is a UI element that loads and renders **CorelDRAW vector graphics** (`.cdr`, `.cmx`, `.ccx`, `.cdt`) inside an UltraCanvas window. It is part of the `UltraCanvasCDRPlugin`, which uses **libcdr** + **librevenge** to parse CDR documents into an intermediate `CDRDocument` of pages, draw commands, gradients, styles, and embedded images, then plays those commands back through the standard `IRenderContext`. Supported features include multi-page documents, vector paths, text with character / paragraph styles, gradients (linear / radial / conical), groups & layers, and configurable fit modes plus interactive zoom & pan.
@@ -9,8 +11,8 @@ The `UltraCanvasCDRElement` is a UI element that loads and renders **CorelDRAW v
 **Implementation Header:** `Plugins/Vector/CDR/UltraCanvasCDRPluginImpl.h`  
 **Plugin Interface:** `IGraphicsPlugin`  
 **UI Element Base:** `UltraCanvasUIElement`  
-**Version:** 1.1.0  
-**Last Modified:** 2025-12-15  
+**Version:** 1.1.2  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -34,26 +36,21 @@ The CDR plugin requires `libcdr` and `librevenge` (CorelDRAW format parsing libr
 ULTRACANVAS_HAS_CDR_PLUGIN=1
 ```
 
-Application code should gate CDR usage behind this preprocessor symbol so the project still builds on platforms where libcdr is unavailable. The demo wires the CDR examples into the menu like this:
+Application code should gate CDR usage behind this preprocessor symbol so the project still builds on platforms where libcdr is unavailable. The demo does it like this:
 
 ```cpp
-// Apps/DemoApp/UltraCanvasDemo.cpp
+// Apps/DemoApp/main.cpp
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
-    vectorBuilder.AddItem("cdrimages", "CDR Images",
-                          "CDR (CorelDraw) images display and manipulation",
-                          ImplementationStatus::FullyImplemented,
-                          [this]() { return CreateCDRVectorExamples(); });
+#include "Plugins/Vector/CDR/UltraCanvasCDRPlugin.h"
+#endif
+
+// At startup, before any CDR file is opened
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+    RegisterCDRPlugin();
 #endif
 ```
 
-```cpp
-// Apps/DemoApp/UltraCanvasDemo.h
-#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
-    // forward declaration of CreateCDRVectorExamples()
-#endif
-```
-
-Always wrap both the menu entry and the `CreateCDRVectorExamples()` body declaration in the guard.
+The demo's menu entry for the CDR page (`Apps/DemoApp/UltraCanvasDemo.cpp`) and the declaration of the function that builds that page (`Apps/DemoApp/UltraCanvasDemo.h`) sit behind the same guard. Always wrap both the include and every use of the plugin's types in it.
 
 ## Enumerations & Structs
 
@@ -144,7 +141,7 @@ public:
     void SetScale(float scale);
     float GetScale() const;
     void SetOffset(float x, float y);
-    Point2Df GetOffset() const;
+    Point2Dd GetOffset() const;
 
     void RenderPage(IRenderContext* ctx, int pageIndex);
 };
@@ -182,7 +179,7 @@ void SetCurrentPage(int page);
 void SetZoom(float zoom);
 float GetZoom() const;
 void SetOffset(float x, float y);
-Point2Df GetOffset() const;
+Point2Dd GetOffset() const;
 void SetFitMode(CDRFitMode mode);
 CDRFitMode GetFitMode() const;
 ```
@@ -200,7 +197,7 @@ std::function<void()>                onLoadComplete;
 ### Rendering Override
 
 ```cpp
-void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 ```
 
 ## UltraCanvasCDRPlugin
@@ -271,11 +268,22 @@ Notes:
   attribute. The file is valid SVG (browsers open it), but renderers built on
   libxml2's default limits (e.g. librsvg) refuse attributes over 10 MB.
 
-`ExportToXAR` is **not implemented yet**: the XAR writer (`XARConverter`,
-`Plugins/Vector`) exports only from the shared `VectorStorage` document model,
-and no CDR importer into that model exists. It always fails with an error
-saying so — offer the format in UI, surface the message, and route users to
-SVG meanwhile.
+`ExportToXAR` always fails, with an error naming the way that works: XAR is
+written by the Vector plugin, which builds on this one. Read the drawing into
+its document model with `CDRConverter` (the first page, through this plugin)
+and write it with `XARConverter`:
+
+```cpp
+#include "UltraCanvasCDRConverter.h"   // Plugins/Vector
+#include "UltraCanvasXARConverter.h"
+
+VectorConverter::CDRConverter reader;
+std::shared_ptr<VectorStorage::VectorDocument> drawing = reader.Import("design.cdr");
+VectorConverter::XARConverter writer;
+bool saved = drawing && writer.Export(*drawing, "design.xar");
+```
+
+The DemoApp's CDR page saves as XAR this way.
 
 ### Plugin Registration
 
@@ -539,7 +547,7 @@ The info panel in the demo lists the headline capabilities exposed by the CDR pl
 - Stroke and fill styles (incl. linear / radial / conical gradients)
 - Zoom and pan controls
 - Fit modes (FitPage, FitWidth, FitHeight, FitNone)
-- Save as SVG via `ExportToSVG` (XAR export planned; see Export section)
+- Save as SVG via `ExportToSVG`, and as XAR through the Vector plugin (see Export section)
 
 Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterface` (see `UltraCanvasCDRPainterImpl` in `UltraCanvasCDRPluginImpl.h`).
 
@@ -558,7 +566,7 @@ Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterfac
 
 ## Writing CDR files (`UltraCanvasCDRConverter.h`)
 
-The Vector plugin's `UltraCanvas::VectorConverter::CDRConverter` writes a `VectorStorage::VectorDocument` as a version-7 RIFF CDR file (`Export` / `ExportToString` / `ExportToStream`). It is export-only — `CanImport()` is false; reading stays with this plugin.
+The Vector plugin's `UltraCanvas::VectorConverter::CDRConverter` writes a `VectorStorage::VectorDocument` as a version-7 RIFF CDR file (`Export` / `ExportToString` / `ExportToStream`). In a build with this plugin (`ULTRACANVAS_HAS_CDR_PLUGIN`) it also imports: `CanImport()` is true and `Import` / `ImportFromString` / `ImportFromStream` read the first page through libcdr, librevenge's SVG generator and the SVG importer. Without the plugin `CanImport()` is false and the `Import` methods return null.
 
 CorelDRAW's format has no public specification, so the writer targets the record layouts consumed by libcdr — the reference open-source reader and the engine underneath this plugin — and the round-trip through that parser is the correctness contract (`Tests/CDRWriterTest.cpp`). What the writer emits:
 
@@ -568,14 +576,17 @@ CorelDRAW's format has no public specification, so the writer targets the record
 - Flattened with a warning: gradients (blend of the end stops), pattern fills. Skipped with a warning: text and bitmap objects.
 
 ```cpp
+#include "UltraCanvasCDRConverter.h"
+
 using namespace UltraCanvas::VectorConverter;
+
 CDRConverter cdr;
 cdr.Export(*document, "drawing.cdr");          // document is a VectorStorage::VectorDocument
 ```
 
 ## See Also
 
-- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG vector graphics plugin
+- [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md) — SVG: showing, rasterizing, reading and writing
 - [UltraCanvasBitmapExamples](UltraCanvasBitmapExamples.md) — Raster image display
 - [UltraCanvasPieChartExamples](UltraCanvasPieChartExamples.md) — Pie / donut / 3D chart
 - [UltraCanvasPopulationChartExamples](UltraCanvasPopulationChartExamples.md) — Population pyramid charts

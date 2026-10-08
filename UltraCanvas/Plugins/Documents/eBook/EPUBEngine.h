@@ -6,8 +6,13 @@
 // the spine (reading order). Navigation comes from the NCX document (EPUB 2)
 // or the XHTML nav document (EPUB 3). Chapters are handed out as XHTML for
 // HTML::ElementBuilder; this engine performs no rendering.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+//
+// The cover is the image the package declares (EPUB 3 cover-image, EPUB 2
+// <meta name="cover">, the <guide> cover page), or failing that a manifest
+// image named "cover". ReadCoverImageFromFile finds it without loading the
+// book, for a file manager's thumbnails.
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -17,6 +22,8 @@
 #include <unordered_map>
 
 namespace UltraCanvas {
+
+namespace HTML { struct Document; struct Node; }
 
 class EPUBEngine : public EBookEngineBase {
 public:
@@ -40,6 +47,16 @@ public:
     std::string GetStylesheets() const override;
     std::vector<uint8_t> GetResource(const std::string& href) const override;
     std::vector<uint8_t> GetCoverImage() const override;
+
+    // The cover image of the EPUB at `filePath` (UTF-8): the bytes of the
+    // JPEG / PNG / GIF / SVG file as the book stores it, or an empty vector
+    // when the book has no cover or is not a readable EPUB. Reads
+    // container.xml, the package document and the cover - not the chapters,
+    // the table of contents or the rest of the archive - so it costs about
+    // the same on a 300 MB illustrated book as on a novel. Never throws, and
+    // owns everything it touches, so it is safe on any thread.
+    static std::vector<uint8_t> ReadCoverImageFromFile(const std::string& filePath);
+
     // Exact spine lookup (the TOC-based default misses spine files without a
     // TOC entry, which internal links may still target).
     int GetChapterIndexForHref(const std::string& href) const override;
@@ -77,6 +94,19 @@ private:
 
     bool ParseContainer();
     bool ParseOPF(const std::string& password);
+    // The OPF parsed into `doc`; false (with the error set) when unreadable.
+    bool ReadPackageDocument(HTML::Document& doc);
+    // Version, metadata, manifest and cover - everything of the package
+    // except the spine. Hands back the NCX id and nav document href.
+    void ParsePackage(HTML::Node* root, std::string& ncxId, std::string& navHref);
+    // coverPath from the package's declarations, in order of precedence.
+    void ResolveCover(HTML::Node* root, const std::string& coverImageItem,
+                      const std::string& coverMeta);
+    // The image an archive path stands for as a cover: the path itself when
+    // it is an image, the first picture on it when it is a page, else "".
+    std::string CoverImageFor(const std::string& path) const;
+    std::string ImageOnCoverPage(const std::string& pagePath) const;
+    bool IsImagePath(const std::string& path) const;
     void ParseNavigation(const std::string& ncxId, const std::string& navHref);
     void ParseNCX(const std::string& ncxPath);
     void ParseNavDoc(const std::string& navPath);

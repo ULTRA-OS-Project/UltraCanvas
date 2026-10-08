@@ -51,5 +51,13 @@ UltraNetHandle UltraNet_TlsWrap(
 UltraNetResult UltraNet_TlsHandshake(UltraNetHandle handle);
 UltraNetTlsInfo UltraNet_TlsGetInfo(UltraNetHandle handle);
 
+// The public-key pin of a certificate: "sha256//" + base64 of the SHA-256
+// of its SubjectPublicKeyInfo, which is the form libcurl's
+// CURLOPT_PINNEDPUBLICKEY - and UltraNetHttpOptions::pinnedPublicKey - take,
+// and what `openssl x509 -pubkey -noout | openssl pkey -pubin -outform der |
+// openssl dgst -sha256 -binary | base64` prints. `certificate` is DER, or PEM
+// (its first certificate). Empty when it is neither. Pure: no TLS library.
+std::string UltraNet_PublicKeyPinOf(const std::vector<uint8_t>& certificate);
+
 UltraNetResult UltraNet_TlsSetCABundle(const std::string& caBundlePath);
 UltraNetResult UltraNet_TlsAddTrustedCert(const std::string& certPemData);

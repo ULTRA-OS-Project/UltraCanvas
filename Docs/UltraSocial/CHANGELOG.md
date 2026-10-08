@@ -1,3 +1,74 @@
+#### 2026-10-07 *0.2.1*
+- **An attachment in a folder outside the Windows code page is found.** The
+  composer checked each attachment's size with its `std::string` path handed
+  straight to `fs::file_size`, which Windows converts in its ANSI code page;
+  it goes through `PathFromUtf8` now (found by the path check's member
+  lookup, framework changelog).
+
+#### 2026-10-07 *0.2.0*
+- **UltraSocial looks like UltraMail.** The window was a column of default
+  controls at fixed positions on a grey page. It now uses UltraMail's
+  near-white page, white cards, blue primary button and type scale
+  (`ui/UltraSocialTheme.h`, a copy of UltraMail's values), and its cards
+  follow the window as it is resized.
+- **A start page while no account is connected**, as in UltraMail: the app
+  icon, "UltraSocial", one line on what it does and an "Add social account"
+  button, centred, with the seven networks it can post to underneath. The
+  compose view appears once the first account exists.
+- **The compose view in cards.** A toolbar with the logo and "Add account";
+  "New post" (a framed text area with a placeholder, the character count,
+  the adaptation warnings in orange, image chips, then Post later… and the
+  blue Post button with icons); "Post to" (the network's initial in its own
+  colour beside each account, a checkbox and a counter pill that turns
+  orange over that network's limit, the network named in the tooltip);
+  "Scheduled" (one row per queued post with the time, a "retry n" pill
+  whose tooltip says why the last try failed, and a Cancel button); and
+  "Recent posts" (Posted / Failed, the account, an excerpt or the error, the
+  time or day, and an Open button for the post's link).
+- **An app icon**: three people in three colours - pink, blue and amber -
+  inside a circle with a cyan-to-violet ring (`media/appicon/UltraSocial.svg`
+  and its 256 px PNG). It is the window and taskbar icon, the start page and
+  toolbar logo, embedded in the Windows `.exe`, and installed with the new
+  `UltraSocial.desktop` entry on Linux. New button glyphs
+  `media/icons/user-plus.svg` and `media/icons/send.svg`.
+- **The data lives in the platform's application data folder.** UltraSocial
+  looked only at `XDG_DATA_HOME` and `HOME`, and Windows sets neither, so the
+  database and the credential vault went to `UltraSocial` in whatever folder
+  the app was started from - accounts seemed to vanish when it was started
+  from somewhere else - and on macOS they went to `~/.local/share`. The
+  folder is now `%APPDATA%\UltraSocial` on Windows,
+  `~/Library/Application Support/UltraSocial` on macOS and, unchanged,
+  `$XDG_DATA_HOME/UltraSocial` or `~/.local/share/UltraSocial` elsewhere
+  (`$XDG_DATA_HOME` still wins everywhere, as in UltraMail). The variables are
+  read as UTF-8, so a profile folder named in any script works. On the first
+  start a folder an earlier version left in one of those places is moved
+  there whole, vault included, and the vault opens as before; outside Windows
+  the folder is now readable by its owner alone. Logins stay where they were:
+  in UltraVault (the device-key vault, `vault/ultrasocial.vault`), never in the
+  database.
+- **The database is called `ultrasocial.db`.** `social.db` said too little
+  next to other applications' files; an existing one is renamed on the first
+  start, with any SQLite journal beside it.
+- **Reddit, X and LinkedIn accounts can be added.** The account wizard asked
+  for the app's client id but never passed it to the sign-in, so all three
+  stopped at "sign-in needs your app's client id" however the form was
+  filled in.
+- **The wizard's hint is readable.** The per-network instructions sat in a
+  grid row that cut them to one line from the middle of the text; they are
+  in a tinted box under the fields now, as tall as the text. Captions,
+  inputs and buttons use the theme (primary Connect, secondary Cancel), as
+  does the "Post later" dialog.
+- **A recent post's excerpt is cut on a character**, not on a byte: the
+  history strip took the first 60 bytes of the text, which could split an
+  emoji or an accented letter and leave invalid UTF-8 on screen.
+
+#### 2026-10-04 *0.1.4*
+- **The credential-vault warning says why the vault did not open** - "this
+  build has no encryption library (UltraCrypt was built without libsodium)",
+  a folder that cannot be written, or a vault made with a master password -
+  instead of only that it did not (framework changelog:
+  `DeviceKeyVault::DescribeUnlockStatus`).
+
 #### 2026-09-28 *0.1.3*
 - **The version is in the window title** — `UltraSocial 0.1.3` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

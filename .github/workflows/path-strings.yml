@@ -19,13 +19,25 @@ name: UTF-8 file paths
 on:
   push:
     branches: [main]
+    # Every folder scripts/check_path_string.py scans (SEARCH_ROOTS) - a
+    # folder missing here is scanned only when something else starts the run.
     paths: &paths
       - 'UltraCanvas/**'
       - 'SmartHome/**'
       - 'UltraAI/**'
       - 'UltraCloud/**'
       - 'VirtualFS/**'
+      - 'UltraNet/**'
+      - 'VideoFX/**'
       - 'Apps/**'
+      - 'Tests/UltraVaultTests.cpp'
+      # The Filer tests the Windows job runs - the same five
+      # scripts/check_path_string.py lists in SEARCH_ROOTS.
+      - 'Tests/FilerFolderPreviewTest.cpp'
+      - 'Tests/FilerHistoryTest.cpp'
+      - 'Tests/FilerHostIconsTest.cpp'
+      - 'Tests/FilerNameEncodingTest.cpp'
+      - 'Tests/FilerShortcutEntryTest.cpp'
       - 'scripts/check_path_string.py'
       - 'scripts/path_string_baseline.txt'
       - '.github/workflows/path-strings.yml'
@@ -47,5 +59,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The rules first, against examples of their own: a member or a
+      # string-returning function declared in the header, a call over
+      # several lines. A rule that stopped seeing those would otherwise pass
+      # the scan below by finding nothing.
+      - name: Self-test the check
+        run: python3 scripts/check_path_string.py --self-test
       - name: Check for code-page path conversions
         run: python3 scripts/check_path_string.py --strict

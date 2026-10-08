@@ -6,6 +6,7 @@
 
 #include "UltraAI.h"
 #include "UltraAIRouting.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <filesystem>
 #include <fstream>
@@ -106,7 +107,7 @@ std::string UltraAIAppSettings::ConfigPath() {
 }
 
 bool UltraAIAppSettings::Load() {
-    std::ifstream file(ConfigPath());
+    std::ifstream file(UltraCanvas::PathFromUtf8(ConfigPath()));
     if (!file.is_open()) return true;   // no file yet: the defaults stand
 
     std::map<std::string, std::string> kv;
@@ -135,10 +136,10 @@ bool UltraAIAppSettings::Load() {
 
 bool UltraAIAppSettings::Save() const {
     std::error_code ec;
-    std::filesystem::create_directories(EndpointStore::ConfigDir(), ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(EndpointStore::ConfigDir()), ec);
     if (ec) return false;
 
-    std::ofstream file(ConfigPath());
+    std::ofstream file(UltraCanvas::PathFromUtf8(ConfigPath()));
     if (!file.is_open()) return false;
 
     file << "# UltraAI Configuration\n\n";

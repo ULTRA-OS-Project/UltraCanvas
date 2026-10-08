@@ -20,6 +20,6 @@
   service types the framework browses (`_ipp._tcp`, `_ipps._tcp`,
   `_uscan._tcp`, `_uscans._tcp`).
 - `package-macos.sh` checks each generated `Info.plist` and entitlements file
-  with `plutil -lint` while it packages, so the unsigned pull-request build
-  catches a malformed one. A release build logs the entitlements each app was
-  signed with.
+  with `plutil -lint` while it packages, and logs the entitlements each app was
+  signed with. A pull request's build signs ad hoc with the same per-app
+  entitlements, so it shows what the release will carry.

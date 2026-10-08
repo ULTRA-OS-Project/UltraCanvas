@@ -1,17 +1,16 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.5.0 - Scroll wheel deltas are normalised to the framework's notch
-//   count and zero-delta wheel events are dropped, so a classic USB wheel is no
-//   longer swallowed by macOS scroll acceleration
+// Version: 2.6.0 - shuts the VoiceOver (NSAccessibility) bridge down on exit
 // Version: 2.4.0 - Mouse-down events now carry AppKit's click count, so the
 //   second press of a double-click is delivered as MouseDoubleClick (it was
 //   never produced on macOS, leaving every double-click handler dead)
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasMacOSAccessibility.h"
 #include "UltraCanvasMacOSApplication.h"
 
 #import <Cocoa/Cocoa.h>
@@ -218,6 +217,8 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
     void UltraCanvasMacOSApplication::ShutdownNative() {
         debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
+
+        MacOSAccessibility::Shutdown();
 
         ShutdownWakeUp();
 

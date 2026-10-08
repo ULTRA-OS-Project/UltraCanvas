@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxCursor.cpp
 // Linux X11/XCursor implementation for custom cursor support
-// Version: 1.1.0 - HiDPI: scale custom cursor image + hotspot by device scale
-// Last Modified: 2026-07-03
+// Version: 1.2.0 - image cursors kept per screen scaling
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -123,14 +123,37 @@ namespace UltraCanvas {
 
 // ===== PUBLIC API =====
     bool UltraCanvasLinuxApplication::SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur) {
-        auto foundCursor = cursors.find(cur);
         auto xWindow = static_cast<Window>(win->GetNativeHandle());
 
+        // A cursor drawn from a picture, at the scaling of this window's
+        // screen (one is drawn for each scaling it is asked for).
+        const float scale = win ? win->GetDeviceScale() : 1.0f;
+        if (imageCursors.HasSource(cur)) {
+            if (Cursor image = imageCursors.Get(cur, scale)) {
+                XDefineCursor(display, xWindow, image);
+                XFlush(display);
+                return true;
+            }
+        }
+
+        auto foundCursor = cursors.find(cur);
         if (foundCursor != cursors.end()) {
             XDefineCursor(display, xWindow, foundCursor->second);
             XFlush(display);
             return true;
         }
+
+        // The first time a picture cursor is asked for: register its file.
+        // When it cannot be drawn (missing, or no libvips), the case falls
+        // back to a standard shape, cached like any other.
+        auto useImage = [&](const char* file) {
+            if (!imageCursors.SetSource(cur, NormalizePath(GetResourcesDir() + file), 0, 0, scale)) {
+                return false;
+            }
+            XDefineCursor(display, xWindow, imageCursors.Get(cur, scale));
+            XFlush(display);
+            return true;
+        };
 
         Cursor newCursor = None;
 
@@ -208,14 +231,12 @@ namespace UltraCanvas {
                 break;
 
             case UCMouseCursor::LookingGlass:
-                // Load cursor from image (scaled for the window's display DPI)
-                newCursor = LoadCursorFromImage(NormalizePath(GetResourcesDir() + "media/lib/cursor/looking-glass.png"), 0, 0,
-                                                win ? win->GetDeviceScale() : 1.0f);
+                if (useImage("media/lib/cursor/looking-glass.png")) return true;
+                newCursor = XCreateFontCursor(display, XC_crosshair);
                 break;
             case UCMouseCursor::ContextMenu:
-                newCursor = LoadCursorFromImage(
-                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png"), 0, 0,
-                    win ? win->GetDeviceScale() : 1.0f);
+                if (useImage("media/lib/cursor/context-menu.png")) return true;
+                newCursor = XCreateFontCursor(display, XC_left_ptr);
                 break;
             default:
                 newCursor = XCreateFontCursor(display, XC_left_ptr);
@@ -236,23 +257,19 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxApplication::SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur, const char* filename, int hotspotX, int hotspotY) {
-        auto foundCursor = cursors.find(cur);
-
-        if (foundCursor != cursors.end()) {
-            XDefineCursor(display, static_cast<Window>(win->GetNativeHandle()), foundCursor->second);
-            XFlush(display);
-            return true;
+        if (!filename || filename[0] == '\0') {
+            return SelectMouseCursorNative(win, cur);
         }
 
-        Cursor newCursor = LoadCursorFromImage(filename, hotspotX, hotspotY,
-                                               win ? win->GetDeviceScale() : 1.0f);
-        if (!newCursor) {
+        // Registered with its file, so a window on a screen with other
+        // scaling draws it again at the size that screen needs.
+        const float scale = win ? win->GetDeviceScale() : 1.0f;
+        if (!imageCursors.SetSource(cur, filename, hotspotX, hotspotY, scale)) {
             return false;
         }
-        cursors[cur] = newCursor;
 
         Window xWin = static_cast<Window>(win->GetNativeHandle());
-        XDefineCursor(display, xWin, newCursor);
+        XDefineCursor(display, xWin, imageCursors.Get(cur, scale));
         XFlush(display);
 
 

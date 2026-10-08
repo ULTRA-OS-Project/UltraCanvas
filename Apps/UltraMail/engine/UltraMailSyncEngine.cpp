@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.4.0 - the verified sender domain is stored with the verdict;
+//                  RescanStaleVerdicts after each sync of a folder
 // Version: 0.3.0 - SyncFolders keeps the server's separator and drops the folders
 //                  the server no longer lists
 // Version: 0.2.0 - RefreshFolder / FetchMissing; the UIDNEXT check on the cache
@@ -298,6 +300,7 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
             options);
     }
     CountStoredAttachments(accountId, folder);
+    RescanStaleVerdicts(accountId, folder);
     return out;
 }
 
@@ -451,9 +454,37 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     security.score  = report.score;
     security.bulk   = report.bulk;
     security.reason = report.Summary();
+    security.verifiedDomain = report.verifiedDomain;
+    security.verifiedBy     = report.verifiedBy;
     security.attachments = MimeCodec::CountAttachments(raw);   // the list's paperclip
     store_.SetSecurity(accountId, folder, uid, security);
     return path;
+}
+
+int SyncEngine::RescanStaleVerdicts(const std::string& accountId, const std::string& folder,
+                                    int limit) {
+    std::vector<int64_t> uids;
+    if (!store_.ListStaleVerdicts(accountId, folder, kThreatRulesRevision, limit, uids))
+        return 0;
+    int rescanned = 0;
+    for (int64_t uid : uids) {
+        std::ifstream in(PathFromUtf8(BodyPath(accountId, folder, uid)), std::ios::binary);
+        if (!in) continue;
+        const std::string raw((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        if (raw.empty()) continue;
+        const ThreatReport report = ScanRawMessage(raw);
+        MessageSecurity security;
+        security.level  = report.level;
+        security.score  = report.score;
+        security.bulk   = report.bulk;
+        security.reason = report.Summary();
+        security.verifiedDomain = report.verifiedDomain;
+        security.verifiedBy     = report.verifiedBy;
+        // attachments stays -1: the count already stored is kept.
+        if (store_.SetSecurity(accountId, folder, uid, security)) ++rescanned;
+    }
+    return rescanned;
 }
 
 std::string SyncEngine::FetchBody(const std::string& accountId, const std::string& folder,

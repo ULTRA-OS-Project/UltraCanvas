@@ -34,10 +34,11 @@
 // favorites; persisted settings load at startup and configure the preview's
 // transparent-image backdrop, the width of the page thumbnails in the
 // preview's PDF page inventory and the folder tree's colours - the background
-// of the drive rows and the highlight of the selected folder. A backdrop
-// colour picked from the strip under a transparent image in the preview is
-// saved the same way. Esc closes the History or Favorites view, the Computer
-// page, or an open media preview.
+// of the drive rows and the highlight of the selected folder - and its width:
+// fitted to the rows on show, 10 px wider than the longest, or fixed
+// (ApplyTreeWidth). A backdrop colour picked from the strip under a
+// transparent image in the preview is saved the same way. Esc closes the
+// History or Favorites view, the Computer page, or an open media preview.
 // The tree's "Computer" entry - and Up from a drive root, and the
 // breadcrumb's leading "Computer" node - opens the Computer page in the folder
 // pane, in place of the active tab's folder display: the Home and Cloud
@@ -58,8 +59,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.24.0
-// Last Modified: 2026-10-03
+// Version: 1.26.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -232,6 +233,9 @@ namespace {
     // the strip carries no content area of its own).
     constexpr int kTabStripHeight  = 30;
     constexpr int kPreviewMinWidth = 260;
+    // A fitted folder tree (Display > Treeview > Width: Auto) leaves this
+    // much room after its longest row, as UltraMail's folder list does.
+    constexpr int kTreeFitSlack = 10;
 
     // Delay before a clicked folder's content is shown in the detail pane.
     // A double-click on a folder OPENS it, so the pane must not scan the
@@ -284,13 +288,14 @@ namespace {
         return folderPath + kPlaceholderSuffix;
     }
 
+    // UTF-8, like every folder the tree compares it with; on Windows from
+    // the wide environment, where getenv answers in the ANSI code page.
     std::string UserHomeDir() {
 #ifdef _WIN32
-        const char* home = std::getenv("USERPROFILE");
+        return GetEnvUtf8("USERPROFILE");
 #else
-        const char* home = std::getenv("HOME");
+        return GetEnvUtf8("HOME");
 #endif
-        return home ? std::string(home) : std::string();
     }
 
     // Is `path` the user's home folder? Compared through FolderIdentityKey, so
@@ -818,7 +823,18 @@ UltraFilerWindow::~UltraFilerWindow() {
         remoteDrives->onListingArrived = nullptr;
         remoteDrives->onActivityChanged = nullptr;
         remoteDrives->onPreviewCopyReady = nullptr;
+        remoteDrives->onConnectionLogChanged = nullptr;
         remoteDrives->Stop();
+    }
+    // The log window lives on its own, but its Clear button calls back here.
+    if (connectionLogRefreshTimer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(connectionLogRefreshTimer);
+        connectionLogRefreshTimer = InvalidTimerId;
+    }
+    if (auto logWindow = connectionLogWindow.lock()) {
+        logWindow->onClear = nullptr;
+        logWindow->Close();
     }
     StopVolumeSpaceQuery();
 }
@@ -1088,7 +1104,19 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
 
+    // The connection log: every step of every remote-drive connection, and
+    // the failed ones with their codes. The button names how many failures
+    // the log window has not shown yet, in red, so a failure that scrolled
+    // past on the status line is not lost.
+    statusLogButton = MakeToolButton("ufl-status-log", "", "clipboard-list.svg", 0,
+                                     [this]() { OpenConnectionLog(); });
+    statusLogButton->size.height = CSSLayout::Dimension::Px(20);
+    statusLogButton->SetIconSize(13, 13);
+    statusLogButton->SetVisible(false);
+    statusRow->AddChild(statusLogButton);
+
     window->AddChild(statusRow);
+    UpdateConnectionLogButton();
 
     std::string start = startFolder;
     std::error_code ec;
@@ -1126,6 +1154,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
 void UltraFilerWindow::Show() {
     if (window) window->Show();
+    // The first fit: the text is measured with the window's render context,
+    // which is there once the window is.
+    ScheduleTreeFit();
 }
 
 // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
@@ -1483,6 +1514,16 @@ void UltraFilerWindow::ApplySettings() {
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
     ApplyTreeColors();
+    // Display > Treeview: the tree's width, only when that setting moved - so
+    // an unrelated change does not undo a divider the user dragged. On the
+    // first call, before the split exists, a fixed width becomes the width
+    // the tree pane is built with.
+    if (treeWidthAutoApplied != settings.treeWidthAuto ||
+        treeFixedWidthApplied != settings.treeFixedWidth) {
+        treeWidthAutoApplied = settings.treeWidthAuto;
+        treeFixedWidthApplied = settings.treeFixedWidth;
+        ApplyTreeWidth();
+    }
 }
 
 // Re-derives the tree's Home children after the Display > Home folder setting
@@ -1516,6 +1557,7 @@ void UltraFilerWindow::RefreshHomeTreeChildren() {
         QueueSubfolderProbe(home);
     }
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
@@ -2250,6 +2292,7 @@ void UltraFilerWindow::RefreshRamDiskNodes() {
     section->data.visible = any;
     if (any) folderTree->ExpandNode(section);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
@@ -2356,6 +2399,7 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
         // will not list. Nothing below it, and no button promising there is.
         folderTree->RemoveNode(PlaceholderId(path));
         folderTree->RequestRedraw();
+        ScheduleTreeFit();
         return;
     }
 
@@ -2411,7 +2455,10 @@ void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
         treeChildrenLoaded.insert(path);
         folderTree->RemoveNode(PlaceholderId(path));
     }
-    if (added || !gone.empty() || listingReady) folderTree->RequestRedraw();
+    if (added || !gone.empty() || listingReady) {
+        folderTree->RequestRedraw();
+        ScheduleTreeFit();
+    }
 }
 
 void UltraFilerWindow::RefreshRemoteDriveNodes() {
@@ -2436,6 +2483,9 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     if (any) folderTree->ExpandNode(section);
     ApplyTreeColors();
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
+    // The log button comes with the first drive.
+    UpdateConnectionLogButton();
 }
 
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
@@ -3351,6 +3401,12 @@ void UltraFilerWindow::BuildFolderTree() {
         remoteActivity = activity;
         UpdateStatusBar();
     };
+    // The connection log grew: the button's count, and the log window if it
+    // is open.
+    remoteDrives->onConnectionLogChanged = [this]() {
+        UpdateConnectionLogButton();
+        ScheduleConnectionLogRefresh();
+    };
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
@@ -3399,7 +3455,15 @@ void UltraFilerWindow::BuildFolderTree() {
         // repeated once per entry is one dialog's worth of information.
         if (message == lastRemoteOperationError) return;
         lastRemoteOperationError = message;
-        UltraCanvasAlert::Error(message, "Remote drive", nullptr, window.get());
+        AlertOptions alert;
+        alert.severity = AlertSeverity::Error;
+        alert.title = "Remote drive";
+        alert.message = message;
+        // The message says what failed; the log says how far it got.
+        alert.details = "Every step of the connection, with the error codes, is in "
+                        "the connection log - the button at the right of the status bar.";
+        alert.parent = window.get();
+        UltraCanvasAlert::Show(alert);
     };
     if (std::string driveError; !remoteDrives->Reload(driveError)) {
         debugOutput << "UltraFiler: remote drives unavailable: "
@@ -3414,7 +3478,9 @@ void UltraFilerWindow::BuildFolderTree() {
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
+        ScheduleTreeFit();   // a fitted tree follows the rows on show
     };
+    folderTree->onNodeCollapsed = [this](TreeNode*) { ScheduleTreeFit(); };
     folderTree->onNodeSelected = [this](TreeNode* node) {
         if (syncingTree || !node) return;
         // "Computer" is not a folder: it opens the page of the machine's
@@ -3706,6 +3772,7 @@ void UltraFilerWindow::RefreshDriveNodes() {
     // The Computer page's drive cards follow the same mounts and unmounts.
     if (computerShown) RefreshComputerPage();
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::DropDriveNode(const std::string& path) {
@@ -3768,6 +3835,81 @@ void UltraFilerWindow::ApplyTreeColors() {
     folderTree->RequestRedraw();
 }
 
+// ===== FOLDER TREE: WIDTH =====
+
+void UltraFilerWindow::ApplyTreeWidth(bool allowRetry) {
+    int width = settings.treeFixedWidth;
+    if (settings.treeWidthAuto) {
+        // Before the tree is built there is nothing to fit: Show() asks again.
+        if (!folderTree) return;
+        const int rows = folderTree->GetRequiredWidth();
+        if (rows <= 0) {
+            // Not in a window yet, so nothing to measure the text with.
+            UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+            if (allowRetry && app) {
+                auto alive = probeAlive;
+                app->PostToUIThread([this, alive]() {
+                    if (alive->load()) ApplyTreeWidth(/*allowRetry=*/false);
+                });
+            }
+            return;
+        }
+        width = rows + kTreeFitSlack;
+    }
+    width = std::clamp(width, UltraFilerSettings::kMinTreeWidth,
+                       UltraFilerSettings::kMaxTreeWidth);
+
+    if (treePane && split) {
+        // The tree's own pane. A fixed pane is not held back by the minimum
+        // widths of the panes beside it, so it is kept to what they leave.
+        const int index = split->GetPaneIndex(treePane.get());
+        if (index < 0) return;
+        const int axis = static_cast<int>(split->GetWidth());
+        if (axis > 0) {
+            const int line = split->EffectiveSplitterThickness();
+            int room = axis - line - kFilerMinWidth;
+            if (previewPane && split->GetPaneIndex(previewPane.get()) >= 0)
+                room -= line + kPreviewMinWidth;
+            width = std::max(UltraFilerSettings::kMinTreeWidth, std::min(width, room));
+        }
+        treePaneWidth = width;
+        if (split->GetPaneFixedSize(static_cast<size_t>(index)) != width)
+            split->SetPaneFixedSize(static_cast<size_t>(index), width);
+    } else if (treeDockShown && folderTree) {
+        // Docked beside a display in the split view: the pane keeps its
+        // width and the display beside the tree takes the difference, down
+        // to the display's own minimum.
+        UltraCanvasContainer* pane = treeDockSide == SplitSide::Right
+                ? rightPane.get() : filerPane.get();
+        const int paneW = pane ? static_cast<int>(pane->GetWidth()) : 0;
+        if (paneW > 0)
+            width = std::max(UltraFilerSettings::kMinTreeWidth,
+                             std::min(width, paneW - kSplitPaneMinWidth));
+        if (width == treePaneWidth) return;
+        treePaneWidth = width;
+        folderTree->layoutItem.SetFlexBasis(
+                CSSLayout::Dimension::Px(static_cast<float>(width)));
+        folderTree->InvalidateLayout();
+        ApplySplitPaneMinSizes();
+    } else {
+        // Out of the split view, hidden: the width it comes back with.
+        treePaneWidth = width;
+    }
+}
+
+void UltraFilerWindow::ScheduleTreeFit() {
+    if (!settings.treeWidthAuto || treeFitPosted) return;
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    treeFitPosted = true;
+    auto alive = probeAlive;
+    app->PostToUIThread([this, alive]() {
+        if (!alive->load()) return;   // window destroyed meanwhile
+        treeFitPosted = false;
+        ApplyTreeWidth();
+    });
+}
+
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node) return;
     const std::string path = node->data.nodeId;
@@ -3791,10 +3933,12 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     for (const TreeChild& c : TreeChildrenOf(path, settings.homeShowPredefinedOnly))
         AddTreeFolderNode(path, c.path, c.label, c.icon);
     folderTree->RemoveNode(PlaceholderId(path));
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::DropTreeSubtree(const std::string& path) {
     if (folderTree) folderTree->RemoveNode(path);
+    ScheduleTreeFit();
     // Forget that anything at or below it was ever scanned: a folder of the
     // same name put back there later is a fresh subtree, not this one.
     for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
@@ -3876,7 +4020,10 @@ void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     // A pin into a folder that is gone leaves the Pinned section, exactly as
     // it does when the folder is deleted from the tree's own context menu.
     if (!gone.empty()) RefreshPinnedTreeNodes();
-    if (added || !gone.empty()) folderTree->RequestRedraw();
+    if (added || !gone.empty()) {
+        folderTree->RequestRedraw();
+        ScheduleTreeFit();
+    }
 }
 
 // What the window does with a folder the user changed the content of, from
@@ -3995,6 +4142,7 @@ void UltraFilerWindow::ApplyCloudStorageFolders(
     cloud->data.visible = true;
     folderTree->ExpandNode(cloud);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
     // The Computer page lists the same folders.
     if (computerShown) RefreshComputerFolders();
 }
@@ -4106,6 +4254,8 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
             idx = i;
         }
         if (!anchor) return;
+        // Opening the branch shows rows the tree was not fitted to.
+        ScheduleTreeFit();
         while (idx > 0) {
             EnsureTreeChildren(anchor);
             anchor->Expand();
@@ -4158,6 +4308,7 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     pinned->data.visible = !pinned->children.empty();
     if (pinned->data.visible) folderTree->ExpandNode(pinned);
     folderTree->RequestRedraw();
+    ScheduleTreeFit();
 }
 
 void UltraFilerWindow::RevealPinnedTreeSection() {
@@ -4799,10 +4950,12 @@ void UltraFilerWindow::BuildSplitLayout() {
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     treePane = split->AddPane(1.0);
-    split->SetPaneMinSize(0, 170);
-    // The tree keeps an absolute width: 280px at startup, then whatever the
-    // user drags the splitter to. Maximizing or resizing the window changes
-    // only the folder display's share — the tree stays as wide as it is.
+    split->SetPaneMinSize(0, UltraFilerSettings::kMinTreeWidth);
+    // The tree keeps an absolute width: fitted to its rows or the fixed
+    // width of Display > Treeview (ApplyTreeWidth), then whatever the user
+    // drags the splitter to until the next fit. Maximizing or resizing the
+    // window changes only the folder display's share — the tree stays as
+    // wide as it is.
     split->SetPaneFixedSize(0, treePaneWidth);
     treePane->layout.SetFlexColumn()
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -5801,10 +5954,13 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
     std::string text;
     switch (remoteActivity.kind) {
         case RemoteActivity::Kind::Listing:
-            // Both halves of the wait in one line: the request went out, and
-            // what comes back is the folder's contents.
-            text = "Opening " + (quoted.empty() ? "the drive" : quoted) +
-                   " - receiving folder data...";
+            // The step the connection is at, as the connection log has it -
+            // "Connecting to 203.0.113.7:21...", "Response: 230 Logged in",
+            // "Retrieving directory listing..." - so a wait shows where it
+            // waits. A drive whose provider logs no steps says what it can.
+            text = "Opening " + (quoted.empty() ? "the drive" : quoted) + " - " +
+                   (remoteActivity.step.empty() ? std::string("receiving folder data...")
+                                                : remoteActivity.step);
             break;
         case RemoteActivity::Kind::Uploading: {
             text = "Uploading " + (quoted.empty() ? "a file" : quoted);
@@ -5820,7 +5976,9 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " sent";
             } else {
-                text += "...";
+                // Not a byte yet: connecting, signing in, opening the data
+                // connection - the step says which.
+                text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
             }
             break;
         }
@@ -5838,25 +5996,29 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " received";
             } else {
-                text += "...";
+                text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
             }
             break;
         }
         case RemoteActivity::Kind::Deleting:
             text = "Deleting " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive...";
+                   " on the drive";
             break;
         case RemoteActivity::Kind::Renaming:
             text = "Renaming " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive...";
+                   " on the drive";
             break;
         case RemoteActivity::Kind::MakingDirectory:
             text = "Creating folder " + (quoted.empty() ? "" : quoted + " ") +
-                   "on the drive...";
+                   "on the drive";
             break;
         case RemoteActivity::Kind::Idle:
             return {};
     }
+    if (remoteActivity.kind == RemoteActivity::Kind::Deleting ||
+        remoteActivity.kind == RemoteActivity::Kind::Renaming ||
+        remoteActivity.kind == RemoteActivity::Kind::MakingDirectory)
+        text += remoteActivity.step.empty() ? "..." : " - " + remoteActivity.step;
     // What is still behind it, so a drop of five files does not look like one.
     if (remoteActivity.queued > 0) {
         text += "  (" + std::to_string(remoteActivity.queued) + " more queued)";
@@ -5889,6 +6051,101 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
             static_cast<double>(remoteActivity.bytesDone) /
             static_cast<double>(remoteActivity.bytesTotal);
     statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
+}
+
+void UltraFilerWindow::UpdateConnectionLogButton() {
+    if (!statusLogButton) return;
+    if (!remoteDrives) {
+        statusLogButton->SetVisible(false);
+        return;
+    }
+    const RemoteConnectionLog& log = remoteDrives->ConnectionLog();
+    const std::size_t sessions = log.SessionCount();
+    const std::size_t errors = log.ErrorCount();
+    // Failures can also leave: the oldest sessions are dropped, and Clear
+    // empties the log.
+    if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
+    const std::size_t unseen = errors - connectionLogSeenErrors;
+
+    const bool show = sessions > 0 || !remoteDrives->Drives().empty();
+    if (statusLogButton->IsVisible() != show) statusLogButton->SetVisible(show);
+    if (!show) return;
+
+    // Called for every line a running connection logs, so the button is
+    // only restyled when what it says changes.
+    const std::string label = unseen > 0 ? std::to_string(unseen) : std::string();
+    if (statusLogButton->GetText() != label) {
+        const Color quiet(55, 55, 60, 255);
+        const Color alarm(200, 30, 30, 255);
+        statusLogButton->SetText(label);
+        statusLogButton->SetIconSpacing(unseen > 0 ? 4 : 0);
+        statusLogButton->SetIconMaskColor(unseen > 0 ? alarm : quiet);
+        statusLogButton->SetTextColors(unseen > 0 ? alarm : quiet);
+    }
+
+    std::string tip = "Connection log - every step of the remote drive connections";
+    if (sessions > 0) {
+        tip += " (" + std::to_string(sessions) +
+               (sessions == 1 ? " connection" : " connections");
+        if (errors > 0) tip += ", " + std::to_string(errors) + " failed";
+        tip += ")";
+    }
+    if (unseen > 0)
+        tip += ". " + std::to_string(unseen) +
+               (unseen == 1 ? " failure not looked at yet" : " failures not looked at yet") +
+               " - click for the error codes.";
+    statusLogButton->SetTooltip(tip);
+}
+
+void UltraFilerWindow::OpenConnectionLog() {
+    if (!remoteDrives) return;
+    const std::vector<RemoteLogSession> sessions = remoteDrives->ConnectionLog().Snapshot();
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (logWindow && logWindow->GetState() != WindowState::Closed) {
+        logWindow->Update(sessions);
+        logWindow->RaiseAndFocus();
+    } else {
+        logWindow = ShowConnectionLogWindow(sessions, window.get());
+        // Raw `this`: the main window outlives the log window's callback -
+        // its destructor clears it before going.
+        logWindow->onClear = [this]() {
+            if (!remoteDrives) return;
+            remoteDrives->ConnectionLog().Clear();
+            connectionLogSeenErrors = 0;
+            UpdateConnectionLogButton();
+            RefreshConnectionLogWindow();
+        };
+        connectionLogWindow = logWindow;
+    }
+    // Shown now, so no longer news.
+    connectionLogSeenErrors = remoteDrives->ConnectionLog().ErrorCount();
+    UpdateConnectionLogButton();
+}
+
+void UltraFilerWindow::ScheduleConnectionLogRefresh() {
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (!logWindow || logWindow->GetState() == WindowState::Closed) return;
+    if (connectionLogRefreshTimer != InvalidTimerId) return;   // one is on its way
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        RefreshConnectionLogWindow();
+        return;
+    }
+    // A connection logs its steps in bursts; a fifth of a second gathers a
+    // burst into one refresh of the window, which renders the whole log.
+    connectionLogRefreshTimer = app->StartTimer(200, false, [this](TimerId) {
+        connectionLogRefreshTimer = InvalidTimerId;
+        RefreshConnectionLogWindow();
+    });
+}
+
+void UltraFilerWindow::RefreshConnectionLogWindow() {
+    std::shared_ptr<UltraFilerConnectionLogWindow> logWindow = connectionLogWindow.lock();
+    if (!logWindow || logWindow->GetState() == WindowState::Closed || !remoteDrives) return;
+    logWindow->Update(remoteDrives->ConnectionLog().Snapshot());
+    // A failure that turns up while the window is open is on screen there.
+    connectionLogSeenErrors = remoteDrives->ConnectionLog().ErrorCount();
+    UpdateConnectionLogButton();
 }
 
 void UltraFilerWindow::UpdateStatusBar() {
@@ -5954,6 +6211,18 @@ void UltraFilerWindow::UpdateStatusBar() {
         return;
     }
     if (!filer) return;
+    // A folder on a drive that could not be listed: the reason stays on the
+    // status line, with where to read the rest, rather than giving way to
+    // "0 items" the moment the drive falls idle.
+    if (remoteDrives && IsRemoteFilerPath(filer->GetPath())) {
+        if (const std::string error = remoteDrives->ListingError(filer->GetPath());
+            !error.empty()) {
+            statusLabel->SetText("Error: " + error +
+                                 "  -  every step and the error codes are in the "
+                                 "connection log (button on the right)");
+            return;
+        }
+    }
     std::string text = DescribeFilerContent(filer.get());
     // A live filter changes what the counts describe — say so.
     if (!filer->GetNameFilter().empty())
@@ -6467,7 +6736,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             split->SetPaneMinSize(static_cast<size_t>(leftIndex), kFilerMinWidth);
 
         treePane = split->InsertPane(0, 1.0);
-        split->SetPaneMinSize(0, 170);
+        split->SetPaneMinSize(0, UltraFilerSettings::kMinTreeWidth);
         treePane->layout.SetFlexColumn()
                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -6485,7 +6754,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int line = split->EffectiveSplitterThickness();
             const int shared = leftW + line + rightW;
             int treeW = std::min(treePaneWidth, shared - line - kFilerMinWidth);
-            treeW = std::max(treeW, 170);
+            treeW = std::max(treeW, UltraFilerSettings::kMinTreeWidth);
             std::vector<int> next;
             next.push_back(treeW);
             next.push_back(shared - line - treeW);
@@ -6495,6 +6764,8 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         } else {
             split->SetPaneFixedSize(0, treePaneWidth);
         }
+        // Rows may have come and gone while the tree was out of sight.
+        ScheduleTreeFit();
         // The tree describes the active display again.
         if (filer && !filer->GetPath().empty() && !computerShown)
             SyncTreeSelection(filer->GetPath());
@@ -6614,6 +6885,8 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         folderTree->SetVisible(true);
         treeDockShown = true;
         treeDockSide = side;
+        // Fitted again to what the pane can spare beside its display.
+        ScheduleTreeFit();
         // It mirrors the display it sits beside.
         const FilerTabState* beside = side == SplitSide::Right ? secondPane.get()
                                                                : TabStripActiveState();

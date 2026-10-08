@@ -4,7 +4,7 @@
 // The backend itself is internal; this is only what
 // UltraCanvasIODeviceBackends.cpp needs to attach it, and the one query the
 // Windows spooler backend borrows.
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -28,6 +28,15 @@ void RegisterIppPrinterBackend(IODeviceManager& manager);
 // metadata timeout (10 s; 5 s to connect), so call it off the UI thread.
 IODeviceResult QueryIppSupplyLevels(const std::string& printerUri,
                                     std::vector<IOSupplyLevel>& outSupplies);
+
+#if defined(_WIN32)
+// The hosts the machine's Windows print queues reach their printers at:
+// IPP ports, Standard TCP/IP ports, and WSD ports through the device Plug and
+// Play keeps beside the queue. Lives in the Windows spooler backend; the IPP
+// backend asks it so a printer it finds over DNS-SD that is already a queue
+// is left to the spooler (IppPrinterIsWindowsQueue).
+std::vector<std::string> WindowsQueuePrinterHosts();
+#endif
 #endif
 
 }  // namespace Internal

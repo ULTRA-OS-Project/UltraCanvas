@@ -3,6 +3,7 @@
 // private bus driven over the real transport by several endpoints —
 // subscriptions, recorded delivery with bounce, request/reply, the journal
 // and its queries, replay, lifecycle notices, the typed topic helpers.
+// Version: 0.1.1 - the notification it posts is Silent: tests show nothing on screen
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -26,6 +27,7 @@
 using UltraCanvas::JSONValue;
 using namespace std::chrono_literals;
 using ultramsg_test::Connect;
+using ultramsg_test::HeldDispatcher;
 using ultramsg_test::Scoped;
 using ultramsg_test::TestBusPath;
 using ultramsg_test::WaitFor;
@@ -223,7 +225,11 @@ TEST(post_reaches_matching_subscribers_only) {
     JSONValue notification = JSONValue::MakeObject();
     notification.Set("appName", "Test");
     notification.Set("summary", "Hello");
-    REQUIRE(UltraMsg_Post(b.handle, "system.notification", notification).ok);
+    // Silent: the broker's presenter would otherwise show it on the screen of
+    // whoever runs the tests (a Windows balloon; Linux has a private bus).
+    UltraMsgSendOptions silent;
+    silent.flags = UltraMsgFlag_Silent;
+    REQUIRE(UltraMsg_Post(b.handle, "system.notification", notification, silent).ok);
 
     REQUIRE(WaitFor([&] { return gotMail.size() == 1 && gotAll.size() >= 2; }));
     REQUIRE_EQ(gotMail[0].envelope.id, id);
@@ -282,6 +288,45 @@ TEST(worker_thread_delivery_needs_no_pump) {
     while (count.load() == 0 && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(5ms);
     REQUIRE_EQ(count.load(), 1);
     UltraMsg_Unsubscribe(sub);
+}
+
+// A delivery handed to the UI dispatcher runs later. If the subscriber
+// unsubscribed (or disconnected) in between, the callback must not run: it
+// usually captures an object that is gone by then. The Message Centre on the
+// demo page crashed this way when it was replaced while its seeded messages
+// were still queued.
+TEST(unsubscribe_cancels_deliveries_already_queued) {
+    HeldDispatcher ui;
+    Scoped a{Connect("org.test.alpha")};
+    Scoped b{Connect("org.test.beta")};
+    int dropped = 0, kept = 0;
+    UltraMsgHandle drop = UltraMsg_Subscribe(a.handle, "com.test.queued", [&](const UltraMsgMessage&) { ++dropped; });
+    UltraMsgHandle keep = UltraMsg_Subscribe(a.handle, "com.test.queued", [&](const UltraMsgMessage&) { ++kept; });
+    REQUIRE(drop != UltraMsgInvalidHandle && keep != UltraMsgInvalidHandle);
+
+    const size_t before = ui.Count();
+    REQUIRE(UltraMsg_Post(b.handle, "com.test.queued", JSONValue::MakeObject()).ok);
+    REQUIRE(ui.WaitForCount(before + 2));   // one delivery per subscription, both queued
+    REQUIRE(UltraMsg_Unsubscribe(drop).ok);
+    ui.RunAll();
+    REQUIRE_EQ(dropped, 0);
+    REQUIRE_EQ(kept, 1);
+    UltraMsg_Unsubscribe(keep);
+}
+
+TEST(disconnect_cancels_deliveries_already_queued) {
+    HeldDispatcher ui;
+    Scoped b{Connect("org.test.beta")};
+    UltraMsgHandle a = Connect("org.test.alpha");
+    int count = 0;
+    REQUIRE(UltraMsg_Subscribe(a, "com.test.queued", [&](const UltraMsgMessage&) { ++count; }) != UltraMsgInvalidHandle);
+
+    const size_t before = ui.Count();
+    REQUIRE(UltraMsg_Post(b.handle, "com.test.queued", JSONValue::MakeObject()).ok);
+    REQUIRE(ui.WaitForCount(before + 1));
+    REQUIRE(UltraMsg_Disconnect(a).ok);
+    ui.RunAll();
+    REQUIRE_EQ(count, 0);
 }
 
 TEST(post_validates_topic_and_schema) {

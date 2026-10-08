@@ -185,7 +185,10 @@ reading window, no Toolbox grid — laid out from UltraCanvas elements:
   row shows it on the right.
 - **Message** group box: the `MessagePreview` — subject, from, to, date,
   a Reply button, the body (HTML rendered through HTMLReader / CSSLayout,
-  plain text in a read-only text area) and the attachment strip.
+  plain text in a read-only text area) and the attachment strip, shown
+  only when the message has attachments. The HTML body sits in a page as
+  wide as the visible pane (less the vertical scrollbar), so a message's
+  percentage widths are taken from what the reader sees.
 - Both boxes sit in an `UltraCanvasSplitPane`; the whole account view is
   a flex column sized to the window, so it follows a resize.
 
@@ -273,7 +276,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
-  unread badges on the Toolbox tiles
+  unread badges on the Toolbox tiles. *Built:* the system notification -
+  posted through UltraMessage and drawn by the desktop's own notification
+  service, a click opens the mail (Settings > Display > Notifications)
 - Keyboard shortcuts (N new, R reply, Del delete, Ctrl+Enter send, …)
 - Dark/light theme following the framework theme, HiDPI-ready
 

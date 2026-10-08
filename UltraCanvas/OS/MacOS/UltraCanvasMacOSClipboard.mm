@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSClipboard.mm
 // macOS-specific clipboard implementation using NSPasteboard
-// Version: 1.0.0
-// Last Modified: 2025-12-05
+// Version: 1.1.0
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSClipboard.h"
@@ -111,6 +111,30 @@ namespace UltraCanvas {
             }
 
             return success == YES;
+        }
+    }
+
+// ===== SECRET TEXT =====
+    // The nspasteboard.org convention: a type of its own on the same item
+    // marks the copy concealed (a password) or transient; clipboard managers
+    // that honour it, this framework's history among them, leave it out.
+    bool UltraCanvasMacOSClipboard::SetClipboardSecretText(const std::string& text) {
+        if (!SetClipboardText(text)) return false;
+
+        @autoreleasepool {
+            [generalPasteboard setData:[NSData data] forType:@"org.nspasteboard.ConcealedType"];
+            lastChangeCount = [generalPasteboard changeCount];
+        }
+        return true;
+    }
+
+    bool UltraCanvasMacOSClipboard::IsClipboardMarkedSecret() {
+        if (!generalPasteboard) return false;
+
+        @autoreleasepool {
+            NSArray* types = [generalPasteboard types];
+            return [types containsObject:@"org.nspasteboard.ConcealedType"] ||
+                   [types containsObject:@"org.nspasteboard.TransientType"];
         }
     }
 
