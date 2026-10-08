@@ -378,6 +378,17 @@ to 556 MB. The rules:
   it into the app's `Info.plist`, and fails when something needs a newer
   macOS than `MACOSX_DEPLOYMENT_TARGET` (CI: 14.0) - dyld refuses such a
   binary whatever the plist says.
+- **An app that opens the camera or the microphone gets a line in
+  `camera_usage` / `microphone_usage`** in `package-macos.sh`, with the
+  reason the user reads in the macOS prompt. That one line writes the
+  `NS*UsageDescription` key into its `Info.plist` and the hardened-runtime
+  device entitlement into what it is signed with. A signed app needs both:
+  without the key TCC terminates it, and without the entitlement the device
+  is refused before the user is asked. Do not add device entitlements to
+  `MacOS/entitlements.plist`, which every app is signed with. Every app gets
+  the local-network reason and `NSBonjourServices`, because any app that
+  prints browses for IPP printers. A new Bonjour service type the framework
+  browses goes into `BONJOUR_SERVICES` there.
 - **A library a new app needs goes into `MacOS/deps/vcpkg.json`**, not into
   a `brew install` in CI: the libraries CI bundles are built with vcpkg for
   that macOS (`MacOS/deps/README.md`), and one taken from Homebrew carries the

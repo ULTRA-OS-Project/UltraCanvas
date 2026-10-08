@@ -567,6 +567,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>

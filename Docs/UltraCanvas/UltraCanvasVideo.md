@@ -233,6 +233,12 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
