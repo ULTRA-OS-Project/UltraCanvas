@@ -744,10 +744,14 @@ copy/paste **inside the application loses nothing** (between two documents the
 pictures come along; notes, comments and bookmarks stay behind).
 
 A paste from another application uses its HTML when it offers some
-(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
-tables, rules, links, inlined pictures and character formatting from tags and
-CSS, Word's list-number spans and conditional comments dropped), and its plain
-text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UCRichDocument::FromHTML`, which reads it through the HTMLReader's
+`ImportHTMLToRichDocument` - the page's style sheets and inline CSS through
+the same cascade a mail is shown with: paragraphs, headings, lists, quotes as
+a quote level, `<pre>` as a code block, tables, rules, links, right-to-left
+paragraphs, inlined pictures (a picture the clipboard only links to becomes
+its alt text) and character formatting; Word's typed-out list labels and
+conditional comments dropped, a no-break space pasted as a space), and its
+plain text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
 (`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
 converted), `HTML Format` on Windows; other platforms fall back to plain text.
 

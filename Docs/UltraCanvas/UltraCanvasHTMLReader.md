@@ -19,7 +19,11 @@ them without linking UltraCanvas.
 Who uses it today: the eBook viewer and the EPUB, FB2 and MOBI engines
 (`HTML::ElementBuilder`), UltraMail's message pane (`HTML::ElementBuilder`),
 UltraMail's composer, replies and signatures (`ImportHTMLToRichDocument`),
-UltraMail's header decoding (`HTML::DecodeEntities`), and, from its pull
+a rich paste into `UltraCanvasRichTextEdit` (`UCRichDocument::FromHTML`, on
+the same importer), UltraMail's header decoding (`HTML::DecodeEntities`), its
+scam check (the parsed page's links and pictures, `HTML::ExtractPlainText`)
+and plain-text view (`PlainTextLayout::Lines`), EmailCleaner's matching, the
+Filer's `.html` preview and UltraCloud's WebDAV client, and, from its pull
 request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
 `<style>` sheets; its own copy of the selector matcher is to become a Traits
 type for the shared one, below). UltraWeb's page reader
@@ -313,11 +317,21 @@ so that a third reader does not build it a third time.
 read HTML through the same parser and cascade and produce a `UCRichDocument`
 for `UltraCanvasRichTextEdit`: paragraphs, headings, lists, rules, the
 inline formats, links, colours, fonts and sizes, alignment and indents,
-`<blockquote>` as quote level, pictures (`data:` URIs decoded, others
-through `options.resolveImage`), and tables, with the one-column scaffolding
-tables of mail layouts unwrapped into the flow. See
-`UltraCanvasRichTextEdit.md` for the document model and
-`Tests/HTMLRichImportTest.cpp` for what is covered.
+`<blockquote>` as quote level, right-to-left paragraphs (`dir="rtl"` on the
+element or one around it), pictures (`data:` URIs decoded, others through
+`options.resolveImage`, else their alt text in brackets; a 1-2 px tracking
+pixel left out), and tables, with the one-column scaffolding tables of mail
+layouts unwrapped into the flow. See `UltraCanvasRichTextEdit.md` for the
+document model and `Tests/HTMLRichImportTest.cpp` for what is covered.
+
+Two options are for a paste rather than a mail, and are off by default:
+`preAsCodeBlock` makes a `<pre>` a code block (a mail's `<pre>` is mostly a
+quoted plain-text message, so there it stays monospaced lines of a
+paragraph), and `skipWordListLabels` leaves out the "1." or bullet Word types
+out in a `mso-list:Ignore` span before each list item (a browser shows them,
+so a mail keeps them). `UCRichDocument::FromHTML` - the editor's paste from
+another application - is the importer with both on, and a no-break space
+turned into a space.
 
 ```cpp
 HTMLRichImportOptions options;
@@ -332,14 +346,11 @@ UCRichDocument reply = ImportHTMLToRichDocument(message.htmlBody, options);
 
 ## What is still implemented elsewhere
 
-These sites predate the rule and are listed in
-`scripts/html_reuse_baseline.txt`; each is a replacement waiting to happen,
-and the check blocks new ones:
-
-| Site | Has its own | Replace with |
-|---|---|---|
-| `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
+Nothing: `scripts/html_reuse_baseline.txt` lists no site. The last ones -
+`UCRichDocument::FromHTML`'s tokenizer, entity table and CSS reader, and the
+Filer's tag-level line splitter for its `.html` preview - read through the
+importer and `PlainTextLayout::Lines` now. `scripts/check_html_reuse.py`
+blocks new ones.
 
 ## Limits
 
