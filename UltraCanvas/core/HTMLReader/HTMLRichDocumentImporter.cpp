@@ -1,10 +1,12 @@
 // core/HTMLReader/HTMLRichDocumentImporter.cpp
 // HTML → UCRichDocument. See the header for what is mapped and what is not.
+// Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock; skipWordListLabels
 // Version: 1.0.1 - a cell border is the widest of its four sides
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
+#include "HTMLReader/CSSStyleSheet.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 #include "UltraCanvasTextUtils.h"   // Base64Decode
@@ -144,6 +146,27 @@ std::string SafeLink(const std::string& href) {
     return target;
 }
 
+// Whether the element's text runs right to left: the dir attribute on it or
+// the nearest element around it that has one.
+bool RightToLeft(const Node& node) {
+    for (const Node* at = &node; at; at = at->parent) {
+        if (at->IsElement() && at->HasAttribute("dir")) {
+            return LowerAscii(TrimAscii(at->GetAttribute("dir"))) == "rtl";
+        }
+    }
+    return false;
+}
+
+// A list label Word types out before an item: <span style="mso-list:Ignore">.
+bool IsWordListLabel(const Node& node) {
+    const std::string style = node.GetAttribute("style");
+    if (style.empty()) return false;
+    for (const HTML::Declaration& declaration : HTML::StyleSheet::ParseDeclarationList(style)) {
+        if (declaration.property == "mso-list" && LowerAscii(declaration.value) == "ignore") return true;
+    }
+    return false;
+}
+
 // True when `text` holds anything but white space (no-break spaces count as
 // white space here: an "empty" mail paragraph is often just &nbsp;).
 bool HasVisibleText(const std::string& text) {
@@ -181,6 +204,7 @@ public:
         Context context;
         context.quoteLevel = std::max(0, opts_.quoteLevel);
         proto_.quoteLevel = context.quoteLevel;
+        proto_.rightToLeft = RightToLeft(*body);
         WalkChildren(*body, context);
         FinishParagraph();
         TrimEmptyEdges();
@@ -196,6 +220,7 @@ private:
         bool subscript = false;
         bool superscript = false;
         bool pre = false;
+        bool codeBlock = false;   // the runs of a code block: no formatting of their own
     };
 
     // What the next paragraph opened becomes.
@@ -208,6 +233,7 @@ private:
         std::string bullet;
         int listStart = 0;
         RichTextAlign align = RichTextAlign::Default;
+        bool rightToLeft = false;
         int quoteLevel = 0;
         float indentPx = 0.0f;
         std::string background;
@@ -284,6 +310,7 @@ private:
             block.leftIndentPt = std::min(proto_.indentPx, kMaxIndentPx) * kPxToPt;
         }
         block.align = proto_.align;
+        block.rightToLeft = proto_.rightToLeft;
         block.quoteLevel = proto_.quoteLevel;
         block.paragraphBackground = proto_.background;
         PushBlock(std::move(block));
@@ -381,6 +408,12 @@ private:
                 run.fontSizePt = std::round(style.fontSizePx * kPxToPt * 2.0f) / 2.0f;
             }
         }
+        if (context.codeBlock) {
+            // The block is in the view's code style already.
+            run.code = false;
+            run.fontFamily.clear();
+            run.fontSizePt = 0.0f;
+        }
         return run;
     }
 
@@ -402,7 +435,8 @@ private:
                     if (lineHasContent_ || pendingBreaks_ > 0) ++pendingBreaks_;
                     continue;
                 }
-                segment.push_back(c == '\t' ? ' ' : c);
+                // A tab is a space in text, but indents a code block's line.
+                segment.push_back(c == '\t' && !context.codeBlock ? ' ' : c);
             }
             flush();
             lastWasSpace_ = false;
@@ -453,6 +487,8 @@ private:
         if (tag == "img") { Image(node, style, context); return; }
         if (tag == "hr") { Rule(); return; }
         if (tag == "input" || tag == "select" || tag == "textarea" || tag == "script") return;
+        if (opts_.skipWordListLabels && IsWordListLabel(node)) return;
+        if (tag == "pre" && opts_.preAsCodeBlock && !InLineMode()) { CodeBlock(node, style, context); return; }
         if (tag == "table" || style.display == DisplayMode::Table) { Table(node, style, context); return; }
         if (tag == "ul" || tag == "ol") { List(node, style, context); return; }
         if (tag == "li" && !lists_.empty() && !cellRuns_) { ListItem(node, style, context); return; }
@@ -495,12 +531,31 @@ private:
             proto_.headingLevel = node.tag[1] - '0';
         }
         proto_.align = AlignOf(style.textAlign);
+        proto_.rightToLeft = RightToLeft(node);
         proto_.quoteLevel = inner.quoteLevel;
         proto_.indentPx = inner.indentPx;
         if (ownBackground && !quote && opts_.keepColors && style.backgroundColor
             && style.backgroundColor->a > 0) {
             proto_.background = HexColor(*style.backgroundColor);
         }
+        WalkChildren(node, inner);
+        FinishParagraph();
+        gapPx_ = std::max(gapPx_, style.marginBottom);
+        proto_ = saved;
+    }
+
+    // <pre> with preAsCodeBlock: one code block of its lines.
+    void CodeBlock(Node& node, const ComputedStyle& style, const Context& context) {
+        FinishParagraph();
+        gapPx_ = std::max(gapPx_, style.marginTop);
+        const Proto saved = proto_;
+        proto_ = Proto{};
+        proto_.type = RichBlockType::CodeBlock;
+        proto_.quoteLevel = context.quoteLevel;
+        proto_.indentPx = context.indentPx;
+        Context inner = context;
+        inner.pre = true;
+        inner.codeBlock = true;
         WalkChildren(node, inner);
         FinishParagraph();
         gapPx_ = std::max(gapPx_, style.marginBottom);
@@ -593,6 +648,7 @@ private:
         }
         list.first = false;
         proto_.align = AlignOf(style.textAlign);
+        proto_.rightToLeft = RightToLeft(node);
         proto_.quoteLevel = context.quoteLevel;
 
         const size_t blocksBefore = doc_.blocks.size();
