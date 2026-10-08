@@ -236,13 +236,42 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       # ===== Windows: MSYS2/MinGW dependency management =====
+      # The action only unpacks the MSYS2 release here: no package traffic.
+      # The database sync, the upgrade and the package install run in the
+      # step after it, under a retry, because the action has neither a retry
+      # nor a mirror setting and pacman abandons a mirror that stays below
+      # 1 byte/s for 10 s. On 2026-10-08 a slow mirror.msys2.org failed both
+      # Windows legs of #740 inside the action, in the same minute, before a
+      # line of the tree was compiled.
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
-          update: true
-          install: >-
+          update: false
+          cache: false        # the package cache is ours, below
+
+      # The downloaded packages, as the action cached them when it did the
+      # install: any earlier cache of this MSYSTEM is restored (pacman then
+      # fetches only what changed), and a new one is saved when the set of
+      # files changed. Pruned to one version per package, so it stays near
+      # the size of one install.
+      - name: Restore the MSYS2 package cache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          key: msys2-pkgs-${{ matrix.msystem }}-
+          restore-keys: msys2-pkgs-${{ matrix.msystem }}-
+
+      - name: Update MSYS2 and install the build dependencies (Windows)
+        if: runner.os == 'Windows'
+        id: msys2-deps
+        shell: pwsh
+        env:
+          MSYS2_PKG_DIR: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          MSYS2_PACKAGES: >-
             ${{ matrix.msys_toolchain }}
             ${{ matrix.msys_prefix }}-cmake
             ${{ matrix.msys_prefix }}-ccache
@@ -285,6 +314,63 @@ jobs:
             ${{ matrix.msys_prefix }}-boost
             ${{ matrix.msys_prefix }}-python
             zip
+        run: |
+          # Every pacman call goes through the action's msys2.cmd wrapper as
+          # a child process (as the action itself does), so a core upgrade
+          # that closes every MSYS2 process takes the child, not this script.
+          function Invoke-Pacman([string]$What, [string]$Command, [int]$Attempts = 5) {
+            for ($i = 1; $i -le $Attempts; $i++) {
+              Write-Host "::group::$What (attempt $i of $Attempts)"
+              msys2 -c $Command
+              $code = $LASTEXITCODE
+              Write-Host "::endgroup::"
+              if ($code -eq 0) { return }
+              if ($i -lt $Attempts) {
+                $wait = 30 * $i
+                Write-Host "$What failed (exit $code); retrying in $wait s"
+                Start-Sleep -Seconds $wait
+              }
+            }
+            throw "$What failed after $Attempts attempts"
+          }
+          function Disable-DownloadTimeout {
+            # pacman's default gives up on a transfer under 1 byte/s for 10 s;
+            # on a hosted runner waiting for a slow mirror beats failing.
+            msys2 -c "grep -q '^DisableDownloadTimeout' /etc/pacman.conf || echo DisableDownloadTimeout >> /etc/pacman.conf"
+          }
+
+          Disable-DownloadTimeout
+          Invoke-Pacman 'Synchronize the package databases' 'pacman --noconfirm -Sy'
+
+          # The core upgrade may replace msys2-runtime, which closes every
+          # MSYS2 process including the child shell, so the first pass's
+          # exit code says nothing; the second pass finishes what the first
+          # began - the setup action's own sequence. A pacman.conf.pacnew
+          # from the upgrade replaces the config, as in the action, so the
+          # timeout setting is applied again after it.
+          msys2 -c "pacman --noconfirm -Suu --overwrite '*'"
+          taskkill /F /FI "MODULES eq msys-2.0.dll" | Out-Null
+          msys2 -c "mv -f /etc/pacman.conf.pacnew /etc/pacman.conf 2>/dev/null; true"
+          Disable-DownloadTimeout
+          Invoke-Pacman 'Upgrade the installation' "pacman --noconfirm -Suu --overwrite '*'"
+
+          Invoke-Pacman 'Install the build dependencies' "pacman --noconfirm -S --needed --overwrite '*' $env:MSYS2_PACKAGES"
+
+          # One version per package in the cache, then a hash of its file
+          # names for the save step: the same set of files is the same cache.
+          msys2 -c "paccache -rk1 || true"
+          $names = (Get-ChildItem -LiteralPath $env:MSYS2_PKG_DIR -File | Sort-Object Name | ForEach-Object Name) -join "`n"
+          $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($names))
+          $hash = (Get-FileHash -InputStream $stream -Algorithm SHA1).Hash.Substring(0, 16)
+          "pkg-hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          exit 0
+
+      - name: Save the MSYS2 package cache (Windows)
+        if: runner.os == 'Windows' && steps.msys2-deps.outputs.pkg-hash != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
+          key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
 
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
