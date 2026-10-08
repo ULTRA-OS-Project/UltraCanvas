@@ -190,6 +190,13 @@ namespace UltraCanvas {
         // iconFile resolved at `iconSize` px. Empty on a platform without
         // desktop entries.
         static std::vector<UCDesktopEntry> ListApplications(int iconSize = 48);
+        // The application a window belongs to, among `applications`
+        // (ListApplications): the entry whose StartupWMClass is the window's
+        // WM_CLASS, else whose program, icon name or name the window's class
+        // or instance spells (case aside: "Gimp-2.10" is gimp-2.10's).
+        // nullptr when none matches.
+        static const UCDesktopEntry* MatchApplication(const DesktopWindowInfo& window,
+                                                      const std::vector<UCDesktopEntry>& applications);
         // Start an application from its entry, detached: the launcher is never
         // its parent and never waits for it. False with the reason in `error`.
         static bool LaunchApplication(const UCDesktopEntry& entry,
