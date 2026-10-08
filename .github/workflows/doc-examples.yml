@@ -1,0 +1,85 @@
+name: Doc examples compile
+
+# Compiles the C++ in the component docs against the headers. Every ```cpp
+# block of a doc under Docs/UltraCanvas is compiled with clang++
+# -fsyntax-only (scripts/check_doc_examples.py), and each function, field or
+# signature the headers do not have is a finding at the doc's own line.
+# Until now the checker ran only when someone edited a doc and remembered
+# to: UltraCanvasFileDialog.md shipped with two examples that did not
+# compile and nobody noticed until the next edit. Now every doc is checked on
+# every change to a doc or a public header - a header change that breaks an
+# example is caught too.
+#
+# The checker builds a precompiled header of every public header first
+# (about a minute); it is cached, keyed by the headers' content.
+
+# Trigger policy matches build.yml / llms-txt.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'Docs/UltraCanvas/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/Plugins/**/*.h'
+      - 'VirtualFS/include/**'
+      - 'scripts/check_doc_examples.py'
+      - '.github/workflows/doc-examples.yml'
+  pull_request:
+    # Stacked pull requests. `branches` filters the BASE branch here - the
+    # branch the pull request TARGETS - so `main` alone meant a pull request
+    # based on another pull request's branch matched no trigger at all and
+    # got zero checks. #455 reached 1059 changed lines that way without one
+    # job ever running. Deliberately NOT added to `push` above: that would
+    # build every commit on every claude/** branch whether or not a pull
+    # request exists, which is the double-building the note at the top of
+    # build.yml describes.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The headers the public headers include. ubuntu-latest ships a Clang
+      # that is new enough for the tree (build.yml's 22.04 leg needs LLVM's
+      # repository for that; this job is not pinned to 22.04, because it
+      # links nothing and glibc does not matter here).
+      - name: Install the headers' dependencies
+        timeout-minutes: 20
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install clang pkg-config \
+            libcairo2-dev libpango1.0-dev libglib2.0-dev libfreetype6-dev \
+            libharfbuzz-dev libvips-dev libcurl4-openssl-dev
+
+      # The precompiled header of every public header: a minute to build,
+      # and the same for every doc, so it is kept between runs. The key is
+      # the headers' content; a header change builds it afresh.
+      - name: Restore the precompiled header
+        uses: actions/cache@v4
+        with:
+          path: build/doc-examples/umbrella*
+          key: doc-examples-pch-${{ runner.os }}-${{ hashFiles('UltraCanvas/include/**', 'UltraCanvas/Plugins/**/*.h', 'VirtualFS/include/**', 'scripts/check_doc_examples.py') }}
+
+      # The checker rebuilds the precompiled header when any public header is
+      # newer than it, and a fresh checkout makes every header newer than a
+      # restored cache. Date the restored files now so a hit counts.
+      - name: Date the restored precompiled header
+        run: |
+          if ls build/doc-examples/umbrella* >/dev/null 2>&1; then
+            touch build/doc-examples/umbrella*
+          fi
+
+      - name: Compile every doc's C++ against the headers
+        run: python3 scripts/check_doc_examples.py Docs/UltraCanvas/*.md
