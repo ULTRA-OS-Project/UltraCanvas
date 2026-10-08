@@ -8,7 +8,9 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <cstddef>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace UltraCleaner {
@@ -38,8 +40,24 @@ std::string ExpandTokens(const std::string& pattern);
 // directory — "{HOME}/Library/Containers/*/Data/Library/Caches" becomes one
 // entry per container. A pattern with no wildcard yields the path itself
 // unchanged (existing or not); a pattern with one yields only directories
-// that exist.
-std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern);
+// that exist. When `refused` is given, it is increased by one for every
+// directory the expansion could not look into because the system refused
+// (IsSystemRefusal) - on macOS 27, every other developer's app container.
+std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern,
+                                                   size_t* refused = nullptr);
+
+// ===== SYSTEM REFUSALS =====
+// True for EPERM, "operation not permitted": the operating system itself
+// refusing, as opposed to EACCES, the file's own permissions. On macOS that
+// is the privacy protection - other apps' containers (refused without asking
+// from macOS 27), Safari's data and the like - which Full Disk Access lifts.
+bool IsSystemRefusal(const std::error_code& ec);
+
+// True when the system refuses to list the directory `path`. Probed without
+// skip_permission_denied, which libstdc++ also applies to EPERM on Apple
+// platforms and which would hide exactly this. False for a path that does
+// not exist or that lists fine.
+bool IsRefusedBySystem(const std::string& path);
 
 // Shell-style match of a single name against a pattern with '*' (any run of
 // characters), '?' (one character) and '[...]' character classes (ranges and
