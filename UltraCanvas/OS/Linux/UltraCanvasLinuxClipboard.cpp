@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxClipboard.cpp
 // X11-specific clipboard implementation for Linux
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.1.1
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxClipboard.h"
@@ -750,8 +750,11 @@ namespace UltraCanvas {
             return false;
         }
 
-        // Calculate data size
-        size_t dataSize = numItems * (actualFormat / 8);
+        // Calculate data size. Format 32 comes back from Xlib as an array of C
+        // longs - 8 bytes each on a 64-bit system, not 4: a TARGETS list copied
+        // at 4 bytes an item kept its first half only.
+        const size_t itemSize = actualFormat == 32 ? sizeof(long) : static_cast<size_t>(actualFormat / 8);
+        size_t dataSize = numItems * itemSize;
 
         // Copy the data
         selectionData.clear();
