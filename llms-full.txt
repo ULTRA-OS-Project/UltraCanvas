@@ -16696,6 +16696,8 @@ FILE: Docs/UltraCanvas/UltraCanvasColorSwatchBar.md
 
 # UltraCanvas Color Swatch Bar Documentation
 
+<!-- doc-check: void SetFillColor(const Color& color); struct BackdropView { void SetBackdropColor(const Color& color); void SetBackdropCheckered(); }; std::shared_ptr<BackdropView> view; -->
+
 ## Overview
 
 **UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a
@@ -18861,6 +18863,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDesktopShell.md
 
 # UltraCanvasDesktopShell
 
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
@@ -18871,7 +18875,9 @@ show beside its icon.
 #include "UltraCanvasDesktopShell.h"
 
 for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-    if (!w.skipTaskbar) taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
+    if (!w.skipTaskbar)
+        taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile,
+                                 [id = w.id](bool) { UltraCanvasDesktopShell::ActivateWindow(id); });
 
 UltraCanvasDesktopShell::ActivateWindow(id);
 UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
@@ -20706,7 +20712,8 @@ verbatim so it can carry markup of its own.
 
 ```cpp
 // Data
-void AddDataPoint(category, value1, value2, label1, label2);
+void AddDataPoint(const std::string& category, double value1, double value2,
+                  const std::string& label1 = "Group 1", const std::string& label2 = "Group 2");
 void AddDataPoint(const DumbbellDataPoint&);
 void ClearData();
 void SetDumbbellDataSource(std::shared_ptr<DumbbellDataSource>);
@@ -20721,9 +20728,9 @@ void SetAutoFitRows(bool);
 float GetPreferredHeight() const;
 
 // Colours
-void SetDefaultColors(color1, color2, lineColor);
-void SetGroupColors(color1, color2);
-void SetConnectorColor(lineColor);
+void SetDefaultColors(const Color& color1, const Color& color2, const Color& lineCol);
+void SetGroupColors(const Color& color1, const Color& color2);
+void SetConnectorColor(const Color& lineCol);
 
 // Labels
 void SetShowCategoryLabels(bool);
@@ -20735,7 +20742,7 @@ void SetValueLabelPlacement(DumbbellValueLabelPlacement);
 
 // Legend
 void SetShowLegend(bool);
-void SetLegendLabels(label1, label2);
+void SetLegendLabels(const std::string& label1, const std::string& label2);
 void SetLegendPosition(DumbbellLegendPosition);   // TopRight (default), TopLeft, BottomRight, BottomLeft
 
 // Axis
@@ -30184,6 +30191,8 @@ FILE: Docs/UltraCanvas/UltraCanvasGradientEditor.md
 
 # UltraCanvasGradientEditor
 
+<!-- doc-check: VectorStorage::LinearGradientData fill; -->
+
 A gradient ramp editor: the stops of a gradient on a horizontal strip.
 Click a stop to select it, drag it along the strip to move it, double-click
 the strip to add a stop with the ramp's colour there, drag a stop away
@@ -31323,11 +31332,11 @@ as hexagons:
 ```cpp
 #include "Plugins/Charts/UltraCanvasHexbinChart.h"
 
-auto hex = UltraCanvas::CreateHexbinChartElement("hex1", 20, 20, 800, 500);
-hex->SetData(values, cols, rows);          // row-major
-hex->SetColormap(UltraCanvas::HeatmapColormap::Turbo);
-hex->SetChartTitle("Clustering of Supermarkets");
-container->AddChild(hex);
+auto hexbin = UltraCanvas::CreateHexbinChartElement("hex1", 20, 20, 800, 500);
+hexbin->SetData(values, cols, rows);          // row-major
+hexbin->SetColormap(UltraCanvas::HeatmapColormap::Turbo);
+hexbin->SetChartTitle("Clustering of Supermarkets");
+container->AddChild(hexbin);
 ```
 
 ### 2. Binning 2D points (hexbin density)
@@ -31336,7 +31345,7 @@ Bin a scatter of points into hexagon counts over a data range:
 
 ```cpp
 std::vector<UltraCanvas::Point2Dd> points = loadPoints();
-hex->SetBinnedData(points, /*cols*/ 40, /*rows*/ 25,
+hexbin->SetBinnedData(points, /*cols*/ 40, /*rows*/ 25,
                    /*xMin*/ 0, /*xMax*/ 100, /*yMin*/ 0, /*yMax*/ 100);
 ```
 
@@ -31346,8 +31355,8 @@ grid, is exactly the containing hexagon); the per-hex counts become the values.
 ## Configuration
 
 ```cpp
-hex->SetHexBorders(true, Color(255,255,255,200), 1.0f); // outline between hexes
-hex->SetShowColorBar(true);
+hexbin->SetHexBorders(true, Color(255,255,255,200), 1.0f); // outline between hexes
+hexbin->SetShowColorBar(true);
 ```
 
 All heatmap colour options apply: `SetColormap`, `SetCustomColormap`,
@@ -33216,14 +33225,14 @@ lists Overdue plus every priority actually used on the board.
 Callbacks:
 
 ```cpp
-board->onCardMoved = [](int id, int from, int to) { ... };
-board->onCardAdded = [](int id) { ... };          // Via the editor UI
-board->onCardRemoved = [](int id) { ... };
-board->onCardClick = [](int id) { ... };
-board->onCardDoubleClick = [](int id) { ... };
-board->onSelectionChanged = [](int id) { ... };   // -1 = cleared
-board->onWipExceeded = [](int columnId) { ... };
-board->onBoardChanged = []() { ... };             // Any editor mutation
+board->onCardMoved = [](int id, int from, int to) { /* ... */ };
+board->onCardAdded = [](int id) { /* ... */ };          // Via the editor UI
+board->onCardRemoved = [](int id) { /* ... */ };
+board->onCardClick = [](int id) { /* ... */ };
+board->onCardDoubleClick = [](int id) { /* ... */ };
+board->onSelectionChanged = [](int id) { /* ... */ };   // -1 = cleared
+board->onWipExceeded = [](int columnId) { /* ... */ };
+board->onBoardChanged = []() { /* ... */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
 ```
 
@@ -37640,13 +37649,16 @@ out of scope closes immediately.
 
 ```cpp
 class MyWindow {
-    ...
+    std::shared_ptr<UltraCanvasWindow> window;
+    // ...
     UltraCanvasMediaViewerWindow mediaWindow;
+
+    void OnFileActivated(const std::string& path);
 };
 
 void MyWindow::OnFileActivated(const std::string& path) {
     MediaViewerWindowOptions options;
-    options.title = std::filesystem::path(path).filename().string();
+    options.title = PathToUtf8(PathFromUtf8(path).filename());
     mediaWindow.Show(path, window.get(), options);
 }
 ```
@@ -37835,6 +37847,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md
 
 # Menu Configuration Widget
 
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); -->
+
 `UltraCanvasMenuConfigWidget` lets end users customise an application's menus at
 runtime: reorder entries, add or remove commands, group them into submenus, and
 save the result so it survives a restart. It works together with two supporting
@@ -37847,7 +37861,7 @@ reconfigurable.
 Menus are normally built imperatively with lambdas:
 
 ```cpp
-menuBar = MenuBuilder("Bar")
+menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
     .AddSubmenu("File", {
         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
     })
@@ -39904,13 +39918,15 @@ FILE: Docs/UltraCanvas/UltraCanvasModelViewDialog.md
 
 # Importing a 3D model as a bitmap
 
+<!-- doc-check: std::string path; UltraCanvasWindowBase* parentWindow; void Place(const std::shared_ptr<UCRasterLayer>& layer, const std::string& actionId, const RasterPixel& background); void ShowError(const std::string& message); -->
+
 `UltraCanvasModelViewDialog` (`dialogs/UltraCanvasModelViewDialog.h`) is the
 dialog that stands between a 3D model file and a raster layer. It exists
 because a model, unlike a drawing, cannot be rasterized from a size alone —
 somebody has to say **where the camera stands**.
 
 ```cpp
-#include "UltraCanvasModelViewDialog.h"
+#include "dialogs/UltraCanvasModelViewDialog.h"
 
 ShowModelViewDialog(
         path,
@@ -44981,7 +44997,7 @@ numbers in from the UI thread as they arrive — which is what keeps the ring
 animating and the Cancel button responsive.
 
 ```cpp
-auto dlg = UltraCanvasProgressDialog::Show(window, "Compressing",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Compressing",
                                            "Creating \"photos.zip\"",
                                            [&]() { job.cancel = true; });
 // ... on the UI thread, as the worker reports:
@@ -45022,7 +45038,7 @@ struct Job {
 };
 auto job = std::make_shared<Job>();
 
-auto dlg = UltraCanvasProgressDialog::Show(window, "Extracting",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Extracting",
         "Unpacking \"backup.tar.gz\"",
         [job]() { job->cancelled.store(true); });
 
@@ -53539,6 +53555,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSpellChecker.md
 
 # UltraCanvasSpellChecker Documentation
 
+<!-- doc-check: enum class TexterCommand { ToolsWordCount }; std::function<void()> cmd(TexterCommand command); void OnDictionaryPicked(const std::string& code); std::string GetConfigDir(); void Cut(); struct TextByteSpan { size_t startByte = 0; size_t byteLength = 0; }; std::vector<TextByteSpan> ScanMarkdownNoSpellRanges(const std::string& text); bool SpanCoversRange(const std::vector<TextByteSpan>& spans, size_t startByte, size_t byteLength); -->
+
 ## Overview
 **UltraCanvasSpellChecker** is the framework's cross-platform spell checking
 service. It owns a backend, a user dictionary, a session ignore list and one
@@ -53709,7 +53727,7 @@ positions.
 Because the UI thread manages the language and the worker thread runs the
 checks, **every backend is entered from two threads**. On Windows that is not
 just a locking question: COM objects belong to the apartment of the thread that
-created them, and UltraCanvas calls `OleInitialize()` on the UI thread, so
+created them, and UltraCanvas calls `OleInitialize` on the UI thread, so
 anything created there is single-threaded-apartment bound. The Windows backend
 therefore keeps its `ISpellCheckerFactory` and `ISpellChecker` **per thread**,
 created in that thread's own apartment and released when it exits; only the
@@ -53875,27 +53893,31 @@ static std::vector<MenuItemData> BuildSuggestionMenuItems(
 
 ### Text utilities — `namespace SpellCheckText`
 ```cpp
-std::vector<WordSpan> TokenizeWords(const std::string& text);
-size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
-size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
-size_t CountCodepoints(const std::string& text);
-bool ContainsDigit(const std::string& word);
-bool IsAllUpperCase(const std::string& word);
-bool IsMixedCase(const std::string& word);
-bool LooksLikeUrlOrEmail(const std::string& word);
-std::string ToLowerAscii(const std::string& word);
-const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+namespace SpellCheckText {
+    std::vector<WordSpan> TokenizeWords(const std::string& text);
+    size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
+    size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
+    size_t CountCodepoints(const std::string& text);
+    bool ContainsDigit(const std::string& word);
+    bool IsAllUpperCase(const std::string& word);
+    bool IsMixedCase(const std::string& word);
+    bool LooksLikeUrlOrEmail(const std::string& word);
+    std::string ToLowerAscii(const std::string& word);
+    const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+}
 ```
 
 ### Rendering — `namespace SpellCheckRendering`
 ```cpp
-void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
-                        const SpellCheckStyle& style,
-                        SpellErrorKind kind = SpellErrorKind::Misspelled);
-void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
-                       const Color& color, float amplitude, float waveLength, float strokeWidth);
-void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
-                         const Color& color, float strokeWidth);
+namespace SpellCheckRendering {
+    void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
+                            const SpellCheckStyle& style,
+                            SpellErrorKind kind = SpellErrorKind::Misspelled);
+    void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
+                           const Color& color, float amplitude, float waveLength, float strokeWidth);
+    void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
+                             const Color& color, float strokeWidth);
+}
 ```
 
 Any component that can produce a word rectangle can call these — they know
@@ -54294,6 +54316,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSplitPane.md
 ==============================================================================
 
 # UltraCanvas Split Pane Documentation
+
+<!-- doc-check: void SaveLayout(const std::vector<double>& weights); void Log(const std::string& message); -->
 
 ## Overview
 
@@ -63664,6 +63688,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
 
 # UltraCanvasVolumeMonitor
 
+<!-- doc-check: void AddDriveRow(const std::string& path, const std::string& label); -->
+
 The mounted volumes of this machine, and a notification when that set changes —
 a USB stick plugged in or pulled out, a card reader, an optical disc, a network
 share mapped or dropped, a disk image attached.
@@ -63754,7 +63780,7 @@ Two tests, either of which is enough:
 
 - **The platform's mount table** (`ListPlatformMountPoints()`, also per
   platform: `/proc/self/mounts` on Linux, `getmntinfo()` on macOS,
-  `GetLogicalDrives()` on Windows). Exact, and touches no volume — which
+  `GetLogicalDrives` on Windows). Exact, and touches no volume — which
   matters, because stat'ing a wedged network mount blocks.
 - **A device that differs from the parent directory's.** Needs no table, but
   cannot see a mount that shares a device with what it is mounted on — a bind
@@ -63774,7 +63800,7 @@ Windows the mount table is the drive letters, and there is nothing to scan.
 
 The change notification says only *something moved* — diff the new
 `ListMountedVolumes()` against the last one you saw. UltraFiler's
-`RefreshDriveNodes()` is the worked example: it adds a tree row for every volume
+`RefreshDriveNodes` is the worked example: it adds a tree row for every volume
 that appeared, removes the rows of volumes that are gone along with everything
 the tree remembered about them, and moves any tab that was inside a vanished
 volume back to the home folder.
