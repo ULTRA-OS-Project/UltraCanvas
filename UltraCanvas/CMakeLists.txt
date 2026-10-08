@@ -42,17 +42,28 @@ message(STATUS "========================================")
 
 # ===== OPTIONS =====
 if (BUILD_DEMO_APP)
-    # On Linux the shipping and CI configuration is a SHARED core, and it has to
-    # be: only a shared libUltraCanvas lets -Wl,--exclude-libs (near the MuPDF
-    # link below) hide MuPDF's bundled lcms2mt fork from the system Little-CMS
-    # that libvips and the CDR plugin use. A static core skips that isolation, so
-    # MuPDF's ICC calls bind to the standard lcms2 and the PDF viewer SIGSEGVs.
+    # The shipping and CI configuration is a SHARED core on every desktop
+    # platform: one libUltraCanvas.so / .dylib / .dll that every application in
+    # the suite loads, with the UI-free modules (UltraNet, UltraWin, UltraCrypt,
+    # UltraVault, UltraDatabase, UltraMessage, NetworkMonitor, VirtualFS) folded
+    # into it whole - see "MODULE HOMES" below. A static core gives each of the
+    # ~20 applications its own copy of the framework and the modules: on macOS
+    # that was every .app carrying the whole framework, and on Linux and Windows
+    # an app that linked a module archive next to the shared core ended up with
+    # a second copy of that module's code and global state.
+    # On Linux it is also required for correctness: only a shared libUltraCanvas
+    # lets -Wl,--exclude-libs (near the MuPDF link below) hide MuPDF's bundled
+    # lcms2mt fork from the system Little-CMS that libvips and the CDR plugin
+    # use; a static core skips that isolation, so MuPDF's ICC calls bind to the
+    # standard lcms2 and the PDF viewer SIGSEGVs.
     # Default ON here so a plain `cmake ..` matches CI (which passes
-    # -DULTRACANVAS_BUILD_SHARED=ON); an explicit -D...=OFF still wins.
-    if(UNIX AND NOT APPLE AND NOT ANDROID)
-        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
-    else()
+    # -DULTRACANVAS_BUILD_SHARED=ON on every row); an explicit -D...=OFF still
+    # wins. Android keeps a static core (no suite there). Windows forces it ON
+    # below whenever the LaTeX plug-in is built, whatever this says.
+    if(ANDROID)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
+    else()
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
     endif()
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
@@ -1518,6 +1529,23 @@ target_include_directories(uc-yyjson PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
 
 # ===== BUILD CORE LIBRARY =====
+# VirtualFS compiles the same vendored miniz.c (its ZIP delete fast path) that
+# the spreadsheet, ZIP package and git code here use. A shared core absorbs
+# the VirtualFS archive whole ("MODULE HOMES" below), so that copy is the
+# DSO's, and compiling the file here as well would be a "multiple definition"
+# of every mz_* symbol - so it is left out, and the core's callers bind to
+# VirtualFS's copy. VirtualFS says whether it carries one (VIRTUALFS_HAS_MINIZ
+# in its interface). A static core keeps its own: there the linker takes the
+# first archive member that defines each symbol and extracts no second one.
+if(ULTRACANVAS_BUILD_SHARED AND TARGET VirtualFS)
+    get_target_property(_uc_vfs_defs VirtualFS INTERFACE_COMPILE_DEFINITIONS)
+    if(_uc_vfs_defs AND "VIRTUALFS_HAS_MINIZ" IN_LIST _uc_vfs_defs)
+        list(REMOVE_ITEM ULTRACANVAS_ALL_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c)
+        message(STATUS "miniz: compiled once, in VirtualFS (absorbed into the shared core)")
+    endif()
+    unset(_uc_vfs_defs)
+endif()
 if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
@@ -1532,6 +1560,87 @@ if(ULTRACANVAS_BUILD_SHARED)
 else()
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC uc-yyjson)
 endif()
+
+# ===== MODULE HOMES =====
+# The UI-free modules (UltraCrypt, UltraVault, NetworkMonitor, UltraDatabase,
+# UltraMessage, and VirtualFS from its own directory) are each built as a
+# static archive, and where that archive's code ends up depends on the core:
+#
+#   * SHARED core: the archive is pulled into libUltraCanvas WHOLE - every
+#     object, not just the ones the core's own code references - and kept
+#     PRIVATE, so the DSO exports the complete module API and nothing else
+#     links the archive. One copy of the module's code and global state per
+#     process, shared between every running application, the same way
+#     UltraNet and UltraWin have been folded in since they existed.
+#   * STATIC core: the archive is linked PUBLIC, so each consumer links it.
+#
+# Consumers never see the difference: the module's public name (UltraCrypt,
+# UltraDatabase, ...) is an INTERFACE target that resolves to the shared core
+# or to the archive, carries the module's headers and feature switches either
+# way, and is what applications, tests and the installed CMake package link.
+# The archive itself is uc-<module>, and only this file and the other
+# archives name it. A module archive must link other modules by THEIR archive
+# names (uc-vault, not UltraVault): the interface name links the shared core,
+# and an archive the core absorbs cannot depend on the core.
+#
+# Before this, an application that linked UltraDatabase or UltraVault next to
+# the shared core (UltraMail, UltraSocial, UltraFIBU, ...) got the archive on
+# its link line ahead of libUltraCanvas, so the linker took the module's
+# objects from the archive while the core carried its own - two registries,
+# two connection tables, and on Windows "multiple definition" errors.
+#
+# _ultracanvas_module_home(<name> <archive>) declares the home as each archive
+# is defined; _ultracanvas_absorb_modules(<archive>...) does the absorbing in
+# ONE call after the last module, because the order matters: CMake places a
+# static archive's dependencies after it on the link line and repeats an
+# archive that was already placed earlier, and a repeated archive under
+# --whole-archive is a "multiple definition" error. Listed dependents first
+# (uc-message before uc-database before uc-vault before uc-crypt), nothing is
+# repeated.
+function(_ultracanvas_module_home name archive)
+    add_library(${name} INTERFACE)
+    if(ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${name} INTERFACE ${ULTRACANVAS_LIB_NAME})
+    else()
+        target_link_libraries(${name} INTERFACE ${archive})
+    endif()
+    # The module's headers and its feature switches (ULTRACRYPT_HAVE_SODIUM,
+    # ULTRAMESSAGE_HAVE_GIO, ...) travel with the public name in the build
+    # tree. The installed package carries the headers through its INCLUDES
+    # DESTINATION; a switch an installed consumer must see is set PUBLIC on the
+    # core as well, next to the module.
+    target_include_directories(${name} INTERFACE
+        "$<BUILD_INTERFACE:$<TARGET_PROPERTY:${archive},INTERFACE_INCLUDE_DIRECTORIES>>")
+    target_compile_definitions(${name} INTERFACE
+        "$<BUILD_INTERFACE:$<TARGET_PROPERTY:${archive},INTERFACE_COMPILE_DEFINITIONS>>")
+endfunction()
+
+function(_ultracanvas_absorb_modules)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        return()
+    endif()
+    foreach(archive IN LISTS ARGN)
+        if(NOT TARGET ${archive})
+            continue()
+        endif()
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,${archive}>")
+            # An archive's own dependency on another archive (uc-vault ->
+            # uc-crypt, uc-message -> uc-database) names that archive on the
+            # core's link line a second time, without the feature, and CMake
+            # refuses the mismatch unless told which one wins. Whole, always.
+            set_property(TARGET ${ULTRACANVAS_LIB_NAME} PROPERTY
+                "LINK_LIBRARY_OVERRIDE_${archive}" WHOLE_ARCHIVE)
+        else()
+            # Fallback for CMake < 3.24 (no $<LINK_LIBRARY:WHOLE_ARCHIVE>): force
+            # the archive in by file, plus the target for its usage requirements.
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:${archive}> -Wl,--no-whole-archive
+                ${archive})
+        endif()
+    endforeach()
+endfunction()
 
 # ===== SPELL CHECK BACKENDS =====
 # Every branch is optional; the service falls back to the next backend at
@@ -1612,7 +1721,10 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             PREFIX ""
             POSITION_INDEPENDENT_CODE ON
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
-        if(WIN32)
+        # A shared core is linked, as the LaTeX module does: the module then
+        # records where its core symbols come from instead of relying on the
+        # host executable exporting them (which Windows PE cannot do at all).
+        if(WIN32 OR ULTRACANVAS_BUILD_SHARED)
             target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
         endif()
         message(STATUS "  [✓] chart module ${uc_chart_target}")
@@ -1771,7 +1883,22 @@ endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    if(ULTRACANVAS_BUILD_SHARED)
+        # Absorbed whole, like the other modules ("MODULE HOMES" below), so
+        # the DSO exports the complete VirtualFS API and no application links
+        # the archive. Its headers and VIRTUALFS_HAS_* switches still reach
+        # consumers: UltraCanvasVirtualFSBridge.h includes them. An installed
+        # consumer gets them from the VirtualFS package the config re-finds.
+        # (The absorbing itself is the _ultracanvas_absorb_modules call below.)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "$<BUILD_INTERFACE:$<TARGET_PROPERTY:VirtualFS,INTERFACE_INCLUDE_DIRECTORIES>>")
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "$<BUILD_INTERFACE:$<TARGET_PROPERTY:VirtualFS,INTERFACE_COMPILE_DEFINITIONS>>")
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} INTERFACE
+            "$<INSTALL_INTERFACE:VirtualFS::VirtualFS>")
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_VIRTUALFS)
     # The bridge calls zlib directly, so it needs the headers/library itself
     # (VirtualFS's find results are scoped to its own directory)
@@ -2194,34 +2321,39 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
 # UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
 # link it without pulling in the widget layer.
-add_library(UltraCrypt STATIC
+# The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
+add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp)
-target_include_directories(UltraCrypt PUBLIC
+set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
+target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(UltraCrypt PUBLIC cxx_std_20)
-set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(uc-crypt PUBLIC cxx_std_20)
+set_target_properties(uc-crypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The secure Base32 decoder delegates to the shared codec in UltraCanvasBase32.
-target_link_libraries(UltraCrypt PUBLIC UltraCanvasBase32)
+target_link_libraries(uc-crypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
-    target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
-    target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})
-    target_link_directories(UltraCrypt PUBLIC ${SODIUM_LIBRARY_DIRS})
-    target_link_libraries(UltraCrypt PUBLIC ${SODIUM_LIBRARIES})
+    target_compile_definitions(uc-crypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
+    target_include_directories(uc-crypt PRIVATE ${SODIUM_INCLUDE_DIRS})
+    target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
+    target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
+_ultracanvas_module_home(UltraCrypt uc-crypt)
 
 # Credential & secret storage (UltraAI/Docs/UltraVault.md). Memory and
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
 # (UltraAI adapters, tools) link it without the widget layer.
-add_library(UltraVault STATIC
+add_library(uc-vault STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
-target_include_directories(UltraVault PUBLIC
+set_target_properties(uc-vault PROPERTIES OUTPUT_NAME "UltraVault")
+target_include_directories(uc-vault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(UltraVault PUBLIC cxx_std_20)
-set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(UltraVault PUBLIC UltraCrypt)
+target_compile_features(uc-vault PUBLIC cxx_std_20)
+set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(uc-vault PUBLIC uc-crypt)
+_ultracanvas_module_home(UltraVault uc-vault)
 
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
@@ -2256,19 +2388,21 @@ elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()
-add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
-target_include_directories(NetworkMonitor PUBLIC
+add_library(uc-networkmonitor STATIC ${_uc_networkmonitor_sources})
+set_target_properties(uc-networkmonitor PROPERTIES OUTPUT_NAME "NetworkMonitor")
+target_include_directories(uc-networkmonitor PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
-target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
-set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_features(uc-networkmonitor PUBLIC cxx_std_20)
+set_target_properties(uc-networkmonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(WIN32)
     # IP Helper for the socket tables, Winsock for ntohs, advapi32 for the
     # owning user's name from the process token. Same header hygiene as the
     # core library, since this target does not inherit it.
-    target_link_libraries(NetworkMonitor PUBLIC iphlpapi ws2_32 advapi32)
-    target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(uc-networkmonitor PUBLIC iphlpapi ws2_32 advapi32)
+    target_compile_definitions(uc-networkmonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
+_ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 
 # WebAssembly modules for applications (UltraWeb, Docs/UltraWeb/UltraWeb.md):
 # compile, link host functions, run with a memory cap and a per-call time
@@ -2873,52 +3007,59 @@ if(ULTRACANVAS_ENABLE_DATABASE)
                       PATH_SUFFIXES postgresql postgresql/16 postgresql/15)
             find_library(LIBPQ_LIBRARIES NAMES pq)
         endif()
-        add_library(UltraDatabase STATIC ${ULTRADATABASE_SOURCES})
-        set_target_properties(UltraDatabase PROPERTIES
+        # The archive is uc-database; UltraDatabase is its home (see
+        # "MODULE HOMES" above).
+        add_library(uc-database STATIC ${ULTRADATABASE_SOURCES})
+        set_target_properties(uc-database PROPERTIES
             POSITION_INDEPENDENT_CODE ON
             OUTPUT_NAME "ultradatabase")
-        target_compile_features(UltraDatabase PUBLIC cxx_std_20)
-        target_include_directories(UltraDatabase
+        target_compile_features(uc-database PUBLIC cxx_std_20)
+        target_include_directories(uc-database
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                 $<INSTALL_INTERFACE:include/ultracanvas/include>)
-        target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
-        target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
-        target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
+        target_include_directories(uc-database PRIVATE ${SQLITE3_INCLUDE_DIRS})
+        target_link_libraries(uc-database PUBLIC Threads::Threads)
+        target_link_libraries(uc-database PRIVATE ${SQLITE3_LIBRARIES})
         if(LIBPQ_LIBRARIES)
-            target_include_directories(UltraDatabase PRIVATE ${LIBPQ_INCLUDE_DIRS})
-            target_link_libraries(UltraDatabase PRIVATE ${LIBPQ_LIBRARIES})
+            target_include_directories(uc-database PRIVATE ${LIBPQ_INCLUDE_DIRS})
+            target_link_libraries(uc-database PRIVATE ${LIBPQ_LIBRARIES})
             if(LIBPQ_LIBRARY_DIRS)
-                target_link_directories(UltraDatabase PRIVATE ${LIBPQ_LIBRARY_DIRS})
+                target_link_directories(uc-database PRIVATE ${LIBPQ_LIBRARY_DIRS})
             endif()
-            target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
+            target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
             set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
             # A server connection's `credentials` is an UltraVault key ("vault:…"),
             # never a literal password, so the driver reads it from the vault.
             # Without this link and define every password login refuses with
             # "UltraVault is not built in" - which it did until 0.9.66.
-            if(TARGET UltraVault)
-                target_link_libraries(UltraDatabase PRIVATE UltraVault)
-                target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_VAULT=1)
+            if(TARGET uc-vault)
+                target_link_libraries(uc-database PRIVATE uc-vault)
+                target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
                 string(APPEND ULTRADATABASE_POSTGRES_NOTE " (passwords from UltraVault)")
             endif()
         else()
             set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
         endif()
-        target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+        target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+        _ultracanvas_module_home(UltraDatabase uc-database)
 
         # The NetworkMonitor activity store (core/NetworkMonitor/
         # NetworkMonitorStore.cpp) records snapshots through UltraDatabase.
         # Linked here, after the target exists; without it the store compiles
         # to stubs that report NotSupported (ULTRACANVAS_HAS_DATABASE is the
         # switch, and it is PUBLIC on this target).
-        if(TARGET NetworkMonitor)
-            target_link_libraries(NetworkMonitor PUBLIC UltraDatabase)
+        if(TARGET uc-networkmonitor)
+            target_link_libraries(uc-networkmonitor PUBLIC uc-database)
         endif()
 
-        # Let UltraCanvas link UltraDatabase so components/apps can persist
-        # data through it when the module is enabled.
-        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
+        # The core carries UltraDatabase (whole, on a shared core - see "MODULE
+        # HOMES") so components/apps can persist data through it when the
+        # module is enabled; the switch is on the core so an installed
+        # consumer sees it too.
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
+        endif()
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_POSTGRES_NOTE})")
     endif()
@@ -3024,53 +3165,60 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
-    # SHARED core, take it from libultracanvas instead, exactly as
-    # UltraSocialEngine does, so the DSO stays the single home of the symbols.
-    get_target_property(_um_core_type ${ULTRACANVAS_LIB_NAME} TYPE)
-    if(NOT _um_core_type STREQUAL "SHARED_LIBRARY")
+    # SHARED core the archive is absorbed into libultracanvas, where the JSON
+    # objects already are, so the DSO stays the single home of the symbols.
+    # (The archive links no core either way: on a shared core it IS part of
+    # the core, and an archive the core absorbs cannot depend on the core.)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         list(APPEND ULTRAMESSAGE_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp)
     endif()
-    add_library(UltraMessage STATIC ${ULTRAMESSAGE_SOURCES})
-    set_target_properties(UltraMessage PROPERTIES
+    # The archive is uc-message; UltraMessage is its home ("MODULE HOMES").
+    add_library(uc-message STATIC ${ULTRAMESSAGE_SOURCES})
+    set_target_properties(uc-message PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultramessage")
-    target_compile_features(UltraMessage PUBLIC cxx_std_20)
-    target_include_directories(UltraMessage
+    target_compile_features(uc-message PUBLIC cxx_std_20)
+    target_include_directories(uc-message
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads)
-    if(_um_core_type STREQUAL "SHARED_LIBRARY")
-        target_link_libraries(UltraMessage PUBLIC ${ULTRACANVAS_LIB_NAME})
-    else()
-        target_link_libraries(UltraMessage PRIVATE uc-yyjson)
+    target_link_libraries(uc-message PUBLIC uc-database Threads::Threads)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(uc-message PRIVATE uc-yyjson)
     endif()
-    target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    target_compile_definitions(uc-message PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
     if(WIN32)
-        target_link_libraries(UltraMessage PUBLIC shell32 user32)
+        target_link_libraries(uc-message PUBLIC shell32 user32)
     endif()
     if(_um_macos_presenter)
-        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
-        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+        target_link_libraries(uc-message PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
     endif()
+    _ultracanvas_module_home(UltraMessage uc-message)
     if(_um_gio_found)
         # PUBLIC on purpose: the test suite drives the adapter over D-Bus
-        # itself and takes gio and the switch from this target.
-        target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
-        target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
-        target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
-        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+        # itself and takes gio and the switch from this target - so on a
+        # shared core, where consumers link the core and not the archive,
+        # the home carries gio as well.
+        target_include_directories(uc-message PUBLIC ${UM_GIO_INCLUDE_DIRS})
+        target_link_directories(uc-message PUBLIC ${UM_GIO_LIBRARY_DIRS})
+        target_link_libraries(uc-message PUBLIC ${UM_GIO_LIBRARIES})
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+        if(ULTRACANVAS_BUILD_SHARED)
+            target_link_directories(UltraMessage INTERFACE ${UM_GIO_LIBRARY_DIRS})
+            target_link_libraries(UltraMessage INTERFACE ${UM_GIO_LIBRARIES})
+        endif()
         message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter and presenter via gio ${UM_GIO_VERSION})")
     elseif(_um_winrt_found)
-        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
+        target_compile_definitions(uc-message PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
         if(MSVC)
-            target_link_libraries(UltraMessage PUBLIC windowsapp)
+            target_link_libraries(uc-message PUBLIC windowsapp)
         else()
             # C++/WinRT under GCC/Clang binds its imports by name: the WinRT
             # activation and string functions live in runtimeobject, COM in
             # ole32, BSTRs in oleaut32.
-            target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
+            target_link_libraries(uc-message PUBLIC runtimeobject ole32 oleaut32)
         endif()
         message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT, tray presenter)")
     elseif(WIN32)
@@ -3107,6 +3255,12 @@ if(TARGET UltraMessage)
     target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
+
+# Every module archive is defined by now: fold them into a shared core, in one
+# call and dependents first (see "MODULE HOMES"). A static core links each
+# through its home instead. VirtualFS has no dependency on the others.
+_ultracanvas_absorb_modules(
+    uc-message uc-networkmonitor uc-database uc-vault uc-crypt VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
@@ -3648,8 +3802,14 @@ set(_uc_export_targets
     UltraVault)
 # A static core keeps the JSON engine in its interface (consumers link the
 # archive themselves, see the uc-yyjson link above); a shared one folds it in.
+# The module homes (UltraCrypt, UltraVault, UltraDatabase) are exported either
+# way; on a static core they name their archives, which then go along, while
+# on a shared core they name the core, which has already absorbed them.
 if(NOT ULTRACANVAS_BUILD_SHARED)
-    list(APPEND _uc_export_targets uc-yyjson)
+    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault)
+    if(TARGET uc-database)
+        list(APPEND _uc_export_targets uc-database)
+    endif()
     # UltraWin follows the same split as UltraNet below: PUBLIC on a static
     # core, so the consumer links the archive and the package must name it;
     # folded in whole-archive and PRIVATE on a shared one, where it needs no
