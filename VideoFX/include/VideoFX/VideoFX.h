@@ -1,8 +1,8 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -174,6 +174,37 @@ VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info
 // Finds faces looking roughly at the camera and at least about 1/40 of the
 // image's longer side; profiles and heavily tilted heads are missed.
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces);
+
+// ============================================================================
+// PROJECT FILES
+// ============================================================================
+// Format version this build writes, and the newest it reads
+constexpr int kVideoFXProjectFormatVersion = 1;
+
+// Write `project` to `path` (a .vfxproj, UTF-8 JSON). The file is written
+// beside the old one and moved over it only when complete, so a crash or a
+// full disk never leaves half a project behind. Refused (InvalidArgument):
+// media given only as pixels in memory, which a file cannot point to.
+VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path);
+
+// Read a project. Paths come back absolute. `missingMedia`, when given, lists
+// the media files that no longer exist - the project still loads, so an app
+// can offer to find them. A project from a newer VideoFX is refused
+// (InvalidArgument) rather than half-read; fields it does not know are ignored.
+VideoFXResult VideoFX_LoadProject(const std::string& path, VideoFXProject& project,
+                                  std::vector<std::string>* missingMedia = nullptr);
+
+// The same as text, for an app keeping projects elsewhere (a database, an
+// undo history). Relative paths are taken against / written relative to
+// `baseDirectory` ("" = keep them as they are).
+VideoFXResult VideoFX_ProjectToJson(const VideoFXProject& project, std::string& json,
+                                    const std::string& baseDirectory = "");
+VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& project,
+                                      const std::string& baseDirectory = "");
+
+// Render a project: to `outputPath`, or to its own outputPath when "" is given
+VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::string& outputPath = "",
+                                    const VideoFXProgressCallback& progress = {});
 
 // A generated test clip (moving pattern + tone) - for tests and demos
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,

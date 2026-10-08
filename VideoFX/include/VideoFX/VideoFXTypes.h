@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -553,6 +553,45 @@ struct VideoFXBeatInfo {
     std::vector<double> beats;      // seconds from the start of the file
 
     bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
+};
+
+// ============================================================================
+// PROJECT FILES (VideoFX_SaveProject / VideoFX_LoadProject)
+// ============================================================================
+// A whole edit as one small JSON file (.vfxproj): the timeline - or the
+// photos and options of a slideshow - with its music and export settings.
+// It refers to media by path and holds no media itself; paths are stored
+// relative to the project file where they can be, so a folder holding the
+// project and its media can move as a whole.
+enum class VideoFXProjectKind {
+    Timeline,                       // `segments`, rendered with VideoFX_Export
+    Slideshow                       // `images` + `slideshow`, rendered with VideoFX_CreateSlideshow
+};
+
+struct VideoFXProject {
+    VideoFXProjectKind kind = VideoFXProjectKind::Timeline;
+    std::string title;
+    std::vector<VideoFXSegment> segments;       // Timeline
+    std::vector<std::string> images;            // Slideshow
+    VideoFXSlideshowOptions slideshow;          // Slideshow (findKeepInView, a function, is not saved)
+    VideoFXExportSettings settings;
+    std::string outputPath;                     // where it renders to by default; "" = the caller says
+
+    static VideoFXProject FromTimeline(std::vector<VideoFXSegment> segments, VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.segments = std::move(segments);
+        p.settings = std::move(settings);
+        return p;
+    }
+    static VideoFXProject FromSlideshow(std::vector<std::string> images, VideoFXSlideshowOptions options = {},
+                                        VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.kind = VideoFXProjectKind::Slideshow;
+        p.images = std::move(images);
+        p.slideshow = std::move(options);
+        p.settings = std::move(settings);
+        return p;
+    }
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then

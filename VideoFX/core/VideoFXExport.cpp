@@ -12,8 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -22,6 +22,7 @@
 #include "VideoFXBeats.h"
 #include "VideoFXFaces.h"
 #include "VideoFXMusic.h"
+#include "VideoFXProject.h"
 #include "VideoFX/VideoFX.h"
 
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8
@@ -2357,6 +2358,49 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (s.frameRate <= 0.0) s.frameRate = 30.0;
     s.music = music;
     return VideoFX_Export(segments, outputPath, s, progress);
+}
+
+// ---- project files ----
+
+VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path) {
+    ClearError();
+    std::string error;
+    VideoFXResult r = SaveProjectFile(project, path, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_LoadProject(const std::string& path, VideoFXProject& project,
+                                  std::vector<std::string>* missingMedia) {
+    ClearError();
+    std::string error;
+    VideoFXResult r = LoadProjectFile(path, project, missingMedia, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_ProjectToJson(const VideoFXProject& project, std::string& json,
+                                    const std::string& baseDirectory) {
+    ClearError();
+    std::string error;
+    VideoFXResult r = ProjectToJsonText(project, baseDirectory, json, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& project,
+                                      const std::string& baseDirectory) {
+    ClearError();
+    std::string error;
+    VideoFXResult r = ProjectFromJsonText(json, baseDirectory, project, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::string& outputPath,
+                                    const VideoFXProgressCallback& progress) {
+    ClearError();
+    const std::string out = outputPath.empty() ? project.outputPath : outputPath;
+    if (out.empty()) return Fail(VideoFXResult::InvalidArgument, "The project names no output file");
+    if (project.kind == VideoFXProjectKind::Slideshow)
+        return VideoFX_CreateSlideshow(project.images, out, project.slideshow, project.settings, progress);
+    return VideoFX_Export(project.segments, out, project.settings, progress);
 }
 
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
