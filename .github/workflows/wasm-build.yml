@@ -47,8 +47,12 @@ jobs:
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
-            build-essential cmake meson ninja-build gperf pkg-config \
+            build-essential cmake ninja-build gperf pkg-config \
             python3 curl git dpkg-dev
+          # meson from PyPI, not apt: the sysroot's glib (wasm-vips-2.89.3)
+          # needs meson 1.4 or newer and Ubuntu 24.04 packages 1.3.2.
+          pipx install meson==1.12.1
+          meson --version
 
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
