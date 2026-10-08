@@ -20,6 +20,12 @@
     their real types. One example was also wrong at run time: a list
     view's header-click handler captured its own view by `shared_ptr`, so
     the view was never freed; it captures it raw now, as AGENTS.md asks.
+  - **The usage comment at the top of `UltraCanvasDesktopShell.h`**, which
+    no check reads, called `AddToggleButton` with `...` for its callback
+    and `ActivateWindow` with an `id` it never declared. It and the
+    DesktopShell doc now show the taskbar button UltraDesktop builds: the
+    window's id captured, activated when the button is pressed, minimized
+    when it is released.
   - **The checker reads more C++ the way a compiler does.** A framework
     class's member defined out of line (`void
     UltraCanvasUIElement::Render(...) {`) is compiled in the class's
