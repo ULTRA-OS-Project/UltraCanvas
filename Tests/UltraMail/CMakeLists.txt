@@ -60,3 +60,25 @@ endif()
 
 include(CTest)
 add_test(NAME UltraMailEngine COMMAND UltraMailEngineTests)
+
+# The message pane's body reaches the pane's bottom: an attachment strip with
+# nothing in it takes no room. Shows real .eml messages in a window, so it
+# runs under Xvfb and skips itself without a DISPLAY. Linked like the UltraMail
+# app: the engine (MIME, trace, inline images) before the core.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailMessagePreviewTest
+        MessagePreviewLayoutTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+    )
+    target_compile_features(UltraMailMessagePreviewTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailMessagePreviewTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailMessagePreviewTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailMessagePreviewTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailMessagePreview COMMAND UltraMailMessagePreviewTest)
+endif()
