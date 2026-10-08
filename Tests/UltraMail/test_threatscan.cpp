@@ -52,9 +52,21 @@ TEST(extracts_anchor_targets_and_their_text) {
     const auto links = ExtractLinks(html, true);
     REQUIRE_EQ(links.size(), (size_t)3);
     REQUIRE_EQ(links[0].host, std::string("example.com"));
-    REQUIRE_EQ(links[0].text, std::string("Click  here"));
+    REQUIRE_EQ(links[0].text, std::string("Click here"));   // as the reader sees it
     REQUIRE_EQ(links[1].host, std::string("other.test"));
     REQUIRE_EQ(links[2].host, std::string("forms.test"));
+}
+
+// A link's text is read as it shows: formatting inside a word does not split
+// it, so an address dressed up with <b> is still the address it claims to be,
+// and every entity is decoded.
+TEST(anchor_text_reads_as_it_shows) {
+    const auto links = ExtractLinks(
+        "<a href=\"https://evil.test/x\">www.pay<b>pal</b>.com</a>"
+        "<a href=\"https://example.com/\">Caf&eacute;&nbsp;&#8211;&nbsp;Men&uuml;</a>", true);
+    REQUIRE_EQ(links.size(), (size_t)2);
+    REQUIRE_EQ(links[0].text, std::string("www.paypal.com"));
+    REQUIRE_EQ(links[1].text, std::string("Caf\xC3\xA9 \xE2\x80\x93 Men\xC3\xBC"));
 }
 
 TEST(extracts_bare_urls_from_plain_text) {
@@ -82,6 +94,17 @@ TEST(a_link_that_lies_about_its_target_is_a_scam) {
     REQUIRE(HasFinding(r, "link-target-mismatch"));
     REQUIRE(r.level == ThreatLevel::Scam);
     REQUIRE(!r.Summary().empty());
+}
+
+// The same lie with the address dressed up in formatting: the old tag
+// stripper read "www.pay<b>pal</b>.com" as "www.pay pal .com", which names no
+// site, and the link passed.
+TEST(a_lying_link_text_split_by_formatting_is_still_a_scam) {
+    ScanInput in = Html("service@secure-billing.example",
+        "<a href=\"http://203.0.113.9/login\">www.pay<b>pal</b>.<span>com</span></a>");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "link-target-mismatch"));
+    REQUIRE(r.level == ThreatLevel::Scam);
 }
 
 TEST(a_sender_claiming_a_brand_it_does_not_own_is_flagged) {

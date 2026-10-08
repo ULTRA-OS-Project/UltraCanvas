@@ -349,7 +349,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
   entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  `<script>`/`<style>` bodies dropped, entities decoded, whitespace and
+  no-break spaces collapsed; an inline element such as `<b>` keeps a word
+  whole, a block separates words).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),

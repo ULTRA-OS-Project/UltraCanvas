@@ -1,3 +1,15 @@
+#### 2026-10-08 *0.4.5*
+- **Rules match HTML mail through the framework's HTML reader.**
+  EmailCleaner's own tag stripper knew eleven entities; the rest - `&eacute;`,
+  `&#8364;`, `&rsquo;` - stayed as written, so a rule term spelled with the
+  character never matched a message that wrote the entity. Message text now
+  goes through `HTML::ExtractPlainText`: every entity is decoded, `<style>`
+  and `<script>` contents are left out, and a word split by formatting
+  (`<b>via</b>gra`) is still one word, as before. En and em dashes fold to
+  `-` and the ellipsis to `...` on both sides of a match, so terms written
+  either way still match. `Classifier::StripHtml` and `EmailCleaner::StripHtml`
+  are gone.
+
 #### 2026-10-04 *0.4.4*
 - **When a credential vault will not open, the window says why.** For
   UltraMail's vault the reason was guessed from whether the vault file

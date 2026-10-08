@@ -105,8 +105,11 @@ std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // e
 ```
 
 `ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+a keyword filter want. It is not a layout: block boundaries, `<br>` and
+pictures become spaces, not newlines. An inline element (`<b>`, `<span>`,
+`<a>` ...) leaves no space, as on screen - `wor<b>ld</b>` is "world", and a
+spam word split by formatting (`<b>via</b>gra`) is still the word. A
+no-break space counts as a space.
 
 ## CSS: the style sheet model
 
@@ -306,8 +309,7 @@ and the check blocks new ones:
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
 | `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
 | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
+| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` (`ExtractLinks`) | an `<a href>` scanner (its text and targets already go through `ExtractPlainText` / `DecodeEntities`) | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
 | `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
 
 ## Limits

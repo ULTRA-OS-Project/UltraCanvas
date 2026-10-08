@@ -3,10 +3,12 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.2.1 - ExtractPlainText: inline elements keep a word whole; a no-break
+//                  space is a space
 // Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
 //                  is exact, then ASCII case-insensitive
 // Version: 1.1.0 - doctype and quirksMode
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -117,7 +119,10 @@ bool IsQuirksDoctype(const std::string& doctype, bool present);
 std::string DecodeEntities(const std::string& text);
 
 // Strip all tags from an HTML string and collapse whitespace; entity-decoded.
-// Convenience for search/indexing paths that do not need a DOM.
+// A block, <br> or picture separates words; an inline element (<b>, <span>,
+// <a> ...) does not, as on screen - "wor<b>ld</b>" is "world". A no-break space
+// counts as a space. Convenience for search, indexing and matching paths that
+// do not need a DOM.
 std::string ExtractPlainText(const std::string& html);
 
 } // namespace HTML

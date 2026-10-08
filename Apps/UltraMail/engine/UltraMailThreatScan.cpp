@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.5.1 - link texts, link targets and the body read through the HTMLReader
+//                  module (HTML::ExtractPlainText, HTML::DecodeEntities): every
+//                  entity, no <style>/<script> text, a word split by <b> whole
 // Version: 0.5.0 - mail authentication (ParseAuthenticationResults, VerifiedSenderDomain,
 //                  TopHeaderValue): proven senders are not flagged for tracking
 //                  links, help-desk reply addresses or many link domains
@@ -11,6 +14,8 @@
 #include "UltraMailThreatScan.h"
 
 #include "UltraMailSenderBrands.h"
+
+#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText, HTML::DecodeEntities
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -46,34 +51,6 @@ std::string Trim(const std::string& s) {
 
 bool Contains(const std::string& haystackLower, const std::string& needleLower) {
     return haystackLower.find(needleLower) != std::string::npos;
-}
-
-// A handful of entities is all a link target or an anchor text carries.
-std::string DecodeEntities(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (std::size_t i = 0; i < s.size(); ++i) {
-        if (s[i] != '&') { out.push_back(s[i]); continue; }
-        if (s.compare(i, 5, "&amp;") == 0)   { out.push_back('&'); i += 4; continue; }
-        if (s.compare(i, 4, "&lt;") == 0)    { out.push_back('<'); i += 3; continue; }
-        if (s.compare(i, 4, "&gt;") == 0)    { out.push_back('>'); i += 3; continue; }
-        if (s.compare(i, 6, "&quot;") == 0)  { out.push_back('"'); i += 5; continue; }
-        if (s.compare(i, 6, "&nbsp;") == 0)  { out.push_back(' '); i += 5; continue; }
-        if (s.compare(i, 6, "&#x2F;") == 0)  { out.push_back('/'); i += 5; continue; }
-        out.push_back('&');
-    }
-    return out;
-}
-
-std::string StripTags(const std::string& html) {
-    std::string out;
-    bool inTag = false;
-    for (char c : html) {
-        if (c == '<') { inTag = true; continue; }
-        if (c == '>') { inTag = false; out.push_back(' '); continue; }
-        if (!inTag) out.push_back(c);
-    }
-    return DecodeEntities(out);
 }
 
 // The authority of a URL, split into userinfo and host (port dropped).
@@ -168,7 +145,7 @@ std::string ExtensionOf(const std::string& filename) {
 // "www.paypal.com", "https://paypal.com/login", "paypal.com". Returns the host
 // it claims, or "".
 std::string ClaimedHostIn(const std::string& text) {
-    const std::string t = Trim(Lower(StripTags(text)));
+    const std::string t = Trim(Lower(UltraCanvas::HTML::ExtractPlainText(text)));
     if (t.empty() || t.find(' ') != std::string::npos) return "";
     std::string host = HostOf(t);
     if (!host.empty()) return host;
@@ -478,13 +455,13 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
                 href = tagText.substr(v, e - v);
             }
         }
-        href = Trim(DecodeEntities(href));
+        href = Trim(UltraCanvas::HTML::DecodeEntities(href));
 
         std::string text;
         if (attribute == "href") {
             const std::size_t close = lower.find("</a", tagEnd);
             if (close != std::string::npos && close > tagEnd)
-                text = StripTags(body.substr(tagEnd + 1, close - tagEnd - 1));
+                text = UltraCanvas::HTML::ExtractPlainText(body.substr(tagEnd + 1, close - tagEnd - 1));
         }
         if (!href.empty()) {
             MessageLink link;
@@ -510,7 +487,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
     const std::string senderReg    = RegistrableDomain(senderDomain);
     const SenderBrand* senderBrand = BrandForDomain(senderDomain);
 
-    const std::string bodyLower = Lower(input.bodyIsHtml ? StripTags(input.body) : input.body);
+    const std::string bodyLower = Lower(input.bodyIsHtml ? UltraCanvas::HTML::ExtractPlainText(input.body)
+                                                         : input.body);
     const auto links = ExtractLinks(input.body, input.bodyIsHtml);
 
     // ---- Bulk / marketing markers -----------------------------------------

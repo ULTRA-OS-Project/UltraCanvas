@@ -269,6 +269,18 @@ static void TestExtractPlainText() {
         "<html><head><style>p{color:red}</style></head>"
         "<body><h1>Head</h1><p>One &amp; two</p></body></html>");
     CHECK_EQ(text, std::string("Head One & two"));
+    // An inline element keeps a word whole, as on screen; a block, <br> or
+    // picture separates words.
+    CHECK_EQ(ExtractPlainText("wor<b>ld</b> <span>and</span><a href=x>more</a>"),
+             std::string("world andmore"));
+    CHECK_EQ(ExtractPlainText("<B>via</B>gra"), std::string("viagra"));
+    CHECK_EQ(ExtractPlainText("one<br>two<div>three</div>four<img src=x>five"),
+             std::string("one two three four five"));
+    // A no-break space is a space.
+    CHECK_EQ(ExtractPlainText("a&nbsp;b \xC2\xA0 c"), std::string("a b c"));
+    // Where a <style> or <script> was, words stay apart.
+    CHECK_EQ(ExtractPlainText("<style>p{}</style>hello<script>x()</script>world"),
+             std::string("hello world"));
 }
 
 // ============================================================================

@@ -1,3 +1,15 @@
+#### 2026-10-08 *0.10.40*
+- **A fake link dressed up in formatting no longer slips past the scam
+  check.** The check compares the address a link's text shows with where
+  the link really goes; its own tag stripper read `www.pay<b>pal</b>.com` as
+  "www.pay pal .com", which names no site, so such a link passed. Link texts,
+  link targets and the body the check searches now go through the
+  framework's HTML reader (`HTML::ExtractPlainText`, `HTML::DecodeEntities`):
+  a word split by formatting stays whole, every entity is decoded (not only
+  five), and the text of a `<style>` or `<script>` is no longer searched as
+  if it were the message. The link list shows link texts as the reader sees
+  them ("Click here", not "Click  here").
+
 #### 2026-10-08 *0.10.37*
 - **A click anywhere on an account tile switches to that account.** Clicking
   the other account's tile mostly did nothing: the window gave a click to

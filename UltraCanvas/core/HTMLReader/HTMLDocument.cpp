@@ -1,9 +1,11 @@
 // core/HTMLReader/HTMLDocument.cpp
 // DOM helpers and entity decoding for the HTMLReader module.
+// Version: 1.2.1 - ExtractPlainText: an inline element (<b>, <span>, <a>) no longer
+//                  splits a word in two; a no-break space counts as a space
 // Version: 1.2.0 - attribute lookup by name is exact, then ASCII case-insensitive
 //                  (viewBox inside <svg> is found as "viewbox" too)
 // Version: 1.1.0 - every HTML 4 named entity (&acute; &eth; &alpha; ...)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLDocument.h"
@@ -314,6 +316,30 @@ std::string DecodeEntities(const std::string& text) {
     return out;
 }
 
+namespace {
+
+// Whether the tag starting at `open` ('<') opens or closes an inline element -
+// one that formats text inside a line without starting a new box.
+bool IsInlineTag(const std::string& html, size_t open) {
+    size_t i = open + 1;
+    if (i < html.size() && html[i] == '/') ++i;
+    std::string name;
+    while (i < html.size() && std::isalnum(static_cast<unsigned char>(html[i])) && name.size() < 12) {
+        name += static_cast<char>(std::tolower(static_cast<unsigned char>(html[i])));
+        ++i;
+    }
+    static const char* const kInline[] = {
+        "a", "abbr", "b", "bdi", "bdo", "big", "cite", "code", "data", "del", "dfn", "em",
+        "font", "i", "ins", "kbd", "label", "mark", "nobr", "q", "s", "samp", "small",
+        "span", "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr",
+    };
+    for (const char* inlineName : kInline)
+        if (name == inlineName) return true;
+    return false;
+}
+
+} // namespace
+
 std::string ExtractPlainText(const std::string& html) {
     std::string stripped;
     stripped.reserve(html.size());
@@ -361,10 +387,13 @@ std::string ExtractPlainText(const std::string& html) {
                 }
                 i = end;
                 inTag = true;   // consume the closing tag
+                stripped += ' ';   // a word on either side stays apart
                 continue;
             }
-            // Block-level separation keeps words from running together.
-            stripped += ' ';
+            // A block, a <br> or a picture separates words; an inline element
+            // does not, as on screen: "wor<b>ld</b>" is one word ("<b>via</b>gra"
+            // is how spam hides one from a keyword filter).
+            if (!IsInlineTag(html, i)) stripped += ' ';
             inTag = true;
             ++i;
             continue;
@@ -375,11 +404,16 @@ std::string ExtractPlainText(const std::string& html) {
 
     std::string decoded = DecodeEntities(stripped);
 
-    // Collapse whitespace runs.
+    // Collapse whitespace runs; a no-break space is one too.
     std::string result;
     result.reserve(decoded.size());
     bool lastWasSpace = true;
-    for (char c : decoded) {
+    for (size_t k = 0; k < decoded.size(); ++k) {
+        char c = decoded[k];
+        if (c == '\xC2' && k + 1 < decoded.size() && decoded[k + 1] == '\xA0') {
+            ++k;
+            c = ' ';
+        }
         if (std::isspace(static_cast<unsigned char>(c))) {
             if (!lastWasSpace) {
                 result += ' ';
