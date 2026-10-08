@@ -326,7 +326,7 @@ jobs:
       - name: Restore vcpkg binary cache (macOS)
         if: runner.os == 'macOS'
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
           key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
@@ -360,7 +360,7 @@ jobs:
       # built half the libraries keeps them for the next one.
       - name: Save vcpkg binary cache (macOS)
         if: always() && runner.os == 'macOS' && steps.vcpkg-cache.outcome == 'success' && steps.macos-deps.outputs.built != 'false'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
@@ -583,7 +583,7 @@ jobs:
       # for the same leg and starts from those objects rather than from nothing.
       # Keyed per os AND build_type because the compile lines differ.
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ github.run_id }}
