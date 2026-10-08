@@ -523,8 +523,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -711,8 +712,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -751,7 +753,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve

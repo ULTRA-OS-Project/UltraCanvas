@@ -57,7 +57,11 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
   (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
-  as New Image, Delete, Fill with Foreground / Background.
+  as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
+  Foreground / Background. When Paste finds no picture on the clipboard -
+  text was copied after it - it offers the newest image of the clipboard
+  history UltraDesktop keeps, saying when it was copied; Paste Last Copied
+  Image takes it without asking.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),

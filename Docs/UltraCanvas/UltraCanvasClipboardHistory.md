@@ -80,7 +80,7 @@ The same content copied again is not a second entry: it moves to the top
 
 | Call | |
 |---|---|
-| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss) |
+| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit, newestFirst }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss). Pinned entries come first unless `newestFirst` asks for last use alone: `{kinds = {Image}, newestFirst = true, limit = 1}` is "the last image copied" |
 | `Get(id)`, `ReadFormats(id, formats)`, `ReadText(id)` | one entry, its content |
 | `GetStats()` | entries, pinned, bytes, encrypted |
 | `MarkUsed(id)` | it was put back on the clipboard |
@@ -102,6 +102,29 @@ KeePassXC, Bitwarden, 1Password).
 `Sentence` (case changes for Latin, Greek and Cyrillic).
 `ClipboardImageFile(format, extension)` gives an image entry as a file another
 program opens (a bare `CF_DIB` gains its BMP file header).
+
+## What a program takes
+
+`PreferredClipboardKinds(categories, mimeTypes)` reads an application's
+desktop entry (`UCDesktopEntry::categories` and `mimeTypes`) and answers the
+kinds of entry it takes when something is pasted into it, most wanted first:
+
+| The entry says | Kinds |
+|---|---|
+| `Graphics`, `RasterGraphics`, `2DGraphics`, `VectorGraphics`, `3DGraphics`, `Photography` (not `Viewer`) | Image, Colour |
+| `FileManager`, or it opens `inode/directory` | Files |
+| `TextEditor`, `IDE`, `Development`, `TerminalEmulator` | Code, Text, Link |
+| `WebBrowser` | Link, Text |
+| no such category, and it opens only `image/*` types / only `text/*` types | Image, Colour / Text, Code, Link |
+| anything else (mail, chat, office, a mix of types) | nothing: the history is offered as it is |
+
+UltraDesktop's quick panel finds the window Super+V was pressed over, its
+entry (`UltraCanvasDesktopShell::MatchApplication`) and these kinds, and lists
+the newest such entries first under "For <program>", the first one chosen. The
+choice stays the person's: they see it before Enter copies it. Swapping what
+the clipboard hands a program while it pastes was considered and left out - a
+program that prefers images when one is offered would paste an old picture
+instead of the text just copied, unannounced.
 
 ## Recording
 
@@ -195,7 +218,9 @@ list->tooltipProvider = [rows = rows.get()](int row, int) {
 ```
 
 - **Sections**: `Flat`; `ByDay` (Pinned, Today, Yesterday, Earlier, with
-  counts); `PinnedAndRecent` (the panel's Pinned and Recent).
+  counts); `PinnedAndRecent` (the panel's Pinned and Recent). A
+  `LeadSection { title, count }` puts the first `count` entries under a title
+  of the caller's above them (the panel's "For UltraPaint").
   `GetEntry(row)` is `nullptr` on a header; `EntryRowFrom(row, step)` skips
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
