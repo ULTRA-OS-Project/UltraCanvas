@@ -2,8 +2,8 @@
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
 // (inside the track, outside it, or one label on each side of the track).
-// Version: 1.3.0
-// Last Modified: 2026-08-04
+// Version: 1.4.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -141,6 +141,15 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
+        // An on/off switch to assistive technology; its action flips it (a
+        // pointer position from an earlier click must not pick a side).
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Switch; }
+        bool DoAccessibleAction() override {
+            if (IsDisabled() || !IsVisible()) return false;
+            Toggle();
+            return true;
+        }
+
         // ===== CONSTRUCTORS =====
         UltraCanvasSwitch(const std::string& identifier,
                           float x, float y, float w, float h,

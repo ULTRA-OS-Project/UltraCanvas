@@ -1,12 +1,10 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 2.3.0 - SetDropdownSearchEnabled / SetDropdownSearchThreshold decide what
-//                 the overflow button opens: the search popup, or a plain menu of
-//                 the tabs; hiding the search popup outside a window checks the window
+// Version: 2.4.0 - a tab switch is announced to screen readers as a new name
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
 //                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -260,6 +258,9 @@ namespace UltraCanvas {
 
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
+        if (oldIndex != index && GetAccessibleNameOverride().empty()) {
+            NotifyAccessibility(AccessibilityEventType::NameChanged);   // named after the open tab
+        }
 
         EnsureTabVisible(index);
         UpdateContentVisibility();

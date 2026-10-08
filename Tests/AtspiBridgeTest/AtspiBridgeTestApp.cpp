@@ -1,17 +1,22 @@
 // Tests/AtspiBridgeTest/AtspiBridgeTestApp.cpp
 // The application side of AtspiBridgeTest: a window holding a rich text
-// editor and a password field, published to AT-SPI by the Linux bridge. When
+// editor, a password field and a row of common widgets (button, checkbox,
+// slider, text field, label), published to AT-SPI by the Linux bridge. When
 // an assistive technology moves the caret to offset 8 it types "XY" there, and
 // shortly after deletes it again, so the client can watch both events arrive.
 // Quits after 20 s if nobody stops it.
-// Version: 1.1.0
-// Last Modified: 2026-10-05
+// Version: 1.2.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasSlider.h"
 
 #include <iostream>
 
@@ -23,7 +28,7 @@ int main() {
     WindowConfig config;
     config.title = "Accessibility Test";
     config.width = 600;
-    config.height = 450;
+    config.height = 520;
     auto window = CreateWindow(config);
     window->Show();
 
@@ -36,6 +41,24 @@ int main() {
     auto password = CreatePasswordInput("masterPassword", 10, 400, 300, 30);
     password->SetText("hunter2");
     window->AddChild(password);
+
+    // The common widgets: the client presses the button (which sets the
+    // label), ticks the checkbox, moves the slider and reads the field.
+    auto status = std::make_shared<UltraCanvasLabel>("status", 10, 480, 200, 24, "Idle");
+    auto apply = std::make_shared<UltraCanvasButton>("apply", 10, 440, 80, 30, "Apply");
+    UltraCanvasLabel* statusLabel = status.get();
+    apply->onClick = [statusLabel]() { statusLabel->SetText("Applied"); };
+    auto wrap = std::make_shared<UltraCanvasCheckbox>("wrap", 100, 440, 140, 30, "Wrap lines");
+    auto volume = std::make_shared<UltraCanvasSlider>("volume", 250, 440, 150, 30);
+    volume->SetRange(0, 100);
+    volume->SetValue(40);
+    volume->SetAccessibleName("Volume");
+    auto name = std::make_shared<UltraCanvasTextInput>("name", 410, 440, 180, 30);
+    name->SetPlaceholder("Name");
+    name->SetText("Ada");
+    for (auto element : std::vector<std::shared_ptr<UltraCanvasUIElement>>{apply, wrap, volume, name, status}) {
+        window->AddChild(element);
+    }
     edit->SetFocus(true);
 
     bool typed = false;
