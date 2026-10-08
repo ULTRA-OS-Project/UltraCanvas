@@ -593,6 +593,7 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
+            -DULTRACANVAS_BUILD_SHARED=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
@@ -619,7 +620,7 @@ jobs:
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
-            -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
+            -DULTRACANVAS_BUILD_SHARED=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
@@ -1104,6 +1105,51 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: ./package-win.sh --no-sign
+
+      # What the package weighs, and where the weight is: the core library
+      # (one shared copy of the framework and the modules folded into it), the
+      # application executables in total and each one. In the job summary
+      # next to the macOS suite table, so an app that has grown a second copy
+      # of the framework - a module archive linked beside the shared core, a
+      # static core - shows up on the run page as a fat executable.
+      - name: Package sizes (Linux, Windows)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            pkg=dist; core=$(ls dist/libUltraCanvas.dll dist/UltraCanvas.dll 2>/dev/null | head -1 || true)
+            apps=$(find dist -maxdepth 1 -name '*.exe' | sort)
+            archive=$(ls UCDemo-Windows-*.zip 2>/dev/null | head -1 || true)
+          else
+            pkg=$(ls -d dist/UltraCanvas-Linux-*/ | head -1); pkg=${pkg%/}
+            core=$(ls "$pkg"/lib/libUltraCanvas.so.* 2>/dev/null | grep -v '\.so\.[0-9]*$' | head -1 || true)
+            [ -n "$core" ] || core=$(ls "$pkg"/lib/libUltraCanvas.so* 2>/dev/null | head -1 || true)
+            apps=$(find "$pkg/bin" -maxdepth 1 -type f -perm -u+x ! -name '*.so*' | sort)
+            archive=$(ls dist/UltraCanvas-Linux-*.tar.gz 2>/dev/null | head -1 || true)
+          fi
+          kb() { du -k "$1" | cut -f1; }
+          mb() { awk -v k="$1" 'BEGIN { printf "%.1f MB", k / 1024 }'; }
+          total=0; rows=""
+          for app in $apps; do
+            k=$(kb "$app"); total=$((total + k))
+            rows+="| $(basename "$app") | $(mb "$k") |"$'\n'
+          done
+          {
+            echo "### Package sizes (${{ runner.os }} ${{ matrix.arch_label }})"
+            echo ""
+            echo "| Item | Size |"
+            echo "|---|---:|"
+            [ -n "$archive" ] && echo "| **$(basename "$archive")** (download) | $(mb "$(kb "$archive")") |"
+            echo "| $pkg/ (unpacked) | $(mb "$(kb "$pkg")") |"
+            if [ -n "$core" ]; then
+              echo "| $(basename "$core") (the shared core) | $(mb "$(kb "$core")") |"
+            else
+              echo "| (no shared core library in the package) | |"
+            fi
+            echo "| application executables, $(echo "$apps" | wc -l | tr -d ' ') in total | $(mb "$total") |"
+            printf '%s' "$rows"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.

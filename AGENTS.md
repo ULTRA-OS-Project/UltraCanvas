@@ -320,15 +320,48 @@ screenshot of the Xvfb display instead (`import -window root shot.png`).
 BROKEN per function — run it before assuming a networking API is usable in a
 given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
 
+### One shared core, on every platform
+
+The framework is **one shared library per platform** - `libUltraCanvas.so`,
+`libUltraCanvas.dylib`, `libUltraCanvas.dll` (`ULTRACANVAS_BUILD_SHARED`, the
+default and what every CI row passes) - and the UI-free modules are **inside
+it**: UltraNet, UltraWin, UltraCrypt, UltraVault, UltraDatabase, UltraMessage,
+NetworkMonitor and VirtualFS are each built as a static archive that the
+shared core absorbs whole (`$<LINK_LIBRARY:WHOLE_ARCHIVE,…>`, "MODULE HOMES" in
+`UltraCanvas/CMakeLists.txt`), so the core exports their complete API and
+every running application shares one copy of the code and its global state.
+Until 0.9.184 the core was static on macOS, so each of the ~20 `.app`
+executables carried the whole framework, and on Linux and Windows an app that
+linked a module archive next to the shared core got a second copy of that
+module - two registries, two connection tables. The rules:
+
+- **Link a module by its public name** - `UltraDatabase`, `UltraVault`,
+  `UltraCrypt`, `UltraMessage`, `NetworkMonitor` - never by its archive
+  (`uc-database`, `uc-vault`, …). The public name is an INTERFACE target that
+  resolves to the shared core, or to the archive under a static core, and
+  carries the module's headers and switches either way. Only
+  `UltraCanvas/CMakeLists.txt` and the other archives name an archive.
+- **A new UI-free module follows the pattern**: `add_library(uc-<name> STATIC …)`,
+  dependencies on other modules by *their* archive names,
+  `_ultracanvas_module_home(<Name> uc-<name>)`, and its archive added to the
+  one `_ultracanvas_absorb_modules(…)` call, dependents before the modules
+  they use. A module that links the core (UltraClipboardHistory,
+  UltraMessageCenter) is not absorbed; it links the core and the homes it needs.
+- **Do not link a module archive and the core on one line**, and do not add a
+  `_uc_core_shared` conditional of your own: that was the workaround for
+  UltraNet and UltraWin before the homes existed.
+
 ### Packaging a new app for macOS
 
 `package-macos.sh` ships the apps as one suite folder, `UltraCanvas/`, with a
 single shared `Frameworks/` that every `.app` loads its dylibs from
-(`@executable_path/../../../Frameworks/`). Linux (`lib/`) and Windows (one
+(`@executable_path/../../../Frameworks/`) - the shared core,
+`libUltraCanvas.1.dylib`, among them. Linux (`lib/`) and Windows (one
 `dist/` folder) already shared their libraries; macOS gave each `.app` its own
 copy of the ~90 Homebrew dylibs, so every new app added ~95 MB to the
 download - two apps added in October 2026 took the macOS DMG from 431 MB back
-to 556 MB. The rules:
+to 556 MB - and, until 0.9.184, its own statically linked copy of the
+framework on top. The rules:
 
 - **Add an app with a `build_app_bundle` call** in `package-macos.sh`, above
   `finish_suite`. That is the whole job: its libraries go to the shared
@@ -337,12 +370,17 @@ to 556 MB. The rules:
   bundle by hand, or point a load command anywhere but the shared folder.
   `verify_suite` fails the packaging run (and CI) when an app carries
   `Contents/Frameworks/`, when a binary needs a dylib missing from the shared
-  folder, or when one still loads from Homebrew.
-- **A command-line tool** goes through `build_cli_tool` (it lands in the suite
-  folder with its own `bin/` and `Frameworks/`).
-- **Check the size** in the macOS job summary ("macOS suite sizes"): a new
-  app should add roughly its executable and resources, a few MB - not a
-  second copy of the libraries.
+  folder, when one still loads from Homebrew or the build tree, or when the
+  shared folder holds no `libUltraCanvas.*.dylib` - a static core on macOS is
+  a packaging error now, not a configuration.
+- **A command-line tool** goes through `build_cli_tool`: it lands in the suite
+  folder as `<name>/bin/<name>` and loads from the same shared `Frameworks/`
+  (`@executable_path/../../Frameworks`), never from a folder of its own.
+- **Check the size** in the job summary - "macOS suite sizes", and "Package
+  sizes" on the Linux and Windows rows, which list the core library, the sum
+  of the application executables and each one: a new app should add roughly
+  its executable and resources, a few MB - not a second copy of the libraries
+  or of the framework.
 - **Do not write `LSMinimumSystemVersion` yourself.** `finish_suite` reads the
   minimum macOS from the app's binaries and the shared `Frameworks/`, writes
   it into the app's `Info.plist`, and fails when something needs a newer

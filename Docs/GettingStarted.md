@@ -151,9 +151,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 

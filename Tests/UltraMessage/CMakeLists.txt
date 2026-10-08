@@ -1,6 +1,8 @@
 # Tests/UltraMessage/CMakeLists.txt
 # Builds UltraMessageTests. In-tree it is enabled by
-# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links the UltraMessage archive.
+# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links UltraMessage - the module's
+# home, which is the shared core that absorbed the archive, or the archive
+# itself under a static core (UltraCanvas/CMakeLists.txt, "MODULE HOMES").
 #
 # It also configures on its own (cmake -S Tests/UltraMessage -B build), where
 # it compiles the module, UltraCanvasJSON, the vendored yyjson and the
