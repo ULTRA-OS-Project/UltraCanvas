@@ -19,10 +19,10 @@ them without linking UltraCanvas.
 Who uses it today: the eBook viewer and the EPUB, FB2 and MOBI engines
 (`HTML::ElementBuilder`), UltraMail's message pane (`HTML::ElementBuilder`),
 UltraMail's composer, replies and signatures (`ImportHTMLToRichDocument`),
-UltraMail's header decoding (`HTML::DecodeEntities`), and, from its pull
-request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
-`<style>` sheets; its own copy of the selector matcher is to become a Traits
-type for the shared one, below). UltraWeb's page reader
+UltraMail's header decoding (`HTML::DecodeEntities`), and the Vector
+plugin's SVG reader (`HTML::StyleSheet` for `<style>` sheets, matched
+through the shared selector matcher with a Traits type over its tinyxml2
+elements, below). UltraWeb's page reader
 (`Docs/UltraWeb/UltraWebProposal.md`, §5) is planned on it.
 
 **The rule** (AGENTS.md, *Core conventions*): HTML, CSS and HTML entities are
