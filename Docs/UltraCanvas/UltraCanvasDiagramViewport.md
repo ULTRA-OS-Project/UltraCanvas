@@ -52,6 +52,32 @@ This matches how the framework actually dispatches input:
 
 The host must keep the viewport's idea of its size current:
 
+<!-- doc-check:
+struct MyDiagramNode { double x = 0, y = 0, width = 0, height = 0; };
+class MyDiagram : public UltraCanvasUIElement {
+public:
+    void SyncViewportSize();
+    DiagramContentBounds ComputeContentBounds() const;
+    bool HandleMouseWheel(const UCEvent& event);
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    void RenderMinimap(IRenderContext* ctx);
+    void RenderControls(IRenderContext* ctx);
+    void RenderContentInWorldSpace(IRenderContext* ctx);
+private:
+    UltraCanvasDiagramViewport viewport;
+    std::map<int, MyDiagramNode> nodes;
+    Color backgroundColor;
+    bool isDraggingMinimap = false;
+    bool isInteractive = true;
+};
+UltraCanvasDiagramViewport viewport;
+Point2Di mousePos;
+bool isDraggingMinimap;
+bool isInteractive;
+void SyncViewportSize();
+DiagramContentBounds ComputeContentBounds();
+void RequestRedraw();
+-->
 ```cpp
 void MyDiagram::SyncViewportSize() {
     viewport.SetViewportSize(GetWidth(), GetHeight());

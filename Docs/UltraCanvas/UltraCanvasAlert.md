@@ -43,6 +43,7 @@ check icon) so success acknowledgements read differently from plain information.
 
 ## Quick Start
 
+<!-- doc-check: UltraCanvasWindowBase* parentWindow; void DeleteItem(); -->
 ```cpp
 #include "UltraCanvasAlert.h"
 using namespace UltraCanvas;
@@ -55,7 +56,7 @@ UltraCanvasAlert::Error("Could not save the file.");
 
 // Yes/No confirmation -> bool
 UltraCanvasAlert::Confirm("Delete this item?", "Confirm Delete",
-                          [](bool yes) { if (yes) deleteItem(); });
+                          [](bool yes) { if (yes) DeleteItem(); });
 
 // Capture which button was pressed
 UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
@@ -132,9 +133,15 @@ class UltraCanvasAlert {
     static void Info      (const std::string& message, const std::string& title = "",
                            std::function<void(DialogResult)> onResult = nullptr,
                            UltraCanvasWindowBase* parent = nullptr);
-    static void Successful(/* same signature */);
-    static void Warning   (/* same signature */);
-    static void Error     (/* same signature */);
+    static void Successful(const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Warning   (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Error     (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
 
     // Icon-less message box: no severity badge, so the content column is
     // centred in the full width of the dialog.

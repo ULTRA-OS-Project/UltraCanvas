@@ -12,6 +12,7 @@ is a small tree of fixed-size records, and an icon frame is either a PNG
 (decoded here). No Windows API, no new dependency, safe on a background
 thread.
 
+<!-- doc-check: std::string path; -->
 ```cpp
 #include "UltraCanvasIconResource.h"
 

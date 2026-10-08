@@ -277,6 +277,7 @@ Hosts that can sample the whole screen (outside the application window) can
 take over by setting `onScreenColorPick`; the button then only raises the
 callback and the host writes the pixel back:
 
+<!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
 ```cpp
 picker->onScreenColorPick = [picker](bool foreground) {
     Color pixel = SampleScreenPixelUnderCursor();   // host-provided

@@ -295,7 +295,9 @@ pkt->SetOnFieldClick([](const UltraCanvas::PacketFieldRef& f) {
                 (unsigned long long)f.bitLength,
                 (unsigned long long)f.ByteOffset());
 });
-pkt->SetOnFieldHover(...);
+pkt->SetOnFieldHover([](const UltraCanvas::PacketFieldRef& f) {
+    std::printf("hover: %s\n", f.name.c_str());   // same payload as the click
+});
 pkt->SetSelectedField("Source Address");
 ```
 

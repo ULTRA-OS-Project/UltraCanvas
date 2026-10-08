@@ -165,8 +165,8 @@ heatmap->SetRenderMode(UltraCanvas::HeatmapRenderMode::Auto);
 ## Labels, titles, colour bar
 
 ```cpp
-heatmap->SetColumnLabels({...});
-heatmap->SetRowLabels({...});
+heatmap->SetColumnLabels({"00:00", "06:00", "12:00", "18:00"});
+heatmap->SetRowLabels({"20 Hz", "200 Hz", "2 kHz", "20 kHz"});
 heatmap->SetAxisTitles("Time", "Frequency");
 heatmap->SetShowColorBar(true);
 ```

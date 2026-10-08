@@ -286,6 +286,7 @@ double when = chart->PixelToDate(x);
 `UltraCanvasTimeAxis.h` is header-only and has no dependencies beyond the
 calendar helper, so any element needing a calendar axis can use it:
 
+<!-- doc-check: Rect2Di plot; -->
 ```cpp
 TimeAxis axis;
 axis.SetRange(TimeAxis::Serial(2026, 1, 1), TimeAxis::Serial(2027, 1, 1));

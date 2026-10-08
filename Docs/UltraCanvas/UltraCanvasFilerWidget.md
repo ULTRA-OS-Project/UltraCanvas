@@ -728,7 +728,10 @@ so a **DRM-protected** `.azw` or a HUFF/CDIC-compressed book shows its cover
 too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
 pictures keeps the glyph.
 
+<!-- doc-check: std::string utf8Path; -->
 ```cpp
+#include "Documents/eBook/EPUBEngine.h"   // UltraCanvas/Plugins; MOBIEngine.h alongside
+
 std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
 if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
 ```
@@ -1068,6 +1071,20 @@ carries for an FTP / SFTP server or a cloud account — through two hooks. It
 gains no network dependency of its own: it only asks, in the same spirit as
 the VirtualFS branch that lists the inside of an archive.
 
+<!-- doc-check:
+struct HostRemoteDrives {              // the host's own: an FTP / cloud drive cache
+    bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error);
+    std::string ListingStatus(const std::string& path);
+    bool Delete(const std::vector<FilerEntry>& entries, std::string& error);
+    bool Rename(const std::string& path, const std::string& newName, std::string& error);
+    bool MakeDirectory(const std::string& folderPath, const std::string& name, std::string& error);
+    bool Upload(const std::string& folderPath, const std::vector<std::string>& localFiles,
+                std::string& error);
+    bool Download(const std::string& folderPath, const std::vector<std::string>& remoteFiles,
+                  std::string& error);
+};
+HostRemoteDrives* drives;
+-->
 ```cpp
 filer->isRemotePath = [](const std::string& path) {
     return path.compare(0, 13, "ultracloud://") == 0;
@@ -1127,19 +1144,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Delete(victims, error);            // queued, not awaited
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Rename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->MakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Upload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->Download(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -1328,6 +1355,7 @@ whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
 hidden-items notice never offers it. Setting or clearing it rescans the folder
 on display; `nullptr` lists everything again.
 
+<!-- doc-check: FileFilter filter; std::string UserHomeDir(); -->
 ```cpp
 // UltraCanvasFileDialog: folders stay, files must match the chosen filter.
 filer->SetEntryFilter([filter](const FilerEntry& e) {
@@ -1589,6 +1617,7 @@ left** of the entry, **vertically centred**:
 | Thumbnail tiles | At the tile's left edge, centred on the icon box (not on the caption) |
 | Treemap | At the cell's left edge, centred on the cell — only in a cell of at least 46 × 42 px, so the sizes stay readable |
 
+<!-- doc-check: std::set<std::string> favorites; -->
 ```cpp
 filer->SetFavoriteMarkProvider([&favorites](const FilerEntry& e) {
     return favorites.count(e.path) > 0;      // a lookup, never a disk walk
@@ -1722,6 +1751,7 @@ works the hover out again, without waiting for the pointer to move.
 
 All operations are also available programmatically:
 
+<!-- doc-check: size_t entryIndex; -->
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
@@ -1746,7 +1776,7 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
                               // a taken name asks Replace (red) / Cancel with the
                               // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
@@ -2337,11 +2367,13 @@ is never lost — it just cannot reach another application there.
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
+<!-- doc-check: Rect2Di badgeRectInWindowCoords; void DrawBadge(IRenderContext* ctx, const Rect2Di& rect); -->
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The owner is the element running the gesture - the filer itself, here.
+window->SetDragOverlay(filer.get(), badgeRectInWindowCoords,
+        [](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+// ... while the gesture runs ...
+window->ClearDragOverlay(filer.get());   // when the gesture ends
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -2510,10 +2542,11 @@ Open-Path item at the *top* of the context menu (followed by a separator) and
 lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 `onOpenPath(entry)` if set, otherwise it browses the entry's parent folder.
 
+<!-- doc-check: void OpenInNewTab(const std::string& folderPath); std::vector<std::string> matches; -->
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -2564,8 +2597,9 @@ entering another folder starts unfiltered.
 When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
+<!-- doc-check: void StartSubfolderScan(const std::string& nameFilter); -->
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
+filer->SetFilterEmptyAction("Scan sub folder", [this, filer]() {
     StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```

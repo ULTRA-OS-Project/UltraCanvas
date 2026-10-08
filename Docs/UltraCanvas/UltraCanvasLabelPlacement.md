@@ -191,6 +191,8 @@ A label can be required to stay inside a shape, which acts as a second, shaped
 bounds. Hierarchical packings use it to keep a child's label within its parent
 circle:
 
+<!-- doc-check: ShapeLabel label; std::vector<Point2Dd> points; std::vector<Size2Dd> measured;
+     std::vector<bool> isExtreme; std::string text; -->
 ```cpp
 LabelShape parent;                 // the enclosing circle
 parent.isContainer = true;         // not a mark labels must avoid covering
@@ -205,13 +207,13 @@ A chart with hundreds of value labels cannot draw them all. Offer them all and
 let the solver decide:
 
 ```cpp
-for (...) {
+for (size_t i = 0; i < points.size(); ++i) {   // one request per data point
     ShapeLabel l;
     l.usePointAnchor = true;
-    l.anchorPoint    = screenPos;
-    l.textSize       = measured;
+    l.anchorPoint    = points[i];     // the value's screen position
+    l.textSize       = measured[i];
     l.allowSuppress  = true;          // drop rather than overprint
-    l.priority       = isExtreme ? 10 : 0;   // keep min/max whatever happens
+    l.priority       = isExtreme[i] ? 10 : 0;   // keep min/max whatever happens
     requests.push_back(l);
 }
 opts.minLabelSeparation = 12.0;       // visible breathing space, not just no overlap

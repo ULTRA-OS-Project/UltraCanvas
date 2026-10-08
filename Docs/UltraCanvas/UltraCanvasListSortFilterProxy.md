@@ -14,6 +14,7 @@ happening.
 - Live example: DemoApp → ListView page, table 2 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`),
   with header-click sorting behind a "Sortable columns" checkbox
 
+<!-- doc-check: ListRowComparator myComparator; double AmountOf(const IListModel& model, int sourceRow); -->
 ```cpp
 auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
 rows->SetColumns({ ListColumnDef("Rechnung", 120),
@@ -23,7 +24,7 @@ rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }
 
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 
-auto view = CreateListView("invoices", 0, 0, 800, 400);
+auto view = std::make_shared<UltraCanvasListView>("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
 proxy->SetFilterText("olpe");       // this filters

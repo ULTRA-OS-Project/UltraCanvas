@@ -88,6 +88,7 @@ and reserves `Alt`+letter for the buttons.
 
 ### Overriding a letter
 
+<!-- doc-check: UltraCanvasWindowBase* parentWindow; void DeleteSelection(); -->
 ```cpp
 DialogConfig config;
 config.title = "Deploy";

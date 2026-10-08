@@ -7962,6 +7962,7 @@ check icon) so success acknowledgements read differently from plain information.
 
 ## Quick Start
 
+<!-- doc-check: UltraCanvasWindowBase* parentWindow; void DeleteItem(); -->
 ```cpp
 #include "UltraCanvasAlert.h"
 using namespace UltraCanvas;
@@ -7974,7 +7975,7 @@ UltraCanvasAlert::Error("Could not save the file.");
 
 // Yes/No confirmation -> bool
 UltraCanvasAlert::Confirm("Delete this item?", "Confirm Delete",
-                          [](bool yes) { if (yes) deleteItem(); });
+                          [](bool yes) { if (yes) DeleteItem(); });
 
 // Capture which button was pressed
 UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
@@ -8051,9 +8052,15 @@ class UltraCanvasAlert {
     static void Info      (const std::string& message, const std::string& title = "",
                            std::function<void(DialogResult)> onResult = nullptr,
                            UltraCanvasWindowBase* parent = nullptr);
-    static void Successful(/* same signature */);
-    static void Warning   (/* same signature */);
-    static void Error     (/* same signature */);
+    static void Successful(const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Warning   (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Error     (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
 
     // Icon-less message box: no severity badge, so the content column is
     // centred in the full width of the dialog.
@@ -16187,6 +16194,8 @@ program opens (a bare `CF_DIB` gains its BMP file header).
 
 `UltraCanvasClipboardRecorder` records the clipboard from a UI timer:
 
+<!-- doc-check: UltraCanvasClipboardRecorder recorder; std::string ActiveApplicationName();
+     void RefreshList(); -->
 ```cpp
 recorder.sourceProvider = []() { return ActiveApplicationName(); };   // optional
 recorder.onRecorded = [this](int64_t, ClipboardRecordResult) { RefreshList(); };
@@ -16247,19 +16256,21 @@ into an `UltraCanvasListView`, in the light style UltraClipboard uses or the
 dark compact one of the desktop's panel
 (`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
 
+<!-- doc-check: std::shared_ptr<UltraCanvasListView> listView;
+     void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); -->
 ```cpp
 auto model = std::make_shared<ClipboardHistoryListModel>();
 auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
-list->SetModel(model);
-list->SetDelegate(rows);
-list->SetVariableRowHeights(true);          // headers are lower than rows
+listView->SetModel(model);
+listView->SetDelegate(rows);
+listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
@@ -16269,7 +16280,7 @@ list->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, con
         default: break;
     }
 };
-list->tooltipProvider = [rows = rows.get()](int row, int) {
+listView->tooltipProvider = [rows = rows.get()](int row, int) {
     return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
 };
 ```
@@ -16674,6 +16685,7 @@ Hosts that can sample the whole screen (outside the application window) can
 take over by setting `onScreenColorPick`; the button then only raises the
 callback and the host writes the pixel back:
 
+<!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
 ```cpp
 picker->onScreenColorPick = [picker](bool foreground) {
     Color pixel = SampleScreenPixelUnderCursor();   // host-provided
@@ -19280,6 +19292,32 @@ This matches how the framework actually dispatches input:
 
 The host must keep the viewport's idea of its size current:
 
+<!-- doc-check:
+struct MyDiagramNode { double x = 0, y = 0, width = 0, height = 0; };
+class MyDiagram : public UltraCanvasUIElement {
+public:
+    void SyncViewportSize();
+    DiagramContentBounds ComputeContentBounds() const;
+    bool HandleMouseWheel(const UCEvent& event);
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    void RenderMinimap(IRenderContext* ctx);
+    void RenderControls(IRenderContext* ctx);
+    void RenderContentInWorldSpace(IRenderContext* ctx);
+private:
+    UltraCanvasDiagramViewport viewport;
+    std::map<int, MyDiagramNode> nodes;
+    Color backgroundColor;
+    bool isDraggingMinimap = false;
+    bool isInteractive = true;
+};
+UltraCanvasDiagramViewport viewport;
+Point2Di mousePos;
+bool isDraggingMinimap;
+bool isInteractive;
+void SyncViewportSize();
+DiagramContentBounds ComputeContentBounds();
+void RequestRedraw();
+-->
 ```cpp
 void MyDiagram::SyncViewportSize() {
     viewport.SetViewportSize(GetWidth(), GetHeight());
@@ -19588,6 +19626,7 @@ and reserves `Alt`+letter for the buttons.
 
 ### Overriding a letter
 
+<!-- doc-check: UltraCanvasWindowBase* parentWindow; void DeleteSelection(); -->
 ```cpp
 DialogConfig config;
 config.title = "Deploy";
@@ -23551,7 +23590,10 @@ so a **DRM-protected** `.azw` or a HUFF/CDIC-compressed book shows its cover
 too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
 pictures keeps the glyph.
 
+<!-- doc-check: std::string utf8Path; -->
 ```cpp
+#include "Documents/eBook/EPUBEngine.h"   // UltraCanvas/Plugins; MOBIEngine.h alongside
+
 std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
 if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
 ```
@@ -23891,6 +23933,20 @@ carries for an FTP / SFTP server or a cloud account — through two hooks. It
 gains no network dependency of its own: it only asks, in the same spirit as
 the VirtualFS branch that lists the inside of an archive.
 
+<!-- doc-check:
+struct HostRemoteDrives {              // the host's own: an FTP / cloud drive cache
+    bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error);
+    std::string ListingStatus(const std::string& path);
+    bool Delete(const std::vector<FilerEntry>& entries, std::string& error);
+    bool Rename(const std::string& path, const std::string& newName, std::string& error);
+    bool MakeDirectory(const std::string& folderPath, const std::string& name, std::string& error);
+    bool Upload(const std::string& folderPath, const std::vector<std::string>& localFiles,
+                std::string& error);
+    bool Download(const std::string& folderPath, const std::vector<std::string>& remoteFiles,
+                  std::string& error);
+};
+HostRemoteDrives* drives;
+-->
 ```cpp
 filer->isRemotePath = [](const std::string& path) {
     return path.compare(0, 13, "ultracloud://") == 0;
@@ -23950,19 +24006,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Delete(victims, error);            // queued, not awaited
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Rename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->MakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->Upload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->Download(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -24151,6 +24217,7 @@ whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
 hidden-items notice never offers it. Setting or clearing it rescans the folder
 on display; `nullptr` lists everything again.
 
+<!-- doc-check: FileFilter filter; std::string UserHomeDir(); -->
 ```cpp
 // UltraCanvasFileDialog: folders stay, files must match the chosen filter.
 filer->SetEntryFilter([filter](const FilerEntry& e) {
@@ -24412,6 +24479,7 @@ left** of the entry, **vertically centred**:
 | Thumbnail tiles | At the tile's left edge, centred on the icon box (not on the caption) |
 | Treemap | At the cell's left edge, centred on the cell — only in a cell of at least 46 × 42 px, so the sizes stay readable |
 
+<!-- doc-check: std::set<std::string> favorites; -->
 ```cpp
 filer->SetFavoriteMarkProvider([&favorites](const FilerEntry& e) {
     return favorites.count(e.path) > 0;      // a lookup, never a disk walk
@@ -24545,6 +24613,7 @@ works the hover out again, without waiting for the pointer to move.
 
 All operations are also available programmatically:
 
+<!-- doc-check: size_t entryIndex; -->
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
@@ -24569,7 +24638,7 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
                               // a taken name asks Replace (red) / Cancel with the
                               // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
@@ -25160,11 +25229,13 @@ is never lost — it just cannot reach another application there.
 The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
+<!-- doc-check: Rect2Di badgeRectInWindowCoords; void DrawBadge(IRenderContext* ctx, const Rect2Di& rect); -->
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The owner is the element running the gesture - the filer itself, here.
+window->SetDragOverlay(filer.get(), badgeRectInWindowCoords,
+        [](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+// ... while the gesture runs ...
+window->ClearDragOverlay(filer.get());   // when the gesture ends
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -25333,10 +25404,11 @@ Open-Path item at the *top* of the context menu (followed by a separator) and
 lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 `onOpenPath(entry)` if set, otherwise it browses the entry's parent folder.
 
+<!-- doc-check: void OpenInNewTab(const std::string& folderPath); std::vector<std::string> matches; -->
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -25387,8 +25459,9 @@ entering another folder starts unfiltered.
 When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
+<!-- doc-check: void StartSubfolderScan(const std::string& nameFilter); -->
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
+filer->SetFilterEmptyAction("Scan sub folder", [this, filer]() {
     StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
@@ -26888,6 +26961,7 @@ rather than `Ubuntu Light` / `Regular`.
 
 ## Drawing a specimen
 
+<!-- doc-check: std::string path; float deviceScale; Rect2Dd rect; -->
 ```cpp
 auto pixmap = UltraCanvas::RenderFontSpecimenPixmap(path, 96, 96, deviceScale);
 if (pixmap) ctx->DrawPixmap(*pixmap, rect, ImageFitMode::Contain);
@@ -27072,7 +27146,7 @@ previewing a candidate before it is installed.
 | `std::vector<std::string> GetRegisteredFontFiles()` | Every file registered so far, in registration order. |
 
 Per platform: FontConfig (`FcConfigAppFontAddFile`) on Linux, Android and
-WASM; GDI `AddFontResourceExW(FR_PRIVATE)` **plus** FontConfig on Windows,
+WASM; GDI `AddFontResourceExW` with `FR_PRIVATE` **plus** FontConfig on Windows,
 because Pango is pinned to its FontConfig backend there; CoreText
 (`CTFontManagerRegisterFontsForURL`, process scope) on macOS.
 
@@ -31284,8 +31358,8 @@ heatmap->SetRenderMode(UltraCanvas::HeatmapRenderMode::Auto);
 ## Labels, titles, colour bar
 
 ```cpp
-heatmap->SetColumnLabels({...});
-heatmap->SetRowLabels({...});
+heatmap->SetColumnLabels({"00:00", "06:00", "12:00", "18:00"});
+heatmap->SetRowLabels({"20 Hz", "200 Hz", "2 kHz", "20 kHz"});
 heatmap->SetAxisTitles("Time", "Frequency");
 heatmap->SetShowColorBar(true);
 ```
@@ -31527,6 +31601,7 @@ is a small tree of fixed-size records, and an icon frame is either a PNG
 (decoded here). No Windows API, no new dependency, safe on a background
 thread.
 
+<!-- doc-check: std::string path; -->
 ```cpp
 #include "UltraCanvasIconResource.h"
 
@@ -34302,6 +34377,8 @@ A label can be required to stay inside a shape, which acts as a second, shaped
 bounds. Hierarchical packings use it to keep a child's label within its parent
 circle:
 
+<!-- doc-check: ShapeLabel label; std::vector<Point2Dd> points; std::vector<Size2Dd> measured;
+     std::vector<bool> isExtreme; std::string text; -->
 ```cpp
 LabelShape parent;                 // the enclosing circle
 parent.isContainer = true;         // not a mark labels must avoid covering
@@ -34316,13 +34393,13 @@ A chart with hundreds of value labels cannot draw them all. Offer them all and
 let the solver decide:
 
 ```cpp
-for (...) {
+for (size_t i = 0; i < points.size(); ++i) {   // one request per data point
     ShapeLabel l;
     l.usePointAnchor = true;
-    l.anchorPoint    = screenPos;
-    l.textSize       = measured;
+    l.anchorPoint    = points[i];     // the value's screen position
+    l.textSize       = measured[i];
     l.allowSuppress  = true;          // drop rather than overprint
-    l.priority       = isExtreme ? 10 : 0;   // keep min/max whatever happens
+    l.priority       = isExtreme[i] ? 10 : 0;   // keep min/max whatever happens
     requests.push_back(l);
 }
 opts.minLabelSeparation = 12.0;       // visible breathing space, not just no overlap
@@ -35307,6 +35384,7 @@ happening.
 - Live example: DemoApp → ListView page, table 2 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`),
   with header-click sorting behind a "Sortable columns" checkbox
 
+<!-- doc-check: ListRowComparator myComparator; double AmountOf(const IListModel& model, int sourceRow); -->
 ```cpp
 auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
 rows->SetColumns({ ListColumnDef("Rechnung", 120),
@@ -35316,7 +35394,7 @@ rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }
 
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 
-auto view = CreateListView("invoices", 0, 0, 800, 400);
+auto view = std::make_shared<UltraCanvasListView>("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
 proxy->SetFilterText("olpe");       // this filters
@@ -42367,7 +42445,9 @@ pkt->SetOnFieldClick([](const UltraCanvas::PacketFieldRef& f) {
                 (unsigned long long)f.bitLength,
                 (unsigned long long)f.ByteOffset());
 });
-pkt->SetOnFieldHover(...);
+pkt->SetOnFieldHover([](const UltraCanvas::PacketFieldRef& f) {
+    std::printf("hover: %s\n", f.name.c_str());   // same payload as the click
+});
 pkt->SetSelectedField("Source Address");
 ```
 
@@ -59286,6 +59366,7 @@ double when = chart->PixelToDate(x);
 `UltraCanvasTimeAxis.h` is header-only and has no dependencies beyond the
 calendar helper, so any element needing a calendar axis can use it:
 
+<!-- doc-check: Rect2Di plot; -->
 ```cpp
 TimeAxis axis;
 axis.SetRange(TimeAxis::Serial(2026, 1, 1), TimeAxis::Serial(2027, 1, 1));
@@ -61831,8 +61912,8 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
-| Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
-| Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
+| Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog` (`ShowMetadataDialog`) — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
+| Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog` (`ShowModelViewDialog`) ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
@@ -61932,7 +62013,7 @@ exists:
 
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
-auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
+auto shot   = CreateImageFromFile("preview", 0, 0, 320, 240, "poster.png");
 auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
