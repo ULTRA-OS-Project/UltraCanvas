@@ -1,10 +1,8 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.4.0 - the overflow button opens the search popup only when search is
-//                 enabled and the listed tabs reach the threshold, a plain menu of
-//                 the tabs otherwise (both settings used to be stored and ignored)
+// Version: 2.5.0 - a tab list to screen readers, named after the open tab
 // Version: 2.3.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -116,6 +114,15 @@ namespace UltraCanvas {
 // ===== TABBED CONTAINER COMPONENT =====
     class UltraCanvasTabbedContainer : public UltraCanvasContainer {
     public:
+        // ===== ACCESSIBILITY =====
+        // A tab list named after the open tab (unless SetAccessibleName() says
+        // otherwise); the open tab's content is reached as its children.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TabList; }
+        std::string GetAccessibleName() const override {
+            if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+            return activeTabIndex >= 0 ? GetTabTitle(activeTabIndex) : std::string();
+        }
+
         // ===== TAB MANAGEMENT =====
         std::vector<std::unique_ptr<TabData>> tabs;
         int activeTabIndex = -1;

@@ -15,8 +15,8 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
-// Version: 1.6.0
-// Last Modified: 2026-10-01
+// Version: 1.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -268,6 +268,10 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
+        // ===== ACCESSIBILITY =====
+        // A toolbar; its buttons are reached as its children.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Toolbar; }
+
         UltraCanvasToolbar(const std::string& identifier, float x, float y,
                            float width, float height);
 

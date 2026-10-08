@@ -1,9 +1,8 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.4.0 - SliderHandleShape is an enum class: Circle, Square, Triangle and
-//                 Diamond no longer land in namespace UltraCanvas
+// Version: 3.5.0 - a slider to screen readers, with a value they can read and set
 // Version: 3.3.1
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -158,6 +157,14 @@ namespace UltraCanvas {
         // ===== VALUE MANAGEMENT =====
         void SetRange(float min, float max);
         void SetValue(float value);
+
+        // ===== ACCESSIBILITY =====
+        // A slider with its value, range and step; a screen reader can set the
+        // value (callbacks fire as for a user's change). A range slider (two
+        // handles) reports no single value.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Slider; }
+        bool GetAccessibleRange(AccessibleRange& range) const override;
+        bool SetAccessibleValue(double value) override;
 
         float GetValue() const { return currentValue; }
         float GetMinValue() const { return minValue; }

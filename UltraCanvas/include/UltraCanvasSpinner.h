@@ -12,8 +12,8 @@
 //   * UpDownRight    - editable field with stacked up/down buttons on the right
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //
-// Version: 1.1.0
-// Last Modified: 2026-07-13
+// Version: 1.2.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -157,6 +157,14 @@ namespace UltraCanvas {
         // ===== VALUE MANAGEMENT =====
         void   SetRange(double minVal, double maxVal);
         void   SetValue(double newValue);        // clamps/wraps, snaps to step grid
+
+        // ===== ACCESSIBILITY =====
+        // A spin button with its value and range; in list mode its value text
+        // is the shown item. A screen reader can set the value.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::SpinButton; }
+        bool GetAccessibleRange(AccessibleRange& range) const override;
+        bool SetAccessibleValue(double newValue) override;
+        std::string GetAccessibleValueText() const override;
         double GetValue() const { return value; }
         int    GetIntValue() const { return static_cast<int>(std::llround(value)); }
         double GetMinValue() const { return minValue; }
