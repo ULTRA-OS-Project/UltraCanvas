@@ -4,6 +4,7 @@
 //
 //   videofx info <file>
 //   videofx beats <file>                 tempo and beat times of its sound
+//   videofx faces <image>                frontal faces in a photo, as fractions of it
 //   videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]
 //   videofx transcode <in> <out> [options]
 //   videofx trim <in> <out> <start> <end> [--lossless] [options]
@@ -34,6 +35,7 @@
 //          --beats-per-image N           slideshow: every image exactly N beats (implies --beat-sync)
 //          --keep N:X,Y,W,H              slideshow: keep this region of image N (1 = the first) in
 //                                        shot - a face; fractions of the image; repeatable
+//          --no-faces                    slideshow: do not look for faces to keep in shot
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -45,7 +47,7 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
@@ -92,6 +94,7 @@ int Usage() {
     std::cerr <<
         "usage: videofx info <file>\n"
         "       videofx beats <file>\n"
+        "       videofx faces <image>\n"
         "       videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]\n"
         "       videofx transcode <in> <out> [options]\n"
         "       videofx trim <in> <out> <start> <end> [--lossless] [options]\n"
@@ -103,7 +106,7 @@ int Usage() {
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --music FILE [--music FILE2 ...] [--music-crossfade S]\n"
         "         [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
-        "         [--beat-sync] [--beats-per-image N] [--keep N:X,Y,W,H]...\n"
+        "         [--beat-sync] [--beats-per-image N] [--keep N:X,Y,W,H]... [--no-faces]\n"
         "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -278,6 +281,7 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--no-loop") settings.music.loop = false;
         else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--beat-sync") o.slideshow.beatSync = true;
+        else if (a == "--no-faces") o.slideshow.keepFacesInView = false;
         else if (a == "--keep" && next(v)) { if (!ParseKeep(v, o.slideshow.keepInView)) return false; }
         else if (a == "--beats-per-image" && next(v)) o.slideshow.beatsPerImage = static_cast<int>(NumberOr(v, -1.0));
         else if (a == "--fit" && next(v)) {
@@ -400,6 +404,22 @@ int Beats(const std::string& path) {
     return 0;
 }
 
+int Faces(const std::string& path) {
+    VideoFXFrame image;
+    VideoFXResult r = VideoFX_ExtractFrame(path, 0.0, image);
+    std::vector<VideoFXRect> faces;
+    if (r == VideoFXResult::Ok) r = VideoFX_DetectFaces(image, faces);
+    if (r != VideoFXResult::Ok) return Report(r);
+    std::cout.imbue(std::locale::classic());
+    std::cout << path << ": " << faces.size() << (faces.size() == 1 ? " face" : " faces") << " ("
+              << image.width << "x" << image.height << ")\n" << std::fixed << std::setprecision(3);
+    for (const VideoFXRect& f : faces)
+        std::cout << "  " << f.x << "," << f.y << "," << f.w << "," << f.h << "   (" << std::lround(f.x * image.width)
+                  << ", " << std::lround(f.y * image.height) << ", " << std::lround(f.w * image.width) << " x "
+                  << std::lround(f.h * image.height) << " px)\n";
+    return 0;
+}
+
 int Info(const std::string& path) {
     VideoFXMediaInfo info;
     VideoFXResult r = VideoFX_Probe(path, info);
@@ -447,6 +467,7 @@ int main(int argc, char** argv) {
 
     if (cmd == "info" && args.size() == 1) return Info(args[0]);
     if (cmd == "beats" && args.size() == 1) return Beats(args[0]);
+    if (cmd == "faces" && args.size() == 1) return Faces(args[0]);
 
     if (cmd == "frame" && (args.size() == 3 || args.size() == 5)) {
         VideoFXFrame frame;

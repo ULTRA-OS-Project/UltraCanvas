@@ -1,11 +1,12 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
+#include "VideoFXFaces.h"
 
 namespace VideoFX {
 
@@ -75,6 +76,14 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>&, const std
     return Unavailable();
 }
 VideoFXResult VideoFX_DetectBeats(const std::string&, VideoFXBeatInfo&) { return Unavailable(); }
+
+// Pure C++: works without FFmpeg as well
+VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
+    faces.clear();
+    if (!image.IsValid()) return VideoFXResult::InvalidArgument;
+    faces = Internal::DetectFaces(image);
+    return VideoFXResult::Ok;
+}
 VideoFXResult VideoFX_GenerateTestClip(const std::string&, double, int, int, double, bool) { return Unavailable(); }
 
 } // namespace VideoFX
