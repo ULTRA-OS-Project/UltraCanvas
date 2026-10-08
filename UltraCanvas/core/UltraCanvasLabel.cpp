@@ -510,7 +510,10 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasLabel::GetRenderedText() {
-        if (!textLayout) EnsureTextLayout();
+        if (!textLayout && EnsureTextLayout()) {
+            // Made here without the label's width: the next paint sets it.
+            internalLayoutValid = false;
+        }
         if (textLayout) return textLayout->GetText();
         return isMarkup ? std::string() : text;
     }
