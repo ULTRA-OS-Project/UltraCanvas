@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.8.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-07-20
+// Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -398,6 +398,10 @@ namespace UltraCanvas {
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
+        } else if (xEvent.type == PropertyNotify &&
+                   UltraCanvasLinuxClipboard::ProcessClipboardPropertyEvent(xEvent)) {
+            // A piece of a clipboard copy sent or received in pieces (INCR)
+            return;
         } else {
             auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
 

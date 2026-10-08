@@ -3675,6 +3675,28 @@ else()
     message(STATUS "  ClipboardTargetsTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== CLIPBOARD INCR TEST =====
+# A copy too large for one X request travels in pieces (ICCCM INCR), both
+# ways; checked against xclip as well when it is installed. Skips without
+# DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building ClipboardIncrTest...")
+    add_executable(ClipboardIncrTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
+    )
+    target_include_directories(ClipboardIncrTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardIncrTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardIncrTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardIncrTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardIncrTest COMMAND ClipboardIncrTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardIncrTest")
+else()
+    message(STATUS "  ClipboardIncrTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== DIALOG ESCAPE TEST =====
 # Escape cancels a custom dialog from any field, the multi-line text area
 # included (it used to swallow the key). Skips without DISPLAY.
