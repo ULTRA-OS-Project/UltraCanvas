@@ -31,13 +31,16 @@
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
 
-    // Bundled DejaVu font registration tables. Defined in UltraCanvasApplication.cpp.
+    // The bundled fonts' file names (the Ubuntu and Ubuntu Mono families), in
+    // GetBundledFontsDir(). Defined in UltraCanvasApplication.cpp.
     extern const char* const kEmbeddedAllFonts[];
     extern const size_t kEmbeddedAllFontsCount;
     extern const char* const kEmbeddedMonoFonts[];
     extern const size_t kEmbeddedMonoFontsCount;
 
-    // Returns absolute path to media/fonts/dejavu/ in the resources dir.
+    // The folder of the fonts the framework ships: media/fonts/ in the
+    // resources dir (GetResourcesDir), absolute and ending in a separator, so
+    // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
 
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
