@@ -91,7 +91,7 @@ history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
 
 // A drag: one entry from press to release.
 history.BeginEdit("Scale");
-... ScaleElements(...) on every drag event ...
+// ... ScaleElements(...) on every drag event ...
 history.EndEdit();
 
 // Repeated nudges collapse into one step.
@@ -122,18 +122,20 @@ and the canvas wraps it with the tolerance given in screen pixels.
 
 All edit the model in place; wrap them in the history.
 
+<!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; double dx, dy, sx, sy, radians, radX, radY; Point2Dd pivot; VectorStorage::Matrix3x3 matrix; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; int at; VectorEdit::VectorSelection sel; std::shared_ptr<VectorStorage::VectorPath> path; Point2Dd p, delta; double tolerance; struct MyTool { void OnPress(const VectorPointerEvent&); void OnDrag(const VectorPointerEvent&); void OnRelease(const VectorPointerEvent&); bool OnKey(const UCEvent&); void DrawOverlay(IRenderContext*, const VectorViewTransform&); }; MyTool* tool; struct MyStatusBar { void SetZoom(double); }; MyStatusBar* statusBar; std::shared_ptr<VectorEdit::VectorSelection> selectionPtr; -->
+
 ```cpp
 TranslateElements(els, dx, dy);
 ScaleElements(els, sx, sy, pivot);            // pivot in document units
 RotateElements(els, radians, pivot);
 SkewElements(els, radX, radY, pivot);
-TransformElements(els, Matrix3x3);            // any document-space matrix
+TransformElements(els, matrix);               // any document-space Matrix3x3
 BakeTransform(el);                            // write the transform into the geometry
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
 auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
-ReparentElement(el, otherGroup, index);
+ReparentElement(el, otherGroup, at);          // at an index in the new parent (-1 = end)
 
 DeleteElements(els);
 auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids

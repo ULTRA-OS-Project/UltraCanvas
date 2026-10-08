@@ -47,11 +47,13 @@ changes underneath it. That same string is what the element hands to
 
 ## Minimal use
 
+<!-- doc-check: std::string path, savePath, html; void ShowError(const std::string& message); std::vector<uint8_t> BytesFor(const std::string& source); MenuItemData* splitItem; int imageBlock, block, placeholderOffset; bool ShowMyOwnMenu(const UCEvent& event); -->
+
 ```cpp
 #include "UltraCanvasRichTextEdit.h"
 
 auto editor = CreateRichTextEdit("editor", 0, 0, 800, 600);
-window->AddElement(editor);
+window->AddChild(editor);
 
 editor->SetMarkdown("# Report\n\nSome **bold** text and a [link](https://example.com).\n");
 editor->onDocumentChanged = [editor]() {
@@ -405,7 +407,7 @@ what a menu should ask to decide whether to offer the item:
 if (editor->IsCaretInTable()) {
     int rows = 0, columns = 0, row = 0, column = 0;
     editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
-    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+    splitItem->enabled = editor->CanSplitCurrentCell();     // the MenuItemData of "Split cell"
 }
 ```
 
@@ -467,7 +469,7 @@ if (editor->HasSelectedImage()) {
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
-edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
 ### Floating pictures
@@ -710,7 +712,7 @@ Right-click offers the suggestions. A host that has its own context menu takes
 the click first and puts them inside it:
 
 ```cpp
-editor->onContextMenu = [this](const UCEvent& event) {
+editor->onContextMenu = [&](const UCEvent& event) {
     return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
 };
 ```

@@ -41,7 +41,11 @@ d.create      = [](const std::string& id, int x, int y, int w, int h) {
 };
 // Optional capabilities:
 d.textKeywords   = {"kanban"};                  // dispatch for CreateFromText
-d.createFromText = ...;                         // Mermaid-style text loader
+d.createFromText = [](const std::string& id, int x, int y, int w, int h,
+                      const std::string& text, std::string* error) {
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateKanbanBoardElement(id, x, y, w, h));   // ... then load `text`; set *error on failure
+};
 d.propertyKeys   = {"columns", "wipLimit"};     // IConfigurableElement keys
 UltraCanvasElementRegistry::Register(d);
 ```
@@ -104,13 +108,20 @@ Descriptors advertise their keys in `propertyKeys`.
 // myplugin.cpp - built as a CMake MODULE library
 #include "UltraCanvasElementPlugins.h"
 
+namespace kanban_plugin {
+
 static bool Init(const UltraCanvas::UltraCanvasPluginHost* host) {
     UltraCanvas::UCElementDescriptor d;
     /* ... fill as above ... */
     host->RegisterElement(&d);       // never resolve host symbols directly
     return true;                     // false = refuse (missing backend, ...)
 }
+
+// At file scope or, as here, inside the plugin's namespace: the symbol it
+// defines is extern "C", so its exported name is the same either way.
 ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
+
+} // namespace kanban_plugin
 ```
 
 The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the

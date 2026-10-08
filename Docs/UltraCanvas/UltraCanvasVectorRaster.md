@@ -11,6 +11,8 @@ therefore part of opening one, and the point of this header is that the
 drawing is rendered **at** the size asked for rather than rendered small and
 scaled up.
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
+
 ```cpp
 #include "UltraCanvasVectorRaster.h"
 
@@ -79,6 +81,8 @@ how many there are (1 for everything but PDF).
 it draws chosen elements of a `VectorDocument` - an editor's selection, say -
 into a fresh layer. It is how a drawing program's *Copy* gives other programs
 a picture.
+
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
 
 ```cpp
 #include "UltraCanvasVectorRaster.h"

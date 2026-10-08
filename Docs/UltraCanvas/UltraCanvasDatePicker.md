@@ -164,7 +164,7 @@ Every calendar supports an explicit set of **blocked / unavailable dates**, in
 addition to `SetMinDate`/`SetMaxDate` and the arbitrary `SetDateEnabledPredicate`:
 
 ```cpp
-calendar->SetBlockedDates({ ... });          // replace the whole set
+calendar->SetBlockedDates({UCDate(2026, 7, 1), UCDate(2026, 7, 2)});   // replace the whole set
 calendar->AddBlockedDate(UCDate(2026, 7, 4));
 calendar->BlockDateRange(start, end);        // e.g. an existing reservation
 calendar->ClearBlockedDates();

@@ -30,9 +30,13 @@ All four follow the native-dialogs switch and report through a callback
 (immediately for a native dialog, which blocks; when the user closes it for
 the framework's, which does not).
 
+<!-- doc-check: UltraCanvasWindowBase* window; -->
+
 ```cpp
 #include "UltraCanvasFileLoader.h"
 
+// `window` is the application's UltraCanvasWindowBase* (window.get() on the
+// shared_ptr CreateWindow returned).
 FileDialogOptions opts;
 opts.SetTitle("Open a picture")
     .SetParentWindow(window)                 // modal to the application window

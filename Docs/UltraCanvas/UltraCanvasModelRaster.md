@@ -17,6 +17,8 @@ Filer call it from background decode workers, what makes it the STL element's
 fallback in a build without `ULTRACANVAS_ENABLE_GL`, and what makes "save this
 view as a bitmap" work identically on every build.
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+
 ```cpp
 #include "UltraCanvasModelRaster.h"
 
@@ -25,7 +27,7 @@ if (IsModelGraphicsPath(path)) {
     ModelRasterOptions options;
     options.width  = 1024;
     options.height = 768;
-    options.pose   = viewer->GetModelViewPose();             // what the user framed
+    viewer->GetModelViewPose(options.pose);                 // what the user framed (false: no model shown)
     std::string error;
     if (auto layer = RasterizeModelFile(path, options, error)) {
         document->AddLayer(layer);

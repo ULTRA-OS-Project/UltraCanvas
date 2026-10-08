@@ -184,7 +184,11 @@ container registers it with `RegisterVideoCodecPlugin`
 (`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
 `IVideoDecodeSession`:
 
+<!-- doc-check: struct MyApp { static std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); }; -->
+
 ```cpp
+#include "libspecific/Video/VideoCodecPlugin.h"
+
 MediaCodecRegistration codec;
 codec.extension   = "ivf";
 codec.description = "Indexed Video Format";

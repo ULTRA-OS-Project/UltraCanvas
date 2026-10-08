@@ -19,6 +19,8 @@ shows its programs correctly), while a `.txt` is drawn as *this* desktop draws
 a text file, and looks different on a different desktop. A caller asks the
 native module first and this one for everything else.
 
+<!-- doc-check: std::string path; bool isDirectory; -->
+
 ```cpp
 #include "UltraCanvasHostFileIcons.h"
 

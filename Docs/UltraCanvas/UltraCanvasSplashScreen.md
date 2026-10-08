@@ -15,7 +15,16 @@ file picker — still appears and can take the focus. Anything that needs the
 user's attention should therefore wait for `onSplashClosed` rather than opening
 while the splash is up.
 
+<!-- doc-check:
+#define LADYBIRD_VERSION "1.0.0"
+#define LADYBIRD_VERSION_DATE "2026-08-28"
+struct LadybirdMainWindow : UltraCanvasWindow { void PromptCrashRecovery(); };
+std::shared_ptr<LadybirdMainWindow> mainWindow;
+-->
+
 ```cpp
+// LADYBIRD_VERSION / LADYBIRD_VERSION_DATE come from the application's
+// build; PromptCrashRecovery() is the application's own main-window method.
 UltraCanvasSplashScreen splash;
 
 SplashScreenConfig config;

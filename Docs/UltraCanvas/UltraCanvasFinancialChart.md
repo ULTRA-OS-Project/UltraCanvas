@@ -71,7 +71,6 @@ class FinancialChartDataVector : public IChartDataSource {
 ```cpp
 UltraCanvasFinancialChartElement(
     const std::string& id,  // Unique identifier
-    long uid,               // Unique numeric ID
     int x,                  // X position
     int y,                  // Y position
     int width,              // Chart width
@@ -142,7 +141,6 @@ Creates a basic financial chart element.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartElement(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height
 );
@@ -155,7 +153,6 @@ Creates a financial chart with pre-loaded data.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height,
     std::shared_ptr<FinancialChartDataVector> data,
@@ -171,7 +168,6 @@ std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
 // Create a financial chart element
 auto stockChart = CreateFinancialChartElement(
     "StockChart",  // ID
-    1001,          // UID
     20, 50,        // Position
     980, 400       // Size
 );
@@ -241,20 +237,24 @@ stockChart->SetGridColor(Color(210, 210, 210, 255));
 
 ### Complete Example Application
 
+<!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
+
 ```cpp
-class FinancialChartApp : public UltraCanvasApplication {
+// The application's own page: builds the chart into a container the window
+// already holds (UltraCanvasApplication::Initialize is not virtual).
+class FinancialChartPage {
 private:
     std::shared_ptr<UltraCanvasFinancialChartElement> chart;
     std::shared_ptr<FinancialChartDataVector> data;
 
 public:
-    bool Initialize() override {
-        // Generate sample data
+    bool Build(const std::shared_ptr<UltraCanvasContainer>& mainContainer) {
+        // Generate sample data (the application's own helper)
         data = GenerateSampleStockData("ULTR", 90);
         
         // Create chart
         chart = CreateFinancialChartElement(
-            "MainChart", 1000, 20, 50, 980, 400
+            "MainChart", 20, 50, 980, 400
         );
         
         // Configure chart

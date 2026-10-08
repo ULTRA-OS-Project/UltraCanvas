@@ -147,10 +147,10 @@ zoom; `FitToRange()` picks a day width so the whole project fits.
 Callbacks:
 
 ```cpp
-gantt->onTaskClick        = [](int id) { ... };
-gantt->onTaskDoubleClick  = [](int id) { ... };
-gantt->onTaskToggled      = [](int id, bool expanded) { ... };
-gantt->onSelectionChanged = [](int id) { ... };   // -1 = cleared
+gantt->onTaskClick        = [](int id) { /* ... */ };
+gantt->onTaskDoubleClick  = [](int id) { /* ... */ };
+gantt->onTaskToggled      = [](int id, bool expanded) { /* ... */ };
+gantt->onSelectionChanged = [](int id) { /* ... */ };   // -1 = cleared
 ```
 
 ## Element API summary

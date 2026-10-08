@@ -17951,7 +17951,7 @@ Every calendar supports an explicit set of **blocked / unavailable dates**, in
 addition to `SetMinDate`/`SetMaxDate` and the arbitrary `SetDateEnabledPredicate`:
 
 ```cpp
-calendar->SetBlockedDates({ ... });          // replace the whole set
+calendar->SetBlockedDates({UCDate(2026, 7, 1), UCDate(2026, 7, 2)});   // replace the whole set
 calendar->AddBlockedDate(UCDate(2026, 7, 4));
 calendar->BlockDateRange(start, end);        // e.g. an existing reservation
 calendar->ClearBlockedDates();
@@ -22049,7 +22049,11 @@ d.create      = [](const std::string& id, int x, int y, int w, int h) {
 };
 // Optional capabilities:
 d.textKeywords   = {"kanban"};                  // dispatch for CreateFromText
-d.createFromText = ...;                         // Mermaid-style text loader
+d.createFromText = [](const std::string& id, int x, int y, int w, int h,
+                      const std::string& text, std::string* error) {
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateKanbanBoardElement(id, x, y, w, h));   // ... then load `text`; set *error on failure
+};
 d.propertyKeys   = {"columns", "wipLimit"};     // IConfigurableElement keys
 UltraCanvasElementRegistry::Register(d);
 ```
@@ -22112,13 +22116,20 @@ Descriptors advertise their keys in `propertyKeys`.
 // myplugin.cpp - built as a CMake MODULE library
 #include "UltraCanvasElementPlugins.h"
 
+namespace kanban_plugin {
+
 static bool Init(const UltraCanvas::UltraCanvasPluginHost* host) {
     UltraCanvas::UCElementDescriptor d;
     /* ... fill as above ... */
     host->RegisterElement(&d);       // never resolve host symbols directly
     return true;                     // false = refuse (missing backend, ...)
 }
+
+// At file scope or, as here, inside the plugin's namespace: the symbol it
+// defines is extern "C", so its exported name is the same either way.
 ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
+
+} // namespace kanban_plugin
 ```
 
 The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the
@@ -25659,7 +25670,6 @@ class FinancialChartDataVector : public IChartDataSource {
 ```cpp
 UltraCanvasFinancialChartElement(
     const std::string& id,  // Unique identifier
-    long uid,               // Unique numeric ID
     int x,                  // X position
     int y,                  // Y position
     int width,              // Chart width
@@ -25730,7 +25740,6 @@ Creates a basic financial chart element.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartElement(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height
 );
@@ -25743,7 +25752,6 @@ Creates a financial chart with pre-loaded data.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height,
     std::shared_ptr<FinancialChartDataVector> data,
@@ -25759,7 +25767,6 @@ std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
 // Create a financial chart element
 auto stockChart = CreateFinancialChartElement(
     "StockChart",  // ID
-    1001,          // UID
     20, 50,        // Position
     980, 400       // Size
 );
@@ -25829,20 +25836,24 @@ stockChart->SetGridColor(Color(210, 210, 210, 255));
 
 ### Complete Example Application
 
+<!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
+
 ```cpp
-class FinancialChartApp : public UltraCanvasApplication {
+// The application's own page: builds the chart into a container the window
+// already holds (UltraCanvasApplication::Initialize is not virtual).
+class FinancialChartPage {
 private:
     std::shared_ptr<UltraCanvasFinancialChartElement> chart;
     std::shared_ptr<FinancialChartDataVector> data;
 
 public:
-    bool Initialize() override {
-        // Generate sample data
+    bool Build(const std::shared_ptr<UltraCanvasContainer>& mainContainer) {
+        // Generate sample data (the application's own helper)
         data = GenerateSampleStockData("ULTR", 90);
         
         // Create chart
         chart = CreateFinancialChartElement(
-            "MainChart", 1000, 20, 50, 980, 400
+            "MainChart", 20, 50, 980, 400
         );
         
         // Configure chart
@@ -28289,10 +28300,10 @@ zoom; `FitToRange()` picks a day width so the whole project fits.
 Callbacks:
 
 ```cpp
-gantt->onTaskClick        = [](int id) { ... };
-gantt->onTaskDoubleClick  = [](int id) { ... };
-gantt->onTaskToggled      = [](int id, bool expanded) { ... };
-gantt->onSelectionChanged = [](int id) { ... };   // -1 = cleared
+gantt->onTaskClick        = [](int id) { /* ... */ };
+gantt->onTaskDoubleClick  = [](int id) { /* ... */ };
+gantt->onTaskToggled      = [](int id, bool expanded) { /* ... */ };
+gantt->onSelectionChanged = [](int id) { /* ... */ };   // -1 = cleared
 ```
 
 ## Element API summary
@@ -31470,6 +31481,8 @@ picture out of the file, which is why a Windows disk mounted on Linux still
 shows its programs correctly), while a `.txt` is drawn as *this* desktop draws
 a text file, and looks different on a different desktop. A caller asks the
 native module first and this one for everything else.
+
+<!-- doc-check: std::string path; bool isDirectory; -->
 
 ```cpp
 #include "UltraCanvasHostFileIcons.h"
@@ -37431,8 +37444,9 @@ colours directly under the picture: an
 swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
 clicking the checkerboard goes back to the transparency pattern. Files without
 transparency never show the strip, so it costs no space where it would mean
-nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
-opaque alpha channel a PNG export routinely carries.
+nothing — that check is `UCImage::HasTransparency` (the Cairo image,
+`libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
+channel a PNG export routinely carries.
 
 ```cpp
 viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
@@ -39872,6 +39886,8 @@ Filer call it from background decode workers, what makes it the STL element's
 fallback in a build without `ULTRACANVAS_ENABLE_GL`, and what makes "save this
 view as a bitmap" work identically on every build.
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+
 ```cpp
 #include "UltraCanvasModelRaster.h"
 
@@ -39880,7 +39896,7 @@ if (IsModelGraphicsPath(path)) {
     ModelRasterOptions options;
     options.width  = 1024;
     options.height = 768;
-    options.pose   = viewer->GetModelViewPose();             // what the user framed
+    viewer->GetModelViewPose(options.pose);                 // what the user framed (false: no model shown)
     std::string error;
     if (auto layer = RasterizeModelFile(path, options, error)) {
         document->AddLayer(layer);
@@ -43040,7 +43056,7 @@ pcp->SetGroupColors({{"setosa", Color(68, 1, 84)},
                      {"versicolor", Color(33, 145, 140)},
                      {"virginica", Color(253, 231, 37)}});
 
-window->AddElement(pcp.get());
+window->AddChild(pcp);
 ```
 
 Record-oriented input (`SetRecords`) takes `PCPRecord` — values, label, group,
@@ -48378,11 +48394,13 @@ changes underneath it. That same string is what the element hands to
 
 ## Minimal use
 
+<!-- doc-check: std::string path, savePath, html; void ShowError(const std::string& message); std::vector<uint8_t> BytesFor(const std::string& source); MenuItemData* splitItem; int imageBlock, block, placeholderOffset; bool ShowMyOwnMenu(const UCEvent& event); -->
+
 ```cpp
 #include "UltraCanvasRichTextEdit.h"
 
 auto editor = CreateRichTextEdit("editor", 0, 0, 800, 600);
-window->AddElement(editor);
+window->AddChild(editor);
 
 editor->SetMarkdown("# Report\n\nSome **bold** text and a [link](https://example.com).\n");
 editor->onDocumentChanged = [editor]() {
@@ -48736,7 +48754,7 @@ what a menu should ask to decide whether to offer the item:
 if (editor->IsCaretInTable()) {
     int rows = 0, columns = 0, row = 0, column = 0;
     editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
-    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+    splitItem->enabled = editor->CanSplitCurrentCell();     // the MenuItemData of "Split cell"
 }
 ```
 
@@ -48798,7 +48816,7 @@ if (editor->HasSelectedImage()) {
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
-edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
 ### Floating pictures
@@ -49041,7 +49059,7 @@ Right-click offers the suggestions. A host that has its own context menu takes
 the click first and puts them inside it:
 
 ```cpp
-editor->onContextMenu = [this](const UCEvent& event) {
+editor->onContextMenu = [&](const UCEvent& event) {
     return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
 };
 ```
@@ -54297,7 +54315,16 @@ file picker — still appears and can take the focus. Anything that needs the
 user's attention should therefore wait for `onSplashClosed` rather than opening
 while the splash is up.
 
+<!-- doc-check:
+#define LADYBIRD_VERSION "1.0.0"
+#define LADYBIRD_VERSION_DATE "2026-08-28"
+struct LadybirdMainWindow : UltraCanvasWindow { void PromptCrashRecovery(); };
+std::shared_ptr<LadybirdMainWindow> mainWindow;
+-->
+
 ```cpp
+// LADYBIRD_VERSION / LADYBIRD_VERSION_DATE come from the application's
+// build; PromptCrashRecovery() is the application's own main-window method.
 UltraCanvasSplashScreen splash;
 
 SplashScreenConfig config;
@@ -56127,9 +56154,13 @@ All four follow the native-dialogs switch and report through a callback
 (immediately for a native dialog, which blocks; when the user closes it for
 the framework's, which does not).
 
+<!-- doc-check: UltraCanvasWindowBase* window; -->
+
 ```cpp
 #include "UltraCanvasFileLoader.h"
 
+// `window` is the application's UltraCanvasWindowBase* (window.get() on the
+// shared_ptr CreateWindow returned).
 FileDialogOptions opts;
 opts.SetTitle("Open a picture")
     .SetParentWindow(window)                 // modal to the application window
@@ -62527,7 +62558,7 @@ history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
 
 // A drag: one entry from press to release.
 history.BeginEdit("Scale");
-... ScaleElements(...) on every drag event ...
+// ... ScaleElements(...) on every drag event ...
 history.EndEdit();
 
 // Repeated nudges collapse into one step.
@@ -62558,18 +62589,20 @@ and the canvas wraps it with the tolerance given in screen pixels.
 
 All edit the model in place; wrap them in the history.
 
+<!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; double dx, dy, sx, sy, radians, radX, radY; Point2Dd pivot; VectorStorage::Matrix3x3 matrix; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; int at; VectorEdit::VectorSelection sel; std::shared_ptr<VectorStorage::VectorPath> path; Point2Dd p, delta; double tolerance; struct MyTool { void OnPress(const VectorPointerEvent&); void OnDrag(const VectorPointerEvent&); void OnRelease(const VectorPointerEvent&); bool OnKey(const UCEvent&); void DrawOverlay(IRenderContext*, const VectorViewTransform&); }; MyTool* tool; struct MyStatusBar { void SetZoom(double); }; MyStatusBar* statusBar; std::shared_ptr<VectorEdit::VectorSelection> selectionPtr; -->
+
 ```cpp
 TranslateElements(els, dx, dy);
 ScaleElements(els, sx, sy, pivot);            // pivot in document units
 RotateElements(els, radians, pivot);
 SkewElements(els, radX, radY, pivot);
-TransformElements(els, Matrix3x3);            // any document-space matrix
+TransformElements(els, matrix);               // any document-space Matrix3x3
 BakeTransform(el);                            // write the transform into the geometry
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
 auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
-ReparentElement(el, otherGroup, index);
+ReparentElement(el, otherGroup, at);          // at an index in the new parent (-1 = end)
 
 DeleteElements(els);
 auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
@@ -62969,6 +63002,8 @@ therefore part of opening one, and the point of this header is that the
 drawing is rendered **at** the size asked for rather than rendered small and
 scaled up.
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
+
 ```cpp
 #include "UltraCanvasVectorRaster.h"
 
@@ -63037,6 +63072,8 @@ how many there are (1 for everything but PDF).
 it draws chosen elements of a `VectorDocument` - an editor's selection, say -
 into a fresh layer. It is how a drawing program's *Copy* gives other programs
 a picture.
+
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
 
 ```cpp
 #include "UltraCanvasVectorRaster.h"
@@ -63704,7 +63741,11 @@ container registers it with `RegisterVideoCodecPlugin`
 (`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
 `IVideoDecodeSession`:
 
+<!-- doc-check: struct MyApp { static std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); }; -->
+
 ```cpp
+#include "libspecific/Video/VideoCodecPlugin.h"
+
 MediaCodecRegistration codec;
 codec.extension   = "ivf";
 codec.description = "Indexed Video Format";
@@ -64504,11 +64545,18 @@ ticking; a stack-local application would be destroyed under it.
 ## Browser utilities (`UltraCanvasWASMSupport.h`)
 
 Optional helpers for the browser features that have no desktop equivalent.
-They are only declared when building for WebAssembly, so guard their use:
+The header lives with the backend in `UltraCanvas/OS/WASM/`, not in
+`include/`, and its classes are implemented only in the WebAssembly build,
+so a portable application includes it relative to the framework source
+directory and guards the calls with `#if defined(__EMSCRIPTEN__)`:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasLabel> statusLabel; std::shared_ptr<UltraCanvasZoomPanImage> imageViewer; std::string documentBytes; JSONValue catalogue; struct MySettings { void LoadFrom(const std::string& path); }; MySettings* settings; -->
 
 ```cpp
+#include "OS/WASM/UltraCanvasWASMSupport.h"   // UltraCanvas/OS/WASM/, next to the backend
+
 #if defined(__EMSCRIPTEN__)
-#include "UltraCanvasWASMSupport.h"
+// ... WASMFileSystem, WASMBrowser, WASMNetwork, WASMResourceLoader calls ...
 #endif
 ```
 
@@ -64520,12 +64568,12 @@ touch UI elements.
 
 ```cpp
 // Mount /data on IndexedDB and load what it holds from the last session.
-WASMFileSystem::MountFileSystem("/data", [](bool loaded) {
+WASMFileSystem::MountFileSystem("/data", [&](bool loaded) {
     if (loaded) settings->LoadFrom("/data/settings.json");
 });
 
 // Later, after writing files under /data:
-WASMFileSystem::SyncToBrowser([](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
+WASMFileSystem::SyncToBrowser([&](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
 ```
 
 `FileExists`, `ReadFile`, `WriteFile`, `DeleteFile`, `CreateDirectory` and
@@ -64537,21 +64585,21 @@ and `std::fstream` see the same files.
 ```cpp
 // Let the user pick one or more images; they land in the virtual FS.
 WASMBrowser::PickFilesAsync(".png,.jpg,image/*", /*multiple=*/true,
-    [](const std::vector<std::string>& paths) {
-        for (const auto& path : paths) imageViewer->LoadImage(path);   // empty: cancelled
+    [&](const std::vector<std::string>& paths) {
+        for (const auto& path : paths) imageViewer->LoadFromFile(path);   // empty: cancelled
     });
 
 // Save: the framework facade already does the right thing.
 UltraCanvasNativeDialogs::SaveContent(documentBytes, FileDialogOptions().SetDefaultFileName("drawing.svg"));
 // or directly:
-WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
+WASMBrowser::DownloadFile("drawing.svg", documentBytes.data(), documentBytes.size(), "image/svg+xml");
 ```
 
 ### Fetching
 
 ```cpp
-WASMNetwork::FetchTextAsync("data/catalogue.json", [](bool ok, const std::string& text) {
-    if (ok) catalogue = UltraCanvasJSON::Parse(text);
+WASMNetwork::FetchTextAsync("data/catalogue.json", [&](bool ok, const std::string& text) {
+    if (ok) catalogue = JSON::Parse(text);          // DataFormats/UltraCanvasJSON.h
 });
 ```
 
@@ -64561,7 +64609,9 @@ Same-origin URLs always work; cross-origin needs CORS on the server.
 
 ```cpp
 // Decode through the browser (any format it supports); pixels are straight RGBA.
-WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) { ... });
+WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) {
+    // ... w * h * 4 bytes, row-major ...
+});
 
 // Fetch a font file into the virtual FS and register it with Pango.
 WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::string& path) {
