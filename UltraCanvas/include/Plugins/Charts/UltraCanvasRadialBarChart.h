@@ -1,7 +1,8 @@
 // include/Plugins/Charts/UltraCanvasRadialBarChart.h
 // Radial bar / radial line ("ray") chart element for UltraCanvas
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -223,7 +224,14 @@ namespace UltraCanvas {
         size_t hoveredBar = SIZE_MAX;
 
         // ----- Helpers -----
-        void InvalidateLayout();
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache();
         void RebuildLayout();
         Color ResolveSeriesColor(size_t index) const;
         float BarLength(const Bar& bar) const;       // radial extent from inner ring

@@ -20,15 +20,32 @@
 //     by index in DataLabel mode.
 // 10. A left press, and its release, are taken only when they start and end
 //     a pan; CSV rows that cannot be read are skipped (were plotted at 0,0).
+// 11. Eleven charts and diagrams defined a private InvalidateLayout() that
+//     only cleared their own cache. It overrode the layout engine's, so a
+//     framework invalidation (a new size, visibility) never reached the
+//     parent. Each now drops its cache and calls the engine's too.
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
+// Version: 1.3.0 - a framework invalidation of any of eleven charts reaches the parent
 // Version: 1.2.0 - a press is taken only when it starts a pan; bad CSV rows are skipped
 // Version: 1.1.0 - the hover ring in DataLabel mode
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
+#include "Plugins/Charts/UltraCanvasChordChart.h"
+#include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
+#include "Plugins/Charts/UltraCanvasPolarChart.h"
+#include "Plugins/Charts/UltraCanvasRadialBarChart.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
+#include "Plugins/Charts/UltraCanvasTimelineChart.h"
+#include "Plugins/Diagrams/UltraCanvasFishboneDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasParliamentDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasSWOTDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasTimelineDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasWordCloudDiagram.h"
+#include "UltraCanvasContainer.h"
 #include "Plugins/Charts/UltraCanvasWaterfallChart.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasRenderContext.h"
@@ -502,6 +519,40 @@ void TestHoverRingOnThePoint() {
           "the red ring is drawn around the hovered point where it is drawn");
 }
 
+// A chart laid out in a container, then invalidated the way the framework
+// does it (SetVisible, SetElementSize and the rest call InvalidateLayout
+// through the element base): the container's measure must be dropped too.
+template <typename Chart>
+void CheckInvalidationReachesParent(const std::string& name) {
+    auto parent = std::make_shared<UltraCanvasContainer>("parent", 0, 0, 400, 300);
+    auto chart = std::make_shared<Chart>("chart", 0, 0, 200, 150);
+    parent->AddChild(chart);
+    CSSLayout::LayoutContext ctx;
+    CSSLayout::MeasureConstraints c{ { CSSLayout::ConstraintMode::Exact, 400.0f },
+                                     { CSSLayout::ConstraintMode::Exact, 300.0f } };
+    parent->Measure(c, ctx);
+    parent->Arrange(Rect2Df{ 0, 0, 400, 300 }, ctx);
+    const bool measuredBefore = parent->measured.valid;
+    static_cast<CSSLayout::Element&>(*chart).InvalidateLayout();
+    Check(measuredBefore && !parent->measured.valid,
+          name + ": a framework invalidation reaches the parent");
+}
+
+void TestInvalidationReachesParent() {
+    std::cout << "11. a chart's invalidation reaches the layout engine\n";
+    CheckInvalidationReachesParent<UltraCanvasChordChart>("chord chart");
+    CheckInvalidationReachesParent<UltraCanvasCircularProgressChart>("circular progress chart");
+    CheckInvalidationReachesParent<UltraCanvasPolarChart>("polar chart");
+    CheckInvalidationReachesParent<UltraCanvasRadialBarChart>("radial bar chart");
+    CheckInvalidationReachesParent<UltraCanvasTimelineChart>("timeline chart");
+    CheckInvalidationReachesParent<UltraCanvasFishboneDiagram>("fishbone diagram");
+    CheckInvalidationReachesParent<UltraCanvasMatrixDiagram>("matrix diagram");
+    CheckInvalidationReachesParent<UltraCanvasParliamentDiagram>("parliament diagram");
+    CheckInvalidationReachesParent<UltraCanvasSWOTDiagram>("SWOT diagram");
+    CheckInvalidationReachesParent<UltraCanvasTimelineDiagram>("timeline diagram");
+    CheckInvalidationReachesParent<UltraCanvasWordCloudElement>("word cloud");
+}
+
 } // namespace
 
 int main() {
@@ -517,6 +568,7 @@ int main() {
     TestWaterfall(dir);
     TestPopulationPyramidRows();
     TestHoverRingOnThePoint();
+    TestInvalidationReachesParent();
 
     std::error_code ec;
     fs::remove_all(dir, ec);
