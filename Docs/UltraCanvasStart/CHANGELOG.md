@@ -1,3 +1,14 @@
+#### 2026-10-08 *0.1.2*
+- **The Project page downloads the SDK.** Every release build of `main` now
+  attaches the six SDK archives to the GitHub release `v<version>`, so
+  *Download...* next to the SDK prefix fetches this version's archive for
+  this platform and architecture from that fixed address into a folder you
+  pick, unpacks it there and fills the prefix in. The plan's SDK step, the
+  System page and the "not an SDK folder" message name that address; the
+  Actions page stays the fallback while a release build is still running. A
+  build without the network module puts the address on the clipboard
+  instead.
+
 #### 2026-10-05 *0.1.1*
 - **The home folder and the MSYS2 installation are found under any user
   name.** `USERPROFILE`, `ProgramFiles`, `MSYS2_ROOT` and `WD` were read

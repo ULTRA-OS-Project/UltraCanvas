@@ -7,6 +7,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #if defined(ULTRACANVASSTART_HAS_NET)
+#include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #endif
 
@@ -44,6 +45,10 @@ std::string SdkDownloadPage() {
     return std::string("https://github.com/") + kRepository + "/actions/workflows/build.yml?query=branch%3Amain";
 }
 
+std::string SdkReleasePage(const std::string& version) {
+    return std::string("https://github.com/") + kRepository + "/releases/tag/v" + version;
+}
+
 std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
                                const std::string& architecture) {
     return std::string("https://github.com/") + kRepository + "/releases/download/v" +
@@ -60,14 +65,22 @@ bool SdkDownloadAvailable() {
 
 bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error) {
 #if defined(ULTRACANVASSTART_HAS_NET)
+    if (!UltraNet_IsInitialized()) {
+        const UltraNetResult started = UltraNet_Initialize();
+        if (!started.success) {
+            error = "The network module could not start: " + started.message;
+            return false;
+        }
+    }
     UltraNetHttpOptions options = UltraNetHttpOptions::Default();
     options.followRedirects = true;
     const UltraNetResult result = UltraNet_HttpDownloadFile(url, localPath, options);
     if (result.success) return true;
     error = result.message;
     if (result.httpStatus == 404) {
-        error = "No release asset at " + url + " (the SDK is published as a CI artifact; "
-                "download it from " + SdkDownloadPage() + " and unpack that file instead)";
+        error = "Nothing at " + url + " yet: the release of this version may still be building. "
+                "Try again later, or download the archive of the same name from " + SdkDownloadPage() +
+                " and unpack it by hand.";
     }
     return false;
 #else
