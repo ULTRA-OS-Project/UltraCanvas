@@ -1,3 +1,171 @@
+#### 2026-10-08 *0.9.204*
+- **DemoApp: the domain dashboard is back, on the list view.** The old
+  "Templates demo" page - a domain table with links, an "Enable" action,
+  sparklines, visitor figures, plans and a ⋮ menu per row - was taken out of
+  the build in January and its file deleted today, because it no longer
+  compiled. It built eight elements and a line chart per row in a container.
+  The new *Domain Dashboard* page (Extended Functionality, after List View)
+  shows the same table with `UltraCanvasListView`: one custom `IItemDelegate`
+  paints every cell, `onCellClicked` / `onCellHovered` make the domain a link
+  (it opens in the browser through `OpenURL`, where the old page ran
+  `system("xdg-open " + url)`) and "Enable" an action, ⋮ and a right-click
+  open the row's menu (open, (de)activate, change plan, remove - each edits
+  the model), and a header click sorts by that column (the trend column by
+  growth). "Add 1,000 domains" shows that only the rows on screen are
+  painted. `UltraCanvasListViewExamples.md` explains the pattern under "A
+  custom delegate with clickable cells".
+- **DemoApp: `--component` starts without the About window, and
+  `--no-about` leaves it out on any start.** The modal "UltraCanvas Demo -
+  Information" window opened on every start, also over the page
+  `--component <id>` had just selected, so a page could only be screenshotted
+  after a script clicked it away. Naming a page now implies `--no-about`;
+  `--help` lists both.
+- **Docs: no page points at the removed layout managers any more.**
+  `GettingStarted.md` still told readers (and the prompts it suggests) to lay
+  out with `UltraCanvasBoxLayout`, `UltraCanvasGridLayout` and
+  `UltraCanvasFlexLayout`, and `UltraCanvasImagePerformanceTest.md` included
+  `UltraCanvasBoxLayout.h`; none of those headers exist. Both now name the
+  CSSLayout engine (`layout.SetFlexRow()` / `SetFlexColumn()` / `SetGrid()`),
+  which `UltraCanvasLayoutExamples.md` documents.
+- **Docs: `GettingStarted.md` and `UltraCanvasImagePerformanceTest.md` pass
+  the doc checker.** The Image Performance Test page now matches the demo
+  source:
+  - the `UltraCanvasImageElement` outline carries its real constructors and
+    `LoadFromFile(path, forceLoad)`;
+  - the Include BMP checkbox reacts through `onStateChanged`, not
+    `onCheckedChanged`;
+  - its two `std::filesystem` calls convert with `PathFromUtf8` /
+    `PathToUtf8`, as the UTF-8 path rule asks, where they used `path(str)`
+    and `.string()`;
+  - new sections show the page's private helpers (`NowMs`,
+    `DefaultOptionsFor`), its grouped bar chart and the `PanelState` every
+    lambda shares.
+
+  Every snippet on the page now compiles against the headers with all its
+  names typed.
+- **`scripts/check_doc_examples.py` 1.1.0.**
+  - A snippet's `#if` / `#ifdef` / `#else` / `#endif` and `#define` lines
+    stay where they are, so Windows-only code (`WinMain` under
+    `#ifdef _WIN32`) is left out on Linux instead of being compiled.
+  - A `doc-check` comment can `#define` a macro the build supplies
+    (`MYAPP_VERSION`).
+  - Prose may name a function that the doc's own headers or its `doc-check`
+    comment declare.
+  - `Name (` with a space is no longer read as a call, so
+    `Code needs to be PRed (N lines)` is not flagged.
+  - A name whose type sits in another block is no longer given up when
+    clang suggests that type on one of its two generated lines but not on
+    the other.
+- **Elements take the presses they act on.** Since a press nobody took climbs
+  to the elements around it, an element that acted on a press and then
+  reported it as untaken handed the same press to its parents. These did:
+  the kanban board (a press on the background took the focus and cleared the
+  selection, firing `onSelectionChanged`), the Gantt chart (a click off the
+  rows cleared the selection and started a pan), the block diagram and the
+  Gource tree (deselect on the empty canvas), the tree map (deselect on a
+  background double-click), the arc and adjacency diagrams (the press of a
+  click whose release selects, and the release that deselects), the gradient
+  editor (a press off its stops took the focus) and the video player (the
+  release that ends a seek or volume drag). Each now returns `true` there.
+  The curve editor and the PDF view took the focus for a middle press and
+  then let it go on; they now leave a button they have no use for alone, the
+  focus included. The rich-text editor's right press without a menu still
+  goes on, on purpose, so a surrounding pane's menu can open - as a button's
+  does; the code now says so.
+- **The arc diagram can be clicked where it is drawn.** Its hover and click
+  hit test subtracted the diagram's position in its parent from a pointer
+  that was already local, so a diagram away from its parent's top left
+  showed the wrong node's tooltip and selected the wrong node, or none.
+- **The video player's seek and volume drags capture the mouse**, so their
+  release arrives even off the player; before, a release outside it left the
+  scrub running.
+- **A movable toolbar is dragged by its own surface, and stays where it is
+  dropped.** With `ToolbarDragMode::Movable` / `Both` any left press the bar
+  got started a drag - with presses climbing, a press on a label, separator
+  or disabled button would carry the whole bar off. The drag also tracked the
+  pointer in the bar's own coordinates while moving the bar (the reference
+  moved with every step), was not captured (it stuck once the pointer left
+  the bar), and moved only the laid-out bounds, which the next layout pass
+  put back. It now starts only from the bar's own surface, follows the
+  pointer in window coordinates with the mouse captured, and sets the bar's
+  CSS position (`SetElementAbsolutePosition`). `BeginDrag` / `UpdateDrag`
+  take window coordinates. Docs: `UltraCanvasToolbarExamples.md`.
+- The file view's guard against presses on its own elements now hit-tests
+  with `FindElementAtPoint`, as the window does (scrolling, clipping), instead
+  of a bounds check of its own.
+- Tests: `ElementPressTakenTest` (a window under Xvfb; it skips without a
+  display) - 11 of its 15 checks fail on the previous code.
+- **A mouse press the element under the pointer does not take climbs to its
+  parents.** The window handed `MouseDown`, `MouseUp` and `MouseDoubleClick`
+  to the innermost interactive element under the pointer and, when that
+  element did not take it, straight to the window - never to the elements
+  around it, although the wheel, drags, touches and keys already climbed. So
+  a container that acts on a click (a clickable card, a row, a tile) never
+  heard of a click on the label, icon or inner row inside it, and answered
+  only on its padding: UltraMail's account tiles switched the account from 1
+  of 14 spots. A press now goes to the element's parent, then the
+  grandparent, each with the pointer in its own local space, until one
+  returns `true`. The climb:
+  - stops below the window, which still gets a press nobody took, once, at
+    the end - so a press in a popup (a child of the window) never reaches
+    what lies under it;
+  - stops at an element that left the tree, or was destroyed, while the
+    press was being handled (a click that closed its row): the chain is
+    taken before the first element runs, and `CleanupElementReferences`
+    clears an element destroyed meanwhile, also during a modal dialog's
+    nested event loop;
+  - changes nothing for a press an element takes (returns `true`), which is
+    what buttons, inputs, lists, sliders and menus do with their own clicks.
+  Two elements were made ready for it, because a press they left would now
+  have reached a parent that acts on it:
+  - **`UltraCanvasTextInput` takes a double-click.** A fast second click
+    arrives as `MouseDoubleClick`, which the input dropped; in the
+    spreadsheet's cell editor it would have climbed to the sheet, which reads
+    a double-click on a cell as "start editing" and rebuilt the editor from
+    the stored text - losing what had been typed. It now selects the word
+    under the pointer (all of a password field) and is a second press on the
+    clear and reveal buttons, and a release over the field is the field's.
+  - **`UltraCanvasFilerWidget` leaves alone a press on its own elements.** A
+    right-click on the filter's "clear" button (which has no menu) would have
+    reached the view as a right-click on the folder: it took the keyboard
+    from the search field, committed an open rename and opened the folder
+    menu, which then swallowed the next click.
+  Gained by the change without code of their own: UltraMail's address-book
+  sidebar answers a click on a group's name, and an
+  UltraDesktop sticky note can be dragged by its grip (the grip is a label,
+  and the board was written expecting its press to climb - it never did).
+  Rules for element authors - return `true` for a press you acted on, and a
+  container now sees the presses its children did not take - are in
+  `UltraCanvasCoordinateSystemGuide.md`, *Which element gets a press*. Tests:
+  `MouseClickBubblingTest` (a window under Xvfb; it skips without a display):
+  7 of its 21 checks fail on the old code, and 3 Filer checks fail with the
+  climb but without the Filer's guard.
+- **`UltraCanvasTemplate` is removed.** The layout-template class
+  (`UltraCanvasTemplate.h` / `.cpp`, with its builder and presets) was never
+  named in a build file in the repository's history and no longer compiled
+  (61 errors against today's API). Its only examples lived in
+  `Apps/UltraCanvasToolbarExample.cpp`, a standalone program that was never
+  built either and was deleted in May 2026. What it offered exists in working
+  form: `UltraCanvasToolbarBuilder` and `ToolbarPresets` (toolbar, status
+  bar, ribbon, sidebar), flex and grid layout on every container,
+  `PlaceChildAt` for absolute placement, a movable toolbar, and
+  `UltraCanvasElementPlugins::Create(typeName)` for creating elements by
+  name. Its placement engine wrote children's bounds directly, which the
+  layout pass overwrites, and it painted its own drag handle. The element
+  catalogue's exemption list called it "the skeleton new elements are copied
+  from"; that line is gone with it.
+- **New text layouts wrap a long word between characters.** A layout from
+  `IRenderContext::CreateTextLayout` wrapped at word boundaries only - Pango's
+  own default - so a URL, a file path or a hash given a width ran on past it.
+  Everything drawn through `DrawText` / `DrawTextInRect` already wrapped words
+  first and characters second (`TextStyle::wrap` is `WrapWordChar`), and every
+  element that wraps on purpose (the text area, the rich-text editor, the
+  Markdown view, the tooltip) set that mode itself; a layout made directly
+  was the one place that did not. `UCTextLayout` now starts in `WrapWordChar`,
+  so the two paths agree, and a layout whose words all fit wraps exactly as
+  before. A caller that wants a long word kept whole still asks for
+  `TextWrap::WrapWord`. See *Wrapping* in `UltraCanvasRenderContext.md`.
+
 #### 2026-10-08 *0.9.203*
 - **Screen readers can use the common widgets, and VoiceOver reaches
   UltraCanvas on macOS.**
