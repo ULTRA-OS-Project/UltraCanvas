@@ -268,6 +268,9 @@ jobs:
             ${{ matrix.msys_prefix }}-mupdf
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
+            # The openssl command, for IODeviceScannerESCLLiveTest's
+            # certificates (it comes with -python too; named for that test).
+            ${{ matrix.msys_prefix }}-openssl
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -403,7 +406,8 @@ jobs:
           # test runs itself (Tests/IODeviceScannerESCLLiveScanner.py, so
           # Python 3) with certificates it makes with the openssl command. Both
           # come with the runner image; named here so the test's needs are
-          # stated where they are met. "Run unit tests" forbids its skip too.
+          # stated where they are met. "Run unit tests" forbids its skip too,
+          # as "Run the device TLS test" does on macOS and Windows.
           sudo apt-get install -y python3 openssl
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
@@ -611,6 +615,7 @@ jobs:
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -637,6 +642,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -945,6 +951,22 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
+      # Trusting a device's self-signed certificate on first use rests on
+      # libcurl pinning a public key and handing back the server's
+      # certificate, which each TLS library does its own way. Linux runs this
+      # in the full pass, on OpenSSL; here it runs on Apple's TLS (macOS, the
+      # system libcurl) and Schannel (Windows, MSYS2's curl-winssl), against
+      # a scanner the test starts with certificates it makes. The test needs
+      # Python 3 and openssl and would skip without them, so a skip is made a
+      # failure, and --no-tests=error catches it not being built at all.
+      # ULTRACANVAS_BUILD_DEVICE_TLS_TESTS builds it without BUILD_TESTS.
+      - name: Run the device TLS test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_ESCL_REQUIRED: 1
+        run: ctest --output-on-failure --no-tests=error -R "^IODeviceScannerESCLLiveTest$"
 
       # The file display against Thai, CJK and emoji names, on Windows: the
       # name-encoding test writes such files to a real folder and lists it

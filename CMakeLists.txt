@@ -977,6 +977,18 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
+# IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
+# (the macOS and Windows CI rows): trusting a device's self-signed certificate
+# on first use rests on libcurl's public-key pinning and certificate capture,
+# which each TLS library implements apart - OpenSSL on Linux, Apple's TLS on
+# macOS, Schannel on Windows - so it is a test on every one of them.
+option(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS "Build the device TLS tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DeviceTlsTests.cmake)
+endif()
+
 # ===== VAULT TESTS WITHOUT THE FULL SUITE =====
 # UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
 # row): the device-key vault in a Thai-and-emoji folder is only a test where a

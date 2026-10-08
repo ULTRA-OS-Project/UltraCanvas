@@ -24,18 +24,24 @@
 //   - forgetting the key lets the next connection learn the new one;
 //   - with learning switched off, a scanner whose key is not kept is refused.
 //
-// Skipped - exit code 77 - without Python 3 (ctest passes the interpreter
-// and the scanner script as arguments) or the openssl command, or when the
-// scanner will not start. CI's Linux rows set ULTRACANVAS_TEST_ESCL_REQUIRED,
-// which turns a skip into a failure. The keys go to a file of the test's own
-// (ULTRACANVAS_DEVICE_CERTIFICATES), never the user's.
-// Version: 1.0.0
+// Skipped - exit code 77 - without Python 3 or the openssl command, which
+// ctest passes as arguments with the scanner script (CMake finds them), or
+// when the scanner will not start. CI sets ULTRACANVAS_TEST_ESCL_REQUIRED,
+// which turns a skip into a failure, on every row that runs it: Linux, where
+// libcurl does TLS with OpenSSL; macOS, with Apple's system libcurl and its
+// TLS; Windows, with libcurl on Schannel - three implementations of the
+// pinning and the certificate capture the trust stands on. The keys go to a
+// file of the test's own (ULTRACANVAS_DEVICE_CERTIFICATES), never the user's,
+// and only the eSCL backend is run (ULTRACANVAS_DEVICE_BACKENDS): SANE, or
+// whatever else searches for scanners here, takes seconds and finds nothing
+// this test is about.
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
 #include <iostream>
 
-#if (defined(__linux__) || defined(__APPLE__)) && defined(ULTRACANVAS_HAS_NET)
+#if defined(ULTRACANVAS_HAS_NET)
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "IODeviceManager/UltraCanvasIODeviceScanner.h"
@@ -44,21 +50,28 @@
 #include "UltraNet/UltraNetTls.h"
 
 #include <chrono>
-#include <csignal>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <csignal>
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 extern char** environ;
+#endif
 
 using namespace UltraCanvas;
 namespace fs = std::filesystem;
@@ -71,8 +84,8 @@ constexpr int kSkipped = 77;
 // that have Python and openssl, because there a skip is indistinguishable
 // from a pass and would let the test quietly stop running.
 int SkipOrFail() {
-    const char* required = std::getenv("ULTRACANVAS_TEST_ESCL_REQUIRED");
-    if (required && *required && std::string(required) != "0") {
+    const std::string required = GetEnvUtf8("ULTRACANVAS_TEST_ESCL_REQUIRED");
+    if (!required.empty() && required != "0") {
         std::cout << "FAILED: ULTRACANVAS_TEST_ESCL_REQUIRED is set, so a skip is a failure\n";
         return EXIT_FAILURE;
     }
@@ -87,41 +100,166 @@ void Check(bool condition, const std::string& what) {
     if (condition) ++g_passed; else ++g_failed;
 }
 
-std::string FindOnPath(const std::string& program) {
-    if (const char* path = std::getenv("PATH")) {
-        std::stringstream list(path);
-        std::string directory;
-        while (std::getline(list, directory, ':')) {
-            const std::string candidate = directory + "/" + program;
-            if (!directory.empty() && access(candidate.c_str(), X_OK) == 0) return candidate;
-        }
-    }
-    return std::string();
+void SetEnv(const char* name, const std::string& value) {
+#if defined(_WIN32)
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 1);
+#endif
 }
 
-// Starts `args`, its output going to `log`; the process id, or -1.
-pid_t Spawn(std::vector<std::string> args, const std::string& log) {
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, log.c_str(),
-                                     O_WRONLY | O_CREAT | O_APPEND, 0644);
-    posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO);
-    std::vector<char*> argv;
-    for (std::string& arg : args) argv.push_back(arg.data());
-    argv.push_back(nullptr);
-    pid_t pid = -1;
-    const int spawned = posix_spawn(&pid, args[0].c_str(), &actions, nullptr, argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    return spawned == 0 ? pid : -1;
+void UnsetEnv(const char* name) {
+#if defined(_WIN32)
+    _putenv_s(name, "");
+#else
+    unsetenv(name);
+#endif
 }
+
+// ----------------------------------------------------------------------------
+// Child processes: the scanner, and openssl. Their output goes to `log`.
+// ----------------------------------------------------------------------------
+
+#if defined(_WIN32)
+
+// One argument as CommandLineToArgvW reads it back.
+std::wstring QuoteArgument(const std::wstring& argument) {
+    if (!argument.empty() && argument.find_first_of(L" \t\"") == std::wstring::npos) {
+        return argument;
+    }
+    std::wstring quoted = L"\"";
+    size_t backslashes = 0;
+    for (wchar_t c : argument) {
+        if (c == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        quoted.append(c == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
+        backslashes = 0;
+        quoted += c;
+    }
+    quoted.append(backslashes * 2, L'\\');
+    return quoted + L"\"";
+}
+
+class ChildProcess {
+public:
+    ~ChildProcess() { Stop(); }
+
+    bool Start(const std::vector<std::string>& args, const std::string& log) {
+        // PathFromUtf8 is the UTF-8 to UTF-16 conversion here, for the
+        // arguments that are not paths as for those that are.
+        std::wstring commandLine;
+        for (const std::string& arg : args) {
+            if (!commandLine.empty()) commandLine += L' ';
+            commandLine += QuoteArgument(PathFromUtf8(arg).wstring());
+        }
+        SECURITY_ATTRIBUTES inherit{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+        HANDLE output = CreateFileW(PathFromUtf8(log).c_str(), FILE_APPEND_DATA,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_ALWAYS,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (output == INVALID_HANDLE_VALUE) return false;
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startup.hStdOutput = output;
+        startup.hStdError = output;
+        PROCESS_INFORMATION started{};
+        const BOOL ok = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
+                                       CREATE_NO_WINDOW, nullptr, nullptr, &startup, &started);
+        CloseHandle(output);
+        if (!ok) return false;
+        CloseHandle(started.hThread);
+        process = started.hProcess;
+        return true;
+    }
+
+    bool Running() const {
+        return process && WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+    }
+
+    // Waits for it to end; true when it exited with 0.
+    bool Wait() {
+        if (!process) return false;
+        WaitForSingleObject(process, INFINITE);
+        DWORD code = 1;
+        GetExitCodeProcess(process, &code);
+        CloseHandle(process);
+        process = nullptr;
+        return code == 0;
+    }
+
+    void Stop() {
+        if (!process) return;
+        TerminateProcess(process, 1);
+        WaitForSingleObject(process, INFINITE);
+        CloseHandle(process);
+        process = nullptr;
+    }
+
+private:
+    HANDLE process = nullptr;
+};
+
+#else
+
+class ChildProcess {
+public:
+    ~ChildProcess() { Stop(); }
+
+    bool Start(std::vector<std::string> args, const std::string& log) {
+        posix_spawn_file_actions_t actions;
+        posix_spawn_file_actions_init(&actions);
+        posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, log.c_str(),
+                                         O_WRONLY | O_CREAT | O_APPEND, 0644);
+        posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO);
+        std::vector<char*> argv;
+        for (std::string& arg : args) argv.push_back(arg.data());
+        argv.push_back(nullptr);
+        const int spawned =
+            posix_spawn(&pid, args[0].c_str(), &actions, nullptr, argv.data(), environ);
+        posix_spawn_file_actions_destroy(&actions);
+        if (spawned != 0) pid = -1;
+        return pid > 0;
+    }
+
+    bool Running() {
+        if (pid <= 0) return false;
+        int status = 0;
+        if (waitpid(pid, &status, WNOHANG) == pid) {
+            pid = -1;
+            return false;
+        }
+        return true;
+    }
+
+    bool Wait() {
+        if (pid <= 0) return false;
+        int status = 0;
+        waitpid(pid, &status, 0);
+        pid = -1;
+        return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    }
+
+    void Stop() {
+        if (pid <= 0) return;
+        kill(pid, SIGTERM);
+        int status = 0;
+        waitpid(pid, &status, 0);
+        pid = -1;
+    }
+
+private:
+    pid_t pid = -1;
+};
+
+#endif
 
 // Runs `args` to the end; true when it exits with 0.
 bool Run(const std::vector<std::string>& args, const std::string& log) {
-    const pid_t pid = Spawn(args, log);
-    if (pid <= 0) return false;
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    ChildProcess child;
+    return child.Start(args, log) && child.Wait();
 }
 
 std::string ReadText(const std::string& path) {
@@ -135,7 +273,10 @@ std::vector<std::string> ReadLines(const std::string& path) {
     std::vector<std::string> lines;
     std::stringstream text(ReadText(path));
     std::string line;
-    while (std::getline(text, line)) lines.push_back(line);
+    while (std::getline(text, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        lines.push_back(line);
+    }
     return lines;
 }
 
@@ -144,13 +285,35 @@ std::string Tail(const std::string& path) {
     return text.size() > 800 ? text.substr(text.size() - 800) : text;
 }
 
+// A directory of the test's own under the system's temporary one.
+std::string MakeTemporaryDirectory() {
+    std::error_code error;
+    const fs::path base = fs::temp_directory_path(error);
+    if (error) return std::string();
+    std::random_device random;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        const fs::path candidate = base / ("uc-escl-live-" + std::to_string(random()));
+        if (fs::create_directory(candidate, error) && !error) return PathToUtf8(candidate);
+    }
+    return std::string();
+}
+
 // A self-signed certificate and its key, as a scanner makes for itself -
 // named for its model, not the address it is reached at, as theirs often
-// are; false when openssl could not make one.
-bool MakeCertificate(const std::string& openssl, const std::string& certificate,
-                     const std::string& key, const std::string& log) {
-    return Run({openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
-                "-subj", "/CN=Acme MegaScan 42", "-keyout", key, "-out", certificate},
+// are; false when openssl could not make one. The request's settings come
+// from a file of the test's own, so the openssl.cnf a platform ships - or,
+// for some Windows builds of openssl, does not - is not relied on.
+bool MakeCertificate(const std::string& openssl, const std::string& directory,
+                     const std::string& certificate, const std::string& key,
+                     const std::string& log) {
+    const std::string config = directory + "/certificate.cnf";
+    {
+        std::ofstream out(PathFromUtf8(config), std::ios::binary | std::ios::trunc);
+        out << "[req]\ndistinguished_name = name\nprompt = no\n"
+               "[name]\nCN = Acme MegaScan 42\n";
+    }
+    return Run({openssl, "req", "-x509", "-config", config, "-newkey", "rsa:2048", "-nodes",
+                "-days", "2", "-keyout", key, "-out", certificate},
                log);
 }
 
@@ -162,8 +325,6 @@ std::string PinOfCertificateFile(const std::string& path) {
 // The scanner process, stopped however the test ends.
 class TlsScanner {
 public:
-    ~TlsScanner() { Stop(); }
-
     // Starts it with `certificate` on `port` (0: any free port, which
     // Port() then gives) and waits until it is listening.
     bool Start(const std::string& python, const std::string& script, const std::string& certificate,
@@ -172,21 +333,18 @@ public:
         const std::string ready = requests + ".port";
         std::error_code ignored;
         fs::remove(PathFromUtf8(ready), ignored);
-        pid = Spawn({python, script, "--cert", certificate, "--key", key, "--ready", ready,
-                     "--log", requests, "--port", std::to_string(listenOn), "--pages", "3"},
-                    log);
-        if (pid <= 0) return false;
-        for (int attempt = 0; attempt < 100; ++attempt) {
+        if (!process.Start({python, script, "--cert", certificate, "--key", key, "--ready", ready,
+                            "--log", requests, "--port", std::to_string(listenOn), "--pages", "3"},
+                           log)) {
+            return false;
+        }
+        for (int attempt = 0; attempt < 150; ++attempt) {
             const std::string written = ReadText(ready);
             if (!written.empty()) {
                 port = std::atoi(written.c_str());
                 return port > 0;
             }
-            int status = 0;
-            if (waitpid(pid, &status, WNOHANG) == pid) {
-                pid = -1;
-                return false;
-            }
+            if (!process.Running()) return false;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         return false;
@@ -194,16 +352,10 @@ public:
 
     int Port() const { return port; }
 
-    void Stop() {
-        if (pid <= 0) return;
-        kill(pid, SIGTERM);
-        int status = 0;
-        waitpid(pid, &status, 0);
-        pid = -1;
-    }
+    void Stop() { process.Stop(); }
 
 private:
-    pid_t pid = -1;
+    ChildProcess process;
     int port = 0;
 };
 
@@ -220,31 +372,27 @@ IODeviceTrustedCertificate KeptFor(const std::string& address) {
 int main(int argc, char** argv) {
     std::cout << "eSCL scanning over HTTPS, from a scanner with a self-signed certificate\n";
 
-    if (argc < 3) {
-        std::cout << "SKIPPED: run by ctest, which passes Python 3 and the scanner script\n";
+    if (argc < 4) {
+        std::cout << "SKIPPED: run by ctest, which passes Python 3, the scanner script and "
+                     "openssl - missing when CMake found no Python 3 or no openssl\n";
         return SkipOrFail();
     }
     const std::string python = argv[1];
     const std::string script = argv[2];
-    const std::string openssl = FindOnPath("openssl");
-    if (openssl.empty()) {
-        std::cout << "SKIPPED: the openssl command is not installed\n";
-        return SkipOrFail();
-    }
+    const std::string openssl = argv[3];
 
-    char pattern[] = "/tmp/uc-escl-live-XXXXXX";
-    if (!mkdtemp(pattern)) {
+    const std::string root = MakeTemporaryDirectory();
+    if (root.empty()) {
         std::cout << "SKIPPED: no temporary directory\n";
         return SkipOrFail();
     }
-    const std::string root = pattern;
     const std::string log = root + "/scanner.log";
     const std::string firstCertificate = root + "/first.pem";
     const std::string firstKey = root + "/first.key";
     const std::string secondCertificate = root + "/second.pem";
     const std::string secondKey = root + "/second.key";
-    if (!MakeCertificate(openssl, firstCertificate, firstKey, log) ||
-        !MakeCertificate(openssl, secondCertificate, secondKey, log)) {
+    if (!MakeCertificate(openssl, root, firstCertificate, firstKey, log) ||
+        !MakeCertificate(openssl, root, secondCertificate, secondKey, log)) {
         std::cout << "SKIPPED: openssl could not make a certificate:\n" << Tail(log) << "\n";
         fs::remove_all(PathFromUtf8(root));
         return SkipOrFail();
@@ -254,8 +402,10 @@ int main(int argc, char** argv) {
 
     // The device keys this test learns go to its own file, never the user's.
     const std::string trustFile = root + "/DeviceCertificates.conf";
-    setenv("ULTRACANVAS_DEVICE_CERTIFICATES", trustFile.c_str(), 1);
-    unsetenv("ULTRACANVAS_DEVICE_TLS_TOFU");
+    SetEnv("ULTRACANVAS_DEVICE_CERTIFICATES", trustFile);
+    UnsetEnv("ULTRACANVAS_DEVICE_TLS_TOFU");
+    // The eSCL backend alone: see the top of the file.
+    SetEnv("ULTRACANVAS_DEVICE_BACKENDS", "eSCL");
 
     const std::string firstRequests = root + "/first-requests.log";
     TlsScanner scanner;
@@ -267,7 +417,7 @@ int main(int argc, char** argv) {
     const int port = scanner.Port();
     const std::string address = "127.0.0.1:" + std::to_string(port);
     const std::string url = "https://" + address + "/eSCL";
-    setenv("ULTRACANVAS_ESCL_SCANNERS", url.c_str(), 1);
+    SetEnv("ULTRACANVAS_ESCL_SCANNERS", url);
 
     IODeviceManager& manager = IODeviceManager::GetInstance();
     manager.Initialize();
@@ -390,12 +540,12 @@ int main(int argc, char** argv) {
         device->Disconnect();
 
         IODeviceForgetCertificate(url);
-        setenv("ULTRACANVAS_DEVICE_TLS_TOFU", "0", 1);
+        SetEnv("ULTRACANVAS_DEVICE_TLS_TOFU", "0");
         const IODeviceResult notLearned = device->Connect();
         Check(!notLearned.success && IODeviceTrustedCertificates().empty(),
               "with learning switched off, a scanner whose key is not kept is refused: " +
                   notLearned.message);
-        unsetenv("ULTRACANVAS_DEVICE_TLS_TOFU");
+        UnsetEnv("ULTRACANVAS_DEVICE_TLS_TOFU");
     }
 
     device->Disconnect();
@@ -414,7 +564,7 @@ int main(int argc, char** argv) {
 #else
 
 int main() {
-    std::cout << "SKIPPED: the live eSCL test runs on Linux and macOS, with UltraNet\n";
+    std::cout << "SKIPPED: the live eSCL test needs UltraNet\n";
     return 77;
 }
 

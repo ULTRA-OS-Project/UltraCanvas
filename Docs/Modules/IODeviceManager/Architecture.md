@@ -91,6 +91,16 @@ manager.RegisterEnumerator(IODeviceCategory::Camera, "gphoto2", EnumerateGPhoto2
 `EnumerateDevices(category)` runs every enumerator registered for that
 category and merges the results.
 
+`ULTRACANVAS_DEVICE_BACKENDS`, when set, narrows that to the backends it
+names - a comma-separated list, case ignored (`eSCL,IPP`). It is for leaving
+out a backend that is slow to search and finds nothing wanted: SANE probes
+every port it knows of, which takes seconds where only network scanners are
+used, and a test of one backend has no use for the rest
+(`IODeviceScannerESCLLiveTest` sets `eSCL`, which took it from 5 seconds or
+more to under 2). A category none of whose backends is named is an error, as
+one with no backend is, and its devices are left as they were rather than
+dropped. `GetRegisteredBackends()` still lists every backend registered.
+
 This is deliberately **not** a set of `EnumerateScanners()` /
 `EnumerateCameras()` methods on the manager. With one method per category,
 every platform backend has to define the same symbol — so a webcam backend
@@ -953,7 +963,13 @@ bare `HEAD /`, the key kept is its certificate's, under the make and model it
 reports; pages are scanned through the pinned connection; restarted with a
 second certificate on the same port, it is refused before any request reaches
 it; forgetting the key learns the new one; and learning switched off refuses it.
-Not yet run on Schannel (Windows) or Apple's TLS.
+The scanner test is built on the macOS and Windows rows too
+(`ULTRACANVAS_BUILD_DEVICE_TLS_TESTS`, without the full suite) and run there
+with its skip made a failure, so the pinning and the certificate capture are
+exercised on each TLS library libcurl uses: OpenSSL on Linux, Apple's TLS
+(the system libcurl) on macOS, Schannel (MSYS2's `curl-winssl`) on Windows.
+The IPP test stays Linux-only: `ippeveprinter` is not available on the other
+runners, and the trust it would check is the same code.
 
 ---
 

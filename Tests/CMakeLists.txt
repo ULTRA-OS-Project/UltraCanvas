@@ -4312,37 +4312,10 @@ if(TARGET UltraCanvas AND UNIX)
 endif()
 
 # ===== eSCL SCANNING OVER HTTPS, AGAINST A RUNNING SCANNER =====
-# The eSCL backend end to end against IODeviceScannerESCLLiveScanner.py, a
-# scanner that answers only over HTTPS with a self-signed certificate, which
-# the test starts itself: trust on first use, a key that changes, scanning
-# over the pinned connection. Python 3 and the scanner script are passed as
-# arguments; skipped - exit code 77 - without them or the openssl command.
-if(TARGET UltraCanvas AND UNIX)
-    find_package(Python3 QUIET COMPONENTS Interpreter)
-    message(STATUS "  Building IODeviceScannerESCLLiveTest...")
-    add_executable(IODeviceScannerESCLLiveTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerESCLLiveTest.cpp
-    )
-    target_include_directories(IODeviceScannerESCLLiveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(IODeviceScannerESCLLiveTest PRIVATE cxx_std_20)
-    target_link_libraries(IODeviceScannerESCLLiveTest PRIVATE UltraCanvas)
-    set_target_properties(IODeviceScannerESCLLiveTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    if(Python3_Interpreter_FOUND)
-        add_test(NAME IODeviceScannerESCLLiveTest
-                 COMMAND IODeviceScannerESCLLiveTest ${Python3_EXECUTABLE}
-                         ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerESCLLiveScanner.py
-                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    else()
-        # Registered all the same, so a row that requires it fails rather
-        # than quietly losing it.
-        add_test(NAME IODeviceScannerESCLLiveTest COMMAND IODeviceScannerESCLLiveTest
-                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    endif()
-    set_tests_properties(IODeviceScannerESCLLiveTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 180)
-    message(STATUS "    Test registered: IODeviceScannerESCLLiveTest")
-endif()
+# Defined in DeviceTlsTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_DEVICE_TLS_TESTS) where BUILD_TESTS is off - the
+# macOS and Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/DeviceTlsTests.cmake)
 
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
