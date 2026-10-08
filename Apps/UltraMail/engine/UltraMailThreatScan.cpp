@@ -1,4 +1,8 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.5.3 - ExtractImageHosts reads the parsed page too: <img src>, a
+//                  background attribute, and the background images its CSS gives an
+//                  element (style attributes and <style> sheets, through the HTMLReader's
+//                  cascade) - none from comments, scripts, fonts or the text
 // Version: 0.5.2 - ExtractLinks reads an HTML body's links from the parsed page
 //                  (HTML::Parser): a[href], area[href], form[action], none from
 //                  comments or scripts
@@ -18,8 +22,9 @@
 
 #include "UltraMailSenderBrands.h"
 
-#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
-#include "HTMLReader/HTMLParser.h"     // HTML::Parser (the links of a page)
+#include "HTMLReader/HTMLDocument.h"       // HTML::ExtractPlainText
+#include "HTMLReader/HTMLParser.h"         // HTML::Parser (the links of a page)
+#include "HTMLReader/HTMLStyleResolver.h"  // the background images its CSS gives
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -306,26 +311,32 @@ std::string ThreatReport::Summary() const {
 // ---------------------------------------------------------------------------
 std::vector<std::string> ExtractImageHosts(const std::string& body) {
     std::vector<std::string> hosts;
-    const std::string lower = Lower(body);
-    // src="…" / background="…" / url(…) with an http(s) source.
-    for (const char* key : { "src=", "background=", "url(" }) {
-        std::size_t pos = 0;
-        while ((pos = lower.find(key, pos)) != std::string::npos) {
-            std::size_t v = pos + std::strlen(key);
-            while (v < lower.size() && (std::isspace(static_cast<unsigned char>(lower[v])) ||
-                                        lower[v] == '"' || lower[v] == '\'')) ++v;
-            if (lower.compare(v, 7, "http://") == 0 || lower.compare(v, 8, "https://") == 0) {
-                std::size_t end = v;
-                while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
-                       lower[end] != '"' && lower[end] != '\'' && lower[end] != ')' && lower[end] != '>')
-                    ++end;
-                const std::string host = HostOf(body.substr(v, end - v));
-                if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
-                    hosts.push_back(host);
-            }
-            pos = v;
+    auto add = [&hosts](const std::string& source) {
+        const std::string url = Trim(source);
+        const std::string lower = Lower(url.substr(0, 8));
+        if (lower.compare(0, 7, "http://") != 0 && lower.compare(0, 8, "https://") != 0) return;
+        const std::string host = HostOf(url);
+        if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
+            hosts.push_back(host);
+    };
+    UltraCanvas::HTML::Parser parser;
+    UltraCanvas::HTML::Document document = parser.Parse(body);
+    if (!document.root) return hosts;
+    // The cascade gives each element the background images its style
+    // attribute and the page's <style> sheets set - url() values a search of
+    // the source cannot tell from a font's or a rule that matches nothing.
+    UltraCanvas::HTML::StyleResolver resolver;
+    for (const std::string& css : document.styleSheets) resolver.AddStyleSheet(css);
+    resolver.Resolve(document);
+    document.root->ForEachElement([&](UltraCanvas::HTML::Node& element) {
+        if (element.tag == "img"
+            || (element.tag == "input" && Lower(Trim(element.GetAttribute("type"))) == "image")) {
+            add(element.GetAttribute("src"));
         }
-    }
+        if (element.HasAttribute("background")) add(element.GetAttribute("background"));
+        for (const std::string& image : resolver.StyleOf(&element).backgroundImages) add(image);
+        return true;
+    });
     return hosts;
 }
 
@@ -538,7 +549,11 @@ ThreatReport ScanMessage(const ScanInput& input) {
         for (const auto& link : links)
             if (!link.host.empty()) linkRegs.insert(RegistrableDomain(link.host));
         const std::string senderLower = Lower(senderReg);
-        for (const std::string& imageHost : ExtractImageHosts(input.body)) {
+        // Without a word of a name to find, no picture can be borrowed: the
+        // page is not parsed again for it.
+        const std::vector<std::string> imageHosts =
+            nameWords.empty() ? std::vector<std::string>() : ExtractImageHosts(input.body);
+        for (const std::string& imageHost : imageHosts) {
             const std::string imageReg = RegistrableDomain(imageHost);
             if (imageReg.empty() || imageReg == senderReg || linkRegs.count(imageReg)) continue;
             const std::string label = imageReg.substr(0, imageReg.find('.'));
