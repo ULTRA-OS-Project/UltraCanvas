@@ -21,6 +21,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
+#include "UltraMailSenderBrands.h"
 #include "UltraMailThreatScan.h"
 
 #include <string>
@@ -1003,6 +1004,7 @@ TEST(the_fbi_atm_card_letter_is_a_scam) {
         "ATM Card Center Director\nPrivate Email: lordbenn@foxmail.com\n"));
     REQUIRE(r.Has("advance-fee-fraud"));
     REQUIRE(r.Has("reply-elsewhere"));
+    REQUIRE(r.Has("government-impersonation"));   // "FBI" in the name and the domain
     REQUIRE(r.level == ThreatLevel::Scam);
 }
 
@@ -1036,4 +1038,157 @@ TEST(the_next_of_kin_attorney_letter_is_a_scam) {
         "and modalities for transfer.\n\nYour brother and friend,\nMr. Foga Bama, Esq."));
     REQUIRE(r.Has("advance-fee-fraud"));
     REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+// ---------------------------------------------------------------------------
+// Sender domains dressed up as a brand's
+// ---------------------------------------------------------------------------
+namespace {
+std::string Imitated(const std::string& domain) {
+    const DomainLookalike l = BrandImitatedByDomain(domain);
+    return l.brand ? l.brand->id : std::string();
+}
+} // namespace
+
+TEST(lookalike_sender_domains_are_recognised) {
+    // Yana's letter: Facebook with a doubled "e", padded with "inbox".
+    const DomainLookalike yana = BrandImitatedByDomain("uncollatednessi.faceebookinbox.biz");
+    REQUIRE(yana.brand != nullptr);
+    REQUIRE_EQ(yana.brand->id, std::string("facebook"));
+    REQUIRE(yana.kind == LookalikeKind::Misspelt);
+    REQUIRE_EQ(yana.worn, std::string("faceebook"));
+
+    REQUIRE_EQ(Imitated("paypal-secure-login.com"), std::string("paypal"));
+    REQUIRE(BrandImitatedByDomain("paypal-secure-login.com").kind == LookalikeKind::Name);
+    REQUIRE_EQ(Imitated("appleidverify.com"), std::string("apple"));
+    REQUIRE_EQ(Imitated("amaz0n-billing.com"), std::string("amazon"));
+    REQUIRE_EQ(Imitated("paypa1.com"), std::string("paypal"));
+    REQUIRE_EQ(Imitated("rnicrosoft-account.net"), std::string("microsoft"));
+    REQUIRE_EQ(Imitated("faceboook.com"), std::string("facebook"));
+    REQUIRE_EQ(Imitated("mail.linkedln-notify.com"), std::string("linkedin"));
+    REQUIRE_EQ(Imitated("instagrarn.top"), std::string("instagram"));
+    const DomainLookalike own = BrandImitatedByDomain("paypal.com.account-check.ru");
+    REQUIRE(own.kind == LookalikeKind::OwnDomain);
+    REQUIRE_EQ(own.worn, std::string("paypal.com"));
+}
+
+TEST(ordinary_domains_with_a_brand_word_are_not_lookalikes) {
+    for (const char* d : { "applewood-estates.com", "amazonas-reisen.de", "pineapple-shop.example",
+                           "hermes.uni-example.de", "telecom-services.example", "interact.example",
+                           "canvas-studio.example", "goggles-shop.example", "revolt.example",
+                           "paypal.xyz", "gmail.com", "facebookmail.com", "mail.paypal.de",
+                           "amazonses.com", "paypal-community.com", "metamask.io" })
+        REQUIRE_EQ(Imitated(d), std::string());
+}
+
+TEST(a_lookalike_sender_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("Yana <redesignedb@uncollatednessi.faceebookinbox.biz>",
+        "How is it going?", "Hello, how are you?"));
+    REQUIRE(r.Has("sender-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("faceebook") != std::string::npos);
+    REQUIRE(r.Summary().find("Facebook") != std::string::npos);
+    REQUIRE(!ScanMessage(Letter("Facebook <notification@facebookmail.com>", "New login",
+        "A new login to your account.")).Has("sender-domain-lookalike"));
+}
+
+// ---------------------------------------------------------------------------
+// Government agencies and international organisations
+// ---------------------------------------------------------------------------
+TEST(an_agency_in_the_senders_name_from_elsewhere_is_a_scam) {
+    ScanInput in = Letter("interpol.police@gmail.com", "Notice", "Please contact us.");
+    in.fromName = "INTERPOL Police Department";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("government-impersonation"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("Interpol") != std::string::npos);
+}
+
+TEST(a_letter_in_an_agencys_name_about_your_money_is_flagged) {
+    const ThreatReport r = ScanMessage(Letter("payments.office@yahoo.com", "Your compensation",
+        "We the International Monetary Fund have approved your compensation payment as a "
+        "scam victim. Contact this office."));
+    REQUIRE(r.Has("government-impersonation"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(real_agencies_and_news_about_them_are_not_impersonation) {
+    for (const char* from : { "alerts@ic3.gov", "news@fbi.gov", "press@interpol.int",
+                              "media@imf.org", "info@bka.de", "kontakt@bundespolizei.bund.de",
+                              "noreply@hmrc.gov.uk", "office@justice.gouv.fr" }) {
+        ScanInput in = Letter(from, "Your case number",
+            "Dear beneficiary, the FBI and Interpol hereby inform you about your case.");
+        REQUIRE(!ScanMessage(in).Has("government-impersonation"));
+    }
+    // A news item mentions the FBI without writing in its name.
+    REQUIRE(!ScanMessage(Letter("friend@gmail.com", "Did you see this?",
+        "The FBI director said today that romance scams cost a billion dollars."))
+        .Has("government-impersonation"));
+    // A newsletter from a domain of its own may write about anyone.
+    ScanInput news = Letter("digest@news.example", "FBI warns of romance scams",
+        "The FBI hereby warns: never send money to someone you met online.");
+    news.listUnsubscribe = "<mailto:unsubscribe@news.example>";
+    REQUIRE(!ScanMessage(news).Has("government-impersonation"));
+    // "Cia." is a company, not the CIA.
+    ScanInput company = Letter("vendas@souza.example", "Pedido", "Obrigado pelo pedido.");
+    company.fromName = "Souza & Cia";
+    REQUIRE(!ScanMessage(company).Has("government-impersonation"));
+}
+
+// ---------------------------------------------------------------------------
+// Settings > Spam/scam warnings
+// ---------------------------------------------------------------------------
+TEST(a_kind_of_warning_switched_off_is_not_reported) {
+    ScanInput in = Letter("anna.k.tova@gmail.com", "Where are you my dear?",
+        "I go to a Dating site and find a profile of a person who believes in love. My "
+        "name is Anna, I'm 31 years old. I hope you like my photos. Write back!",
+        { "IMG_942.jpg" });
+    REQUIRE(ScanMessage(in).Has("romance-scam"));
+    in.options.romance = false;
+    const ThreatReport off = ScanMessage(in);
+    REQUIRE(!off.Has("romance-scam"));
+    REQUIRE(off.level == ThreatLevel::Clean);         // its points went with it
+    REQUIRE_EQ(off.score, 0);
+
+    ScanInput crypto = Letter("news@example.test", "Markets", "Bitcoin rose today.");
+    crypto.options.cryptoCaution = false;
+    REQUIRE(!ScanMessage(crypto).Has("crypto-content"));
+    crypto.options = ThreatScanOptions{};
+    crypto.options.phishing = false;                  // another kind: no effect here
+    REQUIRE(ScanMessage(crypto).Has("crypto-content"));
+}
+
+TEST(every_finding_belongs_to_a_switch) {
+    ThreatScanOptions none;
+    none.phishing = none.romance = none.advanceFee = none.government = false;
+    none.cryptoScams = none.cryptoCaution = none.attachments = none.spamFlag = false;
+    for (const char* code : { "spam-flag", "auth-failure", "brand-impersonation",
+                              "sender-domain-lookalike", "borrowed-brand-pictures",
+                              "link-userinfo", "link-ip-host", "link-punycode",
+                              "link-nonascii-host", "link-shortener", "link-target-mismatch",
+                              "link-brand-mismatch", "link-brand-lookalike",
+                              "insecure-login-link", "many-foreign-domains",
+                              "credential-request", "advance-fee-fraud", "reply-to-mismatch",
+                              "reply-elsewhere", "attachment-disguised-executable",
+                              "attachment-executable", "attachment-double-extension",
+                              "romance-scam", "government-impersonation", "crypto-content",
+                              "crypto-wallet-secret", "crypto-payment-demand",
+                              "crypto-investment-lure" }) {
+        REQUIRE(!FindingEnabled(none, code));
+        REQUIRE(FindingEnabled(ThreatScanOptions{}, code));
+    }
+}
+
+TEST(the_process_wide_options_reach_raw_scans) {
+    const std::string raw =
+        "From: news@example.test\r\nSubject: Markets\r\n"
+        "Content-Type: text/plain\r\n\r\nBitcoin rose today.\r\n";
+    REQUIRE(ScanRawMessage(raw).Has("crypto-content"));
+    ThreatScanOptions quiet;
+    quiet.cryptoCaution = false;
+    SetThreatScanOptions(quiet);
+    const bool reported = ScanRawMessage(raw).Has("crypto-content");
+    SetThreatScanOptions(ThreatScanOptions{});       // back for the other tests
+    REQUIRE(!reported);
+    REQUIRE(GetThreatScanOptions() == ThreatScanOptions{});
 }

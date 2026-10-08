@@ -523,6 +523,27 @@ TEST(a_verdict_keeps_its_finding_codes) {
     REQUIRE(all[1].HasFinding("romance-scam"));
 }
 
+TEST(changed_warnings_make_every_verdict_stale) {
+    LocalStore s = FreshStore("stale-all");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    for (int64_t uid : {1, 2}) {
+        REQUIRE(s.UpsertMessage(Incoming("erika", uid, "a@x.com", {"erika@example.com"})).success);
+        MessageSecurity verdict;
+        verdict.level = ThreatLevel::Clean;
+        verdict.scannedAt = 5000;                     // current rules
+        REQUIRE(s.SetSecurity("erika", "INBOX", uid, verdict).success);
+    }
+    std::vector<int64_t> stale;
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE(stale.empty());
+    REQUIRE(s.MarkVerdictsStale().success);
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE_EQ(stale.size(), (size_t)2);
+    MessageSecurity got;
+    REQUIRE(s.GetSecurity("erika", "INBOX", 1, got).success);
+    REQUIRE(got.level == ThreatLevel::Clean);         // the verdict stays until re-scanned
+}
+
 TEST(verified_sender_and_stale_verdicts) {
     LocalStore s = FreshStore("verified");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");

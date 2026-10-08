@@ -48,6 +48,49 @@
   the one it came from ("Please find my contact email address for us to
   proceed: (l.byrne96@yahoo.com)") - how advance-fee and romance letters move
   to an address their provider has not closed yet.
+- **A sender address dressed up as a brand's is flagged.** Yana's letter
+  came from `uncollatednessi.faceebookinbox.biz` - Facebook with a doubled
+  "e" - and nothing looked at the sender's domain itself, only at its display
+  name and subject. Now it does (`sender-domain-lookalike`, 45-50 points, a
+  scam on its own), in three ways and only on a domain that is none of the
+  brand's own: the brand's name padded with the words phishing pads it with
+  ("paypal-secure-login.com", "appleidverify.com": secure, login, verify,
+  account, support, inbox …); the name misspelt with look-alike characters
+  ("amaz0n", "paypa1", "rnicrosoft"), a doubled letter ("paypall",
+  "faceebook") or, for names of eight letters or more, one letter added,
+  dropped, changed or swapped ("facebok"); and a brand's own domain in front
+  of a foreign one ("paypal.com.account-check.ru"). A name beside an ordinary
+  word is no claim - "applewood-estates.com", "amazonas-reisen.de",
+  "paypal-community.com" - and neither is a server called Hermes
+  ("hermes.uni-example.de") or the bare name under another suffix
+  ("paypal.xyz"), which the brand table leaves unclaimed on purpose. The
+  reading pane tells it as phishing (`BrandImitatedByDomain`).
+- **Letters in the FBI's, Interpol's or the IMF's name.** The FBI letter was
+  caught only by its money story. Now a message that presents itself as a
+  government agency or an international organisation - the FBI, Interpol, the
+  IMF, the United Nations, the World Bank, Europol, the Department of Justice,
+  the US Treasury, the Federal Reserve, the Secret Service, the IRS, the BKA,
+  the Bundespolizei, Scotland Yard, the Central Bank of Nigeria … - but was
+  sent from an address that is not a government one is flagged
+  (`government-impersonation`): 45 when the sender's name or domain says so
+  ("FBI <director@fbi-atm-center.example>"), 30 when the subject or text
+  speaks in its name about your money, a case or an arrest ("we the
+  International Monetary Fund … your compensation"). A government address
+  (.gov, .mil, .int, gov.uk, gouv.fr, bund.de, admin.ch, europa.eu …) or an
+  agency's own domain (imf.org, un.org, bka.de) never is, nor is a news item
+  that mentions the FBI or a newsletter from a domain of its own; "Souza &
+  Cia" is a company, not the CIA.
+- **Settings > Warnings > Spam/scam warnings.** One switch per kind of
+  warning: phishing, romance scams, advance-fee letters, letters in an
+  agency's name, cryptocurrency scams, the caution on any mail about
+  cryptocurrency, dangerous attachments, and spam as the mail server marked
+  it - all on. A kind switched off is not looked for: its findings are
+  dropped and add nothing to the score, so its messages are labelled as if
+  the check did not exist. Mail already checked is checked again with the
+  new choice - the open message at once, the rest in the background with
+  each mail check, starting with one right away (`ThreatScanOptions`,
+  `LocalStore::MarkVerdictsStale`; `warn_*` in `preferences.ini`). "Warn about
+  all" restores the defaults.
 - **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
   ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
   foxmail.com are free mailboxes, as gmail.com is.
@@ -55,7 +98,8 @@
   schema 11), which is how the reading pane knows which scam it is; stored
   verdicts are scanned again by the new rules (`kThreatRulesRevision`). A
   scam's badge tooltip says "scam or phishing markers" rather than phishing
-  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`.
+  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
+  `test_preferences.cpp`.
 
 #### 2026-10-08 *0.10.38*
 - **The mail's text can be selected and copied.** In formatted (HTML) mail a

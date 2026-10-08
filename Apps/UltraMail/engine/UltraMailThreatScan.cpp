@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.7.0 - sender-domain-lookalike, government-impersonation;
+//                  ThreatScanOptions (a kind switched off is dropped)
 // Version: 0.6.0 - romance scams (romance-scam) and cryptocurrency (crypto-content,
 //                  crypto-wallet-secret, crypto-payment-demand,
 //                  crypto-investment-lure); the body's pictures; Codes / Has
@@ -20,6 +22,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <cstring>
 #include <set>
@@ -285,7 +288,7 @@ const std::string* FirstPhraseIn(const std::string& textLower,
 
 void Add(ThreatReport& r, int score, const char* code, const std::string& detail) {
     for (const auto& f : r.findings) if (f.code == code) return;   // one of each
-    r.findings.push_back({ code, detail });
+    r.findings.push_back({ code, detail, score });
     r.score += score;
 }
 
@@ -514,6 +517,86 @@ const std::vector<std::string>& JobApplicationPhrases() {
 }
 
 // ---------------------------------------------------------------------------
+// Government agencies and international organisations
+// ---------------------------------------------------------------------------
+// The names the "compensation for scam victims", "your ATM card" and "warrant
+// for your arrest" letters write in. None of these bodies writes to a private
+// person out of the blue about money or an arrest - least of all from an
+// address that is not theirs.
+struct Agency {
+    const char*              name;      // as the reason says it
+    std::vector<std::string> claims;    // lowercase, matched as words
+    std::vector<std::string> domains;   // its own, beyond the government suffixes
+};
+
+const std::vector<Agency>& Agencies() {
+    static const std::vector<Agency> v = {
+        { "the FBI", { "fbi", "federal bureau of investigation" }, { "fbi.gov", "ic3.gov" } },
+        { "Interpol", { "interpol" }, { "interpol.int" } },
+        { "the IMF", { "imf", "international monetary fund", "international monitory fund",
+                       "international monitory funds" }, { "imf.org" } },
+        { "the United Nations", { "united nations" }, { "un.org" } },
+        { "the World Bank", { "world bank" }, { "worldbank.org" } },
+        { "Europol", { "europol" }, { "europa.eu" } },
+        { "the CIA", { "central intelligence agency" }, { "cia.gov" } },
+        { "Homeland Security", { "homeland security" }, { "dhs.gov" } },
+        { "the Department of Justice", { "department of justice" },
+          { "justice.gov", "usdoj.gov" } },
+        { "the US Treasury", { "department of the treasury", "us treasury", "u.s. treasury",
+                               "treasury department" }, { "treasury.gov" } },
+        { "the Federal Reserve", { "federal reserve" }, { "federalreserve.gov" } },
+        { "the Secret Service", { "secret service" }, { "secretservice.gov" } },
+        { "the IRS", { "irs", "internal revenue service" }, { "irs.gov" } },
+        { "the European Central Bank", { "european central bank" }, { "ecb.europa.eu" } },
+        { "the European Commission", { "european commission" }, { "europa.eu" } },
+        { "the Bundeskriminalamt", { "bundeskriminalamt", "bka" }, { "bka.de" } },
+        { "the Bundespolizei", { "bundespolizei" }, { "bundespolizei.de" } },
+        { "Scotland Yard", { "scotland yard", "metropolitan police" }, { "met.police.uk" } },
+        { "the National Crime Agency", { "national crime agency" },
+          { "nationalcrimeagency.gov.uk" } },
+        { "the Central Bank of Nigeria", { "central bank of nigeria" }, { "cbn.gov.ng" } },
+        { "ECOWAS", { "ecowas" }, { "ecowas.int" } },
+    };
+    return v;
+}
+
+// A government's own domain: .gov, .mil, .int, a country's gov.xx / gob.xx /
+// gouv.xx / govt.xx / go.xx / gv.xx, and the federal and EU domains that do
+// not say so in their suffix (bund.de, admin.ch, gv.at, gc.ca, europa.eu,
+// police.uk).
+bool IsGovernmentDomain(const std::string& domainIn) {
+    const std::string d = "." + Lower(domainIn);
+    auto endsWith = [&d](const std::string& tail) {
+        return d.size() >= tail.size() && d.compare(d.size() - tail.size(), tail.size(), tail) == 0;
+    };
+    for (const char* tail : { ".gov", ".mil", ".int", ".bund.de", ".admin.ch", ".gv.at",
+                              ".gc.ca", ".canada.ca", ".europa.eu", ".police.uk",
+                              ".gouv.fr" })
+        if (endsWith(tail)) return true;
+    const std::size_t last = d.rfind('.');
+    const std::size_t prev = last == 0 ? std::string::npos : d.rfind('.', last - 1);
+    if (prev == std::string::npos || d.size() - last - 1 != 2) return false;
+    const std::string second = d.substr(prev + 1, last - prev - 1);
+    for (const char* s : { "gov", "gob", "gouv", "govt", "go", "gv", "mil", "police" })
+        if (second == s) return true;
+    return false;
+}
+
+// What makes a mention of an agency a letter in its name: it addresses the
+// reader about their money, their case or their arrest.
+const std::vector<std::string>& OfficialLetterPhrases() {
+    static const std::vector<std::string> v = {
+        "attention beneficiary", "dear beneficiary", "beneficiary", "your payment",
+        "your fund", "your funds", "atm card", "compensation", "scam victim",
+        "scam victims", "arrest warrant", "warrant of arrest", "warrant for your arrest",
+        "you will be arrested", "legal action against you", "pay the fine", "pay a fine",
+        "your case", "case number", "this office", "our office", "we the", "hereby",
+        "officially", "haftbefehl", "ihre zahlung", "aktenzeichen",
+    };
+    return v;
+}
+
+// ---------------------------------------------------------------------------
 // Cryptocurrency
 // ---------------------------------------------------------------------------
 const std::vector<std::string>& CryptoTerms() {
@@ -663,6 +746,40 @@ std::string ThreatReport::Codes() const {
 bool ThreatReport::Has(const std::string& code) const {
     for (const auto& f : findings) if (f.code == code) return true;
     return false;
+}
+
+bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
+    if (code == "romance-scam")             return o.romance;
+    if (code == "government-impersonation") return o.government;
+    if (code == "advance-fee-fraud" || code == "reply-elsewhere") return o.advanceFee;
+    if (code == "crypto-content")           return o.cryptoCaution;
+    if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
+    if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
+    if (code == "spam-flag")                return o.spamFlag;
+    static const std::set<std::string> phishing = {
+        "auth-failure", "brand-impersonation", "sender-domain-lookalike",
+        "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
+        "link-nonascii-host", "link-shortener", "link-target-mismatch",
+        "link-brand-mismatch", "link-brand-lookalike", "insecure-login-link",
+        "many-foreign-domains", "credential-request", "reply-to-mismatch",
+    };
+    if (phishing.count(code)) return o.phishing;
+    return true;
+}
+
+namespace {
+std::mutex         g_optionsMutex;
+ThreatScanOptions  g_options;
+} // namespace
+
+void SetThreatScanOptions(const ThreatScanOptions& options) {
+    std::lock_guard<std::mutex> lock(g_optionsMutex);
+    g_options = options;
+}
+
+ThreatScanOptions GetThreatScanOptions() {
+    std::lock_guard<std::mutex> lock(g_optionsMutex);
+    return g_options;
 }
 
 bool HasFindingCode(const std::string& codes, const std::string& code) {
@@ -923,6 +1040,36 @@ ThreatReport ScanMessage(const ScanInput& input) {
                                   : senderDomain) + ", which is not " + claimed->name + ".");
     }
 
+    // ---- A sender domain dressed up as a brand's ---------------------------
+    // The From address itself pretends: "faceebookinbox.biz",
+    // "paypal-secure-login.com", "amaz0n-billing.com",
+    // "paypal.com.account-check.ru" (BrandImitatedByDomain). A domain can sign
+    // its own mail, so a proven look-alike is still a look-alike.
+    {
+        const DomainLookalike lookalike = BrandImitatedByDomain(senderDomain);
+        if (lookalike.brand) {
+            const std::string& name = lookalike.brand->name;
+            std::string why = "The sender's domain " + senderDomain + " ";
+            switch (lookalike.kind) {
+                case LookalikeKind::Misspelt:
+                    why += "imitates " + name + ": \"" + lookalike.worn + "\" is " + name +
+                           "'s name misspelt";
+                    break;
+                case LookalikeKind::OwnDomain:
+                    why += "puts " + name + "'s own domain (" + lookalike.worn +
+                           ") in front of an unrelated one";
+                    break;
+                default:
+                    why += "wears " + name + "'s name (\"" + lookalike.worn +
+                           "\") padded with other words";
+                    break;
+            }
+            why += ", but it is not one of " + name + "'s domains.";
+            Add(report, lookalike.kind == LookalikeKind::Name ? 45 : 50,
+                "sender-domain-lookalike", why);
+        }
+    }
+
     // ---- Pictures borrowed from a brand the mail is not from --------------
     // The message's pictures come from a site its display name (or subject)
     // names - gotinder.com for "Tinder" - but it was sent from elsewhere and
@@ -1103,6 +1250,49 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 // Money plus one ingredient is worth a second look; money plus
                 // two (an estate *and* a fee, say) is the scam itself.
                 Add(report, parts >= 2 ? 50 : 25, "advance-fee-fraud", why);
+            }
+        }
+    }
+
+    // ---- Government agencies and international organisations -------------
+    // A letter in the FBI's, Interpol's or the IMF's name from an address that
+    // is not theirs. In the sender's name or domain it is a claim on its own
+    // ("FBI <director@fbi-atm-center.example>"); in the subject or the text it
+    // counts when it addresses the reader about money, a case or an arrest -
+    // a news item about the FBI does not. Not for a newsletter from a domain
+    // of its own, and not where the brand table already said so.
+    bool agencyDomain = IsGovernmentDomain(senderDomain);   // one agency may name another
+    for (const Agency& agency : Agencies())
+        for (const auto& d : agency.domains)
+            agencyDomain = agencyDomain || RegistrableDomain(senderDomain) == RegistrableDomain(d);
+    if (!(input.options.phishing && report.Has("brand-impersonation")) && !agencyDomain &&
+        !(report.bulk && !IsPersonalMailboxDomain(senderDomain))) {
+        std::string who = input.fromName.empty() ? input.fromAddr : input.fromName;
+        if (const std::size_t lt = who.find('<'); lt != std::string::npos) who = who.substr(0, lt);
+        std::string domainWords = senderDomain;
+        for (char& c : domainWords) if (c == '.' || c == '-' || c == '_') c = ' ';
+        const std::string named = Lower(who) + " " + domainWords;
+        const std::string letterText = Lower(input.subject) + "\n" + bodyLower;
+        for (const Agency& agency : Agencies()) {
+            const std::string from = senderDomain.empty() ? std::string("an address with no domain")
+                                                          : senderDomain;
+            if (const std::string* claim = FirstWordPhraseIn(named, agency.claims)) {
+                Add(report, 45, "government-impersonation",
+                    "The message presents itself as " + std::string(agency.name) + " (\"" +
+                    *claim + "\"), but it was sent from " + from +
+                    ", which is not a government address.");
+                break;
+            }
+            const std::string* claim = FirstWordPhraseIn(letterText, agency.claims);
+            const std::string* letter = claim ? FirstWordPhraseIn(letterText, OfficialLetterPhrases())
+                                              : nullptr;
+            if (claim && letter) {
+                Add(report, 30, "government-impersonation",
+                    "The message speaks in the name of " + std::string(agency.name) +
+                    " about your money, a case or an arrest (\"" + *letter + "\"), but it "
+                    "was sent from " + from + ", which is not a government address. "
+                    "Agencies do not announce payments, compensation or arrests by email.");
+                break;
             }
         }
     }
@@ -1316,6 +1506,13 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // Settings > Spam/scam warnings: a kind switched off is not reported.
+    for (auto it = report.findings.begin(); it != report.findings.end();) {
+        if (FindingEnabled(input.options, it->code)) { ++it; continue; }
+        report.score -= it->score;
+        it = report.findings.erase(it);
+    }
+
     if (report.score < 0) report.score = 0;
     if (report.score >= kScamScore)            report.level = ThreatLevel::Scam;
     else if (report.score >= kSuspiciousScore) report.level = ThreatLevel::Suspicious;
@@ -1344,6 +1541,7 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     // The topmost: the parsed headers keep the last of a repeated header,
     // and the bottom-most Authentication-Results may be anyone's.
     in.authResults     = TopHeaderValue(rawMessage, "Authentication-Results");
+    in.options         = GetThreatScanOptions();
 
     std::string body;
     bool isHtml = false;

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.15.0 - RecheckShownMessage: the message on screen scanned again when
+//                   the scam warnings change
 // Version: 0.14.2 - ShowPendingPreviewNow: the selected message in the window's
 //                  first frame at start
 // Version: 0.14.1 - the folder tree, the list's rebuild and the reading pane in
@@ -968,6 +970,14 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
 
 void MailView::Reload() {
     RebuildList();
+}
+
+void MailView::RecheckShownMessage() {
+    for (const auto& m : messages_) {
+        if (m.uid != selectedUid_ || m.folder != selectedFolder_) continue;
+        if (preview_.Shows(m.accountId, m.folder, m.uid)) preview_.Show(m);
+        return;
+    }
 }
 
 bool MailView::OpenMessage(const std::string& accountId, const std::string& folder, int64_t uid) {

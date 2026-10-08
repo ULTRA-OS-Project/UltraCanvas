@@ -769,6 +769,11 @@ UltraDbResult LocalStore::ListUncountedAttachments(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult LocalStore::MarkVerdictsStale() {
+    return UltraDb_Exec(connection_,
+        "UPDATE message_security SET scanned_at=0 WHERE level <> 'unscanned'", {});
+}
+
 UltraDbResult LocalStore::ListStaleVerdicts(const std::string& accountId,
                                             const std::string& folder, int64_t rulesRevision,
                                             int limit, std::vector<int64_t>& uids) const {

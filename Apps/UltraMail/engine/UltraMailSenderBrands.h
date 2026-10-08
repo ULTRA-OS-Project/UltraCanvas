@@ -18,6 +18,7 @@
 //    GMX, so those domains resolve to no brand at all — only a Google *service*
 //    domain (google.com, youtube.com) is Google.
 //
+// Version: 0.3.0 - BrandImitatedByDomain: a domain dressed up as a brand's
 // Version: 0.2.0 - banking, crypto, cloud/hosting, domain, government, telecom,
 //                  gaming and security categories
 // Version: 0.1.0
@@ -109,6 +110,28 @@ bool DomainBelongsToBrand(const std::string& domain, const SenderBrand& brand);
 // is an ordinary word is claimed through its keywords only, and an address
 // at a mailbox provider inside the text ("jane@outlook.com") claims nothing.
 const SenderBrand* BrandNamedIn(const std::string& text);
+
+// A domain dressed up as a brand's - the sender's address itself pretending.
+// Three ways, each on a domain that is none of the brand's own:
+//  * Name: the brand's name plus words phishing pads it with -
+//    "paypal-secure-login.com", "appleidverify.com" ("secure", "login",
+//    "verify", "account", "support", "inbox" …). The bare name under another
+//    suffix ("paypal.xyz") is not claimed either way, as the table says, and a
+//    name next to an ordinary word is no claim ("applewood", "amazonas-reisen").
+//  * Misspelt: the name with look-alike characters ("amaz0n", "paypa1",
+//    "rnicrosoft"), a doubled letter ("paypall", "faceebook"), or - for names
+//    of eight letters or more - one letter added, dropped, changed or swapped
+//    ("facebok"), with or without padding: "faceebookinbox.biz".
+//  * OwnDomain: one of the brand's own domains in front of an unrelated one:
+//    "paypal.com.account-check.ru".
+// Personal mailbox domains and every brand's own domains are never flagged.
+enum class LookalikeKind { None, Name, Misspelt, OwnDomain };
+struct DomainLookalike {
+    const SenderBrand* brand = nullptr;
+    LookalikeKind      kind  = LookalikeKind::None;
+    std::string        worn;   // the part that looks like the brand: "faceebook"
+};
+DomainLookalike BrandImitatedByDomain(const std::string& domain);
 
 // Every brand in the registry, in table order (the icon cache warms from this).
 const std::vector<SenderBrand>& KnownBrands();

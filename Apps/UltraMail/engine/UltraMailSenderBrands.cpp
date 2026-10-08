@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSenderBrands.cpp
+// Version: 0.4.0 - BrandImitatedByDomain: names padded with phishing words,
+//                  misspelt names, a brand's own domain in front of another
 // Version: 0.3.1 - the Russian, Ukrainian and Belarusian mailbox providers
 //                  (i.ua, ukr.net, bk.ru, rambler.ru, ...) and foxmail.com are
 //                  mailboxes
@@ -290,6 +292,183 @@ const SenderBrand* BrandNamedIn(const std::string& text) {
             if (ContainsWord(lower, k)) return &rule.brand;
     }
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Look-alike domains
+// ---------------------------------------------------------------------------
+namespace {
+
+// The words a phishing domain pads a brand's name with. Only these: a name
+// next to any other word is a business of its own ("applewood-estates").
+const std::vector<std::string>& LookalikeFillers() {
+    static const std::vector<std::string> v = {
+        "secure", "security", "login", "logon", "signin", "verify", "verification",
+        "validate", "validation", "account", "accounts", "acct", "support", "helpdesk",
+        "help", "service", "services", "team", "id", "inbox", "mail", "email",
+        "notify", "notification", "notifications", "alert", "alerts", "update",
+        "updates", "billing", "invoice", "invoices", "payment", "payments", "refund",
+        "refunds", "center", "centre", "customer", "customers", "care", "official",
+        "auth", "access", "unlock", "confirm", "confirmation", "recovery", "reset",
+        "check", "admin", "member", "members", "online", "portal", "my", "the", "info",
+        "web", "app", "apps", "mobile", "client", "safe", "safety", "protect",
+        "protection", "message", "messages", "msg", "desk", "dept", "claim", "claims",
+        "reward", "rewards", "prize", "bonus", "gift", "winner", "kunden", "konto",
+        "sicherheit", "anmelden", "hilfe", "zahlung", "rechnung", "www", "us", "usa",
+        "uk", "de", "eu", "intl", "global", "24", "365", "now", "new",
+    };
+    return v;
+}
+
+// Where a run of fillers can end, reading from the front (0 always), and
+// where one can start, reading from the back (the length always).
+std::vector<std::size_t> FillerRunEnds(const std::string& s) {
+    std::vector<bool> ok(s.size() + 1, false);
+    ok[0] = true;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (!ok[i]) continue;
+        for (const auto& f : LookalikeFillers())
+            if (s.compare(i, f.size(), f) == 0) ok[i + f.size()] = true;
+    }
+    std::vector<std::size_t> out;
+    for (std::size_t i = 0; i <= s.size(); ++i) if (ok[i]) out.push_back(i);
+    return out;
+}
+
+std::vector<std::size_t> FillerRunStarts(const std::string& s) {
+    std::vector<bool> ok(s.size() + 1, false);
+    ok[s.size()] = true;
+    for (std::size_t j = s.size(); j > 0; --j) {
+        if (!ok[j]) continue;
+        for (const auto& f : LookalikeFillers())
+            if (f.size() <= j && s.compare(j - f.size(), f.size(), f) == 0)
+                ok[j - f.size()] = true;
+    }
+    std::vector<std::size_t> out;
+    for (std::size_t j = 0; j <= s.size(); ++j) if (ok[j]) out.push_back(j);
+    return out;
+}
+
+// What a word looks like to a hurried eye: 0 o, 1 i l, 3 e, 4 a, 5 s, 7 t,
+// rn m, vv w.
+std::string Skeleton(const std::string& s) {
+    std::string out;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (c == 'r' && i + 1 < s.size() && s[i + 1] == 'n') { out += 'm'; ++i; continue; }
+        if (c == 'v' && i + 1 < s.size() && s[i + 1] == 'v') { out += 'w'; ++i; continue; }
+        switch (c) {
+            case '0': c = 'o'; break;
+            case '1': case 'i': c = 'l'; break;
+            case '3': c = 'e'; break;
+            case '4': c = 'a'; break;
+            case '5': c = 's'; break;
+            case '7': c = 't'; break;
+            default: break;
+        }
+        out += c;
+    }
+    return out;
+}
+
+// One letter added, dropped, changed, or two neighbours swapped.
+bool OneEditApart(const std::string& a, const std::string& b) {
+    if (a == b) return false;
+    if (a.size() == b.size()) {
+        std::vector<std::size_t> diff;
+        for (std::size_t i = 0; i < a.size() && diff.size() <= 2; ++i)
+            if (a[i] != b[i]) diff.push_back(i);
+        if (diff.size() == 1) return true;
+        return diff.size() == 2 && diff[1] == diff[0] + 1 && a[diff[0]] == b[diff[1]] &&
+               a[diff[1]] == b[diff[0]];
+    }
+    const std::string& longer  = a.size() > b.size() ? a : b;
+    const std::string& shorter = a.size() > b.size() ? b : a;
+    if (longer.size() != shorter.size() + 1) return false;
+    for (std::size_t i = 0; i < longer.size(); ++i)
+        if (longer.substr(0, i) + longer.substr(i + 1) == shorter) return true;
+    return false;
+}
+
+// `m` is `name` with one of its letters doubled ("paypall", "faceebook").
+bool DoubledLetter(const std::string& m, const std::string& name) {
+    if (m.size() != name.size() + 1) return false;
+    for (std::size_t k = 1; k < m.size(); ++k)
+        if (m[k] == m[k - 1] && m.substr(0, k) + m.substr(k + 1) == name) return true;
+    return false;
+}
+
+std::string Alnum(const std::string& s) {
+    std::string out;
+    for (char c : Lower(s)) if (std::isalnum(static_cast<unsigned char>(c))) out += c;
+    return out;
+}
+
+} // namespace
+
+DomainLookalike BrandImitatedByDomain(const std::string& domainIn) {
+    DomainLookalike none;
+    std::string d = Lower(domainIn);
+    while (!d.empty() && d.back() == '.') d.pop_back();
+    if (d.empty() || BrandForDomain(d) || IsPersonalMailboxDomain(d)) return none;
+    const std::string reg = RegistrableDomain(d);
+    const std::string front = d.size() > reg.size() ? d.substr(0, d.size() - reg.size() - 1)
+                                                     : std::string();
+
+    // A brand's own domain in front of a foreign one: paypal.com.account-check.ru.
+    if (!front.empty()) {
+        const std::string dotted = "." + front + ".";
+        for (const auto& rule : SenderBrandRules())
+            for (const auto& own : rule.domains)
+                if (own.find('.') != std::string::npos &&
+                    dotted.find("." + own + ".") != std::string::npos)
+                    return { &rule.brand, LookalikeKind::OwnDomain, own };
+    }
+
+    // Each label on its own, the registrable one first. A bare name is no
+    // claim in any of them: "hermes.uni-example.de" is a server called Hermes.
+    std::vector<std::string> labels = { BaseLabel(reg) };
+    for (std::size_t start = 0; start < front.size();) {
+        std::size_t dot = front.find('.', start);
+        if (dot == std::string::npos) dot = front.size();
+        labels.push_back(front.substr(start, dot - start));
+        start = dot + 1;
+    }
+    for (const auto& label : labels) {
+        const std::string word = Alnum(label);   // "paypal-secure" -> "paypalsecure"
+        if (word.size() < 4) continue;
+        const auto ends = FillerRunEnds(word);
+        const auto starts = FillerRunStarts(word);
+        for (const auto& rule : SenderBrandRules()) {
+            std::vector<std::string> names;
+            const std::string own = Alnum(rule.brand.name);
+            if (rule.nameClaim == NameClaim::ByName && own.size() >= 4) names.push_back(own);
+            for (const auto& k : rule.keywords) {
+                const std::string kw = Alnum(k);
+                if (kw.size() >= 5 && kw != own) names.push_back(kw);
+            }
+            for (const std::string& name : names) {
+                for (std::size_t i : ends) {
+                    for (std::size_t j : starts) {
+                        if (j <= i || j - i + 1 < name.size() || j - i > name.size() + 1) continue;
+                        const std::string m = word.substr(i, j - i);
+                        const bool padded = i > 0 || j < word.size();
+                        if (m == name) {
+                            // The bare name under another suffix is no claim.
+                            if (padded) return { &rule.brand, LookalikeKind::Name, m };
+                            continue;
+                        }
+                        const bool misspelt =
+                            (name.size() >= 4 && Skeleton(m) == Skeleton(name)) ||
+                            (name.size() >= 5 && DoubledLetter(m, name)) ||
+                            (name.size() >= 8 && OneEditApart(m, name));
+                        if (misspelt) return { &rule.brand, LookalikeKind::Misspelt, m };
+                    }
+                }
+            }
+        }
+    }
+    return none;
 }
 
 const std::vector<SenderBrand>& KnownBrands() {

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.29 - Settings > Spam/scam warnings: the scan's options set at start
+//                   and on a change, which has the stored verdicts judged again
 // Version: 0.9.28 - the window first: only what the first frame shows is done
 //                   before it (the mail list and the selected message);
 //                   the mail plug-ins, the vault, the cloud accounts, the
@@ -192,6 +194,9 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     prefsPath_ = dataDir + "/preferences.ini";
     step.emplace("Preferences", 0);
     prefs_.Load(prefsPath_);
+    // Which spam/scam warnings the content scan gives - before anything is
+    // scanned, on the sync's threads or in the reading pane.
+    SetThreatScanOptions(prefs_.scamWarnings);
     ApplyNeedsAnswerRules();
     // The sender-icon cache (the badge left of every subject line) lives under
     // the cache directory; it is safe to point at it before the folder exists.
@@ -3350,6 +3355,15 @@ void UltraMailApp::OpenSettings() {
         // New waiting-for-reply rules: the account bar's count and the list's
         // reply marks are worked out again.
         if (ApplyNeedsAnswerRules()) Refresh();
+        // Other spam/scam warnings: every stored verdict is judged again - the
+        // message on screen at once, the rest as the mail check re-scans them
+        // (a batch per folder and check), starting with one now.
+        if (!(GetThreatScanOptions() == prefs_.scamWarnings)) {
+            SetThreatScanOptions(prefs_.scamWarnings);
+            store_.MarkVerdictsStale();
+            mailView_.RecheckShownMessage();
+            SyncAllInBackground();
+        }
     });
 }
 

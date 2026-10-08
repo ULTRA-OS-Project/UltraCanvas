@@ -14,6 +14,10 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.7.0 - look-alike sender domains (sender-domain-lookalike), letters in
+//                  an agency's name (government-impersonation); ThreatScanOptions:
+//                  each kind of warning can be switched off (Settings > Spam/scam
+//                  warnings); ThreatFinding::score
 // Version: 0.6.0 - romance scams (romance-scam: a stranger's love letter, with
 //                  photos, from a free mailbox) and cryptocurrency (crypto-content
 //                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
@@ -57,7 +61,33 @@ ThreatLevel ThreatLevelFromString(const std::string& s);
 struct ThreatFinding {
     std::string code;
     std::string detail;
+    int         score = 0;   // what it added to the report's score
 };
+
+// Which kinds of warning the scan gives (Settings > Spam/scam warnings). A
+// kind switched off is not reported: its findings are dropped and add nothing
+// to the score, so its messages are labelled as if the rules did not exist.
+struct ThreatScanOptions {
+    bool phishing      = true;   // links that lie, a brand or a look-alike domain
+                                 // claimed, credentials asked for, forged senders
+    bool romance       = true;   // romance-scam
+    bool advanceFee    = true;   // advance-fee-fraud, reply-elsewhere
+    bool government    = true;   // government-impersonation
+    bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
+    bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto
+    bool attachments   = true;   // attachment-*: programs, disguised documents
+    bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool operator==(const ThreatScanOptions&) const = default;
+};
+
+// Whether `options` lets the finding `code` be reported. Codes of no kind
+// (none today) always are.
+bool FindingEnabled(const ThreatScanOptions& options, const std::string& code);
+
+// The options ScanRawMessage scans with, for the whole process - the sync's
+// threads and the reading pane alike. Everything on until set.
+void SetThreatScanOptions(const ThreatScanOptions& options);
+ThreatScanOptions GetThreatScanOptions();
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
@@ -122,6 +152,9 @@ struct ScanInput {
     // attached under a name that is not a picture's. An attachment named
     // like one ("IMG_942.jpg") counts from `attachmentNames` already.
     std::vector<std::string> pictureNames;
+    // Which kinds of warning to give: all of them unless the caller says
+    // otherwise (ScanRawMessage passes GetThreatScanOptions()).
+    ThreatScanOptions options;
 };
 
 // When the rules last changed (epoch seconds). A stored verdict made before it

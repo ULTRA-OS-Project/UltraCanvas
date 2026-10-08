@@ -13,13 +13,15 @@
 // by themselves - plus the lists of trusted websites and senders) and
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
 // Display > Links (a link's address in the status bar or in a tooltip) and
-// Display > Notifications (a notification on screen when new mail arrives).
+// Display > Notifications (a notification on screen when new mail arrives) and
+// Warnings > Spam/scam warnings (which kinds of warning the content scan gives).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.8.0 - Warnings > Spam/scam warnings: one switch per kind of warning
 // Version: 1.7.0 - Display > Notifications: new mail on screen, or not
 // Version: 1.6.0 - Privacy > Sender icons: the website icons of other senders
 // Version: 1.5.0 - Mail > New mail: how often new mail is checked (a dropdown,
@@ -95,6 +97,8 @@ namespace {
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
+    constexpr const char* kPageWarnings    = "warnings";
+    constexpr const char* kPageScamWarnings = "warnings/spam-scam";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
@@ -170,6 +174,10 @@ namespace {
 
         // Display > Notifications
         std::shared_ptr<UltraCanvasCheckbox> notifyBox;
+
+        // Warnings > Spam/scam warnings: one box per kind, with the option it sets
+        std::vector<std::pair<bool ThreatScanOptions::*,
+                              std::shared_ptr<UltraCanvasCheckbox>>> warningBoxes;
 
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
@@ -379,6 +387,8 @@ namespace {
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
         if (d->notifyBox) d->notifyBox->SetChecked(p.notifyNewMail);
+        for (const auto& [option, box] : d->warningBoxes)
+            if (box) box->SetChecked(p.scamWarnings.*option);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
@@ -860,6 +870,73 @@ namespace {
         return parts.page;
     }
 
+    // ===== WARNINGS > SPAM/SCAM WARNINGS =====
+    std::shared_ptr<UltraCanvasContainer> BuildScamWarningsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-scams", "Spam/scam warnings",
+                "Warn about a message when it looks like:");
+
+        struct Kind { const char* id; const char* text; bool ThreatScanOptions::* option; };
+        static const Kind kinds[] = {
+            { "um-set-warn-phishing",
+              "Phishing - links or a sender that pretend to be someone else",
+              &ThreatScanOptions::phishing },
+            { "um-set-warn-romance",
+              "A romance scam - a love letter from a stranger",
+              &ThreatScanOptions::romance },
+            { "um-set-warn-advance-fee",
+              "An advance-fee letter - millions waiting for a small fee",
+              &ThreatScanOptions::advanceFee },
+            { "um-set-warn-government",
+              "A letter in the name of the FBI, Interpol, the IMF ...",
+              &ThreatScanOptions::government },
+            { "um-set-warn-crypto-scams",
+              "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
+              &ThreatScanOptions::cryptoScams },
+            { "um-set-warn-crypto-caution",
+              "Any mail about cryptocurrency (a word of caution)",
+              &ThreatScanOptions::cryptoCaution },
+            { "um-set-warn-attachments",
+              "A dangerous attachment - a program, or one dressed as a document",
+              &ThreatScanOptions::attachments },
+            { "um-set-warn-spam-flag",
+              "Spam, as the mail server marked it",
+              &ThreatScanOptions::spamFlag },
+        };
+        d->warningBoxes.clear();
+        for (const Kind& kind : kinds) {
+            bool ThreatScanOptions::* option = kind.option;
+            auto box = MakeCheckbox(kind.id, kind.text, d->prefs->scamWarnings.*option,
+                    [d, option](bool on) {
+                if (!d->prefs) return;
+                d->prefs->scamWarnings.*option = on;
+                ApplyAndSave(d);
+            });
+            d->warningBoxes.emplace_back(option, box);
+            parts.body->AddChild(box);
+        }
+
+        d->resets[kPageScamWarnings] = PageReset{ "Warn about all", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->scamWarnings = ThreatScanOptions{};
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-scams-note1",
+                "A warning is the badge's red or orange frame beside the subject, "
+                "the reasons in its tooltip and the strip above the message. A kind "
+                "switched off is not looked for: its messages are labelled as if "
+                "the check did not exist.");
+        AddNote(parts, "um-set-scams-note2",
+                "Mail already checked is checked again with the new choice - the "
+                "open message at once, the others in the background with each "
+                "mail check.");
+        AddNote(parts, "um-set-scams-note3",
+                "Nothing is ever hidden, moved or deleted either way: UltraMail "
+                "only labels mail, and you decide.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
@@ -878,6 +955,10 @@ namespace {
                 "Display - whether a link's address is shown in the status bar or "
                 "as a tooltip, and whether new mail shows a notification on the "
                 "screen.");
+        AddNote(parts, "um-set-start-note5",
+                "Warnings - which kinds of spam and scam UltraMail warns about: "
+                "phishing, romance scams, advance-fee letters, letters in an "
+                "agency's name, cryptocurrency, dangerous attachments.");
         AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
@@ -973,6 +1054,8 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
+        AddTreeNode(d, "settings", kPageWarnings, "Warnings");
+        AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -992,6 +1075,7 @@ namespace {
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
+        AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 

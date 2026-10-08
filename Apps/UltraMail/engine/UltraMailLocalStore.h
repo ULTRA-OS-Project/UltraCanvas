@@ -3,6 +3,7 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.12.1 - MarkVerdictsStale (the scam warnings changed)
 // Version: 0.12.0 - schema 11: the codes of a verdict's findings
 //                   (MessageSecurity::findings, HasFinding)
 // Version: 0.11.0 - schema 10: the verified sender domain with each verdict
@@ -236,6 +237,10 @@ public:
     UltraDbResult ListUncountedAttachments(const std::string& accountId,
                                            const std::string& folder, int limit,
                                            std::vector<int64_t>& uids) const;
+    // Every stored verdict judged again: the warnings the scan gives changed
+    // (Settings > Spam/scam warnings). Each counts as scanned before any rules
+    // revision, so ListStaleVerdicts and the reading pane scan it anew.
+    UltraDbResult MarkVerdictsStale();
     // Messages of a folder scanned before `rulesRevision` (an epoch second:
     // their verdict came from older rules), newest first, at most `limit`.
     UltraDbResult ListStaleVerdicts(const std::string& accountId, const std::string& folder,

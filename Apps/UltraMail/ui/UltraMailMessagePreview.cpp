@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.17.1 - a look-alike sender domain or a letter in an agency's name is
+//                   told as phishing; the domain mismatch only while phishing
+//                   warnings are on (Settings > Spam/scam warnings)
 // Version: 0.17.0 - the warning strip names a romance scam and a cryptocurrency
 //                   scam, each with a footnote saying what it is; any mail about
 //                   crypto gets a caution strip, whoever sent it
@@ -1038,6 +1041,8 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     const bool romance = security.HasFinding("romance-scam");
+    const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
+                           security.HasFinding("government-impersonation");
     const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
                             security.HasFinding("crypto-payment-demand") ||
                             security.HasFinding("crypto-investment-lure");
@@ -1071,7 +1076,8 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // Only on the scan's own verdict: a newsletter that is merely sitting in
     // Junk links to its tracking domain too, and is not phishing for that.
     DomainMismatch mismatch;
-    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    if (security.level >= ThreatLevel::Suspicious && GetThreatScanOptions().phishing)
+        mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
 
     // The scam the scan named comes first: a love letter that links to a
@@ -1081,8 +1087,8 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
-    const char* what = romance    ? "romance scam"
-                     : phishing   ? "phishing"
+    const char* what = romance                ? "romance scam"
+                     : phishing || lookalike  ? "phishing"
                      : cryptoScam ? "cryptocurrency scam"
                      : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
@@ -1119,7 +1125,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                 "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
                 "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
                 "search of the photo often finds it under another name.";
-    else if (phishing)
+    else if (phishing || lookalike)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
     else if (cryptoScam)

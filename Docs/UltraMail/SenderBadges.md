@@ -245,6 +245,8 @@ their weights:
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
 | `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
+| `sender-domain-lookalike` | 45 / 50 | The From domain is dressed up as a brand's — see *Look-alike sender domains* below. 45 for the name padded with phishing words, 50 for a misspelt name or a brand's own domain in front of a foreign one |
+| `government-impersonation` | 45 / 30 | A government agency or international organisation (FBI, Interpol, IMF, UN …) claimed from an address that is not a government one: 45 in the sender's name or domain, 30 in the subject or text when it addresses the reader about money, a case or an arrest |
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
@@ -319,6 +321,78 @@ fake invoices) and promised profit (`crypto-investment-lure`: the
 "investment platform" a new online acquaintance recommends). A romance letter
 that turns to crypto counts it as its request for money.
 
+### Look-alike sender domains
+
+`BrandImitatedByDomain` (`UltraMailSenderBrands`) reads the From domain the
+way a hurried eye does. It flags a domain that is none of a brand's own in
+three ways:
+
+* **The name padded with phishing words** — the brand's name or keyword
+  plus only words such as secure, login, verify, account, support, inbox,
+  billing, update, service, id, my: `paypal-secure-login.com`,
+  `appleidverify.com`. A name beside any other word is a business of its
+  own (`applewood-estates.com`, `amazonas-reisen.de`,
+  `paypal-community.com`), and the bare name under another suffix
+  (`paypal.xyz`) is left unclaimed, as the brand table leaves it.
+* **The name misspelt** — look-alike characters (`0` for o, `1` or `i` for
+  l, `3` e, `4` a, `5` s, `7` t, `rn` m, `vv` w: `amaz0n`, `paypa1`,
+  `rnicrosoft`), a doubled letter (`paypall`, `faceebook`), or — for names of
+  eight letters or more only, so that `telecom` is not Telekom and
+  `interact` not Interac — one letter added, dropped, changed or swapped
+  (`facebok`). Padded or bare: `faceebookinbox.biz`, `faceboook.com`.
+* **A brand's own domain in front of a foreign one** —
+  `paypal.com.account-check.ru`.
+
+Each label is read on its own, so `uncollatednessi.faceebookinbox.biz`
+finds Facebook in its second; a bare name as a host label is no claim
+(`hermes.uni-example.de` is a server called Hermes). Personal mailbox domains
+and every brand's own domains are never flagged.
+
+### Letters in an agency's name
+
+The "compensation for scam victims", "your ATM card" and "warrant for your
+arrest" letters write in the name of an agency or an international
+organisation. `government-impersonation` knows about twenty of them — the
+FBI, Interpol, the IMF, the United Nations, the World Bank, Europol, the CIA,
+Homeland Security, the Department of Justice, the US Treasury, the Federal
+Reserve, the Secret Service, the IRS, the European Central Bank and
+Commission, the BKA, the Bundespolizei, Scotland Yard, the National Crime
+Agency, the Central Bank of Nigeria, ECOWAS — and flags a message that
+claims one but was sent from an address that is not a government one: in
+the sender's name or domain it is a claim on its own; in the subject or the
+text it counts when it addresses the reader about money, a case or an
+arrest ("beneficiary", "your payment", "compensation", "ATM card", "arrest
+warrant", "this office", "we the …"), so a news item about the FBI does not.
+A government address — `.gov`, `.mil`, `.int`, a country's `gov.xx` /
+`gob.xx` / `gouv.xx` / `govt.xx` / `go.xx`, `bund.de`, `admin.ch`, `gv.at`,
+`gc.ca`, `europa.eu`, `police.uk` — or an agency's own domain (`imf.org`,
+`un.org`, `worldbank.org`, `bka.de`) never is, and neither is a newsletter
+from a domain of its own. Where the brand table already reported the claim
+(the IRS, HMRC) it is not said twice.
+
+### Switching warnings off
+
+*Settings > Warnings > Spam/scam warnings* has one switch per kind
+(`ThreatScanOptions`, `warn_*` in `preferences.ini`), all on:
+
+| Switch | Findings |
+|---|---|
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Romance scams | `romance-scam` |
+| Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Letters in an agency's name | `government-impersonation` |
+| Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
+| Any mail about cryptocurrency | `crypto-content` (the caution strip) |
+| Dangerous attachments | `attachment-*` |
+| Spam, as the server marked it | `spam-flag` |
+
+A kind switched off is not reported: its findings are dropped and add
+nothing to the score, so a message is labelled as if those rules did not
+exist. Changing a switch marks every stored verdict stale
+(`LocalStore::MarkVerdictsStale`): the open message is scanned again at once,
+and the rest are re-scanned by the mail check a batch at a time, the first
+check starting straight away.
+
 ### Mail authentication
 
 The receiving server checks the sending domain's own records when a message
@@ -379,10 +453,11 @@ clean, and each of those is a test in
 | Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
 | Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
 | Collecting a sender into the address book | `Apps/UltraMail/engine/UltraMailContactCollector.{h,cpp}` |
-| Stored verdicts (`message_security`, schema 4; verified sender, schema 10) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
+| Stored verdicts (`message_security`, schema 4; verified sender, schema 10; finding codes, schema 11) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
 | Scan at download time | `Apps/UltraMail/engine/UltraMailSyncEngine.cpp` (`WriteBody`) |
 | The badge itself (painting + element) | `Apps/UltraMail/ui/UltraMailSenderBadge.{h,cpp}` |
 | Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |
 | Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
-| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp` |
+| The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
+| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |

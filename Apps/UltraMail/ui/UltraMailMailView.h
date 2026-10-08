@@ -83,6 +83,9 @@ public:
     void IconCached(const std::string& key);
     // Every row's badge worked out again (after the icon settings changed).
     void RefreshBadges();
+    // The message on screen scanned again at once (the scam warnings changed,
+    // and its stored verdict was marked stale); its row's badge follows.
+    void RecheckShownMessage();
 
     // Build the mail area. Call once; add the result to a parent.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
