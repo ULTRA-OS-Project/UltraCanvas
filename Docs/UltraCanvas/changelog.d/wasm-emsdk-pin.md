@@ -11,3 +11,12 @@
   the workflow stopped in `meson setup` for glib. It installs meson 1.12.1
   from PyPI now, and `build-wasm-sysroot.sh` names the 1.4 floor among its
   requirements.
+- **CI: the WebAssembly demo finds the sysroot's libraries.** CMake runs
+  the host's `pkg-config`, and `emcmake` does not pass it
+  `EM_PKG_CONFIG_PATH`, so the demo's configure step looked for cairo on the
+  host and failed after the whole sysroot had built. The step puts the
+  sysroot on `PKG_CONFIG_PATH` and `PKG_CONFIG_LIBDIR`, as
+  `build-wasm-sysroot.sh` already does, and the README and the demo's
+  `CMakeLists.txt` give the same two exports. The sysroot is cached as soon
+  as it is built rather than only when the whole job passes, so a failure
+  in the demo no longer costs the next run a 20-minute rebuild.

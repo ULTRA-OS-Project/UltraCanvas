@@ -60,9 +60,13 @@ jobs:
           version: ${{ inputs.emsdk_version }}
           actions-cache-folder: emsdk-cache
 
+      # Restore and save are separate steps so a sysroot is kept as soon as it
+      # is built: the combined action saves only when the whole job passes, so
+      # a demo that failed to configure or compile threw away ~20 minutes of
+      # sysroot and the next run built it again.
       - name: Restore wasm sysroot
         id: sysroot-cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.SYSROOT }}
           key: wasm-sysroot-${{ runner.os }}-${{ inputs.emsdk_version }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
@@ -72,10 +76,24 @@ jobs:
         working-directory: UltraCanvas/OS/WASM
         run: ./build-wasm-sysroot.sh "$SYSROOT" "${{ runner.temp }}/wasm-sysroot-build"
 
+      - name: Save wasm sysroot
+        if: steps.sysroot-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.SYSROOT }}
+          key: ${{ steps.sysroot-cache.outputs.cache-primary-key }}
+
+      # CMake's pkg-config is the host's (/usr/bin/pkg-config), and emcmake
+      # does not hand it EM_PKG_CONFIG_PATH: with that alone, run 2 of this
+      # workflow built the whole sysroot and then found no cairo. So the
+      # sysroot goes on PKG_CONFIG_PATH, and PKG_CONFIG_LIBDIR keeps the
+      # host's own .pc files out of a wasm build.
       - name: Configure demo
         working-directory: UltraCanvas/OS/WASM/demo
         env:
           EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
+          PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
+          PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
         run: emcmake cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build demo
