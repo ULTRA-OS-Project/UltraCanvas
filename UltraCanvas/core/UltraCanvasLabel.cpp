@@ -14,8 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.11.0 - the hovered text link's href as a tooltip (SetShowLinkTooltips),
-//                  following the pointer along the link
+// Version: 2.12.0 - a new text is announced to screen readers as a new name
 // Version: 2.10.0 - onLinkHovered as the pointer moves onto / off a text link
 // Version: 2.9.0 - the natural width is one the text fits on its lines at (letter
 //                 spacing: Pango breaks on spacing its extents leave out)
@@ -27,7 +26,7 @@
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -93,6 +92,7 @@ namespace UltraCanvas {
             if (onTextChanged) {
                 onTextChanged(text);
             }
+            if (GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
         }
     }
 

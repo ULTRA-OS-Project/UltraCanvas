@@ -1,10 +1,10 @@
 // UltraCanvasLabeledToggleBase.h
 // Abstract base for labeled toggle controls (checkbox, radio, switch).
 // Owns label/layout/event/state plumbing; subclasses provide indicator drawing.
-// Version: 1.1.0 - toggles take the keyboard focus (Tab reaches them, Space activates
+// Version: 1.2.0 - toggles take the keyboard focus (Tab reaches them, Space activates
 //                 them, a click focuses them); SetAcceptsFocus(false) opts one out
-// Version: 1.0.0
-// Last Modified: 2026-10-07
+// Version: 1.1.0 - a checkbox to screen readers: name, toggle state and action
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,8 +89,18 @@ namespace UltraCanvas {
         virtual void Toggle();
 
         // ===== TEXT/LAYOUT =====
-        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
+        void SetText(const std::string& labelText);
         std::string GetText() const { return text; }
+
+        // ===== ACCESSIBILITY =====
+        // A checkbox (radio button, switch: see the subclasses), named by
+        // SetAccessibleName() or its label, with its checked state. A screen
+        // reader's action activates it as a click does.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::CheckBox; }
+        std::string GetAccessibleName() const override;
+        AccessibleToggleState GetAccessibleToggleState() const override;
+        std::string GetAccessibleActionName() const override { return "toggle"; }
+        bool DoAccessibleAction() override;
 
         // ===== LAYOUT (CSS Measure/Arrange) =====
         // Toggles have intrinsic size (indicator + spacing + label); we report it

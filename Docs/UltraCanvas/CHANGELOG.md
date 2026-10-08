@@ -1,3 +1,59 @@
+#### 2026-10-08 *0.9.203*
+- **Screen readers can use the common widgets, and VoiceOver reaches
+  UltraCanvas on macOS.**
+  - **Widgets describe themselves** (`UltraCanvasAccessibility.h` 1.2): new
+    roles `RadioButton`, `Switch`, `ComboBox`, `Slider`, `SpinButton`,
+    `ProgressBar`, `Toolbar`, `TabList`, `Tree`, `Group`; and on
+    `UltraCanvasUIElement` `GetAccessibleDescription` (the tooltip by
+    default), `GetAccessibleToggleState`, `GetAccessibleRange` /
+    `SetAccessibleValue`, `GetAccessibleValueText` /
+    `SetAccessibleValueText`, `GetAccessibleActionName` /
+    `DoAccessibleAction`, `NotifyAccessibility`, and
+    `SetAccessibleName` / `SetAccessibleDescription` to name any element
+    (an icon button, a field labelled by another element). New events
+    `ValueChanged` and `StateChanged`.
+  - Implemented by button (press; a toggle button its pressed state; an icon
+    button is named by its tooltip), checkbox / radio / switch (checked
+    state, toggle / select), label, text input (named by its placeholder,
+    its text as value, settable, never in password mode), dropdown (the
+    shown item), slider and spinner (value, range, step, settable), busy
+    indicator, group box, tabbed container (named after the open tab),
+    toolbar, list and tree view, image and menu.
+  - **AT-SPI** gains the `Value` and `Action` interfaces, checkable / checked
+    / indeterminate / pressed states, descriptions, the new roles, and
+    reads a text field's value through `Text`. **UI Automation** gains the
+    Invoke, Toggle, SelectionItem, RangeValue and Value patterns, HelpText,
+    the new control types and property-changed events.
+  - **NSAccessibility bridge** (`OS/MacOS/UltraCanvasMacOSAccessibility`):
+    a window's content view hands VoiceOver its elements, one
+    `NSAccessibilityElement` per element, with roles, labels, help, values,
+    actions, focus, frames, the text attributes VoiceOver reads (UTF-16
+    ranges converted) and change notifications. `UltraCanvasMacOSWindow`
+    gains `GetContentView()`. Compile-checked by the macOS CI build; not yet
+    tried with VoiceOver.
+  - Tests: new `WidgetAccessibilityTest` (41 checks, headless);
+    `AtspiBridgeTest` now presses a button, ticks a checkbox, sets a slider
+    and reads a text field through libatspi.
+
+#### 2026-10-08 *0.9.202*
+- **`NormalizePath` doubled the separator at the end of a folder on Windows.**
+  `NormalizePath(GetResourcesDir() + "media/icons/")` came back ending in
+  `\\`, and every file name appended to it carried the doubled backslash -
+  `GetBundledFontsDir()`, the file display's icon folders and the demo apps'
+  media folders among them. A folder given with `/` or `\` at its end now
+  ends in exactly one native separator on every platform (the root `/` on
+  Linux and macOS, which came back as `//`, included).
+- **On Linux and macOS a path that did not exist could come back cut
+  short.** `realpath` fails for it, and POSIX leaves its buffer undefined
+  then; glibc leaves the path up to the first name that is missing, so a
+  file in a folder that did not exist (`.../missing/sub/file.txt`) came back
+  as that folder (`.../missing`). Such a path is now returned as it was
+  given, so whatever opens it next names the file it did not find.
+- `FilerNameEncodingTest` checks both, on the Windows CI row too: a
+  Thai-named folder asked for with `/` or `\` ends in one separator and a
+  file name appended to it reaches the file, the root keeps one separator,
+  and a missing path comes back whole.
+
 #### 2026-10-08 *0.9.201*
 - **CI no longer waits an hour on a stalled Ubuntu mirror.** On 2026-10-07 an
   `apt-get update` in the Android check sat on one download for fifty minutes

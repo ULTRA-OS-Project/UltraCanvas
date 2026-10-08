@@ -1,7 +1,7 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.8.0
-// Last Modified: 2026-10-07
+// Version: 1.9.0
+// Last Modified: 2026-10-08
 // V1.8.0: SetFormatter fills the placeholder only when the field has none
 //   (it used to overwrite the caller's and leave an empty one empty); the rules
 //   SetInputType adds are replaced when the type changes instead of stacking,
@@ -426,6 +426,11 @@ public:
     // password field - revealed or not, the content is a secret.
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
     bool IsAccessiblePassword() const override { return passwordMode; }
+    // Named by SetAccessibleName(), else its placeholder; its value is the
+    // text - never in password mode.
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    bool SetAccessibleValueText(const std::string& newText) override;
 
     // ===== INPUT TYPE AND BEHAVIOR =====
     void SetInputType(TextInputType type);

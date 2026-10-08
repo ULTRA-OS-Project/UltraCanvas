@@ -240,6 +240,7 @@ namespace UltraCanvas {
         if (index >= -1 && index < (int)items.size()) {
             if (selectedIndex != index) {
                 selectedIndex = index;
+                NotifyAccessibility(AccessibilityEventType::ValueChanged);
 
                 if (index >= 0 && runNotifications) {
                     if (onSelectionChanged) {

@@ -278,6 +278,10 @@ private:
 //    Point2Di lastMousePos;          // Last mouse position
     
 public:
+    // ===== ACCESSIBILITY =====
+    // A tree; like a list view, its nodes are drawn rather than elements.
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Tree; }
+
     // ===== EVENTS AND CALLBACKS =====
     std::function<void(TreeNode*)> onNodeSelected;
     std::function<void(TreeNode*)> onNodeDoubleClicked;

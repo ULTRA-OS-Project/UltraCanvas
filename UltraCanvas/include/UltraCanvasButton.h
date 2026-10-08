@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.5.0
-// Last Modified: 2026-08-03
+// Version: 2.6.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -200,6 +200,17 @@ namespace UltraCanvas {
         // ===== TEXT & ICON METHODS =====
         void SetText(const std::string& buttonText);
         std::string GetText() const { return text; }
+
+        // ===== ACCESSIBILITY =====
+        // A push button, or a toggle button with its pressed state. Named by
+        // SetAccessibleName(), else its text, else - an icon button - its
+        // tooltip. A screen reader's "press" clicks it as a mouse would.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Button; }
+        std::string GetAccessibleName() const override;
+        std::string GetAccessibleDescription() const override;
+        AccessibleToggleState GetAccessibleToggleState() const override;
+        std::string GetAccessibleActionName() const override { return canToggled ? "toggle" : "press"; }
+        bool DoAccessibleAction() override;
 
         // ===== MNEMONIC (ACCELERATOR) SUPPORT =====
         // A mnemonic marks one character of the label as the key that activates

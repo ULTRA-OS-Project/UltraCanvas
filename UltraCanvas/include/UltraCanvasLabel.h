@@ -4,7 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.7.0 - SetShowLinkTooltips: a text link's href as a tooltip while hovered
+// Version: 2.8.0 - a label to screen readers, named by its text
 // Version: 2.6.0 - onLinkHovered: the link under the pointer (a status line shows
 //                 where it goes)
 // Version: 2.5.0 - NaturalTextWidth: the width the text fits on its lines at
@@ -14,7 +14,7 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -151,6 +151,13 @@ namespace UltraCanvas {
 
         bool internalLayoutValid = false;
     public:
+        // ===== ACCESSIBILITY =====
+        // A label, named by its text (SetAccessibleName() replaces it).
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Label; }
+        std::string GetAccessibleName() const override {
+            return GetAccessibleNameOverride().empty() ? text : GetAccessibleNameOverride();
+        }
+
         // ===== CONSTRUCTOR =====
         UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                          const std::string &labelText = "");
