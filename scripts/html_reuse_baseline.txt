@@ -4,8 +4,6 @@
 # ImportHTMLToRichDocument, HTML::StyleSheet) - see
 # Docs/UltraCanvas/UltraCanvasHTMLReader.md. Only shrink this file.
 # Regenerate with: python3 scripts/check_html_reuse.py --update-baseline
-Apps/UltraMail/ui/UltraMailMessagePreview.cpp	html-reuse-definition	HtmlToText() defined here
-Apps/UltraMail/ui/UltraMailMessagePreview.cpp	html-reuse-entity-table	entity table (amp, gt, lt, nbsp)
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-entity-table	entity table (amp, apos, gt, lt, nbsp, quot)
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-definition	DecodeEntities() defined here
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-definition	TokenizeHtml() defined here
