@@ -73106,10 +73106,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
