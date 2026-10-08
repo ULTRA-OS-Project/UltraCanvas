@@ -3,6 +3,7 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.2.2 - ExtractPlainText(const Node&): the text of a parsed element
 // Version: 1.2.1 - ExtractPlainText: inline elements keep a word whole; a no-break
 //                  space is a space
 // Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
@@ -124,6 +125,10 @@ std::string DecodeEntities(const std::string& text);
 // counts as a space. Convenience for search, indexing and matching paths that
 // do not need a DOM.
 std::string ExtractPlainText(const std::string& html);
+
+// The same text of an element already parsed (its children, by the same
+// rules): what a link, a cell or a heading says, read from the DOM.
+std::string ExtractPlainText(const Node& node);
 
 } // namespace HTML
 } // namespace UltraCanvas

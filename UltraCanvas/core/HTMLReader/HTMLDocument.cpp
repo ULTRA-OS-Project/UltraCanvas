@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLDocument.cpp
 // DOM helpers and entity decoding for the HTMLReader module.
+// Version: 1.2.2 - ExtractPlainText(const Node&): the same text of a parsed element
 // Version: 1.2.1 - ExtractPlainText: an inline element (<b>, <span>, <a>) no longer
 //                  splits a word in two; a no-break space counts as a space
 // Version: 1.2.0 - attribute lookup by name is exact, then ASCII case-insensitive
@@ -320,14 +321,8 @@ namespace {
 
 // Whether the tag starting at `open` ('<') opens or closes an inline element -
 // one that formats text inside a line without starting a new box.
-bool IsInlineTag(const std::string& html, size_t open) {
-    size_t i = open + 1;
-    if (i < html.size() && html[i] == '/') ++i;
-    std::string name;
-    while (i < html.size() && std::isalnum(static_cast<unsigned char>(html[i])) && name.size() < 12) {
-        name += static_cast<char>(std::tolower(static_cast<unsigned char>(html[i])));
-        ++i;
-    }
+// Whether an element formats text inside a line without starting a new box.
+bool IsInlineName(const std::string& name) {
     static const char* const kInline[] = {
         "a", "abbr", "b", "bdi", "bdo", "big", "cite", "code", "data", "del", "dfn", "em",
         "font", "i", "ins", "kbd", "label", "mark", "nobr", "q", "s", "samp", "small",
@@ -336,6 +331,61 @@ bool IsInlineTag(const std::string& html, size_t open) {
     for (const char* inlineName : kInline)
         if (name == inlineName) return true;
     return false;
+}
+
+// Whether the tag starting at `open` ('<') opens or closes an inline element.
+bool IsInlineTag(const std::string& html, size_t open) {
+    size_t i = open + 1;
+    if (i < html.size() && html[i] == '/') ++i;
+    std::string name;
+    while (i < html.size() && std::isalnum(static_cast<unsigned char>(html[i])) && name.size() < 12) {
+        name += static_cast<char>(std::tolower(static_cast<unsigned char>(html[i])));
+        ++i;
+    }
+    return IsInlineName(name);
+}
+
+// Every run of whitespace - a no-break space counts - as one space, none at
+// the start or the end.
+std::string CollapseWhitespace(const std::string& text) {
+    std::string result;
+    result.reserve(text.size());
+    bool lastWasSpace = true;
+    for (size_t k = 0; k < text.size(); ++k) {
+        char c = text[k];
+        if (c == '\xC2' && k + 1 < text.size() && text[k + 1] == '\xA0') {
+            ++k;
+            c = ' ';
+        }
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!lastWasSpace) {
+                result += ' ';
+                lastWasSpace = true;
+            }
+        } else {
+            result += c;
+            lastWasSpace = false;
+        }
+    }
+    while (!result.empty() && result.back() == ' ') result.pop_back();
+    return result;
+}
+
+// The text of a parsed node, words apart where a block, <br> or picture is.
+void AppendNodeText(const Node& node, std::string& out) {
+    if (node.type == NodeType::Text) {
+        out += node.text;
+        return;
+    }
+    if (node.type == NodeType::Comment) return;
+    const std::string& tag = node.tag;
+    if (tag == "script" || tag == "style" || tag == "head" || tag == "title" || tag == "template")
+        return;
+    const bool separates = node.type == NodeType::Element && !IsInlineName(tag);
+    if (separates) out += ' ';
+    for (const NodePtr& child : node.children)
+        if (child) AppendNodeText(*child, out);
+    if (separates) out += ' ';
 }
 
 } // namespace
@@ -404,29 +454,13 @@ std::string ExtractPlainText(const std::string& html) {
 
     std::string decoded = DecodeEntities(stripped);
 
-    // Collapse whitespace runs; a no-break space is one too.
-    std::string result;
-    result.reserve(decoded.size());
-    bool lastWasSpace = true;
-    for (size_t k = 0; k < decoded.size(); ++k) {
-        char c = decoded[k];
-        if (c == '\xC2' && k + 1 < decoded.size() && decoded[k + 1] == '\xA0') {
-            ++k;
-            c = ' ';
-        }
-        if (std::isspace(static_cast<unsigned char>(c))) {
-            if (!lastWasSpace) {
-                result += ' ';
-                lastWasSpace = true;
-            }
-        } else {
-            result += c;
-            lastWasSpace = false;
-        }
-    }
-    while (!result.empty() && result.back() == ' ') result.pop_back();
+    return CollapseWhitespace(decoded);
+}
 
-    return result;
+std::string ExtractPlainText(const Node& node) {
+    std::string text;
+    AppendNodeText(node, text);
+    return CollapseWhitespace(text);
 }
 
 } // namespace HTML

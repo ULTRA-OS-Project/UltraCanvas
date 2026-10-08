@@ -9,6 +9,12 @@
   five), and the text of a `<style>` or `<script>` is no longer searched as
   if it were the message. The link list shows link texts as the reader sees
   them ("Click here", not "Click  here").
+- **The links of a formatted mail come from the parsed page.** The scam
+  check and the link list found links by searching the HTML for `<a `; a
+  link written inside an HTML comment or a script counted as one, and a
+  mail's "button" (a table inside a link) gave its words run together. The
+  links are now the page's `<a href>`, `<area href>` and `<form action>`
+  elements as the HTML reader parses them, each with the text it shows.
 
 #### 2026-10-08 *0.10.38*
 - **The mail's text can be selected and copied.** In formatted (HTML) mail a

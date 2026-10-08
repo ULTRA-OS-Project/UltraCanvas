@@ -69,6 +69,28 @@ TEST(anchor_text_reads_as_it_shows) {
     REQUIRE_EQ(links[1].text, std::string("Caf\xC3\xA9 \xE2\x80\x93 Men\xC3\xBC"));
 }
 
+// The links come from the parsed page: a link written inside an HTML comment
+// or a script is not one the reader can click, an <area> and a <form> are,
+// and a mail's "button" (a table inside the link) reads as its words.
+TEST(links_come_from_the_parsed_page) {
+    const auto links = ExtractLinks(
+        "<!-- <a href=\"https://hidden.test/\">old</a> -->"
+        "<script>var s = '<a href=\"https://script.test/\">x</a>';</script>"
+        "<A HREF='https://upper.test/a?x=1&amp;y=2'>Upper</A>"
+        "<map><area shape=rect href=\"https://area.test/\"></map>"
+        "<a href=\"https://button.test/\"><table><tr><td>Pay</td><td>now</td></tr></table></a>"
+        "<a name=\"anchor-only\">no target</a>"
+        "<form method=post action=\"https://form.test/post\"></form>", true);
+    REQUIRE_EQ(links.size(), (size_t)4);
+    REQUIRE_EQ(links[0].host, std::string("upper.test"));
+    REQUIRE_EQ(links[0].href, std::string("https://upper.test/a?x=1&y=2"));
+    REQUIRE_EQ(links[0].text, std::string("Upper"));
+    REQUIRE_EQ(links[1].host, std::string("area.test"));
+    REQUIRE_EQ(links[2].host, std::string("button.test"));
+    REQUIRE_EQ(links[2].text, std::string("Pay now"));
+    REQUIRE_EQ(links[3].host, std::string("form.test"));
+}
+
 TEST(extracts_bare_urls_from_plain_text) {
     const auto links = ExtractLinks(
         "See https://example.com/page, or www.other.test for more.", false);

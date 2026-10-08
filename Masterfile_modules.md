@@ -351,7 +351,8 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   entity and numeric references), `ExtractPlainText` (tags gone,
   `<script>`/`<style>` bodies dropped, entities decoded, whitespace and
   no-break spaces collapsed; an inline element such as `<b>` keeps a word
-  whole, a block separates words).
+  whole, a block separates words; `ExtractPlainText(const Node&)` the same
+  for a parsed element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),

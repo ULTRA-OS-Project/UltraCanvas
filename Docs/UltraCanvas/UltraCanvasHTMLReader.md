@@ -111,6 +111,11 @@ pictures become spaces, not newlines. An inline element (`<b>`, `<span>`,
 spam word split by formatting (`<b>via</b>gra`) is still the word. A
 no-break space counts as a space.
 
+`ExtractPlainText(const Node&)` gives the same text for an element already
+parsed - what a link, a cell or a heading says, read from the DOM. UltraMail's
+threat scan reads every link's text that way while it walks the parsed page
+for `a[href]`, `area[href]` and `form[action]`.
+
 ## CSS: the style sheet model
 
 `HTML::StyleSheet::ParseAppend(css)` reads a sheet and appends its `rules`,
@@ -316,10 +321,8 @@ and the check blocks new ones:
 | Site | Has its own | Replace with |
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
+| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
 | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` (`ExtractLinks`) | an `<a href>` scanner (its text and targets already go through `ExtractPlainText` / `DecodeEntities`) | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
 
 ## Limits
 

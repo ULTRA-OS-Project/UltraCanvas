@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.5.2 - ExtractLinks reads an HTML body's links from the parsed page
+//                  (HTML::Parser): a[href], area[href], form[action], none from
+//                  comments or scripts
 // Version: 0.5.1 - link texts, link targets and the body read through the HTMLReader
 //                  module (HTML::ExtractPlainText, HTML::DecodeEntities): every
 //                  entity, no <style>/<script> text, a word split by <b> whole
@@ -15,7 +18,8 @@
 
 #include "UltraMailSenderBrands.h"
 
-#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText, HTML::DecodeEntities
+#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
+#include "HTMLReader/HTMLParser.h"     // HTML::Parser (the links of a page)
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -418,60 +422,28 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
         return links;
     }
 
-    const std::string lower = Lower(body);
-    std::size_t pos = 0;
-    while (pos < lower.size()) {
-        // The tags that navigate: <a href>, <area href>, <form action>.
-        std::size_t tag = std::string::npos;
-        std::string attribute;
-        struct Candidate { const char* open; const char* attr; };
-        for (const Candidate& c : { Candidate{"<a ", "href"}, Candidate{"<a\n", "href"},
-                                    Candidate{"<area", "href"}, Candidate{"<form", "action"} }) {
-            const std::size_t p = lower.find(c.open, pos);
-            if (p != std::string::npos && (tag == std::string::npos || p < tag)) {
-                tag = p;
-                attribute = c.attr;
-            }
-        }
-        if (tag == std::string::npos) break;
-        const std::size_t tagEnd = lower.find('>', tag);
-        if (tagEnd == std::string::npos) break;
-        const std::string tagText = body.substr(tag, tagEnd - tag);
-        const std::string tagLower = lower.substr(tag, tagEnd - tag);
-
-        std::string href;
-        const std::size_t attrPos = tagLower.find(attribute + "=");
-        if (attrPos != std::string::npos) {
-            std::size_t v = attrPos + attribute.size() + 1;
-            while (v < tagText.size() && std::isspace(static_cast<unsigned char>(tagText[v]))) ++v;
-            if (v < tagText.size() && (tagText[v] == '"' || tagText[v] == '\'')) {
-                const char quote = tagText[v++];
-                const std::size_t close = tagText.find(quote, v);
-                href = tagText.substr(v, close == std::string::npos ? std::string::npos : close - v);
-            } else {
-                std::size_t e = v;
-                while (e < tagText.size() && !std::isspace(static_cast<unsigned char>(tagText[e])))
-                    ++e;
-                href = tagText.substr(v, e - v);
-            }
-        }
-        href = Trim(UltraCanvas::HTML::DecodeEntities(href));
-
-        std::string text;
-        if (attribute == "href") {
-            const std::size_t close = lower.find("</a", tagEnd);
-            if (close != std::string::npos && close > tagEnd)
-                text = UltraCanvas::HTML::ExtractPlainText(body.substr(tagEnd + 1, close - tagEnd - 1));
-        }
-        if (!href.empty()) {
-            MessageLink link;
-            link.href = href;
-            link.text = Trim(text);
-            link.host = HostOf(href);
-            links.push_back(link);
-        }
-        pos = tagEnd + 1;
-    }
+    // HTML: the elements that navigate - <a href>, <area href>, <form action> -
+    // from the parsed page, in document order. The parser decodes the
+    // attribute values; a link's text is what it shows (a word dressed up with
+    // <b> stays whole, a "button" table's cells a space apart). Comments,
+    // <script> and <style> hold no links.
+    UltraCanvas::HTML::Parser parser;
+    UltraCanvas::HTML::ParseOptions options;
+    options.keepWhitespaceNodes = true;   // "Click <b>here</b>": the space between
+    UltraCanvas::HTML::Document document = parser.Parse(body, options);
+    if (!document.root) return links;
+    document.root->ForEachElement([&](UltraCanvas::HTML::Node& element) {
+        const bool anchor = element.tag == "a" || element.tag == "area";
+        if (!anchor && element.tag != "form") return true;
+        const std::string href = Trim(element.GetAttribute(anchor ? "href" : "action"));
+        if (href.empty()) return true;
+        MessageLink link;
+        link.href = href;
+        if (element.tag == "a") link.text = UltraCanvas::HTML::ExtractPlainText(element);
+        link.host = HostOf(href);
+        links.push_back(link);
+        return true;
+    });
     return links;
 }
 

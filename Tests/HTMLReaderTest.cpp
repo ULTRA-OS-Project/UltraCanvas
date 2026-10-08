@@ -281,6 +281,18 @@ static void TestExtractPlainText() {
     // Where a <style> or <script> was, words stay apart.
     CHECK_EQ(ExtractPlainText("<style>p{}</style>hello<script>x()</script>world"),
              std::string("hello world"));
+
+    // The text of a parsed element, by the same rules.
+    Parser parser;
+    Document doc = parser.Parse("<a href=x>www.pay<b>pal</b>.com</a>"
+                                "<a href=y><table><tr><td>Click</td><td>here&nbsp;&amp; now</td></tr></table></a>");
+    std::vector<Node*> anchors;
+    doc.root->ForEachElement([&](Node& n) { if (n.IsElement("a")) anchors.push_back(&n); return true; });
+    CHECK(anchors.size() == 2);
+    if (anchors.size() == 2) {
+        CHECK_EQ(ExtractPlainText(*anchors[0]), std::string("www.paypal.com"));
+        CHECK_EQ(ExtractPlainText(*anchors[1]), std::string("Click here & now"));
+    }
 }
 
 // ============================================================================
