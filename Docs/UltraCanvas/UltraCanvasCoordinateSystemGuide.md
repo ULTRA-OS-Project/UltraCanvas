@@ -12,6 +12,29 @@ elements draw and respond to input in the right place.
 >   `SetElementAbsolutePosition()` — not raw `SetBounds()` in the middle of a
 >   laid‑out tree.
 
+<!-- doc-check:
+class MyElement : public UltraCanvasUIElement {
+public:
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
+    Rect2Di SidebarArea() const;
+    Color background;
+    int sidebarWidth = 0;
+    int sidebarWidth_ = 0;
+};
+class MyPdfView : public UltraCanvasUIElement {
+public:
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
+    Rect2Di PageContentArea() const;
+    bool showThumbs_ = true;
+    int thumbStripWidth = 160;
+};
+UltraCanvasUIElement* elem;
+std::shared_ptr<UltraCanvasUIElement> el;
+std::shared_ptr<UltraCanvasUIElement> view;
+-->
+
 ---
 
 ## 1. The three coordinate spaces
@@ -63,13 +86,14 @@ they are still on the event as `event.pointerWindow` and `event.pointerGlobal`.)
 
 ## 2. Drawing: do it in local space
 
-The base class shows the canonical pattern — it draws its background/border
-using `GetLocalBounds()`:
+The base class shows the canonical pattern — `UltraCanvasUIElement::Render()`
+draws its background/border using `GetLocalBounds()`; in effect it does this:
 
 ```cpp
-void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Df&) {
+// What UltraCanvasUIElement::Render does — simplified
+void MyElement::Render(IRenderContext* ctx, const Rect2Df&) {
     auto bnds = GetLocalBounds();        // (0, 0, width, height)
-    // …draws background + borders within bnds…
+    // ...draws background + borders within bnds...
 }
 ```
 
@@ -87,7 +111,7 @@ void MyElement::Render(IRenderContext* ctx, const Rect2Df& dirty) {
     // Sub-regions are offsets from the local origin, never from GetBounds().
     Rect2Di header(0, 0, b.width, 32);
     Rect2Di body  (0, 32, b.width, b.height - 32);
-    // …draw…
+    // ...draw...
     ctx->PopState();
 }
 ```
@@ -237,8 +261,8 @@ global hit‑tests) — not in normal `Render`/`OnEvent`:
 | `MapFromLocal(localPt)` | this element's **local** point → **window** frame |
 
 ```cpp
-// A child wants to know where a local point lands on screen:
-Point2Df onScreen = MapFromLocal({0, 0});   // my top-left, in window coords
+// Where does a local point of `el` land in the window?
+Point2Df onScreen = el->MapFromLocal({0, 0});   // el's top-left, in window coords
 ```
 
 ---
@@ -269,16 +293,23 @@ These are the patterns that bite. Each one compiles and "looks" right.
 
 ```cpp
 // BEFORE — parent-relative, double-offset
-void Render(IRenderContext* ctx, const Rect2Df&) {
+void MyPdfView::Render(IRenderContext* ctx, const Rect2Df&) {
     const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
-    ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
+    ctx->FillRectangle(b);                // ...but ctx is already translated by (12, 94)
     // → the viewer paints at (24, 188): a white gap under the toolbar,
     //   the page badge slides off to the right, clipping is wrong.
 }
 
-case UCEventType::MouseWheel: {
-    Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
-    bool inThumbs = local.x < thumbStripWidth;
+bool MyPdfView::OnEvent(const UCEvent& event) {
+    switch (event.type) {
+        case UCEventType::MouseWheel: {
+            Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
+            bool inThumbs = local.x < thumbStripWidth;
+            break;
+        }
+        default: break;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
 }
 ```
 
@@ -286,18 +317,25 @@ The fix was to move everything to the local frame:
 
 ```cpp
 // AFTER — local frame, single source of truth
-void Render(IRenderContext* ctx, const Rect2Df&) {
+void MyPdfView::Render(IRenderContext* ctx, const Rect2Df&) {
     const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
     ctx->FillRectangle(b);
 }
 
-Rect2Di PageContentArea() const {                 // local
+Rect2Di MyPdfView::PageContentArea() const {      // local
     const int left = showThumbs_ ? thumbStripWidth : 0;
     return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
 }
 
-case UCEventType::MouseWheel: {
-    bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+bool MyPdfView::OnEvent(const UCEvent& event) {
+    switch (event.type) {
+        case UCEventType::MouseWheel: {
+            bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+            break;
+        }
+        default: break;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
 }
 ```
 

@@ -49,6 +49,8 @@ contributes its `x`, `y` and `z` members. Data is normalized into a `[-1,1]³`
 world cube: data **x** runs left-right, data **y** recedes into the scene and
 data **z** is vertical (the usual mathematical 3D plot layout).
 
+<!-- doc-check: double SampleParameter(int index); double Noise(); bool IsOutlier(int index); -->
+
 ```cpp
 auto data = std::make_shared<ChartDataVector>();
 for (int i = 0; i < 200; ++i) {

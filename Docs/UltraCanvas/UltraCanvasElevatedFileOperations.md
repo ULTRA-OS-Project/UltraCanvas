@@ -4,6 +4,8 @@
 *You need permission to perform this action*: Windows asks for consent (the
 UAC prompt) and the operation runs again with administrator rights.
 
+<!-- doc-check: std::string path; int argc; char** argv; -->
+
 ```cpp
 #include "UltraCanvasElevatedFileOperations.h"
 
@@ -14,7 +16,7 @@ if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
 
 // 2. Where a delete fails:
 std::error_code ec;
-std::filesystem::remove_all(path, ec);
+std::filesystem::remove_all(PathFromUtf8(path), ec);   // path is UTF-8
 if (ec && ElevatedFileOperations::IsAvailable() &&
     ElevatedFileOperations::IsPermissionFailure(ec)) {
     auto result = ElevatedFileOperations::DeleteElevated({path});   // blocks
@@ -116,7 +118,7 @@ code page.
 
 | Platform | Backend |
 |---|---|
-| Windows | `ShellExecuteEx("runas")` + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
+| Windows | `ShellExecuteEx` with the `runas` verb + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
 | Linux, macOS, WebAssembly | None: `IsAvailable()` is false and `DeleteElevated` answers `Unavailable`. The platform-free half (the helper's delete, the encodings) lives in `core/UltraCanvasElevatedFileOperations.cpp` and is what `Tests/ElevatedFileOperationsTest.cpp` exercises everywhere. |
 
 A `pkexec` / authorization-services backend for the Unix desktops would slot in

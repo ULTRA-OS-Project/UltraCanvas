@@ -21,6 +21,8 @@ media viewer need one reader that is always present.
 
 ## Reading a file
 
+<!-- doc-check: std::string path; -->
+
 ```cpp
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #include "Models/UltraCanvasModelMesh3D.h"

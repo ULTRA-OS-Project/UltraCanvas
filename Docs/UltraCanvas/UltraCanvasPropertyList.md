@@ -12,6 +12,8 @@ the name, icon and executable of an application bundle, the address in a
 Nested dictionaries and arrays are *skipped* rather than half-modelled, and a
 caller that needs them should say so rather than work around it.
 
+<!-- doc-check: std::string path; -->
+
 ```cpp
 #include "UltraCanvasPropertyList.h"
 

@@ -33,6 +33,8 @@ The router knows nothing about your nodes. You give it:
 
 ## Basic use
 
+<!-- doc-check: std::map<std::string, Rect2Dd> nodes; std::string sourceId; std::string targetId; Rect2Dd source; Rect2Dd target; double elementWidth; double elementHeight; -->
+
 ```cpp
 #include "Plugins/Diagrams/UltraCanvasDiagramRouting.h"
 

@@ -93,12 +93,9 @@ if (!set.IsIdentity()) {
 
 ## Applying a curve to an image — `PixelFX::Colour::MapLut`
 
-```cpp
-PFXImage MapLut(const PFXImage& image,
-                const std::vector<std::vector<uint8_t>>& tables);
-```
-
-Maps an image through per-channel 8-bit lookup tables. Every table holds 256
+`PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables)`,
+in namespace `PixelFX::Colour` (`PixelFX/PixelFX.h`), maps an image through
+per-channel 8-bit lookup tables. Every table holds 256
 entries; pass **one** table to map all colour bands the same way, or **one per
 colour band**. A trailing alpha band is passed through untouched, and the image
 is mapped as 8-bit (a wider one is cast down first). Any other table size throws
@@ -148,6 +145,8 @@ diagonal, curve, point, selection and histogram colours, plus `gridDivisions`,
 in its own colour (red / green / blue; the master curve in `curveColor`).
 
 ## The dialog
+
+<!-- doc-check: void Preview(const ToneCurveSet& curves); void Commit(const ToneCurveSet& curves); void Restore(); -->
 
 ```cpp
 auto dlg = CreateCurvesDialog(currentCurves);

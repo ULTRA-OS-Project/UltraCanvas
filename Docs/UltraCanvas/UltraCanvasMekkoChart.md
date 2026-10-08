@@ -66,6 +66,8 @@ rebuild.
 
 ## Configuration
 
+<!-- doc-check: std::string MyMoneyFormat(double value); -->
+
 ```cpp
 chart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
 chart->SetColumnSortMode(UltraCanvasMekkoChartElement::ColumnSortMode::TotalDescending);

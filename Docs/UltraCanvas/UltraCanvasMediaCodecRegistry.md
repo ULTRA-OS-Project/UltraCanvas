@@ -5,6 +5,16 @@ video formats a build can handle, and the extension point for adding more.
 Video decoding is registered through its companion,
 `libspecific/Video/VideoCodecPlugin.h`.
 
+<!-- doc-check:
+namespace MyApp {
+    std::shared_ptr<UCAudio> DecodeMonkeysAudio(const std::string& path);
+    std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts);
+    UCVideoFramePtr GrabIvfPoster(const std::string& source, const VideoThumbnailRequest& req);
+}
+bool LooksLikeTransportStream(const std::string& path);
+VideoDecoderFactory openDecoder;
+-->
+
 ## Why it exists
 
 Two questions get confused constantly, and answering them from the same list is

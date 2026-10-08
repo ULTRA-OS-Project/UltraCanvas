@@ -12,6 +12,8 @@ serves tests and in-application readers (read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
+<!-- doc-check: std::shared_ptr<UltraCanvasUIElement> element; -->
+
 ## Elements
 
 ```cpp

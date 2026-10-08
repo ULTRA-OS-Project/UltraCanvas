@@ -53,6 +53,8 @@ for (const auto& f : audio) {
 dialog both follow that inventory automatically. To map a file extension to
 the enum used by the save APIs:
 
+<!-- doc-check: std::string path; std::shared_ptr<UCAudio> audio; namespace MyApp { std::shared_ptr<UCAudio> DecodeApe(const std::string& path); } -->
+
 ```cpp
 AudioFormat fmt = AudioFormatFromExtension("flac");   // ".OGG", "oga", ... also fine
 if (fmt == AudioFormat::Unknown) fmt = AudioFormat::WAV;

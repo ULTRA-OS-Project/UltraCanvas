@@ -6751,6 +6751,8 @@ serves tests and in-application readers (read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
+<!-- doc-check: std::shared_ptr<UltraCanvasUIElement> element; -->
+
 ## Elements
 
 ```cpp
@@ -9112,6 +9114,8 @@ for (const auto& f : audio) {
 `UltraCanvasFileLoader::OpenAudio` filters and the audio recorder's save
 dialog both follow that inventory automatically. To map a file extension to
 the enum used by the save APIs:
+
+<!-- doc-check: std::string path; std::shared_ptr<UCAudio> audio; namespace MyApp { std::shared_ptr<UCAudio> DecodeApe(const std::string& path); } -->
 
 ```cpp
 AudioFormat fmt = AudioFormatFromExtension("flac");   // ".OGG", "oga", ... also fine
@@ -17178,6 +17182,29 @@ elements draw and respond to input in the right place.
 >   `SetElementAbsolutePosition()` — not raw `SetBounds()` in the middle of a
 >   laid‑out tree.
 
+<!-- doc-check:
+class MyElement : public UltraCanvasUIElement {
+public:
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
+    Rect2Di SidebarArea() const;
+    Color background;
+    int sidebarWidth = 0;
+    int sidebarWidth_ = 0;
+};
+class MyPdfView : public UltraCanvasUIElement {
+public:
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
+    Rect2Di PageContentArea() const;
+    bool showThumbs_ = true;
+    int thumbStripWidth = 160;
+};
+UltraCanvasUIElement* elem;
+std::shared_ptr<UltraCanvasUIElement> el;
+std::shared_ptr<UltraCanvasUIElement> view;
+-->
+
 ---
 
 ## 1. The three coordinate spaces
@@ -17229,13 +17256,14 @@ they are still on the event as `event.pointerWindow` and `event.pointerGlobal`.)
 
 ## 2. Drawing: do it in local space
 
-The base class shows the canonical pattern — it draws its background/border
-using `GetLocalBounds()`:
+The base class shows the canonical pattern — `UltraCanvasUIElement::Render()`
+draws its background/border using `GetLocalBounds()`; in effect it does this:
 
 ```cpp
-void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Df&) {
+// What UltraCanvasUIElement::Render does — simplified
+void MyElement::Render(IRenderContext* ctx, const Rect2Df&) {
     auto bnds = GetLocalBounds();        // (0, 0, width, height)
-    // …draws background + borders within bnds…
+    // ...draws background + borders within bnds...
 }
 ```
 
@@ -17253,7 +17281,7 @@ void MyElement::Render(IRenderContext* ctx, const Rect2Df& dirty) {
     // Sub-regions are offsets from the local origin, never from GetBounds().
     Rect2Di header(0, 0, b.width, 32);
     Rect2Di body  (0, 32, b.width, b.height - 32);
-    // …draw…
+    // ...draw...
     ctx->PopState();
 }
 ```
@@ -17403,8 +17431,8 @@ global hit‑tests) — not in normal `Render`/`OnEvent`:
 | `MapFromLocal(localPt)` | this element's **local** point → **window** frame |
 
 ```cpp
-// A child wants to know where a local point lands on screen:
-Point2Df onScreen = MapFromLocal({0, 0});   // my top-left, in window coords
+// Where does a local point of `el` land in the window?
+Point2Df onScreen = el->MapFromLocal({0, 0});   // el's top-left, in window coords
 ```
 
 ---
@@ -17435,16 +17463,23 @@ These are the patterns that bite. Each one compiles and "looks" right.
 
 ```cpp
 // BEFORE — parent-relative, double-offset
-void Render(IRenderContext* ctx, const Rect2Df&) {
+void MyPdfView::Render(IRenderContext* ctx, const Rect2Df&) {
     const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
-    ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
+    ctx->FillRectangle(b);                // ...but ctx is already translated by (12, 94)
     // → the viewer paints at (24, 188): a white gap under the toolbar,
     //   the page badge slides off to the right, clipping is wrong.
 }
 
-case UCEventType::MouseWheel: {
-    Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
-    bool inThumbs = local.x < thumbStripWidth;
+bool MyPdfView::OnEvent(const UCEvent& event) {
+    switch (event.type) {
+        case UCEventType::MouseWheel: {
+            Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
+            bool inThumbs = local.x < thumbStripWidth;
+            break;
+        }
+        default: break;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
 }
 ```
 
@@ -17452,18 +17487,25 @@ The fix was to move everything to the local frame:
 
 ```cpp
 // AFTER — local frame, single source of truth
-void Render(IRenderContext* ctx, const Rect2Df&) {
+void MyPdfView::Render(IRenderContext* ctx, const Rect2Df&) {
     const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
     ctx->FillRectangle(b);
 }
 
-Rect2Di PageContentArea() const {                 // local
+Rect2Di MyPdfView::PageContentArea() const {      // local
     const int left = showThumbs_ ? thumbStripWidth : 0;
     return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
 }
 
-case UCEventType::MouseWheel: {
-    bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+bool MyPdfView::OnEvent(const UCEvent& event) {
+    switch (event.type) {
+        case UCEventType::MouseWheel: {
+            bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+            break;
+        }
+        default: break;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
 }
 ```
 
@@ -17689,12 +17731,9 @@ if (!set.IsIdentity()) {
 
 ## Applying a curve to an image — `PixelFX::Colour::MapLut`
 
-```cpp
-PFXImage MapLut(const PFXImage& image,
-                const std::vector<std::vector<uint8_t>>& tables);
-```
-
-Maps an image through per-channel 8-bit lookup tables. Every table holds 256
+`PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables)`,
+in namespace `PixelFX::Colour` (`PixelFX/PixelFX.h`), maps an image through
+per-channel 8-bit lookup tables. Every table holds 256
 entries; pass **one** table to map all colour bands the same way, or **one per
 colour band**. A trailing alpha band is passed through untouched, and the image
 is mapped as 8-bit (a wider one is cast down first). Any other table size throws
@@ -17744,6 +17783,8 @@ diagonal, curve, point, selection and histogram colours, plus `gridDivisions`,
 in its own colour (red / green / blue; the master curve in `curveColor`).
 
 ## The dialog
+
+<!-- doc-check: void Preview(const ToneCurveSet& curves); void Commit(const ToneCurveSet& curves); void Restore(); -->
 
 ```cpp
 auto dlg = CreateCurvesDialog(currentCurves);
@@ -19087,6 +19128,8 @@ The router knows nothing about your nodes. You give it:
 | `options` | `DiagramRoutingOptions` — grid size, routing area, turn penalty, expansion cap, obstacle insets |
 
 ## Basic use
+
+<!-- doc-check: std::map<std::string, Rect2Dd> nodes; std::string sourceId; std::string targetId; Rect2Dd source; Rect2Dd target; double elementWidth; double elementHeight; -->
 
 ```cpp
 #include "Plugins/Diagrams/UltraCanvasDiagramRouting.h"
@@ -22185,6 +22228,8 @@ FILE: Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md
 *You need permission to perform this action*: Windows asks for consent (the
 UAC prompt) and the operation runs again with administrator rights.
 
+<!-- doc-check: std::string path; int argc; char** argv; -->
+
 ```cpp
 #include "UltraCanvasElevatedFileOperations.h"
 
@@ -22195,7 +22240,7 @@ if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
 
 // 2. Where a delete fails:
 std::error_code ec;
-std::filesystem::remove_all(path, ec);
+std::filesystem::remove_all(PathFromUtf8(path), ec);   // path is UTF-8
 if (ec && ElevatedFileOperations::IsAvailable() &&
     ElevatedFileOperations::IsPermissionFailure(ec)) {
     auto result = ElevatedFileOperations::DeleteElevated({path});   // blocks
@@ -22297,7 +22342,7 @@ code page.
 
 | Platform | Backend |
 |---|---|
-| Windows | `ShellExecuteEx("runas")` + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
+| Windows | `ShellExecuteEx` with the `runas` verb + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
 | Linux, macOS, WebAssembly | None: `IsAvailable()` is false and `DeleteElevated` answers `Unavailable`. The platform-free half (the helper's delete, the encodings) lives in `core/UltraCanvasElevatedFileOperations.cpp` and is what `Tests/ElevatedFileOperationsTest.cpp` exercises everywhere. |
 
 A `pkexec` / authorization-services backend for the Unix desktops would slot in
@@ -37065,6 +37110,16 @@ video formats a build can handle, and the extension point for adding more.
 Video decoding is registered through its companion,
 `libspecific/Video/VideoCodecPlugin.h`.
 
+<!-- doc-check:
+namespace MyApp {
+    std::shared_ptr<UCAudio> DecodeMonkeysAudio(const std::string& path);
+    std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts);
+    UCVideoFramePtr GrabIvfPoster(const std::string& source, const VideoThumbnailRequest& req);
+}
+bool LooksLikeTransportStream(const std::string& path);
+VideoDecoderFactory openDecoder;
+-->
+
 ## Why it exists
 
 Two questions get confused constantly, and answering them from the same list is
@@ -37875,6 +37930,8 @@ After mutating a data vector that is already attached to a chart, call
 rebuild.
 
 ## Configuration
+
+<!-- doc-check: std::string MyMoneyFormat(double value); -->
 
 ```cpp
 chart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
@@ -39652,6 +39709,8 @@ media viewer need one reader that is always present.
 
 ## Reading a file
 
+<!-- doc-check: std::string path; -->
+
 ```cpp
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #include "Models/UltraCanvasModelMesh3D.h"
@@ -40174,11 +40233,13 @@ behaves identically on every platform.
 
 ## German VAT
 
+<!-- doc-check: Money net; Money gross; -->
+
 ```cpp
-net.TaxOnNet(190)        // tax on a net amount:      net * 190/1000
-net.GrossFromNet(190)    // gross from net:           net * 1190/1000
-gross.TaxInGross(190)    // tax contained in a gross: gross * 190/1190
-gross.NetFromGross(190)  // net from gross:           gross - TaxInGross(190)
+net.TaxOnNet(190);        // tax on a net amount:      net * 190/1000
+net.GrossFromNet(190);    // gross from net:           net * 1190/1000
+gross.TaxInGross(190);    // tax contained in a gross: gross * 190/1190
+gross.NetFromGross(190);  // net from gross:           gross - TaxInGross(190)
 ```
 
 `permille` is thousandths: 190 is 19 %, 70 is 7 %, 0 is 0 %, 25 is 2,5 %.
@@ -45218,6 +45279,8 @@ the name, icon and executable of an application bundle, the address in a
 `.webloc` — so that is what it offers: the top level, flattened to text.
 Nested dictionaries and arrays are *skipped* rather than half-modelled, and a
 caller that needs them should say so rather than work around it.
+
+<!-- doc-check: std::string path; -->
 
 ```cpp
 #include "UltraCanvasPropertyList.h"
@@ -50290,6 +50353,8 @@ contributes its `x`, `y` and `z` members. Data is normalized into a `[-1,1]³`
 world cube: data **x** runs left-right, data **y** recedes into the scene and
 data **z** is vertical (the usual mathematical 3D plot layout).
 
+<!-- doc-check: double SampleParameter(int index); double Noise(); bool IsOutlier(int index); -->
+
 ```cpp
 auto data = std::make_shared<ChartDataVector>();
 for (int i = 0; i < 200; ++i) {
@@ -53479,19 +53544,34 @@ writer is the single place the offset is stored, so an eased step goes through
 exactly the clamp and repaint an instant scroll would:
 
 ```cpp
-// member
-UltraCanvasSmoothScroll scrollAnimY;
+class MyScrollView : public UltraCanvasUIElement {
+    UltraCanvasSmoothScroll scrollAnimY;          // member: one animator per axis
+    int scrollOffsetY = 0;
+    static constexpr double kWheelStep = 40.0;
 
-// once (constructor)
-scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
-                 [this](double v) {
-                     scrollOffsetY = static_cast<int>(std::lround(v));
-                     ClampScroll();
-                     RequestRedraw();
-                 });
+public:
+    MyScrollView() {
+        // once (constructor)
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
 
-// wheel / page key
-scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::MouseWheel) {   // wheel / page key
+            scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+            return true;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+
+private:
+    void ClampScroll();
+    double MaxScrollY() const;
+};
 ```
 
 | Call | |
@@ -53515,17 +53595,30 @@ factors**, which the element applies with the very code it used for the single
 one. No transform maths is duplicated or reinterpreted:
 
 ```cpp
-// members
-UltraCanvasSmoothZoom zoomAnim;
-Point2Di zoomCursor;
+class MyZoomView : public UltraCanvasUIElement {
+    // members
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
+    double zoomLevel = 1.0, minZoom = 0.1, maxZoom = 32.0;
 
-// wheel handler
-if (!zoomAnim.IsBound()) {
-    zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
-                  [this] { RequestRedraw(); });
-}
-zoomCursor = event.pointer;
-zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+public:
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::MouseWheel) {   // wheel handler
+            if (!zoomAnim.IsBound()) {
+                zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                              [this] { RequestRedraw(); });
+            }
+            zoomCursor = event.pointer;
+            zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+            return true;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+
+private:
+    // The single-step zoom the element already had.
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
+};
 ```
 
 The element keeps clamping its own zoom; the range passed to `ZoomBy` only stops
@@ -65114,8 +65207,8 @@ indistinguishable from a hang.
 
 Both backends now do this — Linux through the `select()` in
 `CollectAndProcessNativeEvents()`, Windows through
-`UltraCanvasWindowsApplication::PollAndServiceFdWatches()`, which polls the
-registered Winsock sockets around the `MsgWaitForMultipleObjectsEx()` wait and
+`UltraCanvasWindowsApplication::PollAndServiceFdWatches`, which polls the
+registered Winsock sockets around the `MsgWaitForMultipleObjectsEx` wait and
 bounds that wait so level-triggered readiness is picked up promptly. **The
 Windows side arrived in 0.3.81; before that the Windows loop ignored fd-watches
 entirely while Linux honoured them.** A host built against an older Windows
@@ -65374,6 +65467,8 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 (Windows only; called for you by `UltraCanvasWindowsApplication::InitializeNative()`):
 
 ```cpp
+#include "OS/MSWindows/UltraCanvasWindowsDiagnostics.h"
+
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
