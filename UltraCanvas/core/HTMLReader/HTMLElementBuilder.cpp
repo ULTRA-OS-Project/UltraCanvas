@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.24.0 - BuildOptions::selectableText: the tree's labels share one
+//                   UltraCanvasTextSelection (BuildResult::textSelection)
 // Version: 1.23.0 - BuildOptions::linkTooltips: text links and linked pictures
 // Version: 1.22.0 - merged with main's 1.5.0-1.6.0 (floats, clear, shrink-to-fit
 //                   tables, list markers, stacking cells, content-box px sizes):
@@ -66,7 +68,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -74,6 +76,7 @@
 #include <functional>
 
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasTextSelection.h"
 
 #include <algorithm>
 #include <cctype>
@@ -415,6 +418,12 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
 
     result.root = BuildBlock(*body);
     ++elementCount;   // the root itself
+    // One selection over every label, in document order: a drag runs on from
+    // paragraph to paragraph, as in a browser.
+    if (opts.selectableText && result.root) {
+        result.textSelection = std::make_shared<UltraCanvasTextSelection>();
+        result.textSelection->AddLabelsIn(*result.root);
+    }
     result.warnings = warnings;
     result.elementCount = elementCount;
     result.anchors = std::move(anchors);

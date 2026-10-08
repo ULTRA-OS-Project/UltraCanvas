@@ -10,8 +10,10 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
+// Version: 0.1.12 - Stop() no longer hangs when it comes before the loop has begun
+//                  to run: the quit is queued on the loop's own context
 // Version: 0.1.11
-// Last Modified: 2026-08-06
+// Last Modified: 2026-10-08
 // V0.1.11: SetPlaybackRate no longer issues a flushing seek when the rate is
 //   unchanged. The playback engine pushes its configured (default 1.0) rate on
 //   every load, so the no-op "change" fired a FLUSH|ACCURATE seek while the
@@ -98,7 +100,22 @@ struct GstRuntime {
     void Stop() {
         if (!running.load()) return;
         running.store(false);
-        if (loop) g_main_loop_quit(loop);
+        // Quit from inside the loop, not from here. g_main_loop_quit before
+        // the thread has reached g_main_loop_run is lost - run then starts
+        // and never returns, and the join below waits for ever (seen when a
+        // process stopped the backend right after starting it, under load,
+        // typically at exit). A source queued on the loop's context runs
+        // whenever the loop does, early or late, and quits it from there.
+        if (loop && ctx) {
+            GSource* quit = g_idle_source_new();
+            g_source_set_priority(quit, G_PRIORITY_HIGH);
+            g_source_set_callback(quit, [](gpointer l) -> gboolean {
+                g_main_loop_quit(static_cast<GMainLoop*>(l));
+                return G_SOURCE_REMOVE;
+            }, loop, nullptr);
+            g_source_attach(quit, ctx);
+            g_source_unref(quit);
+        }
         if (thread.joinable()) thread.join();
         if (loop) { g_main_loop_unref(loop); loop = nullptr; }
         if (ctx) { g_main_context_unref(ctx); ctx = nullptr; }

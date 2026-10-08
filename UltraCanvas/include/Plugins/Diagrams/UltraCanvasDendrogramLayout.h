@@ -1,7 +1,8 @@
 // UltraCanvasDendrogramLayout.h
 // Reingold-Tilford layout engine for dendrogram tree positioning
+// Version: 1.2.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.2.0
-// Last Modified: 2026-07-31
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 //
 // CHANGELOG 1.2.0:
@@ -225,8 +226,8 @@ namespace UltraCanvas {
 
         // Optional: enumerate groups
         virtual size_t GetGroupCount() const { return 0; }
-        virtual const DendrogramGroup* GetGroup(size_t index) const { return nullptr; }
-        virtual const DendrogramGroup* GetGroupById(const std::string& id) const { return nullptr; }
+        virtual const DendrogramGroup* GetGroup(size_t index) const { (void)index; return nullptr; }
+        virtual const DendrogramGroup* GetGroupById(const std::string& id) const { (void)id; return nullptr; }
     };
 
     // Concrete vector-based data source

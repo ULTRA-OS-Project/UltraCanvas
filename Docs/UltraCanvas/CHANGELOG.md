@@ -1,3 +1,168 @@
+#### 2026-10-08 *0.9.210*
+- **Text in labels can be selected and copied.** `UltraCanvasLabel::SetSelectable(true)`
+  lets the reader drag across a label's text, double-click a word (a dot or
+  an apostrophe between letters stays in it: `example.com`, `don't`),
+  triple-click all of it and Shift+click to extend; Ctrl+C (Ctrl+Insert,
+  Cmd+C) copies and Ctrl+A selects all. The highlight is drawn under the text
+  in `LabelStyle::selectionColor`; what is copied leaves out inline pictures
+  and soft hyphens and turns a no-break space into a space. A link in a
+  selectable label opens when the button is released without having dragged,
+  so a drag that starts on a link selects. Labels nobody made selectable work
+  exactly as before.
+  - **One selection across many labels:** `UltraCanvasTextSelection`
+    (`UltraCanvasTextSelection.h`), shared by labels in reading order
+    (`AddLabel`, `AddLabelsIn`). A drag runs on from one label into the
+    next, to the nearest text when the pointer is between them, and scrolls
+    the scroll view when it goes past its edge; a copy puts a line break
+    between labels above one another and a tab between labels side by side.
+    Only the pressed label accepts the keyboard focus, so a page of
+    paragraphs is one Tab stop. `onContextMenu` and `onSelectionChanged` let
+    the host offer Copy and Select All.
+  - **HTML:** `HTML::BuildOptions::selectableText` gives every label of a
+    built page one such selection (`HTML::BuildResult::textSelection`).
+  - New tests: `LabelSelectionTest` (a window under Xvfb).
+
+#### 2026-10-08 *0.9.209*
+- **One shared core on every platform, with the modules inside it.** The
+  framework is now `libUltraCanvas.dylib` on macOS as it has been `.so` on
+  Linux and `.dll` on Windows: `ULTRACANVAS_BUILD_SHARED` defaults ON on every
+  desktop platform and every CI row passes it explicitly (the Windows row had
+  relied on the LaTeX plug-in forcing it). Until now each of the ~20 macOS
+  `.app` executables carried the whole framework statically, so the suite
+  shipped and loaded the same code twenty times over; `package-macos.sh`
+  bundles the core into the suite's shared `Frameworks/` like any other dylib,
+  `verify_suite` fails a suite without it, and the `ultramsg` tool loads from
+  that shared folder too instead of carrying a second copy.
+- **The UI-free modules are folded into the shared core whole.** UltraCrypt,
+  UltraVault, UltraDatabase, UltraMessage, NetworkMonitor and VirtualFS join
+  UltraNet and UltraWin as `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` members of the
+  core, so the DSO exports each module's complete API and one copy of its code
+  and global state serves every running application. Before, an app that
+  linked `UltraDatabase` or `UltraVault` next to the shared core (UltraMail,
+  UltraSocial, UltraFIBU, the test suites) got the archive ahead of
+  `libUltraCanvas` on its link line and took the module's objects from there
+  while the core carried its own - two registries, two connection tables, and
+  on Windows the "multiple definition" errors the changelog has recorded
+  before. The public target names (`UltraDatabase`, `UltraVault`, `UltraCrypt`,
+  `UltraMessage`, `NetworkMonitor`) are now INTERFACE "homes" that resolve to
+  the core on a shared build and to the archive (`uc-database`, `uc-vault`,
+  …) on a static one, so no consumer changed; "MODULE HOMES" in
+  `UltraCanvas/CMakeLists.txt` and *One shared core* in `AGENTS.md` have the
+  rules.
+- **CI reports the package sizes.** The Linux and Windows rows write a
+  "Package sizes" table to the job summary - the package, the core library,
+  the sum of the application executables and each one - next to the macOS
+  suite table, which now lists `libUltraCanvas.1.dylib` on its own line, so
+  a change that puts a second copy of the framework into an app shows up on
+  the run page.
+
+#### 2026-10-08 *0.9.208*
+- **Eleven charts and diagrams pass a layout change on to their parent.**
+  The chord, circular progress, polar, radial bar and timeline charts and
+  the fishbone, matrix, parliament, SWOT, timeline and word-cloud diagrams
+  each declared a private `InvalidateLayout()` that only cleared their own
+  layout cache. It had the name of the layout engine's virtual
+  (`CSSLayout::Element::InvalidateLayout`), so it overrode it without
+  calling it: whenever the framework invalidated one of these elements - a
+  new size, `SetVisible`, a style change - the element's measure stayed
+  valid and the change never reached its parent. Clang warned about it as
+  a missing `override`. The cache-clearing helper is `DropLayoutCache()`
+  now, used where the charts called it themselves, and `InvalidateLayout()`
+  is a real override that drops the cache and calls the engine's.
+  `ChartElementBehaviourTest` checks all eleven; each fails without it.
+- `UltraCanvasSyntaxTokenizer.h` writes Dart's `??=` operator as `"?\?="`,
+  so the string no longer reads as a trigraph and Clang stops warning in
+  every file that includes the header.
+- Tests: `PublicHeadersUnusedParamTest` includes the framework's 315 public
+  headers (313 without GL) in one file compiled with
+  `-Werror=unused-parameter`, so an inline body that leaves a parameter
+  unused fails the build instead of warning in every `-Wextra` build. It
+  leaves out the optional subsystems whose headers need libraries a build
+  may lack (UltraNet, UltraVault, PixelFX, LaTeX, the databases, IO devices,
+  network monitor, messaging and window-server clients), and the GL surface
+  headers when GL is off. GCC and Clang only - every CI leg, Windows
+  included through MSYS2's clang; checked here with clang and GCC on Linux
+  and with MinGW GCC against the Windows headers. `AGENTS.md` states the
+  rule.
+- `scripts/check_doc_examples.py` checks a copied type against every type
+  of its name and judges it by the best match. A short name can name
+  several types - `BlendMode` is the render context's enum, a PixelFX one
+  and a VectorStorage one - and the checker took the first in sorted order,
+  `PixelFX::BlendMode`, so `UltraCanvasRenderContext.md`'s correct listing
+  of the render context's modes read as seven missing enumerators. A
+  planted wrong enumerator is still reported, against
+  `UltraCanvas::BlendMode`. The page's mask example declares the
+  application's `DrawContent` it calls; the page passes the checker.
+- Docs: `UltraCanvasMatrixDiagram.md` passes the doc checker. The roll-up
+  example used `row` and `col` without saying what they were, and the
+  checker read `row` as a container (a common name for one in the other
+  docs); the example now declares them as the item indices the score
+  functions take. The validation example's `Log` is marked as the
+  application's logger and declared for the checker.
+- **Checkboxes, radios and switches take the keyboard focus.**
+  `UltraCanvasLabeledToggleBase` never overrode `AcceptsFocus()`, so Tab
+  skipped every toggle and their Space handling and focus ring were never
+  reached. They take the focus like buttons now: Tab reaches them, a press
+  focuses them, and Space activates the focused one. Enter is no longer
+  handled by a toggle, so in a dialog it still presses the default button,
+  as in HTML and the native toolkits. `SetAcceptsFocus(false)` keeps a toggle
+  out of the Tab order. Apps whose dialogs hold toggles gain Tab stops.
+- **A radio added to a group already checked becomes its selection.**
+  `UltraCanvasRadioGroup::AddRadioButton` ignored a radio's checked state, so
+  one created with `checked = true` showed its dot while
+  `GetSelectedButton()` returned null, and two such radios both stayed
+  checked. The last checked radio added wins and the others are cleared, as
+  in an HTML group; building the group does not call `onSelectionChanged`.
+- **Charts leave a left press to the parent unless it starts a pan.** The
+  chart base took every left press and release, so a chart in a scrolling or
+  draggable container swallowed its clicks. It takes them only to start and
+  end a pan of a zoomed chart; charts that react to clicks handle them
+  first, as before.
+- **A CSV row that cannot be read is skipped, not plotted at (0,0).**
+  `ChartDataVector` and `ChartDataStream` turned a row after the first whose
+  x or y is not a number into a point at the origin. Every line is now kept
+  only when its x and y read as numbers - headers, blank lines and broken
+  rows are skipped wherever they stand - and `ChartDataStream` numbers its
+  points over the data rows, so its count and chunks agree.
+- `IsFocused()` on an element whose window has no application (a test, a
+  tool) called through a null pointer and crashed;
+  `UltraCanvasWindowBase::IsWindowFocused()` is false then.
+- Tests: `TextInputFontTest` checks `IRenderContext::GetLineBoxHeight`
+  headless: it is the font's line height unrounded, `GetTextLineHeight` is
+  the same height in whole pixels and never more, a line's descenders end
+  inside it, and a second ask comes from the cache.
+- The public headers' inline default bodies mark their unused parameters
+  `(void)`, as `UltraCanvasRenderContext.h` already did in places: a build
+  with `-Wextra` (the Models plugin, the tests, Texter, AnchorPoint) saw 48
+  `-Wunused-parameter` warnings from 17 headers - the render context's on
+  every file - and now sees none. Signatures and parameter names are
+  unchanged.
+
+#### 2026-10-08 *0.9.207*
+- **A text field's caret and selection reach the bottom of the text.** The
+  field's line box was `GetTextLineHeight("H")` tall: whole pixels, with the
+  fraction cut off (the size is converted with a `static_cast<int>`). The
+  glyphs are drawn at the font's full line height, so the caret ended up to a
+  pixel above the descenders and the bottoms of parentheses, and
+  `TextMetricsScreenshotTest` failed on that ("The caret spans the text's line
+  box: at or below the ink's bottom"). The box is the font's height in
+  fractional pixels now, from the new `IRenderContext::GetLineBoxHeight(font)`
+  (cached per font, cleared with the other font measurements), and the caret
+  covers every pixel row the box touches. `UltraCanvasTextInput` 1.8.1,
+  `UltraCanvasRenderContext.h` 2.8.0.
+- **Video: stopping the GStreamer backend no longer hangs.** The backend runs
+  a GLib event loop on a thread of its own, and `Stop()` quit it with
+  `g_main_loop_quit` from the calling thread. A quit that came before that
+  thread had reached `g_main_loop_run` was lost: the loop then started and ran
+  for ever, and `Stop()` waited for it. A process that used video briefly
+  could hang at exit, where a static destructor stops the backend, and the
+  busier the machine the more often: `VideoCodecPluginTest` timed out in about
+  1 run in 13 when 24 ran at once. The quit is now a source queued on the
+  loop's own context, which the loop runs whenever it runs. A new case in
+  `VideoCodecPluginTest` starts and stops the backend 200 times with a
+  watchdog; it hung on every run before the change. `VideoBackendGStreamer.cpp`
+  0.1.12.
+
 #### 2026-10-08 *0.9.206*
 - **The chat-title hook recognises the rename under either tool name.** The
   Claude Code Remote server is registered as `mcp__claude-code-remote__...` in

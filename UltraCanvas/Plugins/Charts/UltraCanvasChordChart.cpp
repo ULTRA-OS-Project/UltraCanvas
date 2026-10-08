@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasChordChart.cpp
 // Chord diagram element: circular category arcs joined by proportional ribbons.
+// Version: 1.0.2 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.1
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 //
 // Changelog:
@@ -111,7 +112,7 @@ namespace UltraCanvas {
         chordMatrix.RecalculateTotals();
         hoveredCategory = SIZE_MAX;
         hoveredRibbon = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -123,13 +124,13 @@ namespace UltraCanvas {
         }
         chordMatrix.AddCategory(ChordCategory(name, resolved));
         chordMatrix.RecalculateTotals();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetFlow(size_t from, size_t to, double value) {
         if (!chordMatrix.SetFlow(from, to, value)) return;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -139,7 +140,7 @@ namespace UltraCanvas {
         ribbonOutlines.clear();
         hoveredCategory = SIZE_MAX;
         hoveredRibbon = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -169,7 +170,7 @@ namespace UltraCanvas {
 
         hoveredCategory = SIZE_MAX;
         hoveredRibbon = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return true;
     }
@@ -186,31 +187,31 @@ namespace UltraCanvas {
             autoFitRadius = false;
             explicitRadius = r;
         }
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetAutoFitRadius(bool on) {
         autoFitRadius = on;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetRingThickness(float pixels) {
         ringThickness = std::max(2.0f, pixels);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetStartAngle(float degrees) {
         startAngleDeg = degrees;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetCategoryPadding(float degrees) {
         categoryPaddingDeg = std::max(0.0f, std::min(30.0f, degrees));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -221,7 +222,7 @@ namespace UltraCanvas {
 
     void UltraCanvasChordChart::SetRibbonCurvature(float curvature) {
         ribbonCurvature = std::max(0.0f, std::min(1.0f, curvature));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -238,14 +239,14 @@ namespace UltraCanvas {
 
     void UltraCanvasChordChart::SetMinFlowValue(double minValue) {
         minFlowValue = std::max(0.0, minValue);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasChordChart::SetLabelPlacement(ChordLabelPlacement placement) {
         labelPlacement = placement;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -257,7 +258,7 @@ namespace UltraCanvas {
     void UltraCanvasChordChart::SetLabelDistance(float pixels) {
         labelDistance = std::max(0.0f, pixels);
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -298,7 +299,7 @@ namespace UltraCanvas {
 // LAYOUT
 // =============================================================================
 
-    void UltraCanvasChordChart::InvalidateLayout() {
+    void UltraCanvasChordChart::DropLayoutCache() {
         layoutValid = false;
     }
 
@@ -311,7 +312,7 @@ namespace UltraCanvas {
         lastLayoutWidth  = GetWidth();
         lastLayoutHeight = GetHeight();
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
     }
 
     ChartPlotArea UltraCanvasChordChart::CalculatePlotArea() {

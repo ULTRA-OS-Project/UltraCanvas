@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
 // Classic four-panel SWOT analysis infographic with multiple design presets
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasSWOTDiagram.h"
@@ -52,7 +53,7 @@ namespace UltraCanvas {
     void UltraCanvasSWOTDiagram::SetDesign(SWOTDesign d) {
         if (design == d) return;
         design = d;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -84,13 +85,13 @@ namespace UltraCanvas {
 
     void UltraCanvasSWOTDiagram::AddItem(SWOTQuadrant q, const std::string& text) {
         items[static_cast<size_t>(q)].emplace_back(text);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasSWOTDiagram::AddItem(SWOTQuadrant q, const SWOTItem& item) {
         items[static_cast<size_t>(q)].push_back(item);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -98,7 +99,7 @@ namespace UltraCanvas {
         items[static_cast<size_t>(q)] = list;
         hoveredItem = SWOTItemRef();
         selectedItem = SWOTItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -116,7 +117,7 @@ namespace UltraCanvas {
         fix(selectedItem);
         fix(hoveredItem);
 
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -124,7 +125,7 @@ namespace UltraCanvas {
         items[static_cast<size_t>(q)].clear();
         if (selectedItem.quadrant == static_cast<int>(q)) selectedItem = SWOTItemRef();
         if (hoveredItem.quadrant == static_cast<int>(q)) hoveredItem = SWOTItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -132,7 +133,7 @@ namespace UltraCanvas {
         for (auto& list : items) list.clear();
         hoveredItem = SWOTItemRef();
         selectedItem = SWOTItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -149,7 +150,7 @@ namespace UltraCanvas {
         }
         hoveredItem = SWOTItemRef();
         selectedItem = SWOTItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -178,7 +179,7 @@ namespace UltraCanvas {
     void UltraCanvasSWOTDiagram::SetShowAxisCaptions(bool show) {
         if (showAxisCaptions == show) return;
         showAxisCaptions = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 

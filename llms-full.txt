@@ -556,8 +556,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine; the tree's own scrollbars are off, the host scrolls.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
@@ -3856,9 +3858,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 
@@ -4381,7 +4385,7 @@ platform leg, as a workflow artifact:
 | Artifact | Contents |
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
-| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
@@ -4437,9 +4441,17 @@ that opens a window and registers the formats. Copy it, rename it, start
 there. The imported targets and variables the package provides are listed at
 the top of `UltraCanvasConfig.cmake`.
 
-On Linux the shared core sits in `lib/`; run an application with that
+The core is a shared library on every platform, and the modules (UltraNet,
+UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
+inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
+to the core, which exports their whole API, so an application links nothing
+else. On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On Windows the core is
+the executable the way `package-linux.sh` does. On macOS it is
+`lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
+needs a run path to that directory (CMake writes one into a build-tree
+executable), or the dylib copied beside it the way `package-macos.sh` does
+into the suite's `Frameworks/`. On Windows the core is
 `bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
 the executable, which is what `package-win.sh` does for a release.
 
@@ -9960,7 +9972,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBarChartElement.md
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
@@ -10203,7 +10215,9 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` / `HandleMouseUp` - track the left button
+- `HandleMouseDown` / `HandleMouseUp` - leave the left button to the parent
+  (the bar chart does not pan), so a chart in a scrolling or draggable
+  container does not swallow its clicks
 - `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples
@@ -14237,7 +14251,7 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
@@ -14680,7 +14694,10 @@ public:
 - **`AddRadioButton`** appends the radio (a null pointer is ignored) and
   installs the group's handler in the radio's `onChecked`. From then on a
   click on the radio, or `SetChecked(true)` on it in code, selects it in the
-  group.
+  group. A radio that is already checked when it is added becomes the
+  selection, and any member checked before it is cleared: the last checked
+  radio added wins, as in an HTML radio group. `onSelectionChanged` is not
+  called for it.
 - **`SelectButton`** makes a member the selection: it checks it, clears
   every other member and calls `onSelectionChanged` with it, once. A radio
   that is not in the group, or a null pointer, is ignored; selecting the
@@ -14694,12 +14711,11 @@ public:
   it was the selection, the group has none afterwards. The radio keeps its
   checked state, and `onSelectionChanged` is not called.
 
-**Set the initial selection with `SelectButton`.** `AddRadioButton` does not
-look at whether a radio is checked, so a radio created with `checked = true`
-shows its dot while `GetSelectedButton()` still returns null, until the user
-clicks or code selects. Call `SelectButton` on the initial choice after
-adding the radios. Assign `onSelectionChanged` after that call if building
-the dialog should not count as a change; `SelectButton` reports it otherwise.
+**The initial selection.** Create the initial choice checked
+(`UltraCanvasRadio::Create(..., true)`) and add it: the group adopts it
+without reporting a change. Or call `SelectButton` on it after adding the
+radios; that one is reported, so assign `onSelectionChanged` after it if
+building the dialog should not count as a change.
 
 A group serves one question, and a radio belongs to one group: adding it to a
 second group hands its clicks to the second one.
@@ -14764,13 +14780,13 @@ added to (`AddChild`). The group is only a second owner.
   cancels. A quick second click counts as a click. The indicator takes its
   hover colour, and the label `textHoverColor`, while the pointer is over the
   control.
-- **Keyboard**: Space or Enter activates the control while it has the keyboard
-  focus, and the focus ring (`base.hasFocusRing`, a rectangle around the box
-  or a circle around the ring) is drawn then. The toggles do not override
-  `AcceptsFocus()`, which is false by default, so the window does not give
-  them the focus: Tab skips them and `SetFocus(true)` returns false. Until
-  that changes the keyboard path and the focus ring are not reached in
-  normal use.
+- **Keyboard**: checkboxes, radios and switches take the keyboard focus like
+  buttons: Tab reaches them and a press focuses them. Space activates the
+  focused control, and the focus ring (`base.hasFocusRing`, a rectangle
+  around the box or a circle around the ring) is drawn while it has the
+  focus. Enter is left to the window, so in a dialog it still presses the
+  default button. `SetAcceptsFocus(false)` keeps a control out of the Tab
+  order.
 - **Disabled or hidden**: a control for which `SetDisabled(true)` was called,
   or that is not visible, ignores all input. A disabled control still
   accepts `SetChecked` from code and draws its state in the disabled colours.
@@ -15017,8 +15033,8 @@ Each control draws, in this order:
    control, which makes it a much larger target than the 16 px indicator.
 2. Make the group a member of whatever owns the radios, never a local
    variable of a builder function.
-3. Set the initial radio with `SelectButton`, and assign
-   `onSelectionChanged` afterwards.
+3. Create the initial radio checked, or select it with `SelectButton` before
+   assigning `onSelectionChanged`.
 4. Do not assign `onChecked` on a grouped radio; use the group's
    `onSelectionChanged`.
 5. A toggle's callback must not hold a `std::shared_ptr` to the toggle
@@ -15037,6 +15053,9 @@ Each control draws, in this order:
 
 ## Version History
 
+- **2.1.0** (2026-10-07): the toggles take the keyboard focus (Space
+  activates, Enter is left to the dialog); a radio added to a group already
+  checked becomes its selection.
 - **2.0.0** (2026-10-07): Rewritten for the current API. The checkbox is one
   class of three on `UltraCanvasLabeledToggleBase`; the radio
   (`UltraCanvasRadio`, factory `UltraCanvasRadio::Create`) and the switch
@@ -30665,6 +30684,7 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
+opts.selectableText = true;                   // the text selects and copies, as in a browser
 
 HTML::ElementBuilder builder;
 HTML::BuildResult r = builder.Build(html, opts);     // or BuildDocument(doc, opts) for a parsed one
@@ -30675,6 +30695,14 @@ if (r.root) {
 }
 for (const std::string& w : r.warnings) Log(w);
 ```
+
+With `selectableText` every label of the tree joins one
+`UltraCanvasTextSelection` (`r.textSelection`): a drag runs on from
+paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
+once the text has been clicked, and a text link opens when it is released
+without a drag. Keep `r.textSelection` to offer Copy and Select All in a
+menu (its `onContextMenu` is asked on a right-click); see
+`UltraCanvasLabelExamples.md`, *Selectable text*.
 
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
@@ -33568,6 +33596,10 @@ its text unless it is given a size.
   borders and rounded corners, padding, margin.
 - **Pango markup** (`SetTextIsMarkup`) and **text links** (`SetTextLinks`).
 - **Inline images** flowing in the text like a browser's `<img>`.
+- **Selectable text** (`SetSelectable`): drag to select, double-click a word,
+  triple-click all of it, Ctrl+C to copy - and with an
+  `UltraCanvasTextSelection` one selection across many labels, as in a
+  browser.
 - **Events:** click, hover, link activated and hovered, text changed.
 - **Disabled look:** `disabledTextColor` while the label `IsDisabled()`.
 
@@ -33746,6 +33778,91 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
+### Selectable text
+
+A label's text can be selected and copied the way text on a web page can.
+It is off by default - a caption beside a control should not take the press
+meant for the control.
+
+```cpp
+void SetSelectable(bool selectable);   // a selection of its own
+bool IsSelectable() const;
+void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);   // a shared one
+const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const;
+
+void SetSelectedRange(int startByte, int endByte);   // an end past the text = its end
+void ClearSelectedRange();
+bool HasSelectedRange() const;
+int GetSelectionStart() const;
+int GetSelectionEnd() const;
+std::string GetSelectedText();     // as a reader copies it
+std::string GetRenderedText();     // markup parsed, entities decoded
+int TextIndexAtPoint(const Point2Df& localPoint);   // nearest text position, -1 before the first layout
+std::pair<int, int> WordRangeAt(int byteIndex);     // [first, second)
+```
+
+On a selectable label:
+
+- **A drag selects**, a **double-click** takes the word under the pointer (a
+  dot or apostrophe between letters stays in it: `example.com`, `don't`), a
+  **triple-click** the whole text, and **Shift+click** extends the selection.
+- **Ctrl+C** (or Ctrl+Insert, or Cmd+C) copies, **Ctrl+A** selects all. The
+  pressed label takes the keyboard focus for them; only that one label of a
+  selection accepts the focus, so a page of paragraphs is one stop in the Tab
+  order, not one per paragraph.
+- The highlight is drawn under the text in `LabelStyle::selectionColor`.
+- `GetSelectedText()` leaves out the U+FFFC placeholders of inline images and
+  soft hyphens, and copies a no-break space as a plain space.
+- A **text link** opens when the button is released on it without having
+  dragged, rather than on the press - otherwise a drag that starts on a link
+  could never select it. A label with `onClick` stays a button: a press on it
+  clicks, it does not select.
+- The pointer is the text I-beam over the label (the hand over a link).
+- Byte offsets are those of the rendered text, as for links and inline
+  images. `SetText` and `SetTextIsMarkup` clear the selection.
+
+```cpp
+auto address = CreateLabel("address", "anna.berg@example.com");
+address->SetSelectable(true);   // the reader can copy the address
+```
+
+#### One selection across many labels
+
+`UltraCanvasTextSelection` (`UltraCanvasTextSelection.h`) is a selection that
+several labels share, in reading order. A drag that starts in one label runs
+on through the next ones, and a copy joins their parts: a line break between
+labels above one another, a tab between labels side by side (the cells of a
+table row). Create it with `std::make_shared` - every label keeps it alive,
+while it holds the labels weakly and a label leaves it as it is destroyed.
+
+```cpp
+auto selection = std::make_shared<UltraCanvasTextSelection>();
+selection->AddLabel(*subject);          // the order added is the reading order
+selection->AddLabel(*sender);
+selection->AddLabelsIn(*articleRoot);   // every label below, depth first
+
+selection->onContextMenu = [](const UCEvent& event) {
+    // A right-click on one of the labels: show Copy / Select All.
+};
+bool any = selection->HasSelection();
+std::string text = selection->GetSelectedText();
+selection->CopyToClipboard();
+selection->SelectAll();
+selection->ClearSelection();
+```
+
+- With the pointer between labels, the selection runs to the nearest text: a
+  label beside the pointer on its line, otherwise the end of the last label
+  above it. Dragged past the top or bottom of the scroll view the labels sit
+  in, that view scrolls, faster the further the pointer is past its edge.
+- A right-click inside the selection keeps it (for the menu's Copy); outside
+  it, it clears it first. `onContextMenu` is then called - a right-click on
+  a selectable label never opens a link. `onSelectionChanged` is raised
+  whenever what is selected changes.
+- `HTML::BuildOptions::selectableText` gives every label of a tree built from
+  HTML one such selection (`HTML::BuildResult::textSelection`); UltraMail
+  selects a mail's body that way.
+
 ## Event Callbacks
 
 ```cpp
@@ -33758,6 +33875,10 @@ std::function<void(const std::string&)> onTextChanged;    // after SetText chang
 std::function<void(const std::string&)> onLinkActivated;
 std::function<void(const std::string&)> onLinkHovered;
 ```
+
+In a selectable label (`SetSelectable`) `onLinkActivated` fires when the
+button is released on the link it was pressed on, without a drag that
+selected text in between.
 
 `SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
 beside the pointer, following it along the link and hidden again as the
@@ -34786,7 +34907,7 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -35062,8 +35183,9 @@ The line chart follows this rendering sequence:
 ### Supported Events
 
 - **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
-- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
-- **MouseUp:** Ends the pan
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in;
+  any other left press is left to the parent
+- **MouseUp:** Ends the pan (a release that ends none is left to the parent)
 - **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior
@@ -36717,6 +36839,7 @@ dots with letter codes under one legend.
 The point of the weights is that they sum.
 
 ```cpp
+int col = 0, row = 1;                       // item indices in panel 0's column and row sets
 double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
 double total = model.RowScore(0, row);
 std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
@@ -36810,9 +36933,11 @@ shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
+<!-- doc-check: void Log(const std::string& message); -->
+
 ```cpp
 MatrixValidation result = model.Validate();
-if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: your app's logger
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
@@ -46938,6 +47063,8 @@ caller's side. A backend without groups draws straight through: `EndGroup`
 and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
 `nullptr`.
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 ```cpp
 // Layer at 40 %: children composite normally inside, the result fades once.
 ctx->BeginGroup();
@@ -47111,6 +47238,30 @@ contexts can measure the same font differently, and a backend calls
 options, hinting or device scale change, so nothing measured under the old
 settings survives them. Callers never need to call it. A font with no
 measurable ink falls back to the line box's middle.
+
+### The line box a caret or selection covers
+
+```cpp
+double GetLineBoxHeight(const FontStyle& font);   // ascent + descent, fractional pixels
+```
+
+A caret or a selection band that should cover a line's glyphs needs the
+font's line height as `DrawText` draws it. `GetTextLineHeight` returns whole
+pixels with the fraction cut off, so a box that tall ends up to a pixel above
+the descenders and the bottoms of parentheses. `GetLineBoxHeight` keeps the
+fraction, and is measured once per font and cached like the cap height
+(`InvalidateFontMetricsCache` clears it too). Round such a box outwards when
+it becomes pixels - top down, bottom up - so it covers every row the glyphs
+touch:
+
+```cpp
+const double top = ctx->TextTopCentredOnCaps(textArea, font);
+const double bottom = top + ctx->GetLineBoxHeight(font);
+Rect2Di caret(x, static_cast<int>(std::floor(top)), 1,
+              static_cast<int>(std::ceil(bottom)) - static_cast<int>(std::floor(top)));
+```
+
+`UltraCanvasTextInput` places its caret and selection this way.
 
 ## Text outlines
 
@@ -50223,7 +50374,7 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.2  
+**Version:** 1.1.3  
 **Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
@@ -50448,6 +50599,8 @@ scatterPlot->SetDataSource(correlationData);
 
 `ChartDataVector::LoadFromCSV` reads lines of `x,y[,z[,label]]`; for large
 files `ChartDataStream` reads the CSV in chunks instead of holding it all.
+A line whose x or y is not a number - a header such as `x,y`, a blank line,
+or a row that cannot be read - is skipped wherever it stands.
 
 ### Chart Properties
 
@@ -50733,8 +50886,9 @@ The scatter plot uses the `ChartCoordinateTransform` class to convert between:
 Integrates with the UltraCanvas event system:
 - `HandleMouseMove`: Tooltip and hover ring; moves the view during a pan drag
 - `HandleMouseDown`: Starts a pan when pan is on, the chart is zoomed in and
-  the press is in the plot area
-- `HandleMouseUp`: Ends the pan
+  the press is in the plot area; any other left press is left to the parent
+- `HandleMouseUp`: Ends the pan (a release that ends none is left to the
+  parent)
 - `HandleMouseWheel`: Zooms the x axis in/out when zoom is on
 
 ## Typical Use Cases
@@ -55578,7 +55732,7 @@ orientation, optional thumb icons (built-in checkmark or custom images), and
 state texts that can be drawn inside the track, next to it, or as two permanent
 labels with the switch between them (`Backup [switch] Auto-Save`).
 
-**Version:** 1.3.1
+**Version:** 1.3.2
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Header:** `include/UltraCanvasSwitch.h`
@@ -55595,8 +55749,9 @@ labels with the switch between them (`Backup [switch] Auto-Save`).
   each side of the track
 - **Main label**: inherited from `UltraCanvasLabeledToggleBase`, drawn after the
   indicator
-- **Keyboard**: Space / Enter activate when focused; focus ring follows the
-  track shape
+- **Keyboard**: takes the focus (Tab, or a press); Space activates it while
+  focused, and Enter is left to the window (a dialog's default button); the
+  focus ring follows the track shape
 - **Content sizing**: the natural size is measured from track + texts + label
 
 ## Class Definition
@@ -61584,7 +61739,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |

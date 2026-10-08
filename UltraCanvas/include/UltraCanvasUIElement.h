@@ -5,7 +5,9 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
+// Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
@@ -592,7 +594,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
-        virtual bool OnEventFilter(const UCEvent& event) { return false; };
+        virtual bool OnEventFilter(const UCEvent& event) { (void)event; return false; };
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 

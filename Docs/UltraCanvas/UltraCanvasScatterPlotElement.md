@@ -14,7 +14,7 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.2  
+**Version:** 1.1.3  
 **Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
@@ -239,6 +239,8 @@ scatterPlot->SetDataSource(correlationData);
 
 `ChartDataVector::LoadFromCSV` reads lines of `x,y[,z[,label]]`; for large
 files `ChartDataStream` reads the CSV in chunks instead of holding it all.
+A line whose x or y is not a number - a header such as `x,y`, a blank line,
+or a row that cannot be read - is skipped wherever it stands.
 
 ### Chart Properties
 
@@ -524,8 +526,9 @@ The scatter plot uses the `ChartCoordinateTransform` class to convert between:
 Integrates with the UltraCanvas event system:
 - `HandleMouseMove`: Tooltip and hover ring; moves the view during a pan drag
 - `HandleMouseDown`: Starts a pan when pan is on, the chart is zoomed in and
-  the press is in the plot area
-- `HandleMouseUp`: Ends the pan
+  the press is in the plot area; any other left press is left to the parent
+- `HandleMouseUp`: Ends the pan (a release that ends none is left to the
+  parent)
 - `HandleMouseWheel`: Zooms the x axis in/out when zoom is on
 
 ## Typical Use Cases
