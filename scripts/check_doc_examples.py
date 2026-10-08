@@ -47,6 +47,8 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
 Exit status 1 when a doc has findings.
 """
+# Version: 1.0.2 - a copied type is checked against every type of its name, judged by
+#                  the best match (BlendMode is three enums)
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
 # Last Modified: 2026-10-07
 # Author: UltraCanvas Framework
@@ -1045,49 +1047,69 @@ class Doc:
 
     def check_copies(self):
         """Fields and enumerators of a type copy must exist in the real type;
-        its functions go to the listing check with the type as owner."""
+        its functions go to the listing check with the type as owner.
+
+        A short name can name more than one type (BlendMode is a render
+        context enum, a PixelFX one and a VectorStorage one), so a copy is
+        checked against each of them and judged by the one it matches best:
+        the fewest missing members, ties going to namespace UltraCanvas."""
         src = self.includes + ["namespace __dc_c {", "using namespace ::UltraCanvas;"]
-        where = {}
+        where = {}          # n -> (copy index, candidate, doc line, member)
+        members = {}        # copy index -> [(doc line, member name)]
         n = 0
-        for first, qs, kind, body in self.copies:
+        for c, (first, qs, kind, body) in enumerate(self.copies):
+            found = []
             if kind.startswith("enum"):
                 for e in split_top(body):
                     e = e.split("=")[0].strip()
                     if re.match(r"^\w+$", e):
-                        line = first + body[:body.find(e)].count("\n")
-                        n += 1
-                        where[n] = (line, "%s::%s" % (qs[0], e))
-                        src.append('#line %d "%s"' % (n, GEN))
-                        src.append("inline void __c%d() { (void)::%s::%s; }" % (n, qs[0], e))
-                continue
-            for st in statements(body):
-                st0 = re.sub(r"^\s*(?:public|private|protected)\s*:\s*", "", st).strip()
-                if not st0 or re.match(r"^(?:template\s*<[^>]*>\s*)?(class|struct|enum|union|using|typedef|friend)\b", st0):
-                    continue
-                line = first + body[:body.find(st0.split("\n")[0])].count("\n")
-                d = parse_decl(st0)
-                if d:
-                    if d["name"].startswith("~"):
+                        found.append((first + body[:body.find(e)].count("\n"), e, "enum"))
+            else:
+                for st in statements(body):
+                    st0 = re.sub(r"^\s*(?:public|private|protected)\s*:\s*", "", st).strip()
+                    if not st0 or re.match(r"^(?:template\s*<[^>]*>\s*)?(class|struct|enum|union|using|typedef|friend)\b", st0):
                         continue
-                    self.items.append((line, d, False, qs))
-                    continue
-                f = parse_field(st0)
-                if not f:
-                    continue
-                more = [re.split(r"[={]", part)[0].strip() for part in split_top(st0)[1:]]
-                for fname in [f["name"]] + [x for x in more if re.match(r"^[A-Za-z_]\w*$", x)]:
+                    line = first + body[:body.find(st0.split("\n")[0])].count("\n")
+                    d = parse_decl(st0)
+                    if d:
+                        if d["name"].startswith("~"):
+                            continue
+                        self.items.append((line, d, False, qs))
+                        continue
+                    f = parse_field(st0)
+                    if not f:
+                        continue
+                    more = [re.split(r"[={]", part)[0].strip() for part in split_top(st0)[1:]]
+                    for fname in [f["name"]] + [x for x in more if re.match(r"^[A-Za-z_]\w*$", x)]:
+                        found.append((line, fname, "field"))
+            members[c] = [(line, name) for line, name, _ in found]
+            for q in qs[:4]:
+                for line, name, how in found:
                     n += 1
-                    where[n] = (line, "%s::%s" % (qs[0], fname))
+                    where[n] = (c, q, line, name)
                     src.append('#line %d "%s"' % (n, GEN))
-                    src.append("inline void __c%d() { (void)sizeof(&::%s::%s); }" % (n, qs[0], fname))
+                    if how == "enum":
+                        src.append("inline void __c%d() { (void)::%s::%s; }" % (n, q, name))
+                    else:
+                        src.append("inline void __c%d() { (void)sizeof(&::%s::%s); }" % (n, q, name))
         src.append("}")
         if not where:
             return
         errors = run_clang(self.args.clang, self.flags, self.pch, "\n".join(src) + "\n", self.work, self.tag + "_c")
+        failures = {}       # (copy index, candidate) -> [(doc line, member, message)]
         for f, line, msg in errors:
             if f == GEN and line in where and "protected" not in msg and "private" not in msg \
                     and "overloaded" not in msg and "non-static" not in msg:
-                doc_line, what = where[line]
+                c, q, doc_line, name = where[line]
+                failures.setdefault((c, q), []).append((doc_line, name, msg))
+        for c, (first, qs, kind, body) in enumerate(self.copies):
+            if not members.get(c):
+                continue
+            tried = qs[:4]
+            best = min(tried, key=lambda q: (len(failures.get((c, q), [])),
+                                             not q.startswith("UltraCanvas::"), tried.index(q)))
+            for doc_line, name, msg in failures.get((c, best), []):
+                what = "%s::%s" % (best, name)
                 self.add(doc_line, "'%s' does not exist (%s)" % (what.split("::", 1)[-1] if what.startswith("UltraCanvas::") else what, msg))
 
     def namespace_of(self, q):

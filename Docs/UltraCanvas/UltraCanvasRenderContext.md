@@ -67,6 +67,8 @@ caller's side. A backend without groups draws straight through: `EndGroup`
 and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
 `nullptr`.
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 ```cpp
 // Layer at 40 %: children composite normally inside, the result fades once.
 ctx->BeginGroup();
