@@ -289,9 +289,12 @@ same as CI); with a newer Clang on an older distro it automatically drops to
 DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
 The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
-installs Ubuntu packages with `scripts/ci-apt.sh install`, not
+downloads Ubuntu packages through `scripts/ci-apt.sh`, never a bare
 `sudo apt-get install`: it stops and retries a download that has stopped
-dead, which apt itself waits out for as long as the job lasts.
+dead, which apt itself waits out for as long as the job lasts. The Linux
+build lists its packages once, in `before_mupdf` and `after_mupdf`, and
+downloads them all in one `scripts/ci-apt.sh download`; a new package goes
+into one of those two lists.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 

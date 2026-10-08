@@ -20,12 +20,16 @@
 # Only downloading is ever interrupted. `install` fetches with --download-only
 # first, under the watchdog, and then installs from the local cache without
 # it: killing apt while dpkg is unpacking would leave the package database
-# half configured for every later step.
+# half configured for every later step. `download` is that first half alone,
+# for a step that installs its packages in several groups: one download of
+# all of them, then plain `apt-get install`s that find everything in the
+# cache, instead of apt reading its lists and resolving once per group.
 #
 # Usage: scripts/ci-apt.sh update
 #        scripts/ci-apt.sh install [apt-get install options] package...
+#        scripts/ci-apt.sh download [apt-get install options] package...
 #
-# Version: 1.0.0
+# Version: 1.1.0
 # Last Modified: 2026-10-08
 # Author: UltraCanvas Framework
 set -euo pipefail
@@ -116,8 +120,11 @@ case "$command" in
         fetch install -y --download-only "$@"
         apt-get install -y "$@"
         ;;
+    download)
+        fetch install -y --download-only "$@"
+        ;;
     *)
-        echo "usage: $0 update | install [apt-get install options] package..." >&2
+        echo "usage: $0 update | install|download [apt-get install options] package..." >&2
         exit 2
         ;;
 esac
