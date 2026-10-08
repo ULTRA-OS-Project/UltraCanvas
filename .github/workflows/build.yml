@@ -1150,7 +1150,7 @@ jobs:
             apps=$(find "$pkg/bin" -maxdepth 1 -type f -perm -u+x ! -name '*.so*' | sort)
             archive=$(ls dist/UltraCanvas-Linux-*.tar.gz 2>/dev/null | head -1 || true)
           fi
-          kb() { du -k "$1" | cut -f1; }
+          kb() { du -sk "$1" | cut -f1; }
           mb() { awk -v k="$1" 'BEGIN { printf "%.1f MB", k / 1024 }'; }
           total=0; rows=""
           for app in $apps; do
