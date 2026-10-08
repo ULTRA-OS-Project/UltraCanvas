@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.11.0 - BuildOptions::selectableText: the text can be selected across
+//                  the whole tree and copied (BuildResult::textSelection)
 // Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
 // Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
 //                  first block)
@@ -18,7 +20,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,6 +30,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextSelection.h"
 
 #include <functional>
 #include <memory>
@@ -68,6 +71,13 @@ struct BuildOptions {
     // links and linked pictures). An app that shows the address elsewhere -
     // a status line fed by onLinkHovered - turns it off.
     bool linkTooltips = true;
+
+    // The text can be selected and copied as in a browser: every label of the
+    // tree joins one UltraCanvasTextSelection (BuildResult::textSelection),
+    // so a drag runs on from paragraph to paragraph, a double-click takes a
+    // word, and Ctrl+C / Ctrl+A work once the text has been clicked. A text
+    // link then opens when the button is released without having dragged.
+    bool selectableText = false;
 };
 
 struct BuildResult {
@@ -75,6 +85,10 @@ struct BuildResult {
     std::string title;
     std::vector<std::string> warnings;
     int elementCount = 0;   // native elements created
+
+    // With BuildOptions::selectableText, the selection every label of the
+    // tree shares (keep it to offer Copy / Select All); null otherwise.
+    std::shared_ptr<UltraCanvasTextSelection> textSelection;
 
     // id/name attribute → the native element built for (or containing) it.
     // Viewers use this to scroll to #fragment link targets.

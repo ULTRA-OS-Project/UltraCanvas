@@ -139,6 +139,7 @@ dots with letter codes under one legend.
 The point of the weights is that they sum.
 
 ```cpp
+int col = 0, row = 1;                       // item indices in panel 0's column and row sets
 double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
 double total = model.RowScore(0, row);
 std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
@@ -232,9 +233,11 @@ shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
+<!-- doc-check: void Log(const std::string& message); -->
+
 ```cpp
 MatrixValidation result = model.Validate();
-if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: your app's logger
 ```
 
 Checks the set count against the shape, panel set references, cell indices,

@@ -3,6 +3,12 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.12.0 - the message's text can be selected and copied: the HTML body
+//                   (one selection across all of it), the header (subject,
+//                   from, to, date), and a right-click menu with Copy and
+//                   Select All over both bodies; a one-time code (a sign-in
+//                   code, in any language) gets a copy button where it stands,
+//                   or in a bar above the body
 // Version: 0.11.0 - the sender checks as bordered labels in the header:
 //                   [DMARC] [DKIM] [SPF] (and [S/MIME] / [OpenPGP]), details as
 //                   tooltips
@@ -20,7 +26,7 @@
 //                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
 //                  strip above the body says why a message looks like a scam.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -31,6 +37,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasTextSelection.h"
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailInlineImages.h"
@@ -38,6 +45,7 @@
 #include "UltraMailSenderBadge.h"
 #include "UltraMailTypes.h"
 #include "UltraMailThreatScan.h"   // MessageLink
+#include "UltraMailOneTimeCode.h"
 
 #include <cstdint>
 #include <functional>
@@ -152,6 +160,12 @@ public:
     bool  linkTooltips = false;
     void  ReRender();
 
+    // The one-time codes of the message shown (UltraMailOneTimeCode.h): each
+    // has a copy button - on the code itself when it stands in a box of its
+    // own in the HTML body, otherwise the first one in the code bar above
+    // the body.
+    const std::vector<OneTimeCode>& OneTimeCodes() const { return codes_; }
+
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
     std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
@@ -163,6 +177,22 @@ private:
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
+
+    // The right-click menu over the message's text: Copy (offered when
+    // something is selected) and Select All.
+    void ShowTextMenu(const UltraCanvas::UCEvent& event, bool canCopy,
+                      std::function<void()> copy, std::function<void()> selectAll);
+    // Gives a selection (the header's, the HTML body's) its menu, and makes
+    // it the only one highlighted once it selects something.
+    void WireTextSelection(const std::shared_ptr<UltraCanvas::UltraCanvasTextSelection>& selection);
+
+    // Finds the body's one-time codes - `blocks` its text a paragraph (HTML:
+    // a label, given in `labels`) or a line (plain text) at a time - and gives
+    // them their copy buttons.
+    void ShowOneTimeCodes(const std::vector<std::string>& blocks,
+                          const std::vector<UltraCanvas::UltraCanvasLabel*>& labels);
+    // Puts a code on the clipboard; the button shows a check mark for a moment.
+    void CopyCode(const std::string& code, UltraCanvas::UltraCanvasButton* button);
 
     // The image loader behind RenderBody: embedded images from the message,
     // remote ones from remoteCache_ (noted in blockedRemote_ when absent).
@@ -219,6 +249,18 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
+    // The selectable text: the header's labels share one selection, the HTML
+    // body's labels another (made with the body, null for plain text, which
+    // its text area selects).
+    std::shared_ptr<UltraCanvas::UltraCanvasTextSelection> headerSelection_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextSelection> bodySelection_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>          textMenu_;   // Copy / Select All
+    // One-time codes: the bar above the body, for a code without a button of
+    // its own where it stands.
+    std::vector<OneTimeCode>                           codes_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> codeBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     codeText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    codeCopy_;
     AttachmentStrip attachmentStrip_;
     SourceMessage   current_;   // the shown message, for Reply / Forward
     MessageEnvelope curEnv_;    // the shown message's identity, for Delete / Junk / Mark-Unread

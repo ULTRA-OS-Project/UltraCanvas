@@ -21,7 +21,7 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
@@ -464,7 +464,10 @@ public:
 - **`AddRadioButton`** appends the radio (a null pointer is ignored) and
   installs the group's handler in the radio's `onChecked`. From then on a
   click on the radio, or `SetChecked(true)` on it in code, selects it in the
-  group.
+  group. A radio that is already checked when it is added becomes the
+  selection, and any member checked before it is cleared: the last checked
+  radio added wins, as in an HTML radio group. `onSelectionChanged` is not
+  called for it.
 - **`SelectButton`** makes a member the selection: it checks it, clears
   every other member and calls `onSelectionChanged` with it, once. A radio
   that is not in the group, or a null pointer, is ignored; selecting the
@@ -478,12 +481,11 @@ public:
   it was the selection, the group has none afterwards. The radio keeps its
   checked state, and `onSelectionChanged` is not called.
 
-**Set the initial selection with `SelectButton`.** `AddRadioButton` does not
-look at whether a radio is checked, so a radio created with `checked = true`
-shows its dot while `GetSelectedButton()` still returns null, until the user
-clicks or code selects. Call `SelectButton` on the initial choice after
-adding the radios. Assign `onSelectionChanged` after that call if building
-the dialog should not count as a change; `SelectButton` reports it otherwise.
+**The initial selection.** Create the initial choice checked
+(`UltraCanvasRadio::Create(..., true)`) and add it: the group adopts it
+without reporting a change. Or call `SelectButton` on it after adding the
+radios; that one is reported, so assign `onSelectionChanged` after it if
+building the dialog should not count as a change.
 
 A group serves one question, and a radio belongs to one group: adding it to a
 second group hands its clicks to the second one.
@@ -548,13 +550,13 @@ added to (`AddChild`). The group is only a second owner.
   cancels. A quick second click counts as a click. The indicator takes its
   hover colour, and the label `textHoverColor`, while the pointer is over the
   control.
-- **Keyboard**: Space or Enter activates the control while it has the keyboard
-  focus, and the focus ring (`base.hasFocusRing`, a rectangle around the box
-  or a circle around the ring) is drawn then. The toggles do not override
-  `AcceptsFocus()`, which is false by default, so the window does not give
-  them the focus: Tab skips them and `SetFocus(true)` returns false. Until
-  that changes the keyboard path and the focus ring are not reached in
-  normal use.
+- **Keyboard**: checkboxes, radios and switches take the keyboard focus like
+  buttons: Tab reaches them and a press focuses them. Space activates the
+  focused control, and the focus ring (`base.hasFocusRing`, a rectangle
+  around the box or a circle around the ring) is drawn while it has the
+  focus. Enter is left to the window, so in a dialog it still presses the
+  default button. `SetAcceptsFocus(false)` keeps a control out of the Tab
+  order.
 - **Disabled or hidden**: a control for which `SetDisabled(true)` was called,
   or that is not visible, ignores all input. A disabled control still
   accepts `SetChecked` from code and draws its state in the disabled colours.
@@ -801,8 +803,8 @@ Each control draws, in this order:
    control, which makes it a much larger target than the 16 px indicator.
 2. Make the group a member of whatever owns the radios, never a local
    variable of a builder function.
-3. Set the initial radio with `SelectButton`, and assign
-   `onSelectionChanged` afterwards.
+3. Create the initial radio checked, or select it with `SelectButton` before
+   assigning `onSelectionChanged`.
 4. Do not assign `onChecked` on a grouped radio; use the group's
    `onSelectionChanged`.
 5. A toggle's callback must not hold a `std::shared_ptr` to the toggle
@@ -821,6 +823,9 @@ Each control draws, in this order:
 
 ## Version History
 
+- **2.1.0** (2026-10-07): the toggles take the keyboard focus (Space
+  activates, Enter is left to the dialog); a radio added to a group already
+  checked becomes its selection.
 - **2.0.0** (2026-10-07): Rewritten for the current API. The checkbox is one
   class of three on `UltraCanvasLabeledToggleBase`; the radio
   (`UltraCanvasRadio`, factory `UltraCanvasRadio::Create`) and the switch

@@ -1,10 +1,11 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.4.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 2.4.0 - popup opacity (SetPopupOpacity): a popup composited over what lies
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -480,7 +481,7 @@ namespace UltraCanvas {
         virtual bool OnEvent(const UCEvent& event) override;
 
         // derived classes may override it to render something within the dirty area
-        virtual void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) {}
+        virtual void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) { (void)ctx; (void)dirtyRect; }
 
         // Adds a dirty rectangle (in window coords) to the window's render queue.
         void AddDirtyRectangle(const Rect2Di& windowRect);
@@ -541,6 +542,7 @@ namespace UltraCanvas {
 
         // ===== PROTECTED HELPER METHODS =====
         virtual void RenderWindowBackground(IRenderContext* ctx) {
+            (void)ctx;
             // Default implementation - clear to background color
             // OS-specific implementations can override
         }

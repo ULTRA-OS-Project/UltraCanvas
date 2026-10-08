@@ -122,6 +122,10 @@ Apps/UltraMail/
     UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
                                   highest UID before the sync) and the
                                   notification's words
+    UltraMailOneTimeCode.{h,cpp}  the one-time codes in a message (a sign-in
+                                  code), in any language: by their shape, and
+                                  the word for "code" beside them or in the
+                                  subject; the reading pane's copy buttons
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up;
                                   shows the start page or the account view
@@ -137,7 +141,9 @@ Apps/UltraMail/
                                   group box with the preview
     UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
                                   HTMLReader/CSSLayout, text in a read-only area),
-                                  attachment strip
+                                  attachment strip; the text selectable and
+                                  copyable (header and body, right-click Copy /
+                                  Select All), a copy button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
