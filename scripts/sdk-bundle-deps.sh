@@ -418,25 +418,29 @@ if [ "$PLATFORM" = macos ] && [ -z "$MAC_DEPS" ]; then
     fi
 fi
 
-# A package's CMake config may name a program next to its library
-# (MSYS2's CURLConfig.cmake imports CURL::curl as bin/curl.exe), and CMake
-# refuses the whole config when one referenced file is missing. Carry the
-# programs the bundled configs name, and nothing else from bin/.
+# A bundled CMake config may name a file the rules above left out: MSYS2's
+# CURLConfig.cmake imports CURL::curl as bin/curl.exe, and its fmt config
+# exports a static target beside the shared one, pointing at lib/libfmt.a.
+# CMake refuses the whole config when one referenced file is missing, so
+# every ${_IMPORT_PREFIX}/bin/... and ${_IMPORT_PREFIX}/lib/... the configs
+# name is carried after all, from wherever the package keeps it.
 if [ -d "$DEPS/lib/cmake" ]; then
-    grep -rhoE '\$\{_IMPORT_PREFIX\}/bin/[^"]+' "$DEPS/lib/cmake" 2>/dev/null | sort -u | while read -r ref; do
-        name="${ref#*/bin/}"
-        for root in "${PREFIX:-}" "${CELLAR:-}"; do
-            [ -n "$root" ] || continue
-            if [ "$PLATFORM" = macos ]; then
-                src="$(ls -d "$root"/*/*/bin/"$name" 2>/dev/null | head -1 || true)"
-            else
-                src="$root/bin/$name"
-            fi
-            if [ -n "$src" ] && [ -f "$src" ] && [ ! -f "$DEPS/bin/$name" ]; then
-                mkdir -p "$DEPS/bin"
-                cp "$src" "$DEPS/bin/$name"
-            fi
-        done
+    grep -rhoE '\$\{_IMPORT_PREFIX\}/(bin|lib)/[^"]+' "$DEPS/lib/cmake" 2>/dev/null | sort -u | while read -r ref; do
+        rel="${ref#*\}/}"
+        [ -e "$DEPS/$rel" ] && continue
+        src=""
+        if [ "$PLATFORM" = windows ]; then
+            src="$PREFIX/$rel"
+        elif [ -n "${MAC_DEPS:-}" ]; then
+            src="$MAC_DEPS/$rel"
+        elif [ -n "${CELLAR:-}" ]; then
+            src="$(ls -d "$CELLAR"/*/*/"$rel" 2>/dev/null | head -1 || true)"
+        fi
+        if [ -n "$src" ] && [ -f "$src" ]; then
+            mkdir -p "$(dirname "$DEPS/$rel")"
+            cp "$src" "$DEPS/$rel"
+            echo "  carried $rel for a CMake config"
+        fi
     done || true
 fi
 
