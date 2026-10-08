@@ -47094,7 +47094,6 @@ breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 ```cpp
 double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
 int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
-double GetSingleLineHeight(const FontStyle& font);                   // one line's height, unrounded
 double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
 ```
 
@@ -47122,17 +47121,29 @@ options, hinting or device scale change, so nothing measured under the old
 settings survives them. Callers never need to call it. A font with no
 measurable ink falls back to the line box's middle.
 
-Something that must span the line the text sits in - a caret, a selection
-highlight - takes its height from `GetSingleLineHeight(font)`: a single
-line's logical height (ascent plus descent) as `DrawText` lays it out,
-unrounded and cached with the cap centre. `GetTextLineHeight` reports the
-same line in whole pixels, truncated, which can lose almost a pixel (17.94
-becomes 17) and leaves a caret short of the descenders.
+### The line box a caret or selection covers
 
 ```cpp
-int top = ctx->TextTopCentredOnCaps(rowRect, font);
-Rect2Dd lineBox(x, top, width, ctx->GetSingleLineHeight(font));   // text, selection and caret share it
+double GetLineBoxHeight(const FontStyle& font);   // ascent + descent, fractional pixels
 ```
+
+A caret or a selection band that should cover a line's glyphs needs the
+font's line height as `DrawText` draws it. `GetTextLineHeight` returns whole
+pixels with the fraction cut off, so a box that tall ends up to a pixel above
+the descenders and the bottoms of parentheses. `GetLineBoxHeight` keeps the
+fraction, and is measured once per font and cached like the cap height
+(`InvalidateFontMetricsCache` clears it too). Round such a box outwards when
+it becomes pixels - top down, bottom up - so it covers every row the glyphs
+touch:
+
+```cpp
+const double top = ctx->TextTopCentredOnCaps(textArea, font);
+const double bottom = top + ctx->GetLineBoxHeight(font);
+Rect2Di caret(x, static_cast<int>(std::floor(top)), 1,
+              static_cast<int>(std::ceil(bottom)) - static_cast<int>(std::floor(top)));
+```
+
+`UltraCanvasTextInput` places its caret and selection this way.
 
 ## Text outlines
 

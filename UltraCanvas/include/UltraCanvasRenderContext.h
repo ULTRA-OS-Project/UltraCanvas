@@ -1,8 +1,8 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
-// Version: 2.8.0 - GetSingleLineHeight: a line's height unrounded (GetTextLineHeight
-//                  truncates it, losing up to a pixel); default bodies mark unused
-//                  parameters (void): no -Wunused-parameter
+// Version: 2.8.1 - default bodies mark unused parameters (void): no -Wunused-parameter
+// Version: 2.8.0 - GetLineBoxHeight: a line of a font's height in fractional pixels
+//                  (GetTextLineHeight cuts it to whole ones), cached per font
 // Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
 //                  (the window fades popups in with it)
 // Version: 2.6.0
@@ -650,13 +650,7 @@ namespace UltraCanvas {
         // (device scale, font options), and InvalidateFontMetricsCache clears
         // just this one when its configuration changes.
         std::unordered_map<std::string, double> capCentreCache;
-        // GetSingleLineHeight's, kept and cleared the same way.
-        std::unordered_map<std::string, double> lineHeightCache;
-        static std::string FontMetricsKey(const FontStyle& font) {
-            return font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
-                   std::to_string(static_cast<int>(font.fontWeight)) + '|' +
-                   std::to_string(static_cast<int>(font.fontSlant));
-        }
+        std::unordered_map<std::string, double> lineBoxHeightCache;   // GetLineBoxHeight's
 
     public:
         // Distance from the top of a single line of `font`, as DrawText and
@@ -672,18 +666,22 @@ namespace UltraCanvas {
         // capitals are centred on `row`. Defined after ITextLayout below.
         int TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
 
-        // Height of a single line of `font` as DrawText lays it out (its
-        // logical line box: ascent plus descent), unrounded. GetTextLineHeight
-        // gives the same figure truncated to whole pixels, which loses up to
-        // a pixel - 17.94 became 17 - so a caret or a highlight sized from it
-        // stopped short of the descenders. Measured once per font and cached.
-        double GetSingleLineHeight(const FontStyle& font);
+        // Height of a single line of `font` - its line box, ascent plus
+        // descent, as DrawText draws it - in fractional pixels. Use it for
+        // anything that must cover the glyphs (a caret, a selection band):
+        // GetTextLineHeight cuts the fraction off, so a box that tall ends
+        // up to a pixel above the descenders. Measured once per font and
+        // cached. Defined after ITextLayout below.
+        double GetLineBoxHeight(const FontStyle& font);
 
-        // Forget every cached font measurement (GetCapCentreOffset and the
-        // text layouts' cap heights). A backend calls this whenever a font
+        // Forget every cached font measurement (GetCapCentreOffset,
+        // GetLineBoxHeight and the text layouts' cap heights). A backend calls this whenever a font
         // would measure differently from now on: its resolution, font
         // options, hinting or device scale changed. Callers never need to.
-        virtual void InvalidateFontMetricsCache() { capCentreCache.clear(); lineHeightCache.clear(); }
+        virtual void InvalidateFontMetricsCache() {
+            capCentreCache.clear();
+            lineBoxHeightCache.clear();
+        }
 
         static Rect2Dd InsetForStroke(const Rect2Dd& rect, float strokeWidth) {
             double inset = strokeWidth / 2.0;
@@ -1112,7 +1110,9 @@ namespace UltraCanvas {
     {
         // One entry per font this context has drawn with; a handful in practice.
         auto& cache = capCentreCache;
-        std::string key = FontMetricsKey(font);
+        std::string key = font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
+                          std::to_string(static_cast<int>(font.fontWeight)) + '|' +
+                          std::to_string(static_cast<int>(font.fontSlant));
         auto found = cache.find(key);
         if (found != cache.end()) return found->second;
 
@@ -1139,20 +1139,22 @@ namespace UltraCanvas {
         return static_cast<int>(std::lround(row.y + row.height / 2.0 - GetCapCentreOffset(font)));
     }
 
-    inline double IRenderContext::GetSingleLineHeight(const FontStyle& font)
+    inline double IRenderContext::GetLineBoxHeight(const FontStyle& font)
     {
-        std::string key = FontMetricsKey(font);
-        auto found = lineHeightCache.find(key);
-        if (found != lineHeightCache.end()) return found->second;
+        auto& cache = lineBoxHeightCache;
+        std::string key = font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
+                          std::to_string(static_cast<int>(font.fontWeight)) + '|' +
+                          std::to_string(static_cast<int>(font.fontSlant));
+        auto found = cache.find(key);
+        if (found != cache.end()) return found->second;
 
-        double height = 0;
+        double height = font.fontSize * 1.2;   // nothing to measure with: a common line box
         auto probe = CreateTextLayout("H", false);
         if (probe) {
             probe->SetFontStyle(font);
             height = probe->GetLayoutHeight();
         }
-        if (height <= 0) height = font.fontSize * 1.2;   // nothing measured: the usual line
-        lineHeightCache.emplace(key, height);
+        cache.emplace(key, height);
         return height;
     }
 

@@ -11,12 +11,13 @@
 // The field's line box - the height of its text, selection and caret - is
 // the font's line height unrounded. It was GetTextLineHeight("H"), which
 // truncates to whole pixels (17.94 became 17), so the caret stopped a pixel
-// short of the descenders. IRenderContext::GetSingleLineHeight gives the
+// short of the descenders. IRenderContext::GetLineBoxHeight gives the
 // exact figure; TextMetricsScreenshotTest checks the caret on screen.
 //
 // Runs headless: a probe subclass counts the redraw requests and the layout
 // invalidations; the field is measured without a window, and the line height
 // in an offscreen context.
+// Version: 1.1.1 - measured with GetLineBoxHeight
 // Version: 1.1.0 - the font's line height, unrounded
 // Version: 1.0.0
 // Last Modified: 2026-10-08
@@ -112,15 +113,15 @@ int main() {
         auto line = ctx->CreateTextLayout("H", false);
         line->SetFontStyle(font);
         const double exact = line->GetLayoutHeight();
-        const double single = ctx->GetSingleLineHeight(font);
-        TEST("GetSingleLineHeight is the line's height, unrounded", std::abs(single - exact) < 1e-9);
+        const double single = ctx->GetLineBoxHeight(font);
+        TEST("GetLineBoxHeight is the line's height, unrounded", std::abs(single - exact) < 1e-9);
         TEST("GetTextLineHeight is the same height in whole pixels, never more",
              ctx->GetTextLineHeight("H") <= single && single - ctx->GetTextLineHeight("H") < 1.0);
         auto descenders = ctx->CreateTextLayout("gjpqy", false);
         descenders->SetFontStyle(font);
         const UCLayoutExtents e = descenders->GetLayoutExtents();
         TEST("descenders end inside the unrounded line height", e.ink.y + e.ink.height <= single + 1e-6);
-        TEST("the second ask comes from the cache", ctx->GetSingleLineHeight(font) == single);
+        TEST("the second ask comes from the cache", ctx->GetLineBoxHeight(font) == single);
     } else {
         TEST("an offscreen context to measure in", false);
     }
