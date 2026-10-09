@@ -1,5 +1,7 @@
 # UltraCanvasFontFile
 
+<!-- doc-check: std::string path; float deviceScale; Rect2Dd rect; std::shared_ptr<UltraCanvasFilerWidget> filer; -->
+
 Reads a **font definition file** — `.ttf`, `.otf`, `.ttc`, `.woff`, Type 1,
 the bitmap formats — as a *document*: its name records are metadata you can
 show, and a line of its own glyphs is a thumbnail you can draw. Together with
@@ -251,7 +253,7 @@ previewing a candidate before it is installed.
 | `std::vector<std::string> GetRegisteredFontFiles()` | Every file registered so far, in registration order. |
 
 Per platform: FontConfig (`FcConfigAppFontAddFile`) on Linux, Android and
-WASM; GDI `AddFontResourceExW(FR_PRIVATE)` **plus** FontConfig on Windows,
+WASM; GDI `AddFontResourceExW` with `FR_PRIVATE` **plus** FontConfig on Windows,
 because Pango is pinned to its FontConfig backend there; CoreText
 (`CTFontManagerRegisterFontsForURL`, process scope) on macOS.
 

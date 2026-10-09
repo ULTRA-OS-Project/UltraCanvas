@@ -526,11 +526,16 @@ void VisionDialog::RunCapability() {
 
 TranslatorDialog::TranslatorDialog()
     : UltraAIServiceDialog("Translation",
-        "Translate one line of text per line of input. Source language "
-        "is auto-detected when left empty.") {}
+        "Translate one line of text per line of input. The source language "
+        "is detected when left empty; the formality picks the register "
+        "(polite or familiar forms of address) where the provider "
+        "supports it.") {}
 
 long TranslatorDialog::BuildForm(long y) {
-    AddProviderPicker(y, ListTranslatorProviders());
+    AddProviderAndModelRow(y, "tr", ListTranslatorProviders(),
+                           "Model (optional; the provider's chat model)",
+                           "e.g. claude-sonnet-4-5 or qwen2.5:7b",
+                           modelInput_);
 
     AddDialogElement(MakeLabel("tr-text-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
@@ -541,44 +546,86 @@ long TranslatorDialog::BuildForm(long y) {
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
+    // One row: target language, source language, formality.
+    constexpr long kTargetWidth    = 120;
+    constexpr long kSourceWidth    = 200;
+    constexpr long kFormalityWidth = 140;
+    constexpr long kColumnGap      = 20;
+    const long sourceX    = kMargin + kTargetWidth + kColumnGap;
+    const long formalityX = sourceX + kSourceWidth + kColumnGap;
+
     AddDialogElement(MakeLabel("tr-tgt-lbl", kMargin, y,
-                               kFormWidth, kLabelHeight,
-                               "Target language (BCP-47)"));
+                               kTargetWidth, kLabelHeight,
+                               "Target (BCP-47)"));
+    AddDialogElement(MakeLabel("tr-src-lbl", sourceX, y,
+                               kSourceWidth, kLabelHeight,
+                               "Source (empty = detect)"));
+    AddDialogElement(MakeLabel("tr-formality-lbl", formalityX, y,
+                               kFormalityWidth, kLabelHeight,
+                               "Formality"));
     y += kLabelHeight + 2;
-    input2_ = MakeInput("tr-tgt", kMargin, y, 120, kRowHeight, "fr");
+
+    input2_ = MakeInput("tr-tgt", kMargin, y, kTargetWidth, kRowHeight, "fr");
     AddDialogElement(input2_);
+    sourceInput_ = MakeInput("tr-src", sourceX, y, kSourceWidth, kRowHeight,
+                             "auto-detect");
+    AddDialogElement(sourceInput_);
+    formalityDropdown_ = CreateDropdown("tr-formality", formalityX, y,
+                                        kFormalityWidth, kRowHeight);
+    formalityDropdown_->AddItem("Default");
+    formalityDropdown_->AddItem("Formal");
+    formalityDropdown_->AddItem("Informal");
+    formalityDropdown_->SetSelectedIndex(0);
+    AddDialogElement(formalityDropdown_);
     y += kRowHeight + kRowGap;
     return y;
 }
 
 void TranslatorDialog::RunCapability() {
-    SetStatus("Running...");
-
-    Error createError;
-    auto tr = CreateTranslator({.providerId = SelectedProviderId()},
-                               &createError);
-    if (!tr) {
-        SetStatus("Failed to create Translator: " + createError.message);
-        return;
+    TranslatorConfig cfg;
+    cfg.providerId = SelectedProviderId();
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
     }
 
     TranslateRequest req;
     req.texts = SplitLines(input1_ ? input1_->GetText() : "");
-    req.targetLanguage = input2_ ? input2_->GetText() : "en";
+    req.targetLanguage = input2_ ? input2_->GetText() : "";
+    req.sourceLanguage = sourceInput_ ? sourceInput_->GetText() : "";
+    switch (formalityDropdown_ ? formalityDropdown_->GetSelectedIndex() : 0) {
+        case 1:  req.formality = TranslationFormality::Formal;   break;
+        case 2:  req.formality = TranslationFormality::Informal; break;
+        default: req.formality = TranslationFormality::Default;  break;
+    }
     if (req.texts.empty()) {
         SetStatus("Provide at least one input line"); return;
     }
-
-    auto resp = tr->Translate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error);
-    for (size_t i = 0; i < resp.results.size(); ++i) {
-        const auto& r = resp.results[i];
-        os << "[" << r.detectedSourceLanguage << "->" << req.targetLanguage
-           << "]  " << r.text << "\n";
+    if (req.targetLanguage.empty()) {
+        SetStatus("Provide a target language"); return;
     }
-    SetResult(os.str());
-    SetStatus("Done");
+
+    // A real provider takes seconds per batch; keep the window responsive.
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto tr = CreateTranslator(cfg, &createError);
+        if (!tr) {
+            outcome.status = "Failed to create Translator: " + createError.message;
+            return outcome;
+        }
+        auto resp = tr->Translate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error);
+        for (const auto& r : resp.results) {
+            const std::string source = r.detectedSourceLanguage.empty()
+                ? (req.sourceLanguage.empty() ? "?" : req.sourceLanguage)
+                : r.detectedSourceLanguage;
+            os << "[" << source << "->" << req.targetLanguage << "]  "
+               << r.text << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================

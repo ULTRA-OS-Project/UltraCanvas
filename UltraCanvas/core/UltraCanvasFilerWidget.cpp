@@ -50,8 +50,11 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
+//                  (HTML::DecodeEntities): every named and numeric reference, where
+//                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -63,6 +66,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -1284,29 +1288,6 @@ namespace UltraCanvas {
             }
         }
 
-        // The five predefined XML / HTML entities plus numeric references —
-        // everything else is left as written, which is harmless in a preview.
-        std::string DecodeEntities(const std::string& in) {
-            std::string out;
-            out.reserve(in.size());
-            for (size_t i = 0; i < in.size(); ++i) {
-                if (in[i] != '&') { out.push_back(in[i]); continue; }
-                size_t end = in.find(';', i + 1);
-                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
-                const std::string name = in.substr(i + 1, end - i - 1);
-                if      (name == "amp")  out.push_back('&');
-                else if (name == "lt")   out.push_back('<');
-                else if (name == "gt")   out.push_back('>');
-                else if (name == "quot") out.push_back('"');
-                else if (name == "apos") out.push_back('\'');
-                else if (name == "nbsp") out.push_back(' ');
-                else if (!name.empty() && name[0] == '#') out.push_back(' ');
-                else { out.push_back('&'); continue; }
-                i = end;
-            }
-            return out;
-        }
-
         // Text of a markup document with the tags removed. `breakTags` names
         // the elements that end a preview line (paragraphs, headings, rows);
         // everything else is treated as inline. `<script>` / `<style>` bodies
@@ -1340,11 +1321,11 @@ namespace UltraCanvas {
                     continue;
                 }
                 if (isBreakTag(name) || name == "br") {
-                    AppendPreviewLine(lines, DecodeEntities(current));
+                    AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
             }
-            AppendPreviewLine(lines, DecodeEntities(current));
+            AppendPreviewLine(lines, HTML::DecodeEntities(current));
         }
 
         // RTF: drop the control words, the groups the reader is meant to skip

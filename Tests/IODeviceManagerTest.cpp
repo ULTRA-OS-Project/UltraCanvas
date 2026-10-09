@@ -19,6 +19,7 @@
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -260,6 +261,63 @@ void TestTwoBackendsOneCategory() {
     manager.Shutdown();
 }
 
+void SetBackendsSetting(const char* value) {
+#if defined(_WIN32)
+    _putenv_s("ULTRACANVAS_DEVICE_BACKENDS", value ? value : "");
+#else
+    if (value) setenv("ULTRACANVAS_DEVICE_BACKENDS", value, 1);
+    else unsetenv("ULTRACANVAS_DEVICE_BACKENDS");
+#endif
+}
+
+void TestBackendsSetting() {
+    std::cout << "\nULTRACANVAS_DEVICE_BACKENDS chooses which backends run\n";
+
+    IODeviceManager& manager = IODeviceManager::GetInstance();
+    manager.Shutdown();
+
+    int webcamRuns = 0;
+    int dslrRuns = 0;
+    manager.RegisterEnumerator(IODeviceCategory::Camera, "FakeWebcam", [&] {
+        ++webcamRuns;
+        return std::vector<IODevicePtr>{
+            MakeFake("webcam-0", IODeviceCategory::Camera, "FakeWebcam")};
+    });
+    manager.RegisterEnumerator(IODeviceCategory::Camera, "FakeDSLR", [&] {
+        ++dslrRuns;
+        return std::vector<IODevicePtr>{
+            MakeFake("dslr-0", IODeviceCategory::Camera, "FakeDSLR")};
+    });
+
+    SetBackendsSetting(" fakedslr , SomethingElse");
+    IODeviceResult result = manager.EnumerateDevices(IODeviceCategory::Camera);
+    Check(static_cast<bool>(result) && dslrRuns == 1 && webcamRuns == 0,
+          "only the backend named runs - spaces and case aside");
+    Check(manager.GetDeviceCount(IODeviceCategory::Camera) == 1 &&
+              manager.GetDeviceById("dslr-0") != nullptr,
+          "  and only its devices are registered");
+    Check(manager.GetRegisteredBackends(IODeviceCategory::Camera).size() == 2,
+          "  while both backends stay registered");
+
+    SetBackendsSetting("SomethingElse");
+    IODeviceResult none = manager.EnumerateDevices(IODeviceCategory::Camera);
+    Check(!static_cast<bool>(none) && none.code == IODeviceResultCode::BackendUnavailable,
+          "a category none of whose backends is named is an error: " + none.message);
+    Check(manager.GetDeviceById("dslr-0") != nullptr && webcamRuns == 0 && dslrRuns == 1,
+          "  which runs nothing and leaves its devices as they were");
+
+    SetBackendsSetting(" , ");
+    manager.EnumerateDevices(IODeviceCategory::Camera);
+    Check(webcamRuns == 1 && manager.GetDeviceCount(IODeviceCategory::Camera) == 2,
+          "a setting that names nothing lets every backend run");
+
+    SetBackendsSetting(nullptr);
+    manager.EnumerateDevices(IODeviceCategory::Camera);
+    Check(webcamRuns == 2 && dslrRuns == 3, "  as does no setting at all");
+
+    manager.Shutdown();
+}
+
 void TestEnumerationMerge() {
     std::cout << "\nRe-enumeration keeps live devices\n";
 
@@ -492,6 +550,7 @@ int main() {
     TestFailedConnect();
     TestRegistration();
     TestTwoBackendsOneCategory();
+    TestBackendsSetting();
     TestEnumerationMerge();
     TestBrokenBackendIsContained();
     TestHotPlugMonitoring();

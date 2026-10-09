@@ -4473,6 +4473,12 @@ if(TARGET UltraCanvas AND UNIX)
     message(STATUS "    Test registered: IODevicePrinterIPPLiveTest")
 endif()
 
+# ===== eSCL SCANNING OVER HTTPS, AGAINST A RUNNING SCANNER =====
+# Defined in DeviceTlsTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_DEVICE_TLS_TESTS) where BUILD_TESTS is off - the
+# macOS and Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/DeviceTlsTests.cmake)
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes

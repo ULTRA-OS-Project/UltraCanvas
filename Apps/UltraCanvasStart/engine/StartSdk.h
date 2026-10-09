@@ -21,18 +21,23 @@ std::string SdkArtifactName(Platform platform, const std::string& version,
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture);
 
-// Where the artifacts are published: the repository's Actions page. The SDK
-// is a workflow artifact, so a browser signed in to GitHub downloads it; a
-// release asset of the same name is used when one exists.
-std::string SdkDownloadPage();
+// Where the SDKs are published. Every release build of main attaches the
+// six archives to the GitHub release tagged v<version>
+// (.github/workflows/build.yml, publish-sdk), so SdkReleaseAssetUrl is a
+// fixed address anyone can fetch; SdkReleasePage is that release's page.
+// SdkDownloadPage is the Actions page, where the same archives are workflow
+// artifacts for a signed-in browser - the fallback while a release build is
+// still running, or for a pull request's build.
+std::string SdkReleasePage(const std::string& version);
 std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
                                const std::string& architecture);
+std::string SdkDownloadPage();
 
 // Whether an UltraNet download is compiled in.
 bool SdkDownloadAvailable();
 
-// Downloads `url` to `localPath` (UTF-8). False with `error` set when the
-// download is unavailable or failed.
+// Downloads `url` to `localPath` (UTF-8), starting UltraNet if nothing has
+// yet. False with `error` set when the download is unavailable or failed.
 bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error);
 
 // The step that unpacks `archive` into `destination` (both UTF-8): tar on

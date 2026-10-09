@@ -1,3 +1,143 @@
+#### 2026-10-09 *0.9.215*
+- **The Windows CI legs survive a slow MSYS2 mirror.** The setup action did
+  the package database sync, the upgrade and the install itself, with no
+  retry and no mirror setting, and pacman abandons a mirror that stays
+  below 1 byte/s for 10 s - on 2026-10-08 that failed both Windows legs of
+  #740 in the same minute, before a line was compiled. The action now only
+  unpacks MSYS2; a step of the workflow's own syncs, upgrades and installs
+  with pacman's download timeout disabled and up to five attempts per
+  phase, and keeps the downloaded packages in a cache of its own, pruned to
+  one version per package.
+- **The module READMEs in `Docs/Modules/` are generated from the modules'
+  own.** `Docs/Modules/UltraAI/README.md`, `Docs/Modules/UltraNet/README.md`
+  and `Docs/Modules/VirtualFS/README.md` were hand-kept copies of
+  `UltraAI/README.md`, `UltraNet/README.md` and `VirtualFS/README.md` and
+  had drifted apart: the UltraAI pair disagreed on the adapters and the test
+  count, the UltraNet module copy was two weeks behind the docs copy, and
+  the VirtualFS copies each had a section the other lacked. The pairs are
+  merged, `scripts/generate_llms_txt.py` writes the docs-tree copy from the
+  module's README (relative links adjusted), and the llms.txt workflow fails
+  when a mirror is stale, as for `llms.txt` itself. Edit `<Name>/README.md`,
+  then run the script.
+
+#### 2026-10-09 *0.9.214*
+- **CI compiles the component docs' C++, and every doc passes.**
+  `scripts/check_doc_examples.py` checked a doc only when someone ran it,
+  so docs drifted from the headers they describe: 319 findings across 60
+  component docs, and two of the file dialog doc's snippets mended twice
+  on two branches in one day in ways that then clashed. The new
+  `doc-examples.yml` workflow runs it over every component doc (`--all`:
+  `Docs/UltraCanvas/*.md` but the changelog and the Proposal / Plan /
+  Investigation design documents, whose code is of APIs not written yet)
+  whenever a doc or a public header changes, and fails on any finding. It
+  runs on ubuntu-24.04 because clang's wording is part of a finding.
+  - **The 60 docs are fixed against today's headers**, not silenced:
+    renamed and moved APIs (`AddElement` -> `AddChild`, `GetInstance` ->
+    `GetCurrent`, `UltraCanvasJSON::Parse` -> `JSON::Parse`, the dialogs'
+    `UltraCanvasWindowBase*` parent, the financial chart without its old
+    `uid`, `CreateImageFromFile` for an image from a path), listings and
+    enum copies made to match their headers, `...` placeholders turned into
+    code, member fragments turned into small classes, and the names a
+    snippet takes from its application (a window, a path, a callback the
+    reader writes) declared in a `<!-- doc-check: ... -->` comment with
+    their real types. One example was also wrong at run time: a list
+    view's header-click handler captured its own view by `shared_ptr`, so
+    the view was never freed; it captures it raw now, as AGENTS.md asks.
+  - **The usage comment at the top of `UltraCanvasDesktopShell.h`**, which
+    no check reads, called `AddToggleButton` with `...` for its callback
+    and `ActivateWindow` with an `id` it never declared. It and the
+    DesktopShell doc now show the taskbar button UltraDesktop builds: the
+    window's id captured, activated when the button is pressed, minimized
+    when it is released.
+  - **The checker reads more C++ the way a compiler does.** A framework
+    class's member defined out of line (`void
+    UltraCanvasUIElement::Render(...) {`) is compiled in the class's
+    namespace; a file-scope macro line without `;`
+    (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) is a definition; a copy of a
+    type prefers the framework's (`UltraCanvas::BlendMode`, not
+    `PixelFX::BlendMode`) and a listing a top-level namespace
+    (`PixelFX::Colour`); prose may name a function of any framework header
+    - backend, platform or dialog - not only the public ones;
+    `auto x = UltraCanvas::CreateX(...)` is typed; and a doc-check comment
+    may define a macro the application's build provides.
+  - `--all`, `--strict`, `--baseline` and `--update-baseline` are new.
+    `scripts/doc_examples_baseline.txt` holds findings that predate the
+    check, and is empty.
+- **`FileDialogOptions::SetDefaultExtension`: a default extension through
+  `UltraCanvasFileLoader`, native dialogs included.** Only a caller that
+  built the framework dialog itself could give one
+  (`FileDialogConfig::defaultExtension`); everything that saves through
+  `UltraCanvasFileLoader::SaveFileDialog` - most applications, and every one
+  with native dialogs on - could not, so "photo" saved under All files came
+  back bare. The option reaches every dialog now, each applying it before
+  its own Replace File question:
+  - **framework dialog**: handed on as `FileDialogConfig::defaultExtension`;
+  - **GTK**: applied to the accepted name and when the type changes, with
+    the question asked if the result already exists;
+  - **Windows**: the dialog's own default extension when the chosen type
+    names none or there are no filters, and applied to the result as on GTK;
+  - **macOS**: with no type naming an extension, the panel is given it as
+    its only allowed type, other extensions still allowed, so it adds it and
+    asks itself;
+  - **Android**: added to the name offered to the document picker, which
+    also gives SAF the type.
+  The rule is public as `ApplyDefaultExtension(name, extension)`
+  (`UltraCanvasModalDialog.h`).
+- **The file dialog refuses a name the file system cannot hold.**
+  `FileDialogConfig::validateNames` (on by default) was declared and never
+  read, so a Save name like `a:b` on Windows, `CON.txt`, or one longer
+  than 255 reached the caller's write and failed there, usually with a
+  message about the write rather than the name. Save now refuses it with
+  the reason - "\"a:b\" cannot be used as a file name: it contains ":"" -
+  and stays open on the name. The rules are the new
+  `InvalidFileNameReason(name, FileNameRules)` (`UltraCanvasModalDialog.h`):
+  empty, "." and "..", control characters and names over 255 (bytes on
+  POSIX, UTF-16 units on Windows) everywhere; on Windows also
+  `< > : " / \ | ? *`, a trailing dot or space and the device names (CON,
+  PRN, AUX, NUL, COM1-9, LPT1-9, with any extension). `validateNames =
+  false` lets such a name through, as before.
+- **The file dialog adds what it opens and saves to the recent files
+  itself.** `FileDialogConfig::addToRecent` (on by default) was declared and
+  never read: only `UltraCanvasFileLoader` registered recent files, after
+  the dialog closed, so a dialog built with
+  `UltraCanvasDialogManager::CreateFileDialog` added nothing. The dialog now
+  calls `UltraCanvasFileLoader::NotifyRecentFile` for every file an Open,
+  Open multiple or Save accepts (not for a folder picked). The loader hands
+  its `FileDialogOptions::registerAsRecent` to the dialog and registers only
+  after a native dialog, so a file is not added twice.
+- `FileDialogTest` checks the name rules for both systems (always run), and
+  under a display a refused name, `validateNames` off, and - on Linux, with
+  GTK's recent-files store moved to the test's folder - `addToRecent` on
+  and off.
+
+#### 2026-10-09 *0.9.213*
+- **`HTML::ExtractPlainText` reads a word split by formatting as one word.**
+  It put a space wherever a tag was, so `wor<b>ld</b>` came out as
+  "wor ld" - and a keyword filter, which is one of the things the function is
+  for, could be fooled by `<b>via</b>gra`. An inline element (`<b>`, `<i>`,
+  `<span>`, `<a>`, `<font>` ...) now leaves no space, as on screen; a block,
+  `<br>` and a picture still separate words, and so does the place a
+  `<style>` or `<script>` was (that ran words together before). A no-break
+  space now counts as a space when whitespace is collapsed. With this,
+  UltraMail's threat scan and EmailCleaner drop their own tag strippers and
+  entity tables and leave the html-reuse baseline (six entries).
+- **`HTML::ExtractPlainText(const Node&)`: the text of a parsed element**, by
+  the same rules - what a link or a cell says, read from the DOM instead of
+  from a slice of the source.
+- **The Filer's text preview and UltraCloud's WebDAV client decode entities
+  through `HTML::DecodeEntities`.** The preview's own decoder knew six names
+  and turned every numeric reference into a blank (`&#8364;` showed as a
+  space, not "€"); the WebDAV client knew the five XML entities and left a
+  numeric one such as Nextcloud's `&#x27;` in the file name. Both had their
+  own tables; three more html-reuse baseline entries go.
+
+#### 2026-10-08 *0.9.212*
+- **AGENTS.md rule 7 names both spellings of the Claude Code Remote tool.**
+  It said to call `set_session_title` on "the claude-code-remote MCP server".
+  Some builds register that server as `mcp__Claude_Code_Remote__…`, so a
+  session could take the tool for missing. The rule now gives both names.
+  The chat-title hook accepts both since #731.
+
 #### 2026-10-08 *0.9.211*
 - **HTML as text a person reads: `HTML::ExtractPlainText(html,
   PlainTextLayout::Lines)`.** `ExtractPlainText` put a whole page on one

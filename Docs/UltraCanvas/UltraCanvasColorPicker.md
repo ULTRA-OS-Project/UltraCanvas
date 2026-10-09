@@ -1,5 +1,7 @@
 # UltraCanvas Colour Picker Documentation
 
+<!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
+
 ## Overview
 
 The **UltraCanvasColorPicker** is a comprehensive, self-contained colour selection

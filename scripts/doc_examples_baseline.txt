@@ -1,0 +1,14 @@
+# Findings of scripts/check_doc_examples.py --all that predate its CI check
+# (.github/workflows/doc-examples.yml), so CI can block *new* ones while
+# these are worked off. Each line is <doc>::<message>; a message that occurs
+# twice in a doc is listed twice.
+#
+# These are debt, not exceptions: each is a snippet that would not compile,
+# or a function, field or signature the headers do not have. Do not add to
+# this file to let a new finding through - fix the doc, or declare what its
+# snippets assume in a <!-- doc-check: ... --> comment. After fixing some,
+# rewrite it:
+#     python3 scripts/check_doc_examples.py --all --update-baseline
+#
+# It is empty: every finding the check started with was fixed by
+# 2026-10-08. Keep it that way.

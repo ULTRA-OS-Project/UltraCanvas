@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.22.0
-// Last Modified: 2026-10-04
+// Version: 1.23.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -385,6 +385,17 @@ private:
     // measures the text with the window's render context: before there is
     // one it tries once more on the next turn of the event loop (allowRetry).
     void ApplyTreeWidth(bool allowRetry = true);
+    // Puts `width` on the tree - in its pane, docked, or kept for when it
+    // comes back - kept to what the window leaves it (ApplyTreeWidth's
+    // second half, shared with FitTreeToRoom).
+    void PlaceTreeWidth(int width);
+    // The window was resized, so the room beside the tree changed: the width
+    // the tree last asked for is placed again - narrower when the file
+    // display would otherwise drop below its minimum, and back to full width
+    // when a window made wider again has the room. Nothing is measured: the
+    // rows did not change. A divider the user dragged since the last fit
+    // stands, as far as the window allows.
+    void FitTreeToRoom();
     // The tree's rows changed - added, removed, shown, hidden, opened or
     // closed: a fitted tree is fitted again once the current event is done,
     // so a burst of changes (a folder's subfolders arriving one by one, a
@@ -986,6 +997,15 @@ private:
     int treePaneWidth = UltraFilerSettings::kDefaultTreeWidth;
     // A ScheduleTreeFit is waiting for its turn of the event loop.
     bool treeFitPosted = false;
+    // The width the tree last asked for, before the window's room was taken
+    // into account: fitted or fixed, within the tree's limits. 0 until it
+    // has asked (a fitted tree before its first measurement). FitTreeToRoom
+    // places it again when the window is resized.
+    int  treeWantedWidth = 0;
+    // A FitTreeToRoom is waiting for its turn of the event loop: the split
+    // reports its new width from the middle of a layout pass, and an
+    // interactive resize reports many.
+    bool treeRoomFitPosted = false;
     // The Display > Treeview width last applied, so ApplySettings re-applies
     // it only when it moved - an unrelated setting must not undo a divider
     // the user dragged. 0 never matches: the first call always applies.

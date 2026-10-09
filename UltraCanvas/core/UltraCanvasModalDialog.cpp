@@ -15,7 +15,9 @@
 #include "UltraCanvasFilerWidget.h"     // the file dialog's listing
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasFileDialogSettings.h"
+#include "UltraCanvasFileLoader.h"       // NotifyRecentFile
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <fmt/os.h>
 #include <iostream>
@@ -1212,22 +1214,6 @@ namespace UltraCanvas {
             return false;
         }
 
-        // `name` with `extension` added when its last component has none
-        // (FileDialogConfig::defaultExtension). Trailing dots are dropped
-        // first; a leading dot (".profile") is part of the name.
-        std::string WithDefaultExtension(const std::string& name, const std::string& extension) {
-            size_t start = 0;
-            while (start < extension.size() && extension[start] == '.') ++start;
-            if (start == extension.size()) return name;
-            const size_t sep = name.find_last_of("/\\");
-            const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
-            std::string result = name;
-            while (result.size() > leafStart && result.back() == '.') result.pop_back();
-            if (result.size() == leafStart) return name;   // no file name to extend
-            const size_t dot = result.find_last_of('.');
-            if (dot != std::string::npos && dot > leafStart) return result;
-            return result + "." + extension.substr(start);
-        }
     }
 
     std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
@@ -1271,6 +1257,73 @@ namespace UltraCanvas {
             }
         }
         return -1;
+    }
+
+    std::string ApplyDefaultExtension(const std::string& name, const std::string& extension) {
+        size_t start = 0;
+        while (start < extension.size() && extension[start] == '.') ++start;
+        if (start == extension.size()) return name;
+        const size_t sep = name.find_last_of("/\\");
+        const size_t leafStart = sep == std::string::npos ? 0 : sep + 1;
+        std::string result = name;
+        while (result.size() > leafStart && result.back() == '.') result.pop_back();
+        if (result.size() == leafStart) return name;   // no file name to extend
+        const size_t dot = result.find_last_of('.');
+        if (dot != std::string::npos && dot > leafStart) return result;
+        return result + "." + extension.substr(start);
+    }
+
+    std::string InvalidFileNameReason(const std::string& name, FileNameRules rules) {
+        if (rules == FileNameRules::Host) {
+#if defined(_WIN32) || defined(_WIN64)
+            rules = FileNameRules::Windows;
+#else
+            rules = FileNameRules::Posix;
+#endif
+        }
+        const bool windows = rules == FileNameRules::Windows;
+        if (name.empty()) return "is empty";
+        if (name == "." || name == "..") return "names a folder, not a file";
+
+        // NAME_MAX is 255 bytes on POSIX; Windows counts 255 UTF-16 units,
+        // which is 255 characters outside the supplementary planes.
+        size_t length = 0;
+        for (size_t i = 0; i < name.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(name[i]);
+            if (!windows) { ++length; continue; }
+            if ((c & 0xC0) == 0x80) continue;      // continuation byte
+            length += c >= 0xF0 ? 2 : 1;           // 4-byte sequence: a surrogate pair
+        }
+        if (length > 255) return "is longer than a file name can be";
+
+        for (const char ch : name) {
+            const unsigned char c = static_cast<unsigned char>(ch);
+            if (c < 0x20 || c == 0x7F) return "contains a control character";
+            if (ch == '/') return "contains \"/\"";
+            if (windows && std::strchr("<>:\"\\|?*", ch)) {
+                return std::string("contains \"") + ch + "\"";
+            }
+        }
+        if (windows) {
+            if (name.back() == '.' || name.back() == ' ') {
+                return name.back() == '.' ? "ends in a dot" : "ends in a space";
+            }
+            // The device names are reserved whatever follows the first dot.
+            std::string stem = name.substr(0, name.find('.'));
+            while (!stem.empty() && stem.back() == ' ') stem.pop_back();
+            for (char& c : stem) {
+                if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+            }
+            static const char* const kDevices[] = {"CON", "PRN", "AUX", "NUL"};
+            bool device = false;
+            for (const char* d : kDevices) device = device || stem == d;
+            if (stem.size() == 4 && (stem.compare(0, 3, "COM") == 0 || stem.compare(0, 3, "LPT") == 0) &&
+                stem[3] >= '1' && stem[3] <= '9') {
+                device = true;
+            }
+            if (device) return "is a name Windows keeps for a device";
+        }
+        return std::string();
     }
 
 // ===== FILE DIALOG IMPLEMENTATION =====
@@ -2205,6 +2258,18 @@ namespace UltraCanvas {
             // be written. The field shows the name as it will be saved.
             const std::string named = WithSaveExtension(typed);
             if (named != typed) fileNameInput->SetText(named);
+            // A name the file system cannot hold is refused here, with the
+            // reason, rather than failing later in the caller's write.
+            if (fileConfig.validateNames) {
+                const std::string leaf = PathToUtf8(PathFromUtf8(named).filename());
+                const std::string reason = InvalidFileNameReason(leaf);
+                if (!reason.empty()) {
+                    UltraCanvasDialogManager::ShowError(
+                            "\"" + leaf + "\" cannot be used as a file name: it " + reason + ".",
+                            "Save", nullptr, this);
+                    return;
+                }
+            }
             const std::string target = CombinePath(currentDirectory, named);
             std::filesystem::path parent = PathFromUtf8(target).parent_path();
             if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) {
@@ -2263,6 +2328,13 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::FinishAccept(const std::vector<std::string>& files) {
         selectedFiles = files;
+        // A file opened or saved goes on the system's recent list; a folder
+        // picked is not a file worked on.
+        if (fileConfig.addToRecent && fileConfig.dialogType != FileDialogType::SelectFolder) {
+            for (const std::string& path : GetSelectedFilePaths()) {
+                UltraCanvasFileLoader::NotifyRecentFile(path);
+            }
+        }
         if (fileConfig.allowMultipleSelection) {
             if (onFilesSelected) onFilesSelected(GetSelectedFilePaths());
         } else if (onFileSelected) {
@@ -2310,7 +2382,7 @@ namespace UltraCanvas {
         // A type that names no extension (All files) leaves a bare name
         // bare: the caller's default extension, if it gave one, goes on.
         if (!fileConfig.defaultExtension.empty()) {
-            named = WithDefaultExtension(named, fileConfig.defaultExtension);
+            named = ApplyDefaultExtension(named, fileConfig.defaultExtension);
         }
         return named;
     }

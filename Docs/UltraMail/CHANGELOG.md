@@ -1,4 +1,4 @@
-#### 2026-10-08 *0.10.40*
+#### 2026-10-09 *0.10.41*
 - **Romance scams are flagged.** A love letter from a stranger - "Where are
   you my dear?", a nurse from Russia who found your profile on a dating site,
   "it is destiny", two photos attached, "I shall await your earliest
@@ -137,6 +137,27 @@
   scam's badge tooltip says "scam or phishing markers" rather than phishing
   alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
   `test_preferences.cpp`.
+
+#### 2026-10-08 *0.10.40*
+- **A fake link dressed up in formatting no longer slips past the scam
+  check.** The check compares the address a link's text shows with where
+  the link really goes; its own tag stripper read `www.pay<b>pal</b>.com` as
+  "www.pay pal .com", which names no site, so such a link passed. Link texts,
+  link targets and the body the check searches now go through the
+  framework's HTML reader (`HTML::ExtractPlainText`, `HTML::DecodeEntities`):
+  a word split by formatting stays whole, every entity is decoded (not only
+  five), and the text of a `<style>` or `<script>` is no longer searched as
+  if it were the message. The link list shows link texts as the reader sees
+  them ("Click here", not "Click  here").
+- **The links of a formatted mail come from the parsed page.** The scam
+  check and the link list found links by searching the HTML for `<a `; a
+  link written inside an HTML comment or a script counted as one, and a
+  mail's "button" (a table inside a link) gave its words run together. The
+  links are now the page's `<a href>`, `<area href>` and `<form action>`
+  elements as the HTML reader parses them, each with the text it shows.
+  Mail checked before this version is checked again, by the next sync and
+  when it is opened, so a fake link the old check let through is caught in
+  mail already received.
 
 #### 2026-10-08 *0.10.39*
 - **Formatted mail as plain text keeps its paragraphs.** With Settings >

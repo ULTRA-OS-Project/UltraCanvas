@@ -380,7 +380,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage()
             UltraCanvasDialogManager::ShowError(
                 "No lib/cmake/UltraCanvas/UltraCanvasConfig.cmake under " + chosen +
                 ".\n\nUnpack " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) +
-                " first; it is published at\n" + SdkDownloadPage(), "Not an SDK folder", nullptr, window_.get());
+                " first - the Download button fetches it from\n" +
+                SdkReleaseAssetUrl(profile_.platform, FrameworkVersion(), profile_.architecture),
+                "Not an SDK folder", nullptr, window_.get());
             return;
         }
         sdkPrefixInput_->SetText(prefix);
@@ -388,6 +390,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage()
         RefreshPlan();
     };
     sdkRow->AddChild(findSdk);
+    downloadButton_ = CreateButton("ucsDownloadSdk", 0, 0, 110, 28, "Download...");
+    downloadButton_->onClick = [this]() { DownloadAndUnpackSdk(); };
+    sdkRow->AddChild(downloadButton_);
     page->AddChild(sdkRow);
 
     auto actionRow = ButtonRow("ucsProjectActions");
@@ -560,6 +565,67 @@ void UltraCanvasStartWindow::ChooseProjectFolder() {
     RefreshPlan();
 }
 
+void UltraCanvasStartWindow::DownloadAndUnpackSdk() {
+    if (working_) return;
+    const std::string version = FrameworkVersion();
+    const std::string url = SdkReleaseAssetUrl(profile_.platform, version, profile_.architecture);
+    const std::string archiveName = SdkArchiveName(profile_.platform, version, profile_.architecture);
+    if (!SdkDownloadAvailable()) {
+        // No network module in this build: hand the address over instead.
+        SetClipboardText(url);
+        UltraCanvasDialogManager::ShowInformation(
+            "This build of UltraCanvasStart cannot download. The address is on the clipboard:\n\n" + url +
+            "\n\nFetch it in a browser, unpack it, and use Find... to point at the folder.",
+            "Download the SDK", nullptr, window_.get());
+        return;
+    }
+    const std::string folder = UltraCanvasNativeDialogs::SelectFolder(
+        "Where should the SDK be unpacked?", profile_.homeDirectory, window_.get());
+    if (folder.empty()) return;
+    const std::string archive = folder + "/" + archiveName;
+
+    if (worker_.joinable()) worker_.join();
+    working_ = true;
+    SetBusy(true);
+    SetStatus("Downloading " + archiveName + "...");
+    const SystemProfile profile = profile_;
+    worker_ = std::thread([this, url, archive, folder, profile, archiveName]() {
+        std::string error;
+        bool ok = DownloadSdk(url, archive, error);
+        if (ok) {
+            RunOnUiThread([this, archiveName]() { SetStatus("Unpacking " + archiveName + "..."); });
+            const RunResult unpack = RunStep(UnpackStep(archive, folder), profile);
+            ok = unpack.Succeeded();
+            if (!ok) error = unpack.started ? "tar could not unpack the archive:\n" + unpack.output
+                                           : unpack.error;
+        }
+        std::string prefix;
+        if (ok) {
+            prefix = FindSdkPrefix(folder);
+            if (prefix.empty()) {
+                ok = false;
+                error = "The archive was unpacked, but no lib/cmake/UltraCanvas/UltraCanvasConfig.cmake "
+                        "was found under " + folder;
+            }
+        }
+        RunOnUiThread([this, ok, error, prefix]() {
+            working_ = false;
+            SetBusy(false);
+            if (!ok) {
+                SetStatus("The SDK download did not finish.");
+                UltraCanvasDialogManager::ShowError(error, "Download the SDK", nullptr, window_.get());
+                return;
+            }
+            if (sdkPrefixInput_) sdkPrefixInput_->SetText(prefix);
+            ReadChoicesFromPage();
+            RefreshPlan();
+            for (auto& step : plan_.steps) if (step.kind == StepKind::Download) step.done = true;
+            if (reportText_) reportText_->SetText(RenderReport(plan_));
+            SetStatus("SDK unpacked into " + prefix);
+        });
+    });
+}
+
 void UltraCanvasStartWindow::CreateProject() {
     ReadChoicesFromPage();
     if (choices_.projectFolder.empty()) {
@@ -634,7 +700,9 @@ void UltraCanvasStartWindow::RefreshSystemText() {
     text += "Home:             " + profile_.homeDirectory + "\n";
     text += "\nFramework:        UltraCanvas " + FrameworkVersion() + "\n";
     text += "Matching SDK:     " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) + "\n";
-    text += "                  " + SdkDownloadPage() + "\n";
+    text += "                  " + SdkReleaseAssetUrl(profile_.platform, FrameworkVersion(), profile_.architecture) + "\n";
+    text += "                  (the Project page's Download button fetches it; the workflow artifacts are at\n";
+    text += "                  " + SdkDownloadPage() + ")\n";
     text += "\nClaude Code:      " + (ai_.claudeInstalled ? "installed" + (ai_.claudeVersion.empty() ? "" : ", " + ai_.claudeVersion) +
                                                             " (" + ai_.claudePath + ")" : std::string("not found")) + "\n";
     text += "git:              " + std::string(ai_.gitInstalled ? "installed" : "not found") + "\n";
@@ -720,6 +788,7 @@ void UltraCanvasStartWindow::RefreshAiText() {
 void UltraCanvasStartWindow::SetBusy(bool busy) {
     if (checkButton_) checkButton_->SetDisabled(busy);
     if (installButton_) installButton_->SetDisabled(busy);
+    if (downloadButton_) downloadButton_->SetDisabled(busy);
 }
 
 void UltraCanvasStartWindow::SetStatus(const std::string& text) {

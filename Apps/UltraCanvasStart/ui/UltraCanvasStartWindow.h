@@ -68,6 +68,9 @@ private:
     void StartChecks();
     void StartInstall();
     void ChooseProjectFolder();
+    // Downloads this version's SDK from its GitHub release into a folder the
+    // user picks, unpacks it there and fills in the SDK prefix.
+    void DownloadAndUnpackSdk();
     void CreateProject();
     void CopyReport();
     void CopyPrompt();
@@ -110,6 +113,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> installOutput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> checkButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> installButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> installSummary_;
 
     // Project page

@@ -1,5 +1,7 @@
 # UltraCanvas Coordinate System & Positioning Guide
 
+<!-- doc-check: class MyElement : public UltraCanvasUIElement { public: void Render(IRenderContext* ctx, const Rect2Df& dirty) override; bool OnEvent(const UCEvent& e) override; Rect2Di SidebarArea() const; Color background; int sidebarWidth_ = 200; }; std::shared_ptr<UltraCanvasUIElement> child; Rect2Di adjustedChildBounds; Rect2Di childDirty; UltraCanvasUIElement* elem; std::shared_ptr<UltraCanvasContainer> container; std::shared_ptr<UltraCanvasUIElement> view; std::shared_ptr<UltraCanvasUIElement> el; float x; float y; float w; float h; -->
+
 A practical guide to how positions work in UltraCanvas, so your custom
 elements draw and respond to input in the right place.
 
@@ -126,7 +128,7 @@ bool MyElement::OnEvent(const UCEvent& e) {
             break;
         }
         case UCEventType::MouseWheel: {
-            const bool inSidebar = e.pointer.x < sidebarWidth;  // local x
+            const bool inSidebar = e.pointer.x < sidebarWidth_;  // local x
             break;
         }
     }
@@ -237,8 +239,8 @@ global hit‑tests) — not in normal `Render`/`OnEvent`:
 | `MapFromLocal(localPt)` | this element's **local** point → **window** frame |
 
 ```cpp
-// A child wants to know where a local point lands on screen:
-Point2Df onScreen = MapFromLocal({0, 0});   // my top-left, in window coords
+// Where a local point of `el` lands in the window:
+Point2Df inWindow = el->MapFromLocal({0, 0});   // el's top-left, in window coords
 ```
 
 ---
@@ -268,37 +270,60 @@ These are the patterns that bite. Each one compiles and "looks" right.
 `GetBounds()`:
 
 ```cpp
-// BEFORE — parent-relative, double-offset
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
-    ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
-    // → the viewer paints at (24, 188): a white gap under the toolbar,
-    //   the page badge slides off to the right, clipping is wrong.
-}
+// BEFORE — parent-relative, double-offset (UltraCanvasPDFView, cut down)
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
+        ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
+        // → the viewer paints at (24, 188): a white gap under the toolbar,
+        //   the page badge slides off to the right, clipping is wrong.
+    }
 
-case UCEventType::MouseWheel: {
-    Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
-    bool inThumbs = local.x < thumbStripWidth;
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
+                bool inThumbs = local.x < thumbStripWidth;
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 The fix was to move everything to the local frame:
 
 ```cpp
 // AFTER — local frame, single source of truth
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
-    ctx->FillRectangle(b);
-}
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+    bool showThumbs_ = true;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
+        ctx->FillRectangle(b);
+    }
 
-Rect2Di PageContentArea() const {                 // local
-    const int left = showThumbs_ ? thumbStripWidth : 0;
-    return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
-}
+    Rect2Di PageContentArea() const {                 // local
+        const int left = showThumbs_ ? thumbStripWidth : 0;
+        return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
+    }
 
-case UCEventType::MouseWheel: {
-    bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 Result: the viewer sits flush under the toolbar, the page‑number badge lines up

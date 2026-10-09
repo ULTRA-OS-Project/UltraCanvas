@@ -106,11 +106,20 @@ std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // e
 ```
 
 `ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
-message list's preview line or a search index wants: block boundaries become
-spaces, everything is one line. `PlainTextLayout::Lines` is the text a
-person reads or quotes - an HTML mail shown as plain text, the quote in a
-reply. It parses the page and writes it the way a browser's `innerText`
-does, simplified:
+message list's preview line, a search index or a keyword filter want: block
+boundaries, `<br>` and pictures become spaces, everything is one line. An
+inline element (`<b>`, `<span>`, `<a>` ...) leaves no space, as on screen -
+`wor<b>ld</b>` is "world", and a spam word split by formatting
+(`<b>via</b>gra`) is still the word. A no-break space counts as a space.
+
+`ExtractPlainText(const Node&)` gives the same single line for an element
+already parsed - what a link, a cell or a heading says, read from the DOM.
+UltraMail's threat scan reads every link's text that way while it walks the
+parsed page for `a[href]`, `area[href]` and `form[action]`.
+
+`PlainTextLayout::Lines` is the text a person reads or quotes - an HTML mail
+shown as plain text, the quote in a reply. It parses the page and writes it
+the way a browser's `innerText` does, simplified:
 
 - a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
   own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
@@ -330,10 +339,7 @@ and the check blocks new ones:
 | Site | Has its own | Replace with |
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
+| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
 
 ## Limits
 

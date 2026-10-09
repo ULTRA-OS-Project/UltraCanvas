@@ -57,9 +57,43 @@ TEST(extracts_anchor_targets_and_their_text) {
     const auto links = ExtractLinks(html, true);
     REQUIRE_EQ(links.size(), (size_t)3);
     REQUIRE_EQ(links[0].host, std::string("example.com"));
-    REQUIRE_EQ(links[0].text, std::string("Click  here"));
+    REQUIRE_EQ(links[0].text, std::string("Click here"));   // as the reader sees it
     REQUIRE_EQ(links[1].host, std::string("other.test"));
     REQUIRE_EQ(links[2].host, std::string("forms.test"));
+}
+
+// A link's text is read as it shows: formatting inside a word does not split
+// it, so an address dressed up with <b> is still the address it claims to be,
+// and every entity is decoded.
+TEST(anchor_text_reads_as_it_shows) {
+    const auto links = ExtractLinks(
+        "<a href=\"https://evil.test/x\">www.pay<b>pal</b>.com</a>"
+        "<a href=\"https://example.com/\">Caf&eacute;&nbsp;&#8211;&nbsp;Men&uuml;</a>", true);
+    REQUIRE_EQ(links.size(), (size_t)2);
+    REQUIRE_EQ(links[0].text, std::string("www.paypal.com"));
+    REQUIRE_EQ(links[1].text, std::string("Caf\xC3\xA9 \xE2\x80\x93 Men\xC3\xBC"));
+}
+
+// The links come from the parsed page: a link written inside an HTML comment
+// or a script is not one the reader can click, an <area> and a <form> are,
+// and a mail's "button" (a table inside the link) reads as its words.
+TEST(links_come_from_the_parsed_page) {
+    const auto links = ExtractLinks(
+        "<!-- <a href=\"https://hidden.test/\">old</a> -->"
+        "<script>var s = '<a href=\"https://script.test/\">x</a>';</script>"
+        "<A HREF='https://upper.test/a?x=1&amp;y=2'>Upper</A>"
+        "<map><area shape=rect href=\"https://area.test/\"></map>"
+        "<a href=\"https://button.test/\"><table><tr><td>Pay</td><td>now</td></tr></table></a>"
+        "<a name=\"anchor-only\">no target</a>"
+        "<form method=post action=\"https://form.test/post\"></form>", true);
+    REQUIRE_EQ(links.size(), (size_t)4);
+    REQUIRE_EQ(links[0].host, std::string("upper.test"));
+    REQUIRE_EQ(links[0].href, std::string("https://upper.test/a?x=1&y=2"));
+    REQUIRE_EQ(links[0].text, std::string("Upper"));
+    REQUIRE_EQ(links[1].host, std::string("area.test"));
+    REQUIRE_EQ(links[2].host, std::string("button.test"));
+    REQUIRE_EQ(links[2].text, std::string("Pay now"));
+    REQUIRE_EQ(links[3].host, std::string("form.test"));
 }
 
 TEST(extracts_bare_urls_from_plain_text) {
@@ -87,6 +121,17 @@ TEST(a_link_that_lies_about_its_target_is_a_scam) {
     REQUIRE(HasFinding(r, "link-target-mismatch"));
     REQUIRE(r.level == ThreatLevel::Scam);
     REQUIRE(!r.Summary().empty());
+}
+
+// The same lie with the address dressed up in formatting: the old tag
+// stripper read "www.pay<b>pal</b>.com" as "www.pay pal .com", which names no
+// site, and the link passed.
+TEST(a_lying_link_text_split_by_formatting_is_still_a_scam) {
+    ScanInput in = Html("service@secure-billing.example",
+        "<a href=\"http://203.0.113.9/login\">www.pay<b>pal</b>.<span>com</span></a>");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "link-target-mismatch"));
+    REQUIRE(r.level == ThreatLevel::Scam);
 }
 
 TEST(a_sender_claiming_a_brand_it_does_not_own_is_flagged) {

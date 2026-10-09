@@ -350,9 +350,12 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
   entity and numeric references), `ExtractPlainText(html, layout)` (tags
   gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
-  default, `PlainTextLayout::Lines` keeps the text's line structure -
-  paragraphs, `<br>`, table rows and cells, list items, `<pre>` - and leaves
-  out hidden content).
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),

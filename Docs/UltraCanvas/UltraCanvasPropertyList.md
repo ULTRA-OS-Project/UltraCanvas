@@ -1,5 +1,7 @@
 # UltraCanvasPropertyList — Apple property lists
 
+<!-- doc-check: std::string path; -->
+
 `UltraCanvasPropertyList.h` reads the two encodings a property list comes in:
 the XML form, and the binary `bplist00` form that most shipped `Info.plist`
 files actually use. No Apple API, so it reads the same wherever the disk is
@@ -15,7 +17,7 @@ caller that needs them should say so rather than work around it.
 ```cpp
 #include "UltraCanvasPropertyList.h"
 
-UCPropertyList plist;
+UltraCanvas::UCPropertyList plist;
 if (UltraCanvas::UCPropertyList::Read(path, plist)) {
     plist.GetString("CFBundleName");
     plist.GetString("CFBundleVersion", "1.0");   // with a fallback

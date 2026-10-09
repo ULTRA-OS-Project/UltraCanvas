@@ -25,6 +25,8 @@
 //                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
 //                  crypto-investment-lure); ScanInput::pictureNames;
 //                  ThreatReport::Has / Codes, so the reading pane can name the scam
+// Version: 0.5.2 - kThreatRulesRevision 2026-10-08: links and texts read through the
+//                  HTMLReader module, so older verdicts are made again
 // Version: 0.5.0 - mail authentication: the receiving server's (topmost)
 //                  Authentication-Results header is parsed
 //                  (ParseAuthenticationResults); a sender whose domain DMARC
@@ -164,7 +166,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1791504000;   // 2026-10-09 00:00 UTC
+constexpr long long kThreatRulesRevision = 1791590400;   // 2026-10-10 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication
