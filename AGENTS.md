@@ -377,12 +377,15 @@ executables carried the whole framework, and on Linux and Windows an app that
 linked a module archive next to the shared core got a second copy of that
 module - two registries, two connection tables. The rules:
 
-- **Link a module by its public name** - `UltraDatabase`, `UltraVault`,
-  `UltraCrypt`, `UltraMessage`, `NetworkMonitor` - never by its archive
-  (`uc-database`, `uc-vault`, …). The public name is an INTERFACE target that
-  resolves to the shared core, or to the archive under a static core, and
-  carries the module's headers and switches either way. Only
-  `UltraCanvas/CMakeLists.txt` and the other archives name an archive.
+- **Link a module by its public name** - `UltraNet`, `UltraWin`,
+  `UltraDatabase`, `UltraVault`, `UltraCrypt`, `UltraMessage`,
+  `NetworkMonitor` - never by its archive (`uc-net`, `uc-database`, …). The
+  public name is an INTERFACE target that resolves to the shared core, or to
+  the archive under a static core, and carries the module's headers and
+  switches either way. Only `UltraCanvas/CMakeLists.txt` and the other
+  archives name an archive - and the one exception, a test that must put the
+  archive in a rescanned link group with a *static* core
+  (`Tests/UltraNet/CMakeLists.txt` says why), names it only on that branch.
 - **A new UI-free module follows the pattern**: `add_library(uc-<name> STATIC …)`,
   dependencies on other modules by *their* archive names,
   `_ultracanvas_module_home(<Name> uc-<name>)`, and its archive added to the
@@ -391,7 +394,9 @@ module - two registries, two connection tables. The rules:
   UltraMessageCenter) is not absorbed; it links the core and the homes it needs.
 - **Do not link a module archive and the core on one line**, and do not add a
   `_uc_core_shared` conditional of your own: that was the workaround for
-  UltraNet and UltraWin before the homes existed.
+  UltraNet and UltraWin before they had homes, and every one of them is gone
+  (UltraMail, UltraSocial, UltraCanvasStart, UltraWeb, UltraCloud and the
+  tests simply link `UltraNet` now).
 
 ### Packaging a new app for macOS
 

@@ -1570,16 +1570,16 @@ else()
 endif()
 
 # ===== MODULE HOMES =====
-# The UI-free modules (UltraCrypt, UltraVault, NetworkMonitor, UltraDatabase,
-# UltraMessage, and VirtualFS from its own directory) are each built as a
-# static archive, and where that archive's code ends up depends on the core:
+# The UI-free modules (UltraNet, UltraWin, UltraCrypt, UltraVault,
+# NetworkMonitor, UltraDatabase, UltraMessage, and VirtualFS from its own
+# directory) are each built as a static archive, and where that archive's
+# code ends up depends on the core:
 #
 #   * SHARED core: the archive is pulled into libUltraCanvas WHOLE - every
 #     object, not just the ones the core's own code references - and kept
 #     PRIVATE, so the DSO exports the complete module API and nothing else
 #     links the archive. One copy of the module's code and global state per
-#     process, shared between every running application, the same way
-#     UltraNet and UltraWin have been folded in since they existed.
+#     process, shared between every running application.
 #   * STATIC core: the archive is linked PUBLIC, so each consumer links it.
 #
 # Consumers never see the difference: the module's public name (UltraCrypt,
@@ -2610,98 +2610,84 @@ if(ULTRACANVAS_ENABLE_NET)
             PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
 
-    add_library(UltraNet STATIC ${ULTRANET_SOURCES})
-    set_target_properties(UltraNet PROPERTIES
+    # The archive is uc-net; UltraNet is its home ("MODULE HOMES" above).
+    add_library(uc-net STATIC ${ULTRANET_SOURCES})
+    set_target_properties(uc-net PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultranet")
-    target_compile_features(UltraNet PUBLIC cxx_std_20)
-    target_include_directories(UltraNet
+    target_compile_features(uc-net PUBLIC cxx_std_20)
+    target_include_directories(uc-net
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             # vendored header-only libs (nlohmann/json for the JMAP plug-in & tests)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    target_link_libraries(uc-net PUBLIC ${UC_CURL_LINK} Threads::Threads)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
     # Android; libiconv on macOS and MSYS2 (already installed for Texter).
-    # Without it UltraNet still handles UTF-8 and Latin-1, as it always did.
+    # Without it uc-net still handles UTF-8 and Latin-1, as it always did.
     find_package(Iconv QUIET)
     if(Iconv_FOUND)
         message(STATUS "  [+] iconv - mail charsets beyond UTF-8 / Latin-1")
-        target_link_libraries(UltraNet PUBLIC Iconv::Iconv)
-        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_ICONV=1)
+        target_link_libraries(uc-net PUBLIC Iconv::Iconv)
+        target_compile_definitions(uc-net PUBLIC ULTRANET_HAS_ICONV=1)
     else()
         message(STATUS "  [−] iconv - not found (mail text limited to UTF-8 / Latin-1)")
     endif()
     if(ULTRANET_HAS_CARES)
-        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
-        target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        target_compile_definitions(uc-net PUBLIC ULTRANET_HAS_CARES=1)
+        target_include_directories(uc-net PRIVATE ${CARES_INCLUDE_DIRS})
         # Put c-ares' pkg-config library dir on the link path so the transitive
         # -lcares resolves for consumers. Needed on Homebrew macOS (arm64), where
         # c-ares lives in a keg dir (/opt/homebrew/opt/c-ares/lib) that is NOT a
         # default linker search path; without this the UltraMail/demo link fails
         # with "ld: library 'cares' not found". PUBLIC so the -L propagates the
-        # same way the -l does (UltraNet is a STATIC archive resolved by its
+        # same way the -l does (uc-net is a STATIC archive resolved by its
         # consumers). No-op on Linux/Windows, where libcares is already on the
         # default search path. Mirrors the GStreamer pattern above.
-        target_link_directories(UltraNet PUBLIC ${CARES_LIBRARY_DIRS})
-        target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
+        target_link_directories(uc-net PUBLIC ${CARES_LIBRARY_DIRS})
+        target_link_libraries(uc-net PUBLIC ${CARES_LIBRARIES})
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
         # No -lresolv: bionic has no separate resolver library (and the c-ares
         # path is mandatory here anyway).
-        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
         # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
         # dnsapi: DnsQuery for non-A/AAAA DNS records.
-        target_link_libraries(UltraNet PUBLIC
+        target_link_libraries(uc-net PUBLIC
             winhttp ws2_32 secur32 crypt32 dnsapi)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
         find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
         find_library(SYSTEM_CONFIG_FRAMEWORK SystemConfiguration REQUIRED)
         find_library(SECURITY_FRAMEWORK Security REQUIRED)
-        target_link_libraries(UltraNet PUBLIC
+        target_link_libraries(uc-net PUBLIC
             ${CFNETWORK_FRAMEWORK}
             ${CORE_FOUNDATION_FRAMEWORK}
             ${SYSTEM_CONFIG_FRAMEWORK}
             ${SECURITY_FRAMEWORK}
             resolv)
     endif()
-    target_compile_definitions(UltraNet PUBLIC ULTRACANVAS_HAS_NET=1)
+    target_compile_definitions(uc-net PUBLIC ULTRACANVAS_HAS_NET=1)
+    _ultracanvas_module_home(UltraNet uc-net)
 
-    # Let UltraCanvas itself link UltraNet so that components like FileLoader
-    # can call UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on.
-    #
-    # In a shared build, libultracanvas is meant to be the single host that
-    # exports the whole UltraNet API: plug-ins (SMTP/IMAP/...) and apps import
-    # every UltraNet_* symbol from it and never link the static archive, so there
-    # is exactly one copy of UltraNet (and its global state) at runtime.
-    #
-    # A plain link only pulls the UltraNet objects that libultracanvas's own code
-    # references into the DLL, so WINDOWS_EXPORT_ALL_SYMBOLS would re-export only
-    # that arbitrary subset (e.g. UltraNet_Initialize but not UltraNet_MimeBuild /
-    # UltraNet_ParseUrl) — leaving consumers with undefined references. Force the
-    # ENTIRE archive in with --whole-archive so the complete API is present and
-    # exported. PRIVATE keeps the static archive off consumers' link lines (they
-    # import from the DLL); UltraNet's transitive deps/includes still propagate.
-    # A static ultracanvas keeps PUBLIC so consumers link the archive themselves.
-    if(ULTRACANVAS_BUILD_SHARED)
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraNet>")
-        else()
-            # Fallback for CMake < 3.24 (no $<LINK_LIBRARY:WHOLE_ARCHIVE>): force
-            # the archive in by file, plus the target for its usage requirements.
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                -Wl,--whole-archive $<TARGET_FILE:UltraNet> -Wl,--no-whole-archive
-                UltraNet)
-        endif()
-    else()
+    # The core carries UltraNet so that components like FileLoader can call
+    # UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on. A shared
+    # core absorbs the archive whole (the _ultracanvas_absorb_modules call
+    # below): libultracanvas is the single host that exports the complete
+    # UltraNet API, plug-ins (SMTP/IMAP/...) and apps import every UltraNet_*
+    # symbol from it, and there is exactly one copy of UltraNet and its global
+    # state at runtime. A plain link would pull in only the objects the core's
+    # own code references, and WINDOWS_EXPORT_ALL_SYMBOLS would re-export only
+    # that arbitrary subset (UltraNet_Initialize but not UltraNet_MimeBuild).
+    # A static core links the home, which is the archive, PUBLIC, so consumers
+    # link it themselves.
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
     endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
@@ -2834,7 +2820,7 @@ if(ULTRACANVAS_ENABLE_NET)
     # trust store), next to the host's. So a plug-in target that links a core
     # library, directly or through another target, stops the configure here.
     function(_ultranet_plugin_links_core target out)
-        set(_core ${ULTRACANVAS_LIB_NAME} UltraNet UltraCanvasTextUtils UltraCanvasAllFormats)
+        set(_core ${ULTRACANVAS_LIB_NAME} UltraNet uc-net UltraCanvasTextUtils UltraCanvasAllFormats)
         set(_queue ${target})
         set(_seen "")
         set(_found "")
@@ -2929,47 +2915,41 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinRdp.cpp
     )
-    add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
-    set_target_properties(UltraWin PROPERTIES
+    # The archive is uc-win; UltraWin is its home ("MODULE HOMES" above).
+    add_library(uc-win STATIC ${ULTRAWIN_SOURCES})
+    set_target_properties(uc-win PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultrawin")
-    target_compile_features(UltraWin PUBLIC cxx_std_20)
-    target_include_directories(UltraWin
+    target_compile_features(uc-win PUBLIC cxx_std_20)
+    target_include_directories(uc-win
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
     # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
     # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
-    target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
+    target_link_libraries(uc-win PUBLIC Threads::Threads uc-yyjson)
     if(ULTRAWIN_FREERDP_FOUND)
-        target_compile_definitions(UltraWin PRIVATE
+        target_compile_definitions(uc-win PRIVATE
             ULTRAWIN_HAS_FREERDP=${ULTRAWIN_FREERDP_MAJOR})
-        target_include_directories(UltraWin PRIVATE
+        target_include_directories(uc-win PRIVATE
             ${ULTRAWIN_FREERDP_INCLUDE_DIRS})
-        target_link_directories(UltraWin PUBLIC
+        target_link_directories(uc-win PUBLIC
             ${ULTRAWIN_FREERDP_LIBRARY_DIRS})
         # freerdp-clientN carries freerdp_client_load_addins (the channel
         # loader the RemoteApp session uses); freerdpN/winprN the core.
-        target_link_libraries(UltraWin PUBLIC
+        target_link_libraries(uc-win PUBLIC
             ${ULTRAWIN_FREERDP_LIBRARIES})
-        message(STATUS "  [✓] UltraWin RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
+        message(STATUS "  [✓] uc-win RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
     else()
-        message(STATUS "  [−] UltraWin RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
+        message(STATUS "  [−] uc-win RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
     endif()
 
-    # Same single-host export strategy as UltraNet: a shared libultracanvas
-    # re-exports the whole UltraWin API so apps import one copy of the module
-    # (and its process registry) at runtime.
-    if(ULTRACANVAS_BUILD_SHARED)
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraWin>")
-        else()
-            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
-                -Wl,--whole-archive $<TARGET_FILE:UltraWin> -Wl,--no-whole-archive
-                UltraWin)
-        endif()
-    else()
+    _ultracanvas_module_home(UltraWin uc-win)
+    # Absorbed whole into a shared core by the _ultracanvas_absorb_modules
+    # call below, so apps import one copy of the module (and its process
+    # registry) at runtime; a static core links the home, which is the
+    # archive, PUBLIC.
+    if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraWin)
     endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_ULTRAWIN=1)
@@ -3268,7 +3248,8 @@ endif()
 # call and dependents first (see "MODULE HOMES"). A static core links each
 # through its home instead. VirtualFS has no dependency on the others.
 _ultracanvas_absorb_modules(
-    uc-message uc-networkmonitor uc-database uc-vault uc-crypt VirtualFS)
+    uc-net uc-win uc-message uc-networkmonitor uc-database uc-vault uc-crypt
+    VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
@@ -3818,12 +3799,12 @@ if(NOT ULTRACANVAS_BUILD_SHARED)
     if(TARGET uc-database)
         list(APPEND _uc_export_targets uc-database)
     endif()
-    # UltraWin follows the same split as UltraNet below: PUBLIC on a static
-    # core, so the consumer links the archive and the package must name it;
-    # folded in whole-archive and PRIVATE on a shared one, where it needs no
-    # entry. Its own interface is Threads, uc-yyjson and the FreeRDP -l names.
+    # UltraWin: on a static core its home is in the core's link interface and
+    # names the archive, so both go along; on a shared core the archive is
+    # absorbed and the package needs no entry. The archive's own interface is
+    # Threads, uc-yyjson and the FreeRDP -l names.
     if(TARGET UltraWin)
-        list(APPEND _uc_export_targets UltraWin)
+        list(APPEND _uc_export_targets UltraWin uc-win)
     endif()
 endif()
 if(TARGET UltraDatabase)
@@ -3842,6 +3823,9 @@ set(_uc_package_blocked "")
 if(TARGET UltraNet)
     if(UC_CURL_LINK STREQUAL "CURL::libcurl")
         list(APPEND _uc_export_targets UltraNet)
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            list(APPEND _uc_export_targets uc-net)
+        endif()
         set(_uc_package_has_net ON)
     elseif(ULTRACANVAS_BUILD_SHARED)
         install(TARGETS libcurl_shared

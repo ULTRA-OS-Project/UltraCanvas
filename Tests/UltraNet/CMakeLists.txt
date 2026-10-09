@@ -5,31 +5,40 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-# UltraNetMime routes base64/Trim through UltraCanvas core (UltraCanvasUtils),
-# whose definitions live in libultracanvas — which in turn PUBLIC-links UltraNet.
-# That makes the two static archives mutually dependent, so a consumer must link
-# both and the linker must resolve the UltraNet -> UltraCanvas back-references
-# regardless of scan order. GNU ld (Linux + Windows/MinGW CI) is single-pass, so
-# wrap the pair in a rescanned link group; Apple ld64 / MSVC link.exe rescan
-# archives natively AND reject CMake's LINK_GROUP RESCAN feature at generate time,
-# so those get plain order. Linker family is checked first for exactly that
-# reason. Guarded on the UltraCanvas target because the net tests can be built
-# standalone. Mirrors the version-guarded WHOLE_ARCHIVE idiom in
-# UltraCanvas/CMakeLists.txt.
+# UltraNet is a module home (UltraCanvas/CMakeLists.txt, "MODULE HOMES"):
+# with the shared core the name resolves to libUltraCanvas, which has absorbed
+# the archive whole and exports the complete API, so a test binary links that
+# one library and carries no UltraNet of its own - it used to link the archive
+# beside the core and take 130 UltraNet_* functions from it, a second copy of
+# the module and its global state next to the core's.
+#
+# A STATIC core is the one place the archive is still named: UltraNetMime
+# routes base64/Trim through the UltraCanvas core (UltraCanvasUtils), whose
+# definitions live in libultracanvas, which in turn links UltraNet. The two
+# archives are mutually dependent, so the consumer links both and the linker
+# must resolve the UltraNet -> UltraCanvas back-references regardless of scan
+# order. GNU ld (Linux + Windows/MinGW) is single-pass, so the pair goes in a
+# rescanned link group; Apple ld64 / MSVC link.exe rescan archives natively
+# AND reject CMake's LINK_GROUP RESCAN feature at generate time, so those get
+# plain order. Guarded on the UltraCanvas target because the net tests can be
+# built standalone.
 function(ultranet_link_module target)
-    if(TARGET UltraCanvas)
-        if(APPLE OR MSVC)
-            target_link_libraries(${target} PRIVATE UltraNet UltraCanvas)
-        elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
-            target_link_libraries(${target} PRIVATE
-                "$<LINK_GROUP:RESCAN,UltraNet,UltraCanvas>")
-        else()
-            # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
-            target_link_libraries(${target} PRIVATE
-                -Wl,--start-group UltraNet UltraCanvas -Wl,--end-group)
-        endif()
-    else()
+    if(NOT TARGET UltraCanvas)
         target_link_libraries(${target} PRIVATE UltraNet)
+        return()
+    endif()
+    get_target_property(_ultranet_core_type UltraCanvas TYPE)
+    if(_ultranet_core_type STREQUAL "SHARED_LIBRARY")
+        target_link_libraries(${target} PRIVATE UltraNet)
+    elseif(APPLE OR MSVC)
+        target_link_libraries(${target} PRIVATE uc-net UltraCanvas)
+    elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+        target_link_libraries(${target} PRIVATE
+            "$<LINK_GROUP:RESCAN,uc-net,UltraCanvas>")
+    else()
+        # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
+        target_link_libraries(${target} PRIVATE
+            -Wl,--start-group uc-net UltraCanvas -Wl,--end-group)
     endif()
 endfunction()
 
