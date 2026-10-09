@@ -1193,7 +1193,8 @@ future.
   `UltraNet_FtpRemoveDirectory`; the session log of every call
   (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
-  their codes, the error with libcurl's number)
+  their codes, the error with libcurl's number); connections kept open
+  between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,

@@ -414,3 +414,50 @@ ULTRANET_PROBE(kArea, UltraNet_SetThreadFtpLog) {
                    std::to_string(threadLines.size()) + " lines, ending \"" +
                    threadLines.back().text + "\"; onLog takes precedence");
 }
+
+ULTRANET_PROBE(kArea, UltraNet_FtpCloseIdleConnections) {
+    // With nothing open it has nothing to do, and twice is the same as once.
+    UltraNet_FtpCloseIdleConnections();
+    UltraNet_FtpCloseIdleConnections();
+
+    const std::string base = LiveBase();
+    if (base.empty()) {
+        // A call after it connects as any call does.
+        UltraNetFtpOptions fast;
+        fast.connectTimeoutMs = 1500;
+        std::vector<UltraNetFtpEntry> entries;
+        const UltraNetResult dead = UltraNet_FtpListDirectory(kDeadDirUrl, entries, fast);
+        UltraNet_FtpCloseIdleConnections();
+        PROBE_EXPECT_MSG(ReachedBackend(dead),
+                         "a closed port did not produce a network error");
+        return BackendOnly("UltraNet_FtpCloseIdleConnections", dead);
+    }
+
+    // Against a server: the second listing takes up the connection the first
+    // left open, and the one after the close makes a new one.
+    auto list = [&base](bool& reused) {
+        reused = false;
+        UltraNetFtpOptions opt;
+        opt.onLog = [&reused](const UltraNetFtpLogLine& l) {
+            if (l.kind == UltraNetFtpLogKind::Step &&
+                l.text.rfind("Using the open connection", 0) == 0)
+                reused = true;
+        };
+        std::vector<UltraNetFtpEntry> entries;
+        return UltraNet_FtpListDirectory(base, entries, opt);
+    };
+    bool first = false, second = false, third = false;
+    const UltraNetResult r1 = list(first);
+    const UltraNetResult r2 = list(second);
+    UltraNet_FtpCloseIdleConnections();
+    const UltraNetResult r3 = list(third);
+    UltraNet_FtpCloseIdleConnections();
+    PROBE_EXPECT_MSG(static_cast<bool>(r1) && static_cast<bool>(r2) && static_cast<bool>(r3),
+                     "a listing of " + base + " failed");
+    PROBE_EXPECT_MSG(!first, "the first listing claimed an open connection");
+    PROBE_EXPECT_MSG(second, "the second listing logged in again instead of "
+                             "using the open connection");
+    PROBE_EXPECT_MSG(!third, "a listing after the close still used the old connection");
+    return Working("the second listing of " + base + " used the open connection; "
+                   "after the close the third connected afresh");
+}

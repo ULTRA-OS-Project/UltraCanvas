@@ -1,3 +1,24 @@
+#### 2026-10-09 *1.69.0*
+- **FTP drives log in once per burst, not once per folder.** Opening a
+  folder on an FTP drive and reading its subfolders ahead used to connect
+  and log in for every one of them - twice on a server without MLSD, such
+  as vsftpd: once to be refused MLSD, once more for LIST. The connection log
+  of opening `/` on a vsftpd server with four subfolders showed ten logins
+  and 36 seconds. The drive worker now keeps the connection open between
+  its jobs (UltraNet keeps it; see the framework changelog), and a server
+  that refused MLSD is listed with LIST from then on, so the same five
+  listings are one login and one MLSD. The connection log says *Using the
+  open connection to ... - already logged in* where it used to show a new
+  login. The worker closes the connection once the drive has been quiet for
+  15 seconds (`kRemoteConnectionIdleClose`), while the server has only just
+  answered: closing sends QUIT and waits for the reply, which a network
+  that has gone away since never sends.
+- **Folders remembered from the last run are no longer read ahead.** A
+  folder's subfolders that `remote-listings.cache` still held were fetched
+  again in the background every time their parent was opened, on every
+  start, whether or not they were opened again. They are now shown from the
+  cache and checked with the server when they are opened; only subfolders
+  that are not cached at all are read ahead.
 #### 2026-10-08 *1.68.1*
 - **The folder tree follows the window's size.** The tree is kept to the
   room the file display leaves it (and the preview pane, while it is up) as

@@ -236,9 +236,17 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     to the settings (the 512 most recently used folders; only names, sizes
     and dates are stored, never credentials). On the next start a folder
     from that file shows at once and is checked with the server in the
-    background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
+    background when it is opened; a remembered folder is not fetched ahead
+    again. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **One login per burst.** The drive's requests run one after another on
+    one connection: a folder and the subfolders fetched ahead after it are
+    one login, not one each, and a server that has refused `MLSD` (vsftpd
+    does) is asked with `LIST` from then on rather than refused again on
+    every folder. The connection log shows *Using the open connection to
+    ... - already logged in* for a request that needed no login. The
+    connection is closed once the drive has been quiet for 15 seconds.
   - **Every connection step is shown, and kept.** While a drive is busy the
     status bar shows the step its connection is at — *Connecting to
     203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the

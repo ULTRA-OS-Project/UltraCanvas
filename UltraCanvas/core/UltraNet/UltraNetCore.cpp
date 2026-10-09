@@ -18,6 +18,9 @@ namespace ultranet_internal {
     // Defined in UltraNetWebSocket.cpp. Stops every receiver thread and frees
     // every WebSocket easy handle, for the same reason.
     void CloseAllWebSockets();
+    // Defined in UltraNetFtp.cpp. Closes the FTP connections each thread
+    // keeps open between calls, for the same reason.
+    void CloseFtpConnections();
 }
 
 namespace {
@@ -50,6 +53,7 @@ void UltraNet_Shutdown() {
     // callback re-enters into a UltraNet_* getter that takes g_mutex.
     ultranet_internal::StopAsyncWorker();
     ultranet_internal::CloseAllWebSockets();
+    ultranet_internal::CloseFtpConnections();
     std::lock_guard<std::mutex> lk(g_mutex);
     if (!g_initialized) return;
     curl_global_cleanup();

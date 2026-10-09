@@ -22,11 +22,17 @@
 // On an FTP drive the cache also works ahead and outlives the session. When a
 // folder the user opened arrives, its subfolders are queued as background
 // listings behind everything the user asks for, so opening one of them next
-// is a cache hit rather than a login. And the listings are written to disk
+// is a cache hit rather than a request. And the listings are written to disk
 // when the window closes and read back at start-up: a folder opened in an
 // earlier session is shown at once from what it held then, while the server
-// is asked again behind it. The rules and the file are in
-// UltraFilerRemoteCache.h.
+// is asked again behind it - when it is opened, not ahead of time. The rules
+// and the file are in UltraFilerRemoteCache.h.
+//
+// The jobs run one after another on one worker thread, and UltraNet keeps the
+// FTP connection a job leaves open for the next (UltraNet_FtpCloseIdleConnections):
+// a folder and its subfolders fetched ahead are one login, not one each. The
+// worker lets the connection go once the drive has been quiet for
+// kRemoteConnectionIdleClose.
 //
 // A file shown in the preview pane is fetched too, on any drive: the media
 // viewer reads local files, so RequestPreviewCopy downloads a picture, a
@@ -39,8 +45,8 @@
 // takes - resolving, connecting, every command and reply - is recorded there
 // and reported to the status line as it happens (RemoteActivity::step), and
 // a failure keeps its codes and diagnostics for the log window.
-// Version: 1.6.0
-// Last Modified: 2026-10-04
+// Version: 1.7.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -440,7 +446,9 @@ private:
     // Old copies are swept once per run, before the first is asked for.
     bool previewCacheSwept_ = false;
     // Subfolders waiting to be fetched ahead, newest folder's first, and the
-    // same paths as a set so a folder is never queued twice. Taken by the
+    // same paths as a set so a folder is never queued twice. Only folders not
+    // in the cache at all: a listing kept from the last run is checked when
+    // its folder is opened. Taken by the
     // worker only when queue_ is empty: a prefetch never makes the user wait
     // for more than the one already on the wire.
     std::deque<std::string> prefetchQueue_;

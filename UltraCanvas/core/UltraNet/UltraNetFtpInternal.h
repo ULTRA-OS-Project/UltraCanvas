@@ -25,4 +25,8 @@ namespace ultranet_internal::ftp {
     // Splits a listing body into trimmed lines (handles \n and \r\n).
     std::vector<std::string> SplitLines(const std::string& body);
 
+    // Forgets which servers refused MLSD, so a test that expects MLSD to be
+    // asked for is not answered from what an earlier one learned.
+    void ForgetServerListingFormats();
+
 } // namespace ultranet_internal::ftp

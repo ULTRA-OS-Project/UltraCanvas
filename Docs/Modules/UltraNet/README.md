@@ -352,7 +352,24 @@ What a failure says, whether or not anyone reads the log:
 - A listing tries MLSD, then LIST, then NLST only when the server refused the
   command; a failure to connect, sign in, set up TLS or the data connection, or
   a timeout, is reported once rather than three times, and an empty folder is
-  listed with one request.
+  listed with one request. A server that does not know MLSD (500 / 502 / 504)
+  is remembered for the life of the process and listed with LIST from then
+  on; a 550 refuses the folder, not the command, and is not taken as that.
+
+Connections are kept open between calls. Each thread's calls share a libcurl
+connection pool, so the next call on the same thread to the same server, as
+the same user with the same TLS settings, takes up the connection the last one
+left open - no connect, no login; the second pass of a listing that fell back
+from MLSD runs on it too. The log says *Using the open connection to host -
+already logged in*. A worker listing folder after folder therefore logs in
+once. libcurl drops a connection idle for two minutes and one the server has
+closed; `UltraNet_FtpCloseIdleConnections()` closes the calling thread's open
+connections now (each is sent QUIT), and a thread's are closed when it ends,
+every thread's by `UltraNet_Shutdown`. A caller whose work comes in bursts
+closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
+whose network has since gone away waits up to two minutes for its reply.
+(One pool per thread: libcurl does not support sharing connections between
+threads that transfer at the same time.)
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
