@@ -427,8 +427,8 @@ book and spam items:
 
 The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
 `preferences.ini` as `trusted_senders` and `blocked_senders`
-(comma-separated) and editable in *Settings > Warnings > Trusted and blocked
-senders*, where a domain can also be typed (`example.com` is kept as
+(comma-separated) and editable in *Settings > Warnings > Trusted & blocked*
+(the page *Trusted and blocked senders*), where a domain can also be typed (`example.com` is kept as
 `@example.com`). An address is on one list or the other: trusting a blocked
 address unblocks it, and blocking a trusted one stops trusting it. A trusted
 address under a blocked domain stays trusted — the exception to the block.
@@ -521,5 +521,5 @@ clean, and each of those is a test in
 | Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
-| Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted and blocked senders); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
+| Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |

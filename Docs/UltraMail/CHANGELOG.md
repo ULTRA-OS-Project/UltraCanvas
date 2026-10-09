@@ -1,3 +1,19 @@
+#### 2026-10-09 *0.10.45*
+- **Settings > Warnings > Trusted & blocked shows every entry.** A list
+  with more addresses than one row holds hid the rest: the field wrapped
+  them onto a second row but stayed one row tall, so the third blocked
+  address could not be seen or removed. The field grows to fit now - a fix
+  in the framework's tag field (`UltraCanvasTagInput`), which also shows
+  every trusted website and sender on *Privacy > Images*.
+- **A settings page taller than the window scrolls.** With the lists
+  growing, a long list of trusted websites and senders pushed the notes off
+  the foot of *Privacy > Images* with no way to reach them. Every page now
+  shows a vertical scrollbar when it needs one, as UltraFiler's long pages
+  do; a page that fits looks as before.
+- **The page's name fits the settings tree.** "Trusted and blocked senders"
+  was cut off to "Trusted and blocked se..."; the tree says *Trusted &
+  blocked*, and the page keeps its full title.
+
 #### 2026-10-09 *0.10.44*
 - **The Date column is as wide as its dates.** It was a fixed 88 px, about
   twice what "Oct 07" needs. It is now the widest date in the list - in
