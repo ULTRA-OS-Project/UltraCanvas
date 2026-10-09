@@ -1,3 +1,23 @@
+#### 2026-10-09 *0.4.0*
+- **Each chat shows the lines not yet PRed.** A badge on the right of every
+  row in the chat list counts the lines the chat's folder holds that its
+  repository's default branch does not - committed, uncommitted and
+  untracked, the number this repository's closing line uses
+  (`git fetch`, `git diff --numstat` against the merge base with
+  `origin/main` - or whatever `origin/HEAD` names - plus the lines of the
+  untracked files). In the accent colour while there is work not in the
+  default branch, grey `0` once everything is in; no badge for a folder that
+  is no git repository, `…` while counting, `?` when git could not answer.
+  The row's tooltip says what the number means and against which branch.
+  - Folders are counted on one background thread when the list loads, when
+    a chat is opened and after every turn; chats in one folder share the
+    count. Git runs with its prompts off and network timeouts, so a remote
+    that wants a password or does not answer costs seconds, never a hang,
+    and the count then uses the default branch as last fetched. Closing the
+    window does not wait for a running fetch.
+  - `engine/RepoStatus` measures, `ui/ChatListView` is the list's model and
+    delegate. `--count-lines [<folder>]` prints the badge's number.
+
 #### 2026-10-08 *0.3.0*
 - **A list of chats.** A sidebar on the left of the chat view lists every
   chat UltraClaude remembers, newest first, with *New chat* above it (moved
