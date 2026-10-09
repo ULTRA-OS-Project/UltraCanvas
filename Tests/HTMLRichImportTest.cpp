@@ -2,10 +2,12 @@
 // HTML → UCRichDocument (HTMLRichDocumentImporter), the quote level every
 // block can carry, and the way the serializers and the editing core treat
 // it: what a mail client needs to reply to and forward an HTML message
-// with its formatting.
+// with its formatting - and the options a rich paste reads it with
+// (UCRichDocument::FromHTML).
 //
 // Builds without the UI stack (the parser, the style resolver, the model and
 // the editing core are all UI-free), so it needs no display.
+// Version: 1.1.0 - dir="rtl", preAsCodeBlock, skipWordListLabels
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "HTMLReader/HTMLRichDocumentImporter.h"
@@ -353,6 +355,51 @@ static void TestQuoteLevelCommands() {
     CHECK_EQ(doc->blocks[2].quoteLevel, 8);
 }
 
+static void TestDirectionAndPasteOptions() {
+    std::cout << "\n--- dir, preAsCodeBlock, skipWordListLabels ---\n";
+    // dir="rtl" on the body or a block reaches its paragraphs; dir="ltr"
+    // inside turns it back.
+    UCRichDocument doc = ImportHTMLToRichDocument(
+        "<body dir=\"rtl\"><p>first</p><div dir=\"ltr\"><p>second</p></div><ul><li>item</li></ul></body>");
+    CHECK(doc.blocks.size() == 3);
+    if (doc.blocks.size() == 3) {
+        CHECK(doc.blocks[0].rightToLeft);
+        CHECK(!doc.blocks[1].rightToLeft);
+        CHECK(doc.blocks[2].type == RichBlockType::ListItem && doc.blocks[2].rightToLeft);
+    }
+
+    // <pre>: monospaced lines of a paragraph by default (a mail's quoted
+    // plain text), a code block with preAsCodeBlock (a paste).
+    const std::string pre = "<pre>int a;\n\treturn a;\n</pre>";
+    doc = ImportHTMLToRichDocument(pre);
+    CHECK(doc.blocks.size() == 1 && doc.blocks[0].type == RichBlockType::Paragraph);
+    if (!doc.blocks.empty()) {
+        CHECK_EQ(Text(doc.blocks[0]), std::string("int a;\n return a;"));   // a tab is a space in text
+        CHECK(!doc.blocks[0].runs.empty() && doc.blocks[0].runs[0].code);
+    }
+    HTMLRichImportOptions paste;
+    paste.preAsCodeBlock = true;
+    paste.skipWordListLabels = true;
+    doc = ImportHTMLToRichDocument("<p>before</p>" + pre + "<p>after</p>", paste);
+    CHECK(doc.blocks.size() == 3);
+    if (doc.blocks.size() == 3) {
+        CHECK(doc.blocks[1].type == RichBlockType::CodeBlock);
+        CHECK_EQ(Text(doc.blocks[1]), std::string("int a;\n\treturn a;"));   // a code line keeps its tab
+        CHECK(!doc.blocks[1].runs.empty() && !doc.blocks[1].runs[0].code);   // the block is code already
+        CHECK_EQ(Text(doc.blocks[2]), std::string("after"));
+    }
+
+    // The list label Word types out: kept by default (a browser shows it),
+    // left out with skipWordListLabels.
+    const std::string word =
+        "<p class=MsoListParagraph style='mso-list:l0 level1 lfo1'><![if !supportLists]>"
+        "<span style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;</span></span><![endif]>Item</p>";
+    doc = ImportHTMLToRichDocument(word);
+    CHECK(doc.blocks.size() == 1 && Contains(Text(doc.blocks[0]), "1.") && Contains(Text(doc.blocks[0]), "Item"));
+    doc = ImportHTMLToRichDocument(word, paste);
+    CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "Item");
+}
+
 int main() {
     TestParagraphsAndRuns();
     TestLineBreaksAndDivs();
@@ -365,6 +412,7 @@ int main() {
     TestSerializingQuotes();
     TestEditingQuotes();
     TestQuoteLevelCommands();
+    TestDirectionAndPasteOptions();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

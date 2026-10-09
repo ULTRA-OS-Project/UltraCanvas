@@ -108,6 +108,12 @@ void ClaudeChatSession::Reset() {
     sessionId_.clear();
 }
 
+void ClaudeChatSession::SetSessionId(const std::string& sessionId) {
+    if (process_.IsRunning()) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    sessionId_ = sessionId;
+}
+
 std::string ClaudeChatSession::GetSessionId() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return sessionId_;

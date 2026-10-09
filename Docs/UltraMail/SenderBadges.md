@@ -232,8 +232,11 @@ rules (`kThreatRulesRevision`) is made again: by the sync, a batch of up to
 when the message is opened.
 
 Links are pulled out of both HTML (`<a href>`, `<area href>`, `<form action>`,
-with their anchor text) and plain-text bodies (bare URLs). The rules, with
-their weights:
+with their anchor text) and plain-text bodies (bare URLs). The pictures the
+borrowed-brand-pictures rule compares with them come from the parsed page as
+well (`ExtractImageHosts`): `<img src>`, `background` attributes and the
+background images the page's CSS gives an element, through the HTMLReader's
+cascade. The rules, with their weights:
 
 | Finding | Weight | What it catches |
 |---|---|---|

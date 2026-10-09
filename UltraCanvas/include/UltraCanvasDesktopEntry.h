@@ -14,8 +14,8 @@
 // std::filesystem, so it is safe on background threads and costs no
 // dependency; nothing here launches anything (see UltraCanvasFileAssociations
 // for that).
-// Version: 1.0.0
-// Last Modified: 2026-09-05
+// Version: 1.1.0 - Categories= and StartupWMClass=
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,6 +40,8 @@ namespace UltraCanvas {
         std::string iconName;         // Icon=, an icon name or an absolute path
         std::string url;              // URL=, for Kind::Link
         std::vector<std::string> mimeTypes;   // MimeType=
+        std::vector<std::string> categories;  // Categories=, e.g. Graphics, RasterGraphics
+        std::string startupWMClass;   // StartupWMClass=, the WM_CLASS its windows carry
         bool terminal = false;        // Terminal=true — needs a terminal window
         bool noDisplay = false;       // NoDisplay=true — not for menus
         bool hidden = false;          // Hidden=true — "deleted", ignore it

@@ -749,6 +749,7 @@ struct ShortcutState {
     int wakePipe[2] = {-1, -1};
     KeyCode keycode = 0;
     unsigned int modifiers = 0;
+    bool down = false;   // the combination was pressed and its key is not let go yet
 };
 
 ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
@@ -812,7 +813,10 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
         error = accelerator + " is taken by another program.";
         return nullptr;
     }
-    XSelectInput(d, DefaultRootWindow(d), KeyPressMask);
+    XSelectInput(d, DefaultRootWindow(d), KeyPressMask | KeyReleaseMask);
+    // A key held down repeats as presses alone, not press-release pairs, so a
+    // held combination is one press and one release.
+    XkbSetDetectableAutoRepeat(d, True, nullptr);
 
     auto* state = new ShortcutState();
     state->display = d;
@@ -827,17 +831,28 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
     return state;
 }
 
+// The shortcut counts when its key is let go, not when it goes down. While
+// the key is down the passive grab holds the keyboard, and a window the
+// shortcut opens and focuses in that time is handed focus events by the grab
+// and its end (NotifyWhileGrabbed, NotifyUngrab) that the window manager may
+// follow by giving the focus back: the clipboard panel opened on Super+V shut
+// again at once, one press in two.
 bool ShortcutWait(ShortcutState* state) {
     if (!state || !state->display) return false;
     Display* d = state->display;
     for (;;) {
-        bool pressed = false;
+        bool released = false;
         while (XPending(d) > 0) {
             XEvent event;
             XNextEvent(d, &event);
-            if (event.type == KeyPress && event.xkey.keycode == state->keycode) pressed = true;
+            if (event.xkey.keycode != state->keycode) continue;
+            if (event.type == KeyPress) state->down = true;
+            else if (event.type == KeyRelease && state->down) {
+                state->down = false;
+                released = true;
+            }
         }
-        if (pressed) return true;
+        if (released) return true;
 
         pollfd fds[2];
         fds[0].fd = ConnectionNumber(d);

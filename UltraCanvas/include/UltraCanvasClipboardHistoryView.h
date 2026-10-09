@@ -44,7 +44,17 @@ public:
     // sections: Pinned / Today / Yesterday / Earlier headers (the
     // application); compact: Pinned / Recent (the desktop's panel).
     enum class Sections { Flat, ByDay, PinnedAndRecent };
-    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections);
+    // A section above the others: the first `count` entries under `title`
+    // ("FOR ULTRAPAINT"), whatever their own section would be. The desktop's
+    // quick panel puts what the window being pasted into takes there.
+    struct LeadSection {
+        std::string title;
+        size_t count = 0;
+    };
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections, const LeadSection& lead);
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections) {
+        SetEntries(std::move(entries), sections, LeadSection{});
+    }
 
     int GetRowCount() const override { return static_cast<int>(rows.size()); }
     int GetColumnCount() const override { return 1; }

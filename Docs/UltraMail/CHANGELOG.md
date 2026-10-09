@@ -1,4 +1,4 @@
-#### 2026-10-09 *0.10.41*
+#### 2026-10-09 *0.10.42*
 - **Romance scams are flagged.** A love letter from a stranger - "Where are
   you my dear?", a nurse from Russia who found your profile on a dating site,
   "it is destiny", two photos attached, "I shall await your earliest
@@ -137,6 +137,17 @@
   scam's badge tooltip says "scam or phishing markers" rather than phishing
   alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
   `test_preferences.cpp`.
+
+#### 2026-10-08 *0.10.41*
+- **The scam check's pictures come from the parsed page.** The check that
+  catches a mail dressed in a well-known brand's pictures while its links go
+  elsewhere found those pictures by searching the HTML for `src=`,
+  `background=` and `url(`: a web font, a style rule that matches nothing,
+  and an address written in a comment, a script or the text all counted as
+  pictures the mail shows. They now come from the page as the framework's
+  HTML reader parses it - `<img>`, `<input type="image">`, `background`
+  attributes, and the background images its CSS gives each element, through
+  the same cascade the message is shown with.
 
 #### 2026-10-08 *0.10.40*
 - **A fake link dressed up in formatting no longer slips past the scam

@@ -1,3 +1,14 @@
+#### 2026-10-08 *0.2.11*
+- **Paste offers the last picture copied when the clipboard holds none.**
+  Copy a picture, then a line of text, and Paste said "Nothing to paste".
+  Now Paste - and Paste as New Image - asks: "There is no picture on the
+  clipboard. Paste the image copied 5 min ago (1920 x 1080 pixels)?", the
+  newest image of the clipboard history UltraDesktop keeps. It is pasted
+  only when asked. Without a clipboard history Paste is as before; UltraPaint
+  never starts one.
+- **Edit > Paste Last Copied Image (Ctrl+Alt+V)** takes that picture without
+  asking, whatever the clipboard holds.
+
 #### 2026-10-07 *0.2.10*
 - **Save as keeps the file type you chose.** Save as added `.png` to a name
   typed without an extension, whatever type was chosen: "photo" with JPEG

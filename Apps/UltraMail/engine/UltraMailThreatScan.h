@@ -25,6 +25,8 @@
 //                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
 //                  crypto-investment-lure); ScanInput::pictureNames;
 //                  ThreatReport::Has / Codes, so the reading pane can name the scam
+// Version: 0.5.3 - ExtractImageHosts reads the parsed page, its CSS through the
+//                  HTMLReader's cascade
 // Version: 0.5.2 - kThreatRulesRevision 2026-10-08: links and texts read through the
 //                  HTMLReader module, so older verdicts are made again
 // Version: 0.5.0 - mail authentication: the receiving server's (topmost)
@@ -224,8 +226,12 @@ std::string MessageSignatureKind(const std::string& rawMessage);
 // author's signature when there is one.
 std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessage);
 
-// The hosts the body's pictures (<img src>, background images) are loaded from,
-// lowercased; http(s) sources only.
+// The hosts the body's pictures are loaded from, lowercased, in the order the
+// page uses them; http(s) sources only. Read from the parsed page: <img src>,
+// <input type="image" src>, a background attribute, and the background images
+// the page's CSS gives an element - its style attribute and the <style> sheets,
+// as the HTMLReader's cascade applies them (a url() in a comment, a script, a
+// font or a rule that matches nothing is not a picture the mail shows).
 std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.

@@ -10,7 +10,8 @@
 //   * bold / italic / underline / strike / sub / sup / code, links, text and
 //     highlight colours, font families and sizes;
 //   * alignment, left indents, and the space between paragraphs (collapsed
-//     the way CSS collapses margins);
+//     the way CSS collapses margins); right-to-left paragraphs (dir="rtl" on
+//     the element or one around it);
 //   * <blockquote> as the blocks' quote level;
 //   * pictures, standalone or inside a line of text, with their sizes;
 //   * tables with several columns (spans, cell colours, borders, widths).
@@ -18,8 +19,11 @@
 //     unwrapped into the text flow; a table inside a table cell becomes lines
 //     of that cell, since the model has no nested tables.
 // What it cannot hold (floats, positioning, scripts, forms) is dropped, and
-// its text kept.
+// its text kept. UCRichDocument::FromHTML - a rich paste - reads through it
+// too, with preAsCodeBlock and skipWordListLabels on.
 //
+// Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock and skipWordListLabels
+//                  (a paste: UCRichDocument::FromHTML reads through the importer)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -55,6 +59,15 @@ struct HTMLRichImportOptions {
     // colours. Off gives the text the editor's own look.
     bool keepFonts = true;
     bool keepColors = true;
+    // <pre> becomes a code block (RichBlockType::CodeBlock): its lines as
+    // written, in the view's code style. Off, it is a paragraph of
+    // monospaced lines - right for a mail, whose <pre> is mostly a quoted
+    // plain-text message (Thunderbird's moz-quote-pre), not code.
+    bool preAsCodeBlock = false;
+    // Leaves out the list labels Word types out in its HTML - the "1." or
+    // bullet in a <span style="mso-list:Ignore"> before each item. A browser
+    // shows them, so a mail keeps them; a paste from Word drops them.
+    bool skipWordListLabels = false;
 };
 
 // A new document holding `html`.

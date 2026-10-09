@@ -11,6 +11,11 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+#include "UltraCanvasClipboardHistory.h"
+#include "UltraCanvasClipboardHistoryView.h"
+#include "UltraCanvasPathUtf8.h"
+#endif
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasNativeDialogs.h"
@@ -28,6 +33,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -401,6 +407,7 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Copy Merged", "Ctrl+Shift+C", [this]() { CmdCopy(true); }),
             M::ActionWithShortcut("Paste as New Layer", "Ctrl+V", TexterIconPath("paste.svg"), [this]() { CmdPaste(); }),
             M::ActionWithShortcut("Paste as New Image", "Ctrl+Shift+V", [this]() { CmdPasteAsNew(); }),
+            M::ActionWithShortcut("Paste Last Copied Image", "Ctrl+Alt+V", [this]() { CmdPasteLastImage(); }),
             M::Separator(),
             M::ActionWithShortcut("Delete", "Del", [this]() { CmdDelete(); }),
             M::ActionWithShortcut("Fill with Foreground", "Alt+Backspace", [this]() { CmdFill(true); }),
@@ -653,7 +660,11 @@ void UltraPaintWindow::InstallShortcuts() {
                 case UCKeys::Y: CmdRedo(); return true;
                 case UCKeys::X: if (e.shift) CmdCropToSelection(); else CmdCut(); return true;
                 case UCKeys::C: CmdCopy(e.shift); return true;
-                case UCKeys::V: if (e.shift) CmdPasteAsNew(); else CmdPaste(); return true;
+                case UCKeys::V:
+                    if (e.alt) CmdPasteLastImage();
+                    else if (e.shift) CmdPasteAsNew();
+                    else CmdPaste();
+                    return true;
                 case UCKeys::A: if (e.shift) CmdSelectNone(); else CmdSelectAll(); return true;
                 case UCKeys::I: CmdSelectInvert(); return true;
                 case UCKeys::J: CmdLayerDuplicate(); return true;
@@ -1445,11 +1456,22 @@ void UltraPaintWindow::CmdPaste() {
         layerName = FileNameOf(source.file);
     }
     auto img = source.image;
-    if (!img || !img->IsValid()) { if (statusHint) statusHint->SetText("Nothing to paste"); return; }
+    if (!img || !img->IsValid()) {
+        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
+            PasteAsLayer(std::move(last), "Last copied image", false, "the last copied image, ");
+        });
+        return;
+    }
+    PasteAsLayer(img, layerName, source.fromHere, source.file.empty() ? std::string() : FileNameOf(source.file) + ", ");
+}
+
+void UltraPaintWindow::PasteAsLayer(std::shared_ptr<UCRasterLayer> img, const std::string& layerName, bool fromHere,
+                                    const std::string& what) {
+    if (!document || !img || !img->IsValid()) return;
     auto layer = std::make_shared<UCRasterLayer>(document->GetWidth(), document->GetHeight(), layerName);
     // paste where it was copied from when that still fits, else centred
     int ox = clipboardOrigin.x, oy = clipboardOrigin.y;
-    if (!source.fromHere || ox + img->GetWidth() > document->GetWidth() || oy + img->GetHeight() > document->GetHeight()) {
+    if (!fromHere || ox + img->GetWidth() > document->GetWidth() || oy + img->GetHeight() > document->GetHeight()) {
         ox = (document->GetWidth() - img->GetWidth()) / 2;
         oy = (document->GetHeight() - img->GetHeight()) / 2;
     }
@@ -1457,9 +1479,74 @@ void UltraPaintWindow::CmdPaste() {
     document->AddLayer(layer);
     SelectTool(PaintToolId::Move);
     if (statusHint) {
-        statusHint->SetText("Pasted " + (source.file.empty() ? std::string() : FileNameOf(source.file) + ", ") +
-                            std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) + " pixels");
+        statusHint->SetText("Pasted " + what + std::to_string(img->GetWidth()) + " x " +
+                            std::to_string(img->GetHeight()) + " pixels");
     }
+}
+
+void UltraPaintWindow::CmdPasteLastImage() {
+    if (!document) return;
+    std::string when;
+    auto img = LastCopiedImage(when);
+    if (!img) {
+        if (statusHint) statusHint->SetText("There is no image in the clipboard history");
+        return;
+    }
+    PasteAsLayer(img, "Last copied image", false, "the image copied " + when + ", ");
+}
+
+// Paste found nothing - text was copied after the picture, say, or nothing
+// at all since this window opened. Rather than "Nothing to paste", the
+// picture copied last is offered, saying when it was copied: pasted only
+// when asked, so a picture from an hour ago never arrives unannounced.
+void UltraPaintWindow::OfferLastCopiedImage(const std::function<void(std::shared_ptr<UCRasterLayer>)>& use) {
+    std::string when;
+    auto img = LastCopiedImage(when);
+    if (!img) {
+        if (statusHint) statusHint->SetText("Nothing to paste");
+        return;
+    }
+    const std::string question = "There is no picture on the clipboard. Paste the image copied " + when + " (" +
+                                 std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
+                                 " pixels)?";
+    UltraCanvasDialogManager::ShowConfirmation(question, "UltraPaint", [use, img](bool yes) {
+        if (yes) use(img);
+    }, window.get());
+}
+
+std::shared_ptr<UCRasterLayer> UltraPaintWindow::LastCopiedImage(std::string& when) {
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+    namespace fs = std::filesystem;
+    // Only a history the desktop or UltraClipboard keeps: none is started here.
+    std::error_code ec;
+    if (!UltraCanvasClipboardHistory::IsAvailable() ||
+        !fs::is_directory(PathFromUtf8(UltraCanvasClipboardHistory::DefaultDirectory()), ec)) {
+        return nullptr;
+    }
+    UltraCanvasClipboardHistory history;
+    if (!history.Open()) return nullptr;
+    ClipboardHistoryQuery query;
+    query.kinds = {ClipboardEntryKind::Image};
+    query.newestFirst = true;
+    query.limit = 1;
+    const std::vector<ClipboardHistoryEntry> entries = history.List(query);
+    if (entries.empty()) return nullptr;
+    ClipboardSnapshot snapshot;
+    if (!history.ReadFormats(entries[0].id, snapshot.formats)) return nullptr;
+    const ClipboardFormat* image = snapshot.FindImage();
+    if (!image) return nullptr;
+    std::string extension;
+    std::vector<uint8_t> bytes = ClipboardImageFile(*image, extension);
+    auto layer = DecodeClipboardImage(bytes);
+    if (!layer || !layer->IsValid()) return nullptr;
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    when = FormatClipboardAge(entries[0].lastUsedAt, now);
+    return layer;
+#else
+    (void)when;
+    return nullptr;
+#endif
 }
 
 void UltraPaintWindow::CmdPasteAsNew() {
@@ -1476,12 +1563,22 @@ void UltraPaintWindow::CmdPasteAsNew() {
         fromFile->SetModified(true);
     }
     auto img = source.image;
-    if (!fromFile && (!img || !img->IsValid())) { if (statusHint) statusHint->SetText("Nothing to paste"); return; }
-    auto go = [this, img, fromFile]() {
-        if (fromFile) {
-            SetDocument(fromFile, "Untitled");
-            return;
-        }
+    if (fromFile) {
+        auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
+        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
+        else go();
+        return;
+    }
+    if (!img || !img->IsValid()) {
+        OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) { PasteAsNewImage(std::move(last)); });
+        return;
+    }
+    PasteAsNewImage(img);
+}
+
+void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img) {
+    if (!img || !img->IsValid()) return;
+    auto go = [this, img]() {
         auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
         doc->GetLayer(0)->CopyFrom(*img, 0, 0);
         doc->InvalidateComposite();

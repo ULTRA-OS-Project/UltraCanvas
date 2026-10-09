@@ -571,7 +571,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
-  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
@@ -710,8 +712,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -898,8 +901,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -938,7 +942,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
@@ -16122,7 +16128,7 @@ FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
 
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); std::shared_ptr<UltraCanvasListView> list; UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -16204,7 +16210,7 @@ The same content copied again is not a second entry: it moves to the top
 
 | Call | |
 |---|---|
-| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss) |
+| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit, newestFirst }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss). Pinned entries come first unless `newestFirst` asks for last use alone: `{kinds = {Image}, newestFirst = true, limit = 1}` is "the last image copied" |
 | `Get(id)`, `ReadFormats(id, formats)`, `ReadText(id)` | one entry, its content |
 | `GetStats()` | entries, pinned, bytes, encrypted |
 | `MarkUsed(id)` | it was put back on the clipboard |
@@ -16226,6 +16232,29 @@ KeePassXC, Bitwarden, 1Password).
 `Sentence` (case changes for Latin, Greek and Cyrillic).
 `ClipboardImageFile(format, extension)` gives an image entry as a file another
 program opens (a bare `CF_DIB` gains its BMP file header).
+
+## What a program takes
+
+`PreferredClipboardKinds(categories, mimeTypes)` reads an application's
+desktop entry (`UCDesktopEntry::categories` and `mimeTypes`) and answers the
+kinds of entry it takes when something is pasted into it, most wanted first:
+
+| The entry says | Kinds |
+|---|---|
+| `Graphics`, `RasterGraphics`, `2DGraphics`, `VectorGraphics`, `3DGraphics`, `Photography` (not `Viewer`) | Image, Colour |
+| `FileManager`, or it opens `inode/directory` | Files |
+| `TextEditor`, `IDE`, `Development`, `TerminalEmulator` | Code, Text, Link |
+| `WebBrowser` | Link, Text |
+| no such category, and it opens only `image/*` types / only `text/*` types | Image, Colour / Text, Code, Link |
+| anything else (mail, chat, office, a mix of types) | nothing: the history is offered as it is |
+
+UltraDesktop's quick panel finds the window Super+V was pressed over, its
+entry (`UltraCanvasDesktopShell::MatchApplication`) and these kinds, and lists
+the newest such entries first under "For <program>", the first one chosen. The
+choice stays the person's: they see it before Enter copies it. Swapping what
+the clipboard hands a program while it pastes was considered and left out - a
+program that prefers images when one is offered would paste an old picture
+instead of the text just copied, unannounced.
 
 ## Recording
 
@@ -16292,18 +16321,19 @@ dark compact one of the desktop's panel
 (`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
 
 ```cpp
+auto listView = std::make_shared<UltraCanvasListView>("history");
 auto model = std::make_shared<ClipboardHistoryListModel>();
 auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
-list->SetModel(model);
-list->SetDelegate(rows);
-list->SetVariableRowHeights(true);          // headers are lower than rows
+listView->SetModel(model);
+listView->SetDelegate(rows);
+listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-list->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
@@ -16313,13 +16343,15 @@ list->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, in
         default: break;
     }
 };
-list->tooltipProvider = [rows = rows.get()](int row, int) {
+listView->tooltipProvider = [rows = rows.get()](int row, int) {
     return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
 };
 ```
 
 - **Sections**: `Flat`; `ByDay` (Pinned, Today, Yesterday, Earlier, with
-  counts); `PinnedAndRecent` (the panel's Pinned and Recent).
+  counts); `PinnedAndRecent` (the panel's Pinned and Recent). A
+  `LeadSection { title, count }` puts the first `count` entries under a title
+  of the caller's above them (the panel's "For UltraPaint").
   `GetEntry(row)` is `nullptr` on a header; `EntryRowFrom(row, step)` skips
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
@@ -18866,6 +18898,8 @@ below it cannot overwrite the entry's own name or command.
 | `iconName` / `iconFile` | `Icon=` and, when a caller resolves it, the image file it names |
 | `url` | `URL=`, for a `Type=Link` web shortcut |
 | `mimeTypes` | `MimeType=` — what the application declares it opens |
+| `categories` | `Categories=` — the menu categories it belongs to (`Graphics`, `RasterGraphics`, `TextEditor`, …) |
+| `startupWMClass` | `StartupWMClass=` — the `WM_CLASS` its windows carry, which ties a running window to its entry |
 | `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
 
 **Localization** follows the specification: `Name[de_DE]` beats `Name[de]`
@@ -19048,6 +19082,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### Notices
 
@@ -19074,6 +19109,8 @@ nothing is ever reported: `IsNative()` says which.
 
 ### Global shortcuts
 
+<!-- doc-check: void TogglePanel(); -->
+
 `UltraCanvasGlobalShortcut` is a key combination that reaches the program
 whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
 panel:
@@ -19096,6 +19133,11 @@ if (!shortcut.Start("Super+V", [this]() {
 the combination cannot be read, when another program already holds it, and on
 a platform without global shortcuts. `Stop()` joins the thread, so no
 callback runs after it returns; `IsRunning()`.
+
+The callback runs when the combination's key is **let go**, once however long
+it is held. While the key is down the shortcut's grab holds the keyboard, and a
+window opened and focused in that time could lose the focus again when the
+grab ended; a window opened on release keeps it.
 
 ## Backends
 
@@ -30613,7 +30655,11 @@ them without linking UltraCanvas.
 Who uses it today: the eBook viewer and the EPUB, FB2 and MOBI engines
 (`HTML::ElementBuilder`), UltraMail's message pane (`HTML::ElementBuilder`),
 UltraMail's composer, replies and signatures (`ImportHTMLToRichDocument`),
-UltraMail's header decoding (`HTML::DecodeEntities`), and, from its pull
+a rich paste into `UltraCanvasRichTextEdit` (`UCRichDocument::FromHTML`, on
+the same importer), UltraMail's header decoding (`HTML::DecodeEntities`), its
+scam check (the parsed page's links and pictures, `HTML::ExtractPlainText`)
+and plain-text view (`PlainTextLayout::Lines`), EmailCleaner's matching, the
+Filer's `.html` preview and UltraCloud's WebDAV client, and, from its pull
 request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
 `<style>` sheets; its own copy of the selector matcher is to become a Traits
 type for the shared one, below). UltraWeb's page reader
@@ -30907,11 +30953,21 @@ so that a third reader does not build it a third time.
 read HTML through the same parser and cascade and produce a `UCRichDocument`
 for `UltraCanvasRichTextEdit`: paragraphs, headings, lists, rules, the
 inline formats, links, colours, fonts and sizes, alignment and indents,
-`<blockquote>` as quote level, pictures (`data:` URIs decoded, others
-through `options.resolveImage`), and tables, with the one-column scaffolding
-tables of mail layouts unwrapped into the flow. See
-`UltraCanvasRichTextEdit.md` for the document model and
-`Tests/HTMLRichImportTest.cpp` for what is covered.
+`<blockquote>` as quote level, right-to-left paragraphs (`dir="rtl"` on the
+element or one around it), pictures (`data:` URIs decoded, others through
+`options.resolveImage`, else their alt text in brackets; a 1-2 px tracking
+pixel left out), and tables, with the one-column scaffolding tables of mail
+layouts unwrapped into the flow. See `UltraCanvasRichTextEdit.md` for the
+document model and `Tests/HTMLRichImportTest.cpp` for what is covered.
+
+Two options are for a paste rather than a mail, and are off by default:
+`preAsCodeBlock` makes a `<pre>` a code block (a mail's `<pre>` is mostly a
+quoted plain-text message, so there it stays monospaced lines of a
+paragraph), and `skipWordListLabels` leaves out the "1." or bullet Word types
+out in a `mso-list:Ignore` span before each list item (a browser shows them,
+so a mail keeps them). `UCRichDocument::FromHTML` - the editor's paste from
+another application - is the importer with both on, and a no-break space
+turned into a space.
 
 ```cpp
 HTMLRichImportOptions options;
@@ -30926,14 +30982,11 @@ UCRichDocument reply = ImportHTMLToRichDocument(message.htmlBody, options);
 
 ## What is still implemented elsewhere
 
-These sites predate the rule and are listed in
-`scripts/html_reuse_baseline.txt`; each is a replacement waiting to happen,
-and the check blocks new ones:
-
-| Site | Has its own | Replace with |
-|---|---|---|
-| `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
+Nothing: `scripts/html_reuse_baseline.txt` lists no site. The last ones -
+`UCRichDocument::FromHTML`'s tokenizer, entity table and CSS reader, and the
+Filer's tag-level line splitter for its `.html` preview - read through the
+importer and `PlainTextLayout::Lines` now. `scripts/check_html_reuse.py`
+blocks new ones.
 
 ## Limits
 
@@ -49206,10 +49259,14 @@ copy/paste **inside the application loses nothing** (between two documents the
 pictures come along; notes, comments and bookmarks stay behind).
 
 A paste from another application uses its HTML when it offers some
-(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
-tables, rules, links, inlined pictures and character formatting from tags and
-CSS, Word's list-number spans and conditional comments dropped), and its plain
-text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UCRichDocument::FromHTML`, which reads it through the HTMLReader's
+`ImportHTMLToRichDocument` - the page's style sheets and inline CSS through
+the same cascade a mail is shown with: paragraphs, headings, lists, quotes as
+a quote level, `<pre>` as a code block, tables, rules, links, right-to-left
+paragraphs, inlined pictures (a picture the clipboard only links to becomes
+its alt text) and character formatting; Word's typed-out list labels and
+conditional comments dropped, a no-break space pasted as a space), and its
+plain text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
 (`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
 converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
@@ -58401,6 +58458,12 @@ struct TextInputStyle {
     Color placeholderColor;
     Color selectionColor;
     Color caretColor;
+
+    // Disabled (SetDisabled(true)): Colors::ControlDisabled,
+    // ControlDisabledBorder and TextDisabled by default
+    Color disabledBackgroundColor;
+    Color disabledBorderColor;
+    Color disabledTextColor;
     
     // Validation colors
     Color validBorderColor;
@@ -58434,6 +58497,17 @@ struct TextInputStyle {
     float animationDuration;
 };
 ```
+
+The frame shows the field's state: `focusBorderColor` while it has the
+keyboard focus, `borderColor` otherwise. With `SetShowValidationState(true)`
+(the default) a validated field also draws `validBorderColor`,
+`invalidBorderColor` or `warningBorderColor` over the frame.
+
+A disabled field (`SetDisabled(true)`) recedes: it draws with
+`disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`
+instead of the normal face, border and text, hides the clear button (it would
+not answer the click), and takes no focus or keys. The `Outlined()` and
+`Underlined()` presets keep a transparent face when disabled.
 
 ### Predefined Styles
 
@@ -78725,7 +78799,11 @@ windows stop short of the bars instead of covering them.
   secret. The clipboard button, or `Super+V` from any window, opens the quick
   panel: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
-  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  Delete. What the program being pasted into takes comes first, under "For
+  <program>" and chosen - the newest images for a paint program, files for
+  a file manager, code and text for an editor - from its desktop entry's
+  categories and file types; the bar's button uses the window that had the
+  focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
   of it. Right-click the button for *Pause recording*, *Open UltraClipboard*

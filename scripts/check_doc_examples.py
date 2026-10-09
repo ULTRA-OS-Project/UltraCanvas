@@ -59,11 +59,12 @@ builds a precompiled header of all public headers in --work (about 1 min).
 
 Exit status 1 when a doc has findings.
 
-CI (.github/workflows/doc-examples.yml) checks every component doc - all of
-Docs/UltraCanvas/*.md but the changelog and the design documents (a name
-with Proposal, Plan or Investigation in it: their code is of APIs not
-written yet) - and fails only on findings that are not in
-scripts/doc_examples_baseline.txt, the ones that predate the check:
+CI (.github/workflows/doc-examples.yml) checks every doc - all of
+Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
+are not in scripts/doc_examples_baseline.txt. The component docs all pass;
+the design documents (a name with Proposal, Plan or Investigation in it)
+describe APIs not written yet, so their code is listed there until the API
+exists, and an entry that stops being found says the doc has caught up:
 
     python3 scripts/check_doc_examples.py --all --strict
     python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
@@ -72,6 +73,8 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.3.1 - --all covers the design documents too; their findings
+#                 are baselined until their APIs exist
 # Version: 1.3.0 - a member of a header class defined out of line goes in
 #                 its namespace; a file-scope macro line is a definition; a
 #                 listing may be in a top-level namespace the headers define;
@@ -1428,30 +1431,35 @@ class Doc:
 
 
 BASELINE = ROOT / "scripts" / "doc_examples_baseline.txt"
+# A design document: a Proposal, Plan or Investigation describes an API that
+# is not written yet, so its code cannot compile until it is.
 DESIGN_DOC = re.compile(r"Proposal|Plan|Investigation")
 BASELINE_HEADER = """\
-# Findings of scripts/check_doc_examples.py --all that predate its CI check
-# (.github/workflows/doc-examples.yml), so CI can block *new* ones while
-# these are worked off. Each line is <doc>::<message>; a message that occurs
-# twice in a doc is listed twice.
+# Findings of scripts/check_doc_examples.py --all that the CI check
+# (.github/workflows/doc-examples.yml) lets through, so it can block *new*
+# ones. Each line is <doc>::<message>; a message that occurs twice in a doc
+# is listed twice.
 #
-# These are debt, not exceptions: each is a snippet that would not compile,
-# or a function, field or signature the headers do not have. Do not add to
-# this file to let a new finding through - fix the doc, or declare what its
-# snippets assume in a <!-- doc-check: ... --> comment. After fixing some,
-# rewrite it:
+# Every component doc passes: all the findings the check started with were
+# fixed by 2026-10-08, and a component doc must not reappear here - fix the
+# doc, or declare what its snippets assume in a <!-- doc-check: ... -->
+# comment.
+#
+# What is listed is the design documents (a name with Proposal, Plan or
+# Investigation in it): their code is of APIs not written yet, so it cannot
+# compile until it is. The entries are the record of what each proposal
+# still waits for. When an API is written, its entries stop being found and
+# the strict run says so; rewrite the file then, and the doc has caught up:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
-#
-# It is empty: every finding the check started with was fixed by
-# 2026-10-08. Keep it that way.
 """
 
 
 def component_docs():
-    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog and
-    the design documents, whose code is of APIs not written yet."""
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog. The
+    design documents are in, with their findings baselined; the changelog
+    is a record of what shipped, not a description of an API."""
     return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
-                  if p.name != "CHANGELOG.md" and not DESIGN_DOC.search(p.stem))
+                  if p.name != "CHANGELOG.md")
 
 
 def finding_key(doc, message):

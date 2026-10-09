@@ -442,6 +442,30 @@ TEST(image_hosts_are_read_from_src_and_background) {
         "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
         "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
     REQUIRE(hosts.size() == 3);
+    REQUIRE_EQ(hosts[0], std::string("a.example"));
+    REQUIRE_EQ(hosts[1], std::string("b.example"));
+    REQUIRE_EQ(hosts[2], std::string("c.example"));
+}
+
+TEST(image_hosts_come_from_the_pages_css_as_it_applies) {
+    // A <style> rule that dresses an element in a picture counts; a url() of a
+    // font, of a rule that matches nothing, or in a comment, a script or the
+    // text does not.
+    const auto hosts = ExtractImageHosts(
+        "<html><head><style>"
+        "@font-face { font-family: Brand; src: url(https://fonts.example/brand.woff2); }"
+        ".hero { background-image: url('https://brand.example/hero.jpg'); }"
+        ".unused { background: url(https://nowhere.example/x.png); }"
+        "</style></head><body>"
+        "<div class=\"hero\">Welcome</div>"
+        "<!-- <img src=\"https://comment.example/a.png\"> -->"
+        "<script>var s = 'src=\"https://script.example/b.png\"';</script>"
+        "<p>Paste src=https://text.example/c.png into the box.</p>"
+        "<input type=\"image\" src=\"https://button.example/go.png\">"
+        "</body></html>");
+    REQUIRE(hosts.size() == 2);
+    REQUIRE_EQ(hosts[0], std::string("brand.example"));
+    REQUIRE_EQ(hosts[1], std::string("button.example"));
 }
 
 TEST(plain_link_at_finds_the_url_under_a_position) {

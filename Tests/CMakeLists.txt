@@ -1038,8 +1038,9 @@ endif()
 # ===== HTMLREADER CORE OBJECTS =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent: std C++
 # plus Trim() from UltraCanvasTextUtils.cpp, which is platform-free too. The
-# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest)
-# link these objects instead of each listing the sources again, so the files
+# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest, and
+# the ones that compile UCRichDocument, whose FromHTML reads through the
+# importer) link these objects instead of each listing the sources again, so the files
 # compile once and a new HTMLReader source is added in one place.
 add_library(HTMLReaderTestCore OBJECT
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
@@ -1164,9 +1165,11 @@ if(TINYXML2_TEST_FOUND)
         # UCWordDocumentIO dispatches .tex to the LaTeX document reader
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
-        # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
-        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
+        # UCRichDocument::FromHTML reads through the HTMLReader's importer;
+        # HTMLReaderTestCore brings the parser, the cascade and Trim().
+        ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
+    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore)
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         # the module's internal helpers (symbol-font mapping) are tested too
@@ -1227,8 +1230,11 @@ add_executable(RichTextEditorTest
     ${CMAKE_CURRENT_SOURCE_DIR}/RichTextEditorTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
-    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+    # A rich paste (UCRichDocument::FromHTML) reads through the HTMLReader's
+    # importer, on the HTMLReaderTestCore objects.
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
 )
+target_link_libraries(RichTextEditorTest PRIVATE HTMLReaderTestCore)
 target_include_directories(RichTextEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(RichTextEditorTest PRIVATE cxx_std_20)
 set_target_properties(RichTextEditorTest PROPERTIES
@@ -1279,8 +1285,10 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
-        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+        # UCRichDocument::FromHTML reads through the HTMLReader's importer.
+        ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
+    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore)
     target_include_directories(LaTeXDocumentTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
@@ -3810,6 +3818,50 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TextAreaDetachedTest")
 else()
     message(STATUS "  TextAreaDetachedTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== CLIPBOARD TARGETS TEST =====
+# Every format another program offers is seen: the X11 backend read a
+# TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
+# Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building ClipboardTargetsTest...")
+    add_executable(ClipboardTargetsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
+    )
+    target_include_directories(ClipboardTargetsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardTargetsTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardTargetsTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardTargetsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardTargetsTest COMMAND ClipboardTargetsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardTargetsTest")
+else()
+    message(STATUS "  ClipboardTargetsTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
+# ===== CLIPBOARD INCR TEST =====
+# A copy too large for one X request travels in pieces (ICCCM INCR), both
+# ways; checked against xclip as well when it is installed. Skips without
+# DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building ClipboardIncrTest...")
+    add_executable(ClipboardIncrTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
+    )
+    target_include_directories(ClipboardIncrTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardIncrTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardIncrTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardIncrTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardIncrTest COMMAND ClipboardIncrTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardIncrTest")
+else()
+    message(STATUS "  ClipboardIncrTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
 # ===== DIALOG ESCAPE TEST =====

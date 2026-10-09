@@ -27,10 +27,20 @@
 //
 // Chat view:
 //
-//   | Model [Default v]  Permissions [Ask v]  Folder [....] [...]  [New chat] [Log out] |
-//   | transcript (markdown, read-only, follows the reply)                                |
+//   | Chats      [New chat] | Model [Default v]  Permissions [Ask v]  Folder [....] [...] [Log out] |
+//   | > Fix the build       | transcript (markdown, read-only, follows the reply)                    |
+//   |   Explain parser.cpp  |                                                                        |
+//   | [Delete chat]         |                                                                        |
 //   | [ Message Claude... (several lines; Enter sends, Shift+Enter breaks) ] [Send]      |
 //   | status line                                                                        |
+//
+//   The list on the left is every chat UltraClaude remembers (ChatStore),
+//   newest first. The first prompt of a new chat adds it, titled by that
+//   prompt; every finished turn saves the transcript and moves the chat to
+//   the top. Picking a chat shows its transcript again and resumes its CLI
+//   session, in its own folder - the CLI keeps sessions per folder, so a
+//   chat's folder is fixed once the chat exists. Switching waits until
+//   Claude has finished answering.
 //
 //   Each prompt runs the CLI through ClaudeChatSession. Its events arrive on
 //   the process's reader thread; they are queued and applied on the UI thread
@@ -41,6 +51,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatStore.h"
 #include "ClaudeChatSession.h"
 
 #include "UltraCanvasTimer.h"
@@ -58,6 +69,8 @@ namespace UltraCanvas {
     class UltraCanvasContainer;
     class UltraCanvasDropdown;
     class UltraCanvasLabel;
+    class UltraCanvasListView;
+    class UltraCanvasSimpleListModel;
     class UltraCanvasTextArea;
     class UltraCanvasTextInput;
 }
@@ -102,6 +115,19 @@ private:
     void SendCurrentPrompt();
     void StopAnswer();
     void NewChat();
+    void DeleteCurrentChat();
+
+    // ----- chat list -----
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildChatSidebar();
+    void LoadChats();
+    // Rebuilds the list from the store and selects the current chat.
+    void RefreshChatList();
+    void OpenChat(const std::string& chatId);
+    // Writes the current chat's transcript and the store, and moves the chat
+    // to the top.
+    void SaveCurrentChat();
+    // A chat that exists keeps its folder: the field and Browse are locked.
+    void SetFolderLocked(bool locked);
     void BrowseFolder();
     void SetBusy(bool busy);
     void SetStatus(const std::string& text);
@@ -149,7 +175,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> prompt_;   // several lines
     std::shared_ptr<UltraCanvas::UltraCanvasButton> send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> browse_;
     bool busy_ = false;
+    bool folderLocked_ = false;
+
+    // chat list
+    ChatStore chats_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> chatList_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSimpleListModel> chatModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> deleteChat_;
+    std::string currentChatId_;        // empty: a new chat, not in the list yet
+    bool fillingChatList_ = false;     // the list is being rebuilt, not clicked
     bool claudeSectionOpen_ = false;   // "**Claude**" written for this turn
     size_t toolCalls_ = 0;             // tool calls in this turn
     size_t trailingBreaks_ = 0;        // line breaks the transcript ends with

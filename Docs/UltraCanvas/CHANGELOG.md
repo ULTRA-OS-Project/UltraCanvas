@@ -1,3 +1,232 @@
+#### 2026-10-09 *0.9.219*
+- **The design documents are checked too.** `--all` first left out the
+  Proposal / Plan / Investigation docs, whose code is of APIs not written
+  yet. They are in now, with their findings baselined (one `<doc>::<message>`
+  line each): the file is the record of what each proposal still waits
+  for, and when an API is written its entries stop being found and the
+  strict run says so. The component docs stay at zero; only the changelog
+  is left out, being a record of what shipped rather than a description
+  of an API.
+
+#### 2026-10-09 *0.9.218*
+- **A rich paste reads the clipboard's HTML through the HTMLReader.**
+  `UCRichDocument::FromHTML` - what `UltraCanvasRichTextEdit` pastes from a
+  browser, Word or LibreOffice - had its own tokenizer, a table of 55
+  entities and its own `style=""` reader. It now calls
+  `ImportHTMLToRichDocument`, the importer UltraMail's composer already uses,
+  so a paste reads like the page it was copied from:
+  - the page's `<style>` sheets apply, through the same cascade a mail is
+    shown with (a class colour, Word's fonts and sizes), and paragraphs keep
+    the spacing their CSS gives them;
+  - every HTML entity is decoded, not only the 55;
+  - a `<blockquote>` is a quote level, so a quoted list, heading or table
+    stays what it is (it was one quote paragraph);
+  - a picture the clipboard only links to is pasted as its alt text in
+    brackets, and a 1-2 px tracking pixel is left out.
+  As before, `<pre>` is a code block, Word's typed-out list labels are left
+  out, a no-break space is pasted as a space, and `dir="rtl"` makes a
+  right-to-left paragraph.
+- **`ImportHTMLToRichDocument` reads `dir="rtl"`**, on a paragraph or any
+  element around it, into right-to-left paragraphs - a reply to an Arabic or
+  Hebrew mail keeps its direction. Two options serve a paste and are off for
+  a mail: `preAsCodeBlock` (a `<pre>` as a code block; a mail's `<pre>` is
+  mostly quoted plain text) and `skipWordListLabels` (the "1." Word types out
+  in a `mso-list:Ignore` span; a browser shows it, so a mail keeps it).
+- **The Filer's preview of an `.html` file is the page as a browser lays it
+  out** (`HTML::ExtractPlainText`, `PlainTextLayout::Lines`): a line per
+  paragraph, list item and table row. Its own tag-level splitter showed the
+  `<title>` and a mail's hidden preheader as page text, dropped the list
+  markers and ran a table row's cells together ("NamePrice").
+  `UltraCanvasFilerWidget::TextPreviewLines` (static) gives the lines a
+  document's preview page shows.
+- **Nothing in the repository reads HTML, CSS or entities on its own any
+  more**: `scripts/html_reuse_baseline.txt` is empty.
+
+#### 2026-10-09 *0.9.217*
+- **Knowing what a program takes when something is pasted into it.**
+  UltraDesktop's clipboard panel now puts first what the window under
+  Super+V takes - images for a paint program, files for a file manager, code
+  for an editor - and the pieces it is built from are the framework's:
+  - `UCDesktopEntry` reads `Categories=` (`categories`) and
+    `StartupWMClass=` (`startupWMClass`).
+  - `UltraCanvasDesktopShell::MatchApplication(window, applications)` finds
+    a window's desktop entry: its `StartupWMClass` first, then the program,
+    icon or name its `WM_CLASS` spells, case aside (`Gimp-2.10` is
+    `gimp-2.10`'s).
+  - `PreferredClipboardKinds(categories, mimeTypes)` turns an entry into the
+    kinds of clipboard entry it takes, most wanted first; empty when nothing
+    says.
+  - `ClipboardHistoryQuery::newestFirst` lists by last use, pins aside -
+    "the last image copied", which UltraPaint's Paste now offers when the
+    clipboard holds no picture.
+  - `ClipboardHistoryListModel::SetEntries` takes a `LeadSection`: the first
+    entries under a title of the caller's, above the usual sections.
+- **A copy too large for one X request travels in pieces, both ways (X11).**
+  ICCCM's INCR transfer: the owner answers with an `INCR` marker and writes
+  the copy piece by piece, each once the requestor has deleted the one
+  before, and an empty piece ends it. The X11 clipboard did neither half.
+  A large picture copied in GIMP or a browser was read back as the marker's
+  few bytes. A large copy made here went out in one request, which an X
+  server refuses when the request exceeds its largest: 256 KB without the
+  BIG-REQUESTS extension, 16 MB with it on Xvfb.
+  - Reading follows the pieces to the end. Each piece has 3 seconds to
+    arrive, and a copy may be up to 128 MB (up from 10 MB). A larger one is
+    refused rather than cut short: one too large for a single property used
+    to come back silently truncated.
+  - A copy larger than 256 KB is served in 256 KB pieces, as GTK and Qt do.
+    A requestor that stops taking pieces is given up on after 10 seconds.
+    The application's event loop passes the requestor's property changes to
+    the clipboard (`ProcessClipboardPropertyEvent`).
+  - While it waits for an answer, the clipboard takes only its own events
+    off the X queue. It used to discard every other event that arrived in
+    the meantime - a key press, an expose, a window's message.
+  - A late notice of losing the clipboard, handled after the clipboard was
+    taken back, no longer clears the copy made since.
+  - `Tests/ClipboardIncrTest.cpp` checks both directions against a second
+    X connection written from the ICCCM, and against `xclip` when it is
+    installed.
+- **Every format another program offers on the clipboard is seen (X11).**
+  Xlib returns a format-32 property, the `TARGETS` list among them, as an
+  array of C `long`s - 8 bytes each on a 64-bit system - and the X11
+  clipboard copied it at 4 bytes an item, so `GetAvailableFormats()` and
+  `IsFormatAvailable()` saw only the first half of the list. A program that
+  offered its image or text type late in the list looked as if it offered
+  nothing usable: UltraFiler's Paste stayed off, for one. The copy now uses
+  the size Xlib hands back. `Tests/ClipboardTargetsTest.cpp` offers eight
+  formats from a second X connection and checks all eight are seen.
+- **A window opened by a global shortcut keeps the focus (X11).**
+  `UltraCanvasGlobalShortcut` fired on the key press, while its passive grab
+  still held the keyboard; a window it opened took the focus during the grab
+  and the grab's end handed it focus events the window manager followed by
+  giving the focus back - UltraDesktop's clipboard panel, which closes when
+  it loses the focus, shut again at once about one Super+V in two.
+  - The shortcut now fires when its key is released, and asks for
+    detectable auto-repeat, so a held combination fires once.
+  - The X11 event loop drops `FocusIn` / `FocusOut` whose mode is
+    `NotifyGrab` or `NotifyUngrab`: a keyboard grab starting or ending (a
+    shortcut held, a window manager's key binding) does not take the focus
+    from a window. A real change during a grab still arrives
+    (`NotifyWhileGrabbed`).
+
+#### 2026-10-09 *0.9.216*
+- **CI: the Android backend check has a time limit of its own.** The job
+  had none, so anything that hung in it ran into GitHub's six-hour default:
+  on 2026-10-07 a stalled `apt-get` held a pull request's checks for five
+  hours. The apt step has since been given a watchdog and a 20-minute limit
+  (`scripts/ci-apt.sh`); the job as a whole now stops after 30 minutes, which
+  covers its other three steps too (the job normally takes 75 seconds).
+- **CI: the caches move off Node.js 20.** `actions/cache@v4` (the ccache and
+  macOS vcpkg caches in the Build workflow, the sysroot cache in the
+  WebAssembly one) targets Node.js 20, which GitHub's runners no longer run:
+  every Build leg ended with "Node.js 20 is deprecated … being forced to run
+  on Node.js 24: actions/cache@v4". It is `actions/cache@v5` now, the Node.js
+  24 release; the inputs and outputs the workflows use are unchanged. The
+  WebAssembly workflow's `actions/upload-artifact@v4` moves to v6, the version
+  the Build workflow already uses.
+- **CI: the WebAssembly workflow installs Emscripten with emsdk itself.**
+  `mymindstorm/setup-emsdk@v14` targets Node.js 20 too, and every run of
+  the workflow carried the same warning for it. The step now clones emsdk
+  and runs `emsdk install` and `emsdk activate` for the requested version,
+  then hands the later steps the same `PATH`, `EMSDK` and `EMSDK_NODE` the
+  action did. The toolchain is no longer cached; it downloads in a minute or
+  two on a job that only runs when started by hand.
+- **`ULTRACANVAS_DEVICE_BACKENDS` chooses which device backends are
+  searched.** A comma-separated list of backend names (`eSCL,IPP`; case
+  ignored). When it is set, `IODeviceManager::EnumerateDevices()` runs only
+  those. That leaves out a backend that is slow and finds nothing wanted,
+  such as SANE probing every port it knows of when only network scanners are
+  used. A category none of whose backends is named is reported as an error,
+  as one with no backend is, and its devices are left as they were rather
+  than dropped. `IODeviceScannerESCLLiveTest` sets it to `eSCL`, which brings
+  the test from 5 seconds or more down to under 2. Tested in
+  `IODeviceManagerTest`.
+- **Trust on first use is tested on macOS and Windows TLS as well as
+  Linux.** `IODeviceScannerESCLLiveTest` was Linux-only, so the device trust
+  had only been run on libcurl over OpenSSL. It now builds on Windows too,
+  starting its scanner and `openssl` there through `CreateProcessW` and
+  making its certificates from a configuration file of its own. The new
+  `ULTRACANVAS_BUILD_DEVICE_TLS_TESTS` builds it without the full test
+  suite, and the macOS rows (Apple's system libcurl) and Windows rows
+  (Schannel, MSYS2's `curl-winssl`) run it with a skip treated as a failure.
+  CMake now finds Python 3 and `openssl` and passes them to the test.
+- **A disabled `UltraCanvasTextInput` now looks disabled.** It drew exactly as
+  an enabled one - white face, the normal border, black text - so a field
+  that could not be typed into gave no sign of it (UltraClaude's locked
+  folder field looked editable). `TextInputStyle` gains
+  `disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`,
+  defaulting to the framework's `Colors::ControlDisabled`,
+  `ControlDisabledBorder` and `TextDisabled`, and a disabled field draws with
+  them and hides its clear button. The `Outlined()` and `Underlined()`
+  presets keep their transparent face. Documented in
+  `UltraCanvasTextInputExamples.md`.
+- **Trusting a scanner on first use is tested on every Linux CI run.** The new
+  `IODeviceScannerESCLLiveTest` scans over `https://` from a scanner the test
+  starts itself, `Tests/IODeviceScannerESCLLiveScanner.py`. There is no
+  reference eSCL scanner to run the way `ippeveprinter` is run for IPP, so
+  this one answers the four eSCL calls over TLS only, with self-signed
+  certificates the test makes with `openssl`, and logs every request it gets.
+  The test checks that:
+  - first contact sends nothing but a bare `HEAD /` before the scanner's key
+    is known;
+  - the key kept is the one in its certificate, under the make and model the
+    scanner reports;
+  - a feeder run, a flatbed page and a grey page are scanned over the pinned
+    connection;
+  - the scanner restarted with a different certificate is refused before any
+    request reaches it, and the key kept is not replaced;
+  - forgetting the key lets the new one be learned;
+  - with learning switched off, the scanner is refused.
+
+  CI's Linux rows set `ULTRACANVAS_TEST_ESCL_REQUIRED`, so a skip (no
+  Python 3 or `openssl`) fails the run. The keys go to a file of the test's
+  own, never the user's.
+- **The SDKs are release assets, and the Windows and macOS bundles are
+  smaller.** `.github/workflows/build.yml` gains `publish-sdk`: every release
+  build of `main` (the dispatch `changelog-fold.yml` sends for its version
+  commit) creates the GitHub release `v<version>`, with the version's
+  changelog section as its notes, and attaches the six
+  `UltraCanvas-SDK-<OS>-<version>-<arch>` archives, so
+  `releases/download/v<version>/<archive>` is a fixed address anyone can
+  fetch (`Docs/UltraCanvasSDK.md`). `scripts/sdk-bundle-deps.sh` now tells
+  the public pkg-config closure (`Requires`) from the packages reached only
+  through `Requires.private`: the former come whole, the latter contribute
+  their `.pc` files alone, and a static archive with a DLL or dylib twin is
+  left out; the run-time DLLs still come from the core's import-table walk.
+- **A focused `UltraCanvasTextInput` shows its focus border again.**
+  `Render` computed the frame colour from the state and then drew
+  `style.borderColor` regardless, so `focusBorderColor` never appeared: a
+  field with the keyboard looked like every other one, unlike the dropdown,
+  spinner, pickers and chip, and the focus colours UltraFiler's rename field
+  and UltraDesktop's clipboard search set had no effect. The frame now takes
+  the disabled border, `focusBorderColor` while focused, or `borderColor`;
+  validation still draws its own coloured border over it. The unused
+  private `GetBorderColor()` is gone.
+- **CI: the WebAssembly build names its Emscripten version.** The workflow
+  installed `latest` unless told otherwise, so the compiler moved to every
+  new emsdk release, a new major one included, while the cached sysroot,
+  keyed on the word `latest`, stayed built by whichever release came first.
+  It installs 6.0.11 now, the newest release of the 6.0 line the backend was
+  validated with, and `UltraCanvas/OS/WASM/README.md` names the same
+  version; a run can still ask for another one.
+- **CI: the WebAssembly build's glib gets the meson it needs.** The
+  workflow installed meson from Ubuntu 24.04 (1.3.2), and the sysroot's glib
+  (`wasm-vips-2.89.3`) refuses anything older than 1.4, so the first run of
+  the workflow stopped in `meson setup` for glib. It installs meson 1.12.1
+  from PyPI now, and `build-wasm-sysroot.sh` names the 1.4 floor among its
+  requirements.
+- **CI: the WebAssembly demo finds the sysroot's libraries.** CMake runs
+  the host's `pkg-config`, and `emcmake` does not pass it
+  `EM_PKG_CONFIG_PATH`, so the demo's configure step looked for cairo on the
+  host and failed after the whole sysroot had built. The step puts the
+  sysroot on `PKG_CONFIG_PATH` and `PKG_CONFIG_LIBDIR`, as
+  `build-wasm-sysroot.sh` already does, and the README and the demo's
+  `CMakeLists.txt` give the same two exports. The sysroot is cached as soon
+  as it is built rather than only when the whole job passes, so a failure
+  in the demo no longer costs the next run a 20-minute rebuild.
+- **CI: the WebAssembly demo builds with one job per core.** A bare
+  `cmake --build --parallel` is `make -j` without a limit, and the demo's
+  build ran out of memory with hundreds of compilers at once.
+
 #### 2026-10-09 *0.9.215*
 - **The Windows CI legs survive a slow MSYS2 mirror.** The setup action did
   the package database sync, the upgrade and the install itself, with no
