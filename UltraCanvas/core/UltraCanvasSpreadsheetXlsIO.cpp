@@ -18,6 +18,7 @@
 #include "UltraCanvasSpreadsheetFormula.h"
 #include "UltraCanvasSpreadsheetXls.h"
 
+#include <cmath>
 #include <functional>
 #include <map>
 #include <memory>
@@ -33,6 +34,8 @@ constexpr double kPixelsPerWidthChar = 7.0;
 constexpr double kPixelsPerPoint = 1.33;
 // Excel's 1900 and 1904 date systems differ by this many days.
 constexpr double kDays1904 = 1462.0;
+// The serial after 9999-12-31, the last day Excel dates.
+constexpr double kLastExcelSerial = 2958466.0;
 
 FillPattern FillPatternFor(int biffPattern) {
     switch (biffPattern) {
@@ -227,6 +230,16 @@ private:
     double Serial(double value) const { return wb_.date1904 ? value + kDays1904 : value; }
 
     void SetTypedNumber(SpreadsheetCell* cell, double value, NumberFormatCategory category) const {
+        // A date is a serial from 0 to Excel's last day, 9999-12-31; anything
+        // else under a date format (a damaged file, a huge or negative
+        // number) stays the number it is.
+        const bool dateLike = category == NumberFormatCategory::Date ||
+                              category == NumberFormatCategory::DateTime ||
+                              category == NumberFormatCategory::Time;
+        if (dateLike && !(std::isfinite(value) && Serial(value) >= 0.0 &&
+                          Serial(value) < kLastExcelSerial)) {
+            category = NumberFormatCategory::General;
+        }
         switch (category) {
             case NumberFormatCategory::Date: {
                 int y, m, d;

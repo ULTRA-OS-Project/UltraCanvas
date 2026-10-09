@@ -461,6 +461,20 @@ bool QuotedSheet(const std::string& name, std::string& out) {
     return true;
 }
 
+// A defined name the engine's tokenizer reads as one identifier: a letter or
+// '_', then letters, digits, '_' and '.'. Anything else in a formula - a '#'
+// above all, which the tokenizer cannot step past - is not emitted.
+bool PlainName(const std::string& name) {
+    if (name.empty()) return false;
+    const unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!std::isalpha(first) && first != '_') return false;
+    for (char c : name) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (u >= 0x80 || (!std::isalnum(u) && c != '_' && c != '.')) return false;
+    }
+    return true;
+}
+
 // The shortest dot-decimal text that reads back as exactly `value`.
 std::string NumberLiteral(double value) {
     for (int precision = 15; precision <= 17; ++precision) {
@@ -1339,7 +1353,7 @@ private:
                     const int model = nameModelIndex_[static_cast<size_t>(nameIndex)];
                     if (model < 0) return false;
                     const XlsDefinedName& n = wb_.names[static_cast<size_t>(model)];
-                    if (n.builtIn || n.refSheet < 0) return false;
+                    if (n.builtIn || n.refSheet < 0 || !PlainName(n.name)) return false;
                     Operand o;
                     o.text = n.name;
                     stack.push_back(std::move(o));
@@ -1608,7 +1622,8 @@ bool ReadHtmlWorkbook(const std::string& html, XlsWorkbook& out, const XlsReadOp
                 cell.text = text;
             }
             if (cell.type != XlsValueType::Empty) KeepWithin(sheet, opt, std::move(cell));
-            if (colspan > 1 || rowspan > 1) {
+            // A page of absurd spans cannot make the read take unbounded memory.
+            if ((colspan > 1 || rowspan > 1) && covered.size() < 1000000) {
                 sheet.merges.push_back({row, col, row + rowspan - 1, col + colspan - 1});
                 for (int r = row; r < row + rowspan; ++r) {
                     for (int c = col; c < col + colspan; ++c) {
@@ -2059,15 +2074,20 @@ bool ReadXmlSpreadsheet(const std::string& xml, XlsWorkbook& out, const XlsReadO
         collectNames(XChild(ws, "Names"), static_cast<int>(out.sheets.size()));
         const tinyxml2::XMLElement* table = XChild(ws, "Table");
         if (table) {
+            // Indices beyond Excel's grid (1,048,576 rows, 16,384 columns)
+            // end the read: they can only come from a damaged file.
+            constexpr long kMaxRow = 1048575, kMaxCol = 16383;
             int col = 0;
             for (const tinyxml2::XMLElement* e = table->FirstChildElement(); e; e = e->NextSiblingElement()) {
                 if (!IsNamed(e, "Column")) continue;
-                col = static_cast<int>(XInt(e, "Index", col + 1)) - 1;
+                const long index = XInt(e, "Index", col + 1L) - 1;
+                if (index < 0 || index > kMaxCol) break;
+                col = static_cast<int>(index);
                 const int span = static_cast<int>(std::clamp(XInt(e, "Span", 0), 0L, 16383L));
                 XlsColumnInfo info;
                 info.firstColumn = col;
                 info.lastColumn = col + span;
-                const double widthPoints = XDouble(e, "Width", 0.0);
+                const double widthPoints = std::clamp(XDouble(e, "Width", 0.0), 0.0, 1400.0);
                 info.widthChars = widthPoints * 1.33 / 7.0;
                 info.customWidth = widthPoints > 0 && !XBool(e, "AutoFitWidth");
                 info.hidden = XBool(e, "Hidden");
@@ -2077,10 +2097,12 @@ bool ReadXmlSpreadsheet(const std::string& xml, XlsWorkbook& out, const XlsReadO
             int row = -1;
             for (const tinyxml2::XMLElement* r = table->FirstChildElement(); r; r = r->NextSiblingElement()) {
                 if (!IsNamed(r, "Row")) continue;
-                row = static_cast<int>(XInt(r, "Index", row + 2)) - 1;
+                const long rowIndex = XInt(r, "Index", row + 2L) - 1;
+                if (rowIndex < 0 || rowIndex > kMaxRow) break;
+                row = static_cast<int>(rowIndex);
                 if (opt.maxRows >= 0 && row >= opt.maxRows) break;
                 const int rowSpan = static_cast<int>(std::clamp(XInt(r, "Span", 0), 0L, 65535L));
-                const double height = XDouble(r, "Height", 0.0);
+                const double height = std::clamp(XDouble(r, "Height", 0.0), 0.0, 1640.0);
                 const char* autoFit = XAttr(r, "AutoFitHeight");
                 const bool customHeight = height > 0 && autoFit &&
                                           (std::strcmp(autoFit, "0") == 0 ||
@@ -2094,7 +2116,9 @@ bool ReadXmlSpreadsheet(const std::string& xml, XlsWorkbook& out, const XlsReadO
                 for (const tinyxml2::XMLElement* ce = r->FirstChildElement(); ce;
                      ce = ce->NextSiblingElement()) {
                     if (!IsNamed(ce, "Cell")) continue;
-                    c = static_cast<int>(XInt(ce, "Index", c + 2)) - 1;
+                    const long cellIndex = XInt(ce, "Index", c + 2L) - 1;
+                    if (cellIndex < 0 || cellIndex > kMaxCol) break;
+                    c = static_cast<int>(cellIndex);
                     XlsCell cell;
                     cell.row = row;
                     cell.col = c;
