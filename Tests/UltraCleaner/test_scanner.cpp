@@ -244,3 +244,35 @@ TEST(ScannerStopsWhenCancelled) {
                      [&](const ScanProgress&) { scanner.RequestCancel(); });
     REQUIRE(report.cancelled);
 }
+
+TEST(ScannerReportsNoBlockedLocationsWhenNothingRefuses) {
+    TempTree tree;
+    const std::string cache = tree.Dir("cache");
+    tree.File("cache/a.bin", 10);
+
+    Scanner scanner;
+    const ScanReport report = scanner.Scan(
+        { ContentsRule(cache), ContentsRule("/no/such/directory/anywhere") });
+    REQUIRE_EQ(report.blockedPaths, static_cast<size_t>(0));
+    REQUIRE(report.blockedRules.empty());
+    REQUIRE(BlockedAccessAdvice(report).empty());
+}
+
+TEST(BlockedAccessAdviceNamesTheCountAndTheRules) {
+    ScanReport report;
+    report.blockedPaths = 3;
+    report.blockedRules = { "Sandboxed application cache", "Safari cache" };
+
+    const std::string advice = BlockedAccessAdvice(report);
+    REQUIRE(advice.find("3 locations") != std::string::npos);
+    REQUIRE(advice.find("Sandboxed application cache, Safari cache") != std::string::npos);
+
+    report.blockedPaths = 1;
+    REQUIRE(BlockedAccessAdvice(report).find("1 location ") != std::string::npos);
+
+    // Only macOS has a settings page that lets the cleaner in, and only there
+    // does the advice send the user to it.
+    const bool macOS = CurrentPlatform() == CleanerPlatform::MacOS;
+    REQUIRE_EQ(advice.find("Full Disk Access") != std::string::npos, macOS);
+    REQUIRE_EQ(BlockedAccessSettingsUrl().empty(), !macOS);
+}

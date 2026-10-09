@@ -204,6 +204,33 @@ costs the user something they may not expect — emptying the trash, dropping
 a Maven repository, sweeping old installers out of Downloads — arrive
 unticked and have to be chosen deliberately.
 
+### Locations macOS keeps out of reach
+
+macOS refuses some locations to an app until the user grants it **Full Disk
+Access**: privacy-protected data such as Safari's, and from macOS 27 every
+other developer's app container. macOS 14 to 26 asked once ("would like to access data from other
+apps"). macOS 27 refuses without asking, so the *Sandboxed application cache*
+rule (`~/Library/Containers/*/Data/Library/Caches`) found nothing on it and
+said nothing.
+
+The scanner now counts such a refusal apart from an ordinary unreadable
+folder. An ordinary one is the folder's own permissions (`EACCES`). A
+refusal is the system's "operation not permitted" (`EPERM`, see
+`IsSystemRefusal`). The count lands in `ScanReport::blockedPaths`, and the
+rules that met one in `blockedRules`. It catches a refusal in two places:
+
+- a directory the wildcard expansion could not even look at; and
+- a root the system will not list, probed with `IsRefusedBySystem` before
+  the rule walks it.
+
+`BlockedAccessAdvice()` turns the count into one message, which the status
+line and `--scan` both print: how many locations were refused, which rules
+they belong to and, on macOS, where to turn on Full Disk Access. When
+UltraCleaner is started from Terminal, macOS holds Terminal responsible, so
+it is Terminal that needs the grant. The window also asks once a session
+whether to open that settings page (`BlockedAccessSettingsUrl()`). macOS
+applies the grant from the next launch.
+
 ### The command line
 
 The same engine, no display needed:
@@ -364,8 +391,10 @@ RemovalReport result = remover.Remove(report, options);
 | `CleanCategory`, `CategoryTitle`, `CategoryDescription`, `CategoryKey` | The grouping the UI shows |
 | `CleanItem`, `CategorySummary`, `ScanReport`, `SummarizeReport` | Scan results and their totals |
 | `FormatByteSize` | Decimal byte formatting shared by the GUI and the CLI |
+| `BlockedAccessAdvice`, `BlockedAccessSettingsUrl` | What to tell the user about locations the system refused, and the settings page that lifts it (macOS: Full Disk Access) |
 | `CleanRule`, `RuleMode`, `BuiltinRules`, `RulesForPlatform`, `FindRule` | The rule table |
 | `HomeDir`, `UserCacheDir`, … , `ExpandTokens`, `ExpandWildcardDirectories`, `GlobMatch`, `IsPathInside` | Platform paths and pattern matching |
+| `IsSystemRefusal`, `IsRefusedBySystem` | Telling the system's refusal (`EPERM`) from a folder's own permissions |
 | `PathGuard`, `SafetyCheck`, `SafetyVerdict`, `ProtectedPaths`, `IsProtectedPath` | The safety guard |
 | `Scanner`, `ScanOptions`, `ScanProgress` | Scanning, with progress and cancellation |
 | `Remover`, `RemovalMode`, `RemovalOptions`, `RemovalReport`, `MoveToPlatformTrash` | Removal |
