@@ -33,6 +33,7 @@
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 
+#include <algorithm>  // std::sort; libc++ no longer brings it in through <string>
 #include <cstdio>
 #include <cstring>
 #include <string>
