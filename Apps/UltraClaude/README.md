@@ -39,6 +39,14 @@ The list lives in the UltraCanvas settings folder, under `UltraClaude`
 (`chats.json` and one transcript file per chat); `UltraClaude --list-chats`
 prints it.
 
+Each chat in the list carries a badge with the lines its folder holds that
+the repository's default branch does not yet have - committed, uncommitted
+and new files together: in colour while there is work waiting to be PRed,
+a grey `0` once it is all in, nothing for a folder that is not a git
+repository. It is counted when the list opens, when you open a chat and
+after every answer. `UltraClaude --count-lines <folder>` prints the same
+number.
+
 In the chat view, pick the **Model**, the **Permissions** (what Claude may do
 in the folder without asking: *Ask* refuses tools that need permission,
 *Accept edits*, *Plan only*, *Allow everything*), and the **Folder** Claude
@@ -61,6 +69,8 @@ UltraClaude --print "Summarise README.md" --model sonnet --cwd ~/project
 | `engine/ClaudeStreamParser` | Turns the CLI's `stream-json` lines into chat events: text deltas, tool calls, tool errors, the turn's result. |
 | `engine/ClaudeChatSession` | Builds the command line, writes the prompt to stdin as a stream-json message, keeps the session id and resumes it (`--resume`) on the next prompt. |
 | `engine/ChatStore` | The remembered chats (id, CLI session id, title, folder, model, permission mode, times) and their transcripts, on disk. |
+| `engine/RepoStatus` | Counts a folder's lines not in its default branch (fetch, `git diff --numstat` against the merge base, untracked files), with git's prompts off and network timeouts. |
+| `ui/ChatListView` | The chat list's model and delegate: the title and the lines-not-PRed badge per row. |
 | `ui/UltraClaudeWindow` | The sign-in page and the chat view. Events from the reader thread are queued and applied on the UI thread by a timer. |
 
 Each prompt runs:
