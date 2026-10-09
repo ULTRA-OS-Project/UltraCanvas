@@ -774,6 +774,23 @@ UltraDbResult LocalStore::MarkVerdictsStale() {
         "UPDATE message_security SET scanned_at=0 WHERE level <> 'unscanned'", {});
 }
 
+UltraDbResult LocalStore::MarkSenderVerdictsStale(const std::string& entry) {
+    std::string e = entry;
+    std::transform(e.begin(), e.end(), e.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (e.empty()) return UltraDbResult::Ok();
+    const std::string stale =
+        "UPDATE message_security SET scanned_at=0 WHERE level <> 'unscanned' AND EXISTS ("
+        "  SELECT 1 FROM messages m WHERE m.account_id = message_security.account_id"
+        "  AND m.folder = message_security.folder AND m.uid = message_security.uid AND ";
+    if (e.front() != '@')
+        return UltraDb_Exec(connection_, stale + "lower(m.from_addr) = ?)", { e });
+    // Every address at the domain, or at a domain below it.
+    return UltraDb_Exec(connection_,
+        stale + "(lower(m.from_addr) LIKE ? OR lower(m.from_addr) LIKE ?))",
+        { "%" + e, "%." + e.substr(1) });
+}
+
 UltraDbResult LocalStore::ListStaleVerdicts(const std::string& accountId,
                                             const std::string& folder, int64_t rulesRevision,
                                             int limit, std::vector<int64_t>& uids) const {

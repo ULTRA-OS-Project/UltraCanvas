@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.3 - HandleSenderListChange, ApplySenderLists: the sender menu's
+//                   trusted and blocked senders saved, and their mail judged again
 // Version: 0.12.2 - FinishStartup: the window and the stored mail first, the
 //                   plug-ins, the vault and the first check after it is shown
 // Version: 0.12.1 - the timing trace: the stages of the start and of an
@@ -309,6 +311,13 @@ private:
     // clears \Seen. All non-blocking; failures surface an alert.
     void HandleDeleteMessage(const MessageEnvelope& env);
     void HandleJunkMessage(const MessageEnvelope& env);
+    // The sender menu's "Always trust this sender" / "Block this sender" /
+    // "Block everything from <domain>" and their undoing: the lists saved,
+    // and the sender's stored verdicts judged again.
+    void HandleSenderListChange(const std::string& entry, bool blockList, bool add);
+    // New lists in effect for the scan (Settings, or the menu): only the
+    // senders whose entry changed have their mail judged again.
+    void ApplySenderLists();
     void HandleMarkUnread(const MessageEnvelope& env);
     // Opening a message marks it read: updates the local store and the list row
     // immediately (optimistic), then pushes \Seen to the server in the

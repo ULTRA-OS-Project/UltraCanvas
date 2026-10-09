@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.1 - a blocked sender's mail: the strip says "You blocked this sender"
+//                   and how to undo it
 // Version: 0.18.0 - the sender's menu: a right-click on the sender's name or badge
 //                   offers copying the address, the sender's mail, the address
 //                   book and spam, above Copy and Select All (senderMenuItems)
@@ -1081,6 +1083,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                             security.HasFinding("crypto-payment-demand") ||
                             security.HasFinding("crypto-investment-lure");
     const bool crypto = cryptoScam || security.HasFinding("crypto-content");
+    // Blocked by the reader (the sender menu): marked as spam for that alone,
+    // or with the scan's own reasons beside it.
+    const bool blocked = security.HasFinding("blocked-sender");
+    const bool onlyBlocked = blocked && security.findings == "blocked-sender";
     const char* cryptoAdvice =
         "A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
         "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
@@ -1130,6 +1136,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                     what + "\xC2\xB2 email!"
          : status.cls == SenderClass::Scam
               ? std::string("This message looks like a scam or phishing attempt")
+         : blocked ? std::string("You blocked this sender")
               : std::string("Parts of this message do not add up")));
 
     std::string text;
@@ -1141,11 +1148,14 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         if (!mismatch.linkText.empty())
             text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
         text += "\n";
-    } else {
+    } else if (!onlyBlocked) {
         text = status.reason;
     }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
-    if (romance)
+    if (onlyBlocked)
+        text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
+                "message to the junk folder.";
+    else if (romance)
         text += "\nDo not send money, gift cards or crypto to someone you only know from "
                 "email or the internet, and do not sign up or give card details on a site "
                 "they send you to.";

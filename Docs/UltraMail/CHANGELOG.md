@@ -1,3 +1,35 @@
+#### 2026-10-09 *0.10.43*
+- **Trust or block a sender from their menu.** A right-click on a sender - a
+  row of the message list, or the name or badge above the message - now
+  offers *Always trust this sender*, *Block this sender* and *Block
+  everything from example.com* beside the address book and spam items, and
+  the same menu undoes each (*Stop trusting*, *Unblock*). The whole-domain
+  block is not offered for a mailbox provider such as gmail.com, which would
+  block everyone who writes from it.
+  - **Blocked:** the sender's mail is marked as spam (`blocked-sender`, 30
+    points - the orange frame), and the strip above the message says *"You
+    blocked this sender"* and how to undo it. Nothing is moved or deleted;
+    *Mark as spam* still moves a message to the junk folder. A blocked
+    domain blocks its subdomains too.
+  - **Trusted:** the guessed warnings stop for that address - romance and
+    advance-fee letters, the crypto caution, spam markers, a brand's name in
+    a domain - and its pictures load like a contact's. What catches a lie
+    still counts: a link that hides where it goes, a forged sender address
+    (`auth-failure`), a program dressed as a document, a request for a
+    wallet's recovery phrase.
+  - An address is on one list or the other: trusting a blocked address
+    unblocks it. A trusted address under a blocked domain stays trusted.
+  - The sender's mail in the list on screen is checked again at once, off
+    the UI thread, with the open message; the stored verdicts elsewhere are
+    marked stale (`LocalStore::MarkSenderVerdictsStale`) and follow with the
+    mail check.
+  - *Settings > Warnings > Trusted and blocked senders* lists both, to edit
+    by hand (a domain typed as `example.com` is kept as `@example.com`);
+    `preferences.ini` keeps them as `trusted_senders` and `blocked_senders`.
+  - Tests: matching addresses and domains, the entries a list accepts, a
+    blocked sender's verdict, a trusted sender keeping only the findings
+    that catch a lie, and only that sender's stored verdicts going stale.
+
 #### 2026-10-09 *0.10.42*
 - **Romance scams are flagged.** A love letter from a stranger - "Where are
   you my dear?", a nurse from Russia who found your profile on a dating site,

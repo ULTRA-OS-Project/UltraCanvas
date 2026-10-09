@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.17.0 - Always trust / Block this sender / Block everything from the
+//                   domain in both menus; RescanSender (off the UI thread)
 // Version: 0.16.0 - the reading pane's sender menu: copy the address, the
 //                   sender's mail, the address book, spam (SenderMenuItems)
 // Version: 0.15.0 - RecheckShownMessage: the message on screen scanned again when
@@ -36,10 +38,12 @@
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
 #include "UltraMailFolderNames.h"
+#include "UltraMailSyncEngine.h"   // CachedBodyPath
 #include "UltraMailTrace.h"
 #include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasClipboard.h"     // SetClipboardText
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -54,6 +58,9 @@
 #include <ctime>
 #include <optional>
 #include <set>
+#include <iterator>
+#include <thread>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -737,6 +744,9 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     if (!m.fromAddr.empty()) {
         rowMenu_->AddItem(MenuItemData::Separator());
         for (auto& item : AddressBookItems(m)) rowMenu_->AddItem(item);
+        const auto listItems = SenderListItems(m);
+        if (!listItems.empty()) rowMenu_->AddItem(MenuItemData::Separator());
+        for (auto& item : listItems) rowMenu_->AddItem(item);
     }
     PopupElementSettings settings;
     rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
@@ -776,6 +786,81 @@ std::vector<MenuItemData> MailView::AddressBookItems(const MessageEnvelope& m) {
     return items;
 }
 
+std::vector<MenuItemData> MailView::SenderListItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    const std::string address = SenderLists::Normalize(m.fromAddr);
+    if (address.find('@') == std::string::npos || !onSenderListChange) return items;
+    const SenderLists lists = senderLists ? senderLists() : SenderLists{};
+    auto change = [this](std::string entry, bool blockList, bool add) {
+        return [this, entry, blockList, add]() {
+            if (onSenderListChange) onSenderListChange(entry, blockList, add);
+        };
+    };
+    // Trust: fewer warnings for this address - only what catches a lie.
+    items.push_back(lists.Trusts(address)
+        ? MenuItemData::Action("Stop trusting this sender", change(address, false, false))
+        : MenuItemData::Action("Always trust this sender", change(address, false, true)));
+    // Block: the address, or the whole domain unless it is a mailbox provider
+    // (blocking gmail.com would block everyone who writes from it).
+    const std::string blockedBy = lists.BlockedBy(address);
+    if (blockedBy == address) {
+        items.push_back(MenuItemData::Action("Unblock this sender", change(address, true, false)));
+    } else if (!blockedBy.empty()) {
+        items.push_back(MenuItemData::Action("Unblock everything from " + blockedBy.substr(1),
+                                             change(blockedBy, true, false)));
+    } else {
+        items.push_back(MenuItemData::Action("Block this sender", change(address, true, true)));
+        const std::string domain = RegistrableDomain(DomainOfAddress(address));
+        if (!domain.empty() && !IsPersonalMailboxDomain(domain))
+            items.push_back(MenuItemData::Action("Block everything from " + domain,
+                                                 change("@" + domain, true, true)));
+    }
+    return items;
+}
+
+void MailView::RescanSender(const std::string& entry) {
+    if (!store_ || mailDir_.empty() || entry.empty()) return;
+    SenderLists match;
+    match.blocked.insert(entry);
+    std::vector<MessageEnvelope> mail;
+    for (const auto& m : messages_)
+        if (!match.BlockedBy(m.fromAddr).empty() && mail.size() < 300) mail.push_back(m);
+    if (mail.empty()) return;
+    const uint64_t token = ++rescanToken_;
+    // Read and scan off the UI thread; the verdicts are stored and shown on it.
+    std::thread([this, mail, token, dir = mailDir_]() {
+        auto reports = std::make_shared<std::vector<std::pair<MessageEnvelope, ThreatReport>>>();
+        for (const auto& m : mail) {
+            std::ifstream in(PathFromUtf8(CachedBodyPath(dir, m.accountId, m.folder, m.uid)),
+                             std::ios::binary);
+            if (!in) continue;
+            const std::string raw((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+            if (!raw.empty()) reports->emplace_back(m, ScanRawMessage(raw));
+        }
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, reports, token]() {
+            if (token != rescanToken_ || !store_) return;   // a newer rescan took over
+            for (const auto& [m, report] : *reports) {
+                MessageSecurity sec;
+                store_->GetSecurity(m.accountId, m.folder, m.uid, sec);
+                sec.level  = report.level;
+                sec.score  = report.score;
+                sec.bulk   = report.bulk;
+                sec.reason = report.Summary();
+                sec.verifiedDomain = report.verifiedDomain;
+                sec.verifiedBy     = report.verifiedBy;
+                sec.findings       = report.Codes();
+                sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
+                store_->SetSecurity(m.accountId, m.folder, m.uid, sec);
+                RefreshRowBadge(m, sec);
+            }
+            RecheckShownMessage();
+        });
+    }).detach();
+}
+
 std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
     std::vector<MenuItemData> items;
     if (m.fromAddr.empty()) return items;
@@ -793,6 +878,7 @@ std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
     items.push_back(MenuItemData::Separator());
     for (auto& item : AddressBookItems(m)) items.push_back(item);
     items.push_back(MenuItemData::Separator());
+    for (auto& item : SenderListItems(m)) items.push_back(item);
     // Spam: out of the junk mailbox, or back to the inbox from it.
     if (curFolderIsJunk_) {
         items.push_back(MenuItemData::Action("Not spam", [this, m]() {
