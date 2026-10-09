@@ -50,8 +50,11 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
+//                  (HTML::DecodeEntities): every named and numeric reference, where
+//                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -63,6 +66,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -1284,29 +1288,6 @@ namespace UltraCanvas {
             }
         }
 
-        // The five predefined XML / HTML entities plus numeric references —
-        // everything else is left as written, which is harmless in a preview.
-        std::string DecodeEntities(const std::string& in) {
-            std::string out;
-            out.reserve(in.size());
-            for (size_t i = 0; i < in.size(); ++i) {
-                if (in[i] != '&') { out.push_back(in[i]); continue; }
-                size_t end = in.find(';', i + 1);
-                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
-                const std::string name = in.substr(i + 1, end - i - 1);
-                if      (name == "amp")  out.push_back('&');
-                else if (name == "lt")   out.push_back('<');
-                else if (name == "gt")   out.push_back('>');
-                else if (name == "quot") out.push_back('"');
-                else if (name == "apos") out.push_back('\'');
-                else if (name == "nbsp") out.push_back(' ');
-                else if (!name.empty() && name[0] == '#') out.push_back(' ');
-                else { out.push_back('&'); continue; }
-                i = end;
-            }
-            return out;
-        }
-
         // Text of a markup document with the tags removed. `breakTags` names
         // the elements that end a preview line (paragraphs, headings, rows);
         // everything else is treated as inline. `<script>` / `<style>` bodies
@@ -1340,11 +1321,11 @@ namespace UltraCanvas {
                     continue;
                 }
                 if (isBreakTag(name) || name == "br") {
-                    AppendPreviewLine(lines, DecodeEntities(current));
+                    AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
             }
-            AppendPreviewLine(lines, DecodeEntities(current));
+            AppendPreviewLine(lines, HTML::DecodeEntities(current));
         }
 
         // RTF: drop the control words, the groups the reader is meant to skip
@@ -15168,12 +15149,35 @@ namespace UltraCanvas {
         return false;
     }
 
+    // Whether a press landed on one of the widget's own child elements - the
+    // element the window hands a press to before the widget. Hit-tested as the
+    // window does it (visible, interactive, scrolling, clipping), from the
+    // parent's frame, where FindElementAtPoint starts.
+    static bool PressOnChildElement(UltraCanvasContainer& widget, const UCEvent& event) {
+        const Rect2Df bounds = widget.GetBounds();
+        UltraCanvasUIElement* hit = widget.FindElementAtPoint(
+                Point2Df(bounds.x + event.pointer.x, bounds.y + event.pointer.y), true);
+        return hit && hit != &widget;
+    }
+
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
         // The compress dialog is a modal in-widget overlay: while it is up it
         // consumes every event and nothing behind it reacts.
         if (compressDlg.active) return HandleCompressDialogEvent(event);
+
+        // A press one of the widget's own elements (the filter's "clear"
+        // button, the hidden-files notice, the rename field) did not take
+        // climbs here, but it is not a press on the files painted under that
+        // element: a right-click on "clear" took the keyboard from the search
+        // field, committed an open rename and opened the folder's menu. A
+        // release is not filtered - a drag the widget captured ends on it,
+        // over a button or not.
+        if ((event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) &&
+            PressOnChildElement(*this, event)) {
+            return false;
+        }
 
         switch (event.type) {
             case UCEventType::MouseLeave: {

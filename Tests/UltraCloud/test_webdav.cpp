@@ -66,6 +66,22 @@ TEST(multistatus_parsing_tolerates_uppercase_prefix_and_root) {
     REQUIRE_EQ(entries[0].size, (int64_t)7);
 }
 
+// A server may escape an href's characters as XML entities, numeric ones
+// included (Nextcloud writes &#x27; for an apostrophe): every reference is
+// decoded before the percent-decoding.
+TEST(multistatus_parsing_decodes_entities_in_hrefs) {
+    const std::string xml =
+        "<d:multistatus xmlns:d=\"DAV:\">"
+        "<d:response><d:href>/dav/Docs/</d:href><d:propstat><d:prop>"
+        "<d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>"
+        "<d:response><d:href>/dav/Docs/Tom &amp; Jerry&#x27;s%20notes.txt</d:href><d:propstat><d:prop>"
+        "<d:resourcetype/></d:prop></d:propstat></d:response>"
+        "</d:multistatus>";
+    std::vector<Entry> entries = ParseMultistatus(xml, "/Docs");
+    REQUIRE_EQ(entries.size(), (size_t)1);
+    REQUIRE_EQ(entries[0].name, std::string("Tom & Jerry's notes.txt"));
+}
+
 namespace {
 struct Captured { std::string method; std::string url; std::string depth; std::string body; std::string auth; };
 } // namespace

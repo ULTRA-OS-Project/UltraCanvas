@@ -185,7 +185,10 @@ reading window, no Toolbox grid — laid out from UltraCanvas elements:
   row shows it on the right.
 - **Message** group box: the `MessagePreview` — subject, from, to, date,
   a Reply button, the body (HTML rendered through HTMLReader / CSSLayout,
-  plain text in a read-only text area) and the attachment strip.
+  plain text in a read-only text area) and the attachment strip, shown
+  only when the message has attachments. The HTML body sits in a page as
+  wide as the visible pane (less the vertical scrollbar), so a message's
+  percentage widths are taken from what the reader sees.
 - Both boxes sit in an `UltraCanvasSplitPane`; the whole account view is
   a flex column sized to the window, so it follows a resize.
 
@@ -208,9 +211,13 @@ address; the full address is the tooltip), and three counters, each an
 
 **Several accounts — a row of square tiles** (the design's second
 image): each tile carries the same initial, name and three badges (the
-captions move into the badges' tooltips). Clicking a tile selects the
-account: the tile gets the selection-blue frame and the Inbox / Message
-boxes below switch to that account.
+captions move into the tile's tooltip, under the full address). Clicking
+anywhere on a tile - its name and badges included - selects the account:
+the tile gets the selection-blue frame and the Inbox / Message boxes below
+switch to that account. The tile is one target for the pointer: its content
+is marked non-interactive (`ClickSurface::PassPointerThroughContent`), so a
+click lands on the tile and the hover shows the tile's tooltip wherever the
+pointer is on it.
 
 The counts come from `LocalStore::GetAccountStatus`, one query for all
 accounts (`unreadToday` / `unreadOlder` / `needsAnswer`), refreshed

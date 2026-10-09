@@ -8,7 +8,7 @@ orientation, optional thumb icons (built-in checkmark or custom images), and
 state texts that can be drawn inside the track, next to it, or as two permanent
 labels with the switch between them (`Backup [switch] Auto-Save`).
 
-**Version:** 1.3.1
+**Version:** 1.3.2
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Header:** `include/UltraCanvasSwitch.h`
@@ -25,8 +25,9 @@ labels with the switch between them (`Backup [switch] Auto-Save`).
   each side of the track
 - **Main label**: inherited from `UltraCanvasLabeledToggleBase`, drawn after the
   indicator
-- **Keyboard**: Space / Enter activate when focused; focus ring follows the
-  track shape
+- **Keyboard**: takes the focus (Tab, or a press); Space activates it while
+  focused, and Enter is left to the window (a dialog's default button); the
+  focus ring follows the track shape
 - **Content sizing**: the natural size is measured from track + texts + label
 
 ## Class Definition

@@ -1,5 +1,7 @@
 # UltraCanvas Audio
 
+<!-- doc-check: namespace MyApp { std::shared_ptr<UCAudio> DecodeApe(const std::string& path); } std::shared_ptr<UCAudio> audio; std::string path; -->
+
 Cross-platform audio **playback** and **recording** for UltraCanvas.
 
 ## Status

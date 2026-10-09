@@ -17,7 +17,7 @@ platform leg, as a workflow artifact:
 | Artifact | Contents |
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
-| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
@@ -73,9 +73,17 @@ that opens a window and registers the formats. Copy it, rename it, start
 there. The imported targets and variables the package provides are listed at
 the top of `UltraCanvasConfig.cmake`.
 
-On Linux the shared core sits in `lib/`; run an application with that
+The core is a shared library on every platform, and the modules (UltraNet,
+UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
+inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
+to the core, which exports their whole API, so an application links nothing
+else. On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On Windows the core is
+the executable the way `package-linux.sh` does. On macOS it is
+`lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
+needs a run path to that directory (CMake writes one into a build-tree
+executable), or the dylib copied beside it the way `package-macos.sh` does
+into the suite's `Frameworks/`. On Windows the core is
 `bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
 the executable, which is what `package-win.sh` does for a release.
 

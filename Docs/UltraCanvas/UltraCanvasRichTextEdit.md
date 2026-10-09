@@ -1,5 +1,7 @@
 # UltraCanvasRichTextEdit
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); std::vector<uint8_t> BytesFor(const std::string& src); bool ShowMyOwnMenu(const UCEvent& event); -->
+
 The WYSIWYG editing element: the caret sits in rendered text, and **bold is a
 state of the selection** rather than two asterisks in a buffer.
 
@@ -51,7 +53,7 @@ changes underneath it. That same string is what the element hands to
 #include "UltraCanvasRichTextEdit.h"
 
 auto editor = CreateRichTextEdit("editor", 0, 0, 800, 600);
-window->AddElement(editor);
+window->AddChild(editor);
 
 editor->SetMarkdown("# Report\n\nSome **bold** text and a [link](https://example.com).\n");
 editor->onDocumentChanged = [editor]() {
@@ -405,7 +407,8 @@ what a menu should ask to decide whether to offer the item:
 if (editor->IsCaretInTable()) {
     int rows = 0, columns = 0, row = 0, column = 0;
     editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
-    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+    MenuItemData split = MenuItemData::Action("Split Cell", [editor]() { editor->SplitCurrentCell(); });
+    split.enabled = editor->CanSplitCurrentCell();            // greyed out when nothing is merged
 }
 ```
 
@@ -467,7 +470,7 @@ if (editor->HasSelectedImage()) {
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
-edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
 ### Floating pictures
@@ -647,9 +650,9 @@ character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
 selection changes and focus are announced to listeners, and the platform
 bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
-Automation on Windows (Narrator, NVDA, JAWS) - see
-[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
-is no macOS bridge yet.
+Automation on Windows (Narrator, NVDA, JAWS) and NSAccessibility on macOS
+(VoiceOver) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges).
 
 ## Drag and drop
 
@@ -983,8 +986,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
-  Automation) have one; VoiceOver does not see the element yet.
+- **Screen readers on Windows and macOS are untested.** The UI Automation
+  and NSAccessibility bridges compile but have not yet been run against
+  Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

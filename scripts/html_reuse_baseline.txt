@@ -4,18 +4,7 @@
 # ImportHTMLToRichDocument, HTML::StyleSheet) - see
 # Docs/UltraCanvas/UltraCanvasHTMLReader.md. Only shrink this file.
 # Regenerate with: python3 scripts/check_html_reuse.py --update-baseline
-Apps/EmailCleaner/engine/EmailCleanerClassifier.cpp	html-reuse-definition	StripHtml() defined here
-Apps/EmailCleaner/engine/EmailCleanerText.cpp	html-reuse-entity-table	entity table (amp, apos, gt, lt, nbsp, quot)
-Apps/EmailCleaner/engine/EmailCleanerText.cpp	html-reuse-definition	StripHtml() defined here
-Apps/UltraMail/engine/UltraMailThreatScan.cpp	html-reuse-definition	DecodeEntities() defined here
-Apps/UltraMail/engine/UltraMailThreatScan.cpp	html-reuse-entity-table	entity table (amp, gt, lt, nbsp, quot)
-Apps/UltraMail/engine/UltraMailThreatScan.cpp	html-reuse-definition	StripTags() defined here
-Apps/UltraMail/ui/UltraMailMessagePreview.cpp	html-reuse-definition	HtmlToText() defined here
-Apps/UltraMail/ui/UltraMailMessagePreview.cpp	html-reuse-entity-table	entity table (amp, gt, lt, nbsp)
-UltraCanvas/core/UltraCanvasFilerWidget.cpp	html-reuse-definition	DecodeEntities() defined here
-UltraCanvas/core/UltraCanvasFilerWidget.cpp	html-reuse-entity-table	entity table (amp, apos, gt, lt, nbsp, quot)
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-entity-table	entity table (amp, apos, gt, lt, nbsp, quot)
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-definition	DecodeEntities() defined here
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-definition	TokenizeHtml() defined here
 UltraCanvas/core/UltraCanvasRichDocument.cpp	html-reuse-definition	ApplyCss() defined here
-UltraCloud/providers/UltraCloudWebDav.cpp	html-reuse-definition	DecodeEntities() defined here

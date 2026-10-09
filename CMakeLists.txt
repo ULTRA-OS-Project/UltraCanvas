@@ -171,18 +171,20 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# macOS: record only the dylibs a binary actually takes a symbol from. On
-# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
-# so every application's link line carries the core's whole PUBLIC dependency
-# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
-# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
-# command for each one whether the program uses it or not. package-macos.sh
-# then copies every one of them, with its own dependencies, into each .app's
-# Frameworks/, six bundles over. With this flag an app that never reaches the
-# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
-# that supplied no symbol at link time are dropped, so nothing an app calls
-# can go missing; it would only matter for a library needed purely for a side
-# effect of its initializer, and none of the Homebrew dependencies is that.
+# macOS: record only the dylibs a binary actually takes a symbol from. ld64,
+# unlike GNU ld with --as-needed, writes a load command for every library on
+# the link line whether the program takes a symbol from it or not. While the
+# core was linked statically on macOS, every application's link line carried
+# the core's whole PUBLIC dependency list - tesseract, leptonica, MuPDF, zbar,
+# libcdr with boost and ICU, the audio codecs - and package-macos.sh copied
+# every one of them into each .app's Frameworks/. The core is a shared
+# libUltraCanvas.dylib on macOS now too (ULTRACANVAS_BUILD_SHARED), so the
+# apps' link lines are short, but the flag still earns its place: the core
+# itself records only the libraries it uses, and a format plug-in archive an
+# app links still brings its dependency list along. Only libraries that
+# supplied no symbol at link time are dropped, so nothing an app calls can go
+# missing; it would only matter for a library needed purely for a side effect
+# of its initializer, and none of the dependencies is that.
 if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
@@ -647,6 +649,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
+            Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp

@@ -1,5 +1,7 @@
 # UltraCanvasMatrixDiagram
 
+<!-- doc-check: int row; int col; void Log(const std::string& line); -->
+
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
 relationships between two or three ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
@@ -139,6 +141,7 @@ dots with letter codes under one legend.
 The point of the weights is that they sum.
 
 ```cpp
+int col = 0, row = 1;                       // item indices in panel 0's column and row sets
 double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
 double total = model.RowScore(0, row);
 std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
@@ -232,9 +235,11 @@ shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
+<!-- doc-check: void Log(const std::string& message); -->
+
 ```cpp
 MatrixValidation result = model.Validate();
-if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: your app's logger
 ```
 
 Checks the set count against the shape, panel set references, cell indices,

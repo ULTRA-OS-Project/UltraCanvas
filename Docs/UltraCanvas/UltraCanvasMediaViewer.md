@@ -161,8 +161,9 @@ colours directly under the picture: an
 swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
 clicking the checkerboard goes back to the transparency pattern. Files without
 transparency never show the strip, so it costs no space where it would mean
-nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
-opaque alpha channel a PNG export routinely carries.
+nothing — that check is `UCImage::HasTransparency` (the Cairo image,
+`libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
+channel a PNG export routinely carries.
 
 ```cpp
 viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser

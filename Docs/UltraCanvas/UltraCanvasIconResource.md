@@ -1,5 +1,7 @@
 # UltraCanvasIconResource — Windows icon resources without Windows
 
+<!-- doc-check: std::string path; -->
+
 `UltraCanvasIconResource.h` reads the icons a Windows file carries: the frames
 of an `.ico`, and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary
 (`.exe`, `.dll`, and the icon libraries that share the format). It is what

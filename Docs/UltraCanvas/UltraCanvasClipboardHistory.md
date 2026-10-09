@@ -1,6 +1,6 @@
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -205,7 +205,7 @@ model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-listView->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {

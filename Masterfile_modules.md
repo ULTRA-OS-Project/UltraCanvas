@@ -348,8 +348,14 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -375,8 +381,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine; the tree's own scrollbars are off, the host scrolls.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
@@ -1077,12 +1085,21 @@ engine; these classes hold the pixels being edited and hand them to it.
   `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
-  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
-  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
-  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
-  the Text pattern), sharing the tree, ids, geometry and text diffing in
-  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `GetAccessibleTextInterface` and, since 1.2, `GetAccessibleDescription`,
+  `GetAccessibleToggleState`, `GetAccessibleRange` / `SetAccessibleValue`,
+  `GetAccessibleValueText` / `SetAccessibleValueText` and
+  `GetAccessibleActionName` / `DoAccessibleAction`, with
+  `SetAccessibleName` / `SetAccessibleDescription` overrides on every
+  element. The common widgets implement it (button, checkbox, radio, switch,
+  label, text input, dropdown, slider, spinner, busy indicator, group box,
+  tabbed container, toolbar, list and tree view, image, menu), as does
+  `UltraCanvasRichTextEdit`. Platform bridges: AT-SPI on Linux
+  (`OS/Linux/UltraCanvasLinuxAccessibility`, GIO D-Bus, tested end to end by
+  `Tests/AtspiBridgeTest`), UI Automation on Windows
+  (`OS/MSWindows/UltraCanvasWindowsAccessibility`: Text, Invoke, Toggle,
+  SelectionItem, RangeValue and Value patterns) and NSAccessibility on macOS
+  (`OS/MacOS/UltraCanvasMacOSAccessibility`, VoiceOver), sharing the tree, ids,
+  geometry and text diffing in `UltraCanvasAccessibilityBridge.h`. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with

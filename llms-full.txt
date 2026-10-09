@@ -527,8 +527,14 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -554,8 +560,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine; the tree's own scrollbars are off, the host scrolls.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
@@ -1256,12 +1264,21 @@ engine; these classes hold the pixels being edited and hand them to it.
   `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
-  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
-  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
-  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
-  the Text pattern), sharing the tree, ids, geometry and text diffing in
-  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
+  `GetAccessibleTextInterface` and, since 1.2, `GetAccessibleDescription`,
+  `GetAccessibleToggleState`, `GetAccessibleRange` / `SetAccessibleValue`,
+  `GetAccessibleValueText` / `SetAccessibleValueText` and
+  `GetAccessibleActionName` / `DoAccessibleAction`, with
+  `SetAccessibleName` / `SetAccessibleDescription` overrides on every
+  element. The common widgets implement it (button, checkbox, radio, switch,
+  label, text input, dropdown, slider, spinner, busy indicator, group box,
+  tabbed container, toolbar, list and tree view, image, menu), as does
+  `UltraCanvasRichTextEdit`. Platform bridges: AT-SPI on Linux
+  (`OS/Linux/UltraCanvasLinuxAccessibility`, GIO D-Bus, tested end to end by
+  `Tests/AtspiBridgeTest`), UI Automation on Windows
+  (`OS/MSWindows/UltraCanvasWindowsAccessibility`: Text, Invoke, Toggle,
+  SelectionItem, RangeValue and Value patterns) and NSAccessibility on macOS
+  (`OS/MacOS/UltraCanvasMacOSAccessibility`, VoiceOver), sharing the tree, ids,
+  geometry and text diffing in `UltraCanvasAccessibilityBridge.h`. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
@@ -3698,8 +3715,8 @@ FILE: Docs/GettingStarted.md
 
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.1
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -3849,9 +3866,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 
@@ -3875,6 +3894,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -3990,6 +4013,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 
 `Apps/MyApp/main.cpp`
 
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
+
 ```cpp
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
@@ -4080,10 +4105,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -4257,6 +4284,16 @@ every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
 and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
 macOS.
 
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
+
 </details>
 
 <details>
@@ -4300,7 +4337,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 
@@ -4356,7 +4393,7 @@ platform leg, as a workflow artifact:
 | Artifact | Contents |
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
-| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
@@ -4412,9 +4449,17 @@ that opens a window and registers the formats. Copy it, rename it, start
 there. The imported targets and variables the package provides are listed at
 the top of `UltraCanvasConfig.cmake`.
 
-On Linux the shared core sits in `lib/`; run an application with that
+The core is a shared library on every platform, and the modules (UltraNet,
+UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
+inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
+to the core, which exports their whole API, so an application links nothing
+else. On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On Windows the core is
+the executable the way `package-linux.sh` does. On macOS it is
+`lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
+needs a run path to that directory (CMake writes one into a build-tree
+executable), or the dylib copied beside it the way `package-macos.sh` does
+into the suite's `Frameworks/`. On Windows the core is
 `bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
 the executable, which is what `package-win.sh` does for a release.
 
@@ -5477,6 +5522,8 @@ FILE: Docs/UltraCanvas/CircleDiagramInfographicVariants.md
 
 # Circle Diagram Infographics — Investigation
 
+<!-- doc-check: std::shared_ptr<UltraCanvasCircleDiagram> diagram; -->
+
 **Status:** **P1 implemented** — `UltraCanvasCircleDiagram` ships the Family A
 satellite designs (`SatelliteWheel`, `BandedWheel`), the full palette set, the
 hub, backbone and satellite fans, with the API documented in
@@ -5790,8 +5837,8 @@ enums plus a plain count**, never one enum encoding all three:
 enum class CircleDiagramDesign {        // structure — the §3 families
     SatelliteWheel,   // Family A: nodes + fanned satellites   (refs 1, 2)
     BandedWheel,      // Family A on a thick backbone band     (ref 2)
-    CardRing,         // Family B: nodes + dashed text cards   (ref 3)
-    PetalRing,        // Family F: overlapping discs, no ring
+    // CardRing       — Family B: nodes + dashed text cards (ref 3), lands in P2
+    // PetalRing      — Family F: overlapping discs, no ring, lands in P3
     Custom            // structure assembled from the primitives
 };
 
@@ -6704,16 +6751,17 @@ FILE: Docs/UltraCanvas/UltraCanvasAccessibility.md
 
 # UltraCanvasAccessibility
 
+<!-- doc-check: UltraCanvasUIElement* element; -->
+
 What assistive technology — screen readers, magnifiers, braille displays —
 needs to know about an element, in a form that does not depend on the
 platform: its **role**, its **name**, for text a **text interface** (content,
 caret, selection, character boxes, formatting, words, lines, sentences) and an
 **event stream** saying what changed. A platform bridge hands this to the
-operating system, where screen readers find it: **AT-SPI** on Linux (Orca)
-and **UI Automation** on Windows (Narrator, NVDA, JAWS) - see
-[Platform bridges](#platform-bridges). There is no macOS bridge
-(NSAccessibility) yet. The same layer serves tests and in-application readers
-(read aloud, a braille panel).
+operating system, where screen readers find it: **AT-SPI** on Linux (Orca),
+**UI Automation** on Windows (Narrator, NVDA, JAWS) and **NSAccessibility** on
+macOS (VoiceOver) - see [Platform bridges](#platform-bridges). The same layer
+serves tests and in-application readers (read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
@@ -6722,15 +6770,50 @@ Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 ```cpp
 AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
 std::string name = element->GetAccessibleName();
+std::string help = element->GetAccessibleDescription();          // the tooltip by default
 IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
 bool secret = element->IsAccessiblePassword();        // false by default
+AccessibleToggleState state = element->GetAccessibleToggleState();   // NotToggleable, Off, On, Mixed
+AccessibleRange range;                                // value, minimum, maximum, step, readOnly
+bool hasValue = element->GetAccessibleRange(range);
+std::string value = element->GetAccessibleValueText();          // a combo box's item, a field's text
+std::string action = element->GetAccessibleActionName();        // "press", "toggle", "select" or ""
+element->DoAccessibleAction();                        // as a click would
+element->SetAccessibleValue(70);                      // a slider, a spin button
+element->SetAccessibleValueText("Ada");               // a text field
 ```
 
 An element describes itself by overriding these virtuals of
-`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` does: role `Document`, name
-the document's title (else the element's identifier), and a text interface
-over the whole document. `UltraCanvasTextInput` (and what is built on it) is a
-`TextField`, without a text interface yet.
+`UltraCanvasUIElement`. Whatever an element says, an application can name it
+and describe it: `SetAccessibleName("Bold")` for an icon button, or for a field
+whose label is a separate element; `SetAccessibleDescription(...)` for help
+beyond the tooltip.
+
+**What the widgets say.**
+
+| Element | Role | Name | Also |
+|---|---|---|---|
+| `UltraCanvasButton` | `Button` | text, else tooltip (icon button) | action *press*; a toggle button: toggle state, action *toggle* |
+| `UltraCanvasCheckbox` | `CheckBox` | label | toggle state (Mixed when indeterminate), action *toggle* |
+| `UltraCanvasRadio` | `RadioButton` | label | toggle state, action *select* |
+| `UltraCanvasSwitch` | `Switch` | label | toggle state, action *toggle* |
+| `UltraCanvasLabel` | `Label` | text | |
+| `UltraCanvasTextInput` | `TextField` | placeholder | value text = content (never in password mode), settable |
+| `UltraCanvasDropdown` | `ComboBox` | `SetAccessibleName` | value text = the shown selection |
+| `UltraCanvasSlider` | `Slider` | `SetAccessibleName` | range, settable (no single value in range mode) |
+| `UltraCanvasSpinner` | `SpinButton` | `SetAccessibleName` | range, settable; value text = what it shows |
+| `UltraCanvasBusyIndicator` | `ProgressBar` | `SetAccessibleName` | indeterminate (no range) |
+| `UltraCanvasGroupBox` | `Group` | title | |
+| `UltraCanvasTabbedContainer` | `TabList` | open tab's title | |
+| `UltraCanvasToolbar` | `Toolbar` | `SetAccessibleName` | its buttons are its children |
+| `UltraCanvasListView` / `UltraCanvasTreeView` | `List` / `Tree` | `SetAccessibleName` | rows and nodes are drawn, not elements: not yet reachable one by one |
+| `UltraCanvasImageElement` | `Image` | `SetAccessibleName` (its alt text) | |
+| `UltraCanvasMenu` | `Menu` | | items are drawn, not elements |
+| `UltraCanvasRichTextEdit` | `Document` | the document's title | the full text interface |
+
+A changed name, toggle state or value is announced (`NameChanged`,
+`StateChanged`, `ValueChanged`), so a screen reader hears it without the
+user moving.
 
 **Password fields.** `IsAccessiblePassword()` is true for a field whose content
 is a secret - `UltraCanvasTextInput` in password mode, whether or not its text
@@ -6840,14 +6923,51 @@ range differ). Focus, text and caret/selection changes raise the matching
 events. `UIAutomationCore.dll` is loaded at run time, and the bridge does
 nothing until a client sends the first `WM_GETOBJECT`.
 
+**Widgets on AT-SPI and UI Automation.** Toggle states become AT-SPI's
+checkable / checked / indeterminate (and pressed for a toggle button) and UI
+Automation's Toggle pattern (SelectionItem for a radio button). A range is
+AT-SPI's `Value` interface and UI Automation's RangeValue pattern, both
+settable. A value text is UI Automation's Value pattern; on AT-SPI a text
+field's or combo box's value is read through `Text`, the way Orca reads an
+entry. The default action is AT-SPI's `Action` interface (one action, its
+name) and UI Automation's Invoke pattern. Descriptions are AT-SPI's
+`Description` and UI Automation's `HelpText`. Changes become
+`StateChanged:checked`, `PropertyChange:accessible-value` and text
+insert/delete signals (AT-SPI) and property-changed events for ToggleState,
+IsSelected, RangeValue.Value, Value.Value and Name (UI Automation).
+
+**NSAccessibility (macOS)** - `OS/MacOS/UltraCanvasMacOSAccessibility`. A
+window's content view (`UltraCanvasView`) is the way in: its accessibility
+children are the window's elements, it hit-tests and reports the focused
+element, and every element is a `UCAccessibilityElement`
+(`NSAccessibilityElement`) kept for its lifetime. Roles map to AppKit roles
+(`Button` → AXButton, `CheckBox` → AXCheckBox, `Switch` → AXCheckBox/AXSwitch,
+`TextField` → AXTextField or AXSecureTextField for a password, `Document` →
+AXTextArea, `ComboBox` → AXPopUpButton, `Slider` → AXSlider, `SpinButton` →
+AXIncrementor, `ProgressBar` → AXProgressIndicator or AXBusyIndicator, ...).
+Elements that never described themselves are left out and their children
+lifted into their place. Label, help, value (toggle state as 0/1/2, range
+value, or the text), min/max, settable value, AXPress, increment/decrement,
+focus, frames in screen coordinates, and for text the parameterised
+attributes VoiceOver uses - character count, selected range and text,
+insertion-point line, string/line/range/style range/frame for a range or
+position - with NSString (UTF-16) ranges converted to the code points of
+`IAccessibleText`. Changes post the matching notifications (focused element,
+value, selected text, title, element destroyed). The bridge starts listening
+when VoiceOver first asks a window for its children.
+
 **Testing.** `Tests/AtspiBridgeTest` runs a libatspi client - the library Orca
 uses - against a test application on a private accessibility bus: the tree,
 names, roles, states, text, words, sentences, attributes, extents, hit
-testing, moving the caret, and the insert/delete events of typing. It is built
-when the `atspi-2` development package is installed and skips itself without a
-display or at-spi2-core. The UI Automation bridge has no automated test yet:
-so far it is compile-checked (MinGW GCC and Clang) but has not been run
-against Narrator, NVDA or JAWS.
+testing, moving the caret, the insert/delete events of typing, and the common
+widgets - pressing a button, ticking a checkbox, reading and setting a
+slider, reading a text field. It is built when the `atspi-2` development
+package is installed and skips itself without a display or at-spi2-core.
+`Tests/WidgetAccessibilityTest` checks every widget's answers headless. The
+UI Automation and NSAccessibility bridges have no automated test yet: they
+are compile-checked (UI Automation with MinGW GCC and Clang, NSAccessibility
+by the macOS CI build) but have not been run against Narrator, NVDA, JAWS or
+VoiceOver.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -7873,7 +7993,7 @@ UltraCanvasAlert::Confirm("Delete this item?", "Confirm Delete",
 // Capture which button was pressed
 UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
                           [](DialogResult r) { /* r == DialogResult::OK ... */ },
-                          parentWindow);
+                          parentWindow.get());
 ```
 
 ## Alerts without the severity icon
@@ -7917,7 +8037,7 @@ opts.message       = "A new version is ready to install.";
 opts.details       = "Version 4.2.0 - the app will restart to finish.";
 opts.buttons       = DialogButtons::OKCancel;
 opts.defaultButton = DialogButton::OK;
-opts.parent        = parentWindow;
+opts.parent        = parentWindow.get();
 opts.onResult      = [](DialogResult r) { /* ... */ };
 UltraCanvasAlert::Show(opts);
 ```
@@ -7945,9 +8065,15 @@ class UltraCanvasAlert {
     static void Info      (const std::string& message, const std::string& title = "",
                            std::function<void(DialogResult)> onResult = nullptr,
                            UltraCanvasWindowBase* parent = nullptr);
-    static void Successful(/* same signature */);
-    static void Warning   (/* same signature */);
-    static void Error     (/* same signature */);
+    static void Successful(const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Warning   (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Error     (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
 
     // Icon-less message box: no severity badge, so the content column is
     // centred in the full width of the dialog.
@@ -8947,6 +9073,8 @@ FILE: Docs/UltraCanvas/UltraCanvasAudio.md
 
 # UltraCanvas Audio
 
+<!-- doc-check: namespace MyApp { std::shared_ptr<UCAudio> DecodeApe(const std::string& path); } std::shared_ptr<UCAudio> audio; std::string path; -->
+
 Cross-platform audio **playback** and **recording** for UltraCanvas.
 
 ## Status
@@ -9864,7 +9992,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBarChartElement.md
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
@@ -10107,7 +10235,9 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` / `HandleMouseUp` - track the left button
+- `HandleMouseDown` / `HandleMouseUp` - leave the left button to the parent
+  (the bar chart does not pan), so a chart in a scrolling or draggable
+  container does not swallow its clicks
 - `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples
@@ -14141,7 +14271,7 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
@@ -14584,7 +14714,10 @@ public:
 - **`AddRadioButton`** appends the radio (a null pointer is ignored) and
   installs the group's handler in the radio's `onChecked`. From then on a
   click on the radio, or `SetChecked(true)` on it in code, selects it in the
-  group.
+  group. A radio that is already checked when it is added becomes the
+  selection, and any member checked before it is cleared: the last checked
+  radio added wins, as in an HTML radio group. `onSelectionChanged` is not
+  called for it.
 - **`SelectButton`** makes a member the selection: it checks it, clears
   every other member and calls `onSelectionChanged` with it, once. A radio
   that is not in the group, or a null pointer, is ignored; selecting the
@@ -14598,12 +14731,11 @@ public:
   it was the selection, the group has none afterwards. The radio keeps its
   checked state, and `onSelectionChanged` is not called.
 
-**Set the initial selection with `SelectButton`.** `AddRadioButton` does not
-look at whether a radio is checked, so a radio created with `checked = true`
-shows its dot while `GetSelectedButton()` still returns null, until the user
-clicks or code selects. Call `SelectButton` on the initial choice after
-adding the radios. Assign `onSelectionChanged` after that call if building
-the dialog should not count as a change; `SelectButton` reports it otherwise.
+**The initial selection.** Create the initial choice checked
+(`UltraCanvasRadio::Create(..., true)`) and add it: the group adopts it
+without reporting a change. Or call `SelectButton` on it after adding the
+radios; that one is reported, so assign `onSelectionChanged` after it if
+building the dialog should not count as a change.
 
 A group serves one question, and a radio belongs to one group: adding it to a
 second group hands its clicks to the second one.
@@ -14668,13 +14800,13 @@ added to (`AddChild`). The group is only a second owner.
   cancels. A quick second click counts as a click. The indicator takes its
   hover colour, and the label `textHoverColor`, while the pointer is over the
   control.
-- **Keyboard**: Space or Enter activates the control while it has the keyboard
-  focus, and the focus ring (`base.hasFocusRing`, a rectangle around the box
-  or a circle around the ring) is drawn then. The toggles do not override
-  `AcceptsFocus()`, which is false by default, so the window does not give
-  them the focus: Tab skips them and `SetFocus(true)` returns false. Until
-  that changes the keyboard path and the focus ring are not reached in
-  normal use.
+- **Keyboard**: checkboxes, radios and switches take the keyboard focus like
+  buttons: Tab reaches them and a press focuses them. Space activates the
+  focused control, and the focus ring (`base.hasFocusRing`, a rectangle
+  around the box or a circle around the ring) is drawn while it has the
+  focus. Enter is left to the window, so in a dialog it still presses the
+  default button. `SetAcceptsFocus(false)` keeps a control out of the Tab
+  order.
 - **Disabled or hidden**: a control for which `SetDisabled(true)` was called,
   or that is not visible, ignores all input. A disabled control still
   accepts `SetChecked` from code and draws its state in the disabled colours.
@@ -14921,8 +15053,8 @@ Each control draws, in this order:
    control, which makes it a much larger target than the 16 px indicator.
 2. Make the group a member of whatever owns the radios, never a local
    variable of a builder function.
-3. Set the initial radio with `SelectButton`, and assign
-   `onSelectionChanged` afterwards.
+3. Create the initial radio checked, or select it with `SelectButton` before
+   assigning `onSelectionChanged`.
 4. Do not assign `onChecked` on a grouped radio; use the group's
    `onSelectionChanged`.
 5. A toggle's callback must not hold a `std::shared_ptr` to the toggle
@@ -14941,6 +15073,9 @@ Each control draws, in this order:
 
 ## Version History
 
+- **2.1.0** (2026-10-07): the toggles take the keyboard focus (Space
+  activates, Enter is left to the dialog); a radio added to a group already
+  checked becomes its selection.
 - **2.0.0** (2026-10-07): Rewritten for the current API. The checkbox is one
   class of three on `UltraCanvasLabeledToggleBase`; the radio
   (`UltraCanvasRadio`, factory `UltraCanvasRadio::Create`) and the switch
@@ -15967,7 +16102,7 @@ FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
 
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -16172,7 +16307,7 @@ model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-listView->onCellClicked = [rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
@@ -16311,6 +16446,8 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
 # UltraCanvas Colour Picker Documentation
+
+<!-- doc-check: Color SampleScreenPixelUnderCursor(); -->
 
 ## Overview
 
@@ -16611,6 +16748,8 @@ FILE: Docs/UltraCanvas/UltraCanvasColorSwatchBar.md
 
 # UltraCanvas Color Swatch Bar Documentation
 
+<!-- doc-check: void SetFillColor(const Color& c); std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+
 ## Overview
 
 **UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a
@@ -16657,12 +16796,18 @@ container->AddChild(bar);
 ```
 
 A backdrop chooser adds the checkerboard entry — `CreateBackdropSwatchBar` does
-both steps:
+both steps. Here it sets the backdrop an `UltraCanvasMediaViewer` draws under
+transparent images:
 
 ```cpp
 auto backdrop = CreateBackdropSwatchBar("backdrop", 0, 0, 0, 28);
-backdrop->onColorSelected    = [&](const Color& c) { view->SetBackdropColor(c); };
-backdrop->onCheckeredSelected = [&]()              { view->SetBackdropCheckered(); };
+backdrop->onColorSelected = [&](const Color& c) {
+    viewer->SetTransparentBackground(TransparentImageBackground::SolidColor);
+    viewer->SetTransparentColor(c);
+};
+backdrop->onCheckeredSelected = [&]() {
+    viewer->SetTransparentBackground(TransparentImageBackground::Checkered);
+};
 ```
 
 ## Palettes
@@ -17067,6 +17212,8 @@ FILE: Docs/UltraCanvas/UltraCanvasCoordinateSystemGuide.md
 
 # UltraCanvas Coordinate System & Positioning Guide
 
+<!-- doc-check: class MyElement : public UltraCanvasUIElement { public: void Render(IRenderContext* ctx, const Rect2Df& dirty) override; bool OnEvent(const UCEvent& e) override; Rect2Di SidebarArea() const; Color background; int sidebarWidth_ = 200; }; std::shared_ptr<UltraCanvasUIElement> child; Rect2Di adjustedChildBounds; Rect2Di childDirty; UltraCanvasUIElement* elem; std::shared_ptr<UltraCanvasContainer> container; std::shared_ptr<UltraCanvasUIElement> view; std::shared_ptr<UltraCanvasUIElement> el; float x; float y; float w; float h; -->
+
 A practical guide to how positions work in UltraCanvas, so your custom
 elements draw and respond to input in the right place.
 
@@ -17193,7 +17340,7 @@ bool MyElement::OnEvent(const UCEvent& e) {
             break;
         }
         case UCEventType::MouseWheel: {
-            const bool inSidebar = e.pointer.x < sidebarWidth;  // local x
+            const bool inSidebar = e.pointer.x < sidebarWidth_;  // local x
             break;
         }
     }
@@ -17212,6 +17359,46 @@ Rect2Di MyElement::SidebarArea() const {
 
 Drag deltas (`pointer - anchor`) are frame‑independent, so panning logic that
 only uses differences is safe in any frame.
+
+### Which element gets a press
+
+A mouse press (`MouseDown`, `MouseUp`, `MouseDoubleClick`) goes first to the
+innermost interactive element under the pointer. If its `OnEvent` returns
+`false`, the press climbs to that element's parent, then the grandparent, and
+so on — each one gets it with `event.pointer` mapped into *its own* local
+space — until one returns `true`. The climb stops below the window, which
+still gets a press nobody took, once, at the end. A popup is a child of the
+window, so a press inside a popup never reaches what lies under it.
+
+So a container that acts on clicks — a clickable card, a row, a tile — hears
+a click on the label or icon inside it without any extra work, and:
+
+- **Return `true` for a press you acted on**, `false` for one you did not.
+  A press you used but report as untaken goes on to your parents, which may
+  act on it again — clearing a selection or taking the focus is acting on
+  it. A press you have no use for (a middle press on an editor) is better
+  left alone entirely: do not take the focus first, and return `false`.
+  A right press you have no menu for goes on on purpose, so the menu of the
+  element around you can open (a button does this).
+- **A container gets the presses its children did not take**, with the
+  pointer over that child. A view that hit‑tests its own painted content
+  must not treat such a press as a click on whatever is painted under the
+  child.
+- A press whose element left the tree while handling it (a click that
+  closed its row) stops there; the elements it left do not get it.
+- Hit‑testing skips an element that is not interactive
+  (`SetInteractive(false)`) together with everything inside it: the press
+  lands on the element around it directly, and so does the hover — and with
+  it the tooltip.
+- A window event filter (`InstallEventFilter`) sees every step of the climb,
+  `event.targetElement` set to the element of that step — as it already did
+  for the wheel — so a filter that acts on a press must act once, or return
+  `true` to stop the press.
+
+Before October 2026 a press went to the innermost element and then straight
+to the window, so a card answered only on its padding - UltraMail's account
+tiles switched the account from 1 of 14 spots (framework changelog: "A mouse
+press the element under the pointer does not take climbs to its parents").
 
 ---
 
@@ -17264,8 +17451,8 @@ global hit‑tests) — not in normal `Render`/`OnEvent`:
 | `MapFromLocal(localPt)` | this element's **local** point → **window** frame |
 
 ```cpp
-// A child wants to know where a local point lands on screen:
-Point2Df onScreen = MapFromLocal({0, 0});   // my top-left, in window coords
+// Where a local point of `el` lands in the window:
+Point2Df inWindow = el->MapFromLocal({0, 0});   // el's top-left, in window coords
 ```
 
 ---
@@ -17295,37 +17482,60 @@ These are the patterns that bite. Each one compiles and "looks" right.
 `GetBounds()`:
 
 ```cpp
-// BEFORE — parent-relative, double-offset
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
-    ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
-    // → the viewer paints at (24, 188): a white gap under the toolbar,
-    //   the page badge slides off to the right, clipping is wrong.
-}
+// BEFORE — parent-relative, double-offset (UltraCanvasPDFView, cut down)
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
+        ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
+        // → the viewer paints at (24, 188): a white gap under the toolbar,
+        //   the page badge slides off to the right, clipping is wrong.
+    }
 
-case UCEventType::MouseWheel: {
-    Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
-    bool inThumbs = local.x < thumbStripWidth;
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
+                bool inThumbs = local.x < thumbStripWidth;
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 The fix was to move everything to the local frame:
 
 ```cpp
 // AFTER — local frame, single source of truth
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
-    ctx->FillRectangle(b);
-}
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+    bool showThumbs_ = true;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
+        ctx->FillRectangle(b);
+    }
 
-Rect2Di PageContentArea() const {                 // local
-    const int left = showThumbs_ ? thumbStripWidth : 0;
-    return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
-}
+    Rect2Di PageContentArea() const {                 // local
+        const int left = showThumbs_ ? thumbStripWidth : 0;
+        return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
+    }
 
-case UCEventType::MouseWheel: {
-    bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 Result: the viewer sits flush under the toolbar, the page‑number badge lines up
@@ -17457,6 +17667,8 @@ FILE: Docs/UltraCanvas/UltraCanvasCurveEditor.md
 
 # UltraCanvas Curve Editor and Curves Dialog
 
+<!-- doc-check: void Preview(const ToneCurveSet& curves); void Commit(const ToneCurveSet& curves); void Restore(); -->
+
 ## Overview
 
 The **tone curve** stack is the framework's "Curves" facility — the per-channel
@@ -17551,8 +17763,9 @@ if (!set.IsIdentity()) {
 ## Applying a curve to an image — `PixelFX::Colour::MapLut`
 
 ```cpp
-PFXImage MapLut(const PFXImage& image,
-                const std::vector<std::vector<uint8_t>>& tables);
+namespace PixelFX::Colour {
+    PFXImage MapLut(const PFXImage& image, const std::vector<std::vector<uint8_t>>& tables);
+}
 ```
 
 Maps an image through per-channel 8-bit lookup tables. Every table holds 256
@@ -17647,6 +17860,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDatePicker.md
 ==============================================================================
 
 # UltraCanvas Date Picker & Calendar
+
+<!-- doc-check: std::shared_ptr<UltraCanvasCalendarView> calendar; -->
 
 `UltraCanvasDatePicker.h` provides date-selection widgets for UltraCanvas. The
 design brief was *good usability above all*, so this document first surveys the
@@ -17812,7 +18027,7 @@ Every calendar supports an explicit set of **blocked / unavailable dates**, in
 addition to `SetMinDate`/`SetMaxDate` and the arbitrary `SetDateEnabledPredicate`:
 
 ```cpp
-calendar->SetBlockedDates({ ... });          // replace the whole set
+calendar->SetBlockedDates({ UCDate(2026, 12, 24), UCDate(2026, 12, 25) });   // replace the whole set
 calendar->AddBlockedDate(UCDate(2026, 7, 4));
 calendar->BlockDateRange(start, end);        // e.g. an existing reservation
 calendar->ClearBlockedDates();
@@ -18738,6 +18953,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDesktopShell.md
 
 # UltraCanvasDesktopShell
 
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
@@ -18747,10 +18964,15 @@ show beside its icon.
 ```cpp
 #include "UltraCanvasDesktopShell.h"
 
-for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-    if (!w.skipTaskbar) taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
+for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+    if (w.skipTaskbar) continue;
+    const uint64_t id = w.id;
+    taskbar->AddToggleButton("win-" + std::to_string(id), "", w.iconFile, [id](bool on) {
+        if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+        else UltraCanvasDesktopShell::MinimizeWindow(id);
+    });
+}
 
-UltraCanvasDesktopShell::ActivateWindow(id);
 UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
 UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
 DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
@@ -18921,6 +19143,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
 ==============================================================================
 
 # UltraCanvasDiagramRouter
+
+<!-- doc-check: struct MyNode { double x = 0, y = 0, width = 0, height = 0; }; std::map<std::string, MyNode> nodes; std::string sourceId; std::string targetId; MyNode source; MyNode target; double elementWidth; double elementHeight; int IndexOfThisConnectionOnFace(const std::string& nodeId, DiagramCardinalSide side); int ConnectionsOnFace(const std::string& nodeId, DiagramCardinalSide side); -->
 
 Shared orthogonal connection routing for the diagram family.
 
@@ -19107,6 +19331,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDiagramViewport.md
 
 # UltraCanvasDiagramViewport
 
+<!-- doc-check: struct MyNode { double x = 0; double y = 0; double width = 0; double height = 0; }; class MyDiagram : public UltraCanvasUIElement { public: void SyncViewportSize(); DiagramContentBounds ComputeContentBounds() const; bool HandleMouseWheel(const UCEvent& event); bool HandleMinimapMouseDown(const Point2Di& mousePos); bool HandleControlsMouseDown(const Point2Di& mousePos); void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override; void RenderContentInWorldSpace(IRenderContext* ctx); void RenderMinimap(IRenderContext* ctx); void RenderControls(IRenderContext* ctx); UltraCanvasDiagramViewport viewport; std::map<std::string, MyNode> nodes; bool isDraggingMinimap = false; bool isInteractive = true; }; UltraCanvasDiagramViewport viewport; double x; double y; double dx; double dy; double worldX; double worldY; Point2Dd worldPoint; -->
+
 Shared pan / zoom / minimap / controls viewport for canvas-style diagram
 elements.
 
@@ -19286,11 +19512,14 @@ click always centres the view on the world point drawn under the cursor. Wire it
 on both mouse-down (jump) and mouse-move (drag):
 
 ```cpp
-if (viewport.PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
-    isDraggingMinimap = true;
-    viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
-    RequestRedraw();
-    return true;
+bool MyDiagram::HandleMinimapMouseDown(const Point2Di& mousePos) {   // element-local
+    if (viewport.PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
+        isDraggingMinimap = true;
+        viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
+        RequestRedraw();
+        return true;
+    }
+    return false;
 }
 ```
 
@@ -19309,16 +19538,19 @@ therefore not fixed** — never hard-code them. Resolve with
 `GetControlButtonRole(index)`, or let `ApplyControlButton` do it:
 
 ```cpp
-int btnIdx = viewport.FindControlButtonAt(mousePos);
-if (btnIdx >= 0) {
-    SyncViewportSize();
-    DiagramControlButton role =
-        viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
-    if (role == DiagramControlButton::ToggleLock) {
-        isInteractive = !isInteractive;   // lock state belongs to the host
+bool MyDiagram::HandleControlsMouseDown(const Point2Di& mousePos) {  // element-local
+    int btnIdx = viewport.FindControlButtonAt(mousePos);
+    if (btnIdx >= 0) {
+        SyncViewportSize();
+        DiagramControlButton role =
+            viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
+        if (role == DiagramControlButton::ToggleLock) {
+            isInteractive = !isInteractive;   // lock state belongs to the host
+        }
+        RequestRedraw();
+        return true;
     }
-    RequestRedraw();
-    return true;
+    return false;
 }
 ```
 
@@ -19378,6 +19610,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDialogKeyboard.md
 ==============================================================================
 
 # UltraCanvas Dialog Keyboard Handling
+
+<!-- doc-check: void DeleteSelection(); -->
 
 ## Overview
 
@@ -19477,7 +19711,7 @@ config.buttons = DialogButtons::YesNoCancel;
 auto dialog = UltraCanvasDialogManager::CreateDialog(config);
 dialog->SetButtonMnemonic(DialogButton::No, 'O');   // "N<u>o</u>"
 char yesKey = dialog->GetButtonMnemonic(DialogButton::Yes);  // 'Y'
-dialog->ShowModal(parentWindow);
+dialog->ShowModal(parentWindow.get());
 ```
 
 `SetButtonMnemonic()` returns `false` and changes nothing when the letter does
@@ -19535,7 +19769,7 @@ UltraCanvasDialogManager::ShowDialog(
         [](DialogResult result) {
             if (result == DialogResult::Yes) DeleteSelection();
         },
-        parentWindow);
+        parentWindow.get());
 ```
 
 ## Mnemonics on plain buttons
@@ -20591,7 +20825,8 @@ verbatim so it can carry markup of its own.
 
 ```cpp
 // Data
-void AddDataPoint(category, value1, value2, label1, label2);
+void AddDataPoint(const std::string& category, double value1, double value2,
+                  const std::string& label1 = "Group 1", const std::string& label2 = "Group 2");
 void AddDataPoint(const DumbbellDataPoint&);
 void ClearData();
 void SetDumbbellDataSource(std::shared_ptr<DumbbellDataSource>);
@@ -20606,9 +20841,9 @@ void SetAutoFitRows(bool);
 float GetPreferredHeight() const;
 
 // Colours
-void SetDefaultColors(color1, color2, lineColor);
-void SetGroupColors(color1, color2);
-void SetConnectorColor(lineColor);
+void SetDefaultColors(const Color& color1, const Color& color2, const Color& lineCol);
+void SetGroupColors(const Color& color1, const Color& color2);
+void SetConnectorColor(const Color& lineCol);
 
 // Labels
 void SetShowCategoryLabels(bool);
@@ -20620,7 +20855,7 @@ void SetValueLabelPlacement(DumbbellValueLabelPlacement);
 
 // Legend
 void SetShowLegend(bool);
-void SetLegendLabels(label1, label2);
+void SetLegendLabels(const std::string& label1, const std::string& label2);
 void SetLegendPosition(DumbbellLegendPosition);   // TopRight (default), TopLeft, BottomRight, BottomLeft
 
 // Axis
@@ -21888,7 +22123,11 @@ d.create      = [](const std::string& id, int x, int y, int w, int h) {
 };
 // Optional capabilities:
 d.textKeywords   = {"kanban"};                  // dispatch for CreateFromText
-d.createFromText = ...;                         // Mermaid-style text loader
+d.createFromText = [](const std::string& id, int x, int y, int w, int h,
+                      const std::string& text, std::string* error) {   // Mermaid-style text loader
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateKanbanBoardFromText(id, x, y, w, h, text, KanbanDesign::Professional, error));
+};
 d.propertyKeys   = {"columns", "wipLimit"};     // IConfigurableElement keys
 UltraCanvasElementRegistry::Register(d);
 ```
@@ -22009,12 +22248,15 @@ FILE: Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md
 
 # UltraCanvasElevatedFileOperations
 
+<!-- doc-check: int argc; char** argv; std::string path; -->
+
 **"Delete as administrator"** — the retry Explorer offers when a delete answers
 *You need permission to perform this action*: Windows asks for consent (the
 UAC prompt) and the operation runs again with administrator rights.
 
 ```cpp
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasPathUtf8.h"
 
 // 1. At the very top of main(), before any UI:
 int helperExit = 0;
@@ -22023,7 +22265,7 @@ if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
 
 // 2. Where a delete fails:
 std::error_code ec;
-std::filesystem::remove_all(path, ec);
+std::filesystem::remove_all(PathFromUtf8(path), ec);   // path: absolute, UTF-8
 if (ec && ElevatedFileOperations::IsAvailable() &&
     ElevatedFileOperations::IsPermissionFailure(ec)) {
     auto result = ElevatedFileOperations::DeleteElevated({path});   // blocks
@@ -22125,7 +22367,7 @@ code page.
 
 | Platform | Backend |
 |---|---|
-| Windows | `ShellExecuteEx("runas")` + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
+| Windows | `ShellExecuteEx` with the `"runas"` verb + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
 | Linux, macOS, WebAssembly | None: `IsAvailable()` is false and `DeleteElevated` answers `Unavailable`. The platform-free half (the helper's delete, the encodings) lives in `core/UltraCanvasElevatedFileOperations.cpp` and is what `Tests/ElevatedFileOperationsTest.cpp` exercises everywhere. |
 
 A `pkexec` / authorization-services backend for the Unix desktops would slot in
@@ -22413,13 +22655,14 @@ UltraCanvasFileLoader::OpenFileDialog(opts,
 The callback runs when the dialog closes. `DialogResult::OK` always comes with
 at least one path; anything else means the user cancelled. Paths are UTF-8.
 An Open or Save that succeeds is added to the recent-files list unless the
-options say `SetRegisterAsRecent(false)`.
+options say `SetRegisterAsRecent(false)` - by the framework dialog itself
+(`FileDialogConfig::addToRecent`), or by the loader after a native one.
 
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
-window.
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
+`SetDefaultExtension` and the parent window.
 
 ### Building it yourself
 
@@ -22452,6 +22695,8 @@ A config starts without filters: the dialog then lists every file under an
 | `filterToggles` | Toggle buttons instead of the dropdown |
 | `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
+| `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
+| `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -22511,22 +22756,35 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- A name the file system cannot hold is refused with the reason ("… cannot
+  be used as a file name: it contains ":"") and the dialog stays open on it,
+  unless `validateNames` is off. `InvalidFileNameReason(name)` holds the
+  rules for the system it runs on: empty, "." and "..", control characters
+  and names over 255 (bytes on POSIX, UTF-16 units on Windows) everywhere;
+  on Windows also `< > : " / \ | ? *`, a trailing dot or space, and the device
+  names `CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` with any
+  extension. `FileNameRules::Windows` / `Posix` check a name for the other
+  system.
 - Under All files a name without an extension stays without one, so there
-  is no format to pick - unless the config names a `defaultExtension`, which
-  such a name then gets ("photo" -> "photo.png"), before the Replace File
-  question like the rest. Don't add a default extension of your own after
-  the dialog: it would bypass that question. The framework's savers
+  is no format to pick - unless a default extension is given
+  (`FileDialogOptions::SetDefaultExtension("png")`, or
+  `FileDialogConfig::defaultExtension`), which such a name then gets
+  ("photo" -> "photo.png", `ApplyDefaultExtension`), before the Replace
+  File question like the rest. Don't add a default extension of your own
+  after the dialog: it would bypass that question. The framework's savers
   (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
   refuse a name without one with a message asking for an extension.
-  `FileDialogOptions` has no `defaultExtension`: it is the framework
-  dialog's, for a caller that builds the dialog itself.
-- The native dialogs follow the same rule. Windows is given the chosen
-  type's extension as its default (`SetDefaultExtension`) and the result is
-  checked as above; the GTK chooser rewrites the name when the type changes
-  and when it is accepted. Where that produces a different name that is
-  already a file, they ask about replacing it - GTK leaves the chooser open
-  on **No**, Windows cancels. The macOS panel already insists on one of the
-  offered extensions.
+- The native dialogs follow the same rules. Windows is given the chosen
+  type's extension as its default (`SetDefaultExtension`) - the caller's
+  default extension when the type names none, or there are no filters - and
+  the result is checked as above; the GTK chooser rewrites the name when the
+  type changes and when it is accepted. Where that produces a different name
+  that is already a file, they ask about replacing it - GTK leaves the
+  chooser open on **No**, Windows cancels. The macOS panel already insists
+  on one of the offered extensions; when none names one, it is given the
+  default extension as its only one, other extensions still allowed, and
+  adds it and asks itself. Android's document picker is offered the
+  suggested name with the default extension added.
 
 ## Filter toggles
 
@@ -22700,6 +22958,8 @@ FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
 ==============================================================================
 
 # UltraCanvasFilerWidget
+
+<!-- doc-check: struct RemoteDrives { bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error); std::string ListingStatus(const std::string& path); bool QueueDelete(const std::vector<FilerEntry>& entries, std::string& error); bool QueueRename(const std::string& path, const std::string& newName, std::string& error); bool QueueMakeDirectory(const std::string& folderPath, const std::string& name, std::string& error); bool QueueUpload(const std::string& folderPath, const std::vector<std::string>& localFiles, std::string& error); bool QueueDownload(const std::string& folderPath, const std::vector<std::string>& remoteFiles, std::string& error); }; std::shared_ptr<RemoteDrives> drives; std::string utf8Path; FileFilter filter; std::unordered_set<std::string> favorites; size_t entryIndex; std::string UserHomeDir(); void OpenInNewTab(const std::string& path); void StartSubfolderScan(const std::string& query); -->
 
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
@@ -23430,6 +23690,9 @@ too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
 pictures keeps the glyph.
 
 ```cpp
+#include "Plugins/Documents/eBook/EPUBEngine.h"
+#include "Plugins/Documents/eBook/MOBIEngine.h"
+
 std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
 if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
 ```
@@ -23828,19 +24091,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueDelete(victims, error);   // queued, not yet done
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueRename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->QueueMakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueUpload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->QueueDownload(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -24447,9 +24720,9 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
-                              // a taken name asks Replace (red) / Cancel with the
-                              // two entries side by side
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
+                                 // a taken name asks Replace (red) / Cancel with the
+                                 // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -25039,10 +25312,22 @@ The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The element running the gesture owns the overlay (the filer does this on
+// every mouse move of an item drag).
+class DragSource : public UltraCanvasUIElement {
+public:
+    void UpdateBadge(const Rect2Di& badgeRectInWindowCoords) {
+        if (auto* window = GetWindow())
+            window->SetDragOverlay(this, badgeRectInWindowCoords,
+                    [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+    }
+    void HideBadge() {   // when the gesture ends
+        if (auto* window = GetWindow()) window->ClearDragOverlay(this);
+    }
+
+private:
+    void DrawBadge(IRenderContext* ctx, const Rect2Di& rect);
+};
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -25214,7 +25499,7 @@ lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -25266,8 +25551,9 @@ When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
-    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
+// A raw pointer: the filer owns this callback, so a shared_ptr would keep it alive.
+filer->SetFilterEmptyAction("Scan sub folder", [this, view = filer.get()]() {
+    StartSubfolderScan(view->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
 
@@ -25393,6 +25679,8 @@ FILE: Docs/UltraCanvas/UltraCanvasFinancialChart.md
 
 # UltraCanvasFinancialChartElement Documentation
 
+<!-- doc-check: std::shared_ptr<FinancialChartDataVector> GenerateSampleStockData(const std::string& symbol, int days); -->
+
 ## Overview
 
 The `UltraCanvasFinancialChartElement` is a sophisticated financial charting component within the UltraCanvas framework designed for displaying stock market, cryptocurrency, and forex data. It provides professional-grade OHLC (Open, High, Low, Close) candlestick charts with integrated volume visualization, moving averages, and interactive features.
@@ -25464,7 +25752,6 @@ class FinancialChartDataVector : public IChartDataSource {
 ```cpp
 UltraCanvasFinancialChartElement(
     const std::string& id,  // Unique identifier
-    long uid,               // Unique numeric ID
     int x,                  // X position
     int y,                  // Y position
     int width,              // Chart width
@@ -25535,7 +25822,6 @@ Creates a basic financial chart element.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartElement(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height
 );
@@ -25548,7 +25834,6 @@ Creates a financial chart with pre-loaded data.
 ```cpp
 std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
     const std::string& id,
-    long uid,
     int x, int y,
     int width, int height,
     std::shared_ptr<FinancialChartDataVector> data,
@@ -25564,7 +25849,6 @@ std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
 // Create a financial chart element
 auto stockChart = CreateFinancialChartElement(
     "StockChart",  // ID
-    1001,          // UID
     20, 50,        // Position
     980, 400       // Size
 );
@@ -25634,45 +25918,58 @@ stockChart->SetGridColor(Color(210, 210, 210, 255));
 
 ### Complete Example Application
 
-```cpp
-class FinancialChartApp : public UltraCanvasApplication {
-private:
-    std::shared_ptr<UltraCanvasFinancialChartElement> chart;
-    std::shared_ptr<FinancialChartDataVector> data;
+`GenerateSampleStockData` stands for the application's own data source; the
+demo application's generator of that name is in
+`Apps/DemoApp/UltraCanvasFinancialChartExamples.cpp`.
 
-public:
-    bool Initialize() override {
-        // Generate sample data
-        data = GenerateSampleStockData("ULTR", 90);
-        
-        // Create chart
-        chart = CreateFinancialChartElement(
-            "MainChart", 1000, 20, 50, 980, 400
-        );
-        
-        // Configure chart
-        chart->SetFinancialDataSource(data);
-        chart->SetChartTitle("ULTR - UltraCanvas Inc.");
-        chart->SetCandleDisplayStyle(
-            UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick
-        );
-        
-        // Styling
-        chart->SetBullishCandleColor(Color(0, 150, 0, 255));
-        chart->SetBearishCandleColor(Color(200, 0, 0, 255));
-        
-        // Features
-        chart->SetShowVolumePanel(true);
-        chart->SetShowMovingAverage(true, 20);
-        chart->SetEnableTooltips(true);
-        chart->SetEnableZoom(true);
-        
-        // Add to container
-        mainContainer->AddChild(chart);
-        
-        return true;
-    }
-};
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include "Plugins/Charts/UltraCanvasFinancialChart.h"
+using namespace UltraCanvas;
+
+int main() {
+    UltraCanvasApplication app;
+    if (!app.Initialize("FinancialChartApp")) return 1;
+
+    WindowConfig config;
+    config.title = "Financial Chart";
+    config.width = 1020;
+    config.height = 480;
+    auto window = CreateWindow(config);
+
+    // Generate sample data
+    std::shared_ptr<FinancialChartDataVector> data = GenerateSampleStockData("ULTR", 90);
+
+    // Create chart
+    auto chart = CreateFinancialChartElement(
+        "MainChart", 20, 50, 980, 400
+    );
+
+    // Configure chart
+    chart->SetFinancialDataSource(data);
+    chart->SetChartTitle("ULTR - UltraCanvas Inc.");
+    chart->SetCandleDisplayStyle(
+        UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick
+    );
+
+    // Styling
+    chart->SetBullishCandleColor(Color(0, 150, 0, 255));
+    chart->SetBearishCandleColor(Color(200, 0, 0, 255));
+
+    // Features
+    chart->SetShowVolumePanel(true);
+    chart->SetShowMovingAverage(true, 20);
+    chart->SetEnableTooltips(true);
+    chart->SetEnableZoom(true);
+
+    // Add to the window
+    window->AddChild(chart);
+    window->Show();
+
+    app.Run();
+    return 0;
+}
 ```
 
 ## Rendering Pipeline
@@ -26699,6 +26996,8 @@ FILE: Docs/UltraCanvas/UltraCanvasFontFile.md
 
 # UltraCanvasFontFile
 
+<!-- doc-check: std::string path; float deviceScale; Rect2Dd rect; std::shared_ptr<UltraCanvasFilerWidget> filer; -->
+
 Reads a **font definition file** — `.ttf`, `.otf`, `.ttc`, `.woff`, Type 1,
 the bitmap formats — as a *document*: its name records are metadata you can
 show, and a line of its own glyphs is a thumbnail you can draw. Together with
@@ -26950,7 +27249,7 @@ previewing a candidate before it is installed.
 | `std::vector<std::string> GetRegisteredFontFiles()` | Every file registered so far, in registration order. |
 
 Per platform: FontConfig (`FcConfigAppFontAddFile`) on Linux, Android and
-WASM; GDI `AddFontResourceExW(FR_PRIVATE)` **plus** FontConfig on Windows,
+WASM; GDI `AddFontResourceExW` with `FR_PRIVATE` **plus** FontConfig on Windows,
 because Pango is pinned to its FontConfig backend there; CoreText
 (`CTFontManagerRegisterFontsForURL`, process scope) on macOS.
 
@@ -28093,10 +28392,10 @@ zoom; `FitToRange()` picks a day width so the whole project fits.
 Callbacks:
 
 ```cpp
-gantt->onTaskClick        = [](int id) { ... };
-gantt->onTaskDoubleClick  = [](int id) { ... };
-gantt->onTaskToggled      = [](int id, bool expanded) { ... };
-gantt->onSelectionChanged = [](int id) { ... };   // -1 = cleared
+gantt->onTaskClick        = [](int id) { /* a bar or row was clicked */ };
+gantt->onTaskDoubleClick  = [](int id) { /* e.g. open the task editor */ };
+gantt->onTaskToggled      = [](int id, bool expanded) { /* phase collapsed/expanded */ };
+gantt->onSelectionChanged = [](int id) { /* update a details panel */ };   // -1 = cleared
 ```
 
 ## Element API summary
@@ -30069,6 +30368,8 @@ FILE: Docs/UltraCanvas/UltraCanvasGradientEditor.md
 
 # UltraCanvasGradientEditor
 
+<!-- doc-check: VectorStorage::LinearGradientData fill; -->
+
 A gradient ramp editor: the stops of a gradient on a horizontal strip.
 Click a stop to select it, drag it along the strip to move it, double-click
 the strip to add a stop with the ramp's colour there, drag a stop away
@@ -30356,7 +30657,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
-| HTML text | its words, for a list, a search index or a reply quote | `HTML::ExtractPlainText` |
+| HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
 | HTML text | the links, images, headings or any other elements | `HTML::Parser::Parse`, then walk the `Document` or use `HTML::Matches` with a selector |
 | CSS text and your own tree (SVG, XML) | which rules apply to an element | `HTML::StyleSheet::ParseAppend`, then `HTML::MatchingRules<YourTraits>` |
@@ -30405,17 +30706,43 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
-Two helpers need no DOM:
+Two helpers need no DOM of the caller's:
 
 ```cpp
 std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<style> bodies dropped,
                                                      // entities decoded, whitespace collapsed
+std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
 ```
 
-`ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+`ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
+message list's preview line, a search index or a keyword filter want: block
+boundaries, `<br>` and pictures become spaces, everything is one line. An
+inline element (`<b>`, `<span>`, `<a>` ...) leaves no space, as on screen -
+`wor<b>ld</b>` is "world", and a spam word split by formatting
+(`<b>via</b>gra`) is still the word. A no-break space counts as a space.
+
+`ExtractPlainText(const Node&)` gives the same single line for an element
+already parsed - what a link, a cell or a heading says, read from the DOM.
+UltraMail's threat scan reads every link's text that way while it walks the
+parsed page for `a[href]`, `area[href]` and `form[action]`.
+
+`PlainTextLayout::Lines` is the text a person reads or quotes - an HTML mail
+shown as plain text, the quote in a reply. It parses the page and writes it
+the way a browser's `innerText` does, simplified:
+
+- a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
+  own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
+  `<hr>` - never more than one blank line in a row;
+- `<br>` a line break, two of them a blank line;
+- the cells of a table row a tab apart;
+- list items as `- item`, or `1. item` in an `<ol>` (from its `start`);
+- `<pre>` as written; elsewhere whitespace collapses to single spaces, and a
+  no-break space is a space;
+- what a browser does not show is left out: `<head>`, `<script>`, `<style>`,
+  `<template>`, `<select>`, `<svg>`, the `hidden` attribute, and an inline
+  `display: none`, `visibility: hidden` or `mso-hide: all` (a mail's hidden
+  preheader). A class that hides through a style sheet is not looked up.
 
 ## CSS: the style sheet model
 
@@ -30564,6 +30891,7 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
+opts.selectableText = true;                   // the text selects and copies, as in a browser
 
 HTML::ElementBuilder builder;
 HTML::BuildResult r = builder.Build(html, opts);     // or BuildDocument(doc, opts) for a parsed one
@@ -30574,6 +30902,14 @@ if (r.root) {
 }
 for (const std::string& w : r.warnings) Log(w);
 ```
+
+With `selectableText` every label of the tree joins one
+`UltraCanvasTextSelection` (`r.textSelection`): a drag runs on from
+paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
+once the text has been clicked, and a text link opens when it is released
+without a drag. Keep `r.textSelection` to offer Copy and Select All in a
+menu (its `onContextMenu` is asked on a right-click); see
+`UltraCanvasLabelExamples.md`, *Selectable text*.
 
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
@@ -30613,11 +30949,7 @@ and the check blocks new ones:
 | Site | Has its own | Replace with |
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
+| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
 
 ## Limits
 
@@ -31151,8 +31483,8 @@ heatmap->SetRenderMode(UltraCanvas::HeatmapRenderMode::Auto);
 ## Labels, titles, colour bar
 
 ```cpp
-heatmap->SetColumnLabels({...});
-heatmap->SetRowLabels({...});
+heatmap->SetColumnLabels({"0 s", "1 s", "2 s", "3 s"});
+heatmap->SetRowLabels({"100 Hz", "1 kHz", "10 kHz"});
 heatmap->SetAxisTitles("Time", "Frequency");
 heatmap->SetShowColorBar(true);
 ```
@@ -31180,6 +31512,8 @@ FILE: Docs/UltraCanvas/UltraCanvasHexbinChart.md
 ==============================================================================
 
 # UltraCanvasHexbinChart
+
+<!-- doc-check: std::vector<Point2Dd> loadPoints(); -->
 
 A hexagonal heatmap / hexbin chart: a grid of pointy-top hexagons whose colour
 encodes a value. It reuses [`UltraCanvasHeatmapChart`](UltraCanvasHeatmapChart.md)
@@ -31244,6 +31578,8 @@ FILE: Docs/UltraCanvas/UltraCanvasHostFileIcons.md
 ==============================================================================
 
 # UltraCanvasHostFileIcons — the icons the host desktop draws
+
+<!-- doc-check: std::string path; bool isDirectory; -->
 
 `UltraCanvasHostFileIcons.h` answers one question: **what does the system this
 application is running on draw for a file of this kind?** The picture Explorer
@@ -31382,6 +31718,8 @@ FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
 
 # UltraCanvasIconResource — Windows icon resources without Windows
 
+<!-- doc-check: std::string path; -->
+
 `UltraCanvasIconResource.h` reads the icons a Windows file carries: the frames
 of an `.ico`, and the `RT_GROUP_ICON` / `RT_ICON` resources of a PE binary
 (`.exe`, `.dll`, and the icon libraries that share the format). It is what
@@ -31466,6 +31804,22 @@ FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 
 # UltraCanvas Image Performance Test Documentation
 
+<!-- doc-check:
+double NowMs();
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
+std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeQOIFile(const std::string& path);
+std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeBMPFile(const std::string& path);
+using Step = std::function<void()>;
+Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
+CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
+std::string outPath; std::string stablePath; int globalIdx; int slot; int activeCount;
+double t0; double t1; double d0; double d1;
+UltraCanvasWindowBase* win; IRenderContext* ctx;
+std::shared_ptr<UltraCanvasImageElement> imageElement;
+-->
+
 ## Overview
 
 The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
@@ -31486,7 +31840,7 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.7
+**Version:** 2.5.9
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -31498,10 +31852,11 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"
+#include "UltraCanvasModalDialog.h"   // FileFilter
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 
@@ -31571,10 +31926,14 @@ struct ImageExportOptions {
 ```cpp
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 public:
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                            long x = 0, long y = 0, long w = 100, long h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                            float x, float y, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
-    bool LoadFromFile(const std::string& filePath);
+    // Both return true when the element shows a valid image. LoadFromFile
+    // goes through UCImage's path-keyed cache unless forceLoad is set.
+    bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     void SetFitMode(ImageFitMode mode);   // Contain, Cover, Stretch, ...
@@ -31633,16 +31992,93 @@ struct CodecResult {
 };
 ```
 
+### Helpers (file-local)
+
+Every timed region reads one monotonic millisecond clock, and every libvips
+codec is saved with the same options builder - the struct defaults already
+carry each codec's quality (85 / 80 / 65 / 50 / ...):
+
+```cpp
+double NowMs() {
+    using namespace std::chrono;
+    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
+}
+
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
+    UCImageSave::ImageExportOptions opt;
+    opt.format = f;
+    opt.preserveMetadata = false;
+    opt.preserveTransparency = true;
+    return opt;
+}
+```
+
+The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
+and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
+success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
+and return whether that worked. All of them live in an anonymous namespace
+in the source file; none is part of the framework.
+
+### CodecComparisonChartElement (the grouped bar chart, file-local)
+
+```cpp
+class CodecComparisonChartElement : public UltraCanvasUIElement {
+public:
+    CodecComparisonChartElement(const std::string& identifier)
+            : UltraCanvasUIElement(identifier) {}
+
+    void SetCodecNames(const std::vector<std::string>& names);   // one bar group per name
+    void SetResults(const std::vector<CodecResult>& newResults);  // the rows so far; repaints
+    void SetThumbnailImages(const std::vector<std::shared_ptr<UltraCanvasImageElement>>& thumbs);
+
+    // Fired from Render() when the chart's bounds changed since the last
+    // paint: the demo moves the thumbnails under their bar groups.
+    std::function<void()> onGeometryChanged;
+
+    // Geometry, for aligning the thumbnails with the bar groups.
+    Rect2Di GetPlotArea() const;
+    int GetGroupCenterX(int index) const;
+    int GetGroupInnerWidth() const;
+    int GetXAxisBottomY() const;
+};
+```
+
+### PanelState (shared by every lambda of the page)
+
+```cpp
+struct PanelState {
+    std::string sourcePath;
+    UCImagePtr  sourceImage;
+    int         sourceWidth = 0;
+    int         sourceHeight = 0;
+    std::vector<CodecResult> results;
+
+    std::shared_ptr<UltraCanvasButton>   chooseBtn;
+    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasLabel>    infoLabel;
+    std::shared_ptr<UltraCanvasLabel>    statusLabel;
+    std::shared_ptr<CodecComparisonChartElement> chartElem;
+    std::shared_ptr<UltraCanvasContainer> thumbsRow;
+    std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
+
+    std::vector<std::string> codecNames;   // chart groups, in display order
+    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    bool benchmarkRunning = false;         // re-entry guard while a run is in flight
+    std::string runStamp;                  // temp-file prefix, new for every run
+};
+auto state = std::make_shared<PanelState>();
+```
+
 ## Events / Callbacks
 
 The benchmark wires up the following user-facing actions:
 
-| Control            | Callback              | Behavior                                                          |
-|--------------------|----------------------|-------------------------------------------------------------------|
-| `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
-| `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
+| Control              | Callback            | Behavior                                                          |
+|----------------------|---------------------|-------------------------------------------------------------------|
+| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
+| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
+| `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
 
@@ -31716,7 +32152,8 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
     state->chartElem->SetResults(state->results);
     resetThumbnails();
 
-    std::string fileName = std::filesystem::path(path).filename().string();
+    // File names are UTF-8 on every platform: never path.string().
+    std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
     std::ostringstream info;
     info << fileName << "  -  " << state->sourceWidth << " x " << state->sourceHeight << " px";
     state->infoLabel->SetText(info.str());
@@ -31740,8 +32177,10 @@ double t1 = NowMs();
 if (err.empty()) {
     r.encodeTimeMs    = t1 - t0;
     r.encodedFilePath = outPath;
-    r.encodedSizeBytes =
-        static_cast<size_t>(std::filesystem::file_size(outPath));
+    std::error_code ec;
+    r.encodedSizeBytes = static_cast<size_t>(
+            std::filesystem::file_size(PathFromUtf8(outPath), ec));
+    if (ec) r.encodedSizeBytes = 0;
 
     // Force eager decode so libvips doesn't lazy-defer the work.
     double d0 = NowMs();
@@ -32991,14 +33430,14 @@ lists Overdue plus every priority actually used on the board.
 Callbacks:
 
 ```cpp
-board->onCardMoved = [](int id, int from, int to) { ... };
-board->onCardAdded = [](int id) { ... };          // Via the editor UI
-board->onCardRemoved = [](int id) { ... };
-board->onCardClick = [](int id) { ... };
-board->onCardDoubleClick = [](int id) { ... };
-board->onSelectionChanged = [](int id) { ... };   // -1 = cleared
-board->onWipExceeded = [](int columnId) { ... };
-board->onBoardChanged = []() { ... };             // Any editor mutation
+board->onCardMoved = [](int id, int from, int to) { /* card moved */ };
+board->onCardAdded = [](int id) { /* added */ };          // Via the editor UI
+board->onCardRemoved = [](int id) { /* removed */ };
+board->onCardClick = [](int id) { /* clicked */ };
+board->onCardDoubleClick = [](int id) { /* double-clicked */ };
+board->onSelectionChanged = [](int id) { /* selected */ };   // -1 = cleared
+board->onWipExceeded = [](int columnId) { /* over WIP limit */ };
+board->onBoardChanged = []() { /* changed */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
 ```
 
@@ -33367,6 +33806,10 @@ its text unless it is given a size.
   borders and rounded corners, padding, margin.
 - **Pango markup** (`SetTextIsMarkup`) and **text links** (`SetTextLinks`).
 - **Inline images** flowing in the text like a browser's `<img>`.
+- **Selectable text** (`SetSelectable`): drag to select, double-click a word,
+  triple-click all of it, Ctrl+C to copy - and with an
+  `UltraCanvasTextSelection` one selection across many labels, as in a
+  browser.
 - **Events:** click, hover, link activated and hovered, text changed.
 - **Disabled look:** `disabledTextColor` while the label `IsDisabled()`.
 
@@ -33545,6 +33988,91 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
+### Selectable text
+
+A label's text can be selected and copied the way text on a web page can.
+It is off by default - a caption beside a control should not take the press
+meant for the control.
+
+```cpp
+void SetSelectable(bool selectable);   // a selection of its own
+bool IsSelectable() const;
+void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);   // a shared one
+const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const;
+
+void SetSelectedRange(int startByte, int endByte);   // an end past the text = its end
+void ClearSelectedRange();
+bool HasSelectedRange() const;
+int GetSelectionStart() const;
+int GetSelectionEnd() const;
+std::string GetSelectedText();     // as a reader copies it
+std::string GetRenderedText();     // markup parsed, entities decoded
+int TextIndexAtPoint(const Point2Df& localPoint);   // nearest text position, -1 before the first layout
+std::pair<int, int> WordRangeAt(int byteIndex);     // [first, second)
+```
+
+On a selectable label:
+
+- **A drag selects**, a **double-click** takes the word under the pointer (a
+  dot or apostrophe between letters stays in it: `example.com`, `don't`), a
+  **triple-click** the whole text, and **Shift+click** extends the selection.
+- **Ctrl+C** (or Ctrl+Insert, or Cmd+C) copies, **Ctrl+A** selects all. The
+  pressed label takes the keyboard focus for them; only that one label of a
+  selection accepts the focus, so a page of paragraphs is one stop in the Tab
+  order, not one per paragraph.
+- The highlight is drawn under the text in `LabelStyle::selectionColor`.
+- `GetSelectedText()` leaves out the U+FFFC placeholders of inline images and
+  soft hyphens, and copies a no-break space as a plain space.
+- A **text link** opens when the button is released on it without having
+  dragged, rather than on the press - otherwise a drag that starts on a link
+  could never select it. A label with `onClick` stays a button: a press on it
+  clicks, it does not select.
+- The pointer is the text I-beam over the label (the hand over a link).
+- Byte offsets are those of the rendered text, as for links and inline
+  images. `SetText` and `SetTextIsMarkup` clear the selection.
+
+```cpp
+auto address = CreateLabel("address", "anna.berg@example.com");
+address->SetSelectable(true);   // the reader can copy the address
+```
+
+#### One selection across many labels
+
+`UltraCanvasTextSelection` (`UltraCanvasTextSelection.h`) is a selection that
+several labels share, in reading order. A drag that starts in one label runs
+on through the next ones, and a copy joins their parts: a line break between
+labels above one another, a tab between labels side by side (the cells of a
+table row). Create it with `std::make_shared` - every label keeps it alive,
+while it holds the labels weakly and a label leaves it as it is destroyed.
+
+```cpp
+auto selection = std::make_shared<UltraCanvasTextSelection>();
+selection->AddLabel(*subject);          // the order added is the reading order
+selection->AddLabel(*sender);
+selection->AddLabelsIn(*articleRoot);   // every label below, depth first
+
+selection->onContextMenu = [](const UCEvent& event) {
+    // A right-click on one of the labels: show Copy / Select All.
+};
+bool any = selection->HasSelection();
+std::string text = selection->GetSelectedText();
+selection->CopyToClipboard();
+selection->SelectAll();
+selection->ClearSelection();
+```
+
+- With the pointer between labels, the selection runs to the nearest text: a
+  label beside the pointer on its line, otherwise the end of the last label
+  above it. Dragged past the top or bottom of the scroll view the labels sit
+  in, that view scrolls, faster the further the pointer is past its edge.
+- A right-click inside the selection keeps it (for the menu's Copy); outside
+  it, it clears it first. `onContextMenu` is then called - a right-click on
+  a selectable label never opens a link. `onSelectionChanged` is raised
+  whenever what is selected changes.
+- `HTML::BuildOptions::selectableText` gives every label of a tree built from
+  HTML one such selection (`HTML::BuildResult::textSelection`); UltraMail
+  selects a mail's body that way.
+
 ## Event Callbacks
 
 ```cpp
@@ -33557,6 +34085,10 @@ std::function<void(const std::string&)> onTextChanged;    // after SetText chang
 std::function<void(const std::string&)> onLinkActivated;
 std::function<void(const std::string&)> onLinkHovered;
 ```
+
+In a selectable label (`SetSelectable`) `onLinkActivated` fires when the
+button is released on the link it was pressed on, without a drag that
+selected text in between.
 
 `SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
 beside the pointer, following it along the link and hidden again as the
@@ -33980,7 +34512,7 @@ LabelShape parent;                 // the enclosing circle
 parent.isContainer = true;         // not a mark labels must avoid covering
 shapes.push_back(parent);
 
-label.containerShape = static_cast<int>(shapes.size() - 1);
+l.containerShape = static_cast<int>(shapes.size() - 1);   // l: the child's label
 ```
 
 ## Decluttering dense labels
@@ -33989,7 +34521,7 @@ A chart with hundreds of value labels cannot draw them all. Offer them all and
 let the solver decide:
 
 ```cpp
-for (...) {
+for (const Point2Dd& screenPos : valuePositions) {   // one per data value
     ShapeLabel l;
     l.usePointAnchor = true;
     l.anchorPoint    = screenPos;
@@ -34585,7 +35117,7 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -34861,8 +35393,9 @@ The line chart follows this rendering sequence:
 ### Supported Events
 
 - **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
-- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
-- **MouseUp:** Ends the pan
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in;
+  any other left press is left to the parent
+- **MouseUp:** Ends the pan (a release that ends none is left to the parent)
 - **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior
@@ -34965,6 +35498,8 @@ FILE: Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md
 
 # UltraCanvasListSortFilterProxy
 
+<!-- doc-check: ListRowComparator myComparator; double AmountOf(const IListModel& model, int sourceRow); -->
+
 **Sorting and filtering for any `IListModel`, without touching the model that
 holds the data.** The proxy *is* an `IListModel`: it wraps a source model and
 presents the same columns with the rows re-ordered and thinned out, so a view is
@@ -34988,14 +35523,14 @@ rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }
 
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 
-auto view = CreateListView("invoices", 0, 0, 800, 400);
+auto view = std::make_shared<UltraCanvasListView>("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
 proxy->SetFilterText("olpe");       // this filters
 
 // Header clicks sort, with an indicator. The view shows the order but never
 // decides it, so the two lines that do it live here rather than inside the view.
-view->onHeaderClicked = [view, proxy](int column) {
+view->onHeaderClicked = [view = view.get(), proxy](int column) {   // raw: the view must not own itself
     const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
     proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
                                           : ListSortOrder::Descending);
@@ -35749,6 +36284,132 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 };
 ```
 
+### A custom delegate with clickable cells (the domain dashboard)
+
+The DemoApp's *Domain Dashboard* page
+(`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) is a table whose
+cells are more than text: a link, a status, an action, a sparkline, a figure, a
+plan and a row-menu button. A list view does not hold elements per row; one
+`IItemDelegate` paints every cell from the model, and the view's cell
+callbacks make parts of the cells clickable. That is what keeps it fast at any
+size: only the rows on screen are painted (the page's *Add 1,000 domains*
+button shows it).
+
+The model keeps records and answers text and tooltips per column; the delegate
+reads the record directly for what is not text (the sparkline's history):
+
+<!-- doc-check:
+struct DomainRecord { std::string domain; bool active = true; bool insightsEnabled = false; std::vector<float> history; int visitors = 0; std::string plan = "Free"; };
+enum DomainColumn { ColDomain, ColStatus, ColInsights, ColTrend, ColVisitors, ColPlan, ColMenu, ColCount };
+enum { kCellPadding = 10 };
+const Color kLinkColor(0, 102, 204);
+const Color kTextColor(40, 40, 40);
+void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box);
+std::shared_ptr<UltraCanvasListView> list;
+-->
+
+```cpp
+class DomainListModel : public IListModel {
+public:
+    std::vector<DomainRecord> rows;   // domain, active, history, visitors, plan
+    int GetRowCount() const override { return static_cast<int>(rows.size()); }
+    int GetColumnCount() const override { return ColCount; }
+    ListColumnDef GetColumnDef(int column) const override;   // titles, widths, header tooltips
+    ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
+    bool SetData(const ListIndex&, ListDataRole, const ListDataValue&) override { return false; }
+    bool SortBy(int column, bool ascending);                  // reorders rows, NotifyDataChanged()
+    void RowChanged(int row) { NotifyRowChanged(row); }
+};
+
+class DomainRowDelegate : public IItemDelegate {
+public:
+    int hoverRow = -1, hoverColumn = -1;
+    bool hoverOnTarget = false;
+
+    void RenderItem(IRenderContext* ctx, const IListModel* model, int row, int column,
+                    const ListItemStyleOption& option) override {
+        const auto* domains = dynamic_cast<const DomainListModel*>(model);
+        if (!domains || row < 0 || row >= domains->GetRowCount()) return;
+        const Rect2Dd cell(option.columnX + kCellPadding, option.rect.y,
+                           option.columnWidth - 2 * kCellPadding, option.rect.height);
+        if (column == ColTrend) {                         // not text: draw it
+            DrawSparkline(ctx, domains->rows[row].history, cell);
+            return;
+        }
+        ctx->SetTextAlignment(option.columnAlignment);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(column == ColDomain ? kLinkColor : kTextColor);   // and status green, ...
+        ctx->DrawTextInRect(GetStringValue(model->GetData({row, column},
+                                           ListDataRole::DisplayRole)), cell);
+    }
+    int GetRowHeight(const IListModel*, int) const override { return 44; }
+
+    // Whether a cell-local point is on what the cell lets you click: the
+    // link's or "Enable"'s text (its width measured while painting), or ⋮.
+    bool OnTarget(const DomainListModel& model, int row, int column, const Point2Di& inCell) const;
+};
+```
+
+The view paints the row background (selection, hover) before the delegate
+runs, so the delegate draws content only. The default selection is a strong
+blue; a dashboard with coloured text sets a light one in its `ListViewStyle`
+(`selectionBackgroundColor`) so the colours stay readable.
+
+Clicks and hover come per cell, with the point inside the cell - the same
+space the delegate painted in - so the handler can tell the link text from the
+empty part of its cell:
+
+```cpp
+struct DashboardState {                                   // what the callbacks share
+    std::shared_ptr<DomainListModel> model;
+    std::shared_ptr<DomainRowDelegate> delegate;
+    UltraCanvasListView* list = nullptr;                  // raw: the view owns the callbacks
+    int sortColumn = -1;
+    bool sortAscending = true;
+    void OpenRowMenu(const std::string& domain, const Point2Di& at);
+};
+auto state = std::make_shared<DashboardState>();
+state->list = list.get();
+
+list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
+    state->delegate->hoverOnTarget = row >= 0 && state->delegate->OnTarget(*state->model, row, column, inCell);
+    state->delegate->hoverRow = row;
+    state->delegate->hoverColumn = column;
+    state->list->SetMouseCursor(state->delegate->hoverOnTarget ? UCMouseCursor::Hand
+                                                               : UCMouseCursor::Default);
+    state->list->RequestRedraw();                         // the link underlines
+};
+list->onCellClicked = [state](int row, int column, const Point2Di& inCell) {
+    if (!state->delegate->OnTarget(*state->model, row, column, inCell)) return;
+    if (column == ColDomain) OpenURL("https://" + state->model->rows[row].domain);
+    if (column == ColMenu)
+        state->OpenRowMenu(state->model->rows[row].domain,
+                           UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
+};
+list->onContextMenu = [state](int row, const UCEvent& event) {   // right-click a row
+    if (row >= 0) state->OpenRowMenu(state->model->rows[row].domain, event.pointerWindow);
+};
+list->onHeaderClicked = [state](int column) {             // the model orders its rows
+    if (column == ColMenu) return;
+    state->sortAscending = state->sortColumn == column ? !state->sortAscending : true;
+    state->sortColumn = column;
+    if (state->model->SortBy(column, state->sortAscending))
+        state->list->SetSortIndicator(column, state->sortAscending);
+};
+```
+
+`state` is a small struct the callbacks share; it holds the list view as a raw
+pointer, because the view owns the callbacks that hold `state` (a
+`shared_ptr` back to the view would be a cycle). The menu's actions find their
+row again by name when they run: sorting or removing rows while a menu is open
+moves the row it was opened on.
+
+What a delegate gives up is a real element per cell: the "Enable" action and
+the ⋮ button are drawn and hit-tested, not `UltraCanvasButton`s, so they do not
+take the keyboard focus one by one - the row does. That is how list views on
+every desktop do it. When each row needs live controls of its own (a text
+field, a slider), use a container of elements instead, for a short list.
+
 ## Keyboard Navigation
 
 | Key                | Action                              |
@@ -35779,6 +36440,7 @@ first Down after it selects the first row.
 
 ## See Also
 
+- DemoApp → *Domain Dashboard* (`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
@@ -36250,6 +36912,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
 
 # UltraCanvasMatrixDiagram
 
+<!-- doc-check: int row; int col; void Log(const std::string& line); -->
+
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
 relationships between two or three ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
@@ -36389,6 +37053,7 @@ dots with letter codes under one legend.
 The point of the weights is that they sum.
 
 ```cpp
+int col = 0, row = 1;                       // item indices in panel 0's column and row sets
 double score = model.ColumnScore(0, col);   // Σ rowImportance × cellWeight
 double total = model.RowScore(0, row);
 std::vector<int> ranked = model.RankColumns(0);   // descending, stable ties
@@ -36482,9 +37147,11 @@ shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
+<!-- doc-check: void Log(const std::string& message); -->
+
 ```cpp
 MatrixValidation result = model.Validate();
-if (!result.valid) { for (const auto& e : result.errors) Log(e); }
+if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: your app's logger
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
@@ -36510,6 +37177,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMediaCodecRegistry.md
 ==============================================================================
 
 # UltraCanvas Media Codec Registry
+
+<!-- doc-check: namespace MyApp { std::shared_ptr<UCAudio> DecodeMonkeysAudio(const std::string& path); std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); UCVideoFramePtr GrabIvfPoster(const std::string& source, const VideoThumbnailRequest& req); } bool LooksLikeTransportStream(const std::string& path); VideoDecoderFactory openDecoder; -->
 
 `UltraCanvasMediaCodecRegistry.h` — the one place that knows which audio and
 video formats a build can handle, and the extension point for adding more.
@@ -36895,8 +37564,9 @@ colours directly under the picture: an
 swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
 clicking the checkerboard goes back to the transparency pattern. Files without
 transparency never show the strip, so it costs no space where it would mean
-nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
-opaque alpha channel a PNG export routinely carries.
+nothing — that check is `UCImage::HasTransparency` (the Cairo image,
+`libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
+channel a PNG export routinely carries.
 
 ```cpp
 viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
@@ -37191,7 +37861,10 @@ out of scope closes immediately.
 
 ```cpp
 class MyWindow {
-    ...
+    // ...the rest of your window class...
+    void OnFileActivated(const std::string& path);
+
+    std::shared_ptr<UltraCanvasWindow> window;      // the application's main window
     UltraCanvasMediaViewerWindow mediaWindow;
 };
 
@@ -37256,6 +37929,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMekkoChart.md
 ==============================================================================
 
 # UltraCanvasMekkoChart
+
+<!-- doc-check: std::string MyMoneyFormat(double v); -->
 
 Comprehensive Mekko (Marimekko / mosaic) chart element for UltraCanvas
 (`include/Plugins/Charts/UltraCanvasMekkoChart.h`,
@@ -37386,6 +38061,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md
 
 # Menu Configuration Widget
 
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); -->
+
 `UltraCanvasMenuConfigWidget` lets end users customise an application's menus at
 runtime: reorder entries, add or remove commands, group them into submenus, and
 save the result so it survives a restart. It works together with two supporting
@@ -37398,7 +38075,7 @@ reconfigurable.
 Menus are normally built imperatively with lambdas:
 
 ```cpp
-menuBar = MenuBuilder("Bar")
+menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
     .AddSubmenu("File", {
         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
     })
@@ -39076,6 +39753,8 @@ FILE: Docs/UltraCanvas/UltraCanvasModelFormats.md
 
 # UltraCanvasModelFormats — reading 3D files
 
+<!-- doc-check: std::string path; -->
+
 The **Models plugin** reads a 3D file of any supported format into one
 structure: `ModelStorage::ModelDocument`. There is no per-format document type
 and no per-format API — a caller names a path, and what comes back is a scene
@@ -39314,6 +39993,8 @@ FILE: Docs/UltraCanvas/UltraCanvasModelRaster.md
 
 # 3D models → pixels
 
+<!-- doc-check: std::string path; std::shared_ptr<UltraCanvasMediaViewer> viewer; std::shared_ptr<UCRasterDocument> document; void ShowError(const std::string& message); -->
+
 `UltraCanvasModelRaster.h` turns a mesh into pixels, and a 3D model file into
 an editable [`UCRasterLayer`](UltraCanvasPaintSurface.md) — the 3D counterpart
 of [vector artwork → pixels](UltraCanvasVectorRaster.md).
@@ -39339,7 +40020,7 @@ if (IsModelGraphicsPath(path)) {
     ModelRasterOptions options;
     options.width  = 1024;
     options.height = 768;
-    options.pose   = viewer->GetModelViewPose();             // what the user framed
+    viewer->GetModelViewPose(options.pose);                  // what the user framed
     std::string error;
     if (auto layer = RasterizeModelFile(path, options, error)) {
         document->AddLayer(layer);
@@ -39455,13 +40136,15 @@ FILE: Docs/UltraCanvas/UltraCanvasModelViewDialog.md
 
 # Importing a 3D model as a bitmap
 
+<!-- doc-check: void Place(std::shared_ptr<UCRasterLayer> layer, const std::string& actionId, RasterPixel background); std::string path; UltraCanvasWindowBase* parentWindow; -->
+
 `UltraCanvasModelViewDialog` (`dialogs/UltraCanvasModelViewDialog.h`) is the
 dialog that stands between a 3D model file and a raster layer. It exists
 because a model, unlike a drawing, cannot be rasterized from a size alone —
 somebody has to say **where the camera stands**.
 
 ```cpp
-#include "UltraCanvasModelViewDialog.h"
+#include "../dialogs/UltraCanvasModelViewDialog.h"   // UltraCanvas/dialogs/, next to include/
 
 ShowModelViewDialog(
         path,
@@ -39471,7 +40154,7 @@ ShowModelViewDialog(
             std::string error;
             auto layer = dialog.Rasterize(error);     // the view that was on screen
             if (layer) Place(layer, result.actionId, result.background);
-            else ShowError(error);
+            else UltraCanvasDialogManager::ShowError(error, "Import");
         });
 ```
 
@@ -39616,10 +40299,10 @@ behaves identically on every platform.
 ## German VAT
 
 ```cpp
-net.TaxOnNet(190)        // tax on a net amount:      net * 190/1000
-net.GrossFromNet(190)    // gross from net:           net * 1190/1000
-gross.TaxInGross(190)    // tax contained in a gross: gross * 190/1190
-gross.NetFromGross(190)  // net from gross:           gross - TaxInGross(190)
+Money vat      = net.TaxOnNet(190);       // tax on a net amount:      net * 190/1000
+Money total    = net.GrossFromNet(190);   // gross from net:           net * 1190/1000
+Money included = gross.TaxInGross(190);   // tax contained in a gross: gross * 190/1190
+Money base     = gross.NetFromGross(190); // net from gross:           gross - TaxInGross(190)
 ```
 
 `permille` is thousandths: 190 is 19 %, 70 is 7 %, 0 is 0 %, 25 is 2,5 %.
@@ -41902,7 +42585,9 @@ pkt->SetOnFieldClick([](const UltraCanvas::PacketFieldRef& f) {
                 (unsigned long long)f.bitLength,
                 (unsigned long long)f.ByteOffset());
 });
-pkt->SetOnFieldHover(...);
+pkt->SetOnFieldHover([](const UltraCanvas::PacketFieldRef& f) {
+    std::printf("over %s\n", f.name.c_str());   // the field under the cursor
+});
 pkt->SetSelectedField("Source Address");
 ```
 
@@ -42495,7 +43180,7 @@ pcp->SetGroupColors({{"setosa", Color(68, 1, 84)},
                      {"versicolor", Color(33, 145, 140)},
                      {"virginica", Color(253, 231, 37)}});
 
-window->AddElement(pcp.get());
+window->AddChild(pcp);
 ```
 
 Record-oriented input (`SetRecords`) takes `PCPRecord` — values, label, group,
@@ -44532,7 +45217,7 @@ numbers in from the UI thread as they arrive — which is what keeps the ring
 animating and the Cancel button responsive.
 
 ```cpp
-auto dlg = UltraCanvasProgressDialog::Show(window, "Compressing",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Compressing",
                                            "Creating \"photos.zip\"",
                                            [&]() { job.cancel = true; });
 // ... on the UI thread, as the worker reports:
@@ -44573,7 +45258,7 @@ struct Job {
 };
 auto job = std::make_shared<Job>();
 
-auto dlg = UltraCanvasProgressDialog::Show(window, "Extracting",
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Extracting",
         "Unpacking \"backup.tar.gz\"",
         [job]() { job->cancelled.store(true); });
 
@@ -44646,6 +45331,8 @@ FILE: Docs/UltraCanvas/UltraCanvasPropertyList.md
 
 # UltraCanvasPropertyList — Apple property lists
 
+<!-- doc-check: std::string path; -->
+
 `UltraCanvasPropertyList.h` reads the two encodings a property list comes in:
 the XML form, and the binary `bplist00` form that most shipped `Info.plist`
 files actually use. No Apple API, so it reads the same wherever the disk is
@@ -44661,7 +45348,7 @@ caller that needs them should say so rather than work around it.
 ```cpp
 #include "UltraCanvasPropertyList.h"
 
-UCPropertyList plist;
+UltraCanvas::UCPropertyList plist;
 if (UltraCanvas::UCPropertyList::Read(path, plist)) {
     plist.GetString("CFBundleName");
     plist.GetString("CFBundleVersion", "1.0");   // with a fallback
@@ -46543,6 +47230,8 @@ FILE: Docs/UltraCanvas/UltraCanvasRenderContext.md
 
 # UltraCanvasRenderContext — compositing, hit testing and paint sources
 
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
+
 `IRenderContext` (`UltraCanvasRenderContext.h`) is the drawing interface every
 element renders through. Its everyday surface — paths, fills, strokes, text
 layouts, pixmaps, state and transforms — is used throughout the element
@@ -46609,6 +47298,8 @@ Groups nest, and each is a `PushState()` / `PopState()` pair from the
 caller's side. A backend without groups draws straight through: `EndGroup`
 and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
 `nullptr`.
+
+<!-- doc-check: void DrawContent(IRenderContext* ctx); -->
 
 ```cpp
 // Layer at 40 %: children composite normally inside, the result fades once.
@@ -46733,6 +47424,25 @@ ctx->SetStrokeWidth(strokeWidth);
 ctx->Stroke();
 ```
 
+## Wrapping
+
+```cpp
+auto layout = ctx->CreateTextLayout(text, false);
+layout->SetExplicitWidth(300);              // wraps to 300 px
+layout->SetWrap(TextWrap::WrapWord);        // only to change the default
+```
+
+Every text layout wraps the same way unless told otherwise, whether it came
+from `CreateTextLayout` or from `DrawText` / `DrawTextInRect` (whose mode is
+`TextStyle::wrap`): at word boundaries first, and between two characters
+where a word alone is wider than the line (`TextWrap::WrapWordChar`). A URL,
+a file path or a hash therefore stays inside the width it was given. A
+layout from `CreateTextLayout` used to wrap at words only (Pango's own
+default), so such a word ran on past its width - a tooltip drew a tracking
+link over its own border (framework changelog, "New text layouts wrap a long
+word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
+breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
+
 ## Centring text on its capitals
 
 ```cpp
@@ -46764,6 +47474,30 @@ contexts can measure the same font differently, and a backend calls
 options, hinting or device scale change, so nothing measured under the old
 settings survives them. Callers never need to call it. A font with no
 measurable ink falls back to the line box's middle.
+
+### The line box a caret or selection covers
+
+```cpp
+double GetLineBoxHeight(const FontStyle& font);   // ascent + descent, fractional pixels
+```
+
+A caret or a selection band that should cover a line's glyphs needs the
+font's line height as `DrawText` draws it. `GetTextLineHeight` returns whole
+pixels with the fraction cut off, so a box that tall ends up to a pixel above
+the descenders and the bottoms of parentheses. `GetLineBoxHeight` keeps the
+fraction, and is measured once per font and cached like the cap height
+(`InvalidateFontMetricsCache` clears it too). Round such a box outwards when
+it becomes pixels - top down, bottom up - so it covers every row the glyphs
+touch:
+
+```cpp
+const double top = ctx->TextTopCentredOnCaps(textArea, font);
+const double bottom = top + ctx->GetLineBoxHeight(font);
+Rect2Di caret(x, static_cast<int>(std::floor(top)), 1,
+              static_cast<int>(std::ceil(bottom)) - static_cast<int>(std::floor(top)));
+```
+
+`UltraCanvasTextInput` places its caret and selection this way.
 
 ## Text outlines
 
@@ -47741,6 +48475,8 @@ FILE: Docs/UltraCanvas/UltraCanvasRichTextEdit.md
 
 # UltraCanvasRichTextEdit
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); std::vector<uint8_t> BytesFor(const std::string& src); bool ShowMyOwnMenu(const UCEvent& event); -->
+
 The WYSIWYG editing element: the caret sits in rendered text, and **bold is a
 state of the selection** rather than two asterisks in a buffer.
 
@@ -47792,7 +48528,7 @@ changes underneath it. That same string is what the element hands to
 #include "UltraCanvasRichTextEdit.h"
 
 auto editor = CreateRichTextEdit("editor", 0, 0, 800, 600);
-window->AddElement(editor);
+window->AddChild(editor);
 
 editor->SetMarkdown("# Report\n\nSome **bold** text and a [link](https://example.com).\n");
 editor->onDocumentChanged = [editor]() {
@@ -48146,7 +48882,8 @@ what a menu should ask to decide whether to offer the item:
 if (editor->IsCaretInTable()) {
     int rows = 0, columns = 0, row = 0, column = 0;
     editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
-    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+    MenuItemData split = MenuItemData::Action("Split Cell", [editor]() { editor->SplitCurrentCell(); });
+    split.enabled = editor->CanSplitCurrentCell();            // greyed out when nothing is merged
 }
 ```
 
@@ -48208,7 +48945,7 @@ if (editor->HasSelectedImage()) {
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
-edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
 ### Floating pictures
@@ -48388,9 +49125,9 @@ character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
 selection changes and focus are announced to listeners, and the platform
 bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
-Automation on Windows (Narrator, NVDA, JAWS) - see
-[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
-is no macOS bridge yet.
+Automation on Windows (Narrator, NVDA, JAWS) and NSAccessibility on macOS
+(VoiceOver) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges).
 
 ## Drag and drop
 
@@ -48724,8 +49461,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
-  Automation) have one; VoiceOver does not see the element yet.
+- **Screen readers on Windows and macOS are untested.** The UI Automation
+  and NSAccessibility bridges compile but have not yet been run against
+  Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 
@@ -49632,6 +50370,8 @@ FILE: Docs/UltraCanvas/UltraCanvasScatterPlot3D.md
 
 # UltraCanvasScatterPlot3D Documentation
 
+<!-- doc-check: double SampleParameter(int i); double Noise(); bool IsOutlier(int i); -->
+
 ## Overview
 
 `UltraCanvasScatterPlot3DElement` renders an (x, y, z) point cloud inside a
@@ -49875,7 +50615,7 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.1.2  
+**Version:** 1.1.3  
 **Last Modified:** 2026-10-07  
 
 > For three-dimensional (x, y, z) point clouds see the companion element
@@ -50100,6 +50840,8 @@ scatterPlot->SetDataSource(correlationData);
 
 `ChartDataVector::LoadFromCSV` reads lines of `x,y[,z[,label]]`; for large
 files `ChartDataStream` reads the CSV in chunks instead of holding it all.
+A line whose x or y is not a number - a header such as `x,y`, a blank line,
+or a row that cannot be read - is skipped wherever it stands.
 
 ### Chart Properties
 
@@ -50385,8 +51127,9 @@ The scatter plot uses the `ChartCoordinateTransform` class to convert between:
 Integrates with the UltraCanvas event system:
 - `HandleMouseMove`: Tooltip and hover ring; moves the view during a pan drag
 - `HandleMouseDown`: Starts a pan when pan is on, the chart is zoomed in and
-  the press is in the plot area
-- `HandleMouseUp`: Ends the pan
+  the press is in the plot area; any other left press is left to the parent
+- `HandleMouseUp`: Ends the pan (a release that ends none is left to the
+  parent)
 - `HandleMouseWheel`: Zooms the x axis in/out when zoom is on
 
 ## Typical Use Cases
@@ -52867,19 +53610,34 @@ writer is the single place the offset is stored, so an eased step goes through
 exactly the clamp and repaint an instant scroll would:
 
 ```cpp
-// member
-UltraCanvasSmoothScroll scrollAnimY;
+class MyListView : public UltraCanvasUIElement {
+    int scrollOffsetY = 0;
+    UltraCanvasSmoothScroll scrollAnimY;          // member
+    static constexpr int kWheelStep = 40;
 
-// once (constructor)
-scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
-                 [this](double v) {
-                     scrollOffsetY = static_cast<int>(std::lround(v));
-                     ClampScroll();
-                     RequestRedraw();
-                 });
+    void ClampScroll();                           // the element's own clamp
+    int MaxScrollY() const;
 
-// wheel / page key
-scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+public:
+    MyListView(const std::string& id, float x, float y, float w, float h)
+        : UltraCanvasUIElement(id, x, y, w, h) {
+        // once (constructor)
+        scrollAnimY.Bind([this] { return static_cast<double>(scrollOffsetY); },
+                         [this](double v) {
+                             scrollOffsetY = static_cast<int>(std::lround(v));
+                             ClampScroll();
+                             RequestRedraw();
+                         });
+    }
+
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::MouseWheel) {   // wheel / page key
+            scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep, 0, MaxScrollY());
+            return true;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 | Call | |
@@ -52903,17 +53661,30 @@ factors**, which the element applies with the very code it used for the single
 one. No transform maths is duplicated or reinterpreted:
 
 ```cpp
-// members
-UltraCanvasSmoothZoom zoomAnim;
-Point2Di zoomCursor;
+class MyZoomView : public UltraCanvasUIElement {
+    // members
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
+    double zoomLevel = 1.0, minZoom = 0.1, maxZoom = 10.0;
 
-// wheel handler
-if (!zoomAnim.IsBound()) {
-    zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
-                  [this] { RequestRedraw(); });
-}
-zoomCursor = event.pointer;
-zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+    // the element's own single-step zoom, which keeps `cursor` fixed
+    void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
+
+public:
+    using UltraCanvasUIElement::UltraCanvasUIElement;
+
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type != UCEventType::MouseWheel) return UltraCanvasUIElement::OnEvent(event);
+        // wheel handler
+        if (!zoomAnim.IsBound()) {
+            zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                          [this] { RequestRedraw(); });
+        }
+        zoomCursor = event.pointer;
+        zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.1 : 0.9, zoomLevel, minZoom, maxZoom);
+        return true;
+    }
+};
 ```
 
 The element keeps clamping its own zoom; the range passed to `ZoomBy` only stops
@@ -53041,6 +53812,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSpellChecker.md
 
 # UltraCanvasSpellChecker Documentation
 
+<!-- doc-check: void ShowWordCount(); void OnDictionaryPicked(const std::string& code); std::string GetConfigDir(); struct TextByteSpan { size_t startByte = 0; size_t byteLength = 0; }; std::vector<TextByteSpan> ScanMarkdownNoSpellRanges(const std::string& text); bool SpanCoversRange(const std::vector<TextByteSpan>& spans, size_t startByte, size_t byteLength); std::shared_ptr<UltraCanvasMenu> menuBar; bool darkMode; -->
+
 ## Overview
 **UltraCanvasSpellChecker** is the framework's cross-platform spell checking
 service. It owns a backend, a user dictionary, a session ignore list and one
@@ -53110,7 +53883,7 @@ spell.Initialize();   // native backend, else Hunspell; language from LANG/LC_AL
 menuBar->AddItem(MenuItemData::Submenu("Tools", {
     UltraCanvasSpellChecker::BuildSpellCheckMenu(),
     MenuItemData::Separator(),
-    MenuItemData::Action("Word Count", cmd(TexterCommand::ToolsWordCount)),
+    MenuItemData::Action("Word Count", [this] { ShowWordCount(); }),
 }));
 ```
 
@@ -53211,7 +53984,7 @@ positions.
 Because the UI thread manages the language and the worker thread runs the
 checks, **every backend is entered from two threads**. On Windows that is not
 just a locking question: COM objects belong to the apartment of the thread that
-created them, and UltraCanvas calls `OleInitialize()` on the UI thread, so
+created them, and UltraCanvas calls `OleInitialize` on the UI thread, so
 anything created there is single-threaded-apartment bound. The Windows backend
 therefore keeps its `ISpellCheckerFactory` and `ISpellChecker` **per thread**,
 created in that thread's own apartment and released when it exits; only the
@@ -53377,6 +54150,7 @@ static std::vector<MenuItemData> BuildSuggestionMenuItems(
 
 ### Text utilities — `namespace SpellCheckText`
 ```cpp
+namespace SpellCheckText {
 std::vector<WordSpan> TokenizeWords(const std::string& text);
 size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
 size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
@@ -53387,10 +54161,12 @@ bool IsMixedCase(const std::string& word);
 bool LooksLikeUrlOrEmail(const std::string& word);
 std::string ToLowerAscii(const std::string& word);
 const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+}
 ```
 
 ### Rendering — `namespace SpellCheckRendering`
 ```cpp
+namespace SpellCheckRendering {
 void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
                         const SpellCheckStyle& style,
                         SpellErrorKind kind = SpellErrorKind::Misspelled);
@@ -53398,6 +54174,7 @@ void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
                        const Color& color, float amplitude, float waveLength, float strokeWidth);
 void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
                          const Color& color, float strokeWidth);
+}
 ```
 
 Any component that can produce a word rectangle can call these — they know
@@ -53439,7 +54216,7 @@ textArea->onContextMenu = [this](const UCEvent& event) -> bool {
         items.push_back(MenuItemData::Separator());
     }
 
-    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ Cut(); }));
+    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ textArea->CutSelection(); }));
     // ... the rest of the application's edit commands ...
 
     // build and open the menu, then:
@@ -53472,8 +54249,9 @@ textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string
 Capture the precomputed ranges by value: the predicate itself runs on the
 worker thread and must not read anything the UI thread can change.
 
-UltraTexter does exactly this for markdown documents — see
-`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` for a scanner that covers fenced
+UltraTexter does exactly this for markdown documents — `TextByteSpan`,
+`ScanMarkdownNoSpellRanges` and `SpanCoversRange` above are its own, from
+`Apps/Texter/UltraCanvasMarkdownSpellRanges.h`, a scanner that covers fenced
 and indented code, inline code spans, link and image targets, autolinks, inline
 HTML, math and YAML front matter.
 
@@ -53682,6 +54460,11 @@ FILE: Docs/UltraCanvas/UltraCanvasSplashScreen.md
 
 # UltraCanvasSplashScreen
 
+<!-- doc-check: struct MainWindow : UltraCanvasWindow { void PromptCrashRecovery(); }; std::shared_ptr<MainWindow> mainWindow;
+#define LADYBIRD_VERSION "1.0.0"
+#define LADYBIRD_VERSION_DATE "2026-08-28"
+-->
+
 The window an application puts up while it starts: a borderless, always-on-top
 panel holding a logo, the product name, its version and release date, an
 optional attribution block and an optional website link. It closes when its timeout expires or when
@@ -53796,6 +54579,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSplitPane.md
 ==============================================================================
 
 # UltraCanvas Split Pane Documentation
+
+<!-- doc-check: void SaveLayout(const std::vector<double>& weights); void Log(const std::string& line); -->
 
 ## Overview
 
@@ -55230,7 +56015,7 @@ orientation, optional thumb icons (built-in checkmark or custom images), and
 state texts that can be drawn inside the track, next to it, or as two permanent
 labels with the switch between them (`Backup [switch] Auto-Save`).
 
-**Version:** 1.3.1
+**Version:** 1.3.2
 **Last Modified:** 2026-10-07
 **Author:** UltraCanvas Framework
 **Header:** `include/UltraCanvasSwitch.h`
@@ -55247,8 +56032,9 @@ labels with the switch between them (`Backup [switch] Auto-Save`).
   each side of the track
 - **Main label**: inherited from `UltraCanvasLabeledToggleBase`, drawn after the
   indicator
-- **Keyboard**: Space / Enter activate when focused; focus ring follows the
-  track shape
+- **Keyboard**: takes the focus (Tab, or a press); Space activates it while
+  focused, and Enter is left to the window (a dialog's default button); the
+  focus ring follows the track shape
 - **Content sizing**: the natural size is measured from track + texts + label
 
 ## Class Definition
@@ -55529,7 +56315,7 @@ the framework's, which does not).
 
 FileDialogOptions opts;
 opts.SetTitle("Open a picture")
-    .SetParentWindow(window)                 // modal to the application window
+    .SetParentWindow(window.get())           // modal to the application window
     .AddFilter("Images", {"png", "jpg", "jpeg", "webp"})
     .AddFilter("All files", "*");
 
@@ -55566,17 +56352,17 @@ them to `std::filesystem` (see *Core conventions* in `AGENTS.md`).
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 // Ask only: what printer, how many copies, which paper, duplex, page range.
-NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings("Report.txt", window);
+NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings("Report.txt", window.get());
 if (choice) {
     IODeviceResult sent = PrintTextWithSettings(choice, "Report.txt", text);
 }
 
 // Ask and print in one call. A cancelled dialog comes back as
 // IODeviceResultCode::Cancelled, not as a failure.
-IODeviceResult result = PrintTextWithDialog("Report.txt", text, window);
+IODeviceResult result = PrintTextWithDialog("Report.txt", text, window.get());
 
 // A formatted document: PDF bytes, plus pages for renderers that cannot lay out a PDF.
-PrintDocumentWithDialog("Report.pdf", pdfBytes, "application/pdf", window, pages);
+PrintDocumentWithDialog("Report.pdf", pdfBytes, "application/pdf", window.get(), pages);
 ```
 
 `NativePrintResult` (`IOPrintDialogChoice`) carries the printer's queue name,
@@ -55587,16 +56373,16 @@ to File* instead of a printer.
 ## Message and input dialogs — `UltraCanvasDialogManager`
 
 ```cpp
-UltraCanvasDialogManager::ShowInformation("Saved.", "Report", nullptr, window);
-UltraCanvasDialogManager::ShowWarning("The disk is nearly full.", "Disk", nullptr, window);
-UltraCanvasDialogManager::ShowError("The file could not be written.", "Save", nullptr, window);
+UltraCanvasDialogManager::ShowInformation("Saved.", "Report", nullptr, window.get());
+UltraCanvasDialogManager::ShowWarning("The disk is nearly full.", "Disk", nullptr, window.get());
+UltraCanvasDialogManager::ShowError("The file could not be written.", "Save", nullptr, window.get());
 
 UltraCanvasDialogManager::ShowQuestion("Discard the changes?", "Close",
-    [](DialogResult r) { if (r == DialogResult::Yes) { /* ... */ } }, window);
+    [](DialogResult r) { if (r == DialogResult::Yes) { /* ... */ } }, window.get());
 
 UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder",
     "Untitled", InputType::Text,
-    [](DialogResult r, const std::string& value) { /* ... */ }, window);
+    [](DialogResult r, const std::string& value) { /* ... */ }, window.get());
 ```
 
 `InputType::Password` masks the field. Native message dialogs block and call
@@ -58477,6 +59263,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTimelineChart.md
 
 # UltraCanvasTimelineChart
 
+<!-- doc-check: Rect2Dd plot; double mouseX; -->
+
 A **chronological timeline**: milestones and spans placed *to scale* on a real
 date axis, with a two-tier header, automatic lane packing, callout labels, and
 wheel zoom / drag pan. It deliberately has no task table and no dependency
@@ -59201,6 +59989,15 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
+
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
 
 ## Enumerations
 
@@ -61227,7 +62024,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
@@ -61400,7 +62197,7 @@ exists:
 
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
-auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
+auto shot   = CreateImageFromFile("preview", 0, 0, 320, 240, "poster.png");
 auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
@@ -61823,6 +62620,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
 
 # UltraCanvas Vector Editing: VectorCanvas, VectorEdit, BezierPath
 
+<!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; Point2Dd pivot; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; std::shared_ptr<VectorStorage::VectorPath> path; struct EditorTool { void OnPress(const VectorPointerEvent& e); void OnDrag(const VectorPointerEvent& e); void OnRelease(const VectorPointerEvent& e); bool OnKey(const UCEvent& k); void DrawOverlay(IRenderContext* ctx, const VectorViewTransform& v); }; std::shared_ptr<EditorTool> tool; -->
+
 ## Overview
 
 The **vector-editing layer** is what a vector drawing editor needs on top of
@@ -61914,7 +62713,8 @@ history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
 
 // A drag: one entry from press to release.
 history.BeginEdit("Scale");
-... ScaleElements(...) on every drag event ...
+// on every drag event:
+ScaleElements(selection.Elements(), sx, sy, pivot);
 history.EndEdit();
 
 // Repeated nudges collapse into one step.
@@ -61950,20 +62750,20 @@ TranslateElements(els, dx, dy);
 ScaleElements(els, sx, sy, pivot);            // pivot in document units
 RotateElements(els, radians, pivot);
 SkewElements(els, radX, radY, pivot);
-TransformElements(els, Matrix3x3);            // any document-space matrix
+TransformElements(els, Matrix3x3::Scale(2, 2)); // any document-space Matrix3x3
 BakeTransform(el);                            // write the transform into the geometry
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
 auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
-ReparentElement(el, otherGroup, index);
+ReparentElement(el, otherGroup, 0);           // child index in the new parent, -1 = the end
 
 DeleteElements(els);
 auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
-auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+auto made = CombineShapes(selection.Elements(), CombineOp::Subtract); // Xara's Combine Shapes: the front shape
                                               // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
 
@@ -62344,6 +63144,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorRaster.md
 ==============================================================================
 
 # Vector artwork → pixels
+
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
 
 `UltraCanvasVectorRaster.h` turns a vector file into an editable
 [`UCRasterLayer`](UltraCanvasPaintSurface.md) at a size the caller chooses.
@@ -62907,6 +63709,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVideo.md
 
 # UltraCanvas Video
 
+<!-- doc-check: namespace MyApp { std::unique_ptr<IVideoDecodeSession> OpenIvf(const std::string& source, const VideoDecodeOptions& opts); } -->
+
 Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
 three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
 and composite UI elements, all behind a pluggable platform backend.
@@ -63092,6 +63896,8 @@ container registers it with `RegisterVideoCodecPlugin`
 `IVideoDecodeSession`:
 
 ```cpp
+#include "../libspecific/Video/VideoCodecPlugin.h"
+
 MediaCodecRegistration codec;
 codec.extension   = "ivf";
 codec.description = "Indexed Video Format";
@@ -63140,7 +63946,13 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
   an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
-  app's Info.plist.
+  app's Info.plist; without it macOS terminates the app when it opens the
+  device. A signed app (hardened runtime, which notarization requires) also
+  needs the `com.apple.security.device.camera` (and
+  `com.apple.security.device.audio-input`) entitlement, or the request is
+  refused before the user is asked. For the apps in this repository
+  `package-macos.sh` writes both from one line per app in `camera_usage` /
+  `microphone_usage`.
 - All three backends report frames as `VideoPixelFormat::BGRA32`, matching
   Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.
 
@@ -63149,6 +63961,8 @@ FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
 ==============================================================================
 
 # UltraCanvasVolumeMonitor
+
+<!-- doc-check: void AddDriveRow(const std::string& path, const std::string& label); -->
 
 The mounted volumes of this machine, and a notification when that set changes —
 a USB stick plugged in or pulled out, a card reader, an optical disc, a network
@@ -63239,8 +64053,8 @@ symbol at link time in one direction and a missing one in the other.
 Two tests, either of which is enough:
 
 - **The platform's mount table** (`ListPlatformMountPoints()`, also per
-  platform: `/proc/self/mounts` on Linux, `getmntinfo()` on macOS,
-  `GetLogicalDrives()` on Windows). Exact, and touches no volume — which
+  platform: `/proc/self/mounts` on Linux, `getmntinfo` on macOS,
+  `GetLogicalDrives` on Windows). Exact, and touches no volume — which
   matters, because stat'ing a wedged network mount blocks.
 - **A device that differs from the parent directory's.** Needs no table, but
   cannot see a mount that shares a device with what it is mounted on — a bind
@@ -63260,10 +64074,11 @@ Windows the mount table is the drive letters, and there is nothing to scan.
 
 The change notification says only *something moved* — diff the new
 `ListMountedVolumes()` against the last one you saw. UltraFiler's
-`RefreshDriveNodes()` is the worked example: it adds a tree row for every volume
-that appeared, removes the rows of volumes that are gone along with everything
-the tree remembered about them, and moves any tab that was inside a vanished
-volume back to the home folder.
+`UltraFilerWindow::RefreshDriveNodes` (`Apps/UltraFiler/UltraFilerWindow.cpp`)
+is the worked example: it adds a tree row for every volume that appeared,
+removes the rows of volumes that are gone along with everything the tree
+remembered about them, and moves any tab that was inside a vanished volume back
+to the home folder.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWatefallChartExamples.md
@@ -63829,6 +64644,8 @@ FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
 
 # UltraCanvas on WebAssembly
 
+<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
 backends, and mouse, wheel, touch and keyboard input drive the widgets. This
@@ -63883,11 +64700,15 @@ ticking; a stack-local application would be destroyed under it.
 ## Browser utilities (`UltraCanvasWASMSupport.h`)
 
 Optional helpers for the browser features that have no desktop equivalent.
-They are only declared when building for WebAssembly, so guard their use:
+They are only built for WebAssembly, so guard their use. The header lives in
+`UltraCanvas/OS/WASM/`, which is not on the library's public include path: add
+the checkout's `UltraCanvas` directory to the application's include directories
+(`target_include_directories(myapp PRIVATE <checkout>/UltraCanvas)`) and include
+it by that path:
 
 ```cpp
 #if defined(__EMSCRIPTEN__)
-#include "UltraCanvasWASMSupport.h"
+#include "OS/WASM/UltraCanvasWASMSupport.h"
 #endif
 ```
 
@@ -63899,12 +64720,12 @@ touch UI elements.
 
 ```cpp
 // Mount /data on IndexedDB and load what it holds from the last session.
-WASMFileSystem::MountFileSystem("/data", [](bool loaded) {
+WASMFileSystem::MountFileSystem("/data", [settings](bool loaded) {
     if (loaded) settings->LoadFrom("/data/settings.json");
 });
 
 // Later, after writing files under /data:
-WASMFileSystem::SyncToBrowser([](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
+WASMFileSystem::SyncToBrowser([statusLabel](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
 ```
 
 `FileExists`, `ReadFile`, `WriteFile`, `DeleteFile`, `CreateDirectory` and
@@ -63916,12 +64737,13 @@ and `std::fstream` see the same files.
 ```cpp
 // Let the user pick one or more images; they land in the virtual FS.
 WASMBrowser::PickFilesAsync(".png,.jpg,image/*", /*multiple=*/true,
-    [](const std::vector<std::string>& paths) {
+    [imageViewer](const std::vector<std::string>& paths) {
         for (const auto& path : paths) imageViewer->LoadImage(path);   // empty: cancelled
     });
 
 // Save: the framework facade already does the right thing.
-UltraCanvasNativeDialogs::SaveContent(documentBytes, FileDialogOptions().SetDefaultFileName("drawing.svg"));
+UltraCanvasNativeDialogs::SaveContent(documentBytes.data(), documentBytes.size(),
+                                      FileDialogOptions().SetDefaultFileName("drawing.svg"));
 // or directly:
 WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
 ```
@@ -63929,8 +64751,8 @@ WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
 ### Fetching
 
 ```cpp
-WASMNetwork::FetchTextAsync("data/catalogue.json", [](bool ok, const std::string& text) {
-    if (ok) catalogue = UltraCanvasJSON::Parse(text);
+WASMNetwork::FetchTextAsync("data/catalogue.json", [this](bool ok, const std::string& text) {
+    if (ok) catalogue = JSON::Parse(text);   // catalogue: a JSONValue member
 });
 ```
 
@@ -63940,11 +64762,13 @@ Same-origin URLs always work; cross-origin needs CORS on the server.
 
 ```cpp
 // Decode through the browser (any format it supports); pixels are straight RGBA.
-WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) { ... });
+WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) {
+    // ok: rgba holds w * h * 4 bytes, row by row
+});
 
 // Fetch a font file into the virtual FS and register it with Pango.
 WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::string& path) {
-    if (ok) UltraCanvasApplication::GetInstance()->RegisterFontFile(path);
+    if (ok) UltraCanvasApplication::GetCurrent()->RegisterFontFile(path);
 });
 ```
 
@@ -64444,7 +65268,7 @@ indistinguishable from a hang.
 Both backends now do this — Linux through the `select()` in
 `CollectAndProcessNativeEvents()`, Windows through
 `UltraCanvasWindowsApplication::PollAndServiceFdWatches()`, which polls the
-registered Winsock sockets around the `MsgWaitForMultipleObjectsEx()` wait and
+registered Winsock sockets around the `MsgWaitForMultipleObjectsEx` wait and
 bounds that wait so level-triggered readiness is picked up promptly. **The
 Windows side arrived in 0.3.81; before that the Windows loop ignored fd-watches
 entirely while Linux honoured them.** A host built against an older Windows
@@ -64703,6 +65527,8 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 (Windows only; called for you by `UltraCanvasWindowsApplication::InitializeNative()`):
 
 ```cpp
+#include "../OS/MSWindows/UltraCanvasWindowsDiagnostics.h"   // from UltraCanvas/include
+
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
@@ -70931,6 +71757,7 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 FILE: Docs/Modules/UltraAI/README.md
 ==============================================================================
 
+<!-- Generated from UltraAI/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraAI
 
 **Provider-agnostic AI capability module for ULTRA OS.**
@@ -70981,7 +71808,6 @@ tests run without any network or external model.
 | `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
-| `elevenlabs` | `ITextToSpeech` | cloud (ElevenLabs), directly or through a hosted relay via `baseUrl` | `ULTRAAI_ADAPTER_ELEVENLABS` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
@@ -71038,11 +71864,12 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
-│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/WebSocket), base64, multipart, job polling, cassettes
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
 │   ├── anthropic/                 # Anthropic Messages API (ITextLLM)
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
+│   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -71119,21 +71946,22 @@ cmake -S UltraAI -B build \
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
 | llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
+| ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
-| Unit tests | Complete (12 executables, all passing) |
+| Unit tests | Complete (13 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
 
 ## Design documents
 
-* [`Docs/UltraNetIntegration.md`](Docs/UltraNetIntegration.md) —
+* [`Docs/UltraNetIntegration.md`](../../../UltraAI/Docs/UltraNetIntegration.md) —
   how network adapters use UltraNet (HTTP / WebSocket / SSE),
   threading model, adapter checklist.
-* [`Docs/UltraVault.md`](Docs/UltraVault.md) —
+* [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
 
 ---
@@ -73650,6 +74478,7 @@ account (Basic app-password auth) — phase 1 is exercisable read-only.
 FILE: Docs/Modules/UltraNet/README.md
 ==============================================================================
 
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
@@ -73688,10 +74517,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
@@ -75983,6 +76815,7 @@ The video editing and conversion engine. Probe any media file, pull frames and f
 FILE: Docs/Modules/VirtualFS/README.md
 ==============================================================================
 
+<!-- Generated from VirtualFS/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # VirtualFS
 
 **Unified virtual file system layer for ULTRA OS.**
@@ -76049,6 +76882,40 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 | LZ4 | `VirtualFSCompressionMethod::LZ4` | Fastest | Moderate | Real-time |
 | LZX | `UCVFSCompressionType::LZX` (bridge) | Moderate | Good | CAB, CHM, WIM |
 | Brotli | `VirtualFSCompressionMethod::Brotli` | Moderate | Excellent | Web content |
+
+### Raw buffer compression (no archive container)
+
+`VirtualFSCompression.h` exposes the compression codecs directly for
+modules that need a compress/decompress primitive without an archive
+container — e.g. the UltraWeb bundler compressing `.ucpkg` section
+payloads, or FileLoader transparently decompressing `.gz`/`.zst`/`.lz4`
+content on load:
+
+```cpp
+#include <VirtualFS/VirtualFSCompression.h>
+using namespace VirtualFS;
+
+std::vector<uint8_t> compressed;
+VirtualFS_CompressBuffer(input, compressed, VirtualFSCompressionMethod::LZ4);
+
+std::vector<uint8_t> restored;
+VirtualFS_DecompressBuffer(compressed, restored);   // method auto-detected
+```
+
+Supported methods: `Store`, `Deflate` (zlib/gzip), `Zstd`, `LZ4`
+(standard LZ4 frame format, interoperable with any LZ4F decoder), and
+`Brotli` — each available only when the matching `VIRTUALFS_USE_*`
+option is enabled; query with `VirtualFS_IsCompressionMethodAvailable()`.
+`VirtualFS_DetectCompressionMethod()` identifies a stream by its magic
+bytes (Brotli excepted — it has none).
+
+Note on the UltraCanvas bridge: `UCVFSBridge::LZ4Compress` (in
+`UltraCanvasVirtualFSBridge`) predates this API and emits the LZ4
+*block* format, which has no header and is **not** readable by frame
+decoders — the two LZ4 outputs are not interchangeable. New code and
+anything crossing a process or network boundary (e.g. `.ucpkg`) should
+use this frame-format API; migrating the bridge to delegate here is a
+planned cleanup.
 
 ---
 

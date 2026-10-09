@@ -1,4 +1,18 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.16.1 - HTML mail as plain text (Settings > Reading) and the quote of
+//                   a formatted mail in a reply or forward come from the
+//                   HTMLReader module (HTML::ExtractPlainText, Lines layout):
+//                   paragraphs and line breaks kept, every entity decoded,
+//                   the hidden preheader left out
+// Version: 0.16.0 - the message's text can be selected and copied: a drag across
+//                   the HTML body (paragraph to paragraph), a double-click for
+//                   a word, Ctrl+C / Ctrl+A; the subject, sender, recipients
+//                   and date as well; a right-click offers Copy and Select All
+//                   over the HTML and the plain-text body alike. A one-time
+//                   code gets a copy button in its own box, or in the code bar
+// Version: 0.15.2 - the HTML body sits in a page box as wide as the visible pane,
+//                   so its percentage widths (Reddit's body { min-width: 100% })
+//                   no longer reach under the vertical scrollbar
 // Version: 0.15.1 - each step of showing a message in the timing trace
 //                  (UltraMailTrace.h)
 // Version: 0.15.0 - [DMARC] [DKIM] [SPF] in the header: the sender checks the
@@ -26,7 +40,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -41,6 +55,7 @@
 #include "UltraCanvasTooltipManager.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"      // OpenURL
 
 #include "UltraMailMimeCodec.h"
@@ -86,27 +101,6 @@ std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthC
     return tag;
 }
 
-// Very small HTML-to-text reduction (for the quoted reply body): drop tags and
-// decode a few entities.
-std::string HtmlToText(const std::string& html) {
-    std::string out;
-    bool inTag = false;
-    for (std::size_t i = 0; i < html.size(); ++i) {
-        char c = html[i];
-        if (c == '<') { inTag = true; continue; }
-        if (c == '>') { inTag = false; out.push_back(' '); continue; }
-        if (inTag) continue;
-        if (c == '&') {
-            if (html.compare(i, 5, "&amp;") == 0) { out.push_back('&'); i += 4; continue; }
-            if (html.compare(i, 4, "&lt;") == 0)  { out.push_back('<'); i += 3; continue; }
-            if (html.compare(i, 4, "&gt;") == 0)  { out.push_back('>'); i += 3; continue; }
-            if (html.compare(i, 6, "&nbsp;") == 0){ out.push_back(' '); i += 5; continue; }
-        }
-        out.push_back(c);
-    }
-    return out;
-}
-
 // Opens a link of the message in the browser - web and mail addresses only,
 // never a file: or javascript: target a message could carry. A bare
 // "www.example.com" from plain text opens as https.
@@ -128,24 +122,30 @@ void OpenMessageLink(const std::string& href) {
 // out again only when the bar comes or goes, so that settles in one extra
 // pass. Content that cannot reflow (a fixed-width table, a large picture) is
 // still wider than that and still gets the horizontal bar.
+//
+// What is narrowed is `page`, a box around the HTML body that stands for the
+// browser's viewport: every percentage the body's CSS carries resolves
+// against it. Narrowing the body's own width was not enough - a newsletter
+// with body { min-width: 100% } (Reddit's digest) measured that 100% against
+// the whole pane, under the bar, and scrolled sideways by the bar's 12 px.
 class BodyScrollView : public UltraCanvasContainer {
 public:
     using UltraCanvasContainer::UltraCanvasContainer;
 
-    std::shared_ptr<UltraCanvasUIElement> body;
+    std::shared_ptr<UltraCanvasUIElement> page;   // holds the HTML body
 
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
         UltraCanvasContainer::Arrange(finalRect, ctx);
-        if (!body) return;
+        if (!page) return;
         // calc(100% - track) while the vertical bar is shown, 100% otherwise.
         const float gutter = verticalScrollbar->IsVisible()
                                  ? static_cast<float>(style.scrollbarStyle.trackSize) : 0.0f;
-        const CSSLayout::Dimension& cur = body->size.width;
+        const CSSLayout::Dimension& cur = page->size.width;
         if (cur.unit == CSSLayout::DimensionUnit::Percent && cur.value == 100.0f &&
             cur.offsetPx == -gutter)
             return;
-        body->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
-        body->InvalidateSubtree();
+        page->size.width = CSSLayout::Dimension::PctPlus(100.0f, -gutter);
+        page->InvalidateSubtree();
         UltraCanvasContainer::Arrange(finalRect, ctx);
     }
 };
@@ -234,6 +234,18 @@ private:
             UltraCanvasTooltipManager::HideTooltip();
     }
 };
+
+std::string IconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+
+// Every label of a built HTML body, in reading order.
+void CollectLabels(UltraCanvasContainer& box, std::vector<UltraCanvasLabel*>& labels) {
+    for (const auto& child : box.GetChildren()) {
+        if (auto* label = dynamic_cast<UltraCanvasLabel*>(child.get())) labels.push_back(label);
+        else if (auto* inner = dynamic_cast<UltraCanvasContainer*>(child.get())) CollectLabels(*inner, labels);
+    }
+}
 
 std::string SanitizeFolder(const std::string& folder) {
     std::string out;
@@ -423,6 +435,12 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     header->AddChild(date_);
     date_->layoutItem.SetFlexShrink(0);
 
+    // The header's text can be selected and copied - a sender's address, the
+    // subject - one selection running subject, from, to, date.
+    headerSelection_ = std::make_shared<UltraCanvasTextSelection>();
+    for (const auto& label : { subject_, from_, to_, date_ }) headerSelection_->AddLabel(*label);
+    WireTextSelection(headerSelection_);
+
     root_->AddChild(header);
     header->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -491,6 +509,47 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     remoteBar_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     remoteBar_->SetVisible(false);
 
+    // The code bar: a one-time code the message carries (a sign-in code) and
+    // a button that copies it. Hidden unless the body has a code that could
+    // not be given a button where it stands - a plain-text mail, a code in
+    // the middle of a sentence.
+    codeBar_ = CreateContainer("prevCodeBar", 0, 0, 0, 0);
+    codeBar_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    codeBar_->SetPadding(6.0f, 10.0f);
+    codeBar_->SetBackgroundColor(Theme::kSidebar);
+    codeBar_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    if (auto st = codeBar_->GetContainerStyle(); true) {
+        st.autoShowScrollbars = false;
+        codeBar_->SetContainerStyle(st);
+    }
+    auto codeCaption = Theme::MakeText("prevCodeCaption", "Code", Theme::kSizeSecondary,
+                                       Theme::kTextSecondary);
+    codeBar_->AddChild(codeCaption);
+    codeCaption->layoutItem.SetFlexShrink(0);
+    codeText_ = Theme::MakeText("prevCodeText", "", Theme::kSizeHeading, Theme::kTextPrimary,
+                                FontWeight::Bold);
+    codeText_->SetSelectable(true);
+    codeBar_->AddChild(codeText_);
+    codeText_->layoutItem.SetFlexShrink(0);
+    codeCopy_ = CreateButton("prevCodeCopy", 0, 0, 80, Theme::kControlHeight, "Copy");
+    Theme::FitToLabel(codeCopy_, 80);
+    Theme::StyleSecondary(codeCopy_);
+    codeCopy_->SetIcon(IconPath("copy.svg"));
+    codeCopy_->SetIconPosition(ButtonIconPosition::Left);
+    codeCopy_->SetIconSize(14, 14);
+    codeCopy_->SetIconSpacing(6);
+    codeCopy_->SetUseIconAsMask(true);
+    codeCopy_->SetTooltip("Copy the code");
+    codeCopy_->onClick = [this]() {
+        if (!codes_.empty()) CopyCode(codes_.front().code, codeCopy_.get());
+    };
+    codeBar_->AddChild(codeCopy_);
+    root_->AddChild(codeBar_);
+    codeBar_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    codeBar_->SetVisible(false);
+
     // Body host: takes the remaining height; RenderBody() fills it with either
     // a read-only text area (plain text) or the HTMLReader-built element tree.
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
@@ -538,6 +597,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     std::optional<Trace::Stage> step;
     step.emplace("Remove the last message's body", 0);
     bodyHost_->ClearChildren();
+    bodySelection_.reset();
     // The links the reader can check before clicking one.
     step.emplace("Links in the message, for the status line", 0);
     if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
@@ -563,12 +623,16 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (onLinkHovered) onLinkHovered(href);
         };
         opts.linkTooltips = linkTooltips;
+        // The text can be selected across the whole body and copied.
+        opts.selectableText = true;
         HTML::ElementBuilder builder;
         step.emplace("HTML body (" + std::to_string(body.size() / 1024) +
                      " KB): elements, styles, pictures", 0);
         HTML::BuildResult r = builder.Build(body, opts);
         step.reset();
         if (r.root) {
+            bodySelection_ = r.textSelection;
+            if (bodySelection_) WireTextSelection(bodySelection_);
             // Host the tree in a dedicated scroll container (the proven pattern
             // from UltraCanvasEBookViewer): a plain container sized by the flex
             // column, holding r.root with no stretch/size/grow. It clips and
@@ -590,13 +654,32 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
                 scroll->SetContainerStyle(scrollStyle);
             }
             // Give the body a definite width so it reflows to the pane rather
-            // than laying out over-wide (responsive emails fill the pane). The
-            // scroll view narrows it by the vertical bar once that is shown.
+            // than laying out over-wide (responsive emails fill the pane). It
+            // sits in a page box the scroll view narrows by the vertical bar
+            // once that is shown, so its own percentages (width, min-width)
+            // stay beside the bar too.
+            auto page = std::make_shared<UltraCanvasContainer>("prevBodyPage", 0, 0, 0, 0);
+            page->size.width = CSSLayout::Dimension::Pct(100.0f);
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
-            scroll->body = r.root;
+            page->AddChild(r.root);
+            scroll->page = page;
             bodyHost_->AddChild(scroll);
-            scroll->AddChild(r.root);
+            scroll->AddChild(page);
             scroll->ScrollToVertical(0);
+            // One-time codes: a paragraph (label) at a time.
+            std::vector<UltraCanvasLabel*> labels;
+            CollectLabels(*r.root, labels);
+            std::vector<std::string> blocks;
+            blocks.reserve(labels.size());
+            for (UltraCanvasLabel* label : labels) {
+                // The rendered text needs the window's render context; a body
+                // shown before the pane is in a window reads the markup.
+                std::string text = label->GetRenderedText();
+                if (text.empty() && !label->GetText().empty())
+                    text = HTML::ExtractPlainText(label->GetText());
+                blocks.push_back(std::move(text));
+            }
+            ShowOneTimeCodes(blocks, labels);
             return;
         }
         // Fall through to a text area if the build produced nothing.
@@ -610,6 +693,20 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     };
     text->onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
     text->linkTooltips = linkTooltips;
+    // Copy and Select All on a right-click, as over the HTML body. The text
+    // area is reached weakly from the menu, which may outlive it.
+    text->onContextMenu = [this, area = text.get()](const UCEvent& event) {
+        std::weak_ptr<UltraCanvasUIElement> weak = area->weak_from_this();
+        auto withArea = [weak](std::function<void(UltraCanvasTextArea&)> action) {
+            return [weak, action]() {
+                if (auto a = std::dynamic_pointer_cast<UltraCanvasTextArea>(weak.lock())) action(*a);
+            };
+        };
+        ShowTextMenu(event, area->HasSelection(),
+                     withArea([](UltraCanvasTextArea& a) { a.CopySelection(); }),
+                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }));
+        return true;
+    };
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
@@ -625,9 +722,121 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         ts.scrollbarTrackColor   = modern.trackColor;
         ts.scrollbarColor        = modern.thumbColor;
     }
-    text->SetText(isHtml ? HtmlToText(body) : body);
+    text->SetText(isHtml ? HTML::ExtractPlainText(body, HTML::PlainTextLayout::Lines) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // One-time codes: a line at a time.
+    std::vector<std::string> lines;
+    const std::string& shown = text->GetText();
+    for (std::size_t from = 0; from <= shown.size();) {
+        std::size_t to = shown.find('\n', from);
+        if (to == std::string::npos) to = shown.size();
+        lines.push_back(shown.substr(from, to - from));
+        from = to + 1;
+    }
+    ShowOneTimeCodes(lines, {});
+}
+
+void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
+                                  std::function<void()> copy, std::function<void()> selectAll) {
+    UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
+    if (!window) return;
+    textMenu_ = std::make_shared<UltraCanvasMenu>("prevTextMenu", 0, 0, 180, 0);
+    textMenu_->SetMenuType(MenuType::PopupMenu);
+    MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
+    copyItem.enabled = canCopy;
+    textMenu_->AddItem(copyItem);
+    textMenu_->AddItem(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", std::move(selectAll)));
+    textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
+void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSelection>& selection) {
+    // Raw here - the selection holds these callbacks - and weak in the menu,
+    // which can outlive the body the selection belongs to.
+    UltraCanvasTextSelection* raw = selection.get();
+    selection->onContextMenu = [this, raw](const UCEvent& event) {
+        std::weak_ptr<UltraCanvasTextSelection> weak = raw->weak_from_this();
+        ShowTextMenu(event, raw->HasSelection(),
+                     [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); },
+                     [weak]() { if (auto s = weak.lock()) s->SelectAll(); });
+    };
+    // One highlight at a time, as on a web page: selecting in the header lets
+    // go of the body's selection, and the other way round.
+    selection->onSelectionChanged = [this, raw]() {
+        if (!raw->HasSelection()) return;
+        for (UltraCanvasTextSelection* other : { headerSelection_.get(), bodySelection_.get() })
+            if (other && other != raw) other->ClearSelection();
+    };
+}
+
+void MessagePreview::ShowOneTimeCodes(const std::vector<std::string>& blocks,
+                                      const std::vector<UltraCanvasLabel*>& labels) {
+    // The envelope's subject: Show renders the body before it fills current_.
+    codes_ = hasMessage_ ? FindOneTimeCodes(DisplayHeader(curEnv_.subject), blocks)
+                         : std::vector<OneTimeCode>{};
+    bool placed = false;
+    for (std::size_t n = 0; n < codes_.size(); ++n) {
+        const OneTimeCode& code = codes_[n];
+        if (!code.standalone || code.block < 0 || static_cast<std::size_t>(code.block) >= labels.size())
+            continue;
+        UltraCanvasLabel* label = labels[static_cast<std::size_t>(code.block)];
+        UltraCanvasContainer* box = label ? label->GetParentContainer() : nullptr;
+        if (!box) continue;
+        // Only a box the code has to itself (a background picture aside): the
+        // button sits inside it, at its right edge.
+        bool alone = true;
+        for (const auto& child : box->GetChildren())
+            if (child.get() != label && child->layoutItem.positionType != CSSLayout::PositionType::Absolute)
+                alone = false;
+        if (!alone) continue;
+
+        constexpr float kSide = 26.0f;
+        auto button = CreateButton("prevCodeCopy" + std::to_string(n), 0, 0, kSide, kSide, "");
+        Theme::StyleSecondary(button);
+        button->SetIcon(IconPath("copy.svg"));
+        button->SetIconPosition(ButtonIconPosition::Center);
+        button->SetIconSize(14, 14);
+        button->SetUseIconAsMask(true);
+        button->SetTooltip("Copy the code " + code.shown);
+        // Out of the flow, centred on the box's right edge; the box keeps
+        // room for it so a code that fills the box is not covered.
+        CSSLayout::Position at;
+        at.right = CSSLayout::Dimension::Px(6.0f);
+        at.top = CSSLayout::Dimension::PctPlus(50.0f, -kSide / 2.0f);
+        button->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(at);
+        box->SetPadding(box->GetPaddingTop(), box->GetPaddingRight() + kSide + 8.0f,
+                        box->GetPaddingBottom(), box->GetPaddingLeft());
+        button->onClick = [this, b = button.get(), value = code.code]() { CopyCode(value, b); };
+        box->AddChild(button);
+        placed = true;
+    }
+    if (!codeBar_) return;
+    const bool bar = !codes_.empty() && !placed;
+    if (bar) codeText_->SetText(codes_.front().shown);
+    if (codeCopy_) {
+        codeCopy_->SetText("Copy");
+        codeCopy_->SetIcon(IconPath("copy.svg"));
+    }
+    codeBar_->SetVisible(bar);
+}
+
+void MessagePreview::CopyCode(const std::string& code, UltraCanvasButton* button) {
+    SetClipboardText(code);
+    if (!button) return;
+    // A check mark (and "Copied") for a moment, then the copy icon again.
+    const bool hasText = !button->GetText().empty();
+    button->SetIcon(IconPath("clipboard/check.svg"));
+    if (hasText) button->SetText("Copied");
+    std::weak_ptr<UltraCanvasUIElement> weak = button->weak_from_this();
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        app->StartTimer(1500, false, [weak, hasText](TimerId) {
+            auto b = std::dynamic_pointer_cast<UltraCanvasButton>(weak.lock());
+            if (!b) return;
+            b->SetIcon(IconPath("copy.svg"));
+            if (hasText) b->SetText("Copy");
+        });
+    }
 }
 
 void MessagePreview::ActivateLink(const std::string& href) {
@@ -904,6 +1113,9 @@ void MessagePreview::Clear() {
     if (authRow_) authRow_->ClearChildren();
     shownBadge_ = SenderBadge{};
     if (bodyHost_) bodyHost_->ClearChildren();
+    bodySelection_.reset();
+    codes_.clear();
+    if (codeBar_) codeBar_->SetVisible(false);
     attachmentStrip_.SetAttachments({});
 }
 
@@ -1004,7 +1216,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         attachmentStrip_.SetAttachments(pm.attachments);
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
-        current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
+        current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)
+                                      : pm.body;
         current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
     }

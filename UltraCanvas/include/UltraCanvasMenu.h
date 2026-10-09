@@ -1,11 +1,10 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.11.0 - the opening fade takes in the whole panel, through the window's
-//                  popup opacity, not just the entries
+// Version: 1.12.0 - a menu to screen readers
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
 //                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -282,6 +281,9 @@ namespace UltraCanvas {
 
         // Events
     public:
+        // ===== ACCESSIBILITY =====
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Menu; }
+
         std::function<void()> onMenuOpened;
         std::function<void()> onMenuClosed;
         std::function<void(int)> onItemSelected;

@@ -2,8 +2,9 @@
 // Gantt chart element: project schedule visualization with a task table,
 // timeline grid, hierarchy, dependencies, milestones, progress tracking,
 // critical path analysis, and a preset-based design/palette system.
+// Version: 1.0.1 - a click off the rows (deselect, pan) is the chart's
 // Version: 1.0.0
-// Last Modified: 2026-07-26
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasGanttChart.h"
@@ -1995,8 +1996,11 @@ bool UltraCanvasGanttChartElement::HandleClick(const UCEvent& event, bool double
     int index = -1;
     const GanttRow* row = RowAt(static_cast<float>(event.pointer.y), &index);
     if (!row) {
+        // Off the rows the press cleared the selection (and may have started
+        // a pan of the timeline): it was the chart's, and does not go on to
+        // the elements around it.
         SelectTask(-1);
-        return false;
+        return true;
     }
 
     auto ds = GetGanttDataSource();

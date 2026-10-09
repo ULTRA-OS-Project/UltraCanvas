@@ -15,8 +15,8 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
-// Version: 1.6.0
-// Last Modified: 2026-10-01
+// Version: 1.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -268,6 +268,10 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
+        // ===== ACCESSIBILITY =====
+        // A toolbar; its buttons are reached as its children.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Toolbar; }
+
         UltraCanvasToolbar(const std::string& identifier, float x, float y,
                            float width, float height);
 
@@ -393,8 +397,11 @@ namespace UltraCanvas {
                    toolbarDragMode == ToolbarDragMode::Both;
         }
         bool IsReorderingItem() const { return reorderActive; }
-        void BeginDrag(const Point2Di& startPos);
-        void UpdateDrag(const Point2Di& currentPos);
+        // Moving the bar itself (ToolbarDragMode::Movable / Both). Positions
+        // are in window coordinates: the bar moves under the pointer, so one
+        // local to it would shift with every step.
+        void BeginDrag(const Point2Di& startPosInWindow);
+        void UpdateDrag(const Point2Di& currentPosInWindow);
         void EndDrag();
 
         // ===== CALLBACKS =====
@@ -408,6 +415,9 @@ namespace UltraCanvas {
     private:
         // Internal helpers
         void CreateLayout();
+        // Whether a press landed on one of the bar's items rather than on the
+        // bar's own surface (a movable bar is dragged by the latter only).
+        bool PressOnItem(const UCEvent& event);
         // The height a horizontal toolbar was constructed with (the width of a
         // vertical one) becomes a FLOOR rather than a fixed size, so a host
         // that guesses low gets a toolbar that still fits its buttons instead

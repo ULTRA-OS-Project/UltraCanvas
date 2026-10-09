@@ -1,9 +1,11 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
+// Version: 1.5.0 - AddRadioButton adopts a radio that is already checked
+// Version: 1.4.0 - a radio button to screen readers, selected by its action
 // Version: 1.3.0 - the group's onChecked handler holds its radio raw (it kept the radio
 //                 alive forever) and is taken back when the group goes or the radio leaves it
 // Version: 1.2.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,6 +51,10 @@ namespace UltraCanvas {
         void DrawIndicator(IRenderContext* ctx) override;
         Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { SetChecked(true); }  // Standard UX: clicking selected radio is no-op.
+    public:
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::RadioButton; }
+        std::string GetAccessibleActionName() const override { return "select"; }
+    protected:
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
@@ -126,6 +132,8 @@ namespace UltraCanvas {
         UltraCanvasRadioGroup(UltraCanvasRadioGroup&& other) noexcept;
         UltraCanvasRadioGroup& operator=(UltraCanvasRadioGroup&& other) noexcept;
 
+        // A radio added already checked becomes the selection (the last such
+        // radio wins; the others are cleared), without onSelectionChanged.
         void AddRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void SelectButton(std::shared_ptr<UltraCanvasRadio> button);

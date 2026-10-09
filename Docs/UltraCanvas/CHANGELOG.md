@@ -1,3 +1,586 @@
+#### 2026-10-09 *0.9.215*
+- **The Windows CI legs survive a slow MSYS2 mirror.** The setup action did
+  the package database sync, the upgrade and the install itself, with no
+  retry and no mirror setting, and pacman abandons a mirror that stays
+  below 1 byte/s for 10 s - on 2026-10-08 that failed both Windows legs of
+  #740 in the same minute, before a line was compiled. The action now only
+  unpacks MSYS2; a step of the workflow's own syncs, upgrades and installs
+  with pacman's download timeout disabled and up to five attempts per
+  phase, and keeps the downloaded packages in a cache of its own, pruned to
+  one version per package.
+- **The module READMEs in `Docs/Modules/` are generated from the modules'
+  own.** `Docs/Modules/UltraAI/README.md`, `Docs/Modules/UltraNet/README.md`
+  and `Docs/Modules/VirtualFS/README.md` were hand-kept copies of
+  `UltraAI/README.md`, `UltraNet/README.md` and `VirtualFS/README.md` and
+  had drifted apart: the UltraAI pair disagreed on the adapters and the test
+  count, the UltraNet module copy was two weeks behind the docs copy, and
+  the VirtualFS copies each had a section the other lacked. The pairs are
+  merged, `scripts/generate_llms_txt.py` writes the docs-tree copy from the
+  module's README (relative links adjusted), and the llms.txt workflow fails
+  when a mirror is stale, as for `llms.txt` itself. Edit `<Name>/README.md`,
+  then run the script.
+
+#### 2026-10-09 *0.9.214*
+- **CI compiles the component docs' C++, and every doc passes.**
+  `scripts/check_doc_examples.py` checked a doc only when someone ran it,
+  so docs drifted from the headers they describe: 319 findings across 60
+  component docs, and two of the file dialog doc's snippets mended twice
+  on two branches in one day in ways that then clashed. The new
+  `doc-examples.yml` workflow runs it over every component doc (`--all`:
+  `Docs/UltraCanvas/*.md` but the changelog and the Proposal / Plan /
+  Investigation design documents, whose code is of APIs not written yet)
+  whenever a doc or a public header changes, and fails on any finding. It
+  runs on ubuntu-24.04 because clang's wording is part of a finding.
+  - **The 60 docs are fixed against today's headers**, not silenced:
+    renamed and moved APIs (`AddElement` -> `AddChild`, `GetInstance` ->
+    `GetCurrent`, `UltraCanvasJSON::Parse` -> `JSON::Parse`, the dialogs'
+    `UltraCanvasWindowBase*` parent, the financial chart without its old
+    `uid`, `CreateImageFromFile` for an image from a path), listings and
+    enum copies made to match their headers, `...` placeholders turned into
+    code, member fragments turned into small classes, and the names a
+    snippet takes from its application (a window, a path, a callback the
+    reader writes) declared in a `<!-- doc-check: ... -->` comment with
+    their real types. One example was also wrong at run time: a list
+    view's header-click handler captured its own view by `shared_ptr`, so
+    the view was never freed; it captures it raw now, as AGENTS.md asks.
+  - **The usage comment at the top of `UltraCanvasDesktopShell.h`**, which
+    no check reads, called `AddToggleButton` with `...` for its callback
+    and `ActivateWindow` with an `id` it never declared. It and the
+    DesktopShell doc now show the taskbar button UltraDesktop builds: the
+    window's id captured, activated when the button is pressed, minimized
+    when it is released.
+  - **The checker reads more C++ the way a compiler does.** A framework
+    class's member defined out of line (`void
+    UltraCanvasUIElement::Render(...) {`) is compiled in the class's
+    namespace; a file-scope macro line without `;`
+    (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) is a definition; a copy of a
+    type prefers the framework's (`UltraCanvas::BlendMode`, not
+    `PixelFX::BlendMode`) and a listing a top-level namespace
+    (`PixelFX::Colour`); prose may name a function of any framework header
+    - backend, platform or dialog - not only the public ones;
+    `auto x = UltraCanvas::CreateX(...)` is typed; and a doc-check comment
+    may define a macro the application's build provides.
+  - `--all`, `--strict`, `--baseline` and `--update-baseline` are new.
+    `scripts/doc_examples_baseline.txt` holds findings that predate the
+    check, and is empty.
+- **`FileDialogOptions::SetDefaultExtension`: a default extension through
+  `UltraCanvasFileLoader`, native dialogs included.** Only a caller that
+  built the framework dialog itself could give one
+  (`FileDialogConfig::defaultExtension`); everything that saves through
+  `UltraCanvasFileLoader::SaveFileDialog` - most applications, and every one
+  with native dialogs on - could not, so "photo" saved under All files came
+  back bare. The option reaches every dialog now, each applying it before
+  its own Replace File question:
+  - **framework dialog**: handed on as `FileDialogConfig::defaultExtension`;
+  - **GTK**: applied to the accepted name and when the type changes, with
+    the question asked if the result already exists;
+  - **Windows**: the dialog's own default extension when the chosen type
+    names none or there are no filters, and applied to the result as on GTK;
+  - **macOS**: with no type naming an extension, the panel is given it as
+    its only allowed type, other extensions still allowed, so it adds it and
+    asks itself;
+  - **Android**: added to the name offered to the document picker, which
+    also gives SAF the type.
+  The rule is public as `ApplyDefaultExtension(name, extension)`
+  (`UltraCanvasModalDialog.h`).
+- **The file dialog refuses a name the file system cannot hold.**
+  `FileDialogConfig::validateNames` (on by default) was declared and never
+  read, so a Save name like `a:b` on Windows, `CON.txt`, or one longer
+  than 255 reached the caller's write and failed there, usually with a
+  message about the write rather than the name. Save now refuses it with
+  the reason - "\"a:b\" cannot be used as a file name: it contains ":"" -
+  and stays open on the name. The rules are the new
+  `InvalidFileNameReason(name, FileNameRules)` (`UltraCanvasModalDialog.h`):
+  empty, "." and "..", control characters and names over 255 (bytes on
+  POSIX, UTF-16 units on Windows) everywhere; on Windows also
+  `< > : " / \ | ? *`, a trailing dot or space and the device names (CON,
+  PRN, AUX, NUL, COM1-9, LPT1-9, with any extension). `validateNames =
+  false` lets such a name through, as before.
+- **The file dialog adds what it opens and saves to the recent files
+  itself.** `FileDialogConfig::addToRecent` (on by default) was declared and
+  never read: only `UltraCanvasFileLoader` registered recent files, after
+  the dialog closed, so a dialog built with
+  `UltraCanvasDialogManager::CreateFileDialog` added nothing. The dialog now
+  calls `UltraCanvasFileLoader::NotifyRecentFile` for every file an Open,
+  Open multiple or Save accepts (not for a folder picked). The loader hands
+  its `FileDialogOptions::registerAsRecent` to the dialog and registers only
+  after a native dialog, so a file is not added twice.
+- `FileDialogTest` checks the name rules for both systems (always run), and
+  under a display a refused name, `validateNames` off, and - on Linux, with
+  GTK's recent-files store moved to the test's folder - `addToRecent` on
+  and off.
+
+#### 2026-10-09 *0.9.213*
+- **`HTML::ExtractPlainText` reads a word split by formatting as one word.**
+  It put a space wherever a tag was, so `wor<b>ld</b>` came out as
+  "wor ld" - and a keyword filter, which is one of the things the function is
+  for, could be fooled by `<b>via</b>gra`. An inline element (`<b>`, `<i>`,
+  `<span>`, `<a>`, `<font>` ...) now leaves no space, as on screen; a block,
+  `<br>` and a picture still separate words, and so does the place a
+  `<style>` or `<script>` was (that ran words together before). A no-break
+  space now counts as a space when whitespace is collapsed. With this,
+  UltraMail's threat scan and EmailCleaner drop their own tag strippers and
+  entity tables and leave the html-reuse baseline (six entries).
+- **`HTML::ExtractPlainText(const Node&)`: the text of a parsed element**, by
+  the same rules - what a link or a cell says, read from the DOM instead of
+  from a slice of the source.
+- **The Filer's text preview and UltraCloud's WebDAV client decode entities
+  through `HTML::DecodeEntities`.** The preview's own decoder knew six names
+  and turned every numeric reference into a blank (`&#8364;` showed as a
+  space, not "€"); the WebDAV client knew the five XML entities and left a
+  numeric one such as Nextcloud's `&#x27;` in the file name. Both had their
+  own tables; three more html-reuse baseline entries go.
+
+#### 2026-10-08 *0.9.212*
+- **AGENTS.md rule 7 names both spellings of the Claude Code Remote tool.**
+  It said to call `set_session_title` on "the claude-code-remote MCP server".
+  Some builds register that server as `mcp__Claude_Code_Remote__…`, so a
+  session could take the tool for missing. The rule now gives both names.
+  The chat-title hook accepts both since #731.
+
+#### 2026-10-08 *0.9.211*
+- **HTML as text a person reads: `HTML::ExtractPlainText(html,
+  PlainTextLayout::Lines)`.** `ExtractPlainText` put a whole page on one
+  line, which suits a search index but not text someone reads or quotes, so
+  callers that needed lines wrote their own tag stripper. The new layout
+  parses the page and writes it the way a browser's `innerText` does,
+  simplified: block elements on lines of their own, a blank line around
+  paragraphs, headings, quotes and `<pre>`, `<br>` a line break, table cells
+  a tab apart, list items as `- ` or `1. `, `<pre>` as written, a no-break
+  space as a space - and what a browser does not show left out (`<head>`,
+  `<script>`, `<style>`, the `hidden` attribute, an inline `display: none`
+  such as a mail's preheader). The default stays one line, so existing
+  callers are unchanged. UltraMail's own `HtmlToText` is replaced by it and
+  leaves the html-reuse baseline.
+
+#### 2026-10-08 *0.9.210*
+- **Text in labels can be selected and copied.** `UltraCanvasLabel::SetSelectable(true)`
+  lets the reader drag across a label's text, double-click a word (a dot or
+  an apostrophe between letters stays in it: `example.com`, `don't`),
+  triple-click all of it and Shift+click to extend; Ctrl+C (Ctrl+Insert,
+  Cmd+C) copies and Ctrl+A selects all. The highlight is drawn under the text
+  in `LabelStyle::selectionColor`; what is copied leaves out inline pictures
+  and soft hyphens and turns a no-break space into a space. A link in a
+  selectable label opens when the button is released without having dragged,
+  so a drag that starts on a link selects. Labels nobody made selectable work
+  exactly as before.
+  - **One selection across many labels:** `UltraCanvasTextSelection`
+    (`UltraCanvasTextSelection.h`), shared by labels in reading order
+    (`AddLabel`, `AddLabelsIn`). A drag runs on from one label into the
+    next, to the nearest text when the pointer is between them, and scrolls
+    the scroll view when it goes past its edge; a copy puts a line break
+    between labels above one another and a tab between labels side by side.
+    Only the pressed label accepts the keyboard focus, so a page of
+    paragraphs is one Tab stop. `onContextMenu` and `onSelectionChanged` let
+    the host offer Copy and Select All.
+  - **HTML:** `HTML::BuildOptions::selectableText` gives every label of a
+    built page one such selection (`HTML::BuildResult::textSelection`).
+  - New tests: `LabelSelectionTest` (a window under Xvfb).
+
+#### 2026-10-08 *0.9.209*
+- **One shared core on every platform, with the modules inside it.** The
+  framework is now `libUltraCanvas.dylib` on macOS as it has been `.so` on
+  Linux and `.dll` on Windows: `ULTRACANVAS_BUILD_SHARED` defaults ON on every
+  desktop platform and every CI row passes it explicitly (the Windows row had
+  relied on the LaTeX plug-in forcing it). Until now each of the ~20 macOS
+  `.app` executables carried the whole framework statically, so the suite
+  shipped and loaded the same code twenty times over; `package-macos.sh`
+  bundles the core into the suite's shared `Frameworks/` like any other dylib,
+  `verify_suite` fails a suite without it, and the `ultramsg` tool loads from
+  that shared folder too instead of carrying a second copy.
+- **The UI-free modules are folded into the shared core whole.** UltraCrypt,
+  UltraVault, UltraDatabase, UltraMessage, NetworkMonitor and VirtualFS join
+  UltraNet and UltraWin as `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` members of the
+  core, so the DSO exports each module's complete API and one copy of its code
+  and global state serves every running application. Before, an app that
+  linked `UltraDatabase` or `UltraVault` next to the shared core (UltraMail,
+  UltraSocial, UltraFIBU, the test suites) got the archive ahead of
+  `libUltraCanvas` on its link line and took the module's objects from there
+  while the core carried its own - two registries, two connection tables, and
+  on Windows the "multiple definition" errors the changelog has recorded
+  before. The public target names (`UltraDatabase`, `UltraVault`, `UltraCrypt`,
+  `UltraMessage`, `NetworkMonitor`) are now INTERFACE "homes" that resolve to
+  the core on a shared build and to the archive (`uc-database`, `uc-vault`,
+  …) on a static one, so no consumer changed; "MODULE HOMES" in
+  `UltraCanvas/CMakeLists.txt` and *One shared core* in `AGENTS.md` have the
+  rules.
+- **CI reports the package sizes.** The Linux and Windows rows write a
+  "Package sizes" table to the job summary - the package, the core library,
+  the sum of the application executables and each one - next to the macOS
+  suite table, which now lists `libUltraCanvas.1.dylib` on its own line, so
+  a change that puts a second copy of the framework into an app shows up on
+  the run page.
+
+#### 2026-10-08 *0.9.208*
+- **Eleven charts and diagrams pass a layout change on to their parent.**
+  The chord, circular progress, polar, radial bar and timeline charts and
+  the fishbone, matrix, parliament, SWOT, timeline and word-cloud diagrams
+  each declared a private `InvalidateLayout()` that only cleared their own
+  layout cache. It had the name of the layout engine's virtual
+  (`CSSLayout::Element::InvalidateLayout`), so it overrode it without
+  calling it: whenever the framework invalidated one of these elements - a
+  new size, `SetVisible`, a style change - the element's measure stayed
+  valid and the change never reached its parent. Clang warned about it as
+  a missing `override`. The cache-clearing helper is `DropLayoutCache()`
+  now, used where the charts called it themselves, and `InvalidateLayout()`
+  is a real override that drops the cache and calls the engine's.
+  `ChartElementBehaviourTest` checks all eleven; each fails without it.
+- `UltraCanvasSyntaxTokenizer.h` writes Dart's `??=` operator as `"?\?="`,
+  so the string no longer reads as a trigraph and Clang stops warning in
+  every file that includes the header.
+- Tests: `PublicHeadersUnusedParamTest` includes the framework's 315 public
+  headers (313 without GL) in one file compiled with
+  `-Werror=unused-parameter`, so an inline body that leaves a parameter
+  unused fails the build instead of warning in every `-Wextra` build. It
+  leaves out the optional subsystems whose headers need libraries a build
+  may lack (UltraNet, UltraVault, PixelFX, LaTeX, the databases, IO devices,
+  network monitor, messaging and window-server clients), and the GL surface
+  headers when GL is off. GCC and Clang only - every CI leg, Windows
+  included through MSYS2's clang; checked here with clang and GCC on Linux
+  and with MinGW GCC against the Windows headers. `AGENTS.md` states the
+  rule.
+- `scripts/check_doc_examples.py` checks a copied type against every type
+  of its name and judges it by the best match. A short name can name
+  several types - `BlendMode` is the render context's enum, a PixelFX one
+  and a VectorStorage one - and the checker took the first in sorted order,
+  `PixelFX::BlendMode`, so `UltraCanvasRenderContext.md`'s correct listing
+  of the render context's modes read as seven missing enumerators. A
+  planted wrong enumerator is still reported, against
+  `UltraCanvas::BlendMode`. The page's mask example declares the
+  application's `DrawContent` it calls; the page passes the checker.
+- Docs: `UltraCanvasMatrixDiagram.md` passes the doc checker. The roll-up
+  example used `row` and `col` without saying what they were, and the
+  checker read `row` as a container (a common name for one in the other
+  docs); the example now declares them as the item indices the score
+  functions take. The validation example's `Log` is marked as the
+  application's logger and declared for the checker.
+- **Checkboxes, radios and switches take the keyboard focus.**
+  `UltraCanvasLabeledToggleBase` never overrode `AcceptsFocus()`, so Tab
+  skipped every toggle and their Space handling and focus ring were never
+  reached. They take the focus like buttons now: Tab reaches them, a press
+  focuses them, and Space activates the focused one. Enter is no longer
+  handled by a toggle, so in a dialog it still presses the default button,
+  as in HTML and the native toolkits. `SetAcceptsFocus(false)` keeps a toggle
+  out of the Tab order. Apps whose dialogs hold toggles gain Tab stops.
+- **A radio added to a group already checked becomes its selection.**
+  `UltraCanvasRadioGroup::AddRadioButton` ignored a radio's checked state, so
+  one created with `checked = true` showed its dot while
+  `GetSelectedButton()` returned null, and two such radios both stayed
+  checked. The last checked radio added wins and the others are cleared, as
+  in an HTML group; building the group does not call `onSelectionChanged`.
+- **Charts leave a left press to the parent unless it starts a pan.** The
+  chart base took every left press and release, so a chart in a scrolling or
+  draggable container swallowed its clicks. It takes them only to start and
+  end a pan of a zoomed chart; charts that react to clicks handle them
+  first, as before.
+- **A CSV row that cannot be read is skipped, not plotted at (0,0).**
+  `ChartDataVector` and `ChartDataStream` turned a row after the first whose
+  x or y is not a number into a point at the origin. Every line is now kept
+  only when its x and y read as numbers - headers, blank lines and broken
+  rows are skipped wherever they stand - and `ChartDataStream` numbers its
+  points over the data rows, so its count and chunks agree.
+- `IsFocused()` on an element whose window has no application (a test, a
+  tool) called through a null pointer and crashed;
+  `UltraCanvasWindowBase::IsWindowFocused()` is false then.
+- Tests: `TextInputFontTest` checks `IRenderContext::GetLineBoxHeight`
+  headless: it is the font's line height unrounded, `GetTextLineHeight` is
+  the same height in whole pixels and never more, a line's descenders end
+  inside it, and a second ask comes from the cache.
+- The public headers' inline default bodies mark their unused parameters
+  `(void)`, as `UltraCanvasRenderContext.h` already did in places: a build
+  with `-Wextra` (the Models plugin, the tests, Texter, AnchorPoint) saw 48
+  `-Wunused-parameter` warnings from 17 headers - the render context's on
+  every file - and now sees none. Signatures and parameter names are
+  unchanged.
+
+#### 2026-10-08 *0.9.207*
+- **A text field's caret and selection reach the bottom of the text.** The
+  field's line box was `GetTextLineHeight("H")` tall: whole pixels, with the
+  fraction cut off (the size is converted with a `static_cast<int>`). The
+  glyphs are drawn at the font's full line height, so the caret ended up to a
+  pixel above the descenders and the bottoms of parentheses, and
+  `TextMetricsScreenshotTest` failed on that ("The caret spans the text's line
+  box: at or below the ink's bottom"). The box is the font's height in
+  fractional pixels now, from the new `IRenderContext::GetLineBoxHeight(font)`
+  (cached per font, cleared with the other font measurements), and the caret
+  covers every pixel row the box touches. `UltraCanvasTextInput` 1.8.1,
+  `UltraCanvasRenderContext.h` 2.8.0.
+- **Video: stopping the GStreamer backend no longer hangs.** The backend runs
+  a GLib event loop on a thread of its own, and `Stop()` quit it with
+  `g_main_loop_quit` from the calling thread. A quit that came before that
+  thread had reached `g_main_loop_run` was lost: the loop then started and ran
+  for ever, and `Stop()` waited for it. A process that used video briefly
+  could hang at exit, where a static destructor stops the backend, and the
+  busier the machine the more often: `VideoCodecPluginTest` timed out in about
+  1 run in 13 when 24 ran at once. The quit is now a source queued on the
+  loop's own context, which the loop runs whenever it runs. A new case in
+  `VideoCodecPluginTest` starts and stops the backend 200 times with a
+  watchdog; it hung on every run before the change. `VideoBackendGStreamer.cpp`
+  0.1.12.
+
+#### 2026-10-08 *0.9.206*
+- **The chat-title hook recognises the rename under either tool name.** The
+  Claude Code Remote server is registered as `mcp__claude-code-remote__...` in
+  some builds and `mcp__Claude_Code_Remote__...` in others. The
+  `PostToolUse` matcher in `.claude/settings.json` named only the first, so a
+  rename made through the second was never recorded, and
+  `check-chat-title.sh` kept asking for a title that was already right. The
+  matcher now takes either case and either separator, and the hook's message
+  no longer names one spelling (hook 1.0.1).
+- **mDNS plugin 0.3.1:** the Bonjour branch's `OnBrowseReply` no longer
+  declares a variable it never uses, which macOS builds warned about.
+
+#### 2026-10-08 *0.9.205*
+- **The signed macOS apps could not open the camera or the microphone.** Every
+  app is signed with the hardened runtime, which refuses a device the app has
+  no entitlement for, and `MacOS/entitlements.plist` had neither
+  `com.apple.security.device.camera` nor
+  `com.apple.security.device.audio-input`. The generated `Info.plist` had no
+  `NSCameraUsageDescription` or `NSMicrophoneUsageDescription` either, and
+  macOS terminates an app that opens the device without one. So in the
+  notarized suite, UltraAuthenticator's QR scan and the demo's video and audio
+  recorders could not open a camera or a microphone. `package-macos.sh` now
+  takes both from one line per app (`camera_usage`, `microphone_usage`). The
+  reason goes into the app's `Info.plist` and the entitlement into a per-app
+  copy of `MacOS/entitlements.plist` that the app is signed with, so the two
+  cannot disagree. Apps that open neither device get no device entitlement.
+  - UltraAuthenticator: camera. UltraCanvas Demo: camera and microphone.
+- **Every macOS app now states why it uses the local network.** Since macOS 15
+  the system asks before an app reaches the local network. Any app that prints
+  browses Bonjour for IPP printers, and DeviceExplorer browses for eSCL
+  scanners as well, so every app's `Info.plist` now has
+  `NSLocalNetworkUsageDescription` and an `NSBonjourServices` list of the four
+  service types the framework browses (`_ipp._tcp`, `_ipps._tcp`,
+  `_uscan._tcp`, `_uscans._tcp`).
+- `package-macos.sh` checks each generated `Info.plist` and entitlements file
+  with `plutil -lint` while it packages, and logs the entitlements each app was
+  signed with. A pull request's build signs ad hoc with the same per-app
+  entitlements, so it shows what the release will carry.
+
+#### 2026-10-08 *0.9.204*
+- **DemoApp: the domain dashboard is back, on the list view.** The old
+  "Templates demo" page - a domain table with links, an "Enable" action,
+  sparklines, visitor figures, plans and a ⋮ menu per row - was taken out of
+  the build in January and its file deleted today, because it no longer
+  compiled. It built eight elements and a line chart per row in a container.
+  The new *Domain Dashboard* page (Extended Functionality, after List View)
+  shows the same table with `UltraCanvasListView`: one custom `IItemDelegate`
+  paints every cell, `onCellClicked` / `onCellHovered` make the domain a link
+  (it opens in the browser through `OpenURL`, where the old page ran
+  `system("xdg-open " + url)`) and "Enable" an action, ⋮ and a right-click
+  open the row's menu (open, (de)activate, change plan, remove - each edits
+  the model), and a header click sorts by that column (the trend column by
+  growth). "Add 1,000 domains" shows that only the rows on screen are
+  painted. `UltraCanvasListViewExamples.md` explains the pattern under "A
+  custom delegate with clickable cells".
+- **DemoApp: `--component` starts without the About window, and
+  `--no-about` leaves it out on any start.** The modal "UltraCanvas Demo -
+  Information" window opened on every start, also over the page
+  `--component <id>` had just selected, so a page could only be screenshotted
+  after a script clicked it away. Naming a page now implies `--no-about`;
+  `--help` lists both.
+- **Docs: no page points at the removed layout managers any more.**
+  `GettingStarted.md` still told readers (and the prompts it suggests) to lay
+  out with `UltraCanvasBoxLayout`, `UltraCanvasGridLayout` and
+  `UltraCanvasFlexLayout`, and `UltraCanvasImagePerformanceTest.md` included
+  `UltraCanvasBoxLayout.h`; none of those headers exist. Both now name the
+  CSSLayout engine (`layout.SetFlexRow()` / `SetFlexColumn()` / `SetGrid()`),
+  which `UltraCanvasLayoutExamples.md` documents.
+- **Docs: `GettingStarted.md` and `UltraCanvasImagePerformanceTest.md` pass
+  the doc checker.** The Image Performance Test page now matches the demo
+  source:
+  - the `UltraCanvasImageElement` outline carries its real constructors and
+    `LoadFromFile(path, forceLoad)`;
+  - the Include BMP checkbox reacts through `onStateChanged`, not
+    `onCheckedChanged`;
+  - its two `std::filesystem` calls convert with `PathFromUtf8` /
+    `PathToUtf8`, as the UTF-8 path rule asks, where they used `path(str)`
+    and `.string()`;
+  - new sections show the page's private helpers (`NowMs`,
+    `DefaultOptionsFor`), its grouped bar chart and the `PanelState` every
+    lambda shares.
+
+  Every snippet on the page now compiles against the headers with all its
+  names typed.
+- **`scripts/check_doc_examples.py` 1.1.0.**
+  - A snippet's `#if` / `#ifdef` / `#else` / `#endif` and `#define` lines
+    stay where they are, so Windows-only code (`WinMain` under
+    `#ifdef _WIN32`) is left out on Linux instead of being compiled.
+  - A `doc-check` comment can `#define` a macro the build supplies
+    (`MYAPP_VERSION`).
+  - Prose may name a function that the doc's own headers or its `doc-check`
+    comment declare.
+  - `Name (` with a space is no longer read as a call, so
+    `Code needs to be PRed (N lines)` is not flagged.
+  - A name whose type sits in another block is no longer given up when
+    clang suggests that type on one of its two generated lines but not on
+    the other.
+- **Elements take the presses they act on.** Since a press nobody took climbs
+  to the elements around it, an element that acted on a press and then
+  reported it as untaken handed the same press to its parents. These did:
+  the kanban board (a press on the background took the focus and cleared the
+  selection, firing `onSelectionChanged`), the Gantt chart (a click off the
+  rows cleared the selection and started a pan), the block diagram and the
+  Gource tree (deselect on the empty canvas), the tree map (deselect on a
+  background double-click), the arc and adjacency diagrams (the press of a
+  click whose release selects, and the release that deselects), the gradient
+  editor (a press off its stops took the focus) and the video player (the
+  release that ends a seek or volume drag). Each now returns `true` there.
+  The curve editor and the PDF view took the focus for a middle press and
+  then let it go on; they now leave a button they have no use for alone, the
+  focus included. The rich-text editor's right press without a menu still
+  goes on, on purpose, so a surrounding pane's menu can open - as a button's
+  does; the code now says so.
+- **The arc diagram can be clicked where it is drawn.** Its hover and click
+  hit test subtracted the diagram's position in its parent from a pointer
+  that was already local, so a diagram away from its parent's top left
+  showed the wrong node's tooltip and selected the wrong node, or none.
+- **The video player's seek and volume drags capture the mouse**, so their
+  release arrives even off the player; before, a release outside it left the
+  scrub running.
+- **A movable toolbar is dragged by its own surface, and stays where it is
+  dropped.** With `ToolbarDragMode::Movable` / `Both` any left press the bar
+  got started a drag - with presses climbing, a press on a label, separator
+  or disabled button would carry the whole bar off. The drag also tracked the
+  pointer in the bar's own coordinates while moving the bar (the reference
+  moved with every step), was not captured (it stuck once the pointer left
+  the bar), and moved only the laid-out bounds, which the next layout pass
+  put back. It now starts only from the bar's own surface, follows the
+  pointer in window coordinates with the mouse captured, and sets the bar's
+  CSS position (`SetElementAbsolutePosition`). `BeginDrag` / `UpdateDrag`
+  take window coordinates. Docs: `UltraCanvasToolbarExamples.md`.
+- The file view's guard against presses on its own elements now hit-tests
+  with `FindElementAtPoint`, as the window does (scrolling, clipping), instead
+  of a bounds check of its own.
+- Tests: `ElementPressTakenTest` (a window under Xvfb; it skips without a
+  display) - 11 of its 15 checks fail on the previous code.
+- **A mouse press the element under the pointer does not take climbs to its
+  parents.** The window handed `MouseDown`, `MouseUp` and `MouseDoubleClick`
+  to the innermost interactive element under the pointer and, when that
+  element did not take it, straight to the window - never to the elements
+  around it, although the wheel, drags, touches and keys already climbed. So
+  a container that acts on a click (a clickable card, a row, a tile) never
+  heard of a click on the label, icon or inner row inside it, and answered
+  only on its padding: UltraMail's account tiles switched the account from 1
+  of 14 spots. A press now goes to the element's parent, then the
+  grandparent, each with the pointer in its own local space, until one
+  returns `true`. The climb:
+  - stops below the window, which still gets a press nobody took, once, at
+    the end - so a press in a popup (a child of the window) never reaches
+    what lies under it;
+  - stops at an element that left the tree, or was destroyed, while the
+    press was being handled (a click that closed its row): the chain is
+    taken before the first element runs, and `CleanupElementReferences`
+    clears an element destroyed meanwhile, also during a modal dialog's
+    nested event loop;
+  - changes nothing for a press an element takes (returns `true`), which is
+    what buttons, inputs, lists, sliders and menus do with their own clicks.
+  Two elements were made ready for it, because a press they left would now
+  have reached a parent that acts on it:
+  - **`UltraCanvasTextInput` takes a double-click.** A fast second click
+    arrives as `MouseDoubleClick`, which the input dropped; in the
+    spreadsheet's cell editor it would have climbed to the sheet, which reads
+    a double-click on a cell as "start editing" and rebuilt the editor from
+    the stored text - losing what had been typed. It now selects the word
+    under the pointer (all of a password field) and is a second press on the
+    clear and reveal buttons, and a release over the field is the field's.
+  - **`UltraCanvasFilerWidget` leaves alone a press on its own elements.** A
+    right-click on the filter's "clear" button (which has no menu) would have
+    reached the view as a right-click on the folder: it took the keyboard
+    from the search field, committed an open rename and opened the folder
+    menu, which then swallowed the next click.
+  Gained by the change without code of their own: UltraMail's address-book
+  sidebar answers a click on a group's name, and an
+  UltraDesktop sticky note can be dragged by its grip (the grip is a label,
+  and the board was written expecting its press to climb - it never did).
+  Rules for element authors - return `true` for a press you acted on, and a
+  container now sees the presses its children did not take - are in
+  `UltraCanvasCoordinateSystemGuide.md`, *Which element gets a press*. Tests:
+  `MouseClickBubblingTest` (a window under Xvfb; it skips without a display):
+  7 of its 21 checks fail on the old code, and 3 Filer checks fail with the
+  climb but without the Filer's guard.
+- **`UltraCanvasTemplate` is removed.** The layout-template class
+  (`UltraCanvasTemplate.h` / `.cpp`, with its builder and presets) was never
+  named in a build file in the repository's history and no longer compiled
+  (61 errors against today's API). Its only examples lived in
+  `Apps/UltraCanvasToolbarExample.cpp`, a standalone program that was never
+  built either and was deleted in May 2026. What it offered exists in working
+  form: `UltraCanvasToolbarBuilder` and `ToolbarPresets` (toolbar, status
+  bar, ribbon, sidebar), flex and grid layout on every container,
+  `PlaceChildAt` for absolute placement, a movable toolbar, and
+  `UltraCanvasElementPlugins::Create(typeName)` for creating elements by
+  name. Its placement engine wrote children's bounds directly, which the
+  layout pass overwrites, and it painted its own drag handle. The element
+  catalogue's exemption list called it "the skeleton new elements are copied
+  from"; that line is gone with it.
+- **New text layouts wrap a long word between characters.** A layout from
+  `IRenderContext::CreateTextLayout` wrapped at word boundaries only - Pango's
+  own default - so a URL, a file path or a hash given a width ran on past it.
+  Everything drawn through `DrawText` / `DrawTextInRect` already wrapped words
+  first and characters second (`TextStyle::wrap` is `WrapWordChar`), and every
+  element that wraps on purpose (the text area, the rich-text editor, the
+  Markdown view, the tooltip) set that mode itself; a layout made directly
+  was the one place that did not. `UCTextLayout` now starts in `WrapWordChar`,
+  so the two paths agree, and a layout whose words all fit wraps exactly as
+  before. A caller that wants a long word kept whole still asks for
+  `TextWrap::WrapWord`. See *Wrapping* in `UltraCanvasRenderContext.md`.
+
+#### 2026-10-08 *0.9.203*
+- **Screen readers can use the common widgets, and VoiceOver reaches
+  UltraCanvas on macOS.**
+  - **Widgets describe themselves** (`UltraCanvasAccessibility.h` 1.2): new
+    roles `RadioButton`, `Switch`, `ComboBox`, `Slider`, `SpinButton`,
+    `ProgressBar`, `Toolbar`, `TabList`, `Tree`, `Group`; and on
+    `UltraCanvasUIElement` `GetAccessibleDescription` (the tooltip by
+    default), `GetAccessibleToggleState`, `GetAccessibleRange` /
+    `SetAccessibleValue`, `GetAccessibleValueText` /
+    `SetAccessibleValueText`, `GetAccessibleActionName` /
+    `DoAccessibleAction`, `NotifyAccessibility`, and
+    `SetAccessibleName` / `SetAccessibleDescription` to name any element
+    (an icon button, a field labelled by another element). New events
+    `ValueChanged` and `StateChanged`.
+  - Implemented by button (press; a toggle button its pressed state; an icon
+    button is named by its tooltip), checkbox / radio / switch (checked
+    state, toggle / select), label, text input (named by its placeholder,
+    its text as value, settable, never in password mode), dropdown (the
+    shown item), slider and spinner (value, range, step, settable), busy
+    indicator, group box, tabbed container (named after the open tab),
+    toolbar, list and tree view, image and menu.
+  - **AT-SPI** gains the `Value` and `Action` interfaces, checkable / checked
+    / indeterminate / pressed states, descriptions, the new roles, and
+    reads a text field's value through `Text`. **UI Automation** gains the
+    Invoke, Toggle, SelectionItem, RangeValue and Value patterns, HelpText,
+    the new control types and property-changed events.
+  - **NSAccessibility bridge** (`OS/MacOS/UltraCanvasMacOSAccessibility`):
+    a window's content view hands VoiceOver its elements, one
+    `NSAccessibilityElement` per element, with roles, labels, help, values,
+    actions, focus, frames, the text attributes VoiceOver reads (UTF-16
+    ranges converted) and change notifications. `UltraCanvasMacOSWindow`
+    gains `GetContentView()`. Compile-checked by the macOS CI build; not yet
+    tried with VoiceOver.
+  - Tests: new `WidgetAccessibilityTest` (41 checks, headless);
+    `AtspiBridgeTest` now presses a button, ticks a checkbox, sets a slider
+    and reads a text field through libatspi.
+
+#### 2026-10-08 *0.9.202*
+- **`NormalizePath` doubled the separator at the end of a folder on Windows.**
+  `NormalizePath(GetResourcesDir() + "media/icons/")` came back ending in
+  `\\`, and every file name appended to it carried the doubled backslash -
+  `GetBundledFontsDir()`, the file display's icon folders and the demo apps'
+  media folders among them. A folder given with `/` or `\` at its end now
+  ends in exactly one native separator on every platform (the root `/` on
+  Linux and macOS, which came back as `//`, included).
+- **On Linux and macOS a path that did not exist could come back cut
+  short.** `realpath` fails for it, and POSIX leaves its buffer undefined
+  then; glibc leaves the path up to the first name that is missing, so a
+  file in a folder that did not exist (`.../missing/sub/file.txt`) came back
+  as that folder (`.../missing`). Such a path is now returned as it was
+  given, so whatever opens it next names the file it did not find.
+- `FilerNameEncodingTest` checks both, on the Windows CI row too: a
+  Thai-named folder asked for with `/` or `\` ends in one separator and a
+  file name appended to it reaches the file, the root keeps one separator,
+  and a missing path comes back whole.
+
 #### 2026-10-08 *0.9.201*
 - **CI no longer waits an hour on a stalled Ubuntu mirror.** On 2026-10-07 an
   `apt-get update` in the Android check sat on one download for fifty minutes

@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp
 // Fishbone (Ishikawa) cause-and-effect diagram with eight design presets
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasFishboneDiagram.h"
@@ -159,49 +160,49 @@ namespace UltraCanvas {
     void UltraCanvasFishboneDiagram::SetDesign(FishboneDesign d) {
         if (design == d) return;
         design = d;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetSidePolicy(FishboneSidePolicy policy) {
         if (sidePolicy == policy) return;
         sidePolicy = policy;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetHeadShape(FishboneHeadShape shape) {
         if (headShape == shape) return;
         headShape = shape;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetTailShape(FishboneTailShape shape) {
         if (tailShape == shape) return;
         tailShape = shape;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetEffectPlacement(FishboneEffectPlacement placement) {
         if (effectPlacement == placement) return;
         effectPlacement = placement;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetCauseMarker(FishboneCauseMarker marker) {
         if (causeMarker == marker) return;
         causeMarker = marker;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetLabelPlacement(FishboneLabelPlacement placement) {
         if (labelPlacement == placement) return;
         labelPlacement = placement;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -228,7 +229,7 @@ namespace UltraCanvas {
         double clamped = std::clamp(degrees, 25.0, 80.0);
         if (std::abs(clamped - ribAngleDegrees) < 0.01) return;
         ribAngleDegrees = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -246,21 +247,21 @@ namespace UltraCanvas {
     void UltraCanvasFishboneDiagram::SetShowCategoryIcons(bool show) {
         if (showCategoryIcons == show) return;
         showCategoryIcons = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetShowCauses(bool show) {
         if (showCauses == show) return;
         showCauses = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetShowSubCauses(bool show) {
         if (showSubCauses == show) return;
         showSubCauses = show;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -291,7 +292,7 @@ namespace UltraCanvas {
         float clamped = std::clamp(size, 6.0f, 24.0f);
         if (std::abs(clamped - causeFontSize) < 0.01f) return;
         causeFontSize = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -299,7 +300,7 @@ namespace UltraCanvas {
         float clamped = std::clamp(size, 7.0f, 28.0f);
         if (std::abs(clamped - categoryFontSize) < 0.01f) return;
         categoryFontSize = clamped;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -311,26 +312,26 @@ namespace UltraCanvas {
         document = doc;
         hoveredItem = FishboneRef();
         selectedItem = FishboneRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetEffect(const std::string& text) {
         document.effect = text;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     size_t UltraCanvasFishboneDiagram::AddCategory(const std::string& title) {
         document.categories.emplace_back(title);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return document.categories.size() - 1;
     }
 
     size_t UltraCanvasFishboneDiagram::AddCategory(const FishboneCategory& category) {
         document.categories.push_back(category);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return document.categories.size() - 1;
     }
@@ -339,7 +340,7 @@ namespace UltraCanvas {
         document.categories = categories;
         hoveredItem = FishboneRef();
         selectedItem = FishboneRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -355,7 +356,7 @@ namespace UltraCanvas {
         fix(selectedItem);
         fix(hoveredItem);
 
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -363,14 +364,14 @@ namespace UltraCanvas {
         document.categories.clear();
         hoveredItem = FishboneRef();
         selectedItem = FishboneRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasFishboneDiagram::SetCategoryTitle(size_t index, const std::string& title) {
         if (index >= document.categories.size()) return;
         document.categories[index].title = title;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -395,7 +396,7 @@ namespace UltraCanvas {
     void UltraCanvasFishboneDiagram::SetCategorySide(size_t index, int side) {
         if (index >= document.categories.size()) return;
         document.categories[index].side = (side == 0) ? 0 : (side < 0 ? -1 : 1);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -403,7 +404,7 @@ namespace UltraCanvas {
         if (index >= document.categories.size()) return;
         if (document.categories[index].collapsed == collapsed) return;
         document.categories[index].collapsed = collapsed;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -419,7 +420,7 @@ namespace UltraCanvas {
     size_t UltraCanvasFishboneDiagram::AddCause(size_t categoryIndex, const FishboneCause& cause) {
         if (categoryIndex >= document.categories.size()) return SIZE_MAX;
         document.categories[categoryIndex].causes.push_back(cause);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return document.categories[categoryIndex].causes.size() - 1;
     }
@@ -430,7 +431,7 @@ namespace UltraCanvas {
         auto& causes = document.categories[categoryIndex].causes;
         if (causeIndex >= causes.size()) return SIZE_MAX;
         causes[causeIndex].subCauses.emplace_back(text);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
         return causes[causeIndex].subCauses.size() - 1;
     }
@@ -449,7 +450,7 @@ namespace UltraCanvas {
         fix(selectedItem);
         fix(hoveredItem);
 
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -458,7 +459,7 @@ namespace UltraCanvas {
         document.categories[categoryIndex].causes.clear();
         if (selectedItem.category == static_cast<int>(categoryIndex)) selectedItem = FishboneRef();
         if (hoveredItem.category == static_cast<int>(categoryIndex)) hoveredItem = FishboneRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -513,7 +514,7 @@ namespace UltraCanvas {
         document.categories = FishboneCategoriesFromPreset(preset);
         hoveredItem = FishboneRef();
         selectedItem = FishboneRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 

@@ -50,6 +50,11 @@ namespace UltraCanvas {
 
     class UltraCanvasListView : public UltraCanvasUIElement {
     public:
+        // ===== ACCESSIBILITY =====
+        // A list; its rows are drawn, not elements, so a reader hears the list
+        // and its name (SetAccessibleName()), not each row yet.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::List; }
+
         // Callbacks
         std::function<void(int row)> onItemClicked;
         std::function<void(int row)> onItemDoubleClicked;

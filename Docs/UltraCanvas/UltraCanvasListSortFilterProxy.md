@@ -1,5 +1,7 @@
 # UltraCanvasListSortFilterProxy
 
+<!-- doc-check: ListRowComparator myComparator; double AmountOf(const IListModel& model, int sourceRow); -->
+
 **Sorting and filtering for any `IListModel`, without touching the model that
 holds the data.** The proxy *is* an `IListModel`: it wraps a source model and
 presents the same columns with the rows re-ordered and thinned out, so a view is
@@ -23,14 +25,14 @@ rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }
 
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 
-auto view = CreateListView("invoices", 0, 0, 800, 400);
+auto view = std::make_shared<UltraCanvasListView>("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
 proxy->SetFilterText("olpe");       // this filters
 
 // Header clicks sort, with an indicator. The view shows the order but never
 // decides it, so the two lines that do it live here rather than inside the view.
-view->onHeaderClicked = [view, proxy](int column) {
+view->onHeaderClicked = [view = view.get(), proxy](int column) {   // raw: the view must not own itself
     const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
     proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
                                           : ListSortOrder::Descending);

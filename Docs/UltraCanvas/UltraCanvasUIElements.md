@@ -78,7 +78,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
@@ -251,7 +251,7 @@ exists:
 
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
-auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
+auto shot   = CreateImageFromFile("preview", 0, 0, 320, 240, "poster.png");
 auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 

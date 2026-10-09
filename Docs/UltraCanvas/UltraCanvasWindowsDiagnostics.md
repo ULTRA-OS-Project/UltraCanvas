@@ -451,7 +451,7 @@ indistinguishable from a hang.
 Both backends now do this — Linux through the `select()` in
 `CollectAndProcessNativeEvents()`, Windows through
 `UltraCanvasWindowsApplication::PollAndServiceFdWatches()`, which polls the
-registered Winsock sockets around the `MsgWaitForMultipleObjectsEx()` wait and
+registered Winsock sockets around the `MsgWaitForMultipleObjectsEx` wait and
 bounds that wait so level-triggered readiness is picked up promptly. **The
 Windows side arrived in 0.3.81; before that the Windows loop ignored fd-watches
 entirely while Linux honoured them.** A host built against an older Windows
@@ -710,6 +710,8 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 (Windows only; called for you by `UltraCanvasWindowsApplication::InitializeNative()`):
 
 ```cpp
+#include "../OS/MSWindows/UltraCanvasWindowsDiagnostics.h"   // from UltraCanvas/include
+
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);

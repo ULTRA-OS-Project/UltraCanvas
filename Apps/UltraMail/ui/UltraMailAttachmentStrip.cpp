@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
-// Version: 0.2.0 - chips are themed cards
-// Last Modified: 2026-09-09
+// Version: 0.2.1 - the strip is hidden while the message has no attachments
+// Last Modified: 2026-10-08
+// V0.2.0: chips are themed cards
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentStrip.h"
 
@@ -117,6 +118,10 @@ void AttachmentStrip::SetAttachments(std::vector<Attachment> attachments) {
     if (!strip_) Build();
     strip_->ClearChildren();
     *attachments_ = std::move(attachments);
+    // Hidden (out of the layout) while there is nothing to show: an empty
+    // strip kept its 42 px and the column's gap under every message, and
+    // the body above it ended that far short of the pane's bottom.
+    strip_->SetVisible(!attachments_->empty());
 
     float x = kGap;
     for (std::size_t i = 0; i < attachments_->size(); ++i) {

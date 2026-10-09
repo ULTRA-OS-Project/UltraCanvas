@@ -161,7 +161,8 @@ verbatim so it can carry markup of its own.
 
 ```cpp
 // Data
-void AddDataPoint(category, value1, value2, label1, label2);
+void AddDataPoint(const std::string& category, double value1, double value2,
+                  const std::string& label1 = "Group 1", const std::string& label2 = "Group 2");
 void AddDataPoint(const DumbbellDataPoint&);
 void ClearData();
 void SetDumbbellDataSource(std::shared_ptr<DumbbellDataSource>);
@@ -176,9 +177,9 @@ void SetAutoFitRows(bool);
 float GetPreferredHeight() const;
 
 // Colours
-void SetDefaultColors(color1, color2, lineColor);
-void SetGroupColors(color1, color2);
-void SetConnectorColor(lineColor);
+void SetDefaultColors(const Color& color1, const Color& color2, const Color& lineCol);
+void SetGroupColors(const Color& color1, const Color& color2);
+void SetConnectorColor(const Color& lineCol);
 
 // Labels
 void SetShowCategoryLabels(bool);
@@ -190,7 +191,7 @@ void SetValueLabelPlacement(DumbbellValueLabelPlacement);
 
 // Legend
 void SetShowLegend(bool);
-void SetLegendLabels(label1, label2);
+void SetLegendLabels(const std::string& label1, const std::string& label2);
 void SetLegendPosition(DumbbellLegendPosition);   // TopRight (default), TopLeft, BottomRight, BottomLeft
 
 // Axis

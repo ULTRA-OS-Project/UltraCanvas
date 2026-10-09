@@ -7,9 +7,14 @@
 // devices attached, battery level, keyboard layout), and the counts an
 // application publishes for the desktop to show beside its icon.
 //
-//   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-//       taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
-//   UltraCanvasDesktopShell::ActivateWindow(id);
+//   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+//       if (w.skipTaskbar) continue;
+//       const uint64_t id = w.id;
+//       taskbar->AddToggleButton("win-" + std::to_string(id), "", w.iconFile, [id](bool on) {
+//           if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+//           else UltraCanvasDesktopShell::MinimizeWindow(id);
+//       });
+//   }
 //   UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
 //   UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
 //   DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
