@@ -128,6 +128,12 @@ bool GetImageRepeatY() const;
 void SetHeightFollowsWidth(bool follows);
 bool GetHeightFollowsWidth() const;
 
+// The shape (width / height) kept while the height follows the width, instead
+// of the picture's own; 0 (the default) is the picture's. An HTML
+// <img width="101" height="37"> keeps 101:37 when a narrower column shrinks it.
+void SetBoxAspectRatio(float widthOverHeight);
+float GetBoxAspectRatio() const;
+
 // Element-local rectangle the image is drawn into for the current fit and position
 Rect2Df ImageDrawRect() const;
 ```

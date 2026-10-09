@@ -305,6 +305,17 @@ without a drag. Keep `r.textSelection` to offer Copy and Select All in a
 menu (its `onContextMenu` is asked on a right-click); see
 `UltraCanvasLabelExamples.md`, *Selectable text*.
 
+Pictures are sized as a browser sizes a replaced element: `width` alone or
+`height` alone gives the other in the picture's shape, both give a box of
+their own, and min / max sizes clamp keeping the shape where CSS does. The
+size becomes a width the height follows, so a narrower line shrinks the
+picture in proportion - in its own shape, or in the box's where the author
+gave one (`UltraCanvasImageElement::SetBoxAspectRatio`). `object-fit: fill`
+(the default) stretches the picture only into a box the author shaped
+differently; any other box is the picture's shape, and the picture is fitted
+keeping its proportions. A percentage height inside a table cell is a share
+of the cell's set height, and auto when the cell sets none.
+
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
 `MessagePreview::RenderBody` for the two hosts that exist). A reusable

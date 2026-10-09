@@ -2805,6 +2805,16 @@ records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
 `Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
 percentage height is auto and a percentage limit limits nothing.
 
+An `Exact` constraint on **one** axis is normally only a fill hint: a block
+offers its children its content width that way, and a child's own `size.width`
+(`Pct(50)`, `Px(120)`) still wins. A parent that decides a child's width itself
+says so with `widthSetByParent = true` on the child; an `Exact` width from it is
+then the child's used width, exactly as an `Exact` on both axes always is. The
+table engine sets it on its cells: a cell's own px / % width has already gone
+into its column, and the row's height is measured with the cell's content at
+the column's width - not at a cell of `width="50%"` taking its 50% a second
+time (`Tests/HTMLTableLayoutTest.cpp`, *LinkedIn mail*).
+
 A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
 `Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
 offset is added when the value resolves (px, %, vw / vh, em / rem); a percentage
@@ -11102,6 +11112,12 @@ bool GetImageRepeatY() const;
 // larger as well as smaller (off by default: the height then only shrinks)
 void SetHeightFollowsWidth(bool follows);
 bool GetHeightFollowsWidth() const;
+
+// The shape (width / height) kept while the height follows the width, instead
+// of the picture's own; 0 (the default) is the picture's. An HTML
+// <img width="101" height="37"> keeps 101:37 when a narrower column shrinks it.
+void SetBoxAspectRatio(float widthOverHeight);
+float GetBoxAspectRatio() const;
 
 // Element-local rectangle the image is drawn into for the current fit and position
 Rect2Df ImageDrawRect() const;
@@ -31030,6 +31046,17 @@ without a drag. Keep `r.textSelection` to offer Copy and Select All in a
 menu (its `onContextMenu` is asked on a right-click); see
 `UltraCanvasLabelExamples.md`, *Selectable text*.
 
+Pictures are sized as a browser sizes a replaced element: `width` alone or
+`height` alone gives the other in the picture's shape, both give a box of
+their own, and min / max sizes clamp keeping the shape where CSS does. The
+size becomes a width the height follows, so a narrower line shrinks the
+picture in proportion - in its own shape, or in the box's where the author
+gave one (`UltraCanvasImageElement::SetBoxAspectRatio`). `object-fit: fill`
+(the default) stretches the picture only into a box the author shaped
+differently; any other box is the picture's shape, and the picture is fitted
+keeping its proportions. A percentage height inside a table cell is a share
+of the cell's set height, and auto when the cell sets none.
+
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
 `MessagePreview::RenderBody` for the two hosts that exist). A reusable
@@ -35923,6 +35950,47 @@ struct ListViewStyle {
     Color hoverBackgroundColor = Colors::SelectionHover;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+};
+```
+
+### Column widths
+
+```cpp
+void SetColumnWidth(int column, int width);   // this view only; the model keeps ListColumnDef::width
+int  GetColumnWidth(int column) const;        // the effective width
+bool ColumnsUserAdjusted() const;             // the user dragged a border: stop fitting
+
+// What fitting a column to its content takes, measured on the context the
+// view is painted on:
+int MeasureHeaderWidth(IRenderContext* ctx, int column) const;   // whole title + sort triangle
+int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
+```
+
+`MeasureHeaderWidth` is the narrowest width at which the column's header shows
+its whole title in `headerFontSize`, with room for the sort triangle whether or
+not the column is the sorted one - so a fitted column keeps its width when the
+order changes, and a translated title is measured as it reads.
+`MeasureColumnTextWidth` is the widest `DisplayRole` text of the column's rows
+in `font`, without a delegate's padding; each distinct text is measured once
+and remembered, so a column of thousands of dates costs a few hundred
+measurements. UltraMail fits its Date column this way: the widest date in bold
+plus the 6 px its delegate leaves before the text, and at least the header.
+
+```cpp
+// A Date column (column 3) as wide as its widest date plus a 6 px gap, never
+// narrower than its header - measured where a render context is at hand.
+class DateFittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        if (ctx && !ColumnsUserAdjusted()) {
+            FontStyle font;
+            font.fontSize = 10;
+            const int dates = MeasureColumnTextWidth(ctx, 3, font);
+            SetColumnWidth(3, std::max(dates + 6, MeasureHeaderWidth(ctx, 3)));
+        }
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
 };
 ```
 

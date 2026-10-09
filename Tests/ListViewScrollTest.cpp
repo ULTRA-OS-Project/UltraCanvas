@@ -14,9 +14,17 @@
 //  - The arrow keys go on from a row selected in code. The keyboard focus
 //    stayed where it was, so after the application rebuilt or re-sorted the
 //    list and selected the message being read, Down jumped to the top.
-// No window and no display: the view is sized with SetBounds.
+//  - What fitting a column to its content takes: MeasureHeaderWidth (the
+//    whole title and the sort triangle) and MeasureColumnTextWidth (the
+//    widest text of the column's rows, now - not the widest ever seen).
+//    UltraMail's Date column is fitted with them; it was a fixed 88 px.
+// No window and no display: the view is sized with SetBounds, and text is
+// measured on an offscreen render context.
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
+#include "UltraCanvasRenderContext.h"
+
+#include <cmath>
 
 #include <iostream>
 #include <memory>
@@ -185,6 +193,63 @@ static void TestKeyboardFollowsSelectionSetInCode() {
     CHECK_EQ(view->GetSelection()->GetCurrentRow(), 0);
 }
 
+// `text` on one line in `font`, rounded up - what the view's measurements
+// are made of.
+static int TextWidth(IRenderContext* ctx, const std::string& text, const FontStyle& font) {
+    auto layout = ctx->CreateTextLayout(text, false);
+    layout->SetFontStyle(font);
+    return static_cast<int>(std::ceil(layout->GetLayoutWidth()));
+}
+
+static void TestColumnFitMeasurements() {
+    auto ctx = CreateRenderContext(Size2Di(200, 100), nullptr);
+    CHECK_EQ(ctx != nullptr, true);
+    if (!ctx) return;
+    auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+    model->SetColumns({ ListColumnDef("Subject", 200), ListColumnDef("Date", 88) });
+    auto view = std::make_shared<UltraCanvasListView>("list");
+    ListViewStyle style;
+    style.showHeader = true;
+    style.headerFontSize = 9;
+    style.sortIndicatorSize = 8;
+    view->SetStyle(style);
+    view->SetModel(model);
+    model->SetItems({ MultiColumnListItem({ "a", "Oct 07" }),
+                      MultiColumnListItem({ "b", "Jan 14, 2025" }),
+                      MultiColumnListItem({ "c", "10:42" }) });
+
+    // The header: its insets (4 px each end), the title, and the triangle's
+    // strip (the triangle and 6 px), sorted or not.
+    FontStyle headerFont;
+    headerFont.fontSize = 9;
+    const int title = TextWidth(ctx.get(), "Date", headerFont);
+    CHECK_EQ(title > 0, true);
+    CHECK_EQ(view->MeasureHeaderWidth(ctx.get(), 1), 8 + title + 14);
+    view->SetSortIndicator(1, false);
+    CHECK_EQ(view->MeasureHeaderWidth(ctx.get(), 1), 8 + title + 14);
+    // A longer title - another language's - is measured as it reads.
+    model->SetColumns({ ListColumnDef("Subject", 200), ListColumnDef("Empfangsdatum", 88) });
+    CHECK_EQ(view->MeasureHeaderWidth(ctx.get(), 1),
+             8 + TextWidth(ctx.get(), "Empfangsdatum", headerFont) + 14);
+    CHECK_EQ(view->MeasureHeaderWidth(ctx.get(), 1) > 8 + title + 14, true);
+    CHECK_EQ(view->MeasureHeaderWidth(ctx.get(), 7), 0);   // no such column
+
+    // The rows: the widest text, in the font asked for.
+    FontStyle body;
+    body.fontSize = 9;
+    FontStyle bold = body;
+    bold.fontWeight = FontWeight::Bold;
+    CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, body), TextWidth(ctx.get(), "Jan 14, 2025", body));
+    CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, bold), TextWidth(ctx.get(), "Jan 14, 2025", bold));
+    CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, bold) >
+             view->MeasureColumnTextWidth(ctx.get(), 1, body), true);
+    // Without the old year, the column's text is only as wide as what is left.
+    model->SetItems({ MultiColumnListItem({ "a", "Oct 07" }), MultiColumnListItem({ "c", "10:42" }) });
+    CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, body), TextWidth(ctx.get(), "Oct 07", body));
+    model->SetItems({});
+    CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, body), 0);
+}
+
 int main() {
     TestFirstRowBeforeLayout();
     TestLaterRowBeforeLayout();
@@ -193,6 +258,7 @@ int main() {
     TestSelectionFollowsInsertedAndRemovedRows();
     TestMultiSelectionShift();
     TestKeyboardFollowsSelectionSetInCode();
+    TestColumnFitMeasurements();
     if (failures) {
         std::cerr << "ListViewScrollTest: " << failures << " failure(s)\n";
         return 1;
