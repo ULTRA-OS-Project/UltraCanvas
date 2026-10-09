@@ -4,8 +4,8 @@
 
 The `UltraCanvasDivergingBarChart` is a specialized chart component in the UltraCanvas framework designed for displaying multi-valued categorical data that diverges from a central axis. This chart type is ideal for visualizing data with opposing or contrasting values, such as population pyramids, Likert scale survey responses, tornado charts, and other comparative visualizations.
 
-**Version:** 1.1.0  
-**Last Modified:** 2025-09-23  
+**Version:** 1.2.0  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework  
 **Namespace:** `UltraCanvas`
 
@@ -93,13 +93,11 @@ class DivergingDataSource : public IChartDataSource {
 ## Constructor
 
 ```cpp
-UltraCanvasDivergingBarChart(const std::string& id, long uid, 
-                              int x, int y, int width, int height)
+UltraCanvasDivergingBarChart(const std::string& id, int x, int y, int width, int height);
 ```
 
 **Parameters:**
 - `id`: Unique identifier string for the chart
-- `uid`: Unique numeric identifier
 - `x`: X position of the chart
 - `y`: Y position of the chart
 - `width`: Width of the chart
@@ -120,7 +118,10 @@ Sets the categories for the diverging chart. Categories define the segments that
 void AddDataRow(const std::string& rowLabel, 
                 const std::map<std::string, float>& values)
 ```
-Adds a single data row with values for each category.
+Adds a single data row with values for each category. When a row with this
+label is already there - such as one `CreatePopulationPyramid` laid out - its
+values are replaced and it keeps its place, rather than a second row being
+added.
 
 **Parameters:**
 - `rowLabel`: Label for the row (appears on Y-axis)
@@ -223,7 +224,10 @@ std::shared_ptr<UltraCanvasDivergingBarChart> CreatePopulationPyramid(
     const std::vector<std::string>& rowLabels,
     const std::vector<DivergingCategory>& categories)
 ```
-Creates a pre-configured population pyramid chart.
+Creates a pre-configured population pyramid chart with one empty row per
+entry of `rowLabels`, in that order (the first at the top). `AddDataRow` with
+one of those labels then fills that row, so the rows keep the order given here
+whatever order the data arrives in; a label not in the list adds a row below.
 
 ### CreateLikertChart
 ```cpp
@@ -306,11 +310,11 @@ categories.emplace_back("Male", Color(100, 150, 200, 255), false);
 categories.emplace_back("Female", Color(200, 100, 150, 255), true);
 
 // Create the pyramid
-auto pyramid = CreatePopulationPyramid("pyramid", 1002, 50, 50, 600, 500,
+auto pyramid = CreatePopulationPyramid("pyramid", 50, 50, 600, 500,
                                         {"0-9", "10-19", "20-29", "30-39", "40-49"},
                                         categories);
 
-// Add population data
+// Fill the rows laid out above, by label
 pyramid->AddDataRow("0-9", {{"Male", 1200}, {"Female", 1150}});
 pyramid->AddDataRow("10-19", {{"Male", 1350}, {"Female", 1300}});
 pyramid->AddDataRow("20-29", {{"Male", 1500}, {"Female", 1450}});
@@ -318,7 +322,7 @@ pyramid->AddDataRow("30-39", {{"Male", 1400}, {"Female", 1420}});
 pyramid->AddDataRow("40-49", {{"Male", 1250}, {"Female", 1280}});
 
 // Enable grid and labels
-pyramid->SetGridEnabled(true);
+pyramid->SetShowGrid(true);
 pyramid->SetShowRowLabels(true);
 pyramid->SetShowValueLabels(true);
 ```

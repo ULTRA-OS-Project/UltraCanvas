@@ -2,21 +2,22 @@
 
 ## Overview
 
-**UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
+**UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options. It is a single-line field; for multi-line text use `UltraCanvasTextArea`.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-09-15  
+**Version:** 1.4.0  
+**Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
 ## Key Features
 
 ### Core Capabilities
-- **Multiple Input Types**: Plain text, password, email, phone, number, currency, date/time, URL, multiline, and custom types
+- **Multiple Input Types**: Plain text, password, email, phone, number, currency, date/time, URL, search, and custom types
 - **Validation System**: Built-in and custom validation rules with visual feedback
 - **Text Formatting**: Automatic formatting for phone numbers, dates, currency, and custom patterns
-- **Undo/Redo**: Full undo/redo stack with configurable history depth
+- **Undo/Redo**: Undo/redo stack holding the last 50 states
 - **Selection Management**: Text selection with keyboard and mouse support
-- **Auto-completion**: Configurable auto-complete modes for different input types
+- **Clipboard**: Copy, cut and paste from the keyboard or from code
+- **Clear Button**: Optional in-field button that empties the field
 - **Placeholder Text**: Contextual hints when field is empty
 - **Read-only Mode**: Disable editing while maintaining visual presentation
 - **UTF-8 Text**: Every position the field keeps is a character boundary, so accented, umlauted and non-Latin text edits like any other (see [Text and UTF-8](#text-and-utf-8))
@@ -45,12 +46,17 @@ namespace UltraCanvas
 ## Constructor
 
 ```cpp
-UltraCanvasTextInput(const std::string& id, long uid, long x, long y, long w, long h)
+UltraCanvasTextInput(const std::string& id, float x, float y, float w, float h);
+
+// Position left to the layout (x and y are -1)
+UltraCanvasTextInput(const std::string& id, float w, float h);
+
+// Position and size left to the layout
+explicit UltraCanvasTextInput(const std::string& id);
 ```
 
 **Parameters:**
 - `id`: Unique string identifier for the control
-- `uid`: Numeric unique identifier
 - `x, y`: Position coordinates (in pixels)
 - `w, h`: Width and height dimensions (in pixels)
 
@@ -73,7 +79,6 @@ enum class TextInputType {
     DateTime,      // Combined date and time
     URL,           // URL with validation
     Search,        // Search field with clear button
-    Multiline,     // Multi-line text area
     Custom         // Custom validation rules
 };
 ```
@@ -81,16 +86,26 @@ enum class TextInputType {
 ### Setting Input Type
 
 ```cpp
-void SetInputType(TextInputType type)
+void SetInputType(TextInputType type);
+TextInputType GetInputType() const;
 ```
 
 Automatically configures validation and formatting based on the selected type:
-- **Password**: Enables password masking
-- **Email**: Adds email validation and email auto-complete
-- **Phone**: Applies phone number formatting
-- **Number/Integer/Decimal**: Restricts to numeric input
-- **Currency**: Applies currency formatting
-- **Date**: Validates and formats date input
+- **Password**: Enables password masking (switching to any other type drops it)
+- **Email**: Adds `ValidationRule::Email()`
+- **Phone**: Applies `TextFormatter::Phone()` and adds `ValidationRule::Phone()`
+- **Number/Integer/Decimal**: Adds `ValidationRule::Numeric()`
+- **Currency**: Applies `TextFormatter::Currency()` and adds `ValidationRule::Numeric()`
+- **Date**: Applies `TextFormatter::Date()`
+
+The rules a type brings are replaced when the type changes: switching Email
+to Text drops the email check, and setting a type twice does not check twice.
+Rules added with `AddValidationRule()` stay through any type change, whether
+they were added before or after it. `ClearValidationRules()` removes both.
+
+Phone, Currency and Date set their formatter through `SetFormatter()`, so a
+field without a placeholder gets the formatter's (see
+[Using Formatters](#using-formatters)).
 
 ## Text Management
 
@@ -98,35 +113,43 @@ Automatically configures validation and formatting based on the selected type:
 
 ```cpp
 // Set the text content
-void SetText(const std::string& newText)
+void SetText(const std::string& newText);
 
 // Get the current text
-const std::string& GetText() const
+const std::string& GetText() const;
 
 // Get formatted display text
-const std::string& GetDisplayText() const
+const std::string& GetDisplayText() const;
+
+// The text as painted: one '*' per character in password mode,
+// otherwise the formatted display text
+std::string GetRenderText() const;
 
 // Set placeholder text
-void SetPlaceholder(const std::string& placeholder)
+void SetPlaceholder(const std::string& placeholder);
 
 // Get placeholder text
-const std::string& GetPlaceholder() const
+const std::string& GetPlaceholder() const;
+
+// Keep showing the placeholder while the empty field has focus
+void SetShowPlaceholderAlways(bool show);
+bool IsShowPlaceholderAlways() const;
 ```
 
 ### Text Properties
 
 ```cpp
 // Set read-only mode
-void SetReadOnly(bool readonly)
+void SetReadOnly(bool readonly);
 
 // Check if read-only
-bool IsReadOnly() const
+bool IsReadOnly() const;
 
 // Set maximum text length, counted in characters
-void SetMaxLength(int length)
+void SetMaxLength(int length);
 
 // Get maximum length
-int GetMaxLength() const
+int GetMaxLength() const;
 ```
 
 ### Text and UTF-8
@@ -163,38 +186,60 @@ struct ValidationRule {
     std::string name;
     std::string errorMessage;
     std::function<bool(const std::string&)> validator;
-    bool isRequired;
-    int priority;
+    bool isRequired = false;
+    int priority = 0;  // Higher priority rules checked first
+
+    ValidationRule() = default;
+    ValidationRule(const std::string& ruleName, const std::string& message,
+                  std::function<bool(const std::string&)> validatorFunc, bool required = false);
 };
 ```
 
+A custom rule is built with the constructor: a name, the error message, and a
+function that returns `true` when the value is acceptable.
+
 ### Predefined Validation Rules
 
+All are static members of `ValidationRule`:
+
 ```cpp
-// Required field
-ValidationRule::Required("This field is required")
+struct ValidationRule {
+    static ValidationRule Required(const std::string& message = "This field is required");
+    static ValidationRule MinLength(int minLen, const std::string& message = "");
+    static ValidationRule MaxLength(int maxLen, const std::string& message = "");
+    static ValidationRule Email(const std::string& message = "Invalid email format");
+    static ValidationRule Phone(const std::string& message = "Invalid phone format");
+    static ValidationRule Numeric(const std::string& message = "Must be a number");
+    static ValidationRule Range(double min, double max, const std::string& message = "");
 
-// Minimum length
-ValidationRule::MinLength(8, "Must be at least 8 characters")
+    // Regular expression, passed as a string
+    static ValidationRule Pattern(const std::string& pattern, const std::string& message = "Invalid format");
 
-// Maximum length
-ValidationRule::MaxLength(100, "Must be less than 100 characters")
+    // Password rules
+    static ValidationRule RequireUppercase(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireLowercase(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireDigit(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireSpecialChar(int minCount = 1, const std::string& message = "");
+    static ValidationRule NoRepeatingChars(int maxRepeat = 3, const std::string& message = "");
+    static ValidationRule NoSequentialChars(int maxSequence = 3, const std::string& message = "");
+    static ValidationRule NoCommonPasswords(const std::string& message = "This password is too common");
+    static ValidationRule NoUserInfo(const std::string& username, const std::string& email = "", const std::string& message = "");
 
-// Email validation
-ValidationRule::Email("Invalid email address")
+    // Password strength helpers (not rules)
+    static float CalculatePasswordStrength(const std::string& password);
+    static std::string GetPasswordStrengthLevel(float strength);
+    static Color GetPasswordStrengthColor(float strength);
+};
+```
 
-// Phone validation
-ValidationRule::Phone("Invalid phone number")
-
-// URL validation
-ValidationRule::URL("Invalid URL")
-
+```cpp
 // Custom regex pattern
-ValidationRule::Pattern(std::regex("^[A-Za-z0-9]+$"), "Only alphanumeric allowed")
+textInput->AddValidationRule(
+    ValidationRule::Pattern("^[A-Za-z0-9]+$", "Only alphanumeric allowed"));
 
 // Custom validation function
-ValidationRule::Custom("custom", "Custom error",
-    [](const std::string& value) { return value.length() > 0; })
+textInput->AddValidationRule(ValidationRule("custom", "Custom error",
+    [](const std::string& value) { return value.length() > 0; }));
 ```
 
 ### Using Validation
@@ -219,17 +264,40 @@ if (textInput->IsValid()) {
 }
 
 // Get last validation result
-const ValidationResult& result = textInput->GetLastValidationResult();
+const ValidationResult& last = textInput->GetLastValidationResult();
+
+// Show or hide the validation border colour and icon (shown by default)
+textInput->SetShowValidationState(false);
 ```
+
+`Validate()` runs the rules in priority order (rules of equal priority in the
+order they were added) and stops at the first one that fails, so a result
+carries at most one message.
+
+The rules run on every edit and again when the field loses the focus, before
+`onFocusLost` is called: a required field the user tabs through without typing
+shows its error. A field that loses the focus because it is being hidden or
+disabled is not validated.
+
+A format rule - `Email()`, `Phone()`, `Numeric()`, `Range()`, `Pattern()` -
+accepts an empty value: it checks what was typed, not whether something was.
+An optional Email field left empty is fine; add `ValidationRule::Required()`
+to make it mandatory, as with `required` on an HTML form field.
+(`MinLength()` does count an empty value as too short, which is what a
+password checklist shows.)
 
 ### ValidationResult Structure
 
 ```cpp
 struct ValidationResult {
-    bool isValid;
-    ValidationState state;
-    std::vector<std::string> errors;
-    std::vector<std::string> warnings;
+    ValidationState state = ValidationState::NoValidation;
+    std::string message;    // error message of the failing rule
+    std::string ruleName;   // name of the failing rule
+    bool isValid = true;
+
+    static ValidationResult Valid();
+    static ValidationResult Invalid(const std::string& message, const std::string& rule = "");
+    static ValidationResult Warning(const std::string& message, const std::string& rule = "");
 };
 ```
 
@@ -255,30 +323,58 @@ struct TextFormatter {
     std::string name;
     std::function<std::string(const std::string&)> formatFunction;
     std::function<std::string(const std::string&)> unformatFunction;
-    std::string mask;
+    std::string inputMask;
     std::string placeholder;
 };
 ```
 
 ### Predefined Formatters
 
+All are static members of `TextFormatter`:
+
 ```cpp
-// Phone number formatter (US format)
-TextFormatter::Phone()  // Formats to (XXX) XXX-XXXX
+struct TextFormatter {
+    // No formatting: the text is shown as typed
+    static TextFormatter NoFormat();
 
-// Currency formatter (US dollars)
-TextFormatter::Currency()  // Formats to $X,XXX.XX
+    // Phone number formatter (US format): (XXX) XXX-XXXX once 10 digits are typed
+    static TextFormatter Phone();
 
-// Credit card formatter
-TextFormatter::CreditCard()  // Formats to XXXX XXXX XXXX XXXX
+    // Currency formatter: "$" followed by the number
+    static TextFormatter Currency();
 
-// Date formatter
-TextFormatter::Date()  // Formats to MM/DD/YYYY
+    // Date formatter: MM/DD/YYYY once 8 digits are typed
+    static TextFormatter Date();
 
-// Custom formatter
-TextFormatter::Custom("custom",
-    [](const std::string& value) { return formatted; },
-    [](const std::string& value) { return unformatted; })
+    // Custom formatter
+    static TextFormatter Custom(const std::string& name,
+                               std::function<std::string(const std::string&)> formatFunc,
+                               std::function<std::string(const std::string&)> unformatFunc);
+};
+```
+
+```cpp
+// Custom formatter: show the text in upper case
+textInput->SetFormatter(TextFormatter::Custom("upper",
+    [](const std::string& value) {
+        std::string formatted = value;
+        for (char& c : formatted) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return formatted;
+    },
+    [](const std::string& value) { return value; }));
+```
+
+The formatter only changes what is shown (`GetDisplayText()`); `GetText()`
+returns the text as typed.
+
+The field never turns formatted text back into raw text - it keeps the typed
+text and formats a copy for display - so it does not call `unformatFunction`.
+That function is for the caller holding formatted text, such as the display
+text, who wants the raw value:
+
+```cpp
+// "(555) 123-4567" on screen -> "5551234567"
+std::string digits = textInput->GetFormatter().unformatFunction(textInput->GetDisplayText());
 ```
 
 ### Using Formatters
@@ -291,28 +387,42 @@ textInput->SetFormatter(TextFormatter::Phone());
 const TextFormatter& formatter = textInput->GetFormatter();
 ```
 
+A formatter's `placeholder` ("(555) 123-4567", "$0.00", "MM/DD/YYYY") is a
+default: `SetFormatter()` uses it only when the field has no placeholder, and
+keeps one you set.
+
 ## Selection and Cursor Management
 
 ### Selection Operations
 
 ```cpp
 // Set selection range
-void SetSelection(size_t start, size_t end)
+void SetSelection(size_t start, size_t end);
 
 // Select all text
-void SelectAll()
+void SelectAll();
 
 // Clear selection
-void ClearSelection()
+void ClearSelection();
 
 // Check if has selection
-bool HasSelection() const
+bool HasSelection() const;
 
 // Get selected text
-std::string GetSelectedText() const
+std::string GetSelectedText() const;
+```
 
-// Delete selected text
-void DeleteSelection()
+### Clipboard
+
+```cpp
+// Copy the selection (works on a read-only field too)
+void Copy();
+
+// Copy, then delete the selection (no-op when read-only or nothing is selected)
+void Cut();
+
+// Insert the clipboard at the caret (no-op when read-only); line breaks become spaces
+void Paste();
 ```
 
 `TextInputStyle::selectionColor` is painted as a band **behind** the selected
@@ -323,16 +433,17 @@ washing the text out.
 
 ```cpp
 // Set cursor position
-void SetCaretPosition(size_t position)
+void SetCaretPosition(size_t position);
 
 // Get cursor position
-size_t GetCaretPosition() const
+size_t GetCaretPosition() const;
+```
 
-// Move cursor to beginning
-void MoveCaretToBeginning()
+To move the caret to the start or end from code:
 
-// Move cursor to end
-void MoveCaretToEnd()
+```cpp
+textInput->SetCaretPosition(0);
+textInput->SetCaretPosition(textInput->GetText().size());
 ```
 
 ## Event Handling
@@ -343,27 +454,26 @@ The control handles various keyboard inputs:
 
 - **Character Input**: Regular text entry
 - **Backspace/Delete**: Text deletion
-- **Arrow Keys**: Cursor movement
+- **Arrow Keys**: Cursor movement (Ctrl+Left/Right jump a word)
 - **Home/End**: Jump to beginning/end
-- **Enter**: Submit (single-line) or new line (multi-line). The numeric
+- **Enter**: Calls `onEnterPressed` with the text. The numeric
   keypad's Enter does the same — it arrives as its own key code
   (`UCKeys::NumPadEnter`) and is treated exactly like `UCKeys::Return`.
-- **Escape**: Cancel editing
-- **Tab**: Focus navigation or tab character (multi-line)
+- **Escape**: Calls `onEscapePressed`
+- **Tab**: Focus navigation
 - **Ctrl+A**: Select all
-- **Ctrl+C**: Copy
-- **Ctrl+V**: Paste
-- **Ctrl+X**: Cut
+- **Ctrl+C / Ctrl+Insert**: Copy
+- **Ctrl+V / Shift+Insert**: Paste
+- **Ctrl+X / Ctrl+Delete**: Cut
 - **Ctrl+Z**: Undo
-- **Ctrl+Y**: Redo
+- **Ctrl+Y / Ctrl+Shift+Z**: Redo
 
 ### Mouse Events
 
 - **Click**: Position cursor
-- **Double-click**: Select word
-- **Triple-click**: Select line/all
-- **Drag**: Select text range
-- **Right-click**: Context menu (if enabled)
+- **Shift+Click**: Extend the selection to the click
+- **Drag**: Select text range (keeps selecting while the pointer is outside the field)
+- **Click on the clear button / eye button**: Empty the field / toggle the password mask
 
 ### Event Callbacks
 
@@ -371,14 +481,14 @@ The control handles various keyboard inputs:
 // Text change notification
 std::function<void(const std::string&)> onTextChanged;
 
-// Validation state change
-std::function<void(ValidationResult)> onValidationStateChanged;
+// Validation result after every Validate()
+std::function<void(const ValidationResult&)> onValidationChanged;
 
-// Enter key pressed (single-line mode)
-std::function<void()> onEnterPressed;
+// Enter key pressed; receives the text, return true if handled
+std::function<bool(const std::string&)> onEnterPressed;
 
-// Escape key pressed
-std::function<void()> onEscapePressed;
+// Escape key pressed; return true if handled
+std::function<bool()> onEscapePressed;
 
 // Focus events
 std::function<void()> onFocusGained;
@@ -386,6 +496,12 @@ std::function<void()> onFocusLost;
 
 // Selection change
 std::function<void(size_t, size_t)> onSelectionChanged;
+
+// The clear button emptied the field
+std::function<void()> onCleared;
+
+// The password mask was toggled (see Password Reveal)
+std::function<void(bool)> onPasswordVisibilityChanged;
 ```
 
 ## Styling System
@@ -402,6 +518,12 @@ struct TextInputStyle {
     Color placeholderColor;
     Color selectionColor;
     Color caretColor;
+
+    // Disabled (SetDisabled(true)): Colors::ControlDisabled,
+    // ControlDisabledBorder and TextDisabled by default
+    Color disabledBackgroundColor;
+    Color disabledBorderColor;
+    Color disabledTextColor;
     
     // Validation colors
     Color validBorderColor;
@@ -436,23 +558,38 @@ struct TextInputStyle {
 };
 ```
 
+The frame shows the field's state: `focusBorderColor` while it has the
+keyboard focus, `borderColor` otherwise. With `SetShowValidationState(true)`
+(the default) a validated field also draws `validBorderColor`,
+`invalidBorderColor` or `warningBorderColor` over the frame.
+
+A disabled field (`SetDisabled(true)`) recedes: it draws with
+`disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`
+instead of the normal face, border and text, hides the clear button (it would
+not answer the click), and takes no focus or keys. The `Outlined()` and
+`Underlined()` presets keep a transparent face when disabled.
+
 ### Predefined Styles
 
+All are static members of `TextInputStyle`:
+
 ```cpp
-// Default style
-TextInputStyle::Default()
+struct TextInputStyle {
+    // Default style
+    static TextInputStyle Default();
 
-// Material Design style
-TextInputStyle::Material()
+    // Material Design style
+    static TextInputStyle Material();
 
-// Flat style (no borders)
-TextInputStyle::Flat()
+    // Flat style (no borders)
+    static TextInputStyle Flat();
 
-// Outlined style
-TextInputStyle::Outlined()
+    // Outlined style
+    static TextInputStyle Outlined();
 
-// Underlined style
-TextInputStyle::Underlined()
+    // Underlined style
+    static TextInputStyle Underlined();
+};
 ```
 
 ### Applying Styles
@@ -469,6 +606,15 @@ TextInputStyle customStyle = TextInputStyle::Default();
 customStyle.borderColor = Color(100, 100, 255);
 customStyle.borderRadius = 8;
 textInput->SetStyle(customStyle);
+
+// Change only the font size
+textInput->SetFontSize(14.0f);
+```
+
+```cpp
+void SetStyle(const TextInputStyle& inputStyle);
+const TextInputStyle& GetStyle() const;
+void SetFontSize(float size);
 ```
 
 ## Undo/Redo System
@@ -477,64 +623,46 @@ textInput->SetStyle(customStyle);
 
 ```cpp
 // Undo last operation
-void Undo()
+void Undo();
 
 // Redo last undone operation
-void Redo()
+void Redo();
 
 // Check if can undo
-bool CanUndo() const
+bool CanUndo() const;
 
 // Check if can redo
-bool CanRedo() const
-
-// Clear undo/redo history
-void ClearHistory()
-
-// Set maximum undo states (default: 50)
-void SetMaxUndoStates(int maxStates)
+bool CanRedo() const;
 ```
 
-The undo system automatically saves state before:
+The undo system keeps the last 50 states and automatically saves state before:
 - Text insertion
 - Text deletion
 - Paste operations
-- Format changes
+- `SetText()` and the clear button
+
+One key press is one undo step, including a character, Space or paste that
+replaces a selection, and Backspace or Delete on a selection. A key press the
+length limit refuses changes nothing and leaves no step.
+
+## Clear Button
+
+```cpp
+void SetShowClearButton(bool show);
+bool IsShowClearButton() const;
+```
+
+When on, a small button at the right of the field empties it. It is shown only
+while the field has text and is not read-only. Clicking it saves an undo state,
+clears the text and calls `onTextChanged` and then `onCleared`.
 
 ## Auto-completion
 
-### AutoComplete Modes
-
-```cpp
-enum class AutoComplete {
-    Off,
-    On,
-    Name,
-    Email,
-    Username,
-    CurrentPassword,
-    NewPassword,
-    OneTimeCode,
-    Organization,
-    StreetAddress,
-    Country,
-    PostalCode
-};
-```
-
-### Using Auto-completion
-
-```cpp
-// Set auto-complete mode
-textInput->SetAutoCompleteMode(AutoComplete::Email);
-
-// Set custom suggestions
-std::vector<std::string> suggestions = {"option1", "option2", "option3"};
-textInput->SetAutoCompleteSuggestions(suggestions);
-
-// Enable/disable auto-complete
-textInput->SetShowAutoComplete(true);
-```
+`UltraCanvasTextInput` has no suggestion list of its own. The header declares an
+`AutoComplete` enum (`Off`, `On`, `Name`, `Email`, ...), but no member of the
+text input takes it. For a field with a drop-down of suggestions use
+`UltraCanvasAutoComplete` — see
+[UltraCanvasAutoComplete](UltraCanvasAutoCompleteExamples.md).
 
 ## Password Reveal ("Show Password")
 
@@ -596,9 +724,18 @@ std::function<void(bool)> onPasswordVisibilityChanged;
 `GetText()` always returns the real text; only the painted glyphs change. Reveal
 state is reset automatically when the field is switched away from password mode.
 
+To assistive technology a text input is a text field, and in password mode a
+password field (`IsAccessiblePassword()`, revealed or not): screen readers on
+Windows (UI Automation `IsPassword`) and Linux (AT-SPI password text) then say
+"password" instead of speaking what is typed. See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md).
+
 ## Factory Functions
 
 ### Convenience Creation Functions
+
+Every factory takes the identifier first and float geometry, like the
+constructor: `(const std::string& identifier, float x, float y, float w, float h)`.
 
 ```cpp
 // Create basic text input
@@ -627,9 +764,8 @@ auto numberInput = CreateNumberInput("number", 10, 170, 200, 30);
 ```cpp
 auto textInput = TextInputBuilder()
     .SetIdentifier("userInput")
-    .SetID(1001)
     .SetPosition(100, 100)
-    .SetCurrentSize(250, 35)
+    .SetSize(250, 35)
     .SetType(TextInputType::Email)
     .SetPlaceholder("Enter email address")
     .SetStyle(TextInputStyle::Material())
@@ -639,6 +775,11 @@ auto textInput = TextInputBuilder()
     .ShowPasswordToggle()   // eye button (the default); only painted for password-type fields
     .Build();
 ```
+
+`SetPosition()` and `SetSize()` take floats and keep fractions.
+The builder also has `SetText()`, `SetFormatter()`, `SetReadOnly()` and
+shortcuts that add a rule: `Required()`, `MinLength()`, `MaxLength()`,
+`Email()`, `Phone()` and `Numeric()`.
 
 ## Usage Examples
 
@@ -663,7 +804,7 @@ nameInput->onTextChanged = [](const std::string& text) {
 };
 
 // Add to window
-window->AddElement(nameInput);
+window->AddChild(nameInput);
 ```
 
 ### Email Input with Validation
@@ -673,11 +814,9 @@ auto emailInput = CreateEmailInput("email", 50, 100, 250, 35);
 emailInput->SetPlaceholder("user@example.com");
 emailInput->SetStyle(TextInputStyle::Outlined());
 
-emailInput->onValidationStateChanged = [](const ValidationResult& result) {
+emailInput->onValidationChanged = [](const ValidationResult& result) {
     if (!result.isValid) {
-        for (const auto& error : result.errors) {
-            std::cerr << "Error: " << error << std::endl;
-        }
+        std::cerr << "Error: " << result.message << std::endl;
     }
 };
 ```
@@ -688,10 +827,9 @@ emailInput->onValidationStateChanged = [](const ValidationResult& result) {
 auto passwordInput = CreatePasswordInput("password", 50, 150, 250, 35);
 passwordInput->SetPlaceholder("Enter password");
 passwordInput->AddValidationRule(ValidationRule::MinLength(8, "Password must be at least 8 characters"));
+passwordInput->AddValidationRule(ValidationRule::RequireUppercase(1, "Password must contain uppercase letter"));
 passwordInput->AddValidationRule(ValidationRule::Pattern(
-    std::regex(".*[A-Z].*"), "Password must contain uppercase letter"));
-passwordInput->AddValidationRule(ValidationRule::Pattern(
-    std::regex(".*[0-9].*"), "Password must contain a number"));
+    ".*[0-9].*", "Password must contain a number"));
 
 // Let the user check what was typed (see "Password Reveal" above)
 passwordInput->SetShowPasswordToggle(true);
@@ -705,15 +843,22 @@ phoneInput->SetPlaceholder("(555) 123-4567");
 phoneInput->SetFormatter(TextFormatter::Phone());
 ```
 
-### Multiline Text Area
+### Search Field
 
 ```cpp
-auto textArea = std::make_shared<UltraCanvasTextInput>(
-    "comments", 50, 250, 400, 150);
-textArea->SetInputType(TextInputType::Multiline);
-textArea->SetPlaceholder("Enter comments here...");
-textArea->SetMaxLength(1000);
+auto searchInput = std::make_shared<UltraCanvasTextInput>(
+    "search", 50, 250, 250, 35);
+searchInput->SetInputType(TextInputType::Search);
+searchInput->SetPlaceholder("Search...");
+searchInput->SetShowClearButton(true);
+searchInput->onEnterPressed = [](const std::string& query) {
+    std::cerr << "Search for: " << query << std::endl;
+    return true;
+};
 ```
+
+For multi-line text use `UltraCanvasTextArea` — see
+[UltraCanvasTextArea](UltraCanvasTextAreaExamples.md).
 
 ### Custom Validation
 
@@ -721,13 +866,13 @@ textArea->SetMaxLength(1000);
 auto customInput = CreateTextInput("custom", 50, 300, 250, 35);
 
 // Add custom validator
-customInput->AddValidationRule(ValidationRule::Custom(
+customInput->AddValidationRule(ValidationRule(
     "username",
     "Username must be alphanumeric and 3-20 characters",
     [](const std::string& value) {
         if (value.length() < 3 || value.length() > 20) return false;
-        return std::all_of(value.begin(), value.end(), 
-            [](char c) { return std::isalnum(c); });
+        return std::all_of(value.begin(), value.end(),
+            [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; });
     }
 ));
 ```
@@ -735,10 +880,7 @@ customInput->AddValidationRule(ValidationRule::Custom(
 ## Performance Considerations
 
 ### Text Width Caching
-The control caches text width measurements to optimize rendering performance:
-```cpp
-mutable std::unordered_map<std::string, float> textWidthCache;
-```
+The control caches text width measurements internally to optimize rendering performance.
 
 ### Scrolling for Long Text
 Automatic horizontal scrolling is implemented for text that exceeds the visible area:
@@ -746,7 +888,7 @@ Automatic horizontal scrolling is implemented for text that exceeds the visible 
 - Maximum scroll offset is calculated based on text width
 
 ### Event Optimization
-- Text changes trigger validation only when `validateOnChange` is enabled
+- Every text change re-runs the validation rules; a field with no rules skips the work
 - Caret blinking uses timer-based updates to minimize redraws
 - Selection rendering is optimized to only redraw affected regions
 
@@ -759,13 +901,13 @@ The UltraCanvasTextInput control is **not thread-safe**. All operations should b
 ### Rendering System
 The control uses the UltraCanvas rendering system:
 ```cpp
-void Render(IRenderContext* ctx) override
+void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 ```
 
 ### Event System
 Fully integrated with UCEvent system:
 ```cpp
-bool OnEvent(const UCEvent& event) override
+bool OnEvent(const UCEvent& event) override;
 ```
 
 ### Focus Management
@@ -797,12 +939,14 @@ bool AcceptsFocus() const override { return true; }
 
 ## Version History
 
+- **1.4.0** (2026-10-07): `SetFormatter` keeps a placeholder you set and fills an empty one; the rules a type adds are replaced when the type changes; losing the focus validates; one key press is one undo step; float geometry for every factory and the builder; when to use `unformatFunction`
+- **1.3.1** (2026-10-07): Matched the API to the header: constructors, validation and formatter members, callbacks, builder; removed members that do not exist (Multiline type, auto-complete setters, history settings)
 - **1.1.0** (2025-01-06): Enhanced validation, formatting, and multiline support
 - **1.0.0** (2024-12-15): Initial release with basic text input functionality
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class documentation
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
-- [UltraCanvasValidation](UltraCanvasValidation.md) - Advanced validation guide
-- [UltraCanvasFormatting](UltraCanvasFormatting.md) - Text formatting guide
+- [UltraCanvasUIElements](UltraCanvasUIElements.md) - UI element overview
+- [UltraCanvasTextArea](UltraCanvasTextAreaExamples.md) - Multi-line text editing
+- [UltraCanvasAutoComplete](UltraCanvasAutoCompleteExamples.md) - Text field with suggestions
+- [UltraCanvasCheckbox](UltraCanvasCheckbox.md) - Checkbox used for "Show password"

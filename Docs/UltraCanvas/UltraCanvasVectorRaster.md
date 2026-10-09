@@ -1,5 +1,7 @@
 # Vector artwork → pixels
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
+
 `UltraCanvasVectorRaster.h` turns a vector file into an editable
 [`UCRasterLayer`](UltraCanvasPaintSurface.md) at a size the caller chooses.
 It is the answer to "the user dropped an SVG on a bitmap editor" — and to
@@ -73,6 +75,40 @@ onto white without touching what is drawn on top.
 `page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
 how many there are (1 for everything but PDF).
 
+## Elements of a loaded drawing
+
+`RasterizeVectorElements` is the same job for a drawing that is already open:
+it draws chosen elements of a `VectorDocument` - an editor's selection, say -
+into a fresh layer. It is how a drawing program's *Copy* gives other programs
+a picture.
+
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+std::string error;
+Rect2Dd where;   // optional: the document rectangle the layer covers
+auto layer = RasterizeVectorElements(*document, selection->Elements(),
+                                     1.0,          // pixels per point
+                                     error, &where);
+if (!layer) ShowStatus(error);   // nothing visible, or too large
+```
+
+- **Scale** is pixels per document point. 1 gives a pixel a point, which is
+  the size `RasterizeVectorFile` renders a drawing at naturally, so a copy
+  pasted into a bitmap editor is as big as the same drawing dropped on it.
+- **Where** each element is drawn is where it sits in the document: its own
+  transform and every ancestor's are applied, and definitions (gradients,
+  clip paths, symbols) resolve against the document. Elements are drawn in
+  the order given, so pass them in drawing order.
+- **Cropped** to the pixels the elements paint: the bounds the elements
+  report are their geometry's, so the render is made with a margin and then
+  trimmed, which keeps a thick stroke or a shadow and drops empty margin. The
+  render area starts on a whole pixel, so an edge on a whole point stays
+  crisp.
+- The background is transparent. Null comes back with `error` set when there
+  are no elements, nothing visible, a scale that is not positive, or a result
+  larger than `maxPixels` (64 Mpx by default - a clipboard copy, not a print).
+
 ## What it is not
 
 - **Not a vector editor.** The document model, the converters between vector
@@ -93,13 +129,19 @@ UltraPaint: dropping or opening a drawing asks for the raster size and then
 comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
+ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
+by `RasterizeVectorElements` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+
 ## Tests
 
 `Tests/VectorRasterTest.cpp` (CTest target `VectorRasterTest`): the natural
 size is the size the artwork asks for, a requested size is delivered exactly,
 one dimension keeps the aspect ratio, the background composites under the
 drawing, and an absurd size is refused rather than allocated. It reports
-`[SKIP]` on a build with no SVG rasterizer instead of failing.
+`[SKIP]` on a build with no SVG rasterizer instead of failing. Its
+`RasterizeVectorElements` checks need no file rasterizer and run on every
+build: the crop to what is painted, a stroke past the bounds, the scale, an
+ancestor's transform, and the refusals.
 
 ## See also
 

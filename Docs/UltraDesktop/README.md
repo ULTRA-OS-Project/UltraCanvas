@@ -72,11 +72,28 @@ windows stop short of the bars instead of covering them.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Stickerboard* toggle, the *clipboard*
-  (a menu of the last fifteen things copied; choosing one puts it back on
-  the clipboard) and *screenshot* (the whole screen to
+  *Stickerboard* toggle, the *clipboard* and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
   green dot for three seconds and its tooltip names the file).
+- **Clipboard**: the desktop records every copy into the clipboard history
+  ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
+  on disk and encrypted, leaving out copies a password manager marks as
+  secret. The clipboard button, or `Super+V` from any window, opens the quick
+  panel: a search field, the pinned entries and the ten latest (typing
+  searches the whole history), each with a thumbnail and Copy, Edit and
+  Delete. What the program being pasted into takes comes first, under "For
+  <program>" and chosen - the newest images for a paint program, files for
+  a file manager, code and text for an editor - from its desktop entry's
+  categories and file types; the bar's button uses the window that had the
+  focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
+  *Recording* switch pauses the history and *Open UltraClipboard* shows all
+  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  and *Clear history*; while recording is paused the button is crossed out.
+  When a program that made a copy quits, the desktop puts that copy back on
+  the clipboard, so it can still be pasted. Without a history (a build
+  without SQLite) the button shows a menu of this session's last fifteen
+  copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. The markers:
@@ -115,6 +132,33 @@ windows stop short of the bars instead of covering them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.
+
+### Notifications
+
+The desktop is also where notifications appear. On ULTRA OS no other
+notification server runs: UltraMessage serves `org.freedesktop.Notifications`
+itself (the desktop usually hosts the UltraMessage broker, being the first
+program of the session), so every application's notification - Telegram,
+the browser, a download, UltraMail's new mail - arrives on the UltraMessage
+bus. The desktop draws each one as a toast in the top-right corner, beside the
+right bar and below the taskbar when that runs along the top: the
+application's icon and name, the summary, the body, the notification's own
+buttons and a close button, newest on top, four at most.
+
+- A click on the text does what the notification offers by default (UltraMail
+  opens the mail); a button does what it says; × dismisses it. The
+  application is told either way.
+- A toast goes by itself after 8 seconds (5 for a low-priority one) - not
+  while the pointer rests on it - and a critical one (battery low) stays until
+  closed. Gone from the screen is not gone: the message feed keeps it.
+- On a desktop with its own notification server (GNOME, Plasma, dunst, ...)
+  that server draws them and the desktop draws nothing, so nothing appears
+  twice.
+
+The toasts are the framework's
+[UltraCanvasNotificationToast](../UltraCanvas/UltraCanvasNotificationToast.md)
+element and host, in windows that stay above everything and never take the
+keyboard focus.
 
 ## Command line
 

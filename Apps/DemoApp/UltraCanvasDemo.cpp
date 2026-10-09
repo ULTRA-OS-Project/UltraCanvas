@@ -1,7 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.5 - event.targetWindow read via weak_ptr lock()
-// Last Modified: 2026-07-02
+// Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
+// Last Modified: 2026-10-08
+// V1.0.6: the header title wraps a long page description instead of cutting it off
+// V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
 //   never scroll the header away); displayContainer is now the explicit single
 //   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
@@ -111,14 +113,17 @@ namespace UltraCanvas {
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier)
             : UltraCanvasContainer(identifier) {
 
-        // Create title label (left side)
+        // Create title label (left side). It is the page's one-line
+        // description, and many are longer than the header is wide: it takes
+        // all the width the two buttons leave and wraps there instead of being
+        // cut off with an ellipsis, and the header grows to fit the lines.
         titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
+        titleLabel->SetWrap(TextWrap::WrapWord);
         titleLabel->SetText("Demo Title");
+        titleLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         AddChild(titleLabel);
-
-        AddStretchSpacer(1);
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", 21, 21);
@@ -126,6 +131,9 @@ namespace UltraCanvas {
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
+        // The title shrinks to make room, the buttons never: a long
+        // description would otherwise squash them to a few pixels.
+        docButton->layoutItem.SetFlexShrink(0);
         AddChild(docButton);
 
         // Create source button (right side)
@@ -134,6 +142,7 @@ namespace UltraCanvas {
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
+        sourceButton->layoutItem.SetFlexShrink(0);
         AddChild(sourceButton);
 
         // Divider line pinned at the bottom of the header. Absolute-positioned
@@ -448,7 +457,7 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         };
 
-        categoryContainer->layout.SetFlexColumn();
+        categoryContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         // flex-grow fills the main (vertical) axis; align-self: stretch fills the
         // cross (horizontal) axis. justify-self is grid-only — adding it here would
         // convert layoutItem into a GridItem and discard the flex props above.
@@ -463,6 +472,12 @@ namespace UltraCanvas {
         // freezes the header at its content height; displayContainer absorbs the
         // overflow and scrolls.
         headerContainer->layoutItem.SetFlexShrink(0);
+        // A definite width, not just the column's "at most this wide": only
+        // then does the header row shrink its wrapping title to the room the
+        // buttons leave and measure the wrapped height. Measured against
+        // "at most", the row keeps the title one line long and one line tall,
+        // so a long description lost its second line.
+        headerContainer->size.width = CSSLayout::Dimension::Pct(100);
         mainContainer->AddChild(headerContainer);
         // displayContainer is the single scroll region: it grows into the space
         // the header leaves and shrinks (flex-shrink:1) to the available height so
@@ -470,7 +485,7 @@ namespace UltraCanvas {
         // example content. Shrink is the default, but make it explicit so a future
         // edit can't silently drop it and reintroduce the overflow.
         displayContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        displayContainer->layout.SetFlexColumn();
+        displayContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         mainContainer->AddChild(displayContainer);
 
         mainWindow->layout
@@ -481,7 +496,9 @@ namespace UltraCanvas {
              // (otherwise Auto would collapse the sidebar to ~4 tree rows).
              // Row 1 = the 25-pixel status bar at the bottom.
              .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
-                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}});
+                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}})
+            .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+            .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
         categoryContainer->layoutItem.SetGridRowColSimplified(0, 0);
         mainWindow->AddChild(categoryContainer);
@@ -745,6 +762,21 @@ namespace UltraCanvas {
                 .AddVariant("alert", "Confirm (Yes/No)")
                 .AddVariant("alert", "Rich (details / buttons)");
 
+        // The non-modal sibling of the Alert: how ULTRA OS shows a
+        // notification (the element lives with the message centre in the
+        // UltraMessageCenter target; without it the page says so).
+        basicBuilder.AddItem("notificationtoast", "Notification Toast",
+                             "Non-modal notifications in a screen corner, never focused, gone by themselves "
+                             "- how ULTRA OS shows every application's notification",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNotificationToastExamples(); },
+                             "DemoApp/UltraCanvasNotificationToastExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasNotificationToast.md")
+                .AddVariant("notificationtoast", "The element")
+                .AddVariant("notificationtoast", "On the screen (host)")
+                .AddVariant("notificationtoast", "Updates in place")
+                .AddVariant("notificationtoast", "Toast or Alert?");
+
         basicBuilder.AddItem("pagination", "Pagination",
                              "Page-navigation strip with ellipsis windowing, compact and simple modes",
                              ImplementationStatus::FullyImplemented,
@@ -802,7 +834,8 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("busyindicator", "Busy Indicator",
                              "\"Working on it\" with no percentage: a turning ring, two counter-turning "
-                             "rings, swelling dots, a sliding bar or a pulsing circle",
+                             "rings, swelling dots, a sliding bar, a pulsing circle or a ring of "
+                             "circling dots",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBusyIndicatorExamples(); },
                              "DemoApp/UltraCanvasBusyIndicatorExamples.cpp",
@@ -811,7 +844,8 @@ namespace UltraCanvas {
                 .AddVariant("busyindicator", "Dual Ring")
                 .AddVariant("busyindicator", "Dots")
                 .AddVariant("busyindicator", "Bar")
-                .AddVariant("busyindicator", "Pulse");
+                .AddVariant("busyindicator", "Pulse")
+                .AddVariant("busyindicator", "Dot Ring");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -857,6 +891,15 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Detail View (columns + header)")
                 .AddVariant("listview", "Styled List")
                 .AddVariant("listview", "Icon List");
+
+        // The old "Templates demo" (a container of elements per row), ported
+        // to the list view: one delegate paints every row.
+        extendedBuilder.AddItem("listviewdashboard", "Domain Dashboard",
+                                "A list view with a custom delegate: links, actions, sparklines, sorting and a row menu",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateListViewDashboardExamples(); },
+                                "DemoApp/UltraCanvasListViewDashboardExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasListViewExamples.md");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -2348,7 +2391,14 @@ namespace UltraCanvas {
             for (TreeNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent) {
                 categoryTreeView->ExpandNode(ancestor);
             }
+            // SelectNode() fires onNodeSelected, which is OnTreeNodeSelected:
+            // calling both built every --component page twice, the first copy
+            // thrown away at once - the Ultra Message page then showed its
+            // seeded messages twice. Select silently, then display once.
+            auto onSelected = std::move(categoryTreeView->onNodeSelected);
+            categoryTreeView->onNodeSelected = nullptr;
             categoryTreeView->SelectNode(node);
+            categoryTreeView->onNodeSelected = std::move(onSelected);
             OnTreeNodeSelected(node);
         } else {
             DisplayDemoItem(itemId);
@@ -2488,7 +2538,7 @@ namespace UltraCanvas {
     }
 
 // ===== APPLICATION LIFECYCLE =====
-    void UltraCanvasDemoApplication::Run() {
+    void UltraCanvasDemoApplication::Run(bool showInfoWindow) {
         // Run application main loop
         debugOutput << "Running UltraCanvas Demo Application..." << std::endl;
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
@@ -2498,8 +2548,11 @@ namespace UltraCanvas {
             // The application will handle the event loop
         }
 
-        // Show the info window at startup
-        ShowInfoWindow();
+        // Show the info window at startup, unless the command line asked for a
+        // page or for no About window - it is modal and would cover the page
+        if (showInfoWindow) {
+            ShowInfoWindow();
+        }
 
         auto app = UltraCanvasApplication::GetInstance();
         app->Run();

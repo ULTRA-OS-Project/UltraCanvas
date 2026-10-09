@@ -1,3 +1,48 @@
+#### 2026-10-07 *0.1.11*
+- **The Translation dialog takes the source language and the formality.**
+  It sent only the texts and a target language, so the register and a known
+  source language could not be tried from the dashboard. The target field now
+  shares a row with a source-language field (empty: the provider detects it)
+  and a Default / Formal / Informal picker, and the run happens off the UI
+  thread like the other dialogs, since a chat model behind the translator
+  takes seconds per batch where the mock answered at once.
+- **The Translation dialog names the model.** The provider row carries a
+  model field, as the image, video and speech dialogs do: the translator
+  providers translate through their chat models, and until now only the
+  provider's default model could be used.
+
+#### 2026-10-07 *0.1.10*
+- **Translation works through every chat model.** `ITranslator` had only the
+  mock behind it; the module now serves it with any `ITextLLM`
+  (`UltraAITextLLMTranslator.h`): the texts go to the model as numbered JSON
+  segments with the register, domain, glossary and markup rules in the
+  system prompt, and the reply is asked for as JSON in the same numbering,
+  so batches come back in order. Every text-LLM provider but the mock is a
+  translator provider under its own id — `anthropic`, `openai`, `qwen`,
+  `llama-cpp` — so the dashboard's Translation dialog lists them, and an
+  empty provider follows the routing policy, local LLMs first
+  (`KnownLocalProviders("translator")`). `DetectLanguage` goes the same way.
+  Options: `textllm.provider`, `textllm.batchSize`, `textllm.temperature`,
+  `textllm.maxOutputTokens`, and a per-request `textllm.glossary`. Doc:
+  `Docs/Modules/UltraAI/Adapters.md`; test: `test_textllm_translator`.
+
+#### 2026-10-05 *0.1.9*
+- **The dashboard keeps its settings and endpoints in a Windows profile
+  named in any script.** Its configuration folder was read with the narrow
+  `getenv("APPDATA")`, which answers in the ANSI code page, and handed to the
+  JSON file helpers, which open it as UTF-8; for a user name outside the code
+  page `endpoints.json` and `config.ini` were neither saved nor read back. The
+  folder is read with the framework's `GetEnvUtf8` now and every file in it
+  opened as UTF-8 (framework changelog: `check_path_string` sees what a
+  header declares, and `env-narrow`).
+
+#### 2026-10-04 *0.1.8*
+- **The chat dialog sends on Enter.** Its message box only sent through the
+  Send button; now Enter sends and Shift+Enter starts a new line, through the
+  text area's `onBeforeKeyDown` hook (framework,
+  `Docs/UltraCanvas/changelog.d/textarea-before-keydown.md`). The placeholder
+  says so. While a reply is still on its way Enter does nothing, as Send.
+
 #### 2026-09-29 *0.1.7*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

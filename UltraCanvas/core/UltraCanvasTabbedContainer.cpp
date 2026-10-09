@@ -1,7 +1,10 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.4.0 - a tab switch is announced to screen readers as a new name
+// Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
+//                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -38,18 +41,15 @@ namespace UltraCanvas {
     // inflate the container's scroll range.
     void UltraCanvasTabbedContainer::Arrange(const Rect2Df& finalRect,
                                              const CSSLayout::LayoutContext& ctx) {
-        UltraCanvasUIElement::Arrange(finalRect, ctx);
-//        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
-//        Rect2Df oldBounds = finalBounds;
-//        finalBounds = finalRect;
-//        arrangeValid = true;
-//        Rect2Df damage = oldBounds.Union(finalBounds);
-//        if (auto* parentCont = GetParentContainer()) {
-//            parentCont->InvalidateRect(damage);
-//        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
-//            window->AddDirtyRectangle(damage);
-//        }
-//
+        // Take the box only. The ordinary block layout would first stack the
+        // tab contents, each as tall as its content - and in that throwaway
+        // pass every scroll view in the active tab saw a viewport as tall as
+        // what it holds and was clamped to the top: a resize sent a scrolled
+        // page back to its start. The active content and the overflow button
+        // are placed below; a hidden page is laid out when it is switched to
+        // (SetActiveTab).
+        ArrangeOwnBox(finalRect);
+
         // Deterministic tab-bar layout (GetTabAreaBounds no longer mutates finalBounds).
         CalculateLayout();
         UpdateOverflowDropdown();
@@ -258,6 +258,9 @@ namespace UltraCanvas {
 
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
+        if (oldIndex != index && GetAccessibleNameOverride().empty()) {
+            NotifyAccessibility(AccessibilityEventType::NameChanged);   // named after the open tab
+        }
 
         EnsureTabVisible(index);
         UpdateContentVisibility();
@@ -388,7 +391,7 @@ namespace UltraCanvas {
         overflowButton->SetBorder(0, Colors::Transparent);
 
         overflowButton->onClick = [this]() {
-            ShowSearchAutoComplete();
+            OpenOverflowList();
         };
 
         // Create AutoComplete for tab search
@@ -510,8 +513,56 @@ namespace UltraCanvas {
         overflowButton->SetElementSize(Size2Df(overflowDropdownWidth, tabBarBounds.height));
     }
 
+    void UltraCanvasTabbedContainer::OpenOverflowList() {
+        if (UsesDropdownSearch()) {
+            ShowSearchAutoComplete();
+        } else {
+            ShowOverflowListMenu();
+        }
+    }
+
+    bool UltraCanvasTabbedContainer::UsesDropdownSearch() const {
+        if (!enableDropdownSearch) return false;
+        int listed = 0;
+        for (const auto& tab : tabs) {
+            if (tab->visible) ++listed;
+        }
+        return listed >= dropdownSearchThreshold;
+    }
+
+    // Too few tabs to be worth searching, or search turned off: the tabs as
+    // a plain menu below the overflow button, the active one checked and the
+    // disabled ones greyed out. Choosing an entry activates its tab.
+    void UltraCanvasTabbedContainer::ShowOverflowListMenu() {
+        if (!window || !overflowButton) return;
+        if (!overflowListMenu) {
+            overflowListMenu = CreateMenu(GetIdentifier() + "_overflowList", 0, 0, 0, 0);
+            overflowListMenu->SetMenuType(MenuType::PopupMenu);
+        } else {
+            HideOverflowListMenu();
+        }
+        overflowListMenu->Clear();
+        for (int i = 0; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            MenuItemData item = MenuItemData::Radio(tabs[i]->title, 1, i == activeTabIndex,
+                                                    [this, i]() { SetActiveTab(i); });
+            item.enabled = tabs[i]->enabled;
+            overflowListMenu->AddItem(item);
+        }
+
+        // Below the button, like the search popup; Escape and a click outside
+        // close it (the default settings).
+        Point2Di pos = overflowButton->MapFromLocal(
+                Point2Di(0, overflowButton->GetBounds().height), nullptr);
+        overflowListMenu->OpenMenu(pos, *window, PopupElementSettings());
+    }
+
+    void UltraCanvasTabbedContainer::HideOverflowListMenu() {
+        if (overflowListMenu) overflowListMenu->CloseMenu();   // no-op when not open
+    }
+
     void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
-        if (!searchAutoComplete) return;
+        if (!searchAutoComplete || !window || !overflowButton) return;
 
         PopulateSearchAutoComplete();
 
@@ -541,7 +592,10 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
         if (!searchAutoComplete) return;
-        window->ClosePopup(*searchAutoComplete);
+        // Turning search off on a container that is in no window yet (the
+        // CreateTabbedContainerWithDropdown factory does) has nothing to close,
+        // and no window to call through.
+        if (window) window->ClosePopup(*searchAutoComplete);
         dropdownSearchActive = false;
         dropdownSearchText = "";
     }

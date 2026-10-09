@@ -2,220 +2,150 @@
 
 ## Overview
 
-**UltraCanvasLabel** is a modern text display control in the UltraCanvas framework that provides rich text rendering capabilities with comprehensive styling and crossAlignment options. It serves as the foundation for displaying static or dynamic text content in UltraCanvas applications.
+**UltraCanvasLabel** shows text: a caption beside a control, a heading, a
+status line, a paragraph that wraps, text with links or with images flowing
+in it. It measures its own text, so in a flex or grid layout it is as big as
+its text unless it is given a size.
 
-**Version:** 1.0.0  
-**Header:** `include/UltraCanvasLabel.h`  
-**Namespace:** `UltraCanvas`  
+**Header:** `include/UltraCanvasLabel.h`
+**Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
 
 ## Features
 
-- **Text Rendering**: High-quality text rendering with FreeType backend
-- **Styling Options**: Comprehensive text and background styling
-- **LayoutAlignment Control**: Horizontal and vertical text crossAlignment
-- **Auto-Sizing**: Automatic resizing based on text content
-- **Word Wrapping**: Multi-line text support with word wrapping
-- **Text Effects**: Shadow effects for enhanced visibility
-- **Interactive Support**: Click and hover event handling
-- **Unicode Support**: Full international text support
-- **Performance**: Optimized rendering with layout caching
+- **Sizes itself to its text** in a layout (`MeasureOwnContent`,
+  `ComputeIntrinsicSizes`); with word wrap on, its height follows the width
+  the layout gives it.
+- **Styling:** font, colour, alignment, wrap mode, line height, a text
+  shadow (`LabelStyle`), plus everything every element has: background,
+  borders and rounded corners, padding, margin.
+- **Pango markup** (`SetTextIsMarkup`) and **text links** (`SetTextLinks`).
+- **Inline images** flowing in the text like a browser's `<img>`.
+- **Selectable text** (`SetSelectable`): drag to select, double-click a word,
+  triple-click all of it, Ctrl+C to copy - and with an
+  `UltraCanvasTextSelection` one selection across many labels, as in a
+  browser.
+- **Events:** click, hover, link activated and hovered, text changed.
+- **Disabled look:** `disabledTextColor` while the label `IsDisabled()`.
 
-## Class Declaration
+## Constructors
 
 ```cpp
-class UltraCanvasLabel : public UltraCanvasUIElement
+UltraCanvasLabel(const std::string& identifier, float x, float y, float w, float h,
+                 const std::string& labelText = "");
+UltraCanvasLabel(const std::string& identifier, float w, float h,
+                 const std::string& labelText = "");
+UltraCanvasLabel(const std::string& identifier, const std::string& labelText);
+explicit UltraCanvasLabel(const std::string& labelText = "");
 ```
 
-## Constructor
+- A width or height greater than 0 is a **set size**: the label keeps it, and
+  a container's stretch does not change it (see `Docs/CSSLayout.md`,
+  "Stretching is a design decision").
+- Pass no size (or -1) and the label is as big as its text, or as wide as a
+  stretching container makes it.
+- A non-zero `x` / `y` places the label at that position inside its parent
+  instead of in the parent's flow (legacy absolute placement); in a flex or
+  grid container leave them at 0, or use a constructor without them.
 
-```cpp
-UltraCanvasLabel(const std::string& identifier = "Label",
-                 long id = 0, 
-                 long x = 0, 
-                 long y = 0, 
-                 long w = 100, 
-                 long h = 25,
-                 const std::string& labelText = "")
-```
-
-### Parameters
-- `identifier`: Unique string identifier for the label
-- `id`: Numeric ID for the label
-- `x`, `y`: Position coordinates
-- `w`, `h`: Width and height dimensions
-- `labelText`: Initial text content
-
-## LabelStyle Structure
-
-The `LabelStyle` structure encapsulates all visual properties of a label:
+## LabelStyle
 
 ```cpp
 struct LabelStyle {
-    // Text appearance
-    FontStyle fontStyle;
+    FontStyle fontStyle;                                   // family, size, weight
     Color textColor = Colors::Black;
-    
-    // Background and border
-    Color backgroundColor = Colors::Transparent;
-    Color borderColor = Colors::Transparent;
-    float borderWidth = 0.0f;
-    float borderRadius = 0.0f;
-    
-    // Text crossAlignment
+    Color disabledTextColor = Color(178, 178, 184, 255);  // while IsDisabled()
+
     TextAlignment horizontalAlign = TextAlignment::Left;
     VerticalAlignment verticalAlign = VerticalAlignment::Middle;
-    
-    // Padding
-    float paddingLeft = 4.0f;
-    float paddingRight = 4.0f;
-    float paddingTop = 2.0f;
-    float paddingBottom = 2.0f;
-    
-    // Text effects
-    bool hasShadow = false;
+    TextWrap wrap = TextWrap::WrapNone;    // WrapNone, WrapWord, WrapChar, WrapWordChar
+    float lineHeightPx = 0.f;              // CSS line-height; 0 = the font's own
+
+    bool hasShadow = false;                // the text drawn once more, offset, under it
     Color shadowColor = Color(0, 0, 0, 128);
     Point2Di shadowOffset = Point2Di(1, 1);
-    
-    // Layout options
-    bool wordWrap = false;
-    bool autoResize = false;
-}
+};
 ```
 
-### Predefined Styles
+Background, borders, corner radius, padding and margin are not part of the
+label's style: they belong to every element (`SetBackgroundColor`,
+`SetBorders`, `SetBorderRadius`, `SetPadding`, `SetMargin`).
 
-- `LabelStyle::DefaultStyle()` - Standard label appearance
-- `LabelStyle::HeaderStyle()` - Large, bold text for headers
-- `LabelStyle::SubHeaderStyle()` - Medium-sized bold text
-- `LabelStyle::CaptionStyle()` - Small, muted text
-- `LabelStyle::StatusStyle()` - Status bar text styling
+### Predefined styles
 
-## Core Methods
+- `LabelStyle::DefaultStyle()`: the defaults above.
+- `LabelStyle::HeaderStyle()`: 18 pt bold.
+- `LabelStyle::SubHeaderStyle()`, `LabelStyle::CaptionStyle()`,
+  `LabelStyle::StatusStyle()`: a sub-heading, a small muted caption, status
+  bar text.
 
-### Text Management
+## Methods
+
+### Text
 
 ```cpp
-void SetText(const std::string& newText)
+void SetText(const std::string& newText);   // re-measures, redraws, fires onTextChanged
+const std::string& GetText() const;
+void SetTextIsMarkup(bool markup);          // the text is Pango markup (<b>, <span color=...>)
 ```
-Sets the label's text content. Triggers layout recalculation and optional auto-resize.
+
+To clear a label, `SetText("")`; to append, `SetText(label->GetText() + more)`.
+
+### Style and font
 
 ```cpp
-const std::string& GetText() const
+void SetStyle(const LabelStyle& newStyle);
+const LabelStyle& GetStyle() const;
+void SetFont(const std::string& fontFamily, float fontSize = 12.0f,
+             FontWeight weight = FontWeight::Normal);
+void SetFontSize(float fontSize);
+void SetFontWeight(FontWeight weight);
+void SetTextColor(const Color& color);
+void SetAlignment(TextAlignment horizontal,
+                  VerticalAlignment vertical = VerticalAlignment::Middle);
+void SetWrap(TextWrap wrap);
 ```
-Returns the current text content.
+
+Every setter that changes the text's size (font, wrap, text, markup)
+re-measures the label and redraws it; a colour only redraws it. A shadow is
+switched on through the style:
 
 ```cpp
-void AppendText(const std::string& additionalText)
+LabelStyle style = label->GetStyle();
+style.hasShadow = true;
+style.shadowOffset = Point2Di(2, 2);
+label->SetStyle(style);
 ```
-Appends text to existing content.
+
+### From UltraCanvasUIElement
 
 ```cpp
-void ClearText()
+void SetBackgroundColor(const Color& color);
+void SetBorders(float width, const Color& color = Colors::Black, float borderRadius = 0.0f,
+                const UCDashPattern& dash = UCDashPattern());
+void SetBordersColor(const Color& color);
+void SetBorderRadius(float radius);              // rounded fill without a border
+void SetPadding(float all);                      // also (vertical, horizontal)
+void SetPadding(float top, float right, float bottom, float left);
+void SetMargin(float all);                       // also (vertical, horizontal), (top, right, bottom, left)
 ```
-Clears all text content.
+
+### Text links
 
 ```cpp
-bool IsEmpty() const
+struct LabelTextLink {
+    int startByte = 0;
+    int endByte = 0;      // exclusive
+    std::string href;
+};
+void SetTextLinks(std::vector<LabelTextLink> links);
+const std::vector<LabelTextLink>& GetTextLinks() const;
+void SetShowLinkTooltips(bool show);
+int LinkIndexAtPoint(const Point2Di& localPoint);
 ```
-Returns true if the label contains no text.
 
-### Style Management
-
-```cpp
-void SetStyle(const LabelStyle& newStyle)
-```
-Applies a complete style configuration.
-
-```cpp
-const LabelStyle& GetStyle() const
-```
-Returns the current style configuration.
-
-### Font Configuration
-
-```cpp
-void SetFont(const std::string& fontFamily, 
-             float fontSize = 12.0f, 
-             FontWeight weight = FontWeight::Normal)
-```
-Sets the font family, size, and weight.
-
-```cpp
-void SetFontSize(float fontSize)
-```
-Sets only the font size.
-
-```cpp
-void SetFontWeight(FontWeight weight)
-```
-Sets the font weight (Normal, Bold, etc.).
-
-### Color Configuration
-
-```cpp
-void SetTextColor(const Color& color)
-```
-Sets the text color.
-
-```cpp
-void SetBackgroundColor(const Color& color)
-```
-Sets the background fill color.
-
-```cpp
-void SetBordersColor(const Color& color)
-```
-Sets the border color.
-
-### Layout Configuration
-
-```cpp
-void SetCrossAlignment(TextAlignment horizontal, 
-                  VerticalAlignment vertical = VerticalAlignment::Middle)
-```
-Sets horizontal and vertical text crossAlignment.
-
-```cpp
-void SetPadding(float padding)
-```
-Sets uniform padding on all sides.
-
-```cpp
-void SetPadding(float left, float right, float top, float bottom)
-```
-Sets individual padding values for each side.
-
-```cpp
-void SetWordWrap(bool wrap)
-```
-Enables or disables word wrapping for multi-line text.
-
-```cpp
-void SetAutoResize(bool autoResize)
-```
-Enables automatic resizing based on text content.
-
-### Border Configuration
-
-```cpp
-void SetBorderWidth(float width)
-```
-Sets the border thickness.
-
-```cpp
-void SetBorderRadius(float radius)
-```
-Sets the corner radius for rounded borders.
-
-### Shadow Effects
-
-```cpp
-void SetShadow(bool enabled, 
-                const Color& color = Color(0, 0, 0, 128),
-                const Point2Di& offset = Point2Di(1, 1))
-```
-Configures text shadow effects.
+Byte offsets refer to the text as laid out: markup parsed, entities decoded.
+A click on a link fires `onLinkActivated` with its `href`.
 
 ### Inline Images
 
@@ -273,21 +203,107 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
-## Event Callbacks
+### Selectable text
 
-UltraCanvasLabel supports several event callbacks:
+A label's text can be selected and copied the way text on a web page can.
+It is off by default - a caption beside a control should not take the press
+meant for the control.
 
 ```cpp
-std::function<void()> onClick;
+void SetSelectable(bool selectable);   // a selection of its own
+bool IsSelectable() const;
+void SetTextSelection(std::shared_ptr<UltraCanvasTextSelection> selection);   // a shared one
+const std::shared_ptr<UltraCanvasTextSelection>& GetTextSelection() const;
+
+void SetSelectedRange(int startByte, int endByte);   // an end past the text = its end
+void ClearSelectedRange();
+bool HasSelectedRange() const;
+int GetSelectionStart() const;
+int GetSelectionEnd() const;
+std::string GetSelectedText();     // as a reader copies it
+std::string GetRenderedText();     // markup parsed, entities decoded
+int TextIndexAtPoint(const Point2Df& localPoint);   // nearest text position, -1 before the first layout
+std::pair<int, int> WordRangeAt(int byteIndex);     // [first, second)
+```
+
+On a selectable label:
+
+- **A drag selects**, a **double-click** takes the word under the pointer (a
+  dot or apostrophe between letters stays in it: `example.com`, `don't`), a
+  **triple-click** the whole text, and **Shift+click** extends the selection.
+- **Ctrl+C** (or Ctrl+Insert, or Cmd+C) copies, **Ctrl+A** selects all. The
+  pressed label takes the keyboard focus for them; only that one label of a
+  selection accepts the focus, so a page of paragraphs is one stop in the Tab
+  order, not one per paragraph.
+- The highlight is drawn under the text in `LabelStyle::selectionColor`.
+- `GetSelectedText()` leaves out the U+FFFC placeholders of inline images and
+  soft hyphens, and copies a no-break space as a plain space.
+- A **text link** opens when the button is released on it without having
+  dragged, rather than on the press - otherwise a drag that starts on a link
+  could never select it. A label with `onClick` stays a button: a press on it
+  clicks, it does not select.
+- The pointer is the text I-beam over the label (the hand over a link).
+- Byte offsets are those of the rendered text, as for links and inline
+  images. `SetText` and `SetTextIsMarkup` clear the selection.
+
+```cpp
+auto address = CreateLabel("address", "anna.berg@example.com");
+address->SetSelectable(true);   // the reader can copy the address
+```
+
+#### One selection across many labels
+
+`UltraCanvasTextSelection` (`UltraCanvasTextSelection.h`) is a selection that
+several labels share, in reading order. A drag that starts in one label runs
+on through the next ones, and a copy joins their parts: a line break between
+labels above one another, a tab between labels side by side (the cells of a
+table row). Create it with `std::make_shared` - every label keeps it alive,
+while it holds the labels weakly and a label leaves it as it is destroyed.
+
+```cpp
+auto selection = std::make_shared<UltraCanvasTextSelection>();
+selection->AddLabel(*subject);          // the order added is the reading order
+selection->AddLabel(*sender);
+selection->AddLabelsIn(*articleRoot);   // every label below, depth first
+
+selection->onContextMenu = [](const UCEvent& event) {
+    // A right-click on one of the labels: show Copy / Select All.
+};
+bool any = selection->HasSelection();
+std::string text = selection->GetSelectedText();
+selection->CopyToClipboard();
+selection->SelectAll();
+selection->ClearSelection();
+```
+
+- With the pointer between labels, the selection runs to the nearest text: a
+  label beside the pointer on its line, otherwise the end of the last label
+  above it. Dragged past the top or bottom of the scroll view the labels sit
+  in, that view scrolls, faster the further the pointer is past its edge.
+- A right-click inside the selection keeps it (for the menu's Copy); outside
+  it, it clears it first. `onContextMenu` is then called - a right-click on
+  a selectable label never opens a link. `onSelectionChanged` is raised
+  whenever what is selected changes.
+- `HTML::BuildOptions::selectableText` gives every label of a tree built from
+  HTML one such selection (`HTML::BuildResult::textSelection`); UltraMail
+  selects a mail's body that way.
+
+## Event Callbacks
+
+```cpp
+std::function<void()> onClick;                           // a label with one shows the hand cursor
 std::function<void()> onHoverEnter;
 std::function<void()> onHoverLeave;
-std::function<void(const std::string&)> onTextChanged;
-std::function<void(long, long)> onSizeChanged;
+std::function<void(const std::string&)> onTextChanged;    // after SetText changed the text
 // Text links (SetTextLinks): the clicked link's href, and the hovered one's
 // as the pointer moves onto it ("" as it leaves the link).
 std::function<void(const std::string&)> onLinkActivated;
 std::function<void(const std::string&)> onLinkHovered;
 ```
+
+In a selectable label (`SetSelectable`) `onLinkActivated` fires when the
+button is released on the link it was pressed on, without a drag that
+selected text in between.
 
 `SetShowLinkTooltips(true)` also shows the hovered link's href in a tooltip
 beside the pointer, following it along the link and hidden again as the
@@ -310,125 +326,82 @@ label->onTextChanged = [](const std::string& newText) {
 
 ## Factory Functions
 
-### CreateLabel
 ```cpp
-std::shared_ptr<UltraCanvasLabel> CreateLabel(
-    const std::string& identifier, 
-    long id, 
-    long x, long y, 
-    long w, long h,
-    const std::string& text = "")
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
+                                              float x, float y, float w, float h,
+                                              const std::string& text = "");
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
+                                              float w, float h, const std::string& text = "");
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
+                                              const std::string& text);   // sized by its text
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
 ```
-Creates a standard label with specified dimensions.
 
-### CreateAutoLabel
-```cpp
-std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(
-    const std::string& identifier,
-    long id,
-    long x, long y,
-    const std::string& text)
-```
-Creates a label that automatically sizes to fit its text content.
+A label that sizes itself to its text is simply one created without a size:
+`CreateLabel("status", "Ready")`. A heading or a status line is a label with
+the predefined style: `label->SetStyle(LabelStyle::HeaderStyle())`.
 
-### CreateHeaderLabel
-```cpp
-std::shared_ptr<UltraCanvasLabel> CreateHeaderLabel(
-    const std::string& identifier,
-    long id,
-    long x, long y,
-    long w, long h,
-    const std::string& text)
-```
-Creates a label with header styling.
-
-### CreateStatusLabel
-```cpp
-std::shared_ptr<UltraCanvasLabel> CreateStatusLabel(
-    const std::string& identifier,
-    long id,
-    long x, long y,
-    long w, long h,
-    const std::string& text = "Ready")
-```
-Creates a label with status bar styling.
-
-## Builder Pattern
-
-UltraCanvasLabel supports a fluent builder pattern for convenient configuration:
+## Builder
 
 ```cpp
-auto label = CreateLabelBuilder("myLabel", 10, 10, 200, 30)
+auto label = LabelBuilder("greeting")
     .SetText("Hello World")
-    .SetFont("Arial", 14.0f)
+    .SetFont("Sans", 14.0f)
     .SetTextColor(Colors::Blue)
     .SetBackgroundColor(Color(240, 240, 240))
-    .SetCrossAlignment(TextAlignment::Center)
+    .SetAlignment(TextAlignment::Center)
     .SetPadding(10.0f)
-    .SetAutoResize(true)
     .OnClick([]() { std::cerr << "Clicked!" << std::endl; })
     .Build();
 ```
 
+`LabelBuilder` also has `SetStyle(const LabelStyle&)`.
+
 ## Usage Examples
 
-### Basic Label
+### Basic label
+
 ```cpp
-auto basicLabel = std::make_shared<UltraCanvasLabel>(
-    "basic", 1, 10, 10, 200, 25, "Simple Text");
+auto basicLabel = CreateLabel("basic", "Simple Text");
 container->AddChild(basicLabel);
 ```
 
-### Styled Header
+### Header
+
 ```cpp
-auto header = std::make_shared<UltraCanvasLabel>(
-    "header", 10, 50, 400, 35);
-header->SetText("Application Title");
-header->SetFontSize(24);
-header->SetFontWeight(FontWeight::Bold);
+auto header = CreateLabel("header", "Application Title");
+header->SetStyle(LabelStyle::HeaderStyle());
 header->SetTextColor(Color(0, 100, 200));
 container->AddChild(header);
 ```
 
-### Status Indicators
+### Status indicators
+
 ```cpp
-// Success status
-auto successLabel = std::make_shared<UltraCanvasLabel>(
-    "success", 10, 100, 150, 25);
-successLabel->SetText("✓ Success");
-successLabel->SetBackgroundColor(Color(200, 255, 200));
-successLabel->SetTextColor(Color(0, 150, 0));
-successLabel->SetCrossAlignment(TextAlignment::Center);
-
-// Warning status
-auto warningLabel = std::make_shared<UltraCanvasLabel>(
-    "warning", 170, 100, 150, 25);
-warningLabel->SetText("⚠ Warning");
-warningLabel->SetBackgroundColor(Color(255, 255, 200));
-warningLabel->SetTextColor(Color(200, 150, 0));
-warningLabel->SetCrossAlignment(TextAlignment::Center);
-
-// Error status
-auto errorLabel = std::make_shared<UltraCanvasLabel>(
-    "error", 330, 100, 150, 25);
-errorLabel->SetText("✗ Error");
-errorLabel->SetBackgroundColor(Color(255, 200, 200));
-errorLabel->SetTextColor(Color(200, 0, 0));
-errorLabel->SetCrossAlignment(TextAlignment::Center);
+auto MakeStatus = [](const std::string& id, const std::string& text, Color fill, Color ink) {
+    auto label = CreateLabel(id, text);
+    label->SetBackgroundColor(fill);
+    label->SetTextColor(ink);
+    label->SetAlignment(TextAlignment::Center);
+    label->SetPadding(4.0f, 10.0f);
+    return label;
+};
+row->AddChild(MakeStatus("success", "\u2713 Success", Color(200, 255, 200), Color(0, 150, 0)));
+row->AddChild(MakeStatus("warning", "\u26A0 Warning", Color(255, 255, 200), Color(200, 150, 0)));
+row->AddChild(MakeStatus("error", "\u2717 Error", Color(255, 200, 200), Color(200, 0, 0)));
 ```
 
-### Multi-line Label with Word Wrap
+### Text that wraps
+
 ```cpp
-auto multiLabel = std::make_shared<UltraCanvasLabel>(
-    "multi", 10, 150, 450, 80);
-multiLabel->SetText("This is a multi-line label that demonstrates\n"
-                    "how text wrapping works with longer content.\n"
-                    "It supports multiple lines and proper crossAlignment.");
-multiLabel->SetWordWrap(true);
-multiLabel->SetCrossAlignment(TextAlignment::Left);
-multiLabel->SetBackgroundColor(Color(245, 245, 245));
-multiLabel->SetBorderWidth(1.0f);
-multiLabel->SetPadding(10.0f);
+auto paragraph = CreateLabel("paragraph",
+    "A label with word wrap wraps at the width its container gives it, "
+    "and its height follows.");
+paragraph->SetWrap(TextWrap::WrapWord);
+paragraph->SetBackgroundColor(Color(245, 245, 245));
+paragraph->SetBorders(1.0f, Color(200, 200, 200));
+paragraph->SetPadding(10.0f);
+column->AddChild(paragraph);   // in a column it is as wide as its text, up to the column's width
 ```
 
 ### Rounded Corner Labels
@@ -443,7 +416,7 @@ reserved for one - call `SetBorderRadius(radius)` (on any element): the
 background is filled with that corner radius.
 
 ```cpp
-auto chip = std::make_shared<UltraCanvasLabel>("chip", 20, 500, 120, 28);
+auto chip = std::make_shared<UltraCanvasLabel>("chip", 120, 28);
 chip->SetText("Borderless");
 chip->SetBackgroundColor(Color(20, 20, 19));
 chip->SetTextColor(Colors::White);
@@ -453,7 +426,7 @@ chip->SetBorderRadius(10.0f);   // rounded fill, border widths stay 0
 ```cpp
 // Rounded WITH a visible border (filled).
 auto roundedFilled = std::make_shared<UltraCanvasLabel>(
-    "roundedFilled", 20, 350, 200, 32);
+    "roundedFilled", 200, 32);
 roundedFilled->SetText("Rounded + Border");
 roundedFilled->SetBackgroundColor(Color(225, 240, 255));
 roundedFilled->SetTextColor(Color(0, 90, 170));
@@ -462,7 +435,7 @@ roundedFilled->SetBorders(1.5f, Color(0, 120, 215), 10.0f); // width, color, rad
 
 // Outline-only pill: transparent background, visible border, large radius.
 auto roundedOutline = std::make_shared<UltraCanvasLabel>(
-    "roundedOutline", 240, 350, 200, 32);
+    "roundedOutline", 200, 32);
 roundedOutline->SetText("Outlined Pill");
 roundedOutline->SetTextColor(Color(120, 60, 160));
 roundedOutline->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -471,7 +444,7 @@ roundedOutline->SetBorders(2.0f, Color(150, 90, 200), 16.0f); // radius >= h/2 -
 // Rounded WITHOUT a visible border: use a transparent border color so the
 // rounded fill is kept but no stroke is drawn.
 auto pillSuccess = std::make_shared<UltraCanvasLabel>(
-    "pillSuccess", 20, 420, 150, 28);
+    "pillSuccess", 150, 28);
 pillSuccess->SetText("✓ Success");
 pillSuccess->SetBackgroundColor(Color(76, 175, 80));
 pillSuccess->SetTextColor(Colors::White);
@@ -480,7 +453,7 @@ pillSuccess->SetBorders(1.0f, Colors::Transparent, 14.0f);
 
 // Rounded multi-line card with a soft fill and no visible border.
 auto roundedCard = std::make_shared<UltraCanvasLabel>(
-    "roundedCard", 490, 470, 450, 90);
+    "roundedCard", 450, 90);
 roundedCard->SetText("This rounded card has no visible border —\n"
                      "just a soft filled background with rounded corners.");
 roundedCard->SetWrap(TextWrap::WrapWord);
@@ -493,38 +466,37 @@ roundedCard->SetPadding(12.0f);
 > fully rounded "pill" shape. The renderer automatically clamps the radius so
 > corners never overlap.
 
-### Dynamic Label with Auto-Resize
+### A label that follows its text
+
 ```cpp
-auto dynamicLabel = CreateAutoLabel("dynamic", 7, 10, 250, "");
-dynamicLabel->SetText("Content will determine size");
-dynamicLabel->onClick = [dynamicLabel]() {
-    static int clickCount = 0;
-    dynamicLabel->SetText("Clicked " + std::to_string(++clickCount) + " times");
+auto counter = CreateLabel("counter", "Click me");   // no size: it grows with its text
+counter->onClick = [label = counter.get()]() {
+    static int clicks = 0;
+    label->SetText("Clicked " + std::to_string(++clicks) + " times");
 };
 ```
 
-### Label with Shadow Effect
+### Label with a shadow
+
 ```cpp
-auto shadowLabel = std::make_shared<UltraCanvasLabel>(
-    "shadow", 10, 300, 200, 30);
-shadowLabel->SetText("Text with Shadow");
-shadowLabel->SetShadow(true, Color(0, 0, 0, 128), Point2Di(2, 2));
-shadowLabel->SetFontSize(18);
-shadowLabel->SetTextColor(Colors::White);
+auto shadowLabel = CreateLabel("shadow", "Text with Shadow");
+LabelStyle style = shadowLabel->GetStyle();
+style.fontStyle.fontSize = 18;
+style.textColor = Colors::White;
+style.hasShadow = true;
+style.shadowOffset = Point2Di(2, 2);
+shadowLabel->SetStyle(style);
 shadowLabel->SetBackgroundColor(Color(100, 100, 100));
 ```
 
-## Rendering Process
+## Rendering
 
-The label's rendering process follows these steps:
-
-1. **Layout Calculation**: Computes text area based on padding and borders
-2. **Text Measurement**: Determines actual text dimensions
-3. **LayoutAlignment Processing**: Calculates text position based on crossAlignment settings
-4. **Background Rendering**: Draws background color and border if configured
-5. **Shadow Rendering**: Renders text shadow if enabled
-6. **Text Rendering**: Draws the main text content
-7. **Focus Indicator**: Draws focus rectangle if label has focus
+1. The background, borders and rounded corners are drawn by the element.
+2. The text layout (`ITextLayout`) is built from the text, the style and the
+   content width, and cached until one of them changes.
+3. With `hasShadow`, the text is drawn once at `shadowOffset` in
+   `shadowColor`, then in its own colour; inline images are drawn on their
+   placeholders.
 
 ### Where the text layout comes from
 
@@ -542,53 +514,13 @@ it is attached simply reports zero and is measured again once it can be. A
 label whose layout could not be built draws its background, border and focus
 ring and skips its words; it does not fail the paint.
 
-## Performance Considerations
+## Notes
 
-- **Layout Caching**: Layout is only recalculated when text or style changes
-- **Conditional Rendering**: Only visible labels are rendered
-- **Text Metrics Caching**: Font metrics are cached to avoid repeated calculations
-- **State Management**: Render context state is properly managed with push/pop
-
-## Integration with Other Components
-
-UltraCanvasLabel integrates seamlessly with other UltraCanvas components:
-
-- Can be added as child to any container
-- Works with layout managers for automatic positioning
-- Supports theming through style system
-- Compatible with event propagation system
-
-## Best Practices
-
-1. **Use Appropriate Styles**: Leverage predefined styles for consistency
-2. **Enable Auto-Resize**: For dynamic content, use auto-resize to prevent clipping
-3. **Set Meaningful Identifiers**: Use descriptive identifiers for easier debugging
-4. **Optimize Updates**: Batch style changes when possible to minimize redraws
-5. **Consider Accessibility**: Use sufficient contrast and readable font sizes
-6. **Handle Long Text**: Enable word wrap for potentially long text content
-
-## Thread Safety
-
-UltraCanvasLabel is not thread-safe. All operations should be performed on the UI thread.
-
-## Platform Compatibility
-
-UltraCanvasLabel works consistently across all supported platforms:
-- Linux (X11/Wayland)
-- Windows (Win32)
-- macOS (Cocoa)
-- Future: Android support planned
-
-## Dependencies
-
-- UltraCanvasUIElement (base class)
-- UltraCanvasRenderContext (rendering)
-- UltraCanvasEvent (event handling)
-- FreeType library (font rendering)
-
-## See Also
-
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class documentation
-- [UltraCanvasTextInput](UltraCanvasTextInput.md) - Editable text control
-- [UltraCanvasButton](UltraCanvasButton.md) - Interactive button with label
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Container for labels
+- **Layout:** in a flex or grid container a label without a size measures
+  its text; with `WrapWord` its height is the wrapped text's at the width it
+  gets. Give it a width only when it really should have that width.
+- **Thread safety:** UI thread only, like every element.
+- **See also:** [UltraCanvasLabelPlacement](UltraCanvasLabelPlacement.md),
+  [CSS layout](../CSSLayout.md),
+  [UltraCanvasTextInput](UltraCanvasTextInputExamples.md),
+  [UltraCanvasButton](UltraCanvasButtonExamples.md).

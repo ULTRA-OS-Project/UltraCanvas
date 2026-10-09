@@ -3,8 +3,9 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.0.1 - a press on the board's background (focus, deselect) is the board's
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
@@ -2803,8 +2804,11 @@ bool UltraCanvasKanbanBoardElement::HandleMouseDown(const UCEvent& event) {
         if (onCardClick) onCardClick(over->cardId);
         return true;
     }
+    // A press on the board's background took the focus and cleared the
+    // selection: it was the board's, so it does not go on to the elements
+    // around it, which would act on it a second time.
     SelectCard(-1);
-    return false;
+    return true;
 }
 
 bool UltraCanvasKanbanBoardElement::HandleMouseUp(const UCEvent& event) {

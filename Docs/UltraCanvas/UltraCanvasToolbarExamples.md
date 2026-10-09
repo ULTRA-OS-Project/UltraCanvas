@@ -4,7 +4,7 @@
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.0
+**Version:** 1.6.1
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -94,25 +94,33 @@ its item through reorders and scrolling. The returned badge is the real
 
 ### Convenience Methods
 
+Each creates a real widget, adds it as a child, and returns the typed
+`shared_ptr` for inline configuration.
+
 ```cpp
-void AddButton(const std::string& id, const std::string& text,
-               const std::string& icon = "", std::function<void()> onClick = nullptr);
+std::shared_ptr<UltraCanvasButton> AddButton(
+        const std::string& id, const std::string& text,
+        const std::string& icon = "", std::function<void()> onClick = nullptr);
 
-void AddToggleButton(const std::string& id, const std::string& text,
-                     const std::string& icon = "",
-                     std::function<void(bool)> onToggle = nullptr);
+std::shared_ptr<UltraCanvasButton> AddToggleButton(
+        const std::string& id, const std::string& text,
+        const std::string& icon = "", std::function<void(bool)> onToggle = nullptr);
 
-void AddDropdownButton(const std::string& id, const std::string& text,
-                       const std::vector<std::string>& items,
-                       std::function<void(const std::string&)> onSelect = nullptr);
+std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
+        const std::string& id, const std::string& text,
+        const std::vector<std::string>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
 
-void AddSeparator(const std::string& id = "");
-void AddSpacer(int size = 8);
-void AddStretch(float stretch = 1.0f);
-void AddLabel(const std::string& id, const std::string& text);
-void AddSearchBox(const std::string& id,
-                  const std::string& placeholder = "Search...",
-                  std::function<void(const std::string&)> onTextChange = nullptr);
+std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
+std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
+std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
+std::shared_ptr<UltraCanvasLabel> AddLabel(const std::string& id, const std::string& text);
+std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
+        const std::string& id, const std::string& placeholder = "Search...",
+        std::function<void(const std::string&)> onTextChange = nullptr);
+std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
+        const std::string& id, const std::string& placeholder = "Search...",
+        std::function<void(const std::string&)> onTextChange = nullptr);
 ```
 
 ### Auto-Hide
@@ -141,6 +149,15 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
 it.
+
+With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
+surface — the padding and the gaps between its items — never by an item: a
+press on a label, a separator or a disabled button climbs to the toolbar too,
+and is not a grab. The drag follows the pointer in window coordinates with
+the mouse captured, so it keeps up however far the pointer leaves the bar,
+and ends on the release wherever that happens. The bar stays where it is
+dropped: dragging sets its CSS position (`SetElementAbsolutePosition`), so a
+toolbar that sat in its parent's flow floats from then on.
 
 ## Enumerations
 

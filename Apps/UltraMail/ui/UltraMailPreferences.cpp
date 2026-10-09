@@ -1,4 +1,10 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.11.0 - trusted_senders, blocked_senders
+// Version: 0.10.0 - warn_* (Settings > Spam/scam warnings)
+// Version: 0.9.0 - notify_new_mail (a notification on screen when new mail arrives)
+// Version: 0.8.0 - fetch_site_icons (website icons of other senders)
+// Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
+// Version: 0.6.0 - list_sort (the message list's order)
 // Version: 0.5.0 - needs_answer_max_age_days, needs_answer_only_written_to
 // Version: 0.4.0 - link_display (status-bar / tooltip)
 // Version: 0.3.0 - folder_tree_width_mode (auto / fixed) and folder_tree_width (px)
@@ -10,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -51,6 +58,30 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "notify_new_mail")    notifyNewMail    = ParseBool(value);
+        if (key == "fetch_site_icons")   fetchSiteIcons   = ParseBool(value);
+        if (key == "warn_phishing")       scamWarnings.phishing      = ParseBool(value);
+        if (key == "warn_romance")        scamWarnings.romance       = ParseBool(value);
+        if (key == "warn_advance_fee")    scamWarnings.advanceFee    = ParseBool(value);
+        if (key == "warn_government")     scamWarnings.government    = ParseBool(value);
+        if (key == "warn_crypto_scams")   scamWarnings.cryptoScams   = ParseBool(value);
+        if (key == "warn_crypto_caution") scamWarnings.cryptoCaution = ParseBool(value);
+        if (key == "warn_attachments")    scamWarnings.attachments   = ParseBool(value);
+        if (key == "warn_spam_flag")      scamWarnings.spamFlag      = ParseBool(value);
+        if (key == "trusted_senders" || key == "blocked_senders") {
+            // Comma-separated addresses; a blocked "@example.com" is a domain.
+            const bool blockList = key == "blocked_senders";
+            std::set<std::string>& list = blockList ? senderLists.blocked : senderLists.trusted;
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                const std::string entry =
+                    SenderLists::Entry(value.substr(start, comma - start), blockList);
+                if (!entry.empty()) list.insert(entry);
+                start = comma + 1;
+            }
+        }
         if (key == "remote_images") {
             const std::string v = Trim(value);
             remoteImages = v == "always" ? RemoteImagePolicy::LoadAlways
@@ -82,6 +113,11 @@ bool Preferences::Load(const std::string& path) {
             catch (...) { /* keeps the default */ }
         }
         if (key == "needs_answer_only_written_to") needsAnswerOnlyWrittenTo = ParseBool(value);
+        if (key == "list_sort") listSort = MessageSort::FromString(value);
+        if (key == "check_mail_every_sec") {
+            try { checkMailEverySec = NearestCheckMailChoice(std::stoi(Trim(value))); }
+            catch (...) { /* keeps the default */ }
+        }
         if (key == "trusted_image_domains") {
             std::size_t start = 0;
             while (start <= value.size()) {
@@ -114,6 +150,7 @@ bool Preferences::Save(const std::string& path) const {
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";
     file << "fetch_sender_icons = " << (fetchSenderIcons ? "true" : "false") << "\n";
+    file << "fetch_site_icons = " << (fetchSiteIcons ? "true" : "false") << "\n";
     file << "remote_images_from = ";
     bool first = true;
     for (const auto& addr : remoteImageSenders) {
@@ -140,7 +177,57 @@ bool Preferences::Save(const std::string& path) const {
          << (linkDisplay == LinkDisplay::Tooltip ? "tooltip" : "status-bar") << "\n";
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
     file << "needs_answer_only_written_to = " << (needsAnswerOnlyWrittenTo ? "true" : "false") << "\n";
+    file << "list_sort = " << listSort.ToString() << "\n";
+    file << "check_mail_every_sec = " << checkMailEverySec << "\n";
+    file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
+    auto flag = [&file](const char* key, bool on) {
+        file << key << " = " << (on ? "true" : "false") << "\n";
+    };
+    flag("warn_phishing",       scamWarnings.phishing);
+    flag("warn_romance",        scamWarnings.romance);
+    flag("warn_advance_fee",    scamWarnings.advanceFee);
+    flag("warn_government",     scamWarnings.government);
+    flag("warn_crypto_scams",   scamWarnings.cryptoScams);
+    flag("warn_crypto_caution", scamWarnings.cryptoCaution);
+    flag("warn_attachments",    scamWarnings.attachments);
+    flag("warn_spam_flag",      scamWarnings.spamFlag);
+    auto list = [&file](const char* key, const std::set<std::string>& entries) {
+        file << key << " = ";
+        bool firstEntry = true;
+        for (const auto& e : entries) {
+            file << (firstEntry ? "" : ", ") << e;
+            firstEntry = false;
+        }
+        file << "\n";
+    };
+    list("trusted_senders", senderLists.trusted);
+    list("blocked_senders", senderLists.blocked);
     return static_cast<bool>(file);
+}
+
+const std::vector<int>& Preferences::CheckMailChoices() {
+    static const std::vector<int> choices = { 20, 30, 40, 50, 60, 120, 180, 240, 300, 600 };
+    return choices;
+}
+
+int Preferences::NearestCheckMailChoice(int seconds) {
+    int best = kDefaultCheckMailSec;
+    long long bestDistance = -1;
+    for (int choice : CheckMailChoices()) {
+        const long long distance = std::llabs(static_cast<long long>(seconds) - choice);
+        if (bestDistance < 0 || distance < bestDistance) {   // the shorter on a tie
+            best = choice;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+std::string Preferences::CheckMailLabel(int seconds) {
+    if (seconds < 60) return std::to_string(seconds) + " seconds";
+    const int minutes = seconds / 60;
+    if (seconds % 60 == 0) return minutes == 1 ? "1 minute" : std::to_string(minutes) + " minutes";
+    return std::to_string(seconds) + " seconds";
 }
 
 std::string Preferences::NormalizeDomain(const std::string& text) {

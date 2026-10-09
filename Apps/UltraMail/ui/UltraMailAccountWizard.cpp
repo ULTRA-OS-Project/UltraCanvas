@@ -1,5 +1,9 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.4.2 - Yahoo asks for an app password first (browser sign-in optional)
+// Version: 0.5.1 - Yahoo asks for an app password first (browser sign-in optional)
+// Version: 0.5.0 - "How to set up an iCloud mail account" with a Show info
+//                  button: the guide opens in an info area under the sign-in
+//                  fields (ICloudSetupGuide), for iCloud addresses and
+//                  addresses at domains no preset knows (iCloud+ own domains)
 // Version: 0.4.1 - live hint per address: browser sign-in for Gmail / Outlook,
 //                  an app password for Yahoo / iCloud (or a typed password
 //                  at an OAuth2 provider)
@@ -15,6 +19,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasButton.h"
 
 #include <memory>
@@ -25,14 +30,18 @@ namespace UltraMail {
 
 namespace {
 constexpr float kLabelWidth = 90.0f;
+constexpr int   kWidth      = 420;
+constexpr int   kHeight     = 300;   // the form with the guide closed
+// The guide's info area: tall enough for most of it at once, and it scrolls.
+constexpr int   kGuideHeight = 320;
 } // namespace
 
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
                          std::function<void(const AccountDraft&)> onSubmit) {
     DialogConfig config;
     config.title      = "Add email account";
-    config.width      = 420;
-    config.height     = 270;
+    config.width      = kWidth;
+    config.height     = kHeight;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -104,7 +113,64 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
     hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    email->onTextChanged = [hint, password, passRow](const std::string& text) {
+
+    // "How to set up an iCloud mail account" [Show info]: the guide opens in
+    // an info area under the sign-in fields, and the dialog grows to hold it.
+    // Apple takes only an app-specific password, made on account.apple.com -
+    // without the steps, the first sign-in fails and says little about why.
+    auto guideRow = CreateContainer("wizGuideRow", 0, 0, 0, Theme::kControlHeight);
+    guideRow->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto guideLabel = Theme::MakeLine("wizGuideLabel", "How to set up an iCloud mail account",
+                                      Theme::kControlHeight, Theme::kSizeBody,
+                                      Theme::kTextPrimary);
+    guideRow->AddChild(guideLabel);
+    guideLabel->layoutItem.SetFlexGrow(1);
+    auto guideBtn = CreateButton("wizGuideBtn", 0, 0, 90, Theme::kControlHeight, "Show info");
+    Theme::FitToLabel(guideBtn, 90);
+    Theme::StyleSecondary(guideBtn);
+    guideRow->AddChild(guideBtn);
+    content->AddChild(guideRow);
+    guideRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto guide = std::make_shared<UltraCanvasTextArea>("wizGuide");
+    guide->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+    guide->SetReadOnly(true);
+    guide->SetWordWrap(true);
+    guide->SetShowLineNumbers(false);
+    guide->SetHighlightCurrentLine(false);
+    guide->SetBackgroundColor(Theme::kSidebar);
+    guide->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    guide->SetFontSize(Theme::kSizeBody);
+    guide->SetTextColor(Theme::kTextPrimary);
+    guide->SetText(ICloudSetupGuide(), false);
+    guide->SetElementSize(Size2Df(0, static_cast<float>(kGuideHeight)));
+    guide->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    guide->SetVisible(false);
+    content->AddChild(guide);
+
+    // Raw pointers: the dialog owns the button and the area, and the button's
+    // own handler must not hold a reference to it.
+    auto* guideBtnRaw = guideBtn.get();
+    auto* guideRaw    = guide.get();
+    auto* guideRowRaw = guideRow.get();
+    auto setGuideOpen = [dlg, guideBtnRaw, guideRaw](bool open) {
+        if (guideRaw->IsVisible() == open) return;
+        guideRaw->SetVisible(open);
+        guideBtnRaw->SetText(open ? "Hide info" : "Show info");
+        dlg->SetWindowSize(kWidth, open ? kHeight + kGuideHeight + static_cast<int>(Theme::kInnerGap)
+                                        : kHeight);
+    };
+    guideBtn->onClick = [setGuideOpen, guideRaw]() { setGuideOpen(!guideRaw->IsVisible()); };
+
+    email->onTextChanged = [hint, password, passRow, guideRowRaw, setGuideOpen](const std::string& text) {
+        // The guide is offered for iCloud addresses and for domains no preset
+        // knows (an own domain on iCloud+); typing a Gmail address closes it.
+        const bool offerGuide = OffersICloudSetupGuide(text);
+        guideRowRaw->SetVisible(offerGuide);
+        if (!offerGuide) setGuideOpen(false);
+
         const DiscoveryResult d = AutoDiscovery::FromPresets(text);
         const std::string provider = OAuthProviderFor(d);
         // Providers that no longer take a typed password (Google, Microsoft) sign
@@ -135,6 +201,10 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
             hint->SetText(d.displayName + ": leave the password empty to sign in with "
                           + name + " in your browser, or enter an app password.");
             password->SetPlaceholder("Leave empty to sign in with " + name);
+        } else if (d.displayName == "iCloud") {
+            hint->SetText("iCloud takes an app-specific password, not your Apple Account "
+                          "password - Show info below says where to make one.");
+            password->SetPlaceholder("App-specific password");
         } else if (ProviderNeedsAppPassword(d)) {
             hint->SetText(d.displayName + " rejects the normal password in mail programs: "
                           "enter an app password generated in your account's security "

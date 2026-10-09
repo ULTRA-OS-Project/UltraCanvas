@@ -1,7 +1,10 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.h
 // CorelDRAW CDR/CMX file format plugin using libcdr and librevenge
+// Version: 1.2.1 - ExportToXAR names the way to XAR (the Vector plugin's
+//                  CDRConverter + XARConverter) instead of a reason that
+//                  stopped being true
 // Version: 1.2.0
-// Last Modified: 2026-08-26
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -272,11 +275,13 @@ namespace UltraCanvas {
                                            const std::string& svgPath,
                                            int pageIndex = -1);
 
-        // Convert a CorelDRAW/CMX file to Xara XAR. Not implemented yet: the
-        // XAR writer (XARConverter, Plugins/Vector) exports only from the
-        // shared VectorStorage document model, and no CDR importer into that
-        // model exists. Always fails with an error saying so — kept so
-        // callers can offer the format and surface the reason.
+        // Convert a CorelDRAW/CMX file to Xara XAR: not from this plugin. The
+        // XAR writer (XARConverter) and the CDR reader into its document
+        // model (CDRConverter::Import, which reads through this plugin) are
+        // the Vector plugin's, which builds on this one, so a caller with the
+        // Vector plugin imports with CDRConverter and exports with
+        // XARConverter (the DemoApp's CDR page does). This always fails with
+        // an error saying so.
         static CDRExportResult ExportToXAR(const std::string& cdrPath,
                                            const std::string& xarPath);
     };

@@ -1,5 +1,7 @@
 # UltraCanvasDiagramRouter
 
+<!-- doc-check: struct MyNode { double x = 0, y = 0, width = 0, height = 0; }; std::map<std::string, MyNode> nodes; std::string sourceId; std::string targetId; MyNode source; MyNode target; double elementWidth; double elementHeight; int IndexOfThisConnectionOnFace(const std::string& nodeId, DiagramCardinalSide side); int ConnectionsOnFace(const std::string& nodeId, DiagramCardinalSide side); -->
+
 Shared orthogonal connection routing for the diagram family.
 
 - Header: `include/Plugins/Diagrams/UltraCanvasDiagramRouting.h`

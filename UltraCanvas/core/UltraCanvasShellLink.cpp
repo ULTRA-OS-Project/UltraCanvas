@@ -331,7 +331,8 @@ namespace UltraCanvas {
         std::string WindowsEnvValue(const std::string& name,
                                     const std::string& userProfile) {
 #ifdef _WIN32
-            if (const char* v = std::getenv(name.c_str())) return v;
+            // UTF-8 from the wide environment, like the link's own strings.
+            if (std::string v = GetEnvUtf8(name.c_str()); !v.empty()) return v;
 #endif
             const std::string key = ToLowerAscii(name);
             if (key == "systemdrive" || key == "homedrive")   return "C:";

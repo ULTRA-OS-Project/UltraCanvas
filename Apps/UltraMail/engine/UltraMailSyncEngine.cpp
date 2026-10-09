@@ -1,4 +1,9 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.4.0 - the verified sender domain is stored with the verdict;
+//                  RescanStaleVerdicts after each sync of a folder
+// Version: 0.3.0 - SyncFolders keeps the server's separator and drops the folders
+//                  the server no longer lists
+// Version: 0.2.0 - RefreshFolder / FetchMissing; the UIDNEXT check on the cache
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
@@ -14,6 +19,7 @@
 #include <iterator>
 #include <string>
 #include <unordered_map>
+#include <set>
 #include <unordered_set>
 #include <vector>
 #include <UltraCanvasUtils.h>
@@ -147,15 +153,71 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
     if (!r) return SyncOutcome::Fail(r);
 
     SyncOutcome out;
+    std::vector<Folder> stored;
+    store_.ListFolders(accountId, stored);
+    std::set<std::string> listed;
     for (const auto& f : folders) {
         Folder lf;
         lf.accountId = accountId;
         lf.name = f.name;
         lf.role = FolderRoleFromString(f.role);
         lf.selectable = f.selectable;   // \Noselect containers (e.g. "[Gmail]")
+        lf.delimiter = f.delimiter;
         if (store_.UpsertFolder(lf)) out.stats.folders++;
+        listed.insert(f.name);
+    }
+
+    // A folder the server no longer lists was deleted or renamed there: it
+    // leaves the tree, with its messages and their cached bodies. Only on a
+    // list that names something - an empty one is never taken for "every
+    // folder is gone" - and never the inbox, which every mailbox has.
+    if (!listed.empty()) {
+        for (const auto& s : stored) {
+            if (listed.count(s.name) || s.name == "INBOX") continue;
+            if (!store_.RemoveFolder(accountId, s.name)) continue;
+            std::error_code ec;
+            fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
+            out.stats.foldersRemoved++;
+        }
     }
     return out;
+}
+
+bool SyncEngine::FolderStillListed(const std::string& accountId, const std::string& folder,
+                                   const std::string& serverUrl,
+                                   const UltraNetMailOptions& options) {
+    if (folder == "INBOX") return true;
+    SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
+    if (!listed.ok) return true;
+    std::vector<Folder> folders;
+    if (!store_.ListFolders(accountId, folders)) return true;
+    for (const auto& f : folders) if (f.name == folder) return true;
+    return false;
+}
+
+MessageEnvelope SyncEngine::ToStored(const std::string& accountId, const std::string& folder,
+                                    const UltraNetMailEnvelope& e) const {
+    MessageEnvelope m;
+    m.accountId = accountId;
+    m.folder    = folder;
+    m.uid       = static_cast<int64_t>(e.uid);
+    m.messageId = e.messageId;
+    m.inReplyTo = e.inReplyTo;
+    // Subject / display names arrive as RFC 2047 encoded-words on the
+    // envelope path (unlike a full message parse). Decode them once here
+    // so the store — list, preview and collected contacts — holds
+    // readable text.
+    m.subject   = UltraNet_MimeDecodeHeader(e.subject);
+    ParseFromField(e.from, m.fromName, m.fromAddr);
+    m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
+    m.to    = e.to;
+    for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
+    m.date  = ParseRfc2822Date(e.date);
+    m.flags = MapNetFlagsToLocal(e.flags);
+    // Automated/bulk detection needs List-*/Precedence headers, which the
+    // envelope fetch does not carry yet; left false for now.
+    m.automated = false;
+    return m;
 }
 
 SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
@@ -164,32 +226,45 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
                                      const UltraNetMailOptions& options,
                                      bool fetchBodies,
                                      const std::function<void(const MessageEnvelope&)>& onMessageStored) {
-    // Detect a server-side renumber: if the folder's UIDVALIDITY changed, every
-    // cached UID is stale (and the new UIDs may be lower than our stored max, so
-    // an incremental fetch would miss mail). Discard the folder's cache so the
-    // fetch below restarts from UID 0. Best-effort: a backend that cannot report
-    // STATUS just keeps the incremental behaviour.
+    SyncOutcome out;
+    int64_t sinceUid = 0;
+    store_.GetMaxUid(accountId, folder, sinceUid);
+
+    // Is the cache from this numbering of the mailbox? Two signs it is not,
+    // and either drops the folder's cache so the fetch below starts again
+    // from UID 0 - an incremental fetch ("UID > the highest held") would
+    // otherwise skip every new message numbered below a stale highest UID:
+    //  - UIDVALIDITY changed: the server renumbered the mailbox.
+    //  - the cache holds a UID at or above UIDNEXT, which the mailbox has not
+    //    handed out yet. A renumbering whose UIDVALIDITY change was missed
+    //    (unknown before, or read wrongly), or mail from another server after
+    //    the account's server changed.
+    // Best-effort: a backend that cannot report STATUS keeps the incremental
+    // behaviour.
     UltraNetMailboxStatus status;
-    if (mailbox_.GetMailboxStatus(serverUrl, folder, status, options) &&
-        status.uidValidity != 0) {
+    if (mailbox_.GetMailboxStatus(serverUrl, folder, status, options)) {
+        out.stats.serverMessages = static_cast<int>(status.messages);
         int64_t stored = 0;
         store_.GetFolderUidValidity(accountId, folder, stored);
-        if (stored != 0 && stored != static_cast<int64_t>(status.uidValidity)) {
+        const bool renumbered = status.uidValidity != 0 && stored != 0 &&
+                                stored != static_cast<int64_t>(status.uidValidity);
+        const bool aheadOfServer = status.uidNext != 0 &&
+                                   sinceUid >= static_cast<int64_t>(status.uidNext);
+        if (renumbered || aheadOfServer) {
             store_.ClearFolderMessages(accountId, folder);   // drop stale cached UIDs
             // ... and their bodies: every cached UID of the folder is stale, and
             // the new numbering would overwrite some files and orphan the rest.
             std::error_code ec;
             fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
+            sinceUid = 0;
+            out.stats.cacheReset = true;
         }
-        store_.SetFolderUidState(accountId, folder,
-                                 static_cast<int64_t>(status.uidValidity),
-                                 static_cast<int64_t>(status.uidNext));
+        if (status.uidValidity != 0)
+            store_.SetFolderUidState(accountId, folder,
+                                     static_cast<int64_t>(status.uidValidity),
+                                     static_cast<int64_t>(status.uidNext));
     }
 
-    int64_t sinceUid = 0;
-    store_.GetMaxUid(accountId, folder, sinceUid);
-
-    SyncOutcome out;
     std::vector<uint32_t> bodyUids;
     // Stream envelopes: each header lands one at a time so `onMessageStored` can
     // fill the UI list incrementally instead of the caller waiting for the whole
@@ -197,33 +272,20 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
     UltraNetResult r = mailbox_.FetchEnvelopes(
         serverUrl, folder, static_cast<uint32_t>(sinceUid),
         [&](const UltraNetMailEnvelope& e) {
-            MessageEnvelope m;
-            m.accountId = accountId;
-            m.folder    = folder;
-            m.uid       = static_cast<int64_t>(e.uid);
-            m.messageId = e.messageId;
-            m.inReplyTo = e.inReplyTo;
-            // Subject / display names arrive as RFC 2047 encoded-words on the
-            // envelope path (unlike a full message parse). Decode them once here
-            // so the store — list, preview and collected contacts — holds
-            // readable text.
-            m.subject   = UltraNet_MimeDecodeHeader(e.subject);
-            ParseFromField(e.from, m.fromName, m.fromAddr);
-            m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
-            m.to    = e.to;
-            for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
-            m.date  = ParseRfc2822Date(e.date);
-            m.flags = MapNetFlagsToLocal(e.flags);
-            // Automated/bulk detection needs List-*/Precedence headers, which the
-            // envelope fetch does not carry yet; left false for now.
-            m.automated = false;
-
+            // "UID n:*" always matches the highest UID, even one below n:
+            // that message is held already.
+            if (sinceUid > 0 && static_cast<int64_t>(e.uid) <= sinceUid) return;
+            const MessageEnvelope m = ToStored(accountId, folder, e);
             if (store_.UpsertMessage(m)) out.stats.messages++;
             if (fetchBodies) bodyUids.push_back(e.uid);
             if (onMessageStored) onMessageStored(m);
         },
         options);
-    if (!r) return SyncOutcome::Fail(r);
+    if (!r) {
+        SyncOutcome fail = SyncOutcome::Fail(r);
+        fail.stats = out.stats;
+        return fail;
+    }
 
     // Fetch all new bodies over ONE reused connection (see
     // IMailboxProtocolPlugin::FetchMessageBodies) instead of reconnecting per
@@ -238,7 +300,116 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
             options);
     }
     CountStoredAttachments(accountId, folder);
+    RescanStaleVerdicts(accountId, folder);
     return out;
+}
+
+SyncOutcome SyncEngine::FetchMissing(const std::string& accountId,
+                                     const std::string& folder,
+                                     const std::vector<uint32_t>& uids,
+                                     const std::string& serverUrl,
+                                     const UltraNetMailOptions& options,
+                                     bool fetchBodies,
+                                     const std::function<void(const MessageEnvelope&)>& onMessageStored) {
+    SyncOutcome out;
+    if (uids.empty()) return out;
+    std::vector<uint32_t> bodyUids;
+    UltraNetResult r = mailbox_.FetchEnvelopesByUid(
+        serverUrl, folder, uids,
+        [&](const UltraNetMailEnvelope& e) {
+            const MessageEnvelope m = ToStored(accountId, folder, e);
+            if (store_.UpsertMessage(m)) {
+                out.stats.messages++;
+                out.stats.repaired++;
+            }
+            if (fetchBodies) bodyUids.push_back(e.uid);
+            if (onMessageStored) onMessageStored(m);
+        },
+        options);
+    if (!r) {
+        SyncOutcome fail = SyncOutcome::Fail(r);
+        fail.stats = out.stats;
+        return fail;
+    }
+    if (fetchBodies && !bodyUids.empty()) {
+        mailbox_.FetchMessageBodies(
+            serverUrl, folder, bodyUids,
+            [&](uint32_t uid, const std::string& raw) {
+                if (!WriteBody(accountId, folder, static_cast<int64_t>(uid), raw).empty())
+                    out.stats.bodies++;
+            },
+            options);
+    }
+    return out;
+}
+
+SyncOutcome SyncEngine::RefreshFolder(const std::string& accountId,
+                                      const std::string& folder,
+                                      const std::string& serverUrl,
+                                      const UltraNetMailOptions& options,
+                                      bool fetchBodies,
+                                      const std::function<void(const MessageEnvelope&)>& onMessageStored) {
+    // New mail first: it is what the reader waits for, and it streams into
+    // the list as it arrives.
+    SyncOutcome out = SyncMessages(accountId, folder, serverUrl, options, fetchBodies,
+                                   onMessageStored);
+    if (!out.ok) return out;
+
+    // Then the server's whole list: read state changed elsewhere, mail
+    // deleted or moved elsewhere, and the UIDs the store lacks.
+    std::vector<uint32_t> missing;
+    SyncOutcome rec = ReconcileFlags(accountId, folder, serverUrl, options, &missing);
+    out.stats.reconciled    = rec.stats.reconciled;
+    out.stats.expunged      = rec.stats.expunged;
+    out.stats.bodiesRemoved = rec.stats.bodiesRemoved;
+
+    // ... and the rows earlier versions stored blank for a header they
+    // could not read. Both are fetched by UID; the repair is best-effort, and
+    // what it does not get is asked for again next time.
+    std::vector<int64_t> blank;
+    store_.ListBlankUids(accountId, folder, blank);
+    for (int64_t uid : blank)
+        if (uid > 0 && uid <= 0xFFFFFFFFll) missing.push_back(static_cast<uint32_t>(uid));
+    std::sort(missing.begin(), missing.end());
+    missing.erase(std::unique(missing.begin(), missing.end()), missing.end());
+    if (!missing.empty()) {
+        SyncOutcome rep = FetchMissing(accountId, folder, missing, serverUrl, options,
+                                       fetchBodies, onMessageStored);
+        out.stats.messages += rep.stats.messages;
+        out.stats.repaired += rep.stats.repaired;
+        out.stats.bodies   += rep.stats.bodies;
+        CountStoredAttachments(accountId, folder);
+    }
+    // Bodies an earlier download did not get.
+    if (fetchBodies) {
+        const int bodies = FetchMissingBodies(accountId, folder, serverUrl, options);
+        out.stats.bodies += bodies;
+        if (bodies > 0) CountStoredAttachments(accountId, folder);
+    }
+    return out;
+}
+
+int SyncEngine::FetchMissingBodies(const std::string& accountId, const std::string& folder,
+                                   const std::string& serverUrl,
+                                   const UltraNetMailOptions& options, int limit) {
+    std::vector<MessageEnvelope> newest;
+    store_.ListMessages(accountId, folder, limit, newest);
+    std::vector<uint32_t> uids;
+    for (const auto& m : newest) {
+        std::error_code ec;
+        if (m.uid > 0 && m.uid <= 0xFFFFFFFFll &&
+            !fs::exists(PathFromUtf8(BodyPath(accountId, folder, m.uid)), ec))
+            uids.push_back(static_cast<uint32_t>(m.uid));
+    }
+    if (uids.empty()) return 0;
+    int cached = 0;
+    mailbox_.FetchMessageBodies(
+        serverUrl, folder, uids,
+        [&](uint32_t uid, const std::string& raw) {
+            if (!WriteBody(accountId, folder, static_cast<int64_t>(uid), raw).empty()) ++cached;
+        },
+        options);
+    return cached;
 }
 
 int SyncEngine::CountStoredAttachments(const std::string& accountId, const std::string& folder,
@@ -283,9 +454,39 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     security.score  = report.score;
     security.bulk   = report.bulk;
     security.reason = report.Summary();
+    security.verifiedDomain = report.verifiedDomain;
+    security.verifiedBy     = report.verifiedBy;
+    security.findings       = report.Codes();
     security.attachments = MimeCodec::CountAttachments(raw);   // the list's paperclip
     store_.SetSecurity(accountId, folder, uid, security);
     return path;
+}
+
+int SyncEngine::RescanStaleVerdicts(const std::string& accountId, const std::string& folder,
+                                    int limit) {
+    std::vector<int64_t> uids;
+    if (!store_.ListStaleVerdicts(accountId, folder, kThreatRulesRevision, limit, uids))
+        return 0;
+    int rescanned = 0;
+    for (int64_t uid : uids) {
+        std::ifstream in(PathFromUtf8(BodyPath(accountId, folder, uid)), std::ios::binary);
+        if (!in) continue;
+        const std::string raw((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        if (raw.empty()) continue;
+        const ThreatReport report = ScanRawMessage(raw);
+        MessageSecurity security;
+        security.level  = report.level;
+        security.score  = report.score;
+        security.bulk   = report.bulk;
+        security.reason = report.Summary();
+        security.verifiedDomain = report.verifiedDomain;
+        security.verifiedBy     = report.verifiedBy;
+        security.findings       = report.Codes();
+        // attachments stays -1: the count already stored is kept.
+        if (store_.SetSecurity(accountId, folder, uid, security)) ++rescanned;
+    }
+    return rescanned;
 }
 
 std::string SyncEngine::FetchBody(const std::string& accountId, const std::string& folder,
@@ -315,7 +516,9 @@ SyncOutcome SyncEngine::SetFlag(const std::string& accountId, const std::string&
 SyncOutcome SyncEngine::ReconcileFlags(const std::string& accountId,
                                        const std::string& folder,
                                        const std::string& serverUrl,
-                                       const UltraNetMailOptions& options) {
+                                       const UltraNetMailOptions& options,
+                                       std::vector<uint32_t>* missing) {
+    if (missing) missing->clear();
     // Snapshot what we hold locally so we can both diff flags and notice UIDs the
     // server has dropped.
     std::vector<MessageEnvelope> locals;
@@ -368,6 +571,14 @@ SyncOutcome SyncEngine::ReconcileFlags(const std::string& accountId,
         // Bodies an earlier version left behind when it dropped only the row.
         // Only once the server has positively listed the folder, as above.
         out.stats.bodiesRemoved += PruneBodies(accountId, folder, kept, maxUid);
+        // What the server lists and the store does not hold: mail an earlier
+        // sync skipped. (A message that arrived since the new-mail step is in
+        // here too; fetching it now is just as right.)
+        if (missing) {
+            for (int64_t uid : serverUids)
+                if (!localFlags.count(uid)) missing->push_back(static_cast<uint32_t>(uid));
+            std::sort(missing->begin(), missing->end());
+        }
     }
     return out;
 }

@@ -64,6 +64,18 @@ struct UltraNetHttpOptions {
     int64_t maxReceiveSize = 0;     // 0 = use config default
     std::string outputFilePath;     // if set, body streamed to disk
 
+    // Accept the server only when its certificate carries this public key:
+    // "sha256//<base64>" (UltraNet_PublicKeyPinOf; several may be joined with
+    // ';'). Checked on every handshake - with acceptInvalidCert too, which is
+    // what lets a device with a self-signed certificate be trusted by its key
+    // alone and by nothing else. A mismatch fails with TlsPublicKeyMismatch.
+    // When the TLS library cannot check a pin, certificate verification is
+    // switched back on for the request rather than the pin being dropped.
+    std::string pinnedPublicKey;
+    // Fill UltraNetResponse::tlsInfo from the server's certificate, its
+    // public-key pin included - also when the request itself fails.
+    bool capturePeerCertificate = false;
+
     static UltraNetHttpOptions Default() { return {}; }
 };
 
@@ -103,11 +115,21 @@ struct UltraNetResponse {
     int64_t contentLength = -1;
     double elapsedTime = 0;
     UltraNetTlsInfo tlsInfo;
+    // Why the transfer did not finish - timed out, connection lost, over
+    // maxReceiveSize, cancelled - or empty when the whole response arrived.
+    // A transfer can fail after the status line: statusCode is then the
+    // server's (200, say) and body only what came before the failure, so an
+    // async caller checks this before trusting body. An HTTP error status
+    // (404, 500) is a finished transfer and leaves this empty.
+    std::string transferError;
+    // The body went over maxReceiveSize (transferError says so as well).
+    bool exceededReceiveLimit = false;
 
     std::string GetBodyAsString() const {
         return std::string(body.begin(), body.end());
     }
     bool IsSuccess() const { return statusCode >= 200 && statusCode < 300; }
+    bool IsComplete() const { return transferError.empty(); }
 };
 
 // ============================================================================

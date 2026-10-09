@@ -1,6 +1,7 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
+// Version: 0.2.1 - an href's entities decoded by the HTMLReader module (HTML::DecodeEntities)
 // Version: 0.2.0
-// Last Modified: 2026-09-04
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -15,6 +16,7 @@
 #include <string>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#include "../../UltraCanvas/include/HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities
 
 namespace UltraCloud {
 
@@ -107,14 +109,6 @@ std::string Trim(const std::string& s) {
     return s.substr(a, b - a + 1);
 }
 
-std::string DecodeEntities(std::string s) {
-    auto rep = [&s](const char* from, const char* to) {
-        for (std::size_t p; (p = s.find(from)) != std::string::npos;) s.replace(p, std::strlen(from), to);
-    };
-    rep("&amp;", "&"); rep("&lt;", "<"); rep("&gt;", ">"); rep("&quot;", "\""); rep("&apos;", "'");
-    return s;
-}
-
 } // namespace
 
 std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& folderPath) {
@@ -131,7 +125,7 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 
         std::size_t hs, he;
         if (!FindElement(lower, "href", rs, re, hs, he)) continue;
-        std::string href = DecodeEntities(Trim(xml.substr(hs, he - hs)));
+        std::string href = UltraCanvas::HTML::DecodeEntities(Trim(xml.substr(hs, he - hs)));
         // Strip scheme/host: keep the path part, decoded.
         if (auto p = href.find("://"); p != std::string::npos) {
             auto slash = href.find('/', p + 3);

@@ -60,7 +60,7 @@ UltraCanvasAlert::Confirm("Delete this item?", "Confirm Delete",
 // Capture which button was pressed
 UltraCanvasAlert::Warning("Leave without saving?", "Unsaved changes",
                           [](DialogResult r) { /* r == DialogResult::OK ... */ },
-                          parentWindow);
+                          parentWindow.get());
 ```
 
 ## Alerts without the severity icon
@@ -104,7 +104,7 @@ opts.message       = "A new version is ready to install.";
 opts.details       = "Version 4.2.0 - the app will restart to finish.";
 opts.buttons       = DialogButtons::OKCancel;
 opts.defaultButton = DialogButton::OK;
-opts.parent        = parentWindow;
+opts.parent        = parentWindow.get();
 opts.onResult      = [](DialogResult r) { /* ... */ };
 UltraCanvasAlert::Show(opts);
 ```
@@ -132,9 +132,15 @@ class UltraCanvasAlert {
     static void Info      (const std::string& message, const std::string& title = "",
                            std::function<void(DialogResult)> onResult = nullptr,
                            UltraCanvasWindowBase* parent = nullptr);
-    static void Successful(/* same signature */);
-    static void Warning   (/* same signature */);
-    static void Error     (/* same signature */);
+    static void Successful(const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Warning   (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
+    static void Error     (const std::string& message, const std::string& title = "",
+                           std::function<void(DialogResult)> onResult = nullptr,
+                           UltraCanvasWindowBase* parent = nullptr);
 
     // Icon-less message box: no severity badge, so the content column is
     // centred in the full width of the dialog.
@@ -170,6 +176,11 @@ class UltraCanvasAlert {
   width, which is what makes a centred element in the alert body — a progress
   ring, a chart — centre in the window. It applies to the internal dialog;
   native OS message boxes draw their own icon.
-- For transient, non-blocking status messages that should *not* interrupt the
-  user, prefer a Toast (`UltraCanvasToast`) instead — an Alert is intentionally
-  interruptive.
+- For transient, non-blocking messages that should *not* interrupt the user,
+  use a toast instead — an Alert is intentionally interruptive: modal,
+  centred on its window, holding the keyboard focus until a button answers
+  it. [`UltraCanvasNotificationToast`](UltraCanvasNotificationToast.md) is the
+  toast: in a screen corner, never focused, gone by itself after a few
+  seconds; post a `system.notification` on UltraMessage and the desktop's
+  notification service (or the toast host) shows it. A critical notification
+  takes the red the Error alert uses.

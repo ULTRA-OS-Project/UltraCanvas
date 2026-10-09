@@ -36,7 +36,10 @@ before adding cross-module code.
   **Consult the matching doc before writing code that uses a component —
   do not guess APIs from other frameworks.**
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
-  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …).
+  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
+  UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
+  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
+  a mirror is stale (`MIRRORED_READMES` in the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
@@ -62,6 +65,26 @@ before adding cross-module code.
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
   a value, it is an element: use the framework's, or add one.
+- **HTML, CSS and HTML entities are read through the HTMLReader module
+  (`UltraCanvas/{include,core}/HTMLReader/`, always built) and nowhere else.**
+  It has the parser and DOM (`HTML::Parser`, `HTML::Document`), the CSS
+  parser with selector matching for any tree (`HTML::StyleSheet`,
+  `HTML::MatchingRules<Traits>`), the cascade (`HTML::StyleResolver`), the
+  builder of native element trees (`HTML::ElementBuilder`), the importer into
+  an editable `UCRichDocument` (`ImportHTMLToRichDocument`), and the two
+  helpers that keep being rewritten: `HTML::DecodeEntities` and
+  `HTML::ExtractPlainText`. Do not write another tag stripper, entity table,
+  `style=""` splitter or selector matcher — seven had accumulated by
+  2026-10, in the Filer preview, two places in UltraMail, EmailCleaner, the
+  rich document's paste path and two SVG readers, each with a different
+  handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
+  supplying a ten-line Traits type, not a matcher. What the module lacks is
+  added to it, so the next caller finds it. `scripts/check_html_reuse.py`
+  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  listed the sites that predated the rule; it has been empty since
+  2026-10-08 and stays so. A site that must
+  stay says why with `// html-reuse-exempt: <why>`. Doc:
+  `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
   (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
 - **Platform separation:** platform-specific code goes only under
@@ -122,8 +145,27 @@ before adding cross-module code.
   `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
   `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
   through), so wrapping is never wrong. The check reads the file's own
-  declarations to tell a string from a path, so a string it cannot see the
-  type of (an `auto`, a getter's result) is still review's to catch.
+  declarations and those of the repository headers it includes directly to
+  tell a string from a path - so a class member declared in its header and a
+  call to a function declared as returning `std::string`
+  (`fs::exists(DeviceKeyPath())`) count - and reads a call that spans lines
+  whole. A member access (`env.accountId`) is looked up through the whole
+  include chain, since the struct is often a header or two further down. A
+  string it still cannot see the type of (an `auto`, a member declared two
+  different ways, a type from outside the repository) is review's to catch.
+  A string that is not UTF-8 to begin with is not fixed by wrapping it in
+  `PathFromUtf8`. The environment is the common case: Windows keeps the
+  profile folders and the user's name there (`APPDATA`, `LOCALAPPDATA`,
+  `USERPROFILE`, `TEMP`, `USERNAME` ...), and the narrow `getenv` /
+  `_dupenv_s` answers in the ANSI code page. Read every variable with
+  `GetEnvUtf8(name)` (`UltraCanvasPathUtf8.h`): UTF-8 on every platform, from
+  `GetEnvironmentVariableW` on Windows. The check reports a narrow read
+  (`env-narrow`) - of one of those names, anywhere in Windows-only code, or
+  through a helper of the same file that reads narrowly - except for a
+  deliberate one that says why (`// path-string-ok: ASCII 0/1 flag`). An
+  `...A` Win32 call (`GetVolumeInformationA`, `GetTempPathA`) has the same
+  problem and is review's to catch: call the `...W` one and convert with
+  `PathToUtf8` or `PathUtf8Detail::Utf16ToUtf8`.
   `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
   folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
@@ -141,6 +183,14 @@ before adding cross-module code.
   `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
   sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **An inline body in a public header uses all its parameters.** It is
+  compiled into every file that includes the header, so a parameter it
+  leaves unused warns in every build with `-Wextra` (the Models plugin, the
+  tests, Texter, AnchorPoint). A default virtual body that ignores one marks
+  it `(void)name;`, as `UltraCanvasRenderContext.h` does; the signature and
+  the name stay. `PublicHeadersUnusedParamTest` (Tests/CMakeLists.txt)
+  includes the framework's public headers with `-Werror=unused-parameter`,
+  so a new one fails the build there.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
@@ -214,8 +264,13 @@ back-reference raw — `[button = button.get(), status]` — which is valid for 
 long as the callback can run, because the thing holding the callback is the
 thing being pointed at. Captures pointing the other way (a popup the lambda
 keeps alive, a sibling it updates, `make_shared` state) are ownership, not a
-cycle, and stay `shared_ptr`. `scripts/check_callback_cycles.py` enforces this
-and runs in CI; a genuine exception opts out with
+cycle, and stay `shared_ptr`. It makes no difference where the `shared_ptr`
+came from or how the lambda is stored: a parameter the function was handed
+(`AddRadioButton(std::shared_ptr<UltraCanvasRadio> button)` storing
+`[this, button]` on `button` leaked every radio), a setter
+(`x->SetOnClick(...)`) as much as an assignment (`x->onClick = ...`), and
+`[=]` or `[p = x]` as much as `[x]`. `scripts/check_callback_cycles.py`
+enforces this and runs in CI; a genuine exception opts out with
 `// callback-cycle-exempt: <why>`.
 
 ## Building and testing
@@ -245,9 +300,32 @@ alongside the existing deps. The build uses the system default linker (GNU ld,
 same as CI); with a newer Clang on an older distro it automatically drops to
 DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
-The full 3-OS dependency lists are in `.github/workflows/build.yml`.
+The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
+installs Ubuntu packages with `scripts/ci-apt.sh install`, not
+`sudo apt-get install`: it stops and retries a download that has stopped
+dead, which apt itself waits out for as long as the job lasts.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
+without most of the libraries CI installs, and CMake leaves a missing optional
+library out without a word - so `.claude/settings.json` also runs
+`.claude/hooks/session-start.sh` on `SessionStart`. In the cloud only
+(`$CLAUDE_CODE_REMOTE=true`) it installs every package in its `PACKAGES` list
+that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
+Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
+builds them from source. Without it, UltraCrypt built without libsodium and
+every credential-vault test failed here while passing in CI, and VideoFX, the
+PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
+were not built at all. A cold container takes about a minute, a warm one a
+fraction of a second; it never blocks the session, and when an install fails
+it says so in one line in the session's context. The services CI starts for
+its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
+tests skip. A test that fails here but passes in CI because a library is
+missing is fixed by adding the package to that list, not by treating the
+failure as expected; re-run `cmake` on a build directory configured before
+the install. To build what CI builds, configure with the options of CI's
+*Configure CMake (macOS/Linux)* step.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -284,6 +362,91 @@ screenshot of the Xvfb display instead (`import -window root shot.png`).
 BROKEN per function — run it before assuming a networking API is usable in a
 given build. See `Docs/Modules/UltraNet/ApiStatus.md`.
 
+### One shared core, on every platform
+
+The framework is **one shared library per platform** - `libUltraCanvas.so`,
+`libUltraCanvas.dylib`, `libUltraCanvas.dll` (`ULTRACANVAS_BUILD_SHARED`, the
+default and what every CI row passes) - and the UI-free modules are **inside
+it**: UltraNet, UltraWin, UltraCrypt, UltraVault, UltraDatabase, UltraMessage,
+NetworkMonitor and VirtualFS are each built as a static archive that the
+shared core absorbs whole (`$<LINK_LIBRARY:WHOLE_ARCHIVE,…>`, "MODULE HOMES" in
+`UltraCanvas/CMakeLists.txt`), so the core exports their complete API and
+every running application shares one copy of the code and its global state.
+Until October 2026 the core was static on macOS, so each of the ~20 `.app`
+executables carried the whole framework, and on Linux and Windows an app that
+linked a module archive next to the shared core got a second copy of that
+module - two registries, two connection tables. The rules:
+
+- **Link a module by its public name** - `UltraDatabase`, `UltraVault`,
+  `UltraCrypt`, `UltraMessage`, `NetworkMonitor` - never by its archive
+  (`uc-database`, `uc-vault`, …). The public name is an INTERFACE target that
+  resolves to the shared core, or to the archive under a static core, and
+  carries the module's headers and switches either way. Only
+  `UltraCanvas/CMakeLists.txt` and the other archives name an archive.
+- **A new UI-free module follows the pattern**: `add_library(uc-<name> STATIC …)`,
+  dependencies on other modules by *their* archive names,
+  `_ultracanvas_module_home(<Name> uc-<name>)`, and its archive added to the
+  one `_ultracanvas_absorb_modules(…)` call, dependents before the modules
+  they use. A module that links the core (UltraClipboardHistory,
+  UltraMessageCenter) is not absorbed; it links the core and the homes it needs.
+- **Do not link a module archive and the core on one line**, and do not add a
+  `_uc_core_shared` conditional of your own: that was the workaround for
+  UltraNet and UltraWin before the homes existed.
+
+### Packaging a new app for macOS
+
+`package-macos.sh` ships the apps as one suite folder, `UltraCanvas/`, with a
+single shared `Frameworks/` that every `.app` loads its dylibs from
+(`@executable_path/../../../Frameworks/`) - the shared core,
+`libUltraCanvas.1.dylib`, among them. Linux (`lib/`) and Windows (one
+`dist/` folder) already shared their libraries; macOS gave each `.app` its own
+copy of the ~90 Homebrew dylibs, so every new app added ~95 MB to the
+download - two apps added in October 2026 took the macOS DMG from 431 MB back
+to 556 MB - and, until October 2026, its own statically linked copy of the
+framework on top. The rules:
+
+- **Add an app with a `build_app_bundle` call** in `package-macos.sh`, above
+  `finish_suite`. That is the whole job: its libraries go to the shared
+  `Frameworks/`, and it is signed and notarized with the suite.
+- **Never give an app its own `Contents/Frameworks/`**, copy dylibs into a
+  bundle by hand, or point a load command anywhere but the shared folder.
+  `verify_suite` fails the packaging run (and CI) when an app carries
+  `Contents/Frameworks/`, when a binary needs a dylib missing from the shared
+  folder, when one still loads from Homebrew or the build tree, or when the
+  shared folder holds no `libUltraCanvas.*.dylib` - a static core on macOS is
+  a packaging error now, not a configuration.
+- **A command-line tool** goes through `build_cli_tool`: it lands in the suite
+  folder as `<name>/bin/<name>` and loads from the same shared `Frameworks/`
+  (`@executable_path/../../Frameworks`), never from a folder of its own.
+- **Check the size** in the job summary - "macOS suite sizes", and "Package
+  sizes" on the Linux and Windows rows, which list the core library, the sum
+  of the application executables and each one: a new app should add roughly
+  its executable and resources, a few MB - not a second copy of the libraries
+  or of the framework.
+- **Do not write `LSMinimumSystemVersion` yourself.** `finish_suite` reads the
+  minimum macOS from the app's binaries and the shared `Frameworks/`, writes
+  it into the app's `Info.plist`, and fails when something needs a newer
+  macOS than `MACOSX_DEPLOYMENT_TARGET` (CI: 14.0) - dyld refuses such a
+  binary whatever the plist says.
+- **An app that opens the camera or the microphone gets a line in
+  `camera_usage` / `microphone_usage`** in `package-macos.sh`, with the
+  reason the user reads in the macOS prompt. That one line writes the
+  `NS*UsageDescription` key into its `Info.plist` and the hardened-runtime
+  device entitlement into what it is signed with. A signed app needs both:
+  without the key TCC terminates it, and without the entitlement the device
+  is refused before the user is asked. Do not add device entitlements to
+  `MacOS/entitlements.plist`, which every app is signed with. Every app gets
+  the local-network reason and `NSBonjourServices`, because any app that
+  prints browses for IPP printers. A new Bonjour service type the framework
+  browses goes into `BONJOUR_SERVICES` there.
+- **A library a new app needs goes into `MacOS/deps/vcpkg.json`**, not into
+  a `brew install` in CI: the libraries CI bundles are built with vcpkg for
+  that macOS (`MacOS/deps/README.md`), and one taken from Homebrew carries the
+  runner's macOS and fails the check above.
+- The apps only run inside the suite folder; users install by dragging the
+  whole `UltraCanvas` folder to Applications. Say so wherever the macOS
+  install is described.
+
 ## Versioning
 
 The **first line of a changelog is the single source of truth** for a version,
@@ -306,6 +469,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
+| `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
@@ -314,6 +478,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
+| `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under
@@ -445,10 +610,28 @@ number anywhere else, and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too.
+   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
+   `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
+   entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
+   runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
-   the same change.
+   the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
+   it compiles the doc's C++ against the headers and reports each function,
+   field or signature the headers don't have (Linux, clang++). All
+   `*Examples.md` docs pass it. CI runs it over every doc under
+   `Docs/UltraCanvas/` but the changelog (`--all --strict`,
+   `doc-examples.yml`) whenever a doc or a public header changes, and fails
+   on any finding a component doc has. The design documents (a Proposal,
+   Plan or Investigation) describe APIs not written yet, so their findings
+   are listed in `scripts/doc_examples_baseline.txt` until the API exists;
+   a component doc must never be added there.
+   Changing a header can therefore fail a doc you did not touch: fix that
+   doc in the same change. A name a snippet takes from the application - a
+   `window`, a callback the reader writes, a version macro - is declared in
+   a `<!-- doc-check: ... -->` comment with its real type, never a framework
+   API that does not exist.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
@@ -664,7 +847,9 @@ For assistants:
    a pull request, rename the session so its title starts with the number:
    `#<n> <current title>` — e.g. `#412 UltraMail: wrap long subjects in the
    list`. In a Claude Code Remote session call `set_session_title` (the
-   claude-code-remote MCP server) right after `create_pull_request` returns;
+   Claude Code Remote MCP server, which builds name either
+   `mcp__claude-code-remote__…` or `mcp__Claude_Code_Remote__…` — the same
+   tool) right after `create_pull_request` returns;
    where no such tool exists, tell the user the number to add instead. One
    number per chat: when a later PR replaces a merged or closed one (rule 2),
    swap the old number for the new one rather than stacking them, and never

@@ -12,13 +12,15 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.4.1
-// Last Modified: 2026-10-02
+// Version: 0.6.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
+#include "VideoFXBeats.h"
+#include "VideoFXFaces.h"
 #include "VideoFXMusic.h"
 #include "VideoFX/VideoFX.h"
 
@@ -359,6 +361,9 @@ private:
     VideoFXResult OpenMusic();
     VideoFXResult FillMusic(int samples);
     VideoFXResult ReadMusicPacket();
+    VideoFXResult MusicOut(AVFrame* out);
+    VideoFXResult MoveHeldMusic(int samples);
+    VideoFXResult EndOfSong();
     VideoFXResult MixMusic(AVFrame* frame, int samples, int64_t firstSample);
 
     // ---- encoding ----
@@ -431,7 +436,7 @@ private:
 
     // background music
     bool musicOn = false;
-    bool musicEnded = false;        // past the end of a music file that does not loop
+    bool musicEnded = false;        // past the end of the music, which does not loop
     int musicSampleRate = 0;
     int musicChannels = 0;
     struct MusicSource {
@@ -443,8 +448,19 @@ private:
         int64_t nextPts = 0;
         bool inputDone = false;
         int64_t produced = 0;       // samples from this pass over the file
-    } bed;
-    AudioFifoPtr musicFifo;
+    } bed;                          // the song being decoded
+    std::vector<std::string> musicSongs;    // in playing order
+    std::vector<double> musicLengths;       // seconds each, 0 = unknown
+    size_t musicSong = 0;                   // index of `bed`
+    size_t musicEmptySongs = 0;             // songs in a row that gave no sound
+    double musicSongStart = 0.0;            // seconds cut from the start of `bed`
+    AudioFifoPtr musicFifo;                 // ready to mix
+    // A song's last crossfade's worth is held back here; at its end it becomes
+    // musicTail, which fades out under the next song's start
+    AudioFifoPtr musicHold;
+    int musicHoldSamples = 0;
+    FramePtr musicTail;
+    int musicTailPos = 0;
     std::unique_ptr<MusicDucker> ducker;
     std::chrono::steady_clock::time_point lastReport{};
     bool cancelled = false;
@@ -497,6 +513,8 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
                 return Fail(VideoFXResult::InvalidArgument, "Image segments last 0..24 hours");
             std::string motionError;
             if (!ValidateMotion(seg.motion, motionError)) return Fail(VideoFXResult::InvalidArgument, motionError);
+            if (!ValidateKeepInView(seg.keepInView, motionError))
+                return Fail(VideoFXResult::InvalidArgument, motionError);
             if (seg.image.IsValid()) {
                 p.displayWidth = seg.image.width;
                 p.displayHeight = seg.image.height;
@@ -1409,27 +1427,43 @@ VideoFXResult Exporter::PlanMusic() {
     if (!m.IsSet()) return VideoFXResult::Ok;
     std::string error;
     if (!ValidateMusic(m, error)) return Fail(VideoFXResult::InvalidArgument, error);
-    std::error_code ec;
-    if (std::filesystem::equivalent(UltraCanvas::PathFromUtf8(m.path), UltraCanvas::PathFromUtf8(outputPath), ec))
-        return Fail(VideoFXResult::InvalidArgument, "The output file is also the music: " + m.path);
-    VideoFXMediaInfo info;
-    VideoFXResult r = VideoFX_Probe(m.path, info);
-    if (r != VideoFXResult::Ok) {
-        const std::string reason = VideoFX_GetLastError();
-        return Fail(r, "Music " + m.path + ": " + reason);
+    musicSongs = m.Songs();
+    musicLengths.clear();
+    for (const std::string& song : musicSongs) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(UltraCanvas::PathFromUtf8(song), UltraCanvas::PathFromUtf8(outputPath), ec))
+            return Fail(VideoFXResult::InvalidArgument, "The output file is also the music: " + song);
+        VideoFXMediaInfo info;
+        VideoFXResult r = VideoFX_Probe(song, info);
+        if (r != VideoFXResult::Ok) {
+            const std::string reason = VideoFX_GetLastError();
+            return Fail(r, "Music " + song + ": " + reason);
+        }
+        if (!info.HasAudio()) return Fail(VideoFXResult::NoMediaStreams, "The music file has no sound: " + song);
+        if (musicLengths.empty() && info.duration > 0.0 && m.start >= info.duration)
+            return Fail(VideoFXResult::InvalidArgument, "Music start lies after the end of " + song);
+        if (musicLengths.empty()) musicSampleRate = info.sampleRate;
+        musicChannels = std::max(musicChannels, std::min(2, info.channels));
+        musicLengths.push_back(std::max(0.0, info.duration));
     }
-    if (!info.HasAudio()) return Fail(VideoFXResult::NoMediaStreams, "The music file has no sound: " + m.path);
-    if (info.duration > 0.0 && m.start >= info.duration)
-        return Fail(VideoFXResult::InvalidArgument, "Music start lies after the end of " + m.path);
-    musicSampleRate = info.sampleRate;
-    musicChannels = std::min(2, info.channels);
     return VideoFXResult::Ok;
 }
 
-// (Re)open the music at its start offset - also how it loops
+// Open song `musicSong` - the first at the music's start offset - and work
+// out how much of its end to hold back for the crossfade into the next
 VideoFXResult Exporter::OpenMusic() {
     bed = MusicSource{};
-    VideoFXResult r = OpenInput(settings.music.path, bed.fmt);
+    musicSongStart = musicSong == 0 ? settings.music.start : 0.0;
+    const size_t n = musicSongs.size();
+    const bool hasNext = musicSong + 1 < n || settings.music.loop;
+    const size_t next = musicSong + 1 < n ? musicSong + 1 : 0;
+    auto played = [&](size_t i) {
+        const double s = i == 0 ? settings.music.start : 0.0;
+        return musicLengths[i] > 0.0 ? std::max(0.0, musicLengths[i] - s) : 0.0;
+    };
+    const double fade = hasNext ? CrossfadeSeconds(settings.music.crossfade, played(musicSong), played(next)) : 0.0;
+    musicHoldSamples = static_cast<int>(std::llround(fade * sampleRate));
+    VideoFXResult r = OpenInput(musicSongs[musicSong], bed.fmt);
     if (r != VideoFXResult::Ok) return r;
     bed.stream = av_find_best_stream(bed.fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (bed.stream < 0) return Fail(VideoFXResult::NoMediaStreams, "The music file has no sound");
@@ -1437,29 +1471,23 @@ VideoFXResult Exporter::OpenMusic() {
     AVStream* st = bed.fmt->streams[bed.stream];
     const int64_t start = bed.fmt->start_time != AV_NOPTS_VALUE ? bed.fmt->start_time : 0;
     bed.origin = av_rescale_q(start, AV_TIME_BASE_Q, st->time_base);
-    if (settings.music.start > 0.0)
-        av_seek_frame(bed.fmt.get(), -1, start + static_cast<int64_t>(settings.music.start * AV_TIME_BASE),
+    if (musicSongStart > 0.0)
+        av_seek_frame(bed.fmt.get(), -1, start + static_cast<int64_t>(musicSongStart * AV_TIME_BASE),
                       AVSEEK_FLAG_BACKWARD);
     return VideoFXResult::Ok;
 }
 
-// One packet's worth of music into musicFifo (or, at the file's end, the
-// flushed remainder and a reopen for the next pass)
+// One packet's worth of the song (or, at its end, the flushed remainder and
+// the move to the next song)
 VideoFXResult Exporter::ReadMusicPacket() {
     AVStream* st = bed.fmt->streams[bed.stream];
     FramePtr decoded = MakeFrame();
     FramePtr scratch = MakeFrame();
-    auto toFifo = [&](AVFrame* out) -> VideoFXResult {
-        if (av_audio_fifo_write(musicFifo.get(), reinterpret_cast<void**>(out->extended_data), out->nb_samples) <
-            out->nb_samples)
-            return Fail(VideoFXResult::EncodeError, "Music buffer overflow");
-        bed.produced += out->nb_samples;
-        return VideoFXResult::Ok;
-    };
+    auto toFifo = [&](AVFrame* out) -> VideoFXResult { return MusicOut(out); };
     auto feed = [&](AVFrame* f) -> VideoFXResult {
         const AVRational tb{1, f->sample_rate};
         if (!bed.graph.graph) {
-            std::string desc = "[in]atrim=start=" + FormatNumber(settings.music.start) + ",asetpts=PTS-STARTPTS";
+            std::string desc = "[in]atrim=start=" + FormatNumber(musicSongStart) + ",asetpts=PTS-STARTPTS";
             AppendFilter(desc, AudioTail());
             VideoFXResult br = BuildGraph(bed.graph, false, {{"in", AudioBufferSourceArgs(f, tb)}}, desc + "[out]");
             if (br != VideoFXResult::Ok) return br;
@@ -1503,9 +1531,79 @@ VideoFXResult Exporter::ReadMusicPacket() {
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the music", err);
         if ((r = PullGraph(bed.graph, scratch.get(), toFifo)) != VideoFXResult::Ok) return r;
     }
-    if (settings.music.loop && bed.produced > 0) return OpenMusic();
-    musicEnded = true;                      // not looping, or a pass gave no sound at all
+    return EndOfSong();
+}
+
+// A block of the song in the output format: blended with the previous song's
+// fading end while that lasts, then held back by the crossfade's length
+VideoFXResult Exporter::MusicOut(AVFrame* out) {
+    if (musicTail) {
+        if (av_frame_make_writable(out) < 0) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        const int total = musicTail->nb_samples;
+        const int n = std::min(out->nb_samples, total - musicTailPos);
+        for (int i = 0; i < n; ++i) {
+            double gOut = 0.0, gIn = 0.0;
+            CrossfadeGains((musicTailPos + i + 0.5) / total, gOut, gIn);
+            for (int c = 0; c < channels; ++c) {
+                const double v = ReadSample(out, i, c, channels, sampleFmt) * gIn +
+                                 ReadSample(musicTail.get(), musicTailPos + i, c, channels, sampleFmt) * gOut;
+                AddSample(out, i, c, channels, sampleFmt, v - ReadSample(out, i, c, channels, sampleFmt));
+            }
+        }
+        musicTailPos += n;
+        if (musicTailPos >= total) musicTail.reset();
+    }
+    if (av_audio_fifo_write(musicHold.get(), reinterpret_cast<void**>(out->extended_data), out->nb_samples) <
+        out->nb_samples)
+        return Fail(VideoFXResult::EncodeError, "Music buffer overflow");
+    bed.produced += out->nb_samples;
+    const int excess = av_audio_fifo_size(musicHold.get()) - musicHoldSamples;
+    return excess > 0 ? MoveHeldMusic(excess) : VideoFXResult::Ok;
+}
+
+// The oldest `samples` of the held-back music on to the mix
+VideoFXResult Exporter::MoveHeldMusic(int samples) {
+    if (samples <= 0) return VideoFXResult::Ok;
+    FramePtr block = MakeAudioFrame(samples);
+    if (!block) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    if (av_audio_fifo_read(musicHold.get(), reinterpret_cast<void**>(block->extended_data), samples) < samples ||
+        av_audio_fifo_write(musicFifo.get(), reinterpret_cast<void**>(block->extended_data), samples) < samples)
+        return Fail(VideoFXResult::EncodeError, "Music buffer overflow");
     return VideoFXResult::Ok;
+}
+
+// The song has ended: its held-back end becomes the tail that fades out
+// under the next song, or - at the end of a list that does not loop - plays
+// out as it is
+VideoFXResult Exporter::EndOfSong() {
+    if (musicTail) {                        // a song shorter than the fade into it: finish the fade over silence
+        FramePtr silence = MakeAudioFrame(musicTail->nb_samples - musicTailPos);
+        if (!silence) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        av_samples_set_silence(silence->extended_data, 0, silence->nb_samples, channels, sampleFmt);
+        VideoFXResult r = MusicOut(silence.get());
+        if (r != VideoFXResult::Ok) return r;
+    }
+    musicEmptySongs = bed.produced > 0 ? 0 : musicEmptySongs + 1;
+    const bool last = musicSong + 1 >= musicSongs.size();
+    if ((last && !settings.music.loop) || musicEmptySongs >= musicSongs.size()) {
+        musicEnded = true;                  // the end of the list, or not one song gave sound
+        return MoveHeldMusic(av_audio_fifo_size(musicHold.get()));
+    }
+    // Never more than half of what this song gave, so every pass moves on
+    const int held = av_audio_fifo_size(musicHold.get());
+    const int tail = static_cast<int>(std::min<int64_t>(held, bed.produced / 2));
+    VideoFXResult r = MoveHeldMusic(held - tail);
+    if (r != VideoFXResult::Ok) return r;
+    musicTail.reset();
+    musicTailPos = 0;
+    if (tail > 0) {
+        musicTail = MakeAudioFrame(tail);
+        if (!musicTail) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        if (av_audio_fifo_read(musicHold.get(), reinterpret_cast<void**>(musicTail->extended_data), tail) < tail)
+            return Fail(VideoFXResult::EncodeError, "Music buffer underrun");
+    }
+    musicSong = last ? 0 : musicSong + 1;
+    return OpenMusic();
 }
 
 VideoFXResult Exporter::FillMusic(int samples) {
@@ -1588,9 +1686,15 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         return Fail(r, "Image " + plan.segment.path + ": " + reason);
     }
 
-    const VideoFXImageMotion motion = ResolveMotion(plan.segment.motion, image.width, image.height,
-                                                    width, height, index);
     const VideoFXImageFit fit = ResolveImageFit(plan.segment.imageFit, image.width, image.height, width, height);
+    // Faces (or whatever the segment asks to keep) stay in shot: the ends of
+    // the move are fitted to them here, every frame between is slid below
+    std::vector<VideoFXRect> keep = plan.segment.keepInView;
+    if (keep.empty() && plan.segment.keepFacesInView) keep = DetectFaces(image);   // before any shrinking
+    const VideoFXRect focus = FocusBounds(keep);
+    const VideoFXImageMotion motion = FitMotionToFocus(
+        ResolveMotion(plan.segment.motion, image.width, image.height, width, height, index), focus,
+        image.width, image.height, width, height, fit);
     // Shrink once so that at the closest zoom the image is still about one
     // image pixel per output pixel: sharp, no aliasing, little memory
     const double closest = motion.style == VideoFXMotionStyle::Still
@@ -1633,6 +1737,7 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         const KenBurnsView view = ViewAt(motion, frames > 1 ? static_cast<double>(k) / (frames - 1) : 0.0);
         if (fit == VideoFXImageFit::Cover) ViewRect(view, image.width, image.height, width, height, x, y, w, h);
         else ContainViewRect(view, image.width, image.height, width, height, x, y, w, h);
+        KeepFocusInView(focus, image.width, image.height, x, y, w, h);
         RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads,
                    backdrop.empty() ? nullptr : backdrop.data());
         f->pts = k;
@@ -1954,6 +2059,7 @@ VideoFXResult Exporter::Finish() {
 void Exporter::Close() {
     gifGraph = Graph{};
     bed = MusicSource{};
+    musicTail.reset();
     tailFrames.clear();
     transitionTail.clear();
     headFrames.clear();
@@ -1981,7 +2087,9 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
         musicOn = true;
         ducker = std::make_unique<MusicDucker>(settings.music);
         musicFifo.reset(av_audio_fifo_alloc(sampleFmt, channels, 8192));
-        r = musicFifo ? OpenMusic() : Fail(VideoFXResult::EncodeError, "Out of memory");
+        musicHold.reset(av_audio_fifo_alloc(sampleFmt, channels, 8192));
+        musicSong = 0;
+        r = musicFifo && musicHold ? OpenMusic() : Fail(VideoFXResult::EncodeError, "Out of memory");
     }
     for (size_t i = 0; r == VideoFXResult::Ok && i < plans.size(); ++i) r = ProcessSegment(i);
     if (r == VideoFXResult::Ok) r = Finish();
@@ -1995,6 +2103,111 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
         return r;
     }
     Close();
+    return VideoFXResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// beat detection
+// ---------------------------------------------------------------------------
+
+// The whole sound of `path`, mixed to mono at the beat analysis rate
+VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
+    out.clear();
+    FormatInputPtr fmt;
+    VideoFXResult r = OpenInput(path, fmt);
+    if (r != VideoFXResult::Ok) return r;
+    const int stream = av_find_best_stream(fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (stream < 0) return Fail(VideoFXResult::NoMediaStreams, "The file has no sound: " + path);
+    CodecContextPtr dec;
+    if ((r = OpenDecoder(fmt.get(), stream, dec)) != VideoFXResult::Ok) return r;
+    Graph graph;
+    FramePtr decoded = MakeFrame();
+    FramePtr scratch = MakeFrame();
+    int64_t nextPts = 0;
+    auto collect = [&](AVFrame* f) -> VideoFXResult {
+        const float* p = reinterpret_cast<const float*>(f->extended_data[0]);
+        out.insert(out.end(), p, p + f->nb_samples);
+        return VideoFXResult::Ok;
+    };
+    auto feed = [&](AVFrame* f) -> VideoFXResult {
+        if (!graph.graph) {
+            const std::string desc = "[in]aresample=" + std::to_string(kBeatSampleRate) +
+                                     ",aformat=sample_fmts=flt:channel_layouts=mono[out]";
+            VideoFXResult br = BuildGraph(graph, false, {{"in", AudioBufferSourceArgs(f, AVRational{1, f->sample_rate})}},
+                                          desc);
+            if (br != VideoFXResult::Ok) return br;
+        }
+        f->pts = nextPts;                   // the sound in order, gaps and all closed up
+        nextPts += f->nb_samples;
+        int err = av_buffersrc_add_frame_flags(graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the sound", err);
+        return PullGraph(graph, scratch.get(), collect);
+    };
+    auto receive = [&]() -> VideoFXResult {
+        while (true) {
+            int err = avcodec_receive_frame(dec.get(), decoded.get());
+            if (err == AVERROR(EAGAIN) || err == AVERROR_EOF) return VideoFXResult::Ok;
+            if (err < 0) return Fail(VideoFXResult::DecodeError, "Cannot decode the sound", err);
+            VideoFXResult fr = feed(decoded.get());
+            av_frame_unref(decoded.get());
+            if (fr != VideoFXResult::Ok) return fr;
+        }
+    };
+    PacketPtr pkt = MakePacket();
+    while (av_read_frame(fmt.get(), pkt.get()) >= 0) {
+        if (pkt->stream_index == stream) {
+            int err = avcodec_send_packet(dec.get(), pkt.get());
+            if (err < 0 && err != AVERROR(EAGAIN) && err != AVERROR_INVALIDDATA) {
+                av_packet_unref(pkt.get());
+                return Fail(VideoFXResult::DecodeError, "Cannot decode the sound", err);
+            }
+            if ((r = receive()) != VideoFXResult::Ok) return r;
+        }
+        av_packet_unref(pkt.get());
+    }
+    avcodec_send_packet(dec.get(), nullptr);
+    if ((r = receive()) != VideoFXResult::Ok) return r;
+    if (graph.src) {
+        int err = av_buffersrc_add_frame_flags(graph.src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the sound", err);
+        if ((r = PullGraph(graph, scratch.get(), collect)) != VideoFXResult::Ok) return r;
+    }
+    return VideoFXResult::Ok;
+}
+
+// The beats of a song list on the slideshow's timeline: each song's beats
+// moved to where it plays, a crossfade handing over at its middle
+VideoFXResult TimelineBeats(const VideoFXMusic& music, const std::vector<double>& lengths, std::vector<double>& out) {
+    out.clear();
+    const std::vector<std::string> songs = music.Songs();
+    double offset = -music.start;           // where song i's own second 0 falls on the timeline
+    double from = 0.0;                      // its beats count from here...
+    for (size_t i = 0; i < songs.size(); ++i) {
+        std::vector<float> mono;
+        VideoFXResult r = DecodeMono(songs[i], mono);
+        if (r != VideoFXResult::Ok) {
+            const std::string reason = VideoFX_GetLastError();
+            return Fail(r, "Music " + songs[i] + ": " + reason);
+        }
+        const double length = lengths[i] > 0.0 ? lengths[i] : static_cast<double>(mono.size()) / kBeatSampleRate;
+        const double played = length - (i == 0 ? music.start : 0.0);
+        double handover = std::numeric_limits<double>::infinity();      // ...up to here
+        double next = 0.0;
+        if (i + 1 < songs.size()) {
+            const double nextPlayed = lengths[i + 1] > 0.0 ? lengths[i + 1] : 0.0;
+            const double fade = CrossfadeSeconds(music.crossfade, played, nextPlayed);
+            next = offset + length - fade;
+            handover = offset + length - fade / 2.0;
+        }
+        for (double b : AnalyseBeats(mono, kBeatSampleRate).beats) {
+            const double t = b + offset;
+            if (t >= from && t < handover) out.push_back(t);
+        }
+        if (i + 1 < songs.size()) {
+            from = handover;
+            offset = next;
+        }
+    }
     return VideoFXResult::Ok;
 }
 
@@ -2050,45 +2263,90 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (imagePaths.empty()) return Fail(VideoFXResult::InvalidArgument, "A slideshow needs at least one image");
     const VideoFXMusic music = options.music.IsSet() ? options.music : settings.music;
 
+    const bool beatSync = options.beatSync || options.beatsPerImage > 0;
+    if (options.beatsPerImage < 0 || options.beatsPerImage > 64)
+        return Fail(VideoFXResult::InvalidArgument, "Beats per image must be 0..64");
+    if (beatSync && !music.IsSet()) return Fail(VideoFXResult::InvalidArgument, "beatSync needs music");
+    const double transition = options.transition.IsCut() ? 0.0 : options.transition.duration;
+
     // Long enough per image that the show ends with the song
     double secondsPerImage = options.secondsPerImage;
-    if (options.matchMusicLength) {
-        if (!music.IsSet()) return Fail(VideoFXResult::InvalidArgument, "matchMusicLength needs music");
-        VideoFXMediaInfo info;
-        VideoFXResult r = VideoFX_Probe(music.path, info);
-        if (r != VideoFXResult::Ok) {
-            const std::string reason = VideoFX_GetLastError();
-            return Fail(r, "Music " + music.path + ": " + reason);
+    double musicSeconds = 0.0;
+    std::vector<double> lengths;
+    if (options.matchMusicLength && !music.IsSet())
+        return Fail(VideoFXResult::InvalidArgument, "matchMusicLength needs music");
+    if (options.matchMusicLength || beatSync) {
+        for (const std::string& song : music.Songs()) {
+            VideoFXMediaInfo info;
+            VideoFXResult r = VideoFX_Probe(song, info);
+            if (r != VideoFXResult::Ok) {
+                const std::string reason = VideoFX_GetLastError();
+                return Fail(r, "Music " + song + ": " + reason);
+            }
+            lengths.push_back(info.duration);
         }
-        if (!(info.duration > music.start))
-            return Fail(VideoFXResult::InvalidArgument, "The music's length cannot be read: " + music.path);
-        secondsPerImage = SlideshowSecondsForMusic(info.duration - music.start, imagePaths.size(),
-                                                   options.transition.IsCut() ? 0.0 : options.transition.duration);
+        musicSeconds = PlaylistSeconds(lengths, music.crossfade, music.start);
+    }
+    if (options.matchMusicLength) {
+        if (!(musicSeconds > 0.0))
+            return Fail(VideoFXResult::InvalidArgument, "The music's length cannot be read");
+        secondsPerImage = SlideshowSecondsForMusic(musicSeconds, imagePaths.size(), transition);
     }
     if (!(secondsPerImage >= 0.5 && secondsPerImage <= 3600.0))
         return Fail(VideoFXResult::InvalidArgument, "Seconds per image must be 0.5..3600");
     if (!options.transition.IsCut() && options.transition.duration > secondsPerImage / 2.0)
         return Fail(VideoFXResult::InvalidArgument, "A transition may take at most half of an image's time");
 
+    // Each image's time on screen: all alike, or set by the changes on the beat
+    // (a change is a cut, or a transition's middle)
+    const size_t n = imagePaths.size();
+    std::vector<double> seconds(n, secondsPerImage);
+    if (beatSync && n > 1) {
+        std::vector<double> beats;
+        VideoFXResult r = TimelineBeats(music, lengths, beats);
+        if (r != VideoFXResult::Ok) return r;
+        const std::vector<double> changes = BeatAlignedChanges(beats, n, secondsPerImage,
+                                                               std::max(1.0, 2.0 * transition), options.beatsPerImage);
+        const double typical = changes.size() > 1 ? (changes.back() - changes.front()) / (changes.size() - 1)
+                                                  : changes.front();
+        const double end = options.matchMusicLength ? musicSeconds : changes.back() + typical;
+        double start = 0.0;                 // where image i begins, its transition in included
+        for (size_t i = 0; i < n; ++i) {
+            const double until = i + 1 < n ? changes[i] + transition / 2.0 : end;
+            seconds[i] = std::max(until - start, std::max(1.0, 2.0 * transition));
+            start = i + 1 < n ? changes[i] - transition / 2.0 : start;
+        }
+    }
+
     std::vector<VideoFXSegment> segments;
-    segments.reserve(imagePaths.size());
-    for (size_t i = 0; i < imagePaths.size(); ++i) {
-        VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], secondsPerImage, options.motion);
+    segments.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], seconds[i], options.motion);
         s.imageFit = options.imageFit;
+        if (i < options.keepInView.size()) s.keepInView = options.keepInView[i];
+        if (s.keepInView.empty() && options.findKeepInView) {
+            VideoFXFrame shown;             // as it is shown: the finder's coordinates are the segment's
+            VideoFXResult r = VideoFX_ExtractFrame(imagePaths[i], 0.0, shown);
+            if (r != VideoFXResult::Ok) {
+                const std::string reason = VideoFX_GetLastError();
+                return Fail(r, "Image " + imagePaths[i] + ": " + reason);
+            }
+            s.keepInView = options.findKeepInView(shown, i);
+        }
+        s.keepFacesInView = options.keepFacesInView && s.keepInView.empty();
         if (i > 0) s.transitionIn = options.transition;
         if (i < options.captions.size() && !options.captions[i].empty()) {
             VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);
             caption.box = true;
-            caption.fadeIn = std::min(0.5, secondsPerImage / 4.0);
+            caption.fadeIn = std::min(0.5, seconds[i] / 4.0);
             caption.fadeOut = caption.fadeIn;
             s.overlays.push_back(caption);
         }
         segments.push_back(std::move(s));
     }
     if (options.fadeInOut) {
-        const double fade = std::min(0.8, secondsPerImage / 4.0);
-        segments.front().effects.push_back(VideoFXEffect::FadeIn(fade));
-        segments.back().effects.push_back(VideoFXEffect::FadeOut(fade));
+        segments.front().effects.push_back(VideoFXEffect::FadeIn(std::min(0.8, seconds.front() / 4.0)));
+        segments.back().effects.push_back(VideoFXEffect::FadeOut(std::min(0.8, seconds.back() / 4.0)));
     }
 
     VideoFXExportSettings s = settings;
@@ -2099,6 +2357,27 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     if (s.frameRate <= 0.0) s.frameRate = 30.0;
     s.music = music;
     return VideoFX_Export(segments, outputPath, s, progress);
+}
+
+VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
+    ClearError();
+    faces.clear();
+    if (!image.IsValid()) return Fail(VideoFXResult::InvalidArgument, "Not a valid RGBA image");
+    faces = DetectFaces(image);
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info) {
+    ClearError();
+    info = VideoFXBeatInfo{};
+    std::vector<float> mono;
+    VideoFXResult r = DecodeMono(path, mono);
+    if (r != VideoFXResult::Ok) return r;
+    const BeatAnalysis a = AnalyseBeats(mono, kBeatSampleRate);
+    info.bpm = a.bpm;
+    info.confidence = a.confidence;
+    info.beats = a.beats;
+    return VideoFXResult::Ok;
 }
 
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds, int width, int height,

@@ -5,13 +5,17 @@
 //
 // Enabled at runtime by exporting a truthy ULTRANET_CURL_VERBOSE (anything other
 // than unset / empty / "0"). When on, the handle logs curl's own commentary plus
-// the protocol command/response lines to stderr, prefixed "[ultranet]". The
-// outbound SASL / AUTH line (which carries the XOAUTH2 bearer token or the
-// account password) is redacted so secrets never reach the log — the inbound
-// server responses, which are what actually reveal where a session fails
-// (TLS handshake, "334"/"535" on AUTH, MAIL FROM / RCPT / DATA), are kept.
+// the protocol command/response lines to stderr, prefixed "[ultranet]". Every
+// outbound line that can carry a secret is replaced by "<redacted auth line>":
+// the SASL / AUTH exchange (the XOAUTH2 bearer token, the base64 password of
+// AUTH PLAIN / LOGIN), POP3's "PASS password" and IMAP's "<tag> LOGIN user
+// password" - the plain sign-ins libcurl falls back to when a server offers no
+// SASL, which were printed as they were until 0.2.0. The inbound server
+// responses, which are what actually reveal where a session fails (TLS
+// handshake, "334"/"535" on AUTH, "-ERR" on PASS, MAIL FROM / RCPT / DATA), are
+// kept.
 //
-// Version: 0.1.0
+// Version: 0.2.0 - PASS and IMAP LOGIN are redacted too
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -20,6 +24,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 #include <string>
 
 namespace ultranet_curldebug {
@@ -36,15 +41,32 @@ inline bool HasAuthKeyword(const std::string& line) {
            up.find("BEARER")  != std::string::npos;
 }
 
+// True for a plain sign-in command, which carries the password in the clear:
+// POP3's (and FTP's) "PASS secret", and IMAP's "LOGIN user secret", which goes
+// out behind a tag ("A001 LOGIN ..."). Neither has "AUTH" in it to match on.
+inline bool IsPlainLogin(const std::string& line) {
+    std::istringstream words(line);
+    std::string first, second;
+    words >> first >> second;
+    auto upper = [](std::string w) {
+        for (char& c : w) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return w;
+    };
+    first = upper(first);
+    second = upper(second);
+    return first == "PASS" || first == "LOGIN" || second == "LOGIN";
+}
+
 // The full redaction rule. Only client->server (HEADER_OUT) traffic can carry a
 // secret, so inbound server responses are always kept — including the EHLO
 // capability line ("250 AUTH ... XOAUTH2") and the "334" AUTH error challenge,
 // which are exactly what a trace is read for. Within outbound traffic, redact the
-// AUTH command and any line long enough to be a base64 credential blob (a bare
-// SASL continuation has no keyword to match on, but dwarfs any real command).
+// AUTH command, a plain sign-in (PASS, IMAP LOGIN) and any line long enough to
+// be a base64 credential blob (a bare SASL continuation has no keyword to match
+// on, but dwarfs any real command).
 inline bool ShouldRedact(curl_infotype type, const std::string& line) {
     if (type != CURLINFO_HEADER_OUT) return false;
-    return HasAuthKeyword(line) || line.size() > 120;
+    return HasAuthKeyword(line) || IsPlainLogin(line) || line.size() > 120;
 }
 
 inline int DebugCallback(CURL*, curl_infotype type, char* data, size_t size, void*) {

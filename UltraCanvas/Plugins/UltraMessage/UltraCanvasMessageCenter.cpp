@@ -1,5 +1,6 @@
 // UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
 // See include/Plugins/UltraMessage/UltraCanvasMessageCenter.h.
+// Version: 0.1.1 - a NoJournal notice is not a row: the feed lists what the journal holds
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -511,6 +512,10 @@ bool UltraCanvasMessageCenter::BuildEntry(const UltraMsgMessage& message, Messag
     if (topic != UltraMsgTopics::MessagingMessage && topic != UltraMsgTopics::MailMessage &&
         topic != UltraMsgTopics::SystemNotification)
         return false;
+    // The feed lists what the journal holds, so that it can find every row
+    // again. A NoJournal notice is a passing alert - UltraMail's "new mail"
+    // notification, whose messages the feed already lists as mail.message.
+    if (message.envelope.flags & UltraMsgFlag_NoJournal) return false;
     out = MessageCenterEntry{};
     out.message = message;
     out.section = SectionForTopic(topic);

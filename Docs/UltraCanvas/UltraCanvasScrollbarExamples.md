@@ -4,7 +4,7 @@
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasScrollbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -276,10 +276,10 @@ container->AddChild(sb);
 Other presets are used identically:
 
 ```cpp
-sbDefault->SetStyle(ScrollbarStyle::Default());
-sbMinimal->SetStyle(ScrollbarStyle::Minimal());
-sbClassic->SetStyle(ScrollbarStyle::Classic());   // adds arrow buttons
-sbDropdown->SetStyle(ScrollbarStyle::DropDown());
+defaultScrollbar->SetStyle(ScrollbarStyle::Default());
+minimalScrollbar->SetStyle(ScrollbarStyle::Minimal());
+classicScrollbar->SetStyle(ScrollbarStyle::Classic());   // adds arrow buttons
+dropDownScrollbar->SetStyle(ScrollbarStyle::DropDown());
 ```
 
 ### 2. Colour Options

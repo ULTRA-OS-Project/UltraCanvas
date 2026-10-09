@@ -1,7 +1,10 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.4.1 - IsWindowFocused() without an application is false, not a crash
+// Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
+//                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-07-21
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -13,6 +16,7 @@
 #include <cairo/cairo.h>
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include "UltraCanvasDebug.h"
@@ -39,7 +43,10 @@ namespace UltraCanvas {
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
     bool UltraCanvasWindowBase::IsWindowFocused() const {
-        return UltraCanvasApplication::GetInstance()->GetFocusedWindow() == this;
+        // Without an application (a test, a tool) no window has the focus;
+        // asking used to call through a null pointer from any IsFocused().
+        auto* app = UltraCanvasApplication::GetInstance();
+        return app && app->GetFocusedWindow() == this;
     }
 
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {
@@ -574,8 +581,15 @@ namespace UltraCanvas {
     }
 
 
+    void UltraCanvasWindowBase::RenderBeforeShow() {
+        if (!_created || _windowVisible) return;
+        _renderingBeforeShow = true;
+        UpdateAndRender();
+        _renderingBeforeShow = false;
+    }
+
     void UltraCanvasWindowBase::UpdateAndRender() {
-        if (!_created || !_windowVisible) return;
+        if (!_created || (!_windowVisible && !_renderingBeforeShow)) return;
         // A backend can lose its presentation surface while the window is
         // still marked visible (Android between APP_CMD_TERM_WINDOW and the
         // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the
@@ -586,6 +600,19 @@ namespace UltraCanvas {
             DoResize();
         }
         if (!ctx) return;
+
+        // Timed only while someone listens (onFrameRendered).
+        using FrameClock = std::chrono::steady_clock;
+        const bool timed = static_cast<bool>(onFrameRendered);
+        WindowFrameTiming timing;
+        FrameClock::time_point stepStart;
+        auto stepMs = [&stepStart]() {
+            const auto now = FrameClock::now();
+            const double ms = std::chrono::duration<double, std::milli>(now - stepStart).count();
+            stepStart = now;
+            return ms;
+        };
+        if (timed) stepStart = FrameClock::now();
 
         bool isLayoutValid = IsLayoutValid();
         if (!isLayoutValid) {
@@ -613,11 +640,14 @@ namespace UltraCanvas {
             // Arrange() places children and, at its tail, calls Arranged()
             // (z-order sort + scrollbar metrics) and sets arrangeValid.
             this->Arrange(finalBounds, lctx);
+            timing.laidOut = true;
         }
+        if (timed) timing.layoutMs = stepMs();
 
         // ---- Window content pass: loop once per optimised dirty rect ----
         if (dirtyRectManager.HasDirtyRects()) {
             const auto& rects = dirtyRectManager.GetOptimizedRectangles();
+            timing.dirtyRects = static_cast<int>(rects.size());
             for (const auto& rect : rects) {
                 ctx->PushState();
                 ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
@@ -664,6 +694,9 @@ namespace UltraCanvas {
             }
         }
 
+        if (timed) timing.paintMs = stepMs();
+        const bool composites = _needsWindowComposition;
+
         auto& caret = UltraCanvasCaret::GetInstance();
 
         // The caret belongs to the layer of the widget that owns it: the
@@ -679,8 +712,11 @@ namespace UltraCanvas {
         // composite so the stacking order stays correct.
         if (_needsCaretComposition && !_needsWindowComposition && caret.IsOnWindow(this)) {
             // No surface to restore the caret's layer from => full composite.
+            // Nor when that layer is a popup shown below full opacity: its
+            // surface alone is not what is on screen there.
             bool caretCovered = UltraCanvasTooltipManager::IsVisible() ||
-                                (caretLayer && !caretLayer->renderContext);
+                                (caretLayer && !caretLayer->renderContext) ||
+                                (caretLayer && GetPopupOpacity(*caretLayer) < 1.0f);
             if (!caretCovered) {
                 const Rect2Di& cr = caret.GetRect();
                 Rect2Df caretRect((float)cr.x, (float)cr.y, (float)cr.width, (float)cr.height);
@@ -722,8 +758,17 @@ namespace UltraCanvas {
                     auto* p = pe.element;
                     if (!p || !p->IsVisible() || !p->renderContext) continue;
                     auto pos = p->GetPositionInWindow();
-                    p->renderContext->FlushToSurface(nativeSurface,
-                                                     {(float)pos.x, (float)pos.y});
+                    // The window content and the popups below are already on
+                    // the surface: a popup below full opacity is mixed with
+                    // them, which is what lets one fade in as a whole.
+                    if (pe.opacity >= 1.0f) {
+                        p->renderContext->FlushToSurface(nativeSurface,
+                                                         {(float)pos.x, (float)pos.y});
+                    } else if (pe.opacity > 0.0f) {
+                        p->renderContext->FlushToSurfaceWithOpacity(nativeSurface,
+                                                                    {(float)pos.x, (float)pos.y},
+                                                                    pe.opacity);
+                    }
                     // ...or directly above the popup hosting it, so popups
                     // opened later still cover the caret.
                     if (caretPending && p == caretLayer) {
@@ -775,6 +820,11 @@ namespace UltraCanvas {
         _needsPopupGeometry = false;
         _needsWindowComposition = false;
         _needsCaretComposition = false;
+
+        if (timed && (timing.laidOut || composites)) {
+            timing.compositeMs = stepMs();
+            onFrameRendered(timing);
+        }
     }
 
     void UltraCanvasWindowBase::AddDirtyRectangle(const Rect2Di& windowRect) {
@@ -842,7 +892,7 @@ namespace UltraCanvas {
                 break;
             }
         }
-        popupElements.push_back({&elem, settings, {}});
+        popupElements.push_back({&elem, settings, {}, 1.0f});   // opens opaque
         AddChild(elem.shared_from_this());
         elem.SetElementAbsolutePosition(pos);
         //elem.SetPosition(pos);
@@ -888,6 +938,30 @@ namespace UltraCanvas {
             }
         }
         return true;
+    }
+
+    bool UltraCanvasWindowBase::SetPopupOpacity(UltraCanvasUIElement& elem, float opacity) {
+        // NaN reads as opaque: a popup must never go missing by accident.
+        if (!(opacity >= 0.0f)) opacity = (opacity < 0.0f) ? 0.0f : 1.0f;
+        opacity = std::min(opacity, 1.0f);
+        for (auto& pe : popupElements) {
+            if (pe.element == &elem) {
+                if (pe.opacity != opacity) {
+                    pe.opacity = opacity;
+                    // Only the composite changes: the popup's surface is as it was.
+                    RequestWindowComposition();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    float UltraCanvasWindowBase::GetPopupOpacity(const UltraCanvasUIElement& elem) const {
+        for (const auto& pe : popupElements) {
+            if (pe.element == &elem) return pe.opacity;
+        }
+        return 1.0f;
     }
 
     PopupElement* UltraCanvasWindowBase::GetActivePopupElement() {

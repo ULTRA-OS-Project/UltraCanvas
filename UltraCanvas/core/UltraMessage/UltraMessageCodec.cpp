@@ -6,7 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMessageInternal.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 
 #include <algorithm>
 #include <chrono>
@@ -667,18 +667,11 @@ bool IsControlTopic(const std::string& topic) {
 
 namespace {
 
+// UTF-8, which the journal (SQLite) and the directory helpers expect - on
+// Windows from the wide environment, where _dupenv_s answers in the ANSI
+// code page.
 std::string EnvOrEmpty(const char* name) {
-#ifdef _WIN32
-    char* value = nullptr;
-    size_t length = 0;
-    if (_dupenv_s(&value, &length, name) != 0 || !value) return std::string();
-    std::string out(value);
-    std::free(value);
-    return out;
-#else
-    const char* value = std::getenv(name);
-    return value ? std::string(value) : std::string();
-#endif
+    return UltraCanvas::GetEnvUtf8(name);
 }
 
 #ifndef _WIN32

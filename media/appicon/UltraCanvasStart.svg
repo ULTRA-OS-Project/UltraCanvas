@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- UltraCanvasStart: a canvas with a "start" arrow and a wrench, the setup
+     tool for UltraCanvas development. Solid fills only, so every rasteriser
+     renders it the same. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="16" y="16" width="224" height="224" rx="40" ry="40" fill="#3b63b8" stroke="#16305f" stroke-width="6"/>
+  <rect x="40" y="48" width="176" height="128" rx="14" ry="14" fill="#5f86d8" stroke="#dbe5ff" stroke-width="4"/>
+  <path d="M 96 76 L 96 148 L 164 112 Z" fill="#ffffff" stroke="#16305f" stroke-width="5" stroke-linejoin="round"/>
+  <g transform="translate(176 176) rotate(-45)">
+    <rect x="-10" y="-8" width="64" height="20" rx="6" fill="#f2b84b" stroke="#7a5614" stroke-width="4"/>
+    <path d="M -34 -22 a 24 24 0 1 0 0 44 l 14 -8 l 0 -28 Z" fill="#f2b84b" stroke="#7a5614" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+  <rect x="40" y="196" width="104" height="14" rx="7" fill="#dbe5ff"/>
+</svg>

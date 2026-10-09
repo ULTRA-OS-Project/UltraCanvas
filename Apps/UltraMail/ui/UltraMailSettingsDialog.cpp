@@ -1,30 +1,40 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Reading, Privacy, Display)
+// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display)
 // closed when the window opens, so it opens on the start page that says what
 // they hold.
-// Pages: Reading > Layout (the message beside the list or in its place, and
+// Pages: Mail > New mail (how often every account is checked for new mail),
+// Reading > Layout (the message beside the list or in its place, and
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
 // the message text), Reading > Waiting for reply (which unanswered mail
 // counts: how old it may be, and whether only people written to), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
-// Privacy > Sender icons (whether the known senders' icons are downloaded)
-// and Display > Links (a link's address in the status bar or in a tooltip).
+// Privacy > Sender icons (whether the known senders' icons are downloaded),
+// Display > Links (a link's address in the status bar or in a tooltip) and
+// Display > Notifications (a notification on screen when new mail arrives) and
+// Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
+// and Warnings > Trusted and blocked senders (the sender menu's lists).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.9.0 - Warnings > Trusted and blocked senders
+// Version: 1.8.0 - Warnings > Spam/scam warnings: one switch per kind of warning
+// Version: 1.7.0 - Display > Notifications: new mail on screen, or not
+// Version: 1.6.0 - Privacy > Sender icons: the website icons of other senders
+// Version: 1.5.0 - Mail > New mail: how often new mail is checked (a dropdown,
+//                  20 seconds to 10 minutes)
 // Version: 1.4.0 - Reading > Waiting for reply: which unanswered mail counts
 //                  (its age, only people written to)
 // Version: 1.3.0 - Display > Links: a link's address in the status bar or a tooltip
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -33,6 +43,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasChip.h"   // UltraCanvasTagInput
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSpinner.h"
@@ -76,6 +87,8 @@ namespace {
     constexpr int kControlHeight = 22;
 
     // Page ids double as tree node ids.
+    constexpr const char* kPageMail        = "mail";
+    constexpr const char* kPageNewMail     = "mail/new-mail";
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
@@ -85,6 +98,10 @@ namespace {
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
+    constexpr const char* kPageNotify      = "display/notifications";
+    constexpr const char* kPageWarnings    = "warnings";
+    constexpr const char* kPageScamWarnings = "warnings/spam-scam";
+    constexpr const char* kPageSenderLists  = "warnings/senders";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
@@ -117,6 +134,9 @@ namespace {
         std::shared_ptr<UltraCanvasButton>    restoreButton;
         std::string                           shownPage;
 
+        // Mail > New mail
+        std::shared_ptr<UltraCanvasDropdown> checkMailDropdown;
+
         // Reading > Layout
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
         std::shared_ptr<UltraCanvasRadio> paneInPlaceRadio;
@@ -148,11 +168,23 @@ namespace {
 
         // Privacy > Sender icons
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
+        std::shared_ptr<UltraCanvasCheckbox> siteIconsBox;
 
         // Display > Links
         std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
         std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
         UltraCanvasRadioGroup             linksGroup;
+
+        // Display > Notifications
+        std::shared_ptr<UltraCanvasCheckbox> notifyBox;
+
+        // Warnings > Spam/scam warnings: one box per kind, with the option it sets
+        std::vector<std::pair<bool ThreatScanOptions::*,
+                              std::shared_ptr<UltraCanvasCheckbox>>> warningBoxes;
+
+        // Warnings > Trusted and blocked senders
+        std::shared_ptr<UltraCanvasTagInput> trustedSendersInput;
+        std::shared_ptr<UltraCanvasTagInput> blockedSendersInput;
 
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
@@ -323,11 +355,21 @@ namespace {
     std::vector<std::string> SenderTags(const Preferences& p) {
         return { p.remoteImageSenders.begin(), p.remoteImageSenders.end() };
     }
+    std::vector<std::string> ListTags(const std::set<std::string>& list) {
+        return { list.begin(), list.end() };
+    }
 
     void SyncControls(DialogState* d) {
         if (!d || !d->prefs) return;
         const Preferences& p = *d->prefs;
         d->syncing = true;
+        if (d->checkMailDropdown) {
+            const auto& choices = Preferences::CheckMailChoices();
+            for (std::size_t i = 0; i < choices.size(); ++i)
+                if (choices[i] == p.checkMailEverySec)
+                    d->checkMailDropdown->SetSelectedIndex(static_cast<int>(i),
+                                                           /*runNotifications=*/false);
+        }
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
         if (d->treeFitRadio)
@@ -350,11 +392,72 @@ namespace {
         if (d->domainsInput) d->domainsInput->SetTags(DomainTags(p));
         if (d->sendersInput) d->sendersInput->SetTags(SenderTags(p));
         if (d->senderIconsBox) d->senderIconsBox->SetChecked(p.fetchSenderIcons);
+        if (d->siteIconsBox)   d->siteIconsBox->SetChecked(p.fetchSiteIcons);
         if (d->linksStatusRadio)
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
+        if (d->notifyBox) d->notifyBox->SetChecked(p.notifyNewMail);
+        for (const auto& [option, box] : d->warningBoxes)
+            if (box) box->SetChecked(p.scamWarnings.*option);
+        if (d->trustedSendersInput)
+            d->trustedSendersInput->SetTags(ListTags(p.senderLists.trusted));
+        if (d->blockedSendersInput)
+            d->blockedSendersInput->SetTags(ListTags(p.senderLists.blocked));
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
+    }
+
+    // ===== MAIL > NEW MAIL =====
+    std::shared_ptr<UltraCanvasContainer> BuildNewMailPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-new-mail", "New mail",
+                "How often every account is checked for new mail:");
+
+        auto dropdown = CreateDropdown("um-set-check-mail", 0, 0, 160, kControlHeight + 4);
+        const auto& choices = Preferences::CheckMailChoices();
+        for (int seconds : choices)
+            dropdown->AddItem("Every " + Preferences::CheckMailLabel(seconds),
+                              std::to_string(seconds));
+        {
+            DropdownStyle style = dropdown->GetStyle();
+            style.fontSize = kTextFontSize;
+            // All ten choices at once: the shortest and the longest are the
+            // ones a scrolled list would hide.
+            style.maxVisibleItems = static_cast<int>(choices.size());
+            dropdown->SetStyle(style);
+        }
+        for (std::size_t i = 0; i < choices.size(); ++i)
+            if (choices[i] == d->prefs->checkMailEverySec)
+                dropdown->SetSelectedIndex(static_cast<int>(i), /*runNotifications=*/false);
+        dropdown->onSelectionChanged = [d](int index, const DropdownItem&) {
+            const auto& offered = Preferences::CheckMailChoices();
+            if (!d->prefs || index < 0 || index >= static_cast<int>(offered.size())) return;
+            d->prefs->checkMailEverySec = offered[static_cast<std::size_t>(index)];
+            ApplyAndSave(d);
+        };
+        dropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->checkMailDropdown = dropdown;
+        parts.body->AddChild(dropdown);
+
+        d->resets[kPageNewMail] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->checkMailEverySec = Preferences::kDefaultCheckMailSec;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-new-mail-note1",
+                "Every account is checked in the background at this interval, and "
+                "right after UltraMail starts and the computer wakes up. Update in "
+                "the toolbar checks the account on screen straight away, whatever "
+                "is set here.");
+        AddNote(parts, "um-set-new-mail-note2",
+                "A check that is still running when the next one is due is left "
+                "to finish - an account is never checked twice at once.");
+        AddNote(parts, "um-set-new-mail-note3",
+                "A short interval signs in to the server more often. Some "
+                "providers limit how often that may happen; if an account starts "
+                "to report sign-in errors, choose a longer interval.");
+        return parts.page;
     }
 
     // ===== READING > LAYOUT =====
@@ -666,21 +769,39 @@ namespace {
         });
         parts.body->AddChild(d->senderIconsBox);
 
+        d->siteIconsBox = MakeCheckbox("um-set-site-icons",
+                "Show other senders' website icons", d->prefs->fetchSiteIcons,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->fetchSiteIcons = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->siteIconsBox);
+
         d->resets[kPageSenderIcons] = PageReset{ "Restore default", 140, [d]() {
             if (!d->prefs) return;
             d->prefs->fetchSenderIcons = true;
+            d->prefs->fetchSiteIcons   = true;
             SyncControls(d);
             ApplyAndSave(d);
         } };
 
         AddNote(parts, "um-set-senders-note1",
-                "Only the services on UltraMail's own list of known senders "
-                "(banks, shops, social networks, ...) are asked for an icon, once "
-                "each, into the icon cache. No other sender's domain is ever "
-                "looked up, so this tells nobody which mail you read.");
+                "Known senders: the services on UltraMail's own list (banks, "
+                "shops, social networks, ...) are asked for their icon once each, "
+                "from the address on that list.");
         AddNote(parts, "um-set-senders-note2",
-                "Switched off, the badge shows the sender's initial in the "
-                "service's colour instead.");
+                "Website icons: for any other sender whose mail passed the scam "
+                "check, the home page of the domain it writes from is read for "
+                "its icon - once, and again after a week if there was none. "
+                "That tells the sender's web server that someone looked, though "
+                "not which message; never asked for spam, scams, the junk folder "
+                "or a mailbox provider such as gmail.com.");
+        AddNote(parts, "um-set-senders-note3",
+                "Icons are fetched in the background, only for the senders shown "
+                "in the list, so they never slow down getting mail. Switched "
+                "off, the badge shows the sender's initial instead; icons "
+                "already fetched stay. Downloading off turns both off.");
         return parts.page;
     }
 
@@ -727,10 +848,176 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > NOTIFICATIONS =====
+    std::shared_ptr<UltraCanvasContainer> BuildNotificationsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-notify", "Notifications",
+                "When new mail arrives while UltraMail runs:");
+
+        d->notifyBox = MakeCheckbox("um-set-notify-new-mail",
+                "Show a notification on the screen", d->prefs->notifyNewMail,
+                [d](bool on) {
+            if (!d->prefs) return;
+            d->prefs->notifyNewMail = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->notifyBox);
+
+        d->resets[kPageNotify] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->notifyNewMail = true;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-notify-note1",
+                "The notification names the sender and the subject - or counts "
+                "the messages when several came at once - and a click on it "
+                "brings UltraMail to the front with the mail open.");
+        AddNote(parts, "um-set-notify-note2",
+                "It goes out through UltraMessage, the desktop's message "
+                "channel, and the desktop's own notification service shows it "
+                "like any other program's: its look, its sound and do-not-disturb "
+                "are set there.");
+        AddNote(parts, "um-set-notify-note3",
+                "Mail you have already read elsewhere, and the first download of "
+                "a new account, raise no notification.");
+        return parts.page;
+    }
+
+    // ===== WARNINGS > SPAM/SCAM WARNINGS =====
+    std::shared_ptr<UltraCanvasContainer> BuildScamWarningsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-scams", "Spam/scam warnings",
+                "Warn about a message when it looks like:");
+
+        struct Kind { const char* id; const char* text; bool ThreatScanOptions::* option; };
+        static const Kind kinds[] = {
+            { "um-set-warn-phishing",
+              "Phishing - links or a sender that pretend to be someone else",
+              &ThreatScanOptions::phishing },
+            { "um-set-warn-romance",
+              "A romance scam - a love letter from a stranger",
+              &ThreatScanOptions::romance },
+            { "um-set-warn-advance-fee",
+              "An advance-fee letter - millions waiting for a small fee",
+              &ThreatScanOptions::advanceFee },
+            { "um-set-warn-government",
+              "A letter in the name of the FBI, Interpol, the IMF ...",
+              &ThreatScanOptions::government },
+            { "um-set-warn-crypto-scams",
+              "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
+              &ThreatScanOptions::cryptoScams },
+            { "um-set-warn-crypto-caution",
+              "Any mail about cryptocurrency (a word of caution)",
+              &ThreatScanOptions::cryptoCaution },
+            { "um-set-warn-attachments",
+              "A dangerous attachment - a program, or one dressed as a document",
+              &ThreatScanOptions::attachments },
+            { "um-set-warn-spam-flag",
+              "Spam, as the mail server marked it",
+              &ThreatScanOptions::spamFlag },
+        };
+        d->warningBoxes.clear();
+        for (const Kind& kind : kinds) {
+            bool ThreatScanOptions::* option = kind.option;
+            auto box = MakeCheckbox(kind.id, kind.text, d->prefs->scamWarnings.*option,
+                    [d, option](bool on) {
+                if (!d->prefs) return;
+                d->prefs->scamWarnings.*option = on;
+                ApplyAndSave(d);
+            });
+            d->warningBoxes.emplace_back(option, box);
+            parts.body->AddChild(box);
+        }
+
+        d->resets[kPageScamWarnings] = PageReset{ "Warn about all", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->scamWarnings = ThreatScanOptions{};
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-scams-note1",
+                "A warning is the badge's red or orange frame beside the subject, "
+                "the reasons in its tooltip and the strip above the message. A kind "
+                "switched off is not looked for: its messages are labelled as if "
+                "the check did not exist.");
+        AddNote(parts, "um-set-scams-note2",
+                "Mail already checked is checked again with the new choice - the "
+                "open message at once, the others in the background with each "
+                "mail check.");
+        AddNote(parts, "um-set-scams-note3",
+                "Nothing is ever hidden, moved or deleted either way: UltraMail "
+                "only labels mail, and you decide.");
+        return parts.page;
+    }
+
+    // ===== WARNINGS > TRUSTED AND BLOCKED SENDERS =====
+    std::shared_ptr<UltraCanvasContainer> BuildSenderListsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-senders", "Trusted and blocked senders",
+                "The senders you trust, and those whose mail is spam to you:");
+
+        // One field per list. What is typed is kept as an address (or, on the
+        // blocked list, a domain) and shown that way; an address put on one
+        // list leaves the other.
+        auto field = [d, &parts](const std::string& id, const std::string& caption,
+                                 const std::string& placeholder, bool blockList) {
+            AddBodyCaption(parts, id + "-caption", caption);
+            auto input = MakeTagField(id, placeholder);
+            SenderLists& lists = d->prefs->senderLists;
+            input->SetTags(ListTags(blockList ? lists.blocked : lists.trusted));
+            input->onTagsChanged = [d, blockList](const std::vector<std::string>& tags) {
+                if (d->syncing || !d->prefs) return;
+                SenderLists& lists = d->prefs->senderLists;
+                std::set<std::string>& list  = blockList ? lists.blocked : lists.trusted;
+                std::set<std::string>& other = blockList ? lists.trusted : lists.blocked;
+                std::set<std::string> entries;
+                bool otherChanged = false;
+                for (const auto& tag : tags) {
+                    const std::string entry = SenderLists::Entry(tag, blockList);
+                    if (entry.empty()) continue;
+                    entries.insert(entry);
+                    if (!list.count(entry) && other.erase(entry)) otherChanged = true;
+                }
+                list = entries;
+                // Both fields shown as kept: this one's tags tidied, the other
+                // without an address that moved over.
+                if (otherChanged || ListTags(entries) != tags) SyncControls(d);
+                ApplyAndSave(d);
+            };
+            parts.body->AddChild(input);
+            return input;
+        };
+        d->trustedSendersInput = field("um-set-trusted-senders",
+                "Always trust - type an address and press Enter:",
+                "e.g. friend@example.com", false);
+        d->blockedSendersInput = field("um-set-blocked-senders",
+                "Blocked - an address, or a domain for everyone there:",
+                "e.g. offers@example.com or example.com", true);
+
+        AddNote(parts, "um-set-senders-note1",
+                "A trusted sender's mail gets no guessed warnings - no romance or "
+                "advance-fee letter, no crypto caution, no spam markers - and its "
+                "pictures load like a contact's. What catches a lie still counts: a "
+                "link that hides where it goes, a forged sender address, a program "
+                "dressed as a document.");
+        AddNote(parts, "um-set-senders-note2",
+                "A blocked sender's mail is marked as spam: the orange frame and the "
+                "strip above the message. A blocked domain blocks its subdomains too. "
+                "Nothing is moved or deleted - \"Mark as spam\" moves a message to "
+                "the junk folder.");
+        AddNote(parts, "um-set-senders-note3",
+                "Right-click a sender - in the list or above the message - to trust "
+                "or block them, or the whole domain; the same menu undoes it. Their "
+                "mail is checked again at once.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
+        AddNote(parts, "um-set-start-note0",
+                "Mail - how often every account is checked for new mail.");
         AddNote(parts, "um-set-start-note1",
                 "Reading - where a message opens, how wide the folder list is, "
                 "whether HTML mail is shown formatted or as plain text, the size "
@@ -741,7 +1028,13 @@ namespace {
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
-                "as a tooltip.");
+                "as a tooltip, and whether new mail shows a notification on the "
+                "screen.");
+        AddNote(parts, "um-set-start-note5",
+                "Warnings - which kinds of spam and scam UltraMail warns about: "
+                "phishing, romance scams, advance-fee letters, letters in an "
+                "agency's name, cryptocurrency, dangerous attachments - and the "
+                "senders you trust or block.");
         AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
@@ -825,6 +1118,8 @@ namespace {
         rootData.nodeId = "settings";
         rootData.text = "Settings";
         d->tree->SetRootNode(rootData);
+        AddTreeNode(d, "settings", kPageMail, "Mail");
+        AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, "settings", kPageReading, "Reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
@@ -834,6 +1129,10 @@ namespace {
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
+        AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
+        AddTreeNode(d, "settings", kPageWarnings, "Warnings");
+        AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
+        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted and blocked senders");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -845,12 +1144,16 @@ namespace {
         d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
         content->AddChild(d->pageArea);
 
+        AddPage(d, kPageNewMail, BuildNewMailPage(d));
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
+        AddPage(d, kPageNotify, BuildNotificationsPage(d));
+        AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
+        AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 

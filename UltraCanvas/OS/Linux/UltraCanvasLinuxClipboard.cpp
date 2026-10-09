@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxClipboard.cpp
 // X11-specific clipboard implementation for Linux
-// Version: 1.0.1
-// Last Modified: 2025-08-14
+// Version: 1.2.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxClipboard.h"
@@ -14,7 +14,12 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/select.h>
+#include <poll.h>
+#include <cerrno>
 #include "UltraCanvasDebug.h"
+#ifdef ULTRACANVAS_HAS_XFIXES
+#include <X11/extensions/Xfixes.h>
+#endif
 
 namespace UltraCanvas {
 
@@ -67,6 +72,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxClipboard::Shutdown() {
+        StopChangeListener();
+        while (display && !outgoingIncr.empty()) EndOutgoingIncr(outgoingIncr.size() - 1);
         if (display && window) {
             XDestroyWindow(display, window);
             window = 0;
@@ -116,8 +123,9 @@ namespace UltraCanvas {
         // Set window properties
         XStoreName(display, helperWindow, "UltraCanvas Clipboard Helper");
 
-        // Select events we need for clipboard handling
-        XSelectInput(display, helperWindow, PropertyChangeMask | SelectionNotify | SelectionRequest);
+        // Selection events arrive whatever the mask; property changes carry
+        // the pieces of a copy sent in pieces (INCR) and must be asked for.
+        XSelectInput(display, helperWindow, PropertyChangeMask);
 
         return helperWindow;
     }
@@ -138,6 +146,8 @@ namespace UltraCanvas {
         atomApplicationOctetStream = XInternAtom(display, "application/octet-stream", False);
         atomGnomeCopiedFiles = XInternAtom(display, "x-special/gnome-copied-files", False);
         atomKdeCutSelection = XInternAtom(display, "application/x-kde-cutselection", False);
+        atomPasswordManagerHint = XInternAtom(display, "x-kde-passwordManagerHint", False);
+        atomIncr = XInternAtom(display, "INCR", False);
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -156,6 +166,32 @@ namespace UltraCanvas {
         }
 
         return success;
+    }
+
+    // Not logged, unlike SetClipboardText: the text is a password.
+    bool UltraCanvasLinuxClipboard::SetClipboardSecretText(const std::string& text) {
+        return WriteTextToClipboard(atomClipboard, text, true);
+    }
+
+    // The marker is a target of its own whose content is "secret". Our own
+    // copy is answered from what we offer; another program's by asking it for
+    // that target, which an owner without the marker refuses at once.
+    bool UltraCanvasLinuxClipboard::IsClipboardMarkedSecret() {
+        if (!display || !window) return false;
+        std::vector<uint8_t> hint;
+        if (ownsClipboard && XGetSelectionOwner(display, atomClipboard) == window) {
+            for (const auto& offer : offeredTargets) {
+                if (offer.first == atomPasswordManagerHint) hint = offer.second;
+            }
+        } else {
+            std::string format;
+            if (!ReadClipboardData(atomClipboard, atomPasswordManagerHint, hint, format)) return false;
+        }
+        std::string value(hint.begin(), hint.end());
+        while (!value.empty() && (value.back() == '\0' || std::isspace(static_cast<unsigned char>(value.back())))) {
+            value.pop_back();
+        }
+        return value == "secret";
     }
 
     // text/html next to the text flavours: browsers, office suites and mail
@@ -242,7 +278,90 @@ namespace UltraCanvas {
     }
 
 // ===== MONITORING =====
+    // XFixes reports every new owner of CLIPBOARD (and the owner going away)
+    // on a connection of its own, so this thread never touches the
+    // application's display. It only counts; HasClipboardChanged reads the count.
+    void UltraCanvasLinuxClipboard::StartChangeListener() {
+#ifdef ULTRACANVAS_HAS_XFIXES
+        if (!display) return;
+        Display* d = XOpenDisplay(DisplayString(display));
+        int eventBase = 0, errorBase = 0;
+        if (!d || !XFixesQueryExtension(d, &eventBase, &errorBase) || ::pipe(changeWakePipe) != 0) {
+            if (d) XCloseDisplay(d);
+            debugOutput << "UltraCanvas: no XFixes; clipboard changes are noticed by their text" << std::endl;
+            return;
+        }
+        XFixesSelectSelectionInput(d, DefaultRootWindow(d), XInternAtom(d, "CLIPBOARD", False),
+                                   XFixesSetSelectionOwnerNotifyMask |
+                                   XFixesSelectionWindowDestroyNotifyMask |
+                                   XFixesSelectionClientCloseNotifyMask);
+        XFlush(d);
+        changeDisplay = d;
+        changeListenerAlive = true;
+        const int wakeFd = changeWakePipe[0];
+        changeThread = std::thread([this, d, eventBase, wakeFd]() {
+            for (;;) {
+                while (XPending(d) > 0) {
+                    XEvent event;
+                    XNextEvent(d, &event);
+                    if (event.type == eventBase + XFixesSelectionNotify) ownerChanges.fetch_add(1);
+                }
+                pollfd fds[2];
+                fds[0].fd = ConnectionNumber(d);
+                fds[0].events = POLLIN;
+                fds[0].revents = 0;
+                fds[1].fd = wakeFd;
+                fds[1].events = POLLIN;
+                fds[1].revents = 0;
+                const int n = ::poll(fds, 2, -1);
+                if (n < 0) {
+                    if (errno == EINTR) continue;
+                    break;
+                }
+                if (fds[1].revents & POLLIN) break;
+                if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
+            }
+            changeListenerAlive = false;
+        });
+#endif
+    }
+
+    void UltraCanvasLinuxClipboard::StopChangeListener() {
+        if (changeThread.joinable()) {
+            const char byte = 1;
+            if (::write(changeWakePipe[1], &byte, 1) < 0) {
+                // The thread is gone already; join below returns at once.
+            }
+            changeThread.join();
+        }
+        if (changeDisplay) XCloseDisplay(changeDisplay);
+        changeDisplay = nullptr;
+        for (int& fd : changeWakePipe) {
+            if (fd >= 0) ::close(fd);
+            fd = -1;
+        }
+        changeListenerAlive = false;
+    }
+
+    bool UltraCanvasLinuxClipboard::HasClipboardOwner() {
+        return display && XGetSelectionOwner(display, atomClipboard) != None;
+    }
+
     bool UltraCanvasLinuxClipboard::HasClipboardChanged() {
+        // Whoever asks is watching the clipboard: start listening for owners.
+        if (!changeListenerTried) {
+            changeListenerTried = true;
+            StartChangeListener();
+        }
+        if (changeListenerAlive) {
+            const uint64_t changes = ownerChanges.load();
+            if (changes != ownerChangesSeen) {
+                ownerChangesSeen = changes;
+                clipboardChanged = true;
+            }
+            return clipboardChanged;
+        }
+
         // Check if enough time has passed since last check
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastChangeCheck);
@@ -317,7 +436,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text) {
+    bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text, bool secret) {
         std::vector<uint8_t> data(text.begin(), text.end());
         // One string, several targets: requestors ask for whichever text
         // flavour they prefer.
@@ -327,6 +446,10 @@ namespace UltraCanvas {
         offers.emplace_back(atomTextPlain, data);
         offers.emplace_back(atomString, data);
         offers.emplace_back(atomText, std::move(data));
+        if (secret) {
+            const std::string hint = "secret";
+            offers.emplace_back(atomPasswordManagerHint, std::vector<uint8_t>(hint.begin(), hint.end()));
+        }
         return WriteClipboardTargets(selection, std::move(offers));
     }
 
@@ -445,6 +568,13 @@ namespace UltraCanvas {
                 rest.clear();
             }
             if (!verb.empty() && verb.back() == '\r') verb.pop_back();
+            // Only "copy" or "cut" is a verb. An owner that answers every
+            // target with the same bytes (xclip) hands over a bare URI
+            // list here, whose first line is a file.
+            if (verb != "copy" && verb != "cut") {
+                verb.clear();
+                rest = payload;
+            }
             cutOperation = (verb == "cut");
             filePaths = ParseUriListPaths(rest);
             if (!filePaths.empty()) return true;
@@ -507,9 +637,10 @@ namespace UltraCanvas {
 
 // ===== CORE SELECTION HANDLING =====
     bool UltraCanvasLinuxClipboard::ReadClipboardData(Atom selection, Atom target, std::vector<uint8_t>& data, std::string& format) {
-        if (!display || !window) return false;
+        if (!display || !window || reading) return false;
 
         // Request the selection
+        readTarget = target;
         XConvertSelection(display, selection, target, target, window, CurrentTime);
         XFlush(display);
 
@@ -552,93 +683,278 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxClipboard::WaitForSelectionNotify(std::vector<uint8_t>& data, std::string& format) {
         selectionReady = false;
+        selectionData.clear();
+        selectionFormat.clear();
+        incrReceiving = false;
+        reading = true;
+        readDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(SELECTION_TIMEOUT_MS);
 
-        auto startTime = std::chrono::steady_clock::now();
-
+        // Only the clipboard's own events are taken off the queue; a window's
+        // keys, exposes and the rest stay there for the application's loop.
         while (!selectionReady) {
-            // Check for timeout
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime);
-            if (elapsed.count() > SELECTION_TIMEOUT_MS) {
-                LogError("WaitForSelectionNotify", "Timeout waiting for selection");
+            XEvent event;
+            if (XCheckIfEvent(display, &event, IsClipboardEvent, reinterpret_cast<XPointer>(this))) {
+                if (event.type == SelectionNotify) {
+                    HandleSelectionNotify(event.xselection);
+                } else if (event.type == SelectionRequest) {
+                    // Another program, or this one, asks for what we own
+                    HandleSelectionEvent(event.xselectionrequest);
+                } else if (event.type == PropertyNotify) {
+                    HandlePropertyNotify(event.xproperty);
+                }
+                continue;
+            }
+
+            // A piece of a copy sent in pieces moves the deadline on
+            if (std::chrono::steady_clock::now() > readDeadline) {
+                LogError("WaitForSelectionNotify", incrReceiving
+                         ? "Timeout waiting for the next piece of the selection"
+                         : "Timeout waiting for selection");
+                incrReceiving = false;
+                incrData.clear();
+                reading = false;
                 return false;
             }
 
-            // Process X events
-            if (XPending(display) > 0) {
-                XEvent event;
-                XNextEvent(display, &event);
-
-                if (event.type == SelectionNotify && event.xselection.requestor == window) {
-                    if (HandleSelectionNotify(event.xselection)) {
-                        break;
-                    }
-                } else if (event.type == SelectionRequest) {
-                    // Handle selection requests from other applications
-                    HandleSelectionEvent(event.xselectionrequest);
-                }
-            }
-
-            // Small delay to avoid busy waiting
-            usleep(1000); // 1ms
+            // Until the X connection has something, a millisecond at most
+            pollfd connection = {ConnectionNumber(display), POLLIN, 0};
+            ::poll(&connection, 1, 1);
         }
 
-        data = selectionData;
+        reading = false;
+        data = std::move(selectionData);
+        selectionData.clear();
         format = selectionFormat;
         // A failed conversion (owner refused the target) also ends the wait —
         // it must not report the previous read's stale bytes as success.
         return !data.empty();
     }
 
+    Bool UltraCanvasLinuxClipboard::IsClipboardEvent(Display*, XEvent* event, XPointer self) {
+        // Called by Xlib with the display locked: look, do not call Xlib.
+        const auto* clipboard = reinterpret_cast<const UltraCanvasLinuxClipboard*>(self);
+        switch (event->type) {
+            case SelectionNotify:
+                return event->xselection.requestor == clipboard->window;
+            case SelectionRequest:
+                return event->xselectionrequest.owner == clipboard->window;
+            case PropertyNotify:
+                if (event->xproperty.window == clipboard->window) return True;
+                for (const OutgoingIncr& transfer : clipboard->outgoingIncr) {
+                    if (transfer.requestor == event->xproperty.window &&
+                        transfer.property == event->xproperty.atom) {
+                        return True;
+                    }
+                }
+                return False;
+            default:
+                return False;
+        }
+    }
+
+    bool UltraCanvasLinuxClipboard::TakeProperty(Atom property, std::vector<uint8_t>& data, Atom& type) {
+        data.clear();
+        type = None;
+        int format = 0;
+        unsigned long items = 0;
+        unsigned long bytesAfter = 0;
+        unsigned char* prop = nullptr;
+        // Deleted as it is read - unless it is larger than asked for, which
+        // bytesAfter then says.
+        if (XGetWindowProperty(display, window, property, 0, static_cast<long>(MAX_CLIPBOARD_SIZE / 4), True,
+                               AnyPropertyType, &type, &format, &items, &bytesAfter, &prop) != Success) {
+            type = None;
+            return false;
+        }
+        if (bytesAfter > 0) {
+            if (prop) XFree(prop);
+            XDeleteProperty(display, window, property);
+            LogError("TakeProperty", "The copy is larger than " + std::to_string(MAX_CLIPBOARD_SIZE >> 20) +
+                                     " MB; it is not read");
+            return false;
+        }
+        // Format 32 comes back from Xlib as an array of C longs - 8 bytes each
+        // on a 64-bit system, not 4: a TARGETS list copied at 4 bytes an item
+        // kept its first half only. Format 16 likewise as shorts.
+        const size_t itemSize = format == 32 ? sizeof(long) : format == 16 ? sizeof(short) : 1;
+        if (prop && items > 0) data.assign(prop, prop + items * itemSize);
+        if (prop) XFree(prop);
+        return true;
+    }
+
+    void UltraCanvasLinuxClipboard::FinishRead(std::vector<uint8_t> data, Atom type) {
+        selectionData = std::move(data);
+        selectionFormat = type != None ? AtomToString(type) : std::string();
+        selectionReady = true;
+        incrReceiving = false;
+        incrData = std::vector<uint8_t>();
+    }
+
     bool UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& selEvent) {
+        if (!reading || incrReceiving || selEvent.target != readTarget) {
+            // An answer nobody waits for any more (its read timed out) or to
+            // an earlier request. Its property is not the one being read.
+            if (!incrReceiving && selEvent.property != None) {
+                XDeleteProperty(display, window, selEvent.property);
+            }
+            return false;
+        }
+
         if (selEvent.property == None) {
             // The owner has nothing in the requested target - an empty
             // clipboard, or text asked of an image. That is an answer, not
             // an error: a clipboard monitor asks every half second and would
             // otherwise fill the log with it.
-            selectionData.clear();
-            selectionFormat.clear();
-            selectionReady = true;
+            FinishRead({}, None);
             return false;
         }
 
-        // Get the property data
-        Atom actualType;
-        int actualFormat;
-        unsigned long numItems;
-        unsigned long bytesAfter;
-        unsigned char* prop = nullptr;
-
-        int result = XGetWindowProperty(
-                display, window, selEvent.property,
-                0, MAX_CLIPBOARD_SIZE / 4, False, AnyPropertyType,
-                &actualType, &actualFormat, &numItems, &bytesAfter, &prop
-        );
-
-        if (result != Success || !prop) {
+        std::vector<uint8_t> data;
+        Atom type = None;
+        if (!TakeProperty(selEvent.property, data, type) || type == None) {
             LogError("HandleSelectionNotify", "Failed to get window property");
-            selectionData.clear();
-            selectionFormat.clear();
-            selectionReady = true;
+            FinishRead({}, None);
             return false;
         }
 
-        // Calculate data size
-        size_t dataSize = numItems * (actualFormat / 8);
+        if (type == atomIncr) {
+            // Too large for one property: the owner sends it in pieces,
+            // starting now that TakeProperty deleted the INCR marker. The
+            // marker holds a lower bound on the size.
+            incrReceiving = true;
+            incrProperty = selEvent.property;
+            incrType = None;
+            incrData.clear();
+            if (data.size() >= sizeof(long)) {
+                long bound = 0;
+                std::memcpy(&bound, data.data(), sizeof(long));
+                if (bound > 0) incrData.reserve(std::min(static_cast<size_t>(bound), MAX_CLIPBOARD_SIZE));
+            }
+            readDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(INCR_STALL_TIMEOUT_MS);
+            return false;
+        }
 
-        // Copy the data
-        selectionData.clear();
-        selectionData.resize(dataSize);
-        std::memcpy(selectionData.data(), prop, dataSize);
-
-        selectionFormat = AtomToString(actualType);
-
-        // Clean up
-        XFree(prop);
-        XDeleteProperty(display, window, selEvent.property);
-
-        selectionReady = true;
+        FinishRead(std::move(data), type);
         return true;
+    }
+
+    bool UltraCanvasLinuxClipboard::HandlePropertyNotify(const XPropertyEvent& event) {
+        // A requestor took the last piece we wrote: write the next. The last
+        // piece is an empty one, which tells the requestor the copy is complete.
+        if (event.state == PropertyDelete) {
+            for (size_t i = 0; i < outgoingIncr.size(); ++i) {
+                OutgoingIncr& transfer = outgoingIncr[i];
+                if (transfer.requestor != event.window || transfer.property != event.atom) continue;
+                const size_t piece = std::min(transfer.payload->size() - transfer.offset, IncrChunkSize());
+                XChangeProperty(display, transfer.requestor, transfer.property, transfer.type, 8,
+                                PropModeReplace, transfer.payload->data() + transfer.offset,
+                                static_cast<int>(piece));
+                XFlush(display);
+                transfer.offset += piece;
+                transfer.lastActivity = std::chrono::steady_clock::now();
+                if (piece == 0) EndOutgoingIncr(i);
+                return true;
+            }
+        }
+
+        // The owner wrote the next piece of what we are reading.
+        if (event.window == window && event.state == PropertyNewValue && incrReceiving &&
+            event.atom == incrProperty) {
+            std::vector<uint8_t> piece;
+            Atom type = None;
+            if (!TakeProperty(event.atom, piece, type)) {
+                FinishRead({}, None);
+                return true;
+            }
+            if (type == None) return true;   // replaced and taken already
+            if (piece.empty()) {
+                FinishRead(std::move(incrData), incrType);
+                return true;
+            }
+            if (incrData.size() + piece.size() > MAX_CLIPBOARD_SIZE) {
+                LogError("HandlePropertyNotify", "The copy is larger than " +
+                         std::to_string(MAX_CLIPBOARD_SIZE >> 20) + " MB; it is not read");
+                FinishRead({}, None);
+                return true;
+            }
+            incrType = type;
+            incrData.insert(incrData.end(), piece.begin(), piece.end());
+            readDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(INCR_STALL_TIMEOUT_MS);
+            return true;
+        }
+
+        return event.window == window;
+    }
+
+    size_t UltraCanvasLinuxClipboard::IncrChunkSize() const {
+        // What one request carries without BIG-REQUESTS, less room for the
+        // request itself, and no more than GTK and Qt send at a time.
+        const long units = display ? XMaxRequestSize(display) : 65535;
+        return std::min<size_t>(256 * 1024, static_cast<size_t>(units) * 4 - 1024);
+    }
+
+    bool UltraCanvasLinuxClipboard::StartOutgoingIncr(Window requestor, Atom property, Atom type,
+                                                      const std::vector<uint8_t>& payload) {
+        ExpireOutgoingIncr();
+        // A new request on the same property replaces one still going.
+        for (size_t i = 0; i < outgoingIncr.size(); ++i) {
+            if (outgoingIncr[i].requestor == requestor && outgoingIncr[i].property == property) {
+                EndOutgoingIncr(i);
+                break;
+            }
+        }
+
+        // The requestor deleting each piece is how it asks for the next, so
+        // listen to its window - keeping whatever else this client already
+        // listens to there - before the first piece can be asked for.
+        OutgoingIncr transfer;
+        transfer.requestor = requestor;
+        transfer.property = property;
+        transfer.type = type;
+        if (requestor != window) {
+            const auto other = std::find_if(outgoingIncr.begin(), outgoingIncr.end(),
+                [requestor](const OutgoingIncr& t) { return t.requestor == requestor; });
+            if (other != outgoingIncr.end()) {
+                transfer.savedEventMask = other->savedEventMask;
+            } else {
+                XWindowAttributes attributes;
+                if (!XGetWindowAttributes(display, requestor, &attributes)) return false;   // gone
+                transfer.savedEventMask = attributes.your_event_mask;
+                XSelectInput(display, requestor, transfer.savedEventMask | PropertyChangeMask);
+            }
+        }
+
+        // The marker: INCR, with the size as its lower bound.
+        const long size = static_cast<long>(payload.size());
+        XChangeProperty(display, requestor, property, atomIncr, 32, PropModeReplace,
+                        reinterpret_cast<const unsigned char*>(&size), 1);
+        transfer.payload = std::make_shared<const std::vector<uint8_t>>(payload);
+        transfer.lastActivity = std::chrono::steady_clock::now();
+        outgoingIncr.push_back(std::move(transfer));
+        debugOutput << "UltraCanvas: Sending " << AtomToString(type) << " in pieces ("
+                    << payload.size() << " bytes)" << std::endl;
+        return true;
+    }
+
+    void UltraCanvasLinuxClipboard::EndOutgoingIncr(size_t index) {
+        const Window requestor = outgoingIncr[index].requestor;
+        const long savedEventMask = outgoingIncr[index].savedEventMask;
+        outgoingIncr.erase(outgoingIncr.begin() + static_cast<std::ptrdiff_t>(index));
+        if (requestor == window) return;
+        for (const OutgoingIncr& transfer : outgoingIncr) {
+            if (transfer.requestor == requestor) return;
+        }
+        XSelectInput(display, requestor, savedEventMask);
+    }
+
+    void UltraCanvasLinuxClipboard::ExpireOutgoingIncr() {
+        const auto now = std::chrono::steady_clock::now();
+        for (size_t i = outgoingIncr.size(); i-- > 0;) {
+            if (now - outgoingIncr[i].lastActivity > std::chrono::milliseconds(OUTGOING_INCR_TIMEOUT_MS)) {
+                debugOutput << "UltraCanvas: A requestor stopped taking a copy sent in pieces; given up" << std::endl;
+                EndOutgoingIncr(i);
+            }
+        }
     }
 
 // ===== CRITICAL FIX: HandleSelectionEvent Implementation =====
@@ -703,7 +1019,11 @@ namespace UltraCanvas {
                 }
             }
 
-            if (payload) {
+            if (payload && payload->size() > IncrChunkSize()) {
+                // Too large for one request: in pieces (ICCCM INCR)
+                success = StartOutgoingIncr(request.requestor, response.property, request.target, *payload);
+                if (!success) response.property = None;
+            } else if (payload) {
                 XChangeProperty(
                         display, request.requestor, response.property,
                         request.target, 8, PropModeReplace,
@@ -729,6 +1049,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxClipboard::HandleSelectionClear(const XSelectionClearEvent & clear) {
+        // Handled late - after a read, or with the selection taken back
+        // since: it must not clear what is offered now.
+        if (display && window && XGetSelectionOwner(display, clear.selection) == window) {
+            return;
+        }
         debugOutput << "UltraCanvas: Lost ownership of "
                   << AtomToString(clear.selection) << std::endl;
 
@@ -818,5 +1143,12 @@ namespace UltraCanvas {
         } else if (event.type == SelectionClear) {
             instance->HandleSelectionClear(event.xselectionclear);
         }
+    }
+
+    bool UltraCanvasLinuxClipboard::ProcessClipboardPropertyEvent(const XEvent& event) {
+        if (!instance || !instance->display || event.type != PropertyNotify) return false;
+        XEvent copy = event;
+        if (!IsClipboardEvent(instance->display, &copy, reinterpret_cast<XPointer>(instance))) return false;
+        return instance->HandlePropertyNotify(event.xproperty);
     }
 } // namespace UltraCanvas

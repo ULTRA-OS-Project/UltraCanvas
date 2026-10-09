@@ -8,9 +8,11 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.5.0 - ClickSurface::PassPointerThroughContent: a click on the
+//                  surface's text and icons reaches the surface
 // Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
 // Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
-// Last Modified: 2026-09-19
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -322,11 +324,27 @@ MakeAvatar(const std::string& id, const std::string& initial, float side = kAvat
 }
 
 // A container that fires onActivate on a left click anywhere inside it
-// (account tiles, sidebar entries, contact rows).
+// (account tiles).
+//
+// A click on a label inside it reaches it either way: the window hands a
+// press the label does not take on to the elements around it. (It did not
+// until October 2026, and on an account tile only the padding answered.)
+// PassPointerThroughContent() goes further and makes the surface one target
+// for the pointer, hover included, so its own tooltip is the one shown.
 class ClickSurface : public UltraCanvas::UltraCanvasContainer {
 public:
     ClickSurface(const std::string& id, std::function<void()> onActivate)
         : UltraCanvas::UltraCanvasContainer(id, 0, 0, 0, 0), onActivate_(std::move(onActivate)) {}
+
+    // Make the content transparent to the pointer, as an attachment chip's
+    // labels are, so every click and hover over the surface is the surface's
+    // and lands on it directly. Hit-testing skips a non-interactive element
+    // with everything inside it, so the direct children are enough. Their own
+    // tooltips are no longer reached: the surface's tooltip has to say what
+    // they said.
+    void PassPointerThroughContent() {
+        for (const auto& child : GetChildren()) child->SetInteractive(false);
+    }
 
     bool OnEvent(const UltraCanvas::UCEvent& event) override {
         if (!IsVisible() || IsDisabled()) return false;

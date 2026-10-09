@@ -1,3 +1,43 @@
+#### 2026-10-08 *0.3.0*
+- **A list of chats.** A sidebar on the left of the chat view lists every
+  chat UltraClaude remembers, newest first, with *New chat* above it (moved
+  from the toolbar) and *Delete chat* below. The first prompt of a new chat
+  adds it, titled by that prompt's first line; every finished turn saves the
+  transcript and moves the chat to the top. Picking a chat shows its
+  transcript again and resumes its Claude Code session (`--resume`) in its own
+  folder, with its model and permission mode; the session id follows whatever
+  the CLI reports, so a resume that comes back under a new id is followed too.
+  A chat's folder is locked once the chat exists, because the CLI keeps its
+  sessions per folder. Switching waits until Claude has finished answering.
+  - The list is kept in `chats.json` and each transcript in
+    `transcripts/<chat>.md`, in the UltraCanvas settings folder under
+    `UltraClaude` (`engine/ChatStore`). Both are written to a temporary file
+    and renamed into place, and only ids UltraClaude made name a file.
+  - `--list-chats` prints the list from the command line.
+
+#### 2026-10-04 *0.2.0*
+- **The message box takes several lines.** It is an `UltraCanvasTextArea`
+  now: Enter sends, Shift+Enter starts a new line, and a long message wraps
+  instead of scrolling sideways. The keys come through the text area's new
+  `onBeforeKeyDown` hook (framework, `changelog.d/textarea-before-keydown.md`).
+- **Login code box on the sign-in page.** While `claude auth login` waits,
+  the page shows *Open sign-in page* - the URL the CLI printed, for when no
+  browser opened - and a *Login code* field with Submit: when Anthropic's page
+  ends on a code to paste back, it goes to the CLI through its standard input,
+  which `ClaudeCliProcess` can now keep open (`InputMode::KeepOpen`,
+  `WriteInput`, `CloseInput`). The code is trimmed of the spaces and line
+  break it was copied with. A wrong code shows the CLI's answer ("Login
+  failed: ...") and Log in can be chosen again. The long sign-in URL no longer
+  replaces the status line.
+- **Links in the sign-in messages open the browser.** claude.ai (after
+  Create account) and claude.com/claude-code (when Claude Code is not
+  installed) are underlined in the accent colour and open in the browser on a
+  click, with the address as a tooltip - through `UltraCanvasLabel`'s text
+  links. The not-found message no longer ends in a doubled ".).".
+- The hidden code field no longer leaves its caret blinking on the page
+  (framework fixes, `changelog.d/caret-left-by-hidden-input.md` and
+  `changelog.d/hidden-container-keeps-focus.md`).
+
 #### 2026-10-02 *0.1.0*
 - **UltraClaude, a desktop chat window for Claude on a Claude subscription.**
   `Apps/UltraClaude` does not call Anthropic's API and holds no API key: it

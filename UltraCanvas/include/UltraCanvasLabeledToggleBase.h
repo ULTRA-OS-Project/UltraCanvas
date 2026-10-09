@@ -1,8 +1,10 @@
 // UltraCanvasLabeledToggleBase.h
 // Abstract base for labeled toggle controls (checkbox, radio, switch).
 // Owns label/layout/event/state plumbing; subclasses provide indicator drawing.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.2.0 - toggles take the keyboard focus (Tab reaches them, Space activates
+//                 them, a click focuses them); SetAcceptsFocus(false) opts one out
+// Version: 1.1.0 - a checkbox to screen readers: name, toggle state and action
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,6 +51,7 @@ namespace UltraCanvas {
         // Core state
         std::string text;
         CheckedState checkState = CheckedState::Unchecked;
+        bool acceptsFocus = true;
 
         // Layout
         bool layoutDirty = true;
@@ -86,8 +89,18 @@ namespace UltraCanvas {
         virtual void Toggle();
 
         // ===== TEXT/LAYOUT =====
-        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
+        void SetText(const std::string& labelText);
         std::string GetText() const { return text; }
+
+        // ===== ACCESSIBILITY =====
+        // A checkbox (radio button, switch: see the subclasses), named by
+        // SetAccessibleName() or its label, with its checked state. A screen
+        // reader's action activates it as a click does.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::CheckBox; }
+        std::string GetAccessibleName() const override;
+        AccessibleToggleState GetAccessibleToggleState() const override;
+        std::string GetAccessibleActionName() const override { return "toggle"; }
+        bool DoAccessibleAction() override;
 
         // ===== LAYOUT (CSS Measure/Arrange) =====
         // Toggles have intrinsic size (indicator + spacing + label); we report it
@@ -98,6 +111,13 @@ namespace UltraCanvas {
                                   const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
+        // ===== FOCUS =====
+        // A toggle takes the keyboard focus like a button: Tab reaches it, a
+        // click focuses it, and Space then activates it. Enter is left to the
+        // window, so in a dialog it still presses the default button.
+        bool AcceptsFocus() const override { return acceptsFocus; }
+        void SetAcceptsFocus(bool accept) { acceptsFocus = accept; }
 
         // ===== RENDER/EVENT =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;

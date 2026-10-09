@@ -59,7 +59,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     RegisterBuiltinEBookEngines();
 
     auto container = std::make_shared<UltraCanvasContainer>("EBookDemo");
-    container->layout.SetFlex(CSSLayout::FlexDirection::Column);
+    container->layout.SetFlex(CSSLayout::FlexDirection::Column).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     // ---- header row: open button + status ----
     auto header = std::make_shared<UltraCanvasContainer>("EBookDemoHeader");

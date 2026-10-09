@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-01
+**Version:** 1.0.1
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -13,8 +13,11 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application, will present the same choice on its
-first page, preselected to the machine it runs on.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
+the same choice on its first page, preselected to the machine it runs on, and
+then checks and installs the packages below, names the matching SDK, writes
+the project skeleton of step 3 and prepares the first prompt for the
+assistant. `UltraCanvasStart --check` does the checking in a terminal.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
@@ -69,8 +72,10 @@ brew install flac libvorbis opus opusfile libopusenc lame # audio codecs
 ```
 
 Homebrew's ICU is keg-only; the CDR plug-in's CMake adds its `pkgconfig`
-directory itself. The complete list is the *Install dependencies (macOS)* step
-in `.github/workflows/build.yml`.
+directory itself. Apps built this way run on the macOS you build on and newer.
+CI builds the same libraries with vcpkg instead, for macOS 14 and newer, from
+the list in `MacOS/deps/vcpkg.json`; `MacOS/deps/README.md` shows how to do
+that locally (`scripts/macos-deps.sh`).
 
 </details>
 
@@ -146,9 +151,11 @@ other applications sit in `build/bin/`.
 <details>
 <summary><b>macOS</b></summary>
 
-The core builds as a static library by default. The applications are plain
-executables under `build/bin/`; `package-macos.sh` turns them into bundles in
-step 10.
+The core builds as a shared library by default, as it does on Linux and as CI
+does; `build/lib/libUltraCanvas.dylib` is what every application loads. The
+applications are plain executables under `build/bin/`; `package-macos.sh`
+turns them into bundles in step 10, with the core in the suite's shared
+`Frameworks/`.
 
 </details>
 
@@ -172,6 +179,10 @@ reasons:
   page is one file under `Apps/DemoApp/` (`UltraCanvasButtonExamples.cpp`,
   `UltraCanvasLineChartExamples.cpp`, …). When you want to know what a
   widget looks like and how it is wired, open the page and then the file.
+  `UltraCanvasDemo --component <id>` (the id a page is registered with in
+  `UltraCanvasDemo.cpp`, e.g. `listview`) starts on that page and without
+  the About window, so a page can be screenshotted by a script; `--no-about`
+  leaves the About window out on the default page.
 - **A green build is your baseline.** When the assistant's first change
   breaks the build you want to know it was the change.
 
@@ -225,7 +236,7 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK artifact CI builds for your platform ([`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK for your platform from the release of the current version (`https://github.com/ULTRA-OS-Project/UltraCanvas/releases`, or UltraCanvasStart's *Download* button; [`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
 Both routes are validated on every pull request: CI builds the in-tree
 applications, and it installs the framework into a scratch prefix and builds
@@ -286,6 +297,8 @@ install(TARGETS MyApp RUNTIME DESTINATION bin)
 ```
 
 `Apps/MyApp/main.cpp`
+
+<!-- doc-check: #define MYAPP_VERSION "1.0.0" -->
 
 ```cpp
 #include "UltraCanvasApplication.h"
@@ -377,10 +390,12 @@ The working order for every screen:
    codes, document views), each with its header.
 2. For each element you will use, read its `Docs/UltraCanvas/UltraCanvas<Name>*.md`
    and, for a non-trivial one, its page in `Apps/DemoApp/`.
-3. Lay out with the layout engines, not with hand-computed coordinates:
-   `UltraCanvasBoxLayout`, `UltraCanvasGridLayout`, `UltraCanvasFlexLayout`
-   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`) or CSS-style layout
-   (`Docs/CSSLayout.md`). Inside a self-rendered view, position children
+3. Lay out with the layout engine (`CSSLayout/CSSLayout.h`), not with
+   hand-computed coordinates: a container's `layout` is a flex row, a flex
+   column or a grid (`layout.SetFlexRow()`, `SetFlexColumn()`, `SetGrid()`)
+   and each child sizes itself through its `layoutItem`
+   (`Docs/UltraCanvas/UltraCanvasLayoutExamples.md`, reference in
+   `Docs/CSSLayout.md`). Inside a self-rendered view, position children
    with `PlaceChildAt()`, never `SetBounds()`.
 4. Use the factories (`CreateButton`, `CreateTextInput`, …) and keep every
    widget `std::shared_ptr`-managed.
@@ -532,9 +547,37 @@ builds a single-application AppImage.
 unsigned, local build. `./package_and_notarize-macos.sh` produces the signed and
 notarised bundle a release ships; it needs a Developer ID certificate in the
 keychain and the notarisation credentials the script names. CI runs it only on
-pushes to `main`; pull requests get the unsigned bundle.
+pushes to `main`; pull requests get the unsigned bundle. `--no-sign` signs ad
+hoc, so the bundles still carry a valid signature, and names the disk image
+`UCDemo-MacOS-<version>-<arch>-unsigned.dmg`. Once a browser has downloaded
+such an image, macOS refuses its apps - on Apple silicon with *"… is damaged
+and can't be opened"*. Nothing is damaged: copy the `UltraCanvas` folder to
+Applications and run `xattr -dr com.apple.quarantine /Applications/UltraCanvas`,
+as the read-me inside the image says.
 `Docs/UltraCanvas/UltraCanvasMacBundle.md` explains the bundle layout, the
 `Info.plist`, icons, and how web locations and aliases are handled.
+
+An app runs on the oldest macOS that *all* of its binaries allow, and that
+includes the libraries in the suite's shared `Frameworks/`: macOS refuses to
+load a library built for a newer version than its own. Homebrew builds its
+libraries for the macOS of the machine that built them, so a suite you package
+from Homebrew runs on the macOS you built it on and newer. The suite CI
+publishes runs on **macOS 14 and later**: CI builds the libraries with vcpkg
+for `MACOSX_DEPLOYMENT_TARGET=14.0` (`MacOS/deps/README.md`) and passes their
+prefix as `UC_MACOS_DEPS_PREFIX`. `package-macos.sh` reads the minimum from
+every binary it packages, writes it into each app as `LSMinimumSystemVersion`,
+and fails when `MACOSX_DEPLOYMENT_TARGET` is set and something needs a newer
+macOS.
+
+macOS asks before an app opens the camera or the microphone, or reaches the
+local network, and the prompt shows the reason in the app's `Info.plist`.
+`package-macos.sh` writes the local-network reason and the Bonjour service
+types the framework browses into every app, because any app that prints looks
+for network printers. An app that opens the camera or the microphone is listed
+in `camera_usage` / `microphone_usage` in the script. That one line gives it
+the usage description and the hardened-runtime device entitlement it is
+signed with. A signed app needs both: without the description macOS terminates
+it, and without the entitlement the device is refused.
 
 </details>
 
@@ -579,7 +622,7 @@ assistant must read, which is what stops it guessing.
 > `UltraCanvasMediaViewer` preview on the right, inside the existing split
 > pane. Files are chosen with `UltraCanvasDialogManager`. Read
 > `UltraCanvasListViewExamples.md` and `UltraCanvasMediaViewer.md` before
-> writing code, and use `UltraCanvasBoxLayout` for the toolbar row.
+> writing code, and lay the toolbar row out as a flex row (`layout.SetFlexRow()`).
 
 **Using a module**
 

@@ -1,3 +1,4 @@
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
@@ -36,10 +37,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
@@ -144,7 +148,17 @@ req.body   = SerializeJson(payload);
 UltraNetHandle h = UltraNet_HttpRequestAsync(req,
     [](const UltraNetResponse& resp) {
         // runs on libcurl multi worker thread — marshal to UI thread if needed
+        // A transfer cut off mid-body (timeout, lost connection, over
+        // maxReceiveSize, cancelled) keeps the server's status line:
+        // check IsComplete() / transferError before trusting resp.body.
+        if (!resp.IsComplete()) { /* resp.transferError says why */ }
     });
+
+// A relative reference against a base URL (RFC 3986 section 5)
+std::string url;
+UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
+// url == "https://x.org/data/a.json"; a URL with a control character in it
+// (a CR or LF that would end the request line) is refused
 
 // File download streamed straight to disk
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
@@ -246,26 +260,102 @@ CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 An account that will not send or fetch is rarely diagnosable from the
 `UltraNetResultCode` alone — the server says why in its reply text, and
 libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
-`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+`ULTRANET_CURL_VERBOSE` to anything but empty or `0` to put the conversation
+on stderr:
 
 ```
-ULTRANET_CURL_DEBUG=1 ./UltraMail
+ULTRANET_CURL_VERBOSE=1 ./UltraMail
 ```
 
 | Line | Meaning |
 |---|---|
 | `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
 | `[ultranet] > …` | what we sent |
-| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error`, `-ERR invalid password` |
 
-It is off unless asked for, message bodies are never printed, and the SASL
-exchange is replaced with `<redacted>` — including the bare base64
-continuation lines of `AUTH LOGIN`, which carry the password with no keyword
-on them — so a trace can be pasted into a bug report as it stands. The
-mechanism name is kept, because which step failed is the useful part.
+It is off unless asked for, and message bodies are never printed. Every line
+we send that can carry a secret is printed as `<redacted auth line>`: the
+SASL exchange — including the bare base64 continuation lines of `AUTH LOGIN`,
+which carry the password with no keyword on them — POP3's `PASS`, and IMAP's
+`LOGIN`, which libcurl sends when a server offers no SASL. So a trace can be
+pasted into a bug report as it stands. The server's side is kept whole, its
+list of mechanisms and its answer to the sign-in included, because which step
+failed is the useful part.
 
-Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+Applies to every mail plug-in that goes through libcurl (SMTP, IMAP, POP3);
 `ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
+On Windows a GUI build has no stderr to print to: run it from a console, or
+read `UltraNetResult::diagnostics`, which carries the connection chain of a
+failure either way. FTP calls have their own log, below.
+
+---
+
+## The FTP session log
+
+Every FTP / FTPS / SFTP call (`UltraNetFtp.h`) can report its session as it
+runs — the lines an FTP client shows in its message log:
+
+```
+Step:     Resolving address of ftp.example.com
+Step:     Connecting to 203.0.113.7:21...
+Step:     Connection established, waiting for welcome message...
+Response: 220 Welcome                          (replyCode 220)
+Command:  USER erika
+Command:  PASS ********                        (the password is never logged)
+Response: 230 Logged in
+Step:     Logged in
+Command:  PASV
+Response: 227 Entering Passive Mode (203,0,113,7,246,253)
+Step:     Retrieving directory listing...
+Command:  MLSD
+Error:    Connection timed out after 30 seconds of inactivity   (transportCode 28)
+```
+
+```cpp
+UltraNetFtpOptions opt;
+opt.credentials.username = "erika";
+opt.credentials.password = secret;
+opt.onLog = [](const UltraNetFtpLogLine& line) {   // on the calling thread, while it runs
+    Show(line.kind, line.text, line.replyCode, line.transportCode);
+};
+std::vector<UltraNetFtpEntry> entries;
+UltraNetResult r = UltraNet_FtpListDirectory("ftp://ftp.example.com/pub/", entries, opt);
+// r.message:     "RETR response: 550 - the server said \"550 Permission denied\""
+// r.diagnostics: "Error: ... (libcurl error 19: ...)\nConnected to: 203.0.113.7:21\n..."
+```
+
+| Kind | Holds |
+|---|---|
+| `Step` | what the client is doing: libcurl's own notes, plus the steps an FTP client names — *Logged in*, *Retrieving directory listing...*, *Directory listing successful*, *Insecure server, it does not support FTP over TLS* (an `ftpes://` server that refused AUTH TLS) |
+| `Command` | a command sent, `PASS` / `ACCT` masked as `********` |
+| `Response` | a reply line, with its three-digit `replyCode` (0 inside a multi-line reply) |
+| `Error` | the call's last line on a failure: the message, `resultCode`, and libcurl's error number in `transportCode` |
+
+(The kind is `Step`, not `Status`: Xlib `#define`s `Status`.)
+
+A caller that reaches these functions through a layer that builds the options
+itself — UltraFiler's drive worker calls UltraCloud's FTP provider — sets a
+sink for its thread instead: `UltraNet_SetThreadFtpLog(fn)` returns the
+previous sink to put back afterwards, and only calls without an `onLog` of
+their own go to it.
+
+What a failure says, whether or not anyone reads the log:
+
+- `message` is libcurl's specific reason (its error buffer, not just the error
+  class), with the server's refusal added when the last reply was a 4xx / 5xx.
+- `diagnostics` is the connection chain (`UltraNetCurlError.h`) plus the last
+  server reply.
+- `UltraNetFtpOptions::inactivityTimeoutMs` (default 30 s) ends a call whose
+  server has gone quiet — no reply to a command, no bytes of a listing or file
+  — as *Connection timed out after N seconds of inactivity*. Before it, a data
+  connection that opened and sent nothing held the call indefinitely.
+- A listing tries MLSD, then LIST, then NLST only when the server refused the
+  command; a failure to connect, sign in, set up TLS or the data connection, or
+  a timeout, is reported once rather than three times, and an empty folder is
+  listed with one request.
+
+`Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
+server on loopback.
 
 ---
 
@@ -297,6 +387,14 @@ architecture.
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.
+* **Public-key pinning:** `UltraNetHttpOptions::pinnedPublicKey`
+  (`"sha256//<base64>"`, from `UltraNet_PublicKeyPinOf`) is checked on every
+  handshake, with `acceptInvalidCert` too - so a self-signed server can be
+  trusted by its key and nothing else. A mismatch is `TlsPublicKeyMismatch`;
+  a TLS backend that cannot pin gets verification switched back on rather
+  than the pin dropped. `capturePeerCertificate` fills
+  `UltraNetResponse::tlsInfo`, the pin included. IODeviceManager's trust on
+  first use for scanners and printers is built on these.
 * **Threading:** async callbacks run on the libcurl multi worker
   thread — callers must marshal to their own loop and not block.
 * **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
@@ -346,4 +444,4 @@ internet access. See [`ApiStatus.md`](ApiStatus.md).
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

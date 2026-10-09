@@ -121,9 +121,26 @@ extent. The page size comes from `%AI5_ArtSize`, falling back to
 
 The page is a flex column — title, format note, toolbar, viewer stage, status
 row, notes panel. The stage holds both viewers and shows whichever route the
-file took, so the toolbar's zoom buttons drive the active one:
+file took, so the toolbar's zoom buttons drive the active one. The demo's own
+`LoadAIDocument` helper wraps `AIConverter` and keeps its warnings:
 
 ```cpp
+struct AILoadResult {
+    std::shared_ptr<VectorStorage::VectorDocument> document;
+    std::vector<std::string> warnings;
+};
+
+AILoadResult LoadAIDocument(const std::string& path) {
+    AILoadResult result;
+    VectorConverter::AIConverter converter;
+    VectorConverter::ConversionOptions options;
+    options.WarningCallback = [&result](const std::string& message) {
+        result.warnings.push_back(message);
+    };
+    result.document = converter.Import(path, options);
+    return result;
+}
+
 auto vectorView = CreateVectorElement("AIVectorView", 0, 0, 0, 0);
 VectorElementOptions options = vectorView->GetOptions();
 options.InteractionMode = VectorInteractionMode::PanZoom;
@@ -146,8 +163,8 @@ the PDF fallback compiles in only where `ULTRACANVAS_PLUGIN_PDF` is also set.
 
 ```cpp
 // Any VectorStorage::VectorDocument can be saved as .ai; the bytes are the
-// Vector plugin's PDF output.
-UltraCanvasVectorFormatsPlugin::SaveVectorDocument(document, "artwork.ai");
+// Vector plugin's PDF output. `document` is the shared_ptr Import() returned.
+UltraCanvasVectorFormatsPlugin::SaveVectorDocument(*document, "artwork.ai");
 ```
 
 The writer produces a PDF-compatible file — which is the kind the PDF engine

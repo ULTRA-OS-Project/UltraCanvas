@@ -1,9 +1,13 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.5.0 - a click anywhere on a tile selects its account (its text
+//                  and counters took the click before, and only the tile's
+//                  padding answered); the counters' captions are in the
+//                  tile's tooltip, beside the address.
 // Version: 0.4.0 - the summary strip and the tiles are white cards on the
 //                  page: initial in a tinted avatar square, local part as the
 //                  name, and the three counters as tinted count · caption
 //                  pills instead of saturated badges.
-// Last Modified: 2026-09-09
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -28,7 +32,7 @@ constexpr float kTilePill     = 18.0f;
 constexpr float kCountSize    = 11.0f;
 
 // A tinted "count · caption" pill. With an empty caption it is a compact
-// count-only pill (the tiles), with the caption in the tooltip.
+// count-only pill (the tiles, whose tooltip names each counter).
 std::shared_ptr<UltraCanvasContainer> MakePill(const std::string& id, int count,
                                                const std::string& caption,
                                                const Color& tint, const Color& text,
@@ -87,6 +91,7 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
                          const std::string& selectedAccountId) {
     if (!root_) Build();
     root_->ClearChildren();
+    tiles_.clear();
     if (accounts.empty()) return;
     if (accounts.size() == 1)
         BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
@@ -112,7 +117,8 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
     auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
     who->layout.SetFlexColumn()
                .SetFlexGap(2)
-               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeHeading));
     auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                   Theme::kSizeSecondary, Theme::kTextSecondary);
@@ -145,7 +151,10 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         // baseline is a minimum width (a flex row honours boxConstraints on
         // its main axis).
         auto tile = std::make_shared<Theme::ClickSurface>("acctTile_" + acc, [this, acc]() {
-            if (onSelectAccount) onSelectAccount(acc);
+            // A copy: whatever the handler does to the bar, the id it was
+            // given stays valid (the captured one lives in this tile).
+            const std::string id = acc;
+            if (onSelectAccount) onSelectAccount(id);
         });
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
@@ -157,7 +166,14 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        tile->SetTooltip(account.email);
+        // The whole tile is one target (see PassPointerThroughContent below),
+        // so its tooltip carries the address and what each counter counts.
+        TooltipContent tip;
+        tip.AddTitle(account.email);
+        tip.AddRow(Theme::kNewTodayText, "New today", std::to_string(st.unreadToday));
+        tip.AddRow(Theme::kUnreadText, "Unread (before today)", std::to_string(st.unreadOlder));
+        tip.AddRow(Theme::kWaitingText, "Waiting for reply", std::to_string(st.needsAnswer));
+        tile->SetTooltipContent(tip);
 
         // Head: avatar beside the name and domain.
         auto head = CreateContainer("acctHead_" + acc, 0, 0, 0, 0);
@@ -167,33 +183,42 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         head->AddChild(Theme::MakeAvatar("acctAvatar_" + acc, ProviderLetter(account.email),
                                          kTileAvatar));
         auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
-        who->layout.SetFlexColumn().SetFlexGap(1);
+        who->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeBody));
         who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
                                       Theme::kSizeSmall, Theme::kTextSecondary));
         head->AddChild(who);
         tile->AddChild(head);
 
-        // Counters: compact pills, captions in their tooltips.
+        // Counters: compact pills, captions in the tile's tooltip.
         auto counters = CreateContainer("acctCounters_" + acc, 0, 0, 0, 0);
         counters->layout.SetFlexRow()
                         .SetFlexGap(6)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto today = MakePill("acctPill_today_" + acc, st.unreadToday, "",
-                              Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill);
-        today->SetTooltip("New today");
-        auto older = MakePill("acctPill_older_" + acc, st.unreadOlder, "",
-                              Theme::kUnreadTint, Theme::kUnreadText, kTilePill);
-        older->SetTooltip("Unread (before today)");
-        auto waiting = MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
-                                Theme::kWaitingTint, Theme::kWaitingText, kTilePill);
-        waiting->SetTooltip("Waiting for reply");
-        counters->AddChild(today);
-        counters->AddChild(older);
-        counters->AddChild(waiting);
+        counters->AddChild(MakePill("acctPill_today_" + acc, st.unreadToday, "",
+                                    Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill));
+        counters->AddChild(MakePill("acctPill_older_" + acc, st.unreadOlder, "",
+                                    Theme::kUnreadTint, Theme::kUnreadText, kTilePill));
+        counters->AddChild(MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
+                                    Theme::kWaitingTint, Theme::kWaitingText, kTilePill));
         tile->AddChild(counters);
 
+        // A click or hover on the name, the avatar or a counter is the
+        // tile's: one target, with one tooltip that names the counters.
+        tile->PassPointerThroughContent();
+
         root_->AddChild(tile);
+        tiles_[acc] = tile;
+    }
+}
+
+void AccountBar::SetSelected(const std::string& accountId) {
+    for (const auto& [acc, tile] : tiles_) {
+        const bool selected = (acc == accountId);
+        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBorders(selected ? 2.0f : 1.0f,
+                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+        tile->RequestRedraw();
     }
 }
 

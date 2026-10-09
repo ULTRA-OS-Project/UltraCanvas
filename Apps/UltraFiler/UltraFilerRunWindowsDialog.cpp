@@ -32,13 +32,13 @@ void UltraFilerRunWindowsDialog::Initialize(
     cfg.dialogType = DialogType::Custom;
     CreateDialog(cfg);
 
-    layout.SetFlexColumn();
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     layout.SetFlexGap(10);
     SetPadding(16);
 
     auto content = std::make_shared<UltraCanvasContainer>(
         "uf-runwin-content", 0, 0, 428, 150);
-    content->layout.SetFlexColumn();
+    content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layout.SetFlexGap(8);
 
     auto prompt = std::make_shared<UltraCanvasLabel>(
@@ -77,7 +77,7 @@ void UltraFilerRunWindowsDialog::Initialize(
     // Buttons row (custom, so Run can validate before closing).
     auto buttons = std::make_shared<UltraCanvasContainer>(
         "uf-runwin-buttons", 0, 0, 428, 34);
-    buttons->layout.SetFlexRow();
+    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     buttons->layout.SetFlexGap(8);
     auto runBtn = std::make_shared<UltraCanvasButton>(
         "uf-runwin-run", 0, 0, 100, 30);

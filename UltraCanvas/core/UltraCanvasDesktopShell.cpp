@@ -33,9 +33,10 @@ namespace UltraCanvas {
 
 namespace {
 
+    // UTF-8, like every path here - on Windows from the wide environment,
+    // where getenv would answer in the ANSI code page.
     std::string EnvString(const char* name) {
-        const char* value = std::getenv(name);
-        return value ? std::string(value) : std::string();
+        return GetEnvUtf8(name);
     }
 
     std::vector<std::string> SplitPathList(const std::string& list, char separator) {
@@ -337,6 +338,41 @@ std::vector<UCDesktopEntry> UltraCanvasDesktopShell::ListApplications(int iconSi
     return apps;
 }
 
+const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWindowInfo& window,
+                                                                const std::vector<UCDesktopEntry>& applications) {
+    auto lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+    const std::string appClass = lower(window.appClass);
+    const std::string appName = lower(window.appName);
+    if (appClass.empty() && appName.empty()) return nullptr;
+    auto spells = [&](const std::string& value) {
+        if (value.empty()) return false;
+        const std::string candidate = lower(value);
+        return candidate == appClass || candidate == appName;
+    };
+    // The entry that says which windows are its own decides; the rest is
+    // what docks have always guessed with.
+    for (const UCDesktopEntry& entry : applications) {
+        if (spells(entry.startupWMClass)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        // The file name, not the stem: "gimp-2.10" has no extension to lose.
+        std::string program = entry.program.empty() ? std::string() : PathToUtf8(PathFromUtf8(entry.program).filename());
+        if (program.size() > 4 && lower(program.substr(program.size() - 4)) == ".exe") program.resize(program.size() - 4);
+        if (spells(program)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        if (entry.iconName.find('/') == std::string::npos && spells(entry.iconName)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        if (spells(entry.name)) return &entry;
+    }
+    return nullptr;
+}
+
 bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
                                                 const std::vector<std::string>& files,
                                                 std::string* error) {
@@ -532,6 +568,50 @@ void UltraCanvasDesktopShellMonitor::Stop() {
     native = false;
 }
 
+// ===== A SHORTCUT FOR THE WHOLE DESKTOP =====
+
+struct UltraCanvasGlobalShortcut::Impl {
+    DesktopShellBackend::ShortcutState* state = nullptr;
+};
+
+UltraCanvasGlobalShortcut::UltraCanvasGlobalShortcut() : impl(std::make_unique<Impl>()) {}
+
+UltraCanvasGlobalShortcut::~UltraCanvasGlobalShortcut() {
+    Stop();
+}
+
+bool UltraCanvasGlobalShortcut::Start(const std::string& accelerator, PressedCallback onPressed, std::string* error) {
+    Stop();
+    std::string why;
+    if (!onPressed) why = "No action was given for " + accelerator + ".";
+    if (why.empty()) impl->state = DesktopShellBackend::ShortcutOpen(accelerator, why);
+    if (!impl->state) {
+        if (error) *error = why;
+        return false;
+    }
+    callback = std::move(onPressed);
+    running.store(true);
+    worker = std::thread([this]() {
+        while (running.load()) {
+            if (!DesktopShellBackend::ShortcutWait(impl->state)) break;
+            if (!running.load()) break;
+            if (callback) callback();
+        }
+    });
+    return true;
+}
+
+void UltraCanvasGlobalShortcut::Stop() {
+    if (impl->state) DesktopShellBackend::ShortcutWake(impl->state);
+    running.store(false);
+    if (worker.joinable()) worker.join();
+    if (impl->state) {
+        DesktopShellBackend::ShortcutClose(impl->state);
+        impl->state = nullptr;
+    }
+    callback = nullptr;
+}
+
 // ===== FALLBACK BACKEND =====
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE
@@ -573,6 +653,15 @@ namespace DesktopShellBackend {
     bool MonitorWait(MonitorState*) { return false; }
     void MonitorWake(MonitorState*) {}
     void MonitorClose(MonitorState*) {}
+
+    struct ShortcutState {};
+    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+        error = "Shortcuts for the whole desktop (" + accelerator + ") are not available on this platform yet.";
+        return nullptr;
+    }
+    bool ShortcutWait(ShortcutState*) { return false; }
+    void ShortcutWake(ShortcutState*) {}
+    void ShortcutClose(ShortcutState*) {}
 
 } // namespace DesktopShellBackend
 #endif // !ULTRACANVAS_DESKTOPSHELL_NATIVE

@@ -16,9 +16,12 @@
 //   * the caption wrapping and ellipsizing never cut a Thai / Cyrillic / CJK
 //     name inside a character;
 //   * a real folder scan lists such names intact, and a non-UTF-8 name keeps
-//     its real bytes for every file operation while showing decoded.
-// Version: 1.0.1
-// Last Modified: 2026-09-25
+//     its real bytes for every file operation while showing decoded;
+//   * NormalizePath gives that folder, asked for with a separator at its
+//     end, exactly one native separator there (Windows doubled it), and a
+//     path that does not exist back whole (Linux cut it short).
+// Version: 1.1.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -214,7 +217,7 @@ int main() {
 #if !defined(_WIN32)
     // A name that is not UTF-8: only POSIX file systems can hold one.
     const std::string latin1 = "Alte Namens\xE4nderung.txt";
-    std::ofstream(dir / latin1) << "x";
+    std::ofstream(dir / latin1) << "x";   // path-string-ok: POSIX-only, raw Latin-1 bytes on purpose - PathFromUtf8 would turn \xE4 into U+FFFD
 #endif
 
     filer.SetPath(PathToUtf8(dir));
@@ -227,9 +230,44 @@ int main() {
     Check(legacy != nullptr, "the Latin-1 name draws as \"" + latin1Shown + "\"");
     if (legacy) {
         Check(legacy->name == latin1, "and keeps its real bytes as its name");
-        Check(fs::exists(fs::path(legacy->path)), "and its path still reaches the file");
+        Check(fs::exists(fs::path(legacy->path)), "and its path still reaches the file");   // path-string-ok: POSIX-only, the entry keeps the raw non-UTF-8 bytes
     }
 #endif
+
+    std::cout << "\n-- NormalizePath: one separator at a folder's end --\n";
+    // The file display's icon folders are NormalizePath(... + "/") with a
+    // file name appended. On Windows the folder came back ending in two
+    // backslashes; on Linux a path that did not exist came back cut short.
+#if defined(_WIN32)
+    const char sep = '\\';
+#else
+    const char sep = '/';
+#endif
+    auto endsInOneSeparator = [sep](const std::string& p) {
+        return p.size() >= 2 && p.back() == sep && p[p.size() - 2] != sep;
+    };
+    const std::string folder = NormalizePath(PathToUtf8(dir) + "/");
+    Check(endsInOneSeparator(folder), "a folder given with '/' ends in one: \"" + folder + "\"");
+    Check(fs::exists(PathFromUtf8(folder + kThai + ".txt")),
+          "a file name appended to it reaches the file");
+#if defined(_WIN32)
+    const std::string backslashed = NormalizePath(PathToUtf8(dir) + "\\");
+    Check(endsInOneSeparator(backslashed),
+          "a folder given with '\\' ends in one: \"" + backslashed + "\"");
+    CheckEqual(NormalizePath("C:/"), "C:\\", "the root of a drive");
+#else
+    CheckEqual(NormalizePath("/"), "/", "the root");
+#endif
+    std::string missing = PathToUtf8(dir) + "/" + kThai + "-missing/sub/file.txt";
+    std::string missingExpected = missing;
+    std::replace(missingExpected.begin(), missingExpected.end(), '/', sep);
+    CheckEqual(NormalizePath(missing), missingExpected, "a path that does not exist, whole");
+    missing = PathToUtf8(dir) + "/" + kThai + "-missing/";
+    missingExpected = missing;
+    std::replace(missingExpected.begin(), missingExpected.end(), '/', sep);
+    CheckEqual(NormalizePath(missing), missingExpected,
+               "a folder that does not exist, with its one separator");
+
     fs::remove_all(dir, ec);
     std::cout << "\n(folder removed; the widget is torn down on return)\n";
 

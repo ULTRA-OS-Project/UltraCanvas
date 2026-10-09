@@ -14,12 +14,40 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.9.0 - SenderLists: senders the reader trusts (only the findings that
+//                  catch a lie or a forgery count for them) and blocks (blocked-sender,
+//                  their mail marked as spam)
+// Version: 0.8.0 - link-domain-lookalike; look-alike letters of another script
+//                  ("pаypal.com" in Cyrillic) in sender and link domains
+// Version: 0.7.0 - look-alike sender domains (sender-domain-lookalike), letters in
+//                  an agency's name (government-impersonation); ThreatScanOptions:
+//                  each kind of warning can be switched off (Settings > Spam/scam
+//                  warnings); ThreatFinding::score
+// Version: 0.6.0 - romance scams (romance-scam: a stranger's love letter, with
+//                  photos, from a free mailbox) and cryptocurrency (crypto-content
+//                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
+//                  crypto-investment-lure); ScanInput::pictureNames;
+//                  ThreatReport::Has / Codes, so the reading pane can name the scam
+// Version: 0.5.3 - ExtractImageHosts reads the parsed page, its CSS through the
+//                  HTMLReader's cascade
+// Version: 0.5.2 - kThreatRulesRevision 2026-10-08: links and texts read through the
+//                  HTMLReader module, so older verdicts are made again
+// Version: 0.5.0 - mail authentication: the receiving server's (topmost)
+//                  Authentication-Results header is parsed
+//                  (ParseAuthenticationResults); a sender whose domain DMARC
+//                  or an aligned DKIM signature proves (VerifiedSenderDomain)
+//                  is not flagged for its mail service's tracking links, its
+//                  reply address or its many link domains, and a proven
+//                  registry brand not for asking to update account details;
+//                  auth-failure only when DMARC fails, or nothing passes
+// Version: 0.4.0 - plain text: mail addresses (mailto:) are links too
 // Version: 0.3.0 - PlainLinkAt (the bare URL under the pointer in plain text)
 // Version: 0.2.0 - borrowed-pictures rule; kThreatRulesRevision (re-scan older verdicts);
 //                ExtractImageHosts
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,16 +71,85 @@ ThreatLevel ThreatLevelFromString(const std::string& s);
 struct ThreatFinding {
     std::string code;
     std::string detail;
+    int         score = 0;   // what it added to the report's score
 };
+
+// Which kinds of warning the scan gives (Settings > Spam/scam warnings). A
+// kind switched off is not reported: its findings are dropped and add nothing
+// to the score, so its messages are labelled as if the rules did not exist.
+struct ThreatScanOptions {
+    bool phishing      = true;   // links that lie, a brand or a look-alike domain
+                                 // claimed, credentials asked for, forged senders
+    bool romance       = true;   // romance-scam
+    bool advanceFee    = true;   // advance-fee-fraud, reply-elsewhere
+    bool government    = true;   // government-impersonation
+    bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
+    bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto
+    bool attachments   = true;   // attachment-*: programs, disguised documents
+    bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool operator==(const ThreatScanOptions&) const = default;
+};
+
+// Whether `options` lets the finding `code` be reported. Codes of no kind
+// (none today) always are.
+bool FindingEnabled(const ThreatScanOptions& options, const std::string& code);
+
+// The options ScanRawMessage scans with, for the whole process - the sync's
+// threads and the reading pane alike. Everything on until set.
+void SetThreatScanOptions(const ThreatScanOptions& options);
+ThreatScanOptions GetThreatScanOptions();
+
+// The reader's own lists: the sender menu's "Always trust this sender" and
+// "Block this sender" (Settings > Warnings > Trusted and blocked senders).
+// Addresses are lower case; a blocked "@example.com" blocks the whole domain
+// and its subdomains.
+struct SenderLists {
+    std::set<std::string> trusted;
+    std::set<std::string> blocked;
+    bool operator==(const SenderLists&) const = default;
+
+    bool Trusts(const std::string& address) const;
+    // The entry that blocks `address` ("x@example.com" or "@example.com"),
+    // or "" when none does.
+    std::string BlockedBy(const std::string& address) const;
+    // "Erika <ERIKA@Example.com> " -> "erika@example.com".
+    static std::string Normalize(const std::string& address);
+    // What a typed entry is kept as, or "" when it is none: an address for
+    // either list; for the blocked one also a domain, "@example.com" (typed
+    // "example.com" or "@Example.com").
+    static std::string Entry(const std::string& typed, bool blockList);
+};
+
+// The lists ScanRawMessage reads, for the whole process. Empty until set.
+void SetSenderLists(const SenderLists& lists);
+SenderLists GetSenderLists();
+
+// Whether a finding still counts for a sender the reader trusts: only those
+// that catch a lie or a forgery - a link that lies about where it goes, a
+// sender check the From domain failed (someone forging the trusted address),
+// a program dressed as a document, a wallet's recovery phrase asked for. The
+// guessed kinds - romance, advance-fee, crypto caution, spam markers, a
+// brand's name in a domain - are the reader's call, and they made it.
+bool FindingKeptForTrustedSender(const std::string& code);
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
     int                        score = 0;
     bool                       bulk  = false;   // List-Unsubscribe / Precedence: bulk
     std::vector<ThreatFinding> findings;
+    // The From domain the receiving server proved genuine ("" when nothing
+    // proved it), and how ("DKIM signature", "DMARC", "DKIM signature and
+    // DMARC"). Not a finding: it says the address is real, not that the
+    // message is harmless.
+    std::string                verifiedDomain;
+    std::string                verifiedBy;
 
     // The findings as one human-readable block ("• …\n• …"); empty when clean.
     std::string Summary() const;
+    // The findings' codes, comma-separated ("romance-scam,crypto-content"):
+    // what the store keeps so the reading pane can say which scam it is.
+    std::string Codes() const;
+    bool Has(const std::string& code) const;
     bool Suspicious() const { return level >= ThreatLevel::Suspicious; }
 };
 
@@ -65,12 +162,14 @@ struct MessageLink {
 };
 
 // Pull every link out of a body. HTML bodies give href/action targets with
-// their anchor text; plain-text bodies give the bare URLs.
+// their anchor text; plain-text bodies give the bare URLs and mail addresses
+// (as mailto:, with no host).
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
 
-// The bare URL (as ExtractLinks finds it in plain text) that covers byte
-// `offset` of `text`, or "" when that byte is not part of one - what the
-// plain-text view reports for the pointer.
+// The link (as ExtractLinks finds it in plain text: a web address, a mailto:
+// or a bare mail address, which comes back as "mailto:name@example.com") that
+// covers byte `offset` of `text`, or "" when that byte is not part of one -
+// what the plain-text view reports for the pointer.
 std::string PlainLinkAt(const std::string& text, std::size_t offset);
 
 // What the scan needs about a message. Everything is optional: a caller that
@@ -85,23 +184,102 @@ struct ScanInput {
     std::string autoSubmitted;   // Auto-Submitted header value
     std::string spamFlag;        // X-Spam-Flag value
     std::string spamStatus;      // X-Spam-Status / SpamAssassin summary
-    std::string authResults;     // Authentication-Results value
+    std::string authResults;     // the topmost Authentication-Results header's value:
+                                 // the receiving server's own (one further down
+                                 // may come from anyone, the sender included)
     std::string body;
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
+    // The pictures `attachmentNames` does not show as such, by file name (""
+    // when one has none): the body's own pictures (cid:), and an image
+    // attached under a name that is not a picture's. An attachment named
+    // like one ("IMG_942.jpg") counts from `attachmentNames` already.
+    std::vector<std::string> pictureNames;
+    // Which kinds of warning to give: all of them unless the caller says
+    // otherwise (ScanRawMessage passes GetThreatScanOptions()).
+    ThreatScanOptions options;
+    // The reader's lists for this sender: trusted, or the entry that blocks
+    // it ("" when none). ScanRawMessage fills both from GetSenderLists().
+    bool        senderTrusted = false;
+    std::string senderBlockedBy;
 };
 
 // When the rules last changed (epoch seconds). A stored verdict made before it
 // came from older rules: the reader scans the message again when it is opened,
-// so a phishing mail an earlier version let through is caught on its next read.
-constexpr long long kThreatRulesRevision = 1791072000;   // 2026-10-04 00:00 UTC
+// and the sync re-scans the stored bodies a batch at a time
+// (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
+// through is caught, and a genuine one it flagged is cleared.
+constexpr long long kThreatRulesRevision = 1791590400;   // 2026-10-10 00:00 UTC
 
-// The hosts the body's pictures (<img src>, background images) are loaded from,
-// lowercased; http(s) sources only.
+// ---------------------------------------------------------------------------
+// Mail authentication
+// ---------------------------------------------------------------------------
+// What one Authentication-Results header (RFC 8601) reports - the checks the
+// receiving server made of the sending domain's own records. Comments are
+// dropped; methods, results and domains are lowercased.
+struct AuthResults {
+    std::string authservId;   // who checked: "mx.google.com"
+    std::string dmarc;        // "pass", "fail", "none", ... ("" when not reported)
+    std::string dmarcFrom;    // the From domain DMARC was evaluated for (header.from)
+    std::string spf;          // the SPF result
+    std::string spfDomain;    // the envelope sender's domain (smtp.mailfrom)
+    // Every DKIM signature: its result and the domain that signed (header.d,
+    // else the domain of header.i).
+    std::vector<std::pair<std::string, std::string>> dkim;
+};
+AuthResults ParseAuthenticationResults(const std::string& headerValue);
+
+// The From domain the receiving server proved genuine: DMARC passed for it,
+// or a DKIM signature by its registrable domain verified (a mail service's
+// own signature proves nothing about the From address). "" when nothing
+// proves it, or DMARC failed. `method` gets "DKIM signature", "DMARC" or
+// "DKIM signature and DMARC".
+std::string VerifiedSenderDomain(const AuthResults& auth, const std::string& fromDomain,
+                                 std::string* method = nullptr);
+
+// The first (topmost) value of header `name` in a raw message's header block,
+// folded lines joined; "" when it has none.
+std::string TopHeaderValue(const std::string& rawMessage, const std::string& name);
+
+// One check, as the reading pane shows it: a small pill per method
+// ("DMARC", "DKIM", "SPF") - passed, failed or no clear answer - whose
+// tooltip says what was checked, for which domain, what that proves and who
+// checked it.
+enum class AuthCheckState { Passed, Failed, Neutral };
+struct AuthCheck {
+    std::string    label;     // "DMARC", "DKIM", "SPF", "S/MIME", "Not checked"
+    AuthCheckState state = AuthCheckState::Neutral;
+    std::string    tooltip;   // a few lines, ready to show
+};
+
+// The pills for one message: DMARC, DKIM and SPF as the receiving server
+// reported them (in that order, the strongest first), or a single neutral
+// "Not checked" when it reported none. `fromDomain` is the From address's.
+std::vector<AuthCheck> DescribeAuthentication(const AuthResults& auth,
+                                              const std::string& fromDomain);
+
+// How a raw message is signed by its author: "S/MIME" (multipart/signed with
+// a PKCS #7 signature, or signed application/pkcs7-mime), "OpenPGP", or "".
+// Detected, not verified: the signature and its certificate are not checked.
+std::string MessageSignatureKind(const std::string& rawMessage);
+
+// Everything above for a raw message: the authentication pills, then the
+// author's signature when there is one.
+std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessage);
+
+// The hosts the body's pictures are loaded from, lowercased, in the order the
+// page uses them; http(s) sources only. Read from the parsed page: <img src>,
+// <input type="image" src>, a background attribute, and the background images
+// the page's CSS gives an element - its style attribute and the <style> sheets,
+// as the HTMLReader's cascade applies them (a url() in a comment, a script, a
+// font or a rule that matches nothing is not a picture the mail shows).
 std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.
 ThreatReport ScanMessage(const ScanInput& input);
+
+// Whether `codes` (ThreatReport::Codes, as the store keeps it) holds `code`.
+bool HasFindingCode(const std::string& codes, const std::string& code);
 
 // Convenience: parse a raw RFC 5322 message (the cached .eml) and scan it.
 ThreatReport ScanRawMessage(const std::string& rawMessage);

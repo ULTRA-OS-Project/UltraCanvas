@@ -8,7 +8,7 @@
 // written here from the specification (PWG 5102.4), not from the writer - a
 // round trip through the writer's own idea of the format would pass however
 // wrong that idea was.
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
@@ -507,6 +507,88 @@ void TestWindowsPortAddresses() {
         CheckUris(IppUrisForWindowsPort(port, ""), Uris{},
                    std::string("no address in '") + port + "'");
     }
+}
+
+void TestWindowsWsdQueues() {
+    std::cout << "\n=== A WSD queue's address, through its Plug and Play container ===\n";
+    using Uris = std::vector<std::string>;
+    const std::string office = "{6b1d8c2e-4a3f-4c1e-9b7d-2f5e8a9c0d11}";
+    const std::string other = "{0a0b0c0d-1111-2222-3333-444455556666}";
+    const std::string computer = "{00000000-0000-0000-FFFF-FFFFFFFFFFFF}";
+
+    auto queue = [](const std::string& name, const std::string& container) {
+        IppWindowsDeviceNode node;
+        node.isPrintQueue = true;
+        node.friendlyName = name;
+        node.containerId = container;
+        return node;
+    };
+    auto device = [](const std::string& container, std::vector<std::string> ips,
+                     std::vector<std::string> xaddrs, const std::string& location) {
+        IppWindowsDeviceNode node;
+        node.containerId = container;
+        node.ipAddresses = std::move(ips);
+        node.xAddrs = std::move(xaddrs);
+        node.location = location;
+        return node;
+    };
+
+    const std::vector<IppWindowsDeviceNode> nodes = {
+        queue("Office Laser", office),
+        device(office, {"fe80::1c2d:3e4f", "192.168.1.20"}, {"http://192.168.1.20:3911/"}, ""),
+        queue("Lab Inkjet", "{0A0B0C0D-1111-2222-3333-444455556666}"),
+        device(other, {}, {"http://inkjet.local:80/WebServices/Device"},
+               "http://10.0.0.9:80/WebServices/Device"),
+        queue("Microsoft Print to PDF", computer),
+        device(computer, {"127.0.0.1"}, {}, ""),
+        queue("Orphan", ""),
+    };
+
+    CheckUris(IppHostsForWindowsQueue("Office Laser", nodes), Uris{"192.168.1.20", "fe80::1c2d:3e4f"},
+              "PnP-X IpAddress gives the addresses, IPv4 first");
+    CheckUris(IppHostsForWindowsQueue("office laser", nodes), Uris{"192.168.1.20", "fe80::1c2d:3e4f"},
+              "  the queue is found whatever the case of its name");
+    CheckUris(IppHostsForWindowsQueue("Lab Inkjet", nodes), Uris{"10.0.0.9", "inkjet.local"},
+              "without IpAddress, the hosts of XAddrs and the location; container ids "
+              "compare without regard to case");
+    CheckUris(IppHostsForWindowsQueue("Microsoft Print to PDF", nodes), Uris{},
+              "a queue in the computer's own container has no printer address");
+    CheckUris(IppHostsForWindowsQueue("Orphan", nodes), Uris{}, "nor does one in no container");
+    CheckUris(IppHostsForWindowsQueue("Nobody", nodes), Uris{}, "nor a queue that is not there");
+
+    CheckUris(IppUrisForWindowsPort("WSD-6c3e2a1b-55d2-4b1f-9a9e-0a1b2c3d4e5f", "192.168.1.20"),
+              Uris{"ipp://192.168.1.20:631/ipp/print", "ipp://192.168.1.20:631/ipp",
+                   "ipp://192.168.1.20:631/"},
+              "a WSD port with the address found for it is guessed like any other host");
+    CheckEqual(IppUrisForWindowsPort("WSD-1", "fe80::1c2d:3e4f").front(),
+               std::string("ipp://[fe80::1c2d:3e4f]:631/ipp/print"), "  an IPv6 one bracketed");
+
+    std::cout << "\n=== A printer found over DNS-SD that is already a Windows queue ===\n";
+    CheckEqual(IppNormalizeHost(" Printer.Local. "), std::string("printer.local"),
+               "a host is compared in lower case, without its root dot");
+    CheckEqual(IppNormalizeHost("[FE80::1]"), std::string("fe80::1"), "  and without brackets");
+    CheckEqual(IppUriHost("http://192.168.1.20:3911/x"), std::string("192.168.1.20"),
+               "a URL's host");
+    CheckEqual(IppUriHost("ipp://[fe80::1]:631/ipp/print"), std::string("fe80::1"),
+               "  an IPv6 one unbracketed");
+    CheckEqual(IppUriHost("USB001"), std::string(), "  and nothing from what is not a URL");
+
+    const std::vector<std::string> queued = {"192.168.1.20", "printer.local", "fe80::1"};
+    using Addresses = std::vector<std::string>;
+    Check(IppPrinterIsWindowsQueue(queued, "HP1234.local.", Addresses{"192.168.1.20"}),
+          "a printer at a queue's address is that queue");
+    Check(IppPrinterIsWindowsQueue(queued, "Printer.local.", Addresses{}),
+          "  so is one at a queue's host name, whatever its spelling");
+    Check(IppPrinterIsWindowsQueue(queued, "x.local", Addresses{"FE80::1"}),
+          "  and at its IPv6 address");
+    Check(IppPrinterIsWindowsQueue(queued, "x.local", Addresses{"fe80::99", "192.168.1.20"}),
+          "  and when the queue's IPv4 address is not the first the printer answered from");
+    Check(!IppPrinterIsWindowsQueue(queued, "other.local.", Addresses{"192.168.1.21", "fe80::2"}),
+          "a printer at no queue's address is not");
+    Check(!IppPrinterIsWindowsQueue({}, "printer.local", Addresses{"192.168.1.20"}),
+          "  nor is any printer when there are no queues");
+    Check(!IppPrinterIsWindowsQueue({""}, "", Addresses{""}),
+          "  and an empty address matches nothing");
 }
 
 void TestInstanceNames() {
@@ -1220,6 +1302,7 @@ int main() {
     TestStatus();
     TestAddresses();
     TestWindowsPortAddresses();
+    TestWindowsWsdQueues();
     TestInstanceNames();
     TestCupsMatching();
     TestMediaNames();

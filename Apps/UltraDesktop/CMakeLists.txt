@@ -20,6 +20,7 @@ endif()
 add_executable(UltraDesktop
     main.cpp
     ui/UltraDesktopAppStarter.cpp
+    ui/UltraDesktopClipboardPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp
     ui/UltraDesktopTasksWindow.cpp
@@ -35,12 +36,20 @@ target_include_directories(UltraDesktop PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 
-target_link_libraries(UltraDesktop PRIVATE ${ULTRACANVAS_LIBRARY})
+# The clipboard history it records and its quick panel shows.
+target_link_libraries(UltraDesktop PRIVATE UltraClipboardHistory ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UltraDesktop PRIVATE fmt::fmt)
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(UltraDesktop PRIVATE Threads::Threads)
+# The desktop draws the notifications nothing else draws (on ULTRA OS,
+# UltraMessage itself is the notification server): the toast host lives with
+# the message centre in UltraMessageCenter.
+if(TARGET UltraMessageCenter)
+    target_link_libraries(UltraDesktop PRIVATE UltraMessageCenter UltraMessage)
+    target_compile_definitions(UltraDesktop PRIVATE ULTRADESKTOP_HAVE_NOTIFICATIONS=1)
+endif()
 target_compile_features(UltraDesktop PRIVATE cxx_std_20)
 
 # UltraDesktop versions itself, independently of the framework: the number

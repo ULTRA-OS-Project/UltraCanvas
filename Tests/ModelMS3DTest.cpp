@@ -20,8 +20,8 @@
 // media/3D, which was given the hull it never had. Without it only the
 // synthetic cases run.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-11
+// Version: 1.1.0
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "Models/MS3D/UltraCanvasMS3DConverter.h"
@@ -337,6 +337,84 @@ static std::vector<uint8_t> Skinned(bool withWeightBlock) {
     return b.Take();
 }
 
+// The import options every reader takes. Until 2026-10 this one ignored all of
+// them; a MilkShape group is triangles with per-corner normals, so triangulating
+// and generating normals change nothing in a well-formed file, but welding and
+// the up axis do.
+static void TestImportOptions() {
+    std::printf("Import options\n");
+
+    // A quad whose second triangle starts at a fifth vertex 0.00001 from the
+    // first, with the same normal and UV there. Six vertices as written; a weld
+    // at 0.0001 makes it five - and merges nothing else, because the shared
+    // edge's other corners carry different UVs in the two triangles.
+    Builder b;
+    b.Header();
+    b.U16(5);
+    b.Vertex(0, 0, 0); b.Vertex(1, 0, 0); b.Vertex(1, 1, 0); b.Vertex(0, 1, 0);
+    b.Vertex(0.00001f, 0, 0);
+    b.U16(2);
+    b.Triangle(0, 1, 2);
+    b.Triangle(4, 2, 3);
+    b.U16(1);
+    b.Group("Panel", {0, 1}, 0);
+    b.U16(1);
+    b.Material("Paint");
+    b.AnimationHeader(30.0f, 0.0f, 60);
+    b.U16(0);
+    const std::vector<uint8_t> nearlyShared = b.Take();
+
+    MS3DConverter converter;
+    ConversionOptions plain;
+    auto unwelded = converter.ImportFromMemory(nearlyShared, plain);
+    ConversionOptions weld;
+    weld.WeldTolerance = 0.0001;
+    auto welded = converter.ImportFromMemory(nearlyShared, weld);
+    Check(unwelded && welded && unwelded->TotalVertexCount() == 6 && welded->TotalVertexCount() == 5,
+          "WeldTolerance merges the two corners 0.00001 apart, and nothing else");
+
+    ConversionOptions triangulate;
+    triangulate.TriangulateOnImport = true;
+    auto triangulated = converter.ImportFromMemory(Quad(), triangulate);
+    Check(triangulated && triangulated->TotalFaceCount() == 2 &&
+          triangulated->Meshes[0].Primitives[0].Mode == PrimitiveMode::Triangles,
+          "TriangulateOnImport leaves a file that is triangles already as it was");
+
+    // The up axis, on a skeleton whose *root* joint is keyed. The turn goes on
+    // the root nodes, and a root's keys would replace it on playback, so they
+    // turn with it: Y-up to Z-up sends the key's +Y to +Z.
+    Builder r;
+    r.Header();
+    r.U16(3);
+    r.Vertex(0, 0, 0, 0); r.Vertex(1, 0, 0, 0); r.Vertex(0, 1, 0, 0);
+    r.U16(1);
+    r.Triangle(0, 1, 2);
+    r.U16(1);
+    r.Group("Body", {0}, 0);
+    r.U16(1);
+    r.Material("Skin");
+    r.AnimationHeader(30.0f, 0.0f, 60);
+    const float zero[3] = {0, 0, 0};
+    r.U16(1);
+    r.Joint("root", "", zero, zero, {}, {{0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f, 0.0f}});
+    const std::vector<uint8_t> keyedRoot = r.Take();
+
+    ConversionOptions zUp;
+    zUp.ForceUpAxis = UpAxis::ZUp;
+    auto turned = converter.ImportFromMemory(keyedRoot, zUp);
+    Check(turned && turned->Up == UpAxis::ZUp, "ForceUpAxis turns a Y-up file to Z-up");
+    if (turned && turned->Animations.size() == 1 && turned->Animations[0].Channels.size() == 1) {
+        const ModelAnimation& animation = turned->Animations[0];
+        const std::vector<float>& keys =
+                animation.Samplers[static_cast<size_t>(animation.Channels[0].Sampler)].Values;
+        Check(keys.size() == 6 && Near(keys[3], 0.0, 1e-6) && Near(keys[4], 0.0, 1e-6) &&
+              Near(keys[5], 1.0, 1e-6),
+              "and the root joint's translation keys turn with it: +Y is now +Z");
+    } else {
+        Check(false, "and the root joint keeps its one translation channel");
+    }
+}
+
 static void TestJointsAndAnimation() {
     std::printf("Joints and animation\n");
 
@@ -636,6 +714,7 @@ int main(int argc, char** argv) {
     TestGeometry();
     TestSmoothingGroups();
     TestMaterials();
+    TestImportOptions();
     TestJointsAndAnimation();
     TestSkinning();
     TestOptionalTail();

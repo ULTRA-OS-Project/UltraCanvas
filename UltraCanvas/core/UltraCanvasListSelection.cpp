@@ -5,6 +5,29 @@
 
 namespace UltraCanvas {
 
+    namespace {
+        // Where `selected` is after `count` rows were inserted (count > 0) or
+        // removed (count < 0) at `row`; -1 when it was one of those removed.
+        int ShiftedRow(int selected, int row, int count) {
+            if (selected < row) return selected;
+            if (count >= 0) return selected + count;
+            if (selected < row - count) return -1;   // removed
+            return selected + count;
+        }
+    }
+
+    void IListSelection::ShiftRows(int row, int count) {
+        if (count == 0 || !HasSelection()) return;
+        std::vector<int> rows;
+        for (int r : GetSelectedRows()) {
+            const int moved = ShiftedRow(r, row, count);
+            if (moved >= 0) rows.push_back(moved);
+        }
+        if (rows == GetSelectedRows()) return;
+        Clear();
+        for (std::size_t i = 0; i < rows.size(); ++i) Select(rows[i], /*addToSelection=*/i > 0);
+    }
+
     // ===== SINGLE SELECTION =====
 
     void UltraCanvasSingleSelection::Select(int row, bool /*addToSelection*/) {
@@ -47,6 +70,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasSingleSelection::HasSelection() const {
         return selectedRow >= 0;
+    }
+
+    void UltraCanvasSingleSelection::ShiftRows(int row, int count) {
+        if (selectedRow < 0 || count == 0) return;
+        const int moved = ShiftedRow(selectedRow, row, count);
+        if (moved == selectedRow) return;
+        selectedRow = moved;
+        if (moved < 0) NotifySelectionChanged();   // the selected item went away
     }
 
     // ===== MULTI SELECTION =====
@@ -114,6 +145,22 @@ namespace UltraCanvas {
 
     bool UltraCanvasMultiSelection::HasSelection() const {
         return !selectedRows.empty();
+    }
+
+    void UltraCanvasMultiSelection::ShiftRows(int row, int count) {
+        if (count == 0) return;
+        std::set<int> moved;
+        bool lost = false;
+        for (int r : selectedRows) {
+            const int m = ShiftedRow(r, row, count);
+            if (m >= 0) moved.insert(m); else lost = true;
+        }
+        selectedRows = std::move(moved);
+        auto shift = [&](int& r) { if (r >= 0) r = ShiftedRow(r, row, count); };
+        shift(anchorRow);
+        shift(currentRow);
+        if (currentRow < 0 && !selectedRows.empty()) currentRow = *selectedRows.rbegin();
+        if (lost) NotifySelectionChanged();
     }
 
 } // namespace UltraCanvas

@@ -90,6 +90,14 @@ struct EsclScannerDescription {
 IODeviceResult ParseEsclCapabilities(const std::string& xml,
                                      EsclScannerDescription& outDescription);
 
+// Fills in what a scanner's ScannerCapabilities say about it that its entry
+// lacks: the model and serial number when empty, and the name when it is
+// empty or only the scanner's address (`connectionPath`) - the name a scanner
+// named in ULTRACANVAS_ESCL_SCANNERS is listed under until it has described
+// itself. A name discovery gave it (its DNS-SD instance) is kept. True when
+// anything changed.
+bool FillInEsclIdentity(IODeviceInfo& info, const EsclScannerDescription& described);
+
 // ============================================================================
 // SCAN SETTINGS
 // ============================================================================
@@ -141,5 +149,13 @@ std::string EsclTxtValue(const std::vector<std::string>& txtRecords,
 // neither.
 std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
                                 const std::string& host);
+
+// The instance name - "Office Scanner" - out of the DNS-SD name the mDNS
+// plugin reports as an entry's `dn`, which is the full service name
+// ("Office Scanner._uscan._tcp.local"), escaped in DNS presentation form on
+// Bonjour ("Office\032Scanner._uscans._tcp.local."). See DnsSdInstanceName().
+// A name with no `_uscan._tcp` or `_uscans._tcp` in it is taken to be the
+// instance already.
+std::string EsclInstanceFromServiceName(const std::string& serviceName);
 
 }  // namespace UltraCanvas

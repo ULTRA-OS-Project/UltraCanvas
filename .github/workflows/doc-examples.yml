@@ -1,0 +1,65 @@
+name: Doc examples
+
+# Compiles the C++ in the docs (Docs/UltraCanvas/*.md, but the changelog)
+# against the public headers, so a doc cannot drift from the API it
+# describes: a renamed function, a changed signature or a removed field in a
+# header fails here instead of in the next reader's build.
+# scripts/check_doc_examples.py says what it checks and how a doc declares
+# what its snippets assume.
+#
+# A finding fails unless it is listed in scripts/doc_examples_baseline.txt.
+# Every component doc passes and must stay that way: fix the doc, or declare
+# what its snippets assume in a <!-- doc-check: ... --> comment. What the
+# baseline lists is the design documents (Proposal, Plan, Investigation),
+# whose code is of APIs not written yet; an entry that stops being found
+# means its API now exists and the file is rewritten.
+#
+# Pinned to ubuntu-24.04: the docs pass against clang 18 and that release's
+# library headers; a baseline entry, should one ever be needed, is clang's
+# wording, which another clang words differently.
+
+# Trigger policy matches path-strings.yml: `pull_request` covers feature
+# branches, so listing them under `push` too would run this check twice per
+# commit. The paths are what the docs are checked against.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'Docs/UltraCanvas/*.md'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/Plugins/**/*.h'
+      - 'UltraCanvas/third_party/**/*.h'
+      - 'VirtualFS/include/**'
+      - 'Apps/DemoApp/**/*.h'
+      - 'scripts/check_doc_examples.py'
+      - 'scripts/doc_examples_baseline.txt'
+      - '.github/workflows/doc-examples.yml'
+  pull_request:
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      # The system headers the public headers include (found with clang -M
+      # on the checker's umbrella header), plus FreeType, which pkg-config is
+      # asked for, and the GL headers two docs include.
+      - name: Install clang and the headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libharfbuzz-dev \
+            libfreetype6-dev libvips-dev libcurl4-openssl-dev libx11-dev \
+            libgl1-mesa-dev
+      - name: Check the docs' C++
+        run: python3 scripts/check_doc_examples.py --all --strict

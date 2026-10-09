@@ -35,18 +35,18 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFindDialog::BuildLayout() {
-        layout.SetFlexColumn();
+        layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
         contentSection = std::make_shared<UltraCanvasContainer>("FindContent", 0, 0, 420, 100);
-        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         contentSection->layout.SetFlexGap(8);
 
         // Search input row — with history dropdown button
         auto searchRow = std::make_shared<UltraCanvasContainer>("SearchRow", 0, 0, 420, 30);
-        searchRow->layout.SetFlexRow();
+        searchRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         searchRow->layout.SetFlexGap(4);
 
         searchLabel = std::make_shared<UltraCanvasLabel>("SearchLabel", 0, 0, 80, 25);
@@ -73,7 +73,7 @@ namespace UltraCanvas {
 
         // Options row
         auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 0, 0, 420, 25);
-        optionsRow->layout.SetFlexRow();
+        optionsRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         optionsRow->layout.SetFlexGap(20);
 
         caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
@@ -105,7 +105,7 @@ namespace UltraCanvas {
         const int buttonHeight = 28;
 
         buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 420, 35);
-        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         buttonSection->layout.SetFlexGap(8);
 
         buttonSection->AddStretchSpacer(1);
@@ -310,18 +310,18 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasReplaceDialog::BuildLayout() {
-        layout.SetFlexColumn();
+        layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
         contentSection = std::make_shared<UltraCanvasContainer>("ReplaceContent", 0, 0, 470, 150);
-        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         contentSection->layout.SetFlexGap(8);
 
         // ----- Find input row with history button -----
         auto findRow = std::make_shared<UltraCanvasContainer>("FindRow", 0, 0, 470, 30);
-        findRow->layout.SetFlexRow();
+        findRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         findRow->layout.SetFlexGap(4);
 
         findLabel = std::make_shared<UltraCanvasLabel>("FindLabel", 0, 0, 80, 25);
@@ -348,7 +348,7 @@ namespace UltraCanvas {
 
         // ----- Replace input row with history button -----
         auto replaceRow = std::make_shared<UltraCanvasContainer>("ReplaceRow", 0, 0, 470, 30);
-        replaceRow->layout.SetFlexRow();
+        replaceRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         replaceRow->layout.SetFlexGap(4);
 
         replaceLabel = std::make_shared<UltraCanvasLabel>("ReplaceLabel", 0, 0, 80, 25);
@@ -375,7 +375,7 @@ namespace UltraCanvas {
 
         // ----- Options row -----
         auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 0, 0, 470, 25);
-        optionsRow->layout.SetFlexRow();
+        optionsRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         optionsRow->layout.SetFlexGap(20);
 
         caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
@@ -407,7 +407,7 @@ namespace UltraCanvas {
         const int buttonHeight = 28;
 
         buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 490, 35);
-        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         buttonSection->layout.SetFlexGap(8);
 
         buttonSection->AddStretchSpacer(1);
@@ -687,18 +687,18 @@ namespace UltraCanvas {
 
     void UltraCanvasGoToLineDialog::BuildLayout() {
         // Create main vertical layout
-        layout.SetFlexColumn();
+        layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
         contentSection = std::make_shared<UltraCanvasContainer>("GoToLineContent", 0, 0, 300, 50);
-        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         contentSection->layout.SetFlexGap(8);
 
         // Line input row
         auto lineRow = std::make_shared<UltraCanvasContainer>("LineRow", 0, 0, 300, 30);
-        lineRow->layout.SetFlexRow();
+        lineRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         lineRow->layout.SetFlexGap(8);
 
         lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 0, 0, 100, 25);
@@ -720,7 +720,7 @@ namespace UltraCanvas {
 
         // ===== BUTTON SECTION =====
         buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 300, 35);
-        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         buttonSection->layout.SetFlexGap(10);
 
         buttonSection->AddStretchSpacer(1);

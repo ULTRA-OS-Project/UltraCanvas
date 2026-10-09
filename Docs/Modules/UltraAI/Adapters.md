@@ -1,7 +1,7 @@
 # UltraAI Adapters
 
 **Version:** 0.1.0
-**Last Modified:** 2026-08-24
+**Last Modified:** 2026-10-07
 
 ## Overview
 
@@ -37,6 +37,7 @@ and friends report what this build actually has.
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
+| *text-LLM translator* | `ITranslator` through any of the `ITextLLM` providers above, under the same id | wherever that LLM runs |
 
 ---
 
@@ -485,6 +486,89 @@ carries the real mime type. A workflow ending in `SaveWEBM` produces webm
 instead. `IVideoGen` has no `returnAsUrl` field, so the adapter takes
 `return_url_only` (bool) as an option — worth setting when the server is
 remote and the video is large.
+
+---
+
+## Text-LLM translator — `ITranslator` through any chat model
+
+Header: `UltraAITextLLMTranslator.h`. Not a provider of its own: it serves
+`ITranslator` with whatever `ITextLLM` it is given, and the registry knows
+one translator provider for every text-LLM provider except `mock`, under
+the same id. Always built — it has no dependency beyond the interfaces.
+
+```cpp
+TranslatorConfig cfg;
+cfg.providerId = "qwen";             // or "anthropic", "openai", "llama-cpp"
+                                     // empty -> routing: local LLMs first
+auto tr = CreateTranslator(cfg);
+
+TranslateRequest req;
+req.texts = { "Guten Morgen", "<b>Speichern</b> Sie die Datei." };
+req.targetLanguage = "en";           // required, BCP-47
+req.formality = TranslationFormality::Formal;
+TranslateResponse resp = tr->Translate(req);
+for (const auto& r : resp.results)
+    std::cout << r.detectedSourceLanguage << ": " << r.text << '\n';
+```
+
+**How it works.** Each batch goes to the model as one chat: a system
+message with the task and the rules (register, domain, glossary, keep
+markup and placeholders, report the source language) and a user message
+holding the texts as a JSON object of numbered segments. The reply is asked
+for as JSON (`ResponseFormat::JsonObject`, which every shipped text-LLM
+adapter enforces) in the same numbering, so a batch comes back in order
+whatever the model does with it; a reply wrapped in a code fence or a
+sentence is still read, and a single text answered with the bare
+translation is accepted as it is. `DetectLanguage` is the same exchange
+with a detection prompt and up to `topN` guesses per text. The prompts and
+the parsers are public (`BuildTranslationPrompt`, `ParseTranslationReply`,
+`BuildDetectionPrompt`, `ParseDetectionReply`) so a test or an application
+can see exactly what is sent.
+
+**Configuration.** `apiKey`, `apiKeyVaultRef`, `baseUrl`, `defaultModel`,
+`timeoutMs` and `providerOptions` go to the text LLM unchanged, so whatever
+configures the chat provider configures the translator; `TranslateRequest::
+model` names the chat model per call. The translator reads these keys of
+`providerOptions` itself (and strips `textllm.*` from the per-request
+`options` before they reach the LLM):
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `textllm.provider` | string | the translator's `providerId` | the text-LLM provider to translate with; `CreateTextLLMTranslator(config)` with this set and an empty `providerId` follows the `textllm` route |
+| `textllm.batchSize` | int | 20 | texts per chat request; longer lists are split and the usage summed |
+| `textllm.temperature` | double | 0 | sampling temperature |
+| `textllm.maxOutputTokens` | int | none | cap on each reply |
+| `textllm.glossary` (per-request `options`) | string | — | `source = translation` lines the model is told to use |
+
+To wrap a chat model the application already holds — a mock in a test, or
+an instance with vendor settings applied through `RawProvider()` — use
+`CreateTextLLMTranslator(std::move(llm), config)`; the translator owns it,
+and its own `RawProvider()` returns that `ITextLLM*`.
+
+**What comes back.** `TranslateResult::detectedSourceLanguage` is what the
+model reports, or the request's `sourceLanguage` when it reports none;
+`confidence` is 0 unless the model volunteers one. `usage` holds the chat
+tokens summed over the batches and the input's character count in `units`.
+A reply the model cut off (`FinishReason::Length`) is
+`ErrorCode::ContextLengthExceeded` and says to lower `textllm.batchSize`
+or raise `textllm.maxOutputTokens`; a refusal is `ContentFiltered`; a reply
+that is not the expected JSON, or misses segments, is `ProviderError` with
+the count. `GetCapabilities()` lists the LLM's models with `runsLocally`
+carried over, every one marked as auto-detecting, batching and
+formality-aware; `supportedLanguages` is left empty, as a chat model takes
+any language it was trained on, and `maxBatchSize` is 0 because batches
+are split internally.
+
+**Routing.** `KnownLocalProviders("translator")` is `llama-cpp` then
+`qwen`, so an empty `providerId` translates through a local model when one
+is registered and goes to a cloud LLM only when cloud fallback is allowed
+or `ULTRAAI_DEFAULT_TRANSLATOR` names it.
+
+**Limits.** Translation quality, speed and cost are the chosen model's; a
+small local model may paraphrase or drop a placeholder where a translation
+service would not. `glossaryId` (a vendor glossary) is ignored — use
+`textllm.glossary`. A provider registered with `RegisterTranslatorProvider`
+under a text-LLM provider's id replaces the LLM-backed one for that id.
 
 ---
 

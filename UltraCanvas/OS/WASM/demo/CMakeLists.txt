@@ -1,7 +1,8 @@
 # OS/WASM/demo — minimal browser validation app for the WASM backend.
 #
 #   source /path/to/emsdk/emsdk_env.sh
-#   export EM_PKG_CONFIG_PATH=/path/to/wasm-sysroot/lib/pkgconfig
+#   export PKG_CONFIG_PATH=/path/to/wasm-sysroot/lib/pkgconfig:/path/to/wasm-sysroot/share/pkgconfig
+#   export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH   # see OS/WASM/README.md
 #   emcmake cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build
 #   python3 serve.py 8080   # from build/, then open wasm-demo.html

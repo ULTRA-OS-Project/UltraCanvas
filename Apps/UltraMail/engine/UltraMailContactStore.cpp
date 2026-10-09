@@ -42,6 +42,17 @@ UltraDbResult ContactStore::Open(const std::string& connectionName,
     if (!reg) return reg;
     connection_ = connectionName;
 
+    // Write-ahead logging and synchronous=NORMAL, as the mail index has: in
+    // the default rollback journal every commit creates, flushes and deletes
+    // a journal file - on Windows, with a virus scanner looking at each of
+    // those files, tens of milliseconds a contact. NORMAL is crash-safe under
+    // WAL; only the last commits before a power cut can be lost. Not for
+    // ":memory:", which has no journal file.
+    if (databasePath != ":memory:") {
+        UltraDb_Exec(connection_, "PRAGMA journal_mode=WAL");
+        UltraDb_Exec(connection_, "PRAGMA synchronous=NORMAL");
+    }
+
     std::vector<UltraDbMigration> steps = {
         { 1, "contacts schema",
           "CREATE TABLE contacts("
@@ -163,26 +174,59 @@ UltraDbResult ContactStore::Save(Contact& c) {
     UltraDbResult beginErr;
     UltraDbHandle tx = UltraDb_Begin(connection_, &beginErr);
     if (tx == UltraDbInvalidHandle) return beginErr;
+    if (UltraDbResult saved = SaveInTx(tx, c); !saved) { UltraDb_Rollback(tx); return saved; }
+    return UltraDb_Commit(tx);
+}
 
+UltraDbResult ContactStore::SaveAll(std::vector<Contact>& contacts) {
+    for (const auto& c : contacts)
+        if (c.displayName.empty())
+            return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                        "contact display name is required");
+    if (contacts.empty()) return UltraDbResult::Ok();
+
+    UltraDbResult beginErr;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &beginErr);
+    if (tx == UltraDbInvalidHandle) return beginErr;
+    std::vector<int64_t> ids;   // put back if the batch is rolled back
+    ids.reserve(contacts.size());
+    for (auto& c : contacts) {
+        ids.push_back(c.id);
+        if (UltraDbResult saved = SaveInTx(tx, c); !saved) {
+            UltraDb_Rollback(tx);
+            for (std::size_t i = 0; i < ids.size(); ++i) contacts[i].id = ids[i];
+            return saved;
+        }
+    }
+    return UltraDb_Commit(tx);
+}
+
+UltraDbResult ContactStore::KnownAddresses(std::set<std::string>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT lower(address) AS a FROM contact_emails", rs);
+    if (!q) return q;
+    for (const auto& row : rs) out.insert(row["a"].AsString());
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult ContactStore::SaveInTx(UltraDbHandle tx, Contact& c) {
     if (c.id == 0) {
         UltraDbResult ins = UltraDb_ExecInTx(tx,
             "INSERT INTO contacts(display_name, organization, notes, section, group_name, "
             "created_at) VALUES(?, ?, ?, ?, ?, datetime('now'))",
             { c.displayName, c.organization, c.notes, ToString(c.section), c.group });
-        if (!ins) { UltraDb_Rollback(tx); return ins; }
+        if (!ins) return ins;
         c.id = ins.lastInsertId;
     } else {
         UltraDbResult upd = UltraDb_ExecInTx(tx,
             "UPDATE contacts SET display_name=?, organization=?, notes=?, section=?, "
             "group_name=? WHERE id=?",
             { c.displayName, c.organization, c.notes, ToString(c.section), c.group, c.id });
-        if (!upd) { UltraDb_Rollback(tx); return upd; }
+        if (!upd) return upd;
     }
-
-    UltraDbResult kids = ReplaceChildren(tx, c.id, c);
-    if (!kids) { UltraDb_Rollback(tx); return kids; }
-
-    return UltraDb_Commit(tx);
+    return ReplaceChildren(tx, c.id, c);
 }
 
 UltraDbResult ContactStore::Get(int64_t id, Contact& out) const {

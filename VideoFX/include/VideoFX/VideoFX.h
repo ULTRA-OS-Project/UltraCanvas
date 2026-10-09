@@ -1,8 +1,8 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.6.0
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -163,6 +163,17 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
                                       const VideoFXSlideshowOptions& options = {},
                                       const VideoFXExportSettings& settings = {},
                                       const VideoFXProgressCallback& progress = {});
+
+// The tempo and beat times of a file's sound (music, or a video's
+// soundtrack). Finds no beat (bpm 0, Ok) in speech, noise or silence.
+VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info);
+
+// Frontal faces in an image, as fractions of it, largest first - VideoFX's
+// built-in detector (OpenCV's trained frontal-face cascade, evaluated by
+// VideoFX's own code; no OpenCV is linked). Works without FFmpeg too.
+// Finds faces looking roughly at the camera and at least about 1/40 of the
+// image's longer side; profiles and heavily tilted heads are missed.
+VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces);
 
 // A generated test clip (moving pattern + tone) - for tests and demos
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,

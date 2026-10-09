@@ -1,7 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.6.0
-// Last Modified: 2026-08-03
+// Version: 2.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -100,8 +100,46 @@ namespace UltraCanvas {
     }
 
 // ===== TEXT & ICON METHODS =====
+    // ===== ACCESSIBILITY =====
+    std::string UltraCanvasButton::GetAccessibleName() const {
+        if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+        if (!text.empty()) return text;
+        return GetTooltip();   // an icon button says what it does in its tooltip
+    }
+
+    std::string UltraCanvasButton::GetAccessibleDescription() const {
+        // The tooltip of an icon button is already its name.
+        if (GetAccessibleNameOverride().empty() && text.empty()) return accessibleDescription;
+        return UltraCanvasUIElement::GetAccessibleDescription();
+    }
+
+    AccessibleToggleState UltraCanvasButton::GetAccessibleToggleState() const {
+        if (!canToggled) return AccessibleToggleState::NotToggleable;
+        return IsPressed() ? AccessibleToggleState::On : AccessibleToggleState::Off;
+    }
+
+    bool UltraCanvasButton::DoAccessibleAction() {
+        if (IsDisabled() || !IsVisible()) return false;
+        if (canToggled) {
+            SetPressed(!IsPressed());
+            if (onToggle) onToggle(IsPressed());
+            NotifyAccessibility(AccessibilityEventType::StateChanged);
+            RequestRedraw();
+            return true;
+        }
+        if (onPress) onPress();
+        if (onRelease) onRelease();
+        // The primary section of a split button: its left edge.
+        UCEvent click;
+        click.pointer = Point2Di(0, 0);
+        Click(click);
+        return true;
+    }
+
     void UltraCanvasButton::SetText(const std::string& buttonText) {
+        const bool renamed = text != buttonText;
         text = buttonText;
+        if (renamed && GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
         // The old index points into the previous string and would underline an
         // unrelated character; owners re-apply the mnemonic after setting text.
         mnemonicIndex = -1;
@@ -1033,6 +1071,7 @@ namespace UltraCanvas {
                     if (canToggled && onToggle) {
                         onToggle(IsPressed());
                     }
+                    if (canToggled) NotifyAccessibility(AccessibilityEventType::StateChanged);
                     RequestRedraw();
                     return true;
                 }

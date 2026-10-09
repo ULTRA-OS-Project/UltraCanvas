@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.3.1 - NoScale pixmaps of memory-loaded images read the image's bytes
-// Last Modified: 2026-09-30
+// Version: 2.3.2 - a 16-bit image saved as an 8-bit PNG keeps its colours
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -930,6 +930,17 @@ namespace UltraCanvas {
                 case UCImageSaveFormat::PNG: {
                     bool usePalette = (opts.png.colorDepth <= UCImageSave::ColorDepth::Indexed_8bit);
                     bitDepth = std::min(16, ColorDepthToBitDepth(opts.png.colorDepth));
+                    // pngsave narrows 16-bit samples to the bit depth asked
+                    // for by clipping, not scaling: a 16-bit picture written
+                    // at 8 bits came out white. Convert it to 8-bit sRGB (or
+                    // grey) first, as the JPEG and WebP writers do on their own.
+                    if (bitDepth <= 8 && vImg.format() == VIPS_FORMAT_USHORT) {
+                        if (vImg.interpretation() == VIPS_INTERPRETATION_RGB16) {
+                            vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
+                        } else if (vImg.interpretation() == VIPS_INTERPRETATION_GREY16) {
+                            vImg = vImg.colourspace(VIPS_INTERPRETATION_B_W);
+                        }
+                    }
 
                     auto pngOpts = vips::VImage::option()
                             ->set("compression", opts.png.compressionLevel)

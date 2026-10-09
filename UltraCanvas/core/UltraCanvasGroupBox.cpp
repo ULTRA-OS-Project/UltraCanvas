@@ -5,6 +5,8 @@
 // border line, padding and caption strip are kept in sync through
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
+// Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
+//                 now sit above the spot passed)
 // Version: 1.1.0
 // Last Modified: 2026-06-15
 // Author: UltraCanvas Framework
@@ -606,9 +608,11 @@ namespace UltraCanvas {
         TitleLayout tl = ComputeTitleLayout(ctx);
         if (!tl.hasInfo) return;
 
+        // The icon's top edge: the tooltip goes above it (above-right of the
+        // spot passed, as for the pointer), leaving the icon in view.
         Point2Df winPos = GetPositionInWindow();
         Point2Di at(static_cast<int>(winPos.x + tl.infoRect.x),
-                    static_cast<int>(winPos.y + tl.infoRect.Bottom()));
+                    static_cast<int>(winPos.y + tl.infoRect.y));
         UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), helpText, at);
     }
 

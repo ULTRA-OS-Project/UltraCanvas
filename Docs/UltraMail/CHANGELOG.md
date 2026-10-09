@@ -1,4 +1,4 @@
-#### 2026-10-09 *0.10.28*
+#### 2026-10-09 *0.10.44*
 - **Yahoo accounts can sign in with an app password again.** The browser
   sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
   which Yahoo now does per app through a commercial application, not in the
@@ -13,8 +13,6 @@
   precedence over a password, so switching an account from the browser
   sign-in to an app password had no effect. Saving a new password now removes
   the tokens.
-
-#### 2026-10-04 *0.10.27*
 - **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
   Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as
   UltraMail, but redirects to `https://127.0.0.1` instead of using the
@@ -30,6 +28,711 @@
   `yahoo.com.mx`) now get the Yahoo servers and the browser sign-in. Before,
   only `yahoo.com`, `yahoo.de` and `ymail.com` did. Tests: `test_oauth.cpp`,
   `test_discovery.cpp`.
+
+#### 2026-10-09 *0.10.43*
+- **Trust or block a sender from their menu.** A right-click on a sender - a
+  row of the message list, or the name or badge above the message - now
+  offers *Always trust this sender*, *Block this sender* and *Block
+  everything from example.com* beside the address book and spam items, and
+  the same menu undoes each (*Stop trusting*, *Unblock*). The whole-domain
+  block is not offered for a mailbox provider such as gmail.com, which would
+  block everyone who writes from it.
+  - **Blocked:** the sender's mail is marked as spam (`blocked-sender`, 30
+    points - the orange frame), and the strip above the message says *"You
+    blocked this sender"* and how to undo it. Nothing is moved or deleted;
+    *Mark as spam* still moves a message to the junk folder. A blocked
+    domain blocks its subdomains too.
+  - **Trusted:** the guessed warnings stop for that address - romance and
+    advance-fee letters, the crypto caution, spam markers, a brand's name in
+    a domain - and its pictures load like a contact's. What catches a lie
+    still counts: a link that hides where it goes, a forged sender address
+    (`auth-failure`), a program dressed as a document, a request for a
+    wallet's recovery phrase.
+  - An address is on one list or the other: trusting a blocked address
+    unblocks it. A trusted address under a blocked domain stays trusted.
+  - The sender's mail in the list on screen is checked again at once, off
+    the UI thread, with the open message; the stored verdicts elsewhere are
+    marked stale (`LocalStore::MarkSenderVerdictsStale`) and follow with the
+    mail check.
+  - *Settings > Warnings > Trusted and blocked senders* lists both, to edit
+    by hand (a domain typed as `example.com` is kept as `@example.com`);
+    `preferences.ini` keeps them as `trusted_senders` and `blocked_senders`.
+  - Tests: matching addresses and domains, the entries a list accepts, a
+    blocked sender's verdict, a trusted sender keeping only the findings
+    that catch a lie, and only that sender's stored verdicts going stale.
+
+#### 2026-10-09 *0.10.42*
+- **Romance scams are flagged.** A love letter from a stranger - "Where are
+  you my dear?", a nurse from Russia who found your profile on a dating site,
+  "it is destiny", two photos attached, "I shall await your earliest
+  response" - passed the scan as clean: it has no links that lie and asks for
+  no password. Its pattern does it now (`romance-scam`). The scan counts
+  kinds of signs, each once: pet names, talk of love or attraction, an offer
+  of sex or a meeting, a self-introduction (name, age, divorced, "Im lawyer",
+  "I live in Russia"), how they came to write (your profile, a dating site,
+  destiny, "are you real?"), a site to sign up on or be "verified" at ("they
+  never charge you, they just check you have no criminal history"), guilt or
+  pressure ("don't upset Shui98 or make her bored"), a pretended
+  acquaintance, assurances of being real ("I am for real", a "scan
+  passport"), photos, a push to write back, a request for money (Western
+  Union, the rent, a laptop for the webcam, crypto) and a hardship story. A
+  **photo** - attached, or in the body - counts as a sign of its own, since
+  these letters nearly always carry one, and so does a **free mailbox**.
+  - It needs something romantic *and* something only a stranger writes, so a
+    partner's "my dear, here are the holiday photos, write back" stays
+    clean; never for a proven brand's mail, a newsletter from a domain of its
+    own, a job application or a mail over 60 000 characters. Three signs make
+    the message suspicious, five a scam.
+  - The reading pane says *"Warning: This is likely a romance scam² email!"*
+    with a footnote on what romance scams are after, and that a reverse image
+    search often finds the photo under another name.
+  - Tests: ten letters one reader received between 2011 and 2019, as sent,
+    plus the mail that must stay quiet.
+- **Cryptocurrency.** Any mail about crypto (bitcoin, BTC, USDT, a wallet, a
+  seed phrase …) gets an orange *"Caution: this message is about
+  cryptocurrency"* strip above the body - a crypto payment cannot be called
+  back, no genuine service asks for a recovery phrase, no genuine investment
+  guarantees a profit - whoever sent it (`crypto-content`, 10 points, none
+  from a proven exchange). Three patterns are scams outright: asking for a
+  wallet's recovery phrase or private key (`crypto-wallet-secret`, 50 - not a
+  sentence warning never to give it), a wallet address to pay into
+  (`crypto-payment-demand`, 40: the "I recorded you through your camera"
+  blackmail, fake invoices) and promised profit (`crypto-investment-lure`,
+  35: "guaranteed returns", "30% daily", a "trading platform"). Apple's
+  AirDrop is not a crypto airdrop, and a token inside a link is not a wallet
+  address.
+- **More advance-fee letters are caught.** The "abandoned baggage" letter
+  from an airport's "baggage dispute" office - $7.5 million, "your own share",
+  "50% by 50%", "God fearing" - matched none of the rule's ingredients and
+  passed as clean; money nobody claimed, the share-and-blessing phrases and
+  the FBI's "ATM card for scam victims" are ingredients now.
+- **"Write to me at this other address."** A new sign, 15 points
+  (`reply-elsewhere`): the text asks for answers at a free mailbox other than
+  the one it came from ("Please find my contact email address for us to
+  proceed: (l.byrne96@yahoo.com)") - how advance-fee and romance letters move
+  to an address their provider has not closed yet.
+- **A sender address dressed up as a brand's is flagged.** Yana's letter
+  came from `uncollatednessi.faceebookinbox.biz` - Facebook with a doubled
+  "e" - and nothing looked at the sender's domain itself, only at its display
+  name and subject. Now it does (`sender-domain-lookalike`, 45-50 points, a
+  scam on its own), in three ways and only on a domain that is none of the
+  brand's own: the brand's name padded with the words phishing pads it with
+  ("paypal-secure-login.com", "appleidverify.com": secure, login, verify,
+  account, support, inbox …); the name misspelt with look-alike characters
+  ("amaz0n", "paypa1", "rnicrosoft"), a doubled letter ("paypall",
+  "faceebook") or, for names of eight letters or more, one letter added,
+  dropped, changed or swapped ("facebok"); and a brand's own domain in front
+  of a foreign one ("paypal.com.account-check.ru"). A name beside an ordinary
+  word is no claim - "applewood-estates.com", "amazonas-reisen.de",
+  "paypal-community.com" - and neither is a server called Hermes
+  ("hermes.uni-example.de") or the bare name under another suffix
+  ("paypal.xyz"), which the brand table leaves unclaimed on purpose. The
+  reading pane tells it as phishing (`BrandImitatedByDomain`).
+- **Brand names in the letters of another script.** "pаypal.com" with a
+  Cyrillic "а" reads exactly like PayPal's domain and travels as
+  `xn--pypal-4ve.com`; only links in such a domain were noticed (as a
+  punycode host), never a sender. Punycode labels are decoded now
+  (`DomainToUnicode`, RFC 3492) and every letter of another script that
+  looks like a Latin one - Cyrillic, Greek, accented and full-width letters
+  - is read as that Latin letter; a domain whose reading is a brand's own,
+  or its name bare or padded with any word, is flagged as written to deceive
+  (the reason says "reads \"pаypal.com\" - PayPal's name written with
+  Cyrillic letters that look like Latin ones"). Real words in other scripts
+  stay clean ("münchen.de", "москва.рф", "東京.jp"), and so does a mailbox
+  provider's name ("gmаil.com" names no brand).
+- **The links are checked the same way.** A button that goes to
+  "faceebook-login.com", "paypa1.com", "paypal-secure-login.com" or the
+  Cyrillic "pаypal.com" is flagged with its label and its host
+  (`link-domain-lookalike`, 40-50 points, a scam on its own; once per host,
+  the sender's own domain being the sender rule's). The older checks of link
+  hosts stay. On a newsletter of 200 links to 60 sites the scan takes about
+  2 ms longer.
+- **A real name is padded with phishing words only.** The look-alike check
+  read "mail", "app", "online", "care", "my" and other ordinary words as
+  padding, so a brand's own second domain that the brand table does not
+  list, or a business named after its trade - "zoomcare.com" (a clinic),
+  "cdn.discordapp.com" - would have been called an imitation; with links
+  checked, that would have reached every newsletter. Those words now pad
+  only a misspelt or foreign-lettered name ("faceboookmail.com"), which no
+  brand does to itself.
+- **Letters in the FBI's, Interpol's or the IMF's name.** The FBI letter was
+  caught only by its money story. Now a message that presents itself as a
+  government agency or an international organisation - the FBI, Interpol, the
+  IMF, the United Nations, the World Bank, Europol, the Department of Justice,
+  the US Treasury, the Federal Reserve, the Secret Service, the IRS, the BKA,
+  the Bundespolizei, Scotland Yard, the Central Bank of Nigeria … - but was
+  sent from an address that is not a government one is flagged
+  (`government-impersonation`): 45 when the sender's name or domain says so
+  ("FBI <director@fbi-atm-center.example>"), 30 when the subject or text
+  speaks in its name about your money, a case or an arrest ("we the
+  International Monetary Fund … your compensation"). A government address
+  (.gov, .mil, .int, gov.uk, gouv.fr, bund.de, admin.ch, europa.eu …) or an
+  agency's own domain (imf.org, un.org, bka.de) never is, nor is a news item
+  that mentions the FBI or a newsletter from a domain of its own; "Souza &
+  Cia" is a company, not the CIA.
+- **Settings > Warnings > Spam/scam warnings.** One switch per kind of
+  warning: phishing, romance scams, advance-fee letters, letters in an
+  agency's name, cryptocurrency scams, the caution on any mail about
+  cryptocurrency, dangerous attachments, and spam as the mail server marked
+  it - all on. A kind switched off is not looked for: its findings are
+  dropped and add nothing to the score, so its messages are labelled as if
+  the check did not exist. Mail already checked is checked again with the
+  new choice - the open message at once, the rest in the background with
+  each mail check, starting with one right away (`ThreatScanOptions`,
+  `LocalStore::MarkVerdictsStale`; `warn_*` in `preferences.ini`). "Warn about
+  all" restores the defaults.
+- **A sender menu in the reading pane.** A right-click on the sender's
+  name or badge above the message offered only Copy and Select All; the
+  contact and spam items were in the message list's menu alone. It opens the
+  sender's menu now, with the address as its title: Copy address, Show only
+  mail from this sender (Show all messages while that filter is on), Add to
+  contact group, Add to contacts - or Edit contact for an address already in
+  the address book - and Mark as spam (Not spam in the junk folder), with
+  Copy and Select All below when the click was on the name. The list's menu
+  and this one share the address-book items (`MailView::SenderMenuItems`,
+  `MessagePreview::senderMenuItems`). Test: `MessagePreviewLayoutTest`.
+- **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
+  ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
+  foxmail.com are free mailboxes, as gmail.com is.
+- The verdict keeps the codes of its findings (`MessageSecurity::findings`,
+  schema 11), which is how the reading pane knows which scam it is; stored
+  verdicts are scanned again by the new rules (`kThreatRulesRevision`). A
+  scam's badge tooltip says "scam or phishing markers" rather than phishing
+  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
+  `test_preferences.cpp`.
+
+#### 2026-10-08 *0.10.41*
+- **The scam check's pictures come from the parsed page.** The check that
+  catches a mail dressed in a well-known brand's pictures while its links go
+  elsewhere found those pictures by searching the HTML for `src=`,
+  `background=` and `url(`: a web font, a style rule that matches nothing,
+  and an address written in a comment, a script or the text all counted as
+  pictures the mail shows. They now come from the page as the framework's
+  HTML reader parses it - `<img>`, `<input type="image">`, `background`
+  attributes, and the background images its CSS gives each element, through
+  the same cascade the message is shown with.
+
+#### 2026-10-08 *0.10.40*
+- **A fake link dressed up in formatting no longer slips past the scam
+  check.** The check compares the address a link's text shows with where
+  the link really goes; its own tag stripper read `www.pay<b>pal</b>.com` as
+  "www.pay pal .com", which names no site, so such a link passed. Link texts,
+  link targets and the body the check searches now go through the
+  framework's HTML reader (`HTML::ExtractPlainText`, `HTML::DecodeEntities`):
+  a word split by formatting stays whole, every entity is decoded (not only
+  five), and the text of a `<style>` or `<script>` is no longer searched as
+  if it were the message. The link list shows link texts as the reader sees
+  them ("Click here", not "Click  here").
+- **The links of a formatted mail come from the parsed page.** The scam
+  check and the link list found links by searching the HTML for `<a `; a
+  link written inside an HTML comment or a script counted as one, and a
+  mail's "button" (a table inside a link) gave its words run together. The
+  links are now the page's `<a href>`, `<area href>` and `<form action>`
+  elements as the HTML reader parses them, each with the text it shows.
+  Mail checked before this version is checked again, by the next sync and
+  when it is opened, so a fake link the old check let through is caught in
+  mail already received.
+
+#### 2026-10-08 *0.10.39*
+- **Formatted mail as plain text keeps its paragraphs.** With Settings >
+  Reading set to plain text, and in the quote of a formatted mail in a reply
+  or forward, the text was the HTML with its tags taken out: paragraphs ran
+  into one another or kept the HTML source's line breaks, only four entities
+  were decoded (`&eacute;`, `&#8211;` and the rest showed as written), and a
+  newsletter's hidden preview line appeared at the top. The text now comes
+  from the framework's HTML reader (`HTML::ExtractPlainText`, its new Lines
+  layout): a paragraph to a line with a blank line between, `<br>` as a line
+  break, table cells a tab apart, list items as `- `, every entity decoded,
+  and hidden text left out.
+
+#### 2026-10-08 *0.10.38*
+- **The mail's text can be selected and copied.** In formatted (HTML) mail a
+  drag selects across the whole message, from paragraph to paragraph as in a
+  browser, a double-click takes a word and a triple-click a paragraph;
+  Ctrl+C copies and Ctrl+A selects the whole message once it has been
+  clicked. The subject, the sender, the recipients and the date can be
+  selected too. A right-click on the text offers Copy and Select All, over
+  formatted and plain-text mail alike. Only one part is highlighted at a
+  time, as on a web page. A link still opens on a click; a drag that starts
+  on a link selects instead. (The framework's selectable labels, see the
+  framework changelog.)
+- **A copy button on sign-in codes.** A one-time code - the code a sign-in,
+  a payment or an address check sends to be typed in elsewhere - gets a copy
+  button: inside the code's own box when the mail puts it in one
+  (Papierkram's "Dein Anmelde-Code"), otherwise in a bar above the message
+  with the code and a Copy button (plain-text mail, a code inside a
+  sentence). A click copies the code - without the spaces of "649 082" - and
+  the button shows a check mark for a moment.
+  - Found in any language: the code by its shape (4 to 10 digits, or
+    capitals and digits, alone or in groups) and the word for "code" beside
+    it or in the subject - Code, código, codice, kod, kód, koodi, код,
+    κωδικός, 验证码, 認証コード, 인증번호, รหัส, رمز, קוד, कोड, OTP, PIN, TAN and
+    more (`UltraMailOneTimeCode.h`).
+  - Numbers that only look like codes get no button: years, prices, times,
+    IP addresses, phone numbers, "#order" numbers, parts of links and
+    addresses, and what follows "postal code", "error code" and the like.
+
+#### 2026-10-08 *0.10.37*
+- **A click anywhere on an account tile switches to that account.** Clicking
+  the other account's tile mostly did nothing: the window gave a click to
+  the innermost element under the pointer and to no other, and the tile's
+  name, address, avatar and counters are elements of their own that ignore a
+  click. The rows holding them stretch across the tile, so only its padding
+  and the strip between the two rows switched the account - on a tile in a
+  real window, 1 of 14 spots (the centre of each part of the tile) answered.
+  A click that missed looked like a switch that never came, or a slow one
+  when a later click happened to land on the padding; 0.10.21, 0.10.30 and
+  0.10.32 made the switch itself faster, which cannot help a click that never
+  reaches the tile. All 14 spots switch now, twice over: the framework hands
+  a press nobody under the pointer took on to the elements around it (see
+  the framework changelog, "A mouse press the element under the pointer does
+  not take climbs to its parents"), and the tile is one target for the
+  pointer. The counters' captions moved from each counter's tooltip into the
+  tile's: the address, then *New today*, *Unread (before today)* and *Waiting
+  for reply* with their numbers (`ClickSurface::PassPointerThroughContent`).
+  Tests:
+  `Tests/UltraMail/AccountBarClickTest.cpp` (`UltraMailAccountBarTest`, a
+  window under Xvfb; it skips without a display).
+
+- **A click on a group's or list's name in the address book selects it.**
+  The sidebar of the contacts window had the same dead spots as the account
+  tiles: the name stretches across the row and ignored the click, so only
+  the row's edges and its count answered. Fixed by the same framework change
+  (a press nobody under the pointer took goes on to the row), with no change
+  in UltraMail's code.
+
+#### 2026-10-08 *0.10.36*
+- **The message fills the pane.** Two things kept a message's body from
+  using the space it is given:
+  - **No empty band under the mail.** The attachment strip under the body
+    kept its 42 px, and the pane's gap above it, for every message - with
+    no attachment in it as well. It is hidden now while a message has no
+    attachments, and the body reaches the bottom of the pane.
+  - **No sideways scrolling by the scrollbar's width.** A newsletter whose
+    body asks to be at least as wide as the window (`min-width: 100%`, as
+    Reddit's digest does) was measured against the whole pane, including
+    the 12 px under the vertical scrollbar, so it scrolled sideways by
+    exactly that much and its centred layout sat off-centre. The body now
+    sits in a page as wide as the visible pane, the way a browser's window
+    works, so every width the message's CSS gives in percent is taken from
+    what the reader can see. Mails that do not ask for that (most) looked
+    right before and still do; content that really is wider than the pane
+    (a fixed-width table, a large picture) still gets its horizontal bar.
+
+#### 2026-10-07 *0.10.35*
+- **The window first, with the mail in it.** UltraMail opens its window as
+  soon as it can show the stored mail - the accounts, the folder tree, the
+  list and the selected message - and does the rest of its start after it
+  is on screen. Before, the mail plug-ins were loaded, the password vault
+  unlocked (a deliberately slow key derivation), the cloud accounts opened
+  and the attachment cache pruned before the window existed, and the
+  selected message was laid out only after the window's first paint.
+  - Before the window: the mail database, the settings, the address book
+    (the sender badges), the outbox (its button), the list and the selected
+    message - the message is in the window's first frame now, not a moment
+    after it.
+  - After it (`FinishStartup`): the attachment cache is pruned on a thread
+    of its own; the cloud accounts, the IMAP / SMTP plug-ins, the vault, the
+    sync timer, the outbox retries and the first mail check follow. A click
+    that needs any of them before then (Update, a new message, Send, Delete,
+    Add account) finishes the start first instead of reporting a missing
+    plug-in, and a body the first message lacks is fetched once the vault
+    is open.
+  - **Never a black window on Windows:** the window's first frame is drawn
+    before the window appears, and a window's surface starts in its
+    background colour instead of black (framework changelog, "Windows: a
+    window is never shown black").
+  - **Nor does a cold font cache hold it:** Windows' system fonts are scanned
+    in the background. When the scan takes longer than 0.4 s - every font file
+    read, the first start on a computer or after Windows changed its fonts -
+    the window opens with UltraMail's own fonts and Windows' symbol fonts, and
+    switches to the full set when the scan ends (framework changelog,
+    "Windows: the system fonts are scanned in the background"). The trace says
+    which: "system fonts: scanned in the background in N ms, in use from the
+    start", or "still being scanned" and later "System fonts ready after N s
+    of scanning".
+- **No console window on Windows.** Release builds are GUI programs now,
+  like the other apps: starting UltraMail no longer opens a black console
+  window beside it. The timing trace below goes to `trace.log` in the data
+  folder, and into the console of a command prompt UltraMail is started from;
+  Debug builds keep their console window.
+- **A timing trace of the start and of every account switch.** Switching
+  accounts still takes ten seconds and more on Windows, and the window stays
+  black for ten to fifteen seconds after the start, while the switch measured
+  on Linux for 0.10.30 took 10-55 ms - so where the time goes has to be
+  measured on the machine where it is lost. UltraMail now writes each step it
+  takes, with its time, to `trace.log` in the data folder, emptied at each
+  start, and to the console it was started from. Every line carries the
+  time of day, the seconds since the process started and the thread.
+  `ULTRAMAIL_TRACE=0` turns it off.
+  - **The start:** how long the process ran before `main()` (loading the
+    program and its libraries); the framework's initialisation with each of
+    its steps - fontconfig, the image subsystem, the windowing backend, the
+    bundled and system fonts, the clipboard - (framework changelog, "Startup
+    and frame timings"); opening the mail database, the preferences, the
+    attachment cache, the vault and its device key, the address book, the
+    outbox, the cloud accounts and the mail plug-ins; building the window and
+    filling it; and the first frames with their layout, painting and
+    compositing times, "on screen N s after the process started".
+  - **An account switch:** each step of the click (status line, connection
+    pill, the tile, the folder tree and each folder query, every query of the
+    message list, the rows, the list, the reading pane's message - its body,
+    its scan, its HTML), the next frames timed from the click, and the inbox
+    update from the server - on its worker (sign-in, the fetch, what it
+    brought) and back on the UI thread with its refresh.
+  - **The mail checks:** one block per check on its worker; the work it
+    causes on the UI thread (the address book, the refresh, the counts) only
+    when it took 50 ms or more, and then with its steps.
+  - **A watchdog** asks the UI thread to answer four times a second; when it
+    does not, a line says for how long so far and in which step the UI thread
+    is - or that it is in none of them, which is the framework's own work (an
+    event, a timer, layout or painting). Every frame of 100 ms or more is
+    reported as a slow frame.
+  - `UltraMailTrace` (engine); README, "Timing trace". Tests:
+    `test_trace.cpp`.
+
+#### 2026-10-07 *0.10.34*
+- **New mail shows a notification on the screen.** When a sync brings new
+  mail into an inbox, UltraMail posts one notification through UltraMessage,
+  the desktop's message channel, and the desktop's own notification service
+  draws it - GNOME Shell, Plasma, dunst and the rest on Linux, a toast in the
+  Action Center on Windows, Notification Center on macOS - with its look, its
+  sound and do-not-disturb. One
+  message names its sender and subject ("New mail from Ada Lovelace" / "The
+  engine notes"); several are counted, with the newest three listed ("3 new
+  messages": "Grace: Moth" ...). With more than one account it says which.
+  A click on it brings UltraMail to the front with the message open - or the
+  account's inbox, for several. Until now new mail only reached the desktop's
+  message feed, where nothing showed it on screen.
+  - Only news counts: unread mail the sync stored above the highest UID the
+    inbox held before it. An account's first download, mail already read on
+    another computer, a gap repaired in an old part of the mailbox and an inbox
+    fetched again from scratch raise no notification, and overlapping syncs
+    of one account (a timer sync while the inbox is opened) announce once.
+  - The notification is not added to the desktop's message centre: each
+    message is listed there already.
+  - Settings > Display > Notifications switches it off.
+  - Needs the framework's UltraMessage presenters (the changes pending in
+    `Docs/UltraCanvas/changelog.d/ultramessage-presenters.md` and
+    `ultramessage-macos-presenter.md`). On macOS the notification carries
+    UltraMail's name and icon when UltraMail hosts the message channel and
+    runs from its bundle; macOS asks once to allow it.
+
+#### 2026-10-06 *0.10.33*
+- **The account wizard explains how to set up iCloud mail.** Apple takes only
+  an app-specific password in other mail programs, made on account.apple.com -
+  the Apple Account password fails with "authentication failed", and the
+  wizard's one-line hint said only that an app password was needed. Under the
+  sign-in fields, *How to set up an iCloud mail account* now has a **Show
+  info** button that opens the steps in an info area (the dialog grows to hold
+  it, *Hide info* closes it): two-factor authentication and iCloud Mail turned
+  on; account.apple.com, *Sign-In and Security*, *App-Specific Passwords*,
+  *Generate*; what goes in the address and password fields; the servers and
+  the username (the @icloud.com address) for an own domain on iCloud+; and what
+  to check when the sign-in still fails. It is offered for iCloud addresses
+  and for addresses at a domain no preset knows (an own iCloud+ domain looks
+  like that), not for Gmail, Outlook or the other known providers. For an
+  iCloud address the hint and the password field say "app-specific password".
+  The servers in the guide are taken from the iCloud preset
+  (`ICloudSetupGuide`, `OffersICloudSetupGuide`). Tests: `test_discovery.cpp`.
+
+#### 2026-10-05 *0.10.32*
+- **The window no longer freezes after a sync that brought much mail.**
+  At the end of every sync the senders of the new mail go into the address
+  book, and that ran on the window's own thread one sender at a time: a
+  search of the whole address book, then - for a new address - a save in a
+  transaction of its own, each flushed to disk. With a handful of new
+  messages nobody noticed. After a sync that brought many - a newly added
+  account, an inbox downloaded again - it held the window: on Windows,
+  where every flush also meets the virus scanner, clicks went unanswered
+  for twenty seconds and more (160 messages), and for minutes on a mailbox
+  of a few thousand. A click on the other account's tile looked as if
+  switching accounts were slow. The senders of a sync are now collected
+  together: one read of the stored addresses, one transaction for every new
+  contact, each address once however many messages it sent
+  (`ContactCollector::CollectSenders`, `ContactStore::SaveAll`). Measured
+  on Linux against the old way: 160 senders 146 ms -> 1.2 ms, 2228 senders
+  2.2 s -> 10 ms; disk flushes for 160 senders 303 -> 8.
+- **The address book is in WAL mode**, as the mail index has been since
+  0.10.21: a saved contact no longer creates, flushes and deletes a journal
+  file (`contacts.db`, synchronous=NORMAL). Tests: `test_contacts.cpp`.
+- **How often new mail is checked is a setting**: *Settings > Mail > New
+  mail* offers every 20, 30, 40 or 50 seconds, every 1, 2, 3, 4 or 5 minutes
+  and every 10 minutes (the default stays 5 minutes). It applies as soon as it
+  is chosen - the sync timer now ticks every five seconds and the scheduler
+  starts the accounts that are due - and the connection's tooltip says the
+  interval. An account whose last check is still running when the next falls
+  due is not checked a second time beside it, which a short interval and a
+  slow server or a first download would otherwise do. Stored as
+  `check_mail_every_sec` in `preferences.ini`; a number edited in by hand is
+  read as the nearest choice. Tests: `test_preferences.cpp`,
+  `test_scheduler.cpp`.
+- **A new account's mail arrives forty times faster**: the IMAP plug-in
+  now fetches headers and bodies in batches instead of one message at a time
+  (about a second a message on Windows before): two hundred headers to a
+  request, and bodies in blocks of up to 4 MB. See the framework changelog,
+  "IMAP: headers and bodies are fetched in batches".
+- **Sender icons are fetched in the background, for the rows on screen.**
+  The sync fetched a known service's icon as each new message's header
+  arrived, and waited for the download (up to ten seconds when a site did
+  not answer) before taking the next message. Now the message list asks for
+  an icon when it paints a row whose sender has none yet - so only the
+  senders actually shown are fetched - and the icon cache's own threads (up to
+  three) download it; the row, and the reading pane, show it as it arrives.
+  Neither the sync nor the window waits for a download
+  (`SenderIconCache::Request`, `SetReadyHandler`).
+- **Other senders show their website's icon.** A sender that is not on
+  UltraMail's list of known services now gets the icon of the website it
+  writes from: the home page of its domain (`mail.shop.example` ->
+  `shop.example`) is read for its `<link rel="icon">`, the size that suits
+  the badge first, with `/favicon.ico` as the fallback; the icon is kept in
+  `cache/sender-icons/sites`, and a site without one is asked again after a
+  week. Only for mail that passed the scam check - never for spam, a scam,
+  the junk folder or a mailbox provider such as gmail.com - because reading
+  the site tells its server that someone looked. A second switch in
+  *Settings > Privacy > Sender icons*, "Show other senders' website icons"
+  (on; `fetch_site_icons`). Tests: `test_senderidentity.cpp`.
+- **A spam or scam badge no longer wears the brand's logo.** An icon is
+  drawn without the badge's frame, so a phishing mail from a forged
+  `paypal.com` address showed PayPal's logo and not the red frame. A
+  dangerous message's badge now always shows its frame.
+- **Genuine mail is no longer marked as a scam for its tracking links.** A
+  newsletter whose link reads "www.shop.example/sale" but goes through its
+  mail service's click tracker looked like a link lying about where it goes -
+  the strongest scam rule - and a bank asking to update payment details, a
+  help-desk Reply-To or links to many sites added to it. UltraMail now reads
+  the checks the receiving server made of the sending domain (the
+  `Authentication-Results` header: DKIM, SPF, DMARC). A sender is **verified**
+  when DMARC passed for its From domain or a DKIM signature of that domain
+  verified; for it those rules no longer count, and for a verified known
+  service (PayPal from `paypal.com`, proven) neither does asking to update
+  account details. Every rule that catches a lie stays: a look-alike domain
+  that signs its own mail is still a scam. Only the topmost header is read -
+  the user's own server's; one further down may be the sender's own forgery
+  (the scan read the bottom one before). A failure counts when DMARC fails,
+  or nothing passed: forwarded mail fails SPF, and a mail service's second
+  signature may fail while the sender's passes - both were "possibly forged"
+  before. Stored verdicts of older rules are scanned again by the sync, 300
+  per folder and check, so the list's badges follow without each message
+  being opened (`SyncEngine::RescanStaleVerdicts`, schema 10). Tests:
+  `test_threatscan.cpp`, `test_localstore.cpp`.
+- **[DMARC] [DKIM] [SPF] beside the sender.** The reading pane shows the
+  sender checks as small bordered labels - green passed, red failed, grey
+  no verdict - each with a tooltip saying what was checked, for which domain,
+  what that proves and which server checked it; **[Not checked]** when the
+  server recorded none (not a warning). A message signed with S/MIME or
+  OpenPGP shows **[S/MIME]** / **[OpenPGP]** in grey: detected, not yet
+  verified. The badge's and the sender's tooltips name a verified sender:
+  "✓ Verified sender: paypal.com (DKIM signature and DMARC)".
+- **Buttons in HTML mail show their text again.** In a newsletter whose
+  template colours every link red with `!important` and whose buttons set
+  their own white text the same way (Lexware, via Intercom), the buttons'
+  text was painted red on the red button - "Zum Artikel", "Anmelden" looked
+  like empty red boxes - and the white footer links came out red. The
+  button's own colour now wins, as in a browser. See the framework
+  changelog, "HTML reader: an inline `!important` beats a style sheet's".
+- **Tooltips no longer cover what they explain.** A tooltip - a message
+  row's, the sender badge's, a link's address - opened below and to the right
+  of the pointer, over the line being read. It now opens above and to the
+  right, with a gap, so the line under the pointer stays readable (below the
+  pointer only at the top of the window). See the framework changelog,
+  "Tooltips sit above and to the right of the pointer".
+- **A mail check no longer signs in four times.** The status, the new
+  messages, the read flags and the bodies each signed in to the server on a
+  connection of their own; now the plug-in keeps a signed-in connection and
+  every check, and every flag change, move or delete between them, runs on
+  it. At a check every twenty seconds that is no sign-in at all after the
+  first, instead of twelve a minute per account - which some providers limit.
+  See the framework changelog, "IMAP: one sign-in serves many checks".
+
+#### 2026-10-05 *0.10.31*
+- **The mailbox opens in a Windows profile named in any script.** The data
+  folder (`%APPDATA%\UltraMail`: the mail database, the credential vault,
+  the preferences) was found through the narrow `getenv("APPDATA")`, which
+  answers in the ANSI code page; for a user name outside it the folder came
+  back with `?` in it and the store did not open. It is read with the
+  framework's `GetEnvUtf8` now, as UTF-8 (framework changelog:
+  `env-narrow`).
+
+#### 2026-10-04 *0.10.30*
+- **Switching accounts is immediate.** A click on an account's tile shows its
+  mail as stored at once - the list first, the message beside it a moment
+  later, once the list is on screen - and then fetches its inbox from the
+  server in the background; new mail joins the list in place when it comes.
+  On a mailbox of 5000 messages the window used to stand still for 0.4 to 1
+  second per switch (measured: 420-960 ms); it now takes 10-55 ms. What made
+  it slow:
+  - **The waiting-for-reply count.** Its "only people you have written to"
+    rule compared every waiting message with every message in the Sent
+    folder, in the database, on every count - half a second each time the
+    account bar or the list was redrawn. The addresses written to are now
+    read once and only again when the Sent mail changes: 470 ms became 15 ms.
+    The rule also missed most of them: it matched only recipients written as
+    a bare address, never "Maya Bennett <maya@example.com>", the way the
+    composer and most mail programs address mail. Those count now.
+  - A switch no longer re-counts every account and re-reads the address
+    book: nothing either depends on changed by looking at another account.
+  - The list fills in one step instead of row by row, and the message in the
+    reading pane is laid out once instead of twice (also on every click on a
+    message, and on every sync that brought mail above it - which also sent
+    the reading pane back to the top of the message).
+  - After a sync only the senders of the new mail are added to the address
+    book, not every sender of the inbox again.
+- **The message list sorts by its column headers.** A click on *From*, on the
+  sender-badge column, on *Subject* or on *Date* orders the list by it; a
+  second click turns the order round, and a small triangle in the header
+  shows which column and which way. Dates start newest first, the rest from A
+  (contacts first for the badge column). Subjects sort without their "Re:",
+  "Fwd:", "AW:" or "WG:", so a reply stays with what it answers, and accented
+  letters sort with their base letter ("Ärztekammer" among the A's). The
+  message being read stays selected, new mail arriving during a sync goes in
+  at its place in the order, and the choice is remembered (`list_sort` in
+  `preferences.ini`).
+- **New mail that never showed up.** Several ways a message could be left out
+  of the list for good, all repaired by the next sync:
+  - Every sync now compares the inbox with the server's own list of messages,
+    not only "anything above the highest message number held". A message an
+    interrupted sync skipped, or one stored blank because its header could
+    not be read (earlier versions did that), is fetched; mail deleted, moved
+    or read on another computer is followed in the background sync too (it
+    used to be only when a folder was opened by hand).
+  - A cache whose message numbers the server has not handed out yet is
+    dropped and fetched again - the server renumbered the mailbox, or the
+    account's server changed. Before, every new message numbered below the
+    old highest number was skipped, without an error.
+  - **Windows only:** a server's mailbox number (UIDVALIDITY) above 2147483647
+    was read as 2147483647 on Windows, so a renumbered mailbox looked
+    unchanged there - and only there (framework changelog, "IMAP: numbers above
+    2147483647 are read right on Windows").
+  - Changing an account's incoming server or user name in *Account Settings*
+    drops the mail downloaded from the old one and fetches the new mailbox.
+  - **"(message body not downloaded yet)" no longer stays.** A message whose
+    body download failed was never downloaded again. Opening it now downloads
+    it at once (the reading pane says so meanwhile), and each sync fetches the
+    bodies still missing among the newest 100 messages.
+  - The newest message was downloaded again on every sync (the server always
+    answers "messages from number N on" with its newest one).
+- **The connection pill says how many messages the server's inbox holds**
+  ("Inbox on the server: 59 messages" in its tooltip). When another computer
+  shows mail this one does not, this tells whether the mail is on the server
+  this account reads at all: if the numbers differ, compare the *Incoming
+  server* in *Account Settings* on both computers.
+- The list opens with its newest message in view; it used to open scrolled two
+  rows down, the selected message hidden above the top (framework changelog,
+  "ListView: EnsureRowVisible before the first layout").
+- **Folders as the server names them.** On servers that put every folder
+  under the inbox with a dot - Courier-style, "INBOX.Drafts" - the folder tree
+  showed "INBOX.Drafts", "INBOX.Trash" and "INBOX.INBOX^Sent" as names. The
+  separator the server lists is now kept with each folder (schema 9) and the
+  names are read by it: Inbox › Sent, Drafts, Trash, Investor, Invoice, as on
+  any other server. The same names appear in the list's title, the status line
+  and *Move to folder* ("Projects / 2026" for a folder two levels down).
+  - **The Sent folder is found** on such servers: "INBOX^Sent" - how a folder
+    came across from a server with another separator - is the Sent folder,
+    and so are the German names servers use ("Gesendete Objekte",
+    "Papierkorb", "Entwürfe" …). That also makes "Waiting for reply" work
+    there: its "people you have written to" rule reads the Sent folder
+    (framework changelog, "IMAP: folder roles by the server's own separator").
+- **Folders deleted or renamed on the server leave the tree.** The folder list
+  only ever added folders; one deleted on the server, or renamed there, stayed
+  in the tree with its old mail for good. Every sync now drops a folder the
+  server no longer lists, with its messages and downloaded bodies (never on an
+  empty list, never the inbox). A folder that is open when it goes takes the
+  view back to the inbox, and pressing *Update* on it says "The folder … is no
+  longer on the server" instead of a "Select failed" alert.
+- **A renumbered mailbox was never noticed in the regular sync.** Reading the
+  folder list wrote 0 over each folder's stored UIDVALIDITY, so the inbox sync
+  that followed found nothing to compare and kept a stale cache. The folder
+  list now leaves the numbering alone.
+- **The highlight stays on the message being read while new mail streams
+  in.** Rows inserted above it moved the message down but not the highlight,
+  which sat on whatever message took its place until the sync finished
+  (framework changelog, "ListView: the selection follows the rows").
+- **The arrow keys go on from the selected message** after the list was
+  rebuilt or re-sorted - a folder or account switch, a sync, a click on a
+  column header. They started again from the top (framework changelog,
+  "ListView: the arrow keys go on from a row selected in code").
+
+#### 2026-10-04 *0.10.29*
+- **The message text fits its pane.** An HTML message tall enough to scroll
+  was laid out for the pane's full width, and the vertical scrollbar then took
+  its strip on top: the end of every line ran under the bar and the few
+  hidden pixels raised a horizontal scrollbar across the bottom as well. The
+  body is now laid out at the width beside the bar, so lines wrap before it and
+  a horizontal bar appears only for content that really cannot wrap (a
+  fixed-width table, a large picture).
+- **No dotted line or slivers after scrolling.** Scrolling a message left a
+  faint dotted yellow line just left of the text and slivers of glyphs below
+  it: the edges of the letters, which scrolling never painted over. Fixed in
+  the framework (framework changelog, "A scrolled view no longer leaves glyph
+  fringes beside and below it").
+- **Resizing the window keeps your place in the message.** It sent the
+  message back to its top (framework changelog, "Resizing a window keeps the
+  scroll position of everything in a split pane").
+- **Thin, round scrollbars in the reading pane.** The message text (HTML and
+  plain text) scrolls with the same thin, rounded scrollbar as the message
+  list instead of the wide square one. Plain-text mail needs the framework's
+  new text-area scrollbar style (framework changelog, "TextArea: the
+  scrollbar's thickness and rounding are styleable").
+#### 2026-10-04 *0.10.28*
+- **Mail addresses in a message open a new message.** A `mailto:` link in
+  formatted mail, and a `mailto:` or plain address ("support@shop.example")
+  written in plain-text mail, opens a new message in UltraMail, from the
+  account the message was read in, with the subject and text the link
+  carries. Before, a `mailto:` link went to the system's mail program, and
+  addresses in plain text did nothing.
+  - **Copies too:** the link's `cc` and `bcc` fill the message's Cc and Bcc,
+    and a `to` field adds recipients. A message with blind copies opens with
+    its **Bcc** row shown, so no recipient is added unseen.
+- **Bcc in the compose window.** A **Bcc** toggle at the end of the Cc row
+  shows a Bcc row for blind copies the other recipients don't see. Hiding the
+  row again empties it, so nothing goes to an address that is out of sight.
+- **To, Cc and Bcc complete from the address book.** Typing in a recipient
+  field pops up the contacts whose name, organization or address matches what
+  is typed after the last comma - matches at the start of a word first. Down
+  and Enter, or a click, puts in "Name <address>, " and keeps the recipients
+  before it; addresses already in the field are not offered again. The
+  people you write to most - counted from the mail in your Sent folders -
+  come first, and recent mail counts more than old: a message's weight halves
+  every 90 days, so someone you wrote to often years ago does not stay on top.
+- **Plain-text mail: addresses are links.** They show the pointing hand, show
+  their address in the status line or as a tooltip, and are counted with the
+  message's links. They are never judged as web links by the threat scan.
+
+#### 2026-10-04 *0.10.27*
+- **The phishing scan knows the brands phishing pretends to be.** The
+  known-sender registry grows from about 50 services to about 400, with 600 of
+  their own domains: banks and brokers (Chase, Bank of America, Barclays, HSBC,
+  Revolut, Deutsche Bank, Commerzbank, ING, N26, UBS, BNP Paribas, Nordea, RBC,
+  Commonwealth Bank …), payment services (Venmo, Zelle, Cash App, Wise, Western
+  Union, Klarna, Visa, Mastercard …), crypto exchanges and wallets (Coinbase,
+  Binance, Kraken, Crypto.com, MetaMask, Ledger, Trezor …), online shops and
+  marketplaces (Walmart, AliExpress, Temu, Zalando, Vinted, Kleinanzeigen,
+  Lidl, Aldi …), parcel carriers and postal services (USPS, Royal Mail, Evri,
+  DPD, GLS, InPost, PostNL …), cloud, hosting and file-sharing services
+  (WeTransfer, DocuSign, Cloudflare, Hetzner, IONOS, OVHcloud …), domain
+  registrars (GoDaddy, Namecheap, INWX, DENIC …), tax offices and agencies (IRS,
+  HMRC, ELSTER, impots.gouv.fr, CRA, ATO …), telecoms, game stores and
+  security software (Norton, McAfee, LastPass …). A display name or subject
+  claiming one of them from another domain is flagged as impersonation; their
+  genuine mail gets their name, icon and the business-contact badge. Eight new
+  categories describe them, and the **Payments** filter now also shows mail
+  from banks and crypto exchanges.
+- **Fewer false impersonation warnings.** Brands whose name is an ordinary
+  word ("Chase", "Target", "Visa", "Steam", "Booking", "UPS") are now claimed
+  only by specific phrases ("chase bank", "booking.com"), so a hotel's "your
+  booking is confirmed" or a subject with "follow-ups" no longer reads as
+  impersonation; Amazon is no longer claimed by "prime" alone, nor Microsoft
+  by "office" or "outlook". A display name that is just the sender's own
+  mailbox address (`jane@outlook.com`) claims no brand.
+- **A squatted country domain no longer passes for a big brand.** Amazon,
+  eBay, Google, DHL, Etsy and Pinterest were trusted under any domain ending
+  - `amazon.xyz` got Amazon's name, icon and badge. They now list their real
+  country sites (`amazon.de`, `ebay.co.uk`, `dhl.de`, `google.co.jp`,
+  `pinterest.de`, …) one by one, and no entry is trusted that way any more.
+- Brand lookups use an index instead of walking the table for every message
+  in a folder. See [SenderBadges.md](SenderBadges.md#2-the-known-sender-registry)
+  for the rules an entry must follow.
 
 #### 2026-10-04 *0.10.26*
 - **Unread mail stays unread.** Syncing marked every new message read on the

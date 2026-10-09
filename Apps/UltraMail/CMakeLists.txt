@@ -16,17 +16,21 @@ endif()
 set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTypes.cpp
     engine/UltraMailLocalStore.cpp
+    engine/UltraMailFolderNames.cpp
     engine/UltraMailMimeCodec.cpp
     engine/UltraMailAttachmentCache.cpp
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
     engine/UltraMailSenderBrands.cpp
+    engine/UltraMailSenderBrandTable.cpp
     engine/UltraMailSenderIconCache.cpp
     engine/UltraMailSenderTrust.cpp
     engine/UltraMailThreatScan.cpp
     engine/UltraMailUnsubscribe.cpp
+    engine/UltraMailRecipientComplete.cpp
     engine/UltraMailInlineImages.cpp
     engine/UltraMailMessageFilter.cpp
+    engine/UltraMailMessageSort.cpp
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
     engine/UltraMailOAuth.cpp
@@ -40,6 +44,9 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncScheduler.cpp
     engine/UltraMailContactCollector.cpp
     engine/UltraMailFeedPublisher.cpp
+    engine/UltraMailNewMail.cpp
+    engine/UltraMailTrace.cpp
+    engine/UltraMailOneTimeCode.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
@@ -207,6 +214,15 @@ set(ULTRAMAIL_UI_SOURCES
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
+# Windows Release builds open no console window (the GUI subsystem), like the
+# other apps' (root CMakeLists.txt, "Hide console window on Windows Release
+# builds"); main.cpp's WinMain enters main(). The timing trace still goes to
+# trace.log in the data folder, and into the console of a prompt UltraMail
+# is started from (the framework's AttachParentConsole). Debug builds keep
+# their console.
+if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_target_properties(UltraMail PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 # Plugins (SMTP/IMAP DSOs) resolve symbols back from the executable at runtime.
 set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(UltraMail PRIVATE

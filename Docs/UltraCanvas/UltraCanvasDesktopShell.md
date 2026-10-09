@@ -1,5 +1,7 @@
 # UltraCanvasDesktopShell
 
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
@@ -9,10 +11,15 @@ show beside its icon.
 ```cpp
 #include "UltraCanvasDesktopShell.h"
 
-for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-    if (!w.skipTaskbar) taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
+for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+    if (w.skipTaskbar) continue;
+    const uint64_t id = w.id;
+    taskbar->AddToggleButton("win-" + std::to_string(id), "", w.iconFile, [id](bool on) {
+        if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+        else UltraCanvasDesktopShell::MinimizeWindow(id);
+    });
+}
 
-UltraCanvasDesktopShell::ActivateWindow(id);
 UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
 UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
 DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
@@ -96,6 +103,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### Notices
 
@@ -120,12 +128,44 @@ atomic, post to the UI thread. One change can produce several callbacks; the
 receiver coalesces. Where the platform cannot notify, `Start()` succeeds and
 nothing is ever reported: `IsNative()` says which.
 
+### Global shortcuts
+
+<!-- doc-check: void TogglePanel(); -->
+
+`UltraCanvasGlobalShortcut` is a key combination that reaches the program
+whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
+panel:
+
+```cpp
+UltraCanvasGlobalShortcut shortcut;   // a member: Stop() runs in its destructor
+std::string error;
+if (!shortcut.Start("Super+V", [this]() {
+        // The shortcut's own thread: hand the press to the UI thread.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { TogglePanel(); });
+        }
+    }, &error)) {
+    debugOutput << "Super+V is not available: " << error << std::endl;
+}
+```
+
+`Start(accelerator, onPressed, &error)` reads `Super`, `Ctrl`, `Alt` and
+`Shift` and one key (`"Ctrl+Alt+H"`, `"Super+V"`); it fails, saying why, when
+the combination cannot be read, when another program already holds it, and on
+a platform without global shortcuts. `Stop()` joins the thread, so no
+callback runs after it returns; `IsRunning()`.
+
+The callback runs when the combination's key is **let go**, once however long
+it is held. While the key is down the shortcut's grab holds the keyboard, and a
+window opened and focused in that time could lose the focus again when the
+grab ended; a window opened on release keeps it.
+
 ## Backends
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` and `CaptureScreenImage` fail with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -134,8 +174,13 @@ fallback when it is absent.
 ## See also
 
 - [UltraDesktop](../UltraDesktop/README.md) — the desktop built on this.
+- [UltraCanvasClipboardHistory](UltraCanvasClipboardHistory.md) — the
+  clipboard history the desktop's `Super+V` panel shows.
 - [UltraCanvasWaveSeparator](UltraCanvasWaveSeparator.md) and the
   [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
   elements the desktop's bars are made of.
 - `WindowType::Desktop` in `UltraCanvasWindow.h` — the screen-sized window at
-  the bottom of the stack a desktop draws into.
+  the bottom of the stack a desktop draws into; `WindowType::Notification`
+  the toast above everything that never takes the focus, which
+  [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
+  notifications in.

@@ -50,8 +50,14 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.35.0
-// Last Modified: 2026-10-03
+// Version: 1.37.0 - an .html file's preview is the page as a browser lays it out
+//                  (HTML::ExtractPlainText, PlainTextLayout::Lines): a line per
+//                  paragraph, hidden text left out; TextPreviewLines (public)
+// Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
+//                  (HTML::DecodeEntities): every named and numeric reference, where
+//                  a numeric one was a blank before
+// Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -63,6 +69,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -77,6 +84,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
 #include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
@@ -105,6 +113,8 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "Documents/eBook/EPUBEngine.h"     // e-book covers for the thumbnails
+#include "Documents/eBook/MOBIEngine.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
@@ -925,7 +935,8 @@ namespace UltraCanvas {
         // unpacks: reading their head yields a few bytes of container magic,
         // which is neither a page of text nor an honest "no preview". Naming
         // them in one place keeps the format lists' "this build cannot render
-        // it" and the extractor's answer the same fact.
+        // it" and the extractor's answer the same fact. (An EPUB's or a
+        // Kindle book's tile is its cover instead - EBookCoverReadable below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
                 "xls",      // OLE2 workbook (the reader covers xlsx / ods)
@@ -933,6 +944,49 @@ namespace UltraCanvas {
                 "mobi", "prc", "azw", "azw3",   // Mobipocket record files
             };
             return containersWithoutReader.find(ext) == containersWithoutReader.end();
+        }
+
+        // ===== E-BOOK COVERS =====
+        // A book shows its cover, the way Finder shows a folder of books: the
+        // picture the book declares, which the e-book engines read without
+        // unpacking a chapter. An EPUB costs three archive entries
+        // (container.xml, the package document, the cover), a Mobipocket /
+        // Kindle book its record list, record 0 and the cover record -
+        // whatever the size of the book, and whether or not its text is
+        // DRM-protected. FB2 keeps its page of text.
+        bool IsKindleExtension(const std::string& ext) {
+            return ext == "mobi" || ext == "prc" || ext == "azw" || ext == "azw3";
+        }
+
+        bool EBookCoverReadable(const std::string& ext) {
+            return ext == "epub" || IsKindleExtension(ext);
+        }
+
+        // A cover is drawn as it is, but a white one would melt into the
+        // white tile around it. Its outermost pixels are darkened by a fifth:
+        // a grey edge on a light cover, nothing visible on a dark one.
+        void ShadeCoverEdge(UCPixmap& pm) {
+            pm.Flush();
+            uint32_t* px = pm.GetPixelData();
+            const int w = pm.GetRawWidth(), h = pm.GetRawHeight();
+            if (!px || w < 3 || h < 3) return;
+            // Premultiplied ARGB: scaling the colour leaves alpha alone and
+            // keeps every channel within it.
+            auto shade = [](uint32_t& p) {
+                const uint32_t r = ((p >> 16) & 0xFFu) * 4 / 5;
+                const uint32_t g = ((p >> 8) & 0xFFu) * 4 / 5;
+                const uint32_t b = (p & 0xFFu) * 4 / 5;
+                p = (p & 0xFF000000u) | (r << 16) | (g << 8) | b;
+            };
+            for (int x = 0; x < w; ++x) {
+                shade(px[x]);
+                shade(px[static_cast<size_t>(h - 1) * w + x]);
+            }
+            for (int y = 1; y < h - 1; ++y) {
+                shade(px[static_cast<size_t>(y) * w]);
+                shade(px[static_cast<size_t>(y) * w + w - 1]);
+            }
+            pm.MarkDirty();
         }
 
         // Whether THIS build can produce a thumbnail for the format at all —
@@ -973,9 +1027,11 @@ namespace UltraCanvas {
                 // Text-shaped kinds are read, not decoded - but only where
                 // there is something readable to find.
                 case FilerPreviewType::Text:
-                case FilerPreviewType::Docs:
                 case FilerPreviewType::Spreadsheets:
                     return TextPreviewReadable(ext);
+                // ... or, for a book, a cover to show.
+                case FilerPreviewType::Docs:
+                    return TextPreviewReadable(ext) || EBookCoverReadable(ext);
                 // Audio files have no picture in them that anything here
                 // reads (cover art is not extracted yet), so no switch can
                 // give them a thumbnail. They are listed all the same: the
@@ -1065,6 +1121,30 @@ namespace UltraCanvas {
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
             return img->GetPixmap(w, h, fit, scale);
+        }
+
+        // ===== E-BOOK COVER (EPUB, MOBI / KINDLE) =====
+        // The cover the book declares, decoded like any other picture. Runs
+        // on the thumbnail workers: each ReadCoverImageFromFile owns its file
+        // and parser, so any number of books can be read at once.
+        std::shared_ptr<UCPixmap> RenderEBookCoverPixmap(const std::string& path,
+                                                         int w, int h,
+                                                         ImageFitMode fit,
+                                                         float scale) {
+            const std::string ext = LowerExtension(path);
+            if (!EBookCoverReadable(ext)) return nullptr;
+            std::vector<uint8_t> bytes = IsKindleExtension(ext)
+                    ? MOBIEngine::ReadCoverImageFromFile(path)
+                    : EPUBEngine::ReadCoverImageFromFile(path);
+            if (bytes.empty()) return nullptr;
+            auto img = UCImage::LoadFromMemory(bytes);
+            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
+            // The pixmap is this image's alone - an image loaded from memory
+            // gets a cache key no other caller can ask for - so it is shaded
+            // in place.
+            auto pm = img->GetPixmap(w, h, fit, scale);
+            if (pm) ShadeCoverEdge(*pm);
+            return pm;
         }
 
         // Logical size times the display scale, floored at one pixel.
@@ -1211,33 +1291,10 @@ namespace UltraCanvas {
             }
         }
 
-        // The five predefined XML / HTML entities plus numeric references —
-        // everything else is left as written, which is harmless in a preview.
-        std::string DecodeEntities(const std::string& in) {
-            std::string out;
-            out.reserve(in.size());
-            for (size_t i = 0; i < in.size(); ++i) {
-                if (in[i] != '&') { out.push_back(in[i]); continue; }
-                size_t end = in.find(';', i + 1);
-                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
-                const std::string name = in.substr(i + 1, end - i - 1);
-                if      (name == "amp")  out.push_back('&');
-                else if (name == "lt")   out.push_back('<');
-                else if (name == "gt")   out.push_back('>');
-                else if (name == "quot") out.push_back('"');
-                else if (name == "apos") out.push_back('\'');
-                else if (name == "nbsp") out.push_back(' ');
-                else if (!name.empty() && name[0] == '#') out.push_back(' ');
-                else { out.push_back('&'); continue; }
-                i = end;
-            }
-            return out;
-        }
-
-        // Text of a markup document with the tags removed. `breakTags` names
-        // the elements that end a preview line (paragraphs, headings, rows);
-        // everything else is treated as inline. `<script>` / `<style>` bodies
-        // are dropped so an HTML preview shows the page, not its code.
+        // Text of a spreadsheet's XML (a cell, a shared string) with the tags
+        // removed. `breakTags` names the elements that end a preview line
+        // (an ODS cell's text:p); everything else is treated as inline. HTML
+        // is not read here: it goes through HTML::ExtractPlainText.
         void MarkupToPreviewLines(const std::string& markup,
                                   const std::vector<std::string>& breakTags,
                                   std::vector<std::string>& lines) {
@@ -1260,18 +1317,12 @@ namespace UltraCanvas {
                 std::string name = tag.substr(0, tag.find_first_of(" \t\r\n/"));
                 std::transform(name.begin(), name.end(), name.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                if (!closing && (name == "script" || name == "style")) {
-                    const std::string closeTag = "</" + name;
-                    size_t skip = markup.find(closeTag, i);
-                    i = (skip == std::string::npos) ? markup.size() : skip;
-                    continue;
-                }
-                if (isBreakTag(name) || name == "br") {
-                    AppendPreviewLine(lines, DecodeEntities(current));
+                if (isBreakTag(name)) {
+                    AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
             }
-            AppendPreviewLine(lines, DecodeEntities(current));
+            AppendPreviewLine(lines, HTML::DecodeEntities(current));
         }
 
         // RTF: drop the control words, the groups the reader is meant to skip
@@ -1506,9 +1557,12 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "html" || ext == "htm") {
-                MarkupToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
-                                     {"p", "div", "li", "tr", "h1", "h2", "h3",
-                                      "h4", "h5", "h6", "title"}, lines);
+                // The page as a browser lays it out: a line per paragraph,
+                // list item or table row, its cells a tab apart, the head,
+                // scripts and hidden text left out.
+                SplitPreviewLines(HTML::ExtractPlainText(ReadFileHead(path, kPreviewReadBytes),
+                                                         HTML::PlainTextLayout::Lines),
+                                  lines);
                 return true;
             }
             if (ext == "rtf") {
@@ -1560,6 +1614,33 @@ namespace UltraCanvas {
                 case FilerViewType::View3D:              return "3D";
             }
             return "";
+        }
+
+        // The icon of a context-menu entry: a file of media/icons/menu/, drawn
+        // for a menu - dark strokes on its light background, one set so the
+        // entries read as one menu.
+        std::string MenuIconPath(const char* fileName) {
+            return NormalizePath(GetResourcesDir() + "media/icons/menu/" + fileName);
+        }
+
+        // Display > Type's entries carry the glyphs UltraFiler's view selector
+        // shows (media/icons/view-*.svg), so a layout has the same picture in
+        // the menu and in the toolbar.
+        std::string ViewTypeIconPath(FilerViewType v) {
+            const char* file = "view-details.svg";
+            switch (v) {
+                case FilerViewType::Details:             file = "view-details.svg"; break;
+                case FilerViewType::List:                file = "view-list.svg"; break;
+                case FilerViewType::ThumbnailsSmall:     file = "view-icons-small.svg"; break;
+                case FilerViewType::ThumbnailsMedium:    file = "view-icons-medium.svg"; break;
+                case FilerViewType::ThumbnailsBig:       file = "view-icons-large.svg"; break;
+                case FilerViewType::ThumbnailsMaximized: file = "view-icons-xlarge.svg"; break;
+                case FilerViewType::BarSize:             file = "view-size-bars.svg"; break;
+                case FilerViewType::TreeMap:             file = "view-treemap.svg"; break;
+                case FilerViewType::GourceTree:          file = "view-force-tree.svg"; break;
+                case FilerViewType::View3D:              file = "view-3d.svg"; break;
+            }
+            return NormalizePath(GetResourcesDir() + "media/icons/" + file);
         }
 
         std::string FormatDuration(double seconds) {
@@ -2997,7 +3078,7 @@ namespace UltraCanvas {
             const bool directory =
                     link.targetIsDirectory ||
                     (!link.hostTargetPath.empty() &&
-                     fs::is_directory(link.hostTargetPath, ec) && !ec);
+                     fs::is_directory(PathFromUtf8(link.hostTargetPath), ec) && !ec);
             if (directory) {
                 cached.category = FilerFileCategory::Folder;
             } else {
@@ -3394,7 +3475,7 @@ namespace UltraCanvas {
         const bool isRemoteDir = !fileListMode && !currentPath.empty() &&
                                  isRemotePath && isRemotePath(currentPath);
         bool isRealDir = !isRemoteDir && !currentPath.empty() &&
-                         fs::is_directory(currentPath, ec);
+                         fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec);
         // Stays false for a remote listing: what it gates - the folder
         // previews, the lock column - reads the local filesystem per entry,
         // which is exactly what a remote drive cannot serve.
@@ -4201,8 +4282,8 @@ namespace UltraCanvas {
                 return rect.width >= kContentPreviewMinEdge &&
                        rect.height >= kContentPreviewMinEdge;
             default:
-                // Bitmaps, vectors and video poster frames read fine even in
-                // the icon column of a Details row.
+                // Bitmaps, vectors, video poster frames and book covers read
+                // fine even in the icon column of a Details row.
                 return true;
         }
     }
@@ -5057,7 +5138,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) return;
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) return;
 
         // The reverse of the upload above: entries dropped here that live
         // on a drive come DOWN into this folder, and the local paste below
@@ -6123,7 +6204,7 @@ namespace UltraCanvas {
         if (!cb) return false;
 
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
             ReportError("Paste target is not a writable folder: " + currentPath);
             return false;
         }
@@ -7672,7 +7753,7 @@ namespace UltraCanvas {
         // produce different files.
         std::error_code pec;
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
-        if (!pec) fs::permissions(to, st.permissions(),
+        if (!pec) fs::permissions(UltraCanvas::PathFromUtf8(to), st.permissions(),
                                   fs::perm_options::replace, pec);
         return true;
     }
@@ -8896,13 +8977,13 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
             ReportError("Cannot create a document here: " + currentPath);
             return;
         }
         std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
-        if (!type.templatePath.empty() && fs::exists(type.templatePath, ec)) {
-            fs::copy_file(type.templatePath, UltraCanvas::PathFromUtf8(dest), ec);
+        if (!type.templatePath.empty() && fs::exists(UltraCanvas::PathFromUtf8(type.templatePath), ec)) {
+            fs::copy_file(UltraCanvas::PathFromUtf8(type.templatePath), UltraCanvas::PathFromUtf8(dest), ec);
             if (ec) { ReportError("New document failed: " + ec.message()); return; }
         } else {
             std::ofstream out(UltraCanvas::PathFromUtf8(dest), std::ios::binary);
@@ -8942,7 +9023,7 @@ namespace UltraCanvas {
         if (fileListMode) SetPath(currentPath);
         else SetNameFilter("");
         std::error_code ec;
-        if (!fs::is_directory(currentPath, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
             ReportError("Cannot create a folder here: " + currentPath);
             return;
         }
@@ -10560,8 +10641,14 @@ namespace UltraCanvas {
             // once and the tile keeps its glyph.
             case FilerPreviewType::Fonts:
                 return e.path;
-            // Text, Docs and Spreadsheets have no image to decode: they
-            // preview through AcquireTextPreview instead.
+            // A book's cover, read out of the EPUB or Kindle file. The other
+            // documents have no image to decode.
+            case FilerPreviewType::Docs:
+                return EBookCoverReadable(NormalizedFormatExtension(e.extension))
+                               ? e.path : std::string{};
+            // Text and Spreadsheets have no image to decode either: they -
+            // and the documents above - preview through AcquireTextPreview
+            // instead.
             default:
                 return {};
         }
@@ -10743,6 +10830,10 @@ namespace UltraCanvas {
                     case FilerPreviewType::PDF:
                     case FilerPreviewType::Models3D:
                     case FilerPreviewType::Fonts:
+                        break;
+                    // A book is its cover - a folder of books shows books.
+                    case FilerPreviewType::Docs:
+                        if (!EBookCoverReadable(ext)) continue;
                         break;
                     // Text-shaped files preview as a page of their own
                     // content, which a card this size cannot show.
@@ -11125,6 +11216,13 @@ namespace UltraCanvas {
             if (previews.size() >= kFolderPreviewCount) break;
         }
         return previews;
+    }
+
+    bool UltraCanvasFilerWidget::TextPreviewLines(const std::string& path,
+                                                  std::vector<std::string>& lines,
+                                                  bool& tabular) {
+        lines.clear();
+        return ExtractTextPreview(path, lines, tabular);
     }
 
     std::vector<Rect2Di> UltraCanvasFilerWidget::FolderPreviewCardRects(
@@ -11678,6 +11776,12 @@ namespace UltraCanvas {
                     break;
                 case FilerPreviewType::Fonts:
                     pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
+                    break;
+                // A document reaches the image workers only as a book whose
+                // cover ThumbSourceFor asked for.
+                case FilerPreviewType::Docs:
+                    pm = RenderEBookCoverPixmap(req.path, req.w, req.h, req.fit,
+                                                req.scale);
                     break;
                 case FilerPreviewType::VectorGraphics: {
                     // The image pipeline first (svg/svgz, and eps/ps on a
@@ -14503,12 +14607,15 @@ namespace UltraCanvas {
         activePopupMenu->SetMenuType(MenuType::PopupMenu);
         auto& menu = *activePopupMenu;
 
-        auto addAction = [&menu](const std::string& label, bool enabled,
-                                 std::function<void()> cb,
+        // Every entry of this menu carries an icon (MenuIconPath), so the
+        // labels line up behind one icon column.
+        auto addAction = [&menu](const std::string& label, const char* icon,
+                                 bool enabled, std::function<void()> cb,
                                  const std::string& shortcut = "") {
             MenuItemData item = shortcut.empty()
-                    ? MenuItemData::Action(label, std::move(cb))
+                    ? MenuItemData::Action(label, MenuIconPath(icon), std::move(cb))
                     : MenuItemData::ActionWithShortcut(label, shortcut,
+                                                       MenuIconPath(icon),
                                                        std::move(cb));
             item.enabled = enabled;
             menu.AddItem(item);
@@ -14589,7 +14696,8 @@ namespace UltraCanvas {
                 none.enabled = false;
                 openItems.push_back(none);
             }
-            MenuItemData openWith = MenuItemData::Submenu("Open with", openItems);
+            MenuItemData openWith = MenuItemData::Submenu(
+                    "Open with", MenuIconPath("open-with.svg"), openItems);
             if (openable) {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
@@ -14600,7 +14708,7 @@ namespace UltraCanvas {
         // noise in the menu of every file.
         if (singleSel && CanExtractAndRun(targets.front())) {
             const FilerEntry program = targets.front();
-            addAction("Extract and Run", true,
+            addAction("Extract and Run", "run.svg", true,
                       [this, program]() { ExtractAndRunEntry(program); });
         }
         menu.AddItem(MenuItemData::Separator());
@@ -14610,7 +14718,7 @@ namespace UltraCanvas {
         // action there.
         if (showOpenPathItem) {
             size_t openIdx = hasSel ? selection.front() : 0;
-            addAction(openPathItemLabel, hasSel, [this, openIdx]() {
+            addAction(openPathItemLabel, "folder.svg", hasSel, [this, openIdx]() {
                 if (openIdx >= entries.size()) return;
                 const FilerEntry e = entries[openIdx];
                 if (onOpenPath) onOpenPath(e);
@@ -14619,25 +14727,26 @@ namespace UltraCanvas {
             menu.AddItem(MenuItemData::Separator());
         }
 
-        addAction("Copy", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
+        addAction("Copy", "copy.svg", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
         // Cut and Duplicate are greyed out on a drive rather than offered and
         // then refused: a move off a drive is a download plus a destructive
         // delete, and a duplicate is a server-side copy no provider has.
         // Paste stays live - into a drive it uploads, out of one it downloads.
-        addAction("Cut", hasSel && !ShowingRemoteFolder(),
+        addAction("Cut", "cut.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { CutSelection(); }, "Ctrl+X");
-        addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", hasSel, [this]() {
+        addAction("Paste", "paste.svg", ClipboardHasContent(),
+                  [this]() { Paste(); }, "Ctrl+V");
+        addAction("Delete", "delete.svg", hasSel, [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", hasSel, [this]() {
+        addAction("Delete Permanently", "delete-permanently.svg", hasSel, [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
-        addAction("Duplicate", hasSel && !ShowingRemoteFolder(),
+        addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", singleSel,
+            addAction("Rename", "rename.svg", singleSel,
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
@@ -14655,7 +14764,7 @@ namespace UltraCanvas {
                 newItems.push_back(MenuItemData::Action(
                         t.label, [this, copy]() { CreateNewDocument(copy); }));
             }
-            menu.AddItem(MenuItemData::Submenu("New", newItems));
+            menu.AddItem(MenuItemData::Submenu("New", MenuIconPath("new.svg"), newItems));
         }
         menu.AddItem(MenuItemData::Separator());
 
@@ -14682,14 +14791,15 @@ namespace UltraCanvas {
                 item.enabled = canCompress;
                 compressItems.push_back(item);
             }
-            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
+            MenuItemData compressSub = MenuItemData::Submenu(
+                    "Compress", MenuIconPath("compress.svg"), compressItems);
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
-        addAction("Extract", anyArchive, [this]() { OpenExtractDialog(); });
+        addAction("Extract", "extract.svg", anyArchive, [this]() { OpenExtractDialog(); });
         menu.AddItem(MenuItemData::Separator());
 
-        addAction("Print", static_cast<bool>(onPrint), [this]() {
+        addAction("Print", "print.svg", static_cast<bool>(onPrint), [this]() {
             if (onPrint) onPrint(SelectionOrAll());
         }, "Ctrl+P");
         menu.AddItem(MenuItemData::Separator());
@@ -14737,7 +14847,8 @@ namespace UltraCanvas {
                 }
             }
 
-            menu.AddItem(MenuItemData::Submenu("Extras", extraItems));
+            menu.AddItem(MenuItemData::Submenu("Extras", MenuIconPath("extras.svg"),
+                                               extraItems));
         }
 
         // Display > Sort / Type / Icon-Menu
@@ -14769,9 +14880,11 @@ namespace UltraCanvas {
                 FilerViewType::GourceTree, FilerViewType::View3D,
             };
             for (FilerViewType v : views) {
-                typeItems.push_back(MenuItemData::Radio(
+                MenuItemData typeItem = MenuItemData::Radio(
                         ViewTypeLabel(v), 3, viewType == v,
-                        [this, v]() { SetViewType(v); }));
+                        [this, v]() { SetViewType(v); });
+                typeItem.iconPath = ViewTypeIconPath(v);
+                typeItems.push_back(std::move(typeItem));
             }
 
             // Dataset > extra per-file facts under thumbnail captions.
@@ -14854,36 +14967,52 @@ namespace UltraCanvas {
             }
 
             std::vector<MenuItemData> displayItems;
-            displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
-            displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
-            displayItems.push_back(MenuItemData::Submenu("File extensions",
-                                                         extensionItems));
+            // A list shown in the order it was handed over (a history, a
+            // pin order - SetFileListOrderPreserved) cannot be sorted, so
+            // the choice is greyed out rather than offered and ignored.
+            // The switches carry an icon as well as their tick, so every label
+            // of this submenu starts behind the same two columns.
+            auto addSwitch = [&displayItems](const char* label, const char* icon,
+                                             bool on, std::function<void(bool)> cb) {
+                MenuItemData item = MenuItemData::Checkbox(label, on, std::move(cb));
+                item.iconPath = MenuIconPath(icon);
+                displayItems.push_back(std::move(item));
+            };
+            MenuItemData sortSub = MenuItemData::Submenu(
+                    "Sort", MenuIconPath("sort.svg"), sortItems);
+            sortSub.enabled = !(fileListMode && preserveFileListOrder);
+            displayItems.push_back(std::move(sortSub));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Type", MenuIconPath("view-type.svg"), typeItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "File extensions", MenuIconPath("file-extensions.svg"),
+                    extensionItems));
             if (!fileIconItems.empty()) {
-                displayItems.push_back(MenuItemData::Submenu("File icons",
-                                                             fileIconItems));
+                displayItems.push_back(MenuItemData::Submenu(
+                        "File icons", MenuIconPath("file-icons.svg"), fileIconItems));
             }
-            displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
-            displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
-            displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Icon-Menu", hoverIconMenu,
-                    [this](bool on) { SetHoverIconMenuEnabled(on); }));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Thumbnails", MenuIconPath("thumbnails.svg"), thumbnailItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Detail view", MenuIconPath("detail-view.svg"), detailViewItems));
+            displayItems.push_back(MenuItemData::Submenu(
+                    "Dataset", MenuIconPath("dataset.svg"), datasetItems));
+            addSwitch("Icon-Menu", "icon-menu.svg", hoverIconMenu,
+                      [this](bool on) { SetHoverIconMenuEnabled(on); });
             // The first pictures inside a folder peeking out of its icon.
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Folder previews", folderPreviews,
-                    [this](bool on) { SetFolderPreviewsEnabled(on); }));
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Info-Bar", showSelectionInfo,
-                    [this](bool on) { SetSelectionInfoVisible(on); }));
+            addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
+                      [this](bool on) { SetFolderPreviewsEnabled(on); });
+            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                      [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
-            displayItems.push_back(MenuItemData::Checkbox(
-                    "Hidden files", showHiddenFiles,
-                    [this](bool on) { SetShowHiddenFiles(on); }));
-            menu.AddItem(MenuItemData::Submenu("Display", displayItems));
+            addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
+                      [this](bool on) { SetShowHiddenFiles(on); });
+            menu.AddItem(MenuItemData::Submenu("Display", MenuIconPath("display.svg"),
+                                               displayItems));
         }
 
-        addAction("Settings", static_cast<bool>(onSettings), [this]() {
+        addAction("Settings", "settings.svg", static_cast<bool>(onSettings), [this]() {
             if (onSettings) onSettings();
         });
 
@@ -15027,12 +15156,35 @@ namespace UltraCanvas {
         return false;
     }
 
+    // Whether a press landed on one of the widget's own child elements - the
+    // element the window hands a press to before the widget. Hit-tested as the
+    // window does it (visible, interactive, scrolling, clipping), from the
+    // parent's frame, where FindElementAtPoint starts.
+    static bool PressOnChildElement(UltraCanvasContainer& widget, const UCEvent& event) {
+        const Rect2Df bounds = widget.GetBounds();
+        UltraCanvasUIElement* hit = widget.FindElementAtPoint(
+                Point2Df(bounds.x + event.pointer.x, bounds.y + event.pointer.y), true);
+        return hit && hit != &widget;
+    }
+
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
         // The compress dialog is a modal in-widget overlay: while it is up it
         // consumes every event and nothing behind it reacts.
         if (compressDlg.active) return HandleCompressDialogEvent(event);
+
+        // A press one of the widget's own elements (the filter's "clear"
+        // button, the hidden-files notice, the rename field) did not take
+        // climbs here, but it is not a press on the files painted under that
+        // element: a right-click on "clear" took the keyboard from the search
+        // field, committed an open rename and opened the folder's menu. A
+        // release is not filtered - a drag the widget captured ends on it,
+        // over a button or not.
+        if ((event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) &&
+            PressOnChildElement(*this, event)) {
+            return false;
+        }
 
         switch (event.type) {
             case UCEventType::MouseLeave: {

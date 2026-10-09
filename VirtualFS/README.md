@@ -282,6 +282,14 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+A disc's name is at most **23 characters on Windows** (64 elsewhere;
+`VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
+name, so an ImDisk disc keeps it in its NTFS volume label - that is how
+`VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
+nine of them the `ultravfs-` prefix. The fallback directory takes the same
+limit, so a name does not work on one machine and fail on the next only
+because ImDisk is installed there.
+
 ### Privacy and lifetime
 
 Discs are private to the calling user - mode `0700` on POSIX, an ACL
@@ -359,6 +367,21 @@ direct zlib calls throughout the codebase.
   for quick success checks; `VirtualFSResultToString()` for messages.
 * **Paths:** forward slashes only, normalized automatically. Archive
   boundaries detected by extension matching against 40+ known formats.
+* **Extraction stays inside the destination.** `ExtractAll` refuses an
+  entry whose path is absolute or contains `..`, and a hard link whose target
+  does, before joining it to the destination; libarchive's
+  `SECURE_NODOTDOT` / `SECURE_SYMLINKS` guards run behind that, so nothing is
+  written through a symbolic link the archive created. Refused entries are
+  skipped, the rest extracts, and the result is `InvalidPath` with the names
+  in the provider's last error.
+* **Entry names are UTF-8**, in listings, reads and on disk after
+  `ExtractAll`, whatever the archive stored and whatever the process locale.
+  A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
+  specification's default, and what Windows Explorer writes: "Namensänderung"
+  arrives as `Namens\x84nderung`), unless its bytes already are valid UTF-8
+  (Info-ZIP on Linux, macOS); other formats fall back to Windows-1252. The
+  libarchive provider pins `LC_CTYPE` to UTF-8 for the calling thread while it
+  reads, so Thai, Russian or Chinese names do not vanish in the "C" locale.
 * **Passwords:** set via `VirtualFS_SetPasswordCallback()` — the
   callback is invoked when an encrypted archive is encountered.
 * **Threading:** extraction/creation callbacks run on the calling
@@ -418,4 +441,4 @@ zlib; the affected features are compiled out with a warning.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

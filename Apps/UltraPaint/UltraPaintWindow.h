@@ -136,6 +136,9 @@ private:
     void CmdCopy(bool merged);
     void CmdPaste();
     void CmdPasteAsNew();
+    // The newest image in the clipboard history, whatever the clipboard holds
+    // now (text copied after the picture, for one).
+    void CmdPasteLastImage();
     void CmdDelete();
     void CmdFill(bool foreground);
     void CmdScaleImage();
@@ -206,6 +209,30 @@ private:
     // in-app clipboard (the system clipboard gets a PNG too when it can)
     std::shared_ptr<UCRasterLayer> clipboardLayer;
     Point2Di clipboardOrigin;
+    // the PNG the last copy put on the system clipboard: while the clipboard
+    // still holds exactly these bytes, a paste is this window's own copy
+    std::vector<uint8_t> clipboardPng;
+
+    // What a paste brings in: a picture, or an image file copied in a file
+    // manager. fromHere marks this window's own copy, which goes back where
+    // it was copied from.
+    struct PasteSource {
+        std::shared_ptr<UCRasterLayer> image;
+        bool fromHere = false;
+        std::string file;
+    };
+    PasteSource ReadPasteSource();
+    // `image` as a new layer: where it was copied from when it came from
+    // here and still fits, centred otherwise.
+    void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
+                      const std::string& what);
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image);
+    // The clipboard history's newest image (UltraCanvasClipboardHistory, the
+    // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
+    // there is no history or no image in it.
+    std::shared_ptr<UCRasterLayer> LastCopiedImage(std::string& when);
+    // Nothing to paste: offers the history's newest image to `use`.
+    void OfferLastCopiedImage(const std::function<void(std::shared_ptr<UCRasterLayer>)>& use);
 
     // filter preview state
     std::shared_ptr<UCRasterLayer> previewOriginal;

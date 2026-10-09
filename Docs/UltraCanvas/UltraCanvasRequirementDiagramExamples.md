@@ -1,5 +1,7 @@
 # UltraCanvasRequirementDiagram Documentation
 
+<!-- doc-check: std::vector<RequirementNode> LoadNodes(); std::vector<RequirementRelation> LoadRelations(); -->
+
 ## Overview
 
 **UltraCanvasRequirementDiagram** renders a SysML **requirement diagram**
@@ -18,7 +20,7 @@ separately.
 **Header:** `include/Plugins/Diagrams/UltraCanvasRequirementDiagram.h`
 **Model header:** `include/Plugins/Diagrams/UltraCanvasRequirementModel.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 3.0.0
+**Version:** 3.0.1
 
 Research write-up and the full phased feature list:
 [`UltraCanvasRequirementDiagramProposal.md`](UltraCanvasRequirementDiagramProposal.md).
@@ -222,6 +224,7 @@ tpl.AddCustomRow("allocatedTo", "allocatedTo");     // customProperties key
 tpl.SetPropertyFormat(RequirementPropertyFormat::KeyEqualsQuotedValue);
 req->SetNodeTemplate(tpl);
 
+RequirementNodeTemplate specialTemplate = RequirementNodeTemplate::Standard();
 req->SetNodeTemplate("UR1.2", specialTemplate);     // per-node override
 ```
 
@@ -762,7 +765,7 @@ are anchors.
 
 ```cpp
 const std::string json = req->ToJson(/*pretty*/ true);
-SaveToFile("requirements.json", json);
+std::ofstream("requirements.json") << json;
 
 UltraCanvasRequirementDiagram loaded("req", 0, 0, 900, 600);
 if (!loaded.FromJson(json)) { /* malformed input */ }

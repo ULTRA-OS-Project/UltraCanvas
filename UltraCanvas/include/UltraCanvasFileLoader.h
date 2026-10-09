@@ -33,6 +33,18 @@ namespace UltraCanvas {
         // such thing, so it gets the filters as a list headed by one that
         // matches all of them.
         bool filterToggles = false;
+        // Save: the framework dialog asks before replacing an existing file
+        // (FileDialogConfig::confirmOverwrite). The platforms' save dialogs
+        // always ask.
+        bool confirmOverwrite = true;
+        // The framework dialog's listing shows the Filer's hover icon menu
+        // (FileDialogConfig::hoverIconMenu); off by default.
+        bool hoverIconMenu = false;
+        // Save: the extension ("png", undotted) a name gets when it still has
+        // none after the chosen type's - under All files, or with no filters
+        // (ApplyDefaultExtension). Empty: such a name stays bare. Every
+        // dialog, framework or native, applies it.
+        std::string defaultExtension;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
         UltraCanvasWindowBase* parentWindow = nullptr;
 
@@ -51,6 +63,9 @@ namespace UltraCanvas {
         }
         FileDialogOptions& SetShowHidden(bool v)        { showHiddenFiles = v; return *this; }
         FileDialogOptions& SetFilterToggles(bool v)     { filterToggles = v; return *this; }
+        FileDialogOptions& SetConfirmOverwrite(bool v)  { confirmOverwrite = v; return *this; }
+        FileDialogOptions& SetHoverIconMenu(bool v)     { hoverIconMenu = v; return *this; }
+        FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };

@@ -1,7 +1,11 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
+// Version: 1.5.0 - AddRadioButton adopts a radio that is already checked
+// Version: 1.4.0 - a radio button to screen readers, selected by its action
+// Version: 1.3.0 - the group's onChecked handler holds its radio raw (it kept the radio
+//                 alive forever) and is taken back when the group goes or the radio leaves it
 // Version: 1.2.0
-// Last Modified: 2026-09-16
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -47,6 +51,10 @@ namespace UltraCanvas {
         void DrawIndicator(IRenderContext* ctx) override;
         Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { SetChecked(true); }  // Standard UX: clicking selected radio is no-op.
+    public:
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::RadioButton; }
+        std::string GetAccessibleActionName() const override { return "select"; }
+    protected:
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
@@ -89,12 +97,43 @@ namespace UltraCanvas {
     };
 
 // ===== EXCLUSIVE-SELECTION GROUP =====
+// Not an element, and not owned by its radios: keep the group alive for as
+// long as the selection should work (a member of the window or dialog). It may
+// still go first - it then takes back the onChecked handler it installed on
+// each radio, so a radio clicked afterwards only checks itself. A radio that
+// leaves the group (RemoveRadioButton) loses the handler the same way. Only the
+// group's own handler is taken back: one the application assigned since stays.
+// Moving a group hands its radios' clicks to the new object; a copy lists the
+// same radios but their clicks stay with the original.
     class UltraCanvasRadioGroup {
     private:
         std::vector<std::shared_ptr<UltraCanvasRadio>> radioButtons;
         std::shared_ptr<UltraCanvasRadio> selectedButton;
 
+        // The onChecked handler installed on each radio. A named type, not a
+        // lambda, so the group can recognise its own handler. Both pointers
+        // are raw: the radio owns the handler (a shared_ptr back to the radio
+        // would keep it alive forever), and the group takes the handler back
+        // before it goes.
+        struct CheckedHandler {
+            UltraCanvasRadioGroup* group;
+            UltraCanvasRadio* radio;
+            void operator()() const;
+        };
+        void Detach(UltraCanvasRadio& radio);
+        void DetachAll();
+        void TakeOverHandlersFrom(const UltraCanvasRadioGroup* previous);
+
     public:
+        UltraCanvasRadioGroup() = default;
+        ~UltraCanvasRadioGroup();
+        UltraCanvasRadioGroup(const UltraCanvasRadioGroup& other) = default;
+        UltraCanvasRadioGroup& operator=(const UltraCanvasRadioGroup& other);
+        UltraCanvasRadioGroup(UltraCanvasRadioGroup&& other) noexcept;
+        UltraCanvasRadioGroup& operator=(UltraCanvasRadioGroup&& other) noexcept;
+
+        // A radio added already checked becomes the selection (the last such
+        // radio wins; the others are cleared), without onSelectionChanged.
         void AddRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button);
         void SelectButton(std::shared_ptr<UltraCanvasRadio> button);

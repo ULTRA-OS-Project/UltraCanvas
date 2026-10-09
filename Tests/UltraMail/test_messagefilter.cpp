@@ -66,6 +66,12 @@ TEST(filter_payments_by_brand_or_subject) {
     REQUIRE(FilterMatches(pay, Mail("a@shop.example", "Receipt for your order"), f));
     f.brand = BrandCategory::Payment;   // PayPal, Stripe, ...
     REQUIRE(FilterMatches(pay, Mail("service@paypal.example", "Security notice"), f));
+    f.brand = BrandCategory::Banking;   // a bank or broker
+    REQUIRE(FilterMatches(pay, Mail("alerts@bank.example", "Security notice"), f));
+    f.brand = BrandCategory::Crypto;    // an exchange or wallet
+    REQUIRE(FilterMatches(pay, Mail("no-reply@exchange.example", "Security notice"), f));
+    f.brand = BrandCategory::Gaming;
+    REQUIRE(!FilterMatches(pay, Mail("no-reply@games.example", "Security notice"), f));
 }
 
 TEST(filter_social_media_without_the_registry) {

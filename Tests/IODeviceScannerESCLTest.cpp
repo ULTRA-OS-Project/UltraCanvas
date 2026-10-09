@@ -369,6 +369,62 @@ void TestTheAddressFromDiscovery() {
     Check(EsclScannerIdentity({}, "").empty(), "with neither, it has no identity");
 }
 
+void TestTheNameFromDiscovery() {
+    std::cout << "\n=== The name, when the scanner gives no model ===\n";
+    // The mDNS plugin reports the full service name on every platform; only
+    // Bonjour escapes it. A scanner whose TXT record has no `ty` is shown by
+    // its instance name, so it must not arrive as "Office._uscan._tcp.local".
+    Check(EsclInstanceFromServiceName("Office Scanner._uscan._tcp.local") == "Office Scanner",
+          "Avahi's form: readable, type and domain cut");
+    Check(EsclInstanceFromServiceName("Office\\032Scanner._uscans._tcp.local.") ==
+              "Office Scanner",
+          "Bonjour's form: escaped, root dot and all, over TLS");
+    Check(EsclInstanceFromServiceName("Lab\\.Scanner._uscan._tcp.local.") == "Lab.Scanner",
+          "  an escaped dot in the instance is a dot");
+    Check(EsclInstanceFromServiceName("Front Desk._USCAN._TCP.local") == "Front Desk",
+          "the service type in capitals");
+    Check(EsclInstanceFromServiceName("a._uscan._tcp b._uscan._tcp.local") == "a._uscan._tcp b",
+          "  the last service type is the real one, whatever the instance contains");
+    Check(EsclInstanceFromServiceName("Just A Name") == "Just A Name",
+          "a name with no service type is already the instance");
+    Check(EsclInstanceFromServiceName("").empty(), "nothing gives nothing");
+}
+
+void TestTheNameFromTheScannerItself() {
+    std::cout << "\n=== The name, when only the scanner itself can say ===\n";
+    EsclScannerDescription described;
+    if (!ParseEsclCapabilities(kCapabilities, described).success) {
+        Check(false, "the fixture parses");
+        return;
+    }
+
+    // Named in ULTRACANVAS_ESCL_SCANNERS: listed under its address until it
+    // has described itself.
+    IODeviceInfo configured;
+    configured.name = "https://10.0.0.7/eSCL";
+    configured.connectionPath = "https://10.0.0.7/eSCL";
+    Check(FillInEsclIdentity(configured, described), "a scanner named by its address changes");
+    Check(configured.name == "Acme MegaScan 42", "  to the make and model it reports");
+    Check(configured.model == "Acme MegaScan 42" && configured.serialNumber == "SN-0001",
+          "  and its model and serial number are filled in");
+    Check(!FillInEsclIdentity(configured, described), "  once, not again");
+
+    // Found by DNS-SD: its instance name is the one a person gave it.
+    IODeviceInfo discovered;
+    discovered.name = "Office Scanner";
+    discovered.connectionPath = "http://scanner.local/eSCL";
+    discovered.model = "Acme MegaScan 42";
+    FillInEsclIdentity(discovered, described);
+    Check(discovered.name == "Office Scanner", "a discovered scanner keeps its instance name");
+
+    IODeviceInfo silent;
+    silent.name = "https://10.0.0.8/eSCL";
+    silent.connectionPath = silent.name;
+    EsclScannerDescription nothing;
+    Check(!FillInEsclIdentity(silent, nothing) && silent.name == "https://10.0.0.8/eSCL",
+          "a scanner that gives no make and model keeps its address as its name");
+}
+
 }  // namespace
 
 int main() {
@@ -383,6 +439,8 @@ int main() {
     TestBuildingTheScanSettings();
     TestFindingTheJob();
     TestTheAddressFromDiscovery();
+    TestTheNameFromDiscovery();
+    TestTheNameFromTheScannerItself();
 
     std::cout << "\n";
     if (g_failures == 0) {

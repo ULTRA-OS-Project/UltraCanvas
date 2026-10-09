@@ -1,7 +1,9 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.9.0
-// Last Modified: 2026-08-28
+// Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
+//                 (the flag was ignored); GetCursorPosition() is const
+// Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -253,6 +255,14 @@ namespace UltraCanvas {
 
         Color scrollbarTrackColor;
         Color scrollbarColor;
+        // Thickness of the scrollbar track in px, and the corner radius of the
+        // track and thumb (0 = square). The defaults keep the classic 15px
+        // square bar; a reading pane can match ScrollbarStyle::Modern() with
+        // 12 / 6 / inset 0 so its bar looks like the list views' beside it.
+        int   scrollbarWidth = 15;
+        float scrollbarCornerRadius = 0.0f;
+        // Gap between the track's edge and the thumb (0 = the thumb fills the track).
+        int   scrollbarThumbInset = 2;
 
         // Syntax highlighting colors
         struct TokenStyles {
@@ -538,11 +548,18 @@ namespace UltraCanvas {
         void MoveCursorToEnd(bool selecting = false);
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
-        LineColumnIndex GetCursorPosition() {
+        LineColumnIndex GetCursorPosition() const {
             return cursorPosition;
         }
+        // Moves the caret to `pos`. With `selecting` the selection runs from
+        // its anchor to `pos`, as Shift+arrow extends it: the anchor is the
+        // start of the current selection, or the caret's old place when there
+        // is none. Without it the selection is left as it is (the selection
+        // methods set it and then place the caret through here).
         void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
+            if (selecting && selectionStart.lineIndex < 0) selectionStart = cursorPosition;
             cursorPosition = pos;
+            if (selecting) selectionEnd = pos;
             isCursorMoved = true;
             RequestRedraw();
         }
@@ -850,6 +867,14 @@ namespace UltraCanvas {
         // so HasSelection() is what the menu's Cut and Copy will see.
         std::function<bool(const UCEvent&)> onContextMenu;
 
+        // Called for every KeyDown before the area handles it, in every editing
+        // mode and also when the area is read-only. Return true to consume the
+        // key - the area then does nothing with it - or false to let it edit as
+        // usual. This is how a host gives a key a meaning of its own without
+        // reimplementing the editor: a chat box sends on Enter and keeps
+        // Shift+Enter for a new line. Runs on the UI thread.
+        std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
         // Called just before a check is queued, with the exact text about to be
         // checked. Lets the host rebuild content-dependent options: in
         // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have
@@ -891,6 +916,9 @@ namespace UltraCanvas {
         // (the widget itself no longer draws the cursor).
         void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
+        // Fills a scrollbar track or thumb, rounded per style.scrollbarCornerRadius.
+        void FillScrollbarRect(IRenderContext* context, const Rect2Dd& r);
+        int ScrollbarWidth() const { return std::max(1, style.scrollbarWidth); }
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);

@@ -223,7 +223,7 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |

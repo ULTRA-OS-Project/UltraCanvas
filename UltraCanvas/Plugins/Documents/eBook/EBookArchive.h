@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,10 @@ public:
     EBookArchive(const EBookArchive&) = delete;
     EBookArchive& operator=(const EBookArchive&) = delete;
 
+    // Reads only the central directory: entries are inflated from the file
+    // as they are asked for, so a caller that wants one picture out of a
+    // large book does not read the book. The file stays open until Close().
+    // `filePath` is UTF-8 on every platform.
     bool OpenFromFile(const std::string& filePath);
     // Takes ownership of the buffer; it must stay alive while the archive is
     // open (the class keeps it).
@@ -30,6 +35,9 @@ public:
 
     std::vector<std::string> FileNames() const;
     bool Contains(const std::string& name) const;
+    // Uncompressed size of a stored file (matched like ReadFile), or 0 when
+    // it is absent. Lets a caller refuse an entry before inflating it.
+    uint64_t FileSize(const std::string& name) const;
 
     // Reads a stored file. `name` is matched exactly first, then
     // case-insensitively (some EPUB producers get the case wrong).
@@ -52,6 +60,7 @@ public:
 private:
     void* zip = nullptr;          // mz_zip_archive*, kept out of the header
     std::vector<uint8_t> buffer;  // backing store for memory archives
+    std::FILE* file = nullptr;    // backing file of OpenFromFile archives
     bool opened = false;
     mutable std::string lastError;
 

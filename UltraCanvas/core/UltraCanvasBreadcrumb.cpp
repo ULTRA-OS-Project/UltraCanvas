@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.6.0
-// Last Modified: 2026-09-06
+// Version: 1.6.1
+// Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -569,7 +569,18 @@ namespace UltraCanvas {
         left = std::max(left, slotRect.x + slotRect.width / 2);
         // ...but never so far right that it clips the chevron it belongs to.
         left = std::min(left, chevronRect.x);
-        return Rect2Di(left, slotRect.y, std::max(0, right - left), slotRect.height);
+        return FullHeightBand(Rect2Di(left, slotRect.y, std::max(0, right - left), slotRect.height));
+    }
+
+    Rect2Di UltraCanvasBreadcrumb::FullHeightBand(const Rect2Di& rect) const {
+        // The slots only cover the content box; the padding and border above
+        // and below them belong to the same column. Never shorter than the
+        // slot itself, which may overhang a strip arranged too short for it.
+        const Rect2Df bounds = GetLocalBounds();
+        const int top = std::min(rect.y, static_cast<int>(std::floor(bounds.y)));
+        const int bottom = std::max(rect.y + rect.height,
+                                    static_cast<int>(std::ceil(bounds.y + bounds.height)));
+        return Rect2Di(rect.x, top, rect.width, bottom - top);
     }
 
 // ===== LAYOUT =====
@@ -785,6 +796,18 @@ namespace UltraCanvas {
                                              centerY - style.dropdownChevronSize / 2,
                                              style.dropdownChevronSize,
                                              style.dropdownChevronSize);
+                // The placeholder is a menu all over, so its zone runs from its
+                // leading edge - top to bottom of the strip, and over the tip
+                // in the segment styles, like an item's dropdown zone.
+                oslot.dropdownHitRect = ComputeDropdownHitRect(oslot.rect, oslot.dropdownRect,
+                                                               segmentStyle ? arrowDepth : 0,
+                                                               content.x + content.width);
+                {
+                    Rect2Di& zone = oslot.dropdownHitRect;
+                    const int zoneRight = zone.x + zone.width;
+                    zone.x = std::min(zone.x, oslot.rect.x);
+                    zone.width = std::max(0, zoneRight - zone.x);
+                }
                 oslot.displayText = style.overflowEllipsisText;
                 oslot.textSize = oTextSize;
                 oslot.textLayout = std::move(overflowLayout);

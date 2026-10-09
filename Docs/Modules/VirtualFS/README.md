@@ -1,3 +1,4 @@
+<!-- Generated from VirtualFS/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # VirtualFS
 
 **Unified virtual file system layer for ULTRA OS.**
@@ -64,6 +65,40 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 | LZ4 | `VirtualFSCompressionMethod::LZ4` | Fastest | Moderate | Real-time |
 | LZX | `UCVFSCompressionType::LZX` (bridge) | Moderate | Good | CAB, CHM, WIM |
 | Brotli | `VirtualFSCompressionMethod::Brotli` | Moderate | Excellent | Web content |
+
+### Raw buffer compression (no archive container)
+
+`VirtualFSCompression.h` exposes the compression codecs directly for
+modules that need a compress/decompress primitive without an archive
+container — e.g. the UltraWeb bundler compressing `.ucpkg` section
+payloads, or FileLoader transparently decompressing `.gz`/`.zst`/`.lz4`
+content on load:
+
+```cpp
+#include <VirtualFS/VirtualFSCompression.h>
+using namespace VirtualFS;
+
+std::vector<uint8_t> compressed;
+VirtualFS_CompressBuffer(input, compressed, VirtualFSCompressionMethod::LZ4);
+
+std::vector<uint8_t> restored;
+VirtualFS_DecompressBuffer(compressed, restored);   // method auto-detected
+```
+
+Supported methods: `Store`, `Deflate` (zlib/gzip), `Zstd`, `LZ4`
+(standard LZ4 frame format, interoperable with any LZ4F decoder), and
+`Brotli` — each available only when the matching `VIRTUALFS_USE_*`
+option is enabled; query with `VirtualFS_IsCompressionMethodAvailable()`.
+`VirtualFS_DetectCompressionMethod()` identifies a stream by its magic
+bytes (Brotli excepted — it has none).
+
+Note on the UltraCanvas bridge: `UCVFSBridge::LZ4Compress` (in
+`UltraCanvasVirtualFSBridge`) predates this API and emits the LZ4
+*block* format, which has no header and is **not** readable by frame
+decoders — the two LZ4 outputs are not interchangeable. New code and
+anything crossing a process or network boundary (e.g. `.ucpkg`) should
+use this frame-format API; migrating the bridge to delegate here is a
+planned cleanup.
 
 ---
 
@@ -248,6 +283,14 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+A disc's name is at most **23 characters on Windows** (64 elsewhere;
+`VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
+name, so an ImDisk disc keeps it in its NTFS volume label - that is how
+`VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
+nine of them the `ultravfs-` prefix. The fallback directory takes the same
+limit, so a name does not work on one machine and fail on the next only
+because ImDisk is installed there.
+
 ### Privacy and lifetime
 
 Discs are private to the calling user - mode `0700` on POSIX, an ACL
@@ -399,4 +442,4 @@ zlib; the affected features are compiled out with a warning.
 
 ---
 
-*Part of ULTRA OS · MIT license · Cloverleaf UG*
+*Part of ULTRA OS · MIT license · ULTRA OS Development GmbH*

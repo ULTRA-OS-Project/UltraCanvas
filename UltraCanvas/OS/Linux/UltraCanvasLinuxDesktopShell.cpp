@@ -43,6 +43,7 @@
 #include <sstream>
 
 #include <dirent.h>
+#include <atomic>
 #include <poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -726,6 +727,171 @@ void MonitorWake(MonitorState* state) {
 void MonitorClose(MonitorState* state) {
     if (!state) return;
     if (state->display) XCloseDisplay(state->display);
+    if (state->wakePipe[0] >= 0) ::close(state->wakePipe[0]);
+    if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
+    delete state;
+}
+
+// ===== A SHORTCUT FOR THE WHOLE DESKTOP =====
+
+namespace {
+    // A grab another client already holds fails with BadAccess, reported
+    // through the error handler after the request reached the server.
+    std::atomic<int> g_grabError{0};
+    int NoteGrabError(Display*, XErrorEvent* error) {
+        g_grabError.store(error ? error->error_code : 1);
+        return 0;
+    }
+} // namespace
+
+struct ShortcutState {
+    Display* display = nullptr;
+    int wakePipe[2] = {-1, -1};
+    KeyCode keycode = 0;
+    unsigned int modifiers = 0;
+    bool down = false;   // the combination was pressed and its key is not let go yet
+};
+
+ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+    // "Super+V" -> Mod4Mask and the keysym "v".
+    unsigned int modifiers = 0;
+    std::string key;
+    size_t start = 0;
+    while (start <= accelerator.size()) {
+        size_t plus = accelerator.find('+', start);
+        if (plus == start && plus + 1 == accelerator.size()) plus = std::string::npos;   // "Ctrl++"
+        std::string part = accelerator.substr(start, plus == std::string::npos ? std::string::npos : plus - start);
+        std::string lower = part;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (lower == "super" || lower == "win" || lower == "meta") modifiers |= Mod4Mask;
+        else if (lower == "ctrl" || lower == "control") modifiers |= ControlMask;
+        else if (lower == "alt") modifiers |= Mod1Mask;
+        else if (lower == "shift") modifiers |= ShiftMask;
+        else key = part;
+        if (plus == std::string::npos) break;
+        start = plus + 1;
+    }
+    if (key.empty()) {
+        error = "\"" + accelerator + "\" names no key.";
+        return nullptr;
+    }
+    KeySym keysym = XStringToKeysym(key.c_str());
+    if (keysym == NoSymbol && key.size() == 1) {
+        const std::string lower(1, static_cast<char>(std::tolower(static_cast<unsigned char>(key[0]))));
+        keysym = XStringToKeysym(lower.c_str());
+    }
+    if (keysym == NoSymbol) {
+        error = "\"" + key + "\" is not a key name.";
+        return nullptr;
+    }
+
+    Display* d = XOpenDisplay(nullptr);
+    if (!d) {
+        error = "No X display for " + accelerator + ".";
+        return nullptr;
+    }
+    const KeyCode keycode = XKeysymToKeycode(d, keysym);
+    if (keycode == 0) {
+        XCloseDisplay(d);
+        error = "This keyboard has no \"" + key + "\" key.";
+        return nullptr;
+    }
+
+    // The same combination with Caps Lock and Num Lock on, or it works only
+    // while both are off.
+    const unsigned int locks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+    g_grabError.store(0);
+    XErrorHandler previous = XSetErrorHandler(NoteGrabError);
+    for (unsigned int lock : locks) {
+        XGrabKey(d, keycode, modifiers | lock, DefaultRootWindow(d), True, GrabModeAsync, GrabModeAsync);
+    }
+    XSync(d, False);
+    XSetErrorHandler(previous);
+    if (g_grabError.load() != 0) {
+        XCloseDisplay(d);
+        error = accelerator + " is taken by another program.";
+        return nullptr;
+    }
+    XSelectInput(d, DefaultRootWindow(d), KeyPressMask | KeyReleaseMask);
+    // A key held down repeats as presses alone, not press-release pairs, so a
+    // held combination is one press and one release.
+    XkbSetDetectableAutoRepeat(d, True, nullptr);
+
+    auto* state = new ShortcutState();
+    state->display = d;
+    state->keycode = keycode;
+    state->modifiers = modifiers;
+    if (::pipe(state->wakePipe) != 0) {
+        XCloseDisplay(d);
+        delete state;
+        error = "No pipe for the shortcut's thread.";
+        return nullptr;
+    }
+    return state;
+}
+
+// The shortcut counts when its key is let go, not when it goes down. While
+// the key is down the passive grab holds the keyboard, and a window the
+// shortcut opens and focuses in that time is handed focus events by the grab
+// and its end (NotifyWhileGrabbed, NotifyUngrab) that the window manager may
+// follow by giving the focus back: the clipboard panel opened on Super+V shut
+// again at once, one press in two.
+bool ShortcutWait(ShortcutState* state) {
+    if (!state || !state->display) return false;
+    Display* d = state->display;
+    for (;;) {
+        bool released = false;
+        while (XPending(d) > 0) {
+            XEvent event;
+            XNextEvent(d, &event);
+            if (event.xkey.keycode != state->keycode) continue;
+            if (event.type == KeyPress) state->down = true;
+            else if (event.type == KeyRelease && state->down) {
+                state->down = false;
+                released = true;
+            }
+        }
+        if (released) return true;
+
+        pollfd fds[2];
+        fds[0].fd = ConnectionNumber(d);
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
+        fds[1].fd = state->wakePipe[0];
+        fds[1].events = POLLIN;
+        fds[1].revents = 0;
+        const int n = ::poll(fds, 2, -1);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        if (fds[1].revents & POLLIN) {
+            char byte;
+            while (::read(state->wakePipe[0], &byte, 1) > 0) {}
+            return false;
+        }
+        if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) return false;
+    }
+}
+
+void ShortcutWake(ShortcutState* state) {
+    if (!state || state->wakePipe[1] < 0) return;
+    const char byte = 1;
+    if (::write(state->wakePipe[1], &byte, 1) < 0) {
+        // The reader is gone, or the pipe is full of wakes.
+    }
+}
+
+void ShortcutClose(ShortcutState* state) {
+    if (!state) return;
+    if (state->display) {
+        const unsigned int locks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+        for (unsigned int lock : locks) {
+            XUngrabKey(state->display, state->keycode, state->modifiers | lock, DefaultRootWindow(state->display));
+        }
+        XCloseDisplay(state->display);
+    }
     if (state->wakePipe[0] >= 0) ::close(state->wakePipe[0]);
     if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
     delete state;

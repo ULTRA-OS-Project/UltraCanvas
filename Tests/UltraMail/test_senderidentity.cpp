@@ -4,17 +4,32 @@
 // a brand and that a brand name worn by a foreign domain is not a match), the
 // address-book index, the classification that turns all of it into a badge,
 // and the icon cache with a fake fetcher.
+// Version: 0.3.0 - the icon loader (Request, the ready handler, a cache that
+//                  goes away mid-download), website icons (SiteIconKey,
+//                  FindSiteIconUrls, the page fetcher, the favicon fallback)
+// Version: 0.2.0 - the phishing-target registry: consistency, categories,
+//                  keyword-only names, mailbox addresses in display names
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "UltraMailSenderBrands.h"
+#include "UltraMailSenderBrandTable.h"
 #include "UltraMailSenderIconCache.h"
 #include "UltraMailSenderTrust.h"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <thread>
+#include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
@@ -42,6 +57,34 @@ fs::path TempDir(const std::string& tag) {
     std::error_code ec;
     fs::remove_all(dir, ec);
     return dir;
+}
+
+// Waits until the cache's loader has nothing queued or in flight.
+bool WaitForLoader(const SenderIconCache& cache) {
+    for (int i = 0; i < 1000; ++i) {
+        if (cache.PendingCount() == 0) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
+}
+
+// What a fake fetcher saw and answers; shared with the loader threads, which
+// may outlive the test's own stack frame.
+struct FakeWeb {
+    std::mutex mutex;
+    std::vector<std::string> asked;
+    std::set<std::string> images;   // URLs that answer with a picture
+    int Count() { std::lock_guard<std::mutex> lock(mutex); return static_cast<int>(asked.size()); }
+};
+
+SenderIconCache::Fetcher FetcherFor(const std::shared_ptr<FakeWeb>& web) {
+    return [web](const std::string& url, std::vector<uint8_t>& out) {
+        std::lock_guard<std::mutex> lock(web->mutex);
+        web->asked.push_back(url);
+        if (!web->images.count(url)) return false;
+        out = FakePng();
+        return true;
+    };
 }
 
 } // namespace
@@ -148,6 +191,143 @@ TEST(brand_named_in_text_matches_whole_words_only) {
     // A short name ("X") is claimed through its keywords, never as a bare word.
     REQUIRE(BrandNamedIn("Re: x") == nullptr);
     REQUIRE(BrandNamedIn("nothing familiar here") == nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// The phishing-target registry
+// ---------------------------------------------------------------------------
+TEST(registry_is_consistent) {
+    // Every domain is owned by exactly one brand, resolves back to it (so none
+    // is a mailbox provider or shadowed by another entry), and is a real
+    // registrable domain rather than a public suffix like "gouv.fr".
+    static const std::set<std::string> suffixWords = {
+        "gov", "gouv", "gc", "co", "com", "org", "net", "ac", "edu", "service",
+    };
+    static const std::set<std::string> mailboxWords = {
+        "gmail", "googlemail", "outlook", "hotmail", "live", "msn", "yahoo", "aol",
+        "icloud", "gmx", "proton", "protonmail", "comcast", "verizon.net", "att.net",
+    };
+    std::set<std::string> ids;
+    std::map<std::string, std::string> owner;
+    for (const BrandRule& rule : SenderBrandRules()) {
+        REQUIRE(ids.insert(rule.brand.id).second);
+        REQUIRE(rule.labels.empty());   // a name under any suffix would trust squatters
+        REQUIRE(!rule.brand.name.empty());
+        REQUIRE(rule.brand.iconUrl.find("https://") == 0);
+        for (const std::string& d : rule.domains) {
+            const std::string reg = RegistrableDomain(d);
+            REQUIRE_EQ(DomainOfAddress("a@" + d), d);              // lowercase, no stray dots
+            REQUIRE(!suffixWords.count(BaseLabel(d)));
+            const auto [it, fresh] = owner.emplace(reg, rule.brand.id);
+            REQUIRE(fresh || it->second == rule.brand.id);
+            const SenderBrand* found = BrandForDomain(d);
+            REQUIRE(found != nullptr);
+            REQUIRE_EQ(found->id, rule.brand.id);
+        }
+        for (const std::string& k : rule.keywords) {
+            for (char c : k) REQUIRE(!(c >= 'A' && c <= 'Z'));
+            REQUIRE(!mailboxWords.count(k));
+        }
+        // A brand claimed by keywords only must still be claimable somehow,
+        // unless it is deliberately recognition-only (Sparkasse, EE).
+        if (rule.nameClaim == NameClaim::KeywordsOnly && !rule.keywords.empty())
+            for (const std::string& k : rule.keywords)
+                REQUIRE(BrandNamedIn(k) != nullptr);
+    }
+    REQUIRE(KnownBrands().size() >= 250);
+}
+
+TEST(phishing_targets_are_in_the_registry) {
+    struct Case { const char* address; const char* id; BrandCategory category; };
+    const Case cases[] = {
+        { "no-reply@alerts.chase.com",        "chase",        BrandCategory::Banking },
+        { "service@info.barclays.co.uk",      "barclays",     BrandCategory::Banking },
+        { "info@sparkasse.de",                "sparkasse",    BrandCategory::Banking },
+        { "noreply@mabanque.bnpparibas",      "bnpparibas",   BrandCategory::Banking },
+        { "alerts@commbank.com.au",           "commbank",     BrandCategory::Banking },
+        { "venmo@venmo.com",                  "venmo",        BrandCategory::Payment },
+        { "noreply@transferwise.com",         "wise",         BrandCategory::Payment },
+        { "no-reply@coinbase.com",            "coinbase",     BrandCategory::Crypto },
+        { "do-not-reply@ses.binance.com",     "binance",      BrandCategory::Crypto },
+        { "hello@ledger.com",                 "ledger",       BrandCategory::Crypto },
+        { "news@lidl.de",                     "lidl",         BrandCategory::Shopping },
+        { "orders@temu.com",                  "temu",         BrandCategory::Shopping },
+        { "track@royalmail.com",              "royalmail",    BrandCategory::Delivery },
+        { "noreply@dpd.de",                   "dpd",          BrandCategory::Delivery },
+        { "no-reply@cloudflare.com",          "cloudflare",   BrandCategory::CloudHosting },
+        { "dse@docusign.net",                 "docusign",     BrandCategory::Technology },
+        { "noreply@wetransfer.com",           "wetransfer",   BrandCategory::CloudHosting },
+        { "renewals@godaddy.com",             "godaddy",      BrandCategory::DomainRegistrar },
+        { "support@namecheap.com",            "namecheap",    BrandCategory::DomainRegistrar },
+        { "noreply@tax.service.gov.uk",       "hmrc",         BrandCategory::Government },
+        { "noreply@dgfip.impots.gouv.fr",     "dgfip",        BrandCategory::Government },
+        { "info@telekom.de",                  "telekom",      BrandCategory::Telecom },
+        { "noreply@steampowered.com",         "steam",        BrandCategory::Gaming },
+        { "noreply@mcafee.com",               "mcafee",       BrandCategory::Security },
+        { "reply@amazonaws.com",              "amazon",       BrandCategory::Shopping },
+    };
+    for (const auto& c : cases) {
+        const SenderBrand* brand = BrandForAddress(c.address);
+        REQUIRE(brand != nullptr);
+        REQUIRE_EQ(brand->id, std::string(c.id));
+        REQUIRE(brand->category == c.category);
+    }
+    // A government service suffix is not one party: another UK service is not HMRC.
+    REQUIRE_EQ(RegistrableDomain("noreply.tax.service.gov.uk"), std::string("tax.service.gov.uk"));
+    REQUIRE(BrandForAddress("x@vehicle-tax.service.gov.uk") == nullptr);
+    REQUIRE(BrandForAddress("x@other.gouv.fr") == nullptr);
+    // A new brand's country domain is trusted only when listed.
+    REQUIRE(BrandForAddress("support@lidl.xyz") == nullptr);
+    REQUIRE(BrandForAddress("security@coinbase-support.com") == nullptr);
+    // Nor are the big brands' names under a suffix they do not use.
+    for (const char* squatted : { "x@amazon.xyz", "x@ebay.shop", "x@google.top",
+                                  "x@dhl.app", "x@amazon-de.com", "x@etsy.shop",
+                                  "x@pinterest.xyz" })
+        REQUIRE(BrandForAddress(squatted) == nullptr);
+    for (const char* genuine : { "x@amazon.com.be", "x@marketplace.amazon.de",
+                                 "x@ebay.at", "x@noreply.dhl.de", "x@google.co.jp",
+                                 "x@mail.etsy.com", "x@pinterest.co.uk" })
+        REQUIRE(BrandForAddress(genuine) != nullptr);
+}
+
+TEST(brand_names_that_are_ordinary_words_claim_nothing_alone) {
+    for (const char* text : { "Your booking is confirmed", "Paper chase on Sunday",
+                              "Your visa application", "Target practice",
+                              "Steam cleaning offer", "Discover our new range",
+                              "Prime location flat", "Weekly market outlook",
+                              "Notes on the office move", "Three follow-ups",
+                              "Signal strength report", "A notion of fidelity",
+                              "Ally of the week", "Wish list", "Mega sale" }) {
+        REQUIRE(BrandNamedIn(text) == nullptr);
+    }
+    struct Case { const char* text; const char* id; };
+    const Case claims[] = {
+        { "Chase Bank Alerts",            "chase" },
+        { "Booking.com Customer Service", "booking" },
+        { "Steam Support",                "steam" },
+        { "Coinbase Security",            "coinbase" },
+        { "HMRC Tax Refund",              "hmrc" },
+        { "Ledger Live update required",  "ledger" },
+        { "Your Netflix account",         "netflix" },
+        { "DHL Express",                  "dhl" },
+        { "Norton 360 renewal",           "norton" },
+    };
+    for (const auto& c : claims) {
+        const SenderBrand* brand = BrandNamedIn(c.text);
+        REQUIRE(brand != nullptr);
+        REQUIRE_EQ(brand->id, std::string(c.id));
+    }
+}
+
+TEST(a_mailbox_address_in_a_display_name_claims_nothing) {
+    // A display name that is just the sender's own address names its mailbox
+    // provider, not a brand.
+    REQUIRE(BrandNamedIn("jane@outlook.com") == nullptr);
+    REQUIRE(BrandNamedIn("\"bob@verizon.net\"") == nullptr);
+    // An address at a brand's own domain still claims it: that is the spoof.
+    const SenderBrand* paypal = BrandNamedIn("service@paypal.com");
+    REQUIRE(paypal != nullptr);
+    REQUIRE_EQ(paypal->id, std::string("paypal"));
 }
 
 // ---------------------------------------------------------------------------
@@ -337,5 +517,240 @@ TEST(icon_cache_rejects_bytes_that_are_not_an_image) {
     REQUIRE(cache.Store("facebook", { html.begin(), html.end() }).empty());
     REQUIRE_EQ(cache.CachedCount(), 0);
     std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+// ---------------------------------------------------------------------------
+// The loader: lazy, in the background
+// ---------------------------------------------------------------------------
+TEST(icon_loader_fetches_in_the_background_and_says_so) {
+    const fs::path dir = TempDir("loader");
+    auto web = std::make_shared<FakeWeb>();
+    web->images.insert("https://www.facebook.com/favicon.ico");
+    auto readyKeys = std::make_shared<std::vector<std::string>>();
+    auto readyMutex = std::make_shared<std::mutex>();
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher(FetcherFor(web));
+        cache.SetReadyHandler([readyKeys, readyMutex](const std::string& key) {
+            std::lock_guard<std::mutex> lock(*readyMutex);
+            readyKeys->push_back(key);
+        });
+
+        cache.Request("facebook");
+        REQUIRE(WaitForLoader(cache));
+        REQUIRE(!cache.IconForKey("facebook").empty());
+        REQUIRE(!cache.IconForAddress("notification@facebookmail.com").empty());
+        {
+            std::lock_guard<std::mutex> lock(*readyMutex);
+            REQUIRE_EQ(readyKeys->size(), static_cast<std::size_t>(1));
+            REQUIRE_EQ(readyKeys->front(), std::string("facebook"));
+        }
+
+        // Cached: asking again costs nothing. A failure is asked for once a
+        // session, and the handler hears only of icons stored.
+        cache.Request("facebook");
+        cache.Request("linkedin");
+        cache.Request("linkedin");
+        REQUIRE(WaitForLoader(cache));
+        REQUIRE_EQ(web->Count(), 2);
+        REQUIRE(cache.IconForKey("linkedin").empty());
+        std::lock_guard<std::mutex> lock(*readyMutex);
+        REQUIRE_EQ(readyKeys->size(), static_cast<std::size_t>(1));
+    }
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST(icon_loader_asks_nothing_when_downloads_are_off) {
+    const fs::path dir = TempDir("loader-off");
+    auto web = std::make_shared<FakeWeb>();
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher(FetcherFor(web));
+        cache.SetNetworkEnabled(false);
+        cache.Request("facebook");
+        REQUIRE_EQ(cache.PendingCount(), static_cast<std::size_t>(0));
+        // Website icons are off until the app turns them on.
+        cache.SetNetworkEnabled(true);
+        cache.Request("site:example.com");
+        REQUIRE_EQ(cache.PendingCount(), static_cast<std::size_t>(0));
+        // Not keys at all: never a file name outside the folder.
+        cache.Request("../outside");
+        cache.Request("site:../outside.com");
+        REQUIRE(WaitForLoader(cache));
+        REQUIRE(cache.Store("../outside", FakePng()).empty());
+        REQUIRE(cache.Store("site:a/../b.com", FakePng()).empty());
+    }
+    REQUIRE_EQ(web->Count(), 0);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST(icon_loader_survives_the_cache_going_away_mid_download) {
+    const fs::path dir = TempDir("loader-gone");
+    auto web = std::make_shared<FakeWeb>();
+    auto release = std::make_shared<std::atomic<bool>>(false);
+    auto called = std::make_shared<std::atomic<bool>>(false);
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher([web, release](const std::string& url, std::vector<uint8_t>& out) {
+            { std::lock_guard<std::mutex> lock(web->mutex); web->asked.push_back(url); }
+            while (!release->load()) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            out = FakePng();
+            return true;
+        });
+        cache.SetReadyHandler([called](const std::string&) { called->store(true); });
+        cache.Request("facebook");
+        for (int i = 0; i < 1000 && web->Count() == 0; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        REQUIRE_EQ(web->Count(), 1);
+    }   // the cache is gone while its download is in flight
+    release->store(true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    REQUIRE(!called->load());
+    REQUIRE(!fs::exists(dir / "facebook.png"));
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+// ---------------------------------------------------------------------------
+// Website icons
+// ---------------------------------------------------------------------------
+TEST(site_icon_key_is_the_registrable_domain) {
+    REQUIRE_EQ(SiteIconKey("news.shop.example.co.uk"), std::string("site:example.co.uk"));
+    REQUIRE_EQ(SiteIconKey("Mail.Example.COM"), std::string("site:example.com"));
+    REQUIRE_EQ(SiteIconKey("localhost"), std::string());
+    REQUIRE_EQ(SiteIconKey("192.168.0.10"), std::string());
+    REQUIRE_EQ(SiteIconKey("bad_name.com"), std::string());
+    REQUIRE_EQ(SiteIconKey(""), std::string());
+}
+
+TEST(site_icon_urls_are_ranked_and_resolved) {
+    const std::string html =
+        "<!doctype html><html><head><title>Shop</title>\n"
+        "<link rel=\"stylesheet\" href=\"/s.css\">\n"
+        "<link rel=\"icon\" href=\"/favicon-16.png\" sizes=\"16x16\">\n"
+        "<link rel='icon' type='image/png' sizes='32x32' href='img/fav32.png?v=2&amp;x=1'>\n"
+        "<link rel=\"apple-touch-icon\" href=\"//cdn.example.net/touch.png\">\n"
+        "<link rel=\"icon\" href=\"/icon.svg\" type=\"image/svg+xml\">\n"
+        "<link rel=\"mask-icon\" href=\"/mask.svg\" color=\"#000\">\n"
+        "<LINK REL=\"SHORTCUT ICON\" HREF=\"../legacy.ico\">\n"
+        "<link rel=\"icon\" href=\"data:image/png;base64,AAAA\">\n"
+        "<link rel=\"icon\" href=\"javascript:alert(1)\">\n"
+        "</head><body><link rel=\"icon\" href=\"/late.png\"></body></html>";
+    const auto urls = FindSiteIconUrls(html, "https://www.example.com/en/index.html?lang=en");
+    const std::vector<std::string> expected = {
+        "https://www.example.com/en/img/fav32.png?v=2&x=1",   // a size a badge can use
+        "https://cdn.example.net/touch.png",                  // the home-screen icon
+        "https://www.example.com/legacy.ico",                 // no stated size
+        "https://www.example.com/icon.svg",                   // SVG
+        "https://www.example.com/favicon-16.png",             // tiny
+        "https://www.example.com/favicon.ico",                // the fallback
+    };
+    REQUIRE_EQ(urls.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) REQUIRE_EQ(urls[i], expected[i]);
+
+    // A page that names no icon still has the site's /favicon.ico.
+    const auto bare = FindSiteIconUrls("<html><body>Hello</body></html>", "http://example.org");
+    REQUIRE_EQ(bare.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(bare[0], std::string("http://example.org/favicon.ico"));
+}
+
+TEST(site_icon_comes_from_the_page_the_site_serves) {
+    const fs::path dir = TempDir("site");
+    auto web = std::make_shared<FakeWeb>();
+    web->images.insert("https://www.shop-example.com/static/icon-64.png");
+    auto pages = std::make_shared<std::vector<std::string>>();
+    auto pagesMutex = std::make_shared<std::mutex>();
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher(FetcherFor(web));
+        cache.SetSiteIconsEnabled(true);
+        cache.SetPageFetcher([pages, pagesMutex](const std::string& url, std::string& html,
+                                                 std::string& finalUrl) {
+            std::lock_guard<std::mutex> lock(*pagesMutex);
+            pages->push_back(url);
+            // example.com sends the browser on to www.
+            html = "<html><head><link rel=icon sizes=64x64 href=/static/icon-64.png></head>";
+            finalUrl = "https://www.shop-example.com/";
+            return true;
+        });
+        const std::string key = SiteIconKey("news.shop-example.com");
+        REQUIRE_EQ(key, std::string("site:shop-example.com"));
+        cache.Request(key);
+        REQUIRE(WaitForLoader(cache));
+        const std::string path = cache.IconForKey(key);
+        REQUIRE(!path.empty());
+        REQUIRE(path.find("sites") != std::string::npos);
+        REQUIRE(fs::exists(dir / "sites" / "shop-example.com.png"));
+        std::lock_guard<std::mutex> lock(*pagesMutex);
+        REQUIRE_EQ(pages->size(), static_cast<std::size_t>(1));
+        REQUIRE_EQ(pages->front(), std::string("https://shop-example.com/"));
+    }
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST(site_icon_falls_back_to_favicon_ico_and_remembers_a_miss) {
+    const fs::path dir = TempDir("site-fallback");
+    auto web = std::make_shared<FakeWeb>();
+    web->images.insert("https://www.example.org/favicon.ico");
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher(FetcherFor(web));
+        cache.SetSiteIconsEnabled(true);
+        cache.SetPageFetcher([](const std::string&, std::string&, std::string&) { return false; });
+        cache.Request("site:example.org");
+        cache.Request("site:nothing-here.net");
+        REQUIRE(WaitForLoader(cache));
+        REQUIRE(!cache.IconForKey("site:example.org").empty());
+        REQUIRE(cache.IconForKey("site:nothing-here.net").empty());
+        REQUIRE(fs::exists(dir / "sites" / "nothing-here.net.missing"));
+    }
+    // A new session does not ask again within the retry interval.
+    const int asked = web->Count();
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        cache.SetFetcher(FetcherFor(web));
+        cache.SetSiteIconsEnabled(true);
+        cache.Request("site:nothing-here.net");
+        REQUIRE(WaitForLoader(cache));
+    }
+    REQUIRE_EQ(web->Count(), asked);
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST(icon_cache_finds_the_icons_on_disk_with_one_listing) {
+    const fs::path dir = TempDir("prime");
+    std::error_code ec;
+    fs::create_directories(dir / "sites", ec);
+    auto touch = [](const fs::path& p) { std::ofstream(p, std::ios::binary) << "x"; };
+    touch(dir / "facebook.ico");
+    touch(dir / "facebook.png");            // png is preferred over ico
+    touch(dir / "linkedin.missing");        // a miss is no icon
+    touch(dir / "apple.part");              // nor is a half-written one
+    touch(dir / "sites" / "example.com.svg");
+    touch(dir / "sites" / "bad_name.com.png");   // not a key
+    {
+        SenderIconCache cache;
+        cache.SetRoot(UltraCanvas::PathToUtf8(dir));
+        const std::string facebook = cache.IconForKey("facebook");
+        REQUIRE(facebook.size() > 4 && facebook.substr(facebook.size() - 4) == ".png");
+        REQUIRE(!cache.IconForKey("site:example.com").empty());
+        REQUIRE(cache.IconForKey("linkedin").empty());
+        REQUIRE(cache.IconForKey("apple").empty());
+        REQUIRE(cache.IconForKey("site:bad_name.com").empty());
+        // Stored later in the session: found without listing the folder again.
+        REQUIRE(!cache.Store("site:example.org", FakePng()).empty());
+        REQUIRE(!cache.IconForKey("site:example.org").empty());
+    }
     fs::remove_all(dir, ec);
 }

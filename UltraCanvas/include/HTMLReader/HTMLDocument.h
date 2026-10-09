@@ -3,8 +3,17 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.3.1 - merged: the Lines layout (1.3.0) beside the inline-aware single
+//                  line and the node overload (1.2.1, 1.2.2), made side by side
+// Version: 1.3.0 - ExtractPlainText(html, PlainTextLayout::Lines): the text with
+//                  its line structure, for a person to read or quote
+// Version: 1.2.2 - ExtractPlainText(const Node&): the text of a parsed element
+// Version: 1.2.1 - ExtractPlainText: inline elements keep a word whole; a no-break
+//                  space is a space
+// Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
+//                  is exact, then ASCII case-insensitive
 // Version: 1.1.0 - doctype and quirksMode
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,7 +41,13 @@ using NodePtr = std::shared_ptr<Node>;
 struct Node {
     NodeType type = NodeType::Element;
 
-    // Element fields. Tag and attribute names are stored lowercase.
+    // Element fields. Tag and attribute names are stored lower-case for HTML
+    // elements. Inside <svg> and <math> (foreign content) they carry the case
+    // their vocabulary defines - linearGradient, viewBox, definitionURL - as
+    // the HTML standard adjusts them, whatever case the source used; HTML
+    // resumes inside foreignObject, desc, title and the MathML text elements.
+    // HasAttribute / GetAttribute / SetAttribute find a name exactly first
+    // and then in any ASCII case, so GetAttribute("viewbox") finds viewBox.
     std::string tag;
     std::vector<std::pair<std::string, std::string>> attributes;
 
@@ -108,9 +123,34 @@ bool IsQuirksDoctype(const std::string& doctype, bool present);
 // Decode HTML entities (&amp;, &#233;, &#x2019;, ...) into UTF-8.
 std::string DecodeEntities(const std::string& text);
 
-// Strip all tags from an HTML string and collapse whitespace; entity-decoded.
-// Convenience for search/indexing paths that do not need a DOM.
-std::string ExtractPlainText(const std::string& html);
+// How ExtractPlainText lays the text out.
+enum class PlainTextLayout {
+    // All on one line, every run of whitespace - a no-break space counts - a
+    // single space. A block, <br> or picture separates words; an inline
+    // element (<b>, <span>, <a> ...) does not, as on screen - "wor<b>ld</b>"
+    // is "world". For search, indexing, matching and other paths that never
+    // show the text.
+    SingleLine,
+    // As a reader sees it - a browser's innerText, simplified: a block
+    // element (<p>, <div>, <li>, <tr>, a heading) on lines of its own, a
+    // blank line around paragraphs, headings, quotes and <pre>; <br> a line
+    // break; the cells of a table row a tab apart; list items as "- " or
+    // "1. "; <pre> as written; a no-break space as a space. What a browser
+    // does not show is left out: <head>, <script>, <style>, the hidden
+    // attribute, an inline display:none or visibility:hidden (a mail's
+    // preheader). For text a person reads or quotes - an HTML mail shown as
+    // plain text, the quote in a reply.
+    Lines,
+};
+
+// Strip all tags from an HTML string; entity-decoded, laid out as `layout`
+// says (one line by default).
+std::string ExtractPlainText(const std::string& html,
+                             PlainTextLayout layout = PlainTextLayout::SingleLine);
+
+// The SingleLine text of an element already parsed (its children, by the
+// same rules): what a link, a cell or a heading says, read from the DOM.
+std::string ExtractPlainText(const Node& node);
 
 } // namespace HTML
 } // namespace UltraCanvas

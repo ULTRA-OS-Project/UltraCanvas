@@ -1,3 +1,3292 @@
+#### 2026-10-09 *0.9.220*
+- **Release notes for a version with no changelog entries point at its
+  commits.** The `publish-sdk` job took the version's section of
+  `CHANGELOG.md` as the release notes as it was, so a version whose section
+  was only its header (a hand-cut one, say) would have ended its notes on an
+  empty "Changes" heading. The notes now say that the section is empty and
+  name the previous version and a link to the commits up to the release's
+  own, and the step prints a warning. The notes the job wrote are shown in
+  the run's log.
+
+#### 2026-10-09 *0.9.219*
+- **The design documents are checked too.** `--all` first left out the
+  Proposal / Plan / Investigation docs, whose code is of APIs not written
+  yet. They are in now, with their findings baselined (one `<doc>::<message>`
+  line each): the file is the record of what each proposal still waits
+  for, and when an API is written its entries stop being found and the
+  strict run says so. The component docs stay at zero; only the changelog
+  is left out, being a record of what shipped rather than a description
+  of an API.
+
+#### 2026-10-09 *0.9.218*
+- **A rich paste reads the clipboard's HTML through the HTMLReader.**
+  `UCRichDocument::FromHTML` - what `UltraCanvasRichTextEdit` pastes from a
+  browser, Word or LibreOffice - had its own tokenizer, a table of 55
+  entities and its own `style=""` reader. It now calls
+  `ImportHTMLToRichDocument`, the importer UltraMail's composer already uses,
+  so a paste reads like the page it was copied from:
+  - the page's `<style>` sheets apply, through the same cascade a mail is
+    shown with (a class colour, Word's fonts and sizes), and paragraphs keep
+    the spacing their CSS gives them;
+  - every HTML entity is decoded, not only the 55;
+  - a `<blockquote>` is a quote level, so a quoted list, heading or table
+    stays what it is (it was one quote paragraph);
+  - a picture the clipboard only links to is pasted as its alt text in
+    brackets, and a 1-2 px tracking pixel is left out.
+  As before, `<pre>` is a code block, Word's typed-out list labels are left
+  out, a no-break space is pasted as a space, and `dir="rtl"` makes a
+  right-to-left paragraph.
+- **`ImportHTMLToRichDocument` reads `dir="rtl"`**, on a paragraph or any
+  element around it, into right-to-left paragraphs - a reply to an Arabic or
+  Hebrew mail keeps its direction. Two options serve a paste and are off for
+  a mail: `preAsCodeBlock` (a `<pre>` as a code block; a mail's `<pre>` is
+  mostly quoted plain text) and `skipWordListLabels` (the "1." Word types out
+  in a `mso-list:Ignore` span; a browser shows it, so a mail keeps it).
+- **The Filer's preview of an `.html` file is the page as a browser lays it
+  out** (`HTML::ExtractPlainText`, `PlainTextLayout::Lines`): a line per
+  paragraph, list item and table row. Its own tag-level splitter showed the
+  `<title>` and a mail's hidden preheader as page text, dropped the list
+  markers and ran a table row's cells together ("NamePrice").
+  `UltraCanvasFilerWidget::TextPreviewLines` (static) gives the lines a
+  document's preview page shows.
+- **Nothing in the repository reads HTML, CSS or entities on its own any
+  more**: `scripts/html_reuse_baseline.txt` is empty.
+
+#### 2026-10-09 *0.9.217*
+- **Knowing what a program takes when something is pasted into it.**
+  UltraDesktop's clipboard panel now puts first what the window under
+  Super+V takes - images for a paint program, files for a file manager, code
+  for an editor - and the pieces it is built from are the framework's:
+  - `UCDesktopEntry` reads `Categories=` (`categories`) and
+    `StartupWMClass=` (`startupWMClass`).
+  - `UltraCanvasDesktopShell::MatchApplication(window, applications)` finds
+    a window's desktop entry: its `StartupWMClass` first, then the program,
+    icon or name its `WM_CLASS` spells, case aside (`Gimp-2.10` is
+    `gimp-2.10`'s).
+  - `PreferredClipboardKinds(categories, mimeTypes)` turns an entry into the
+    kinds of clipboard entry it takes, most wanted first; empty when nothing
+    says.
+  - `ClipboardHistoryQuery::newestFirst` lists by last use, pins aside -
+    "the last image copied", which UltraPaint's Paste now offers when the
+    clipboard holds no picture.
+  - `ClipboardHistoryListModel::SetEntries` takes a `LeadSection`: the first
+    entries under a title of the caller's, above the usual sections.
+- **A copy too large for one X request travels in pieces, both ways (X11).**
+  ICCCM's INCR transfer: the owner answers with an `INCR` marker and writes
+  the copy piece by piece, each once the requestor has deleted the one
+  before, and an empty piece ends it. The X11 clipboard did neither half.
+  A large picture copied in GIMP or a browser was read back as the marker's
+  few bytes. A large copy made here went out in one request, which an X
+  server refuses when the request exceeds its largest: 256 KB without the
+  BIG-REQUESTS extension, 16 MB with it on Xvfb.
+  - Reading follows the pieces to the end. Each piece has 3 seconds to
+    arrive, and a copy may be up to 128 MB (up from 10 MB). A larger one is
+    refused rather than cut short: one too large for a single property used
+    to come back silently truncated.
+  - A copy larger than 256 KB is served in 256 KB pieces, as GTK and Qt do.
+    A requestor that stops taking pieces is given up on after 10 seconds.
+    The application's event loop passes the requestor's property changes to
+    the clipboard (`ProcessClipboardPropertyEvent`).
+  - While it waits for an answer, the clipboard takes only its own events
+    off the X queue. It used to discard every other event that arrived in
+    the meantime - a key press, an expose, a window's message.
+  - A late notice of losing the clipboard, handled after the clipboard was
+    taken back, no longer clears the copy made since.
+  - `Tests/ClipboardIncrTest.cpp` checks both directions against a second
+    X connection written from the ICCCM, and against `xclip` when it is
+    installed.
+- **Every format another program offers on the clipboard is seen (X11).**
+  Xlib returns a format-32 property, the `TARGETS` list among them, as an
+  array of C `long`s - 8 bytes each on a 64-bit system - and the X11
+  clipboard copied it at 4 bytes an item, so `GetAvailableFormats()` and
+  `IsFormatAvailable()` saw only the first half of the list. A program that
+  offered its image or text type late in the list looked as if it offered
+  nothing usable: UltraFiler's Paste stayed off, for one. The copy now uses
+  the size Xlib hands back. `Tests/ClipboardTargetsTest.cpp` offers eight
+  formats from a second X connection and checks all eight are seen.
+- **A window opened by a global shortcut keeps the focus (X11).**
+  `UltraCanvasGlobalShortcut` fired on the key press, while its passive grab
+  still held the keyboard; a window it opened took the focus during the grab
+  and the grab's end handed it focus events the window manager followed by
+  giving the focus back - UltraDesktop's clipboard panel, which closes when
+  it loses the focus, shut again at once about one Super+V in two.
+  - The shortcut now fires when its key is released, and asks for
+    detectable auto-repeat, so a held combination fires once.
+  - The X11 event loop drops `FocusIn` / `FocusOut` whose mode is
+    `NotifyGrab` or `NotifyUngrab`: a keyboard grab starting or ending (a
+    shortcut held, a window manager's key binding) does not take the focus
+    from a window. A real change during a grab still arrives
+    (`NotifyWhileGrabbed`).
+
+#### 2026-10-09 *0.9.216*
+- **CI: the Android backend check has a time limit of its own.** The job
+  had none, so anything that hung in it ran into GitHub's six-hour default:
+  on 2026-10-07 a stalled `apt-get` held a pull request's checks for five
+  hours. The apt step has since been given a watchdog and a 20-minute limit
+  (`scripts/ci-apt.sh`); the job as a whole now stops after 30 minutes, which
+  covers its other three steps too (the job normally takes 75 seconds).
+- **CI: the caches move off Node.js 20.** `actions/cache@v4` (the ccache and
+  macOS vcpkg caches in the Build workflow, the sysroot cache in the
+  WebAssembly one) targets Node.js 20, which GitHub's runners no longer run:
+  every Build leg ended with "Node.js 20 is deprecated … being forced to run
+  on Node.js 24: actions/cache@v4". It is `actions/cache@v5` now, the Node.js
+  24 release; the inputs and outputs the workflows use are unchanged. The
+  WebAssembly workflow's `actions/upload-artifact@v4` moves to v6, the version
+  the Build workflow already uses.
+- **CI: the WebAssembly workflow installs Emscripten with emsdk itself.**
+  `mymindstorm/setup-emsdk@v14` targets Node.js 20 too, and every run of
+  the workflow carried the same warning for it. The step now clones emsdk
+  and runs `emsdk install` and `emsdk activate` for the requested version,
+  then hands the later steps the same `PATH`, `EMSDK` and `EMSDK_NODE` the
+  action did. The toolchain is no longer cached; it downloads in a minute or
+  two on a job that only runs when started by hand.
+- **`ULTRACANVAS_DEVICE_BACKENDS` chooses which device backends are
+  searched.** A comma-separated list of backend names (`eSCL,IPP`; case
+  ignored). When it is set, `IODeviceManager::EnumerateDevices()` runs only
+  those. That leaves out a backend that is slow and finds nothing wanted,
+  such as SANE probing every port it knows of when only network scanners are
+  used. A category none of whose backends is named is reported as an error,
+  as one with no backend is, and its devices are left as they were rather
+  than dropped. `IODeviceScannerESCLLiveTest` sets it to `eSCL`, which brings
+  the test from 5 seconds or more down to under 2. Tested in
+  `IODeviceManagerTest`.
+- **Trust on first use is tested on macOS and Windows TLS as well as
+  Linux.** `IODeviceScannerESCLLiveTest` was Linux-only, so the device trust
+  had only been run on libcurl over OpenSSL. It now builds on Windows too,
+  starting its scanner and `openssl` there through `CreateProcessW` and
+  making its certificates from a configuration file of its own. The new
+  `ULTRACANVAS_BUILD_DEVICE_TLS_TESTS` builds it without the full test
+  suite, and the macOS rows (Apple's system libcurl) and Windows rows
+  (Schannel, MSYS2's `curl-winssl`) run it with a skip treated as a failure.
+  CMake now finds Python 3 and `openssl` and passes them to the test.
+- **A disabled `UltraCanvasTextInput` now looks disabled.** It drew exactly as
+  an enabled one - white face, the normal border, black text - so a field
+  that could not be typed into gave no sign of it (UltraClaude's locked
+  folder field looked editable). `TextInputStyle` gains
+  `disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`,
+  defaulting to the framework's `Colors::ControlDisabled`,
+  `ControlDisabledBorder` and `TextDisabled`, and a disabled field draws with
+  them and hides its clear button. The `Outlined()` and `Underlined()`
+  presets keep their transparent face. Documented in
+  `UltraCanvasTextInputExamples.md`.
+- **Trusting a scanner on first use is tested on every Linux CI run.** The new
+  `IODeviceScannerESCLLiveTest` scans over `https://` from a scanner the test
+  starts itself, `Tests/IODeviceScannerESCLLiveScanner.py`. There is no
+  reference eSCL scanner to run the way `ippeveprinter` is run for IPP, so
+  this one answers the four eSCL calls over TLS only, with self-signed
+  certificates the test makes with `openssl`, and logs every request it gets.
+  The test checks that:
+  - first contact sends nothing but a bare `HEAD /` before the scanner's key
+    is known;
+  - the key kept is the one in its certificate, under the make and model the
+    scanner reports;
+  - a feeder run, a flatbed page and a grey page are scanned over the pinned
+    connection;
+  - the scanner restarted with a different certificate is refused before any
+    request reaches it, and the key kept is not replaced;
+  - forgetting the key lets the new one be learned;
+  - with learning switched off, the scanner is refused.
+
+  CI's Linux rows set `ULTRACANVAS_TEST_ESCL_REQUIRED`, so a skip (no
+  Python 3 or `openssl`) fails the run. The keys go to a file of the test's
+  own, never the user's.
+- **The SDKs are release assets, and the Windows and macOS bundles are
+  smaller.** `.github/workflows/build.yml` gains `publish-sdk`: every release
+  build of `main` (the dispatch `changelog-fold.yml` sends for its version
+  commit) creates the GitHub release `v<version>`, with the version's
+  changelog section as its notes, and attaches the six
+  `UltraCanvas-SDK-<OS>-<version>-<arch>` archives, so
+  `releases/download/v<version>/<archive>` is a fixed address anyone can
+  fetch (`Docs/UltraCanvasSDK.md`). `scripts/sdk-bundle-deps.sh` now tells
+  the public pkg-config closure (`Requires`) from the packages reached only
+  through `Requires.private`: the former come whole, the latter contribute
+  their `.pc` files alone, and a static archive with a DLL or dylib twin is
+  left out; the run-time DLLs still come from the core's import-table walk.
+- **A focused `UltraCanvasTextInput` shows its focus border again.**
+  `Render` computed the frame colour from the state and then drew
+  `style.borderColor` regardless, so `focusBorderColor` never appeared: a
+  field with the keyboard looked like every other one, unlike the dropdown,
+  spinner, pickers and chip, and the focus colours UltraFiler's rename field
+  and UltraDesktop's clipboard search set had no effect. The frame now takes
+  the disabled border, `focusBorderColor` while focused, or `borderColor`;
+  validation still draws its own coloured border over it. The unused
+  private `GetBorderColor()` is gone.
+- **CI: the WebAssembly build names its Emscripten version.** The workflow
+  installed `latest` unless told otherwise, so the compiler moved to every
+  new emsdk release, a new major one included, while the cached sysroot,
+  keyed on the word `latest`, stayed built by whichever release came first.
+  It installs 6.0.11 now, the newest release of the 6.0 line the backend was
+  validated with, and `UltraCanvas/OS/WASM/README.md` names the same
+  version; a run can still ask for another one.
+- **CI: the WebAssembly build's glib gets the meson it needs.** The
+  workflow installed meson from Ubuntu 24.04 (1.3.2), and the sysroot's glib
+  (`wasm-vips-2.89.3`) refuses anything older than 1.4, so the first run of
+  the workflow stopped in `meson setup` for glib. It installs meson 1.12.1
+  from PyPI now, and `build-wasm-sysroot.sh` names the 1.4 floor among its
+  requirements.
+- **CI: the WebAssembly demo finds the sysroot's libraries.** CMake runs
+  the host's `pkg-config`, and `emcmake` does not pass it
+  `EM_PKG_CONFIG_PATH`, so the demo's configure step looked for cairo on the
+  host and failed after the whole sysroot had built. The step puts the
+  sysroot on `PKG_CONFIG_PATH` and `PKG_CONFIG_LIBDIR`, as
+  `build-wasm-sysroot.sh` already does, and the README and the demo's
+  `CMakeLists.txt` give the same two exports. The sysroot is cached as soon
+  as it is built rather than only when the whole job passes, so a failure
+  in the demo no longer costs the next run a 20-minute rebuild.
+- **CI: the WebAssembly demo builds with one job per core.** A bare
+  `cmake --build --parallel` is `make -j` without a limit, and the demo's
+  build ran out of memory with hundreds of compilers at once.
+
+#### 2026-10-09 *0.9.215*
+- **The Windows CI legs survive a slow MSYS2 mirror.** The setup action did
+  the package database sync, the upgrade and the install itself, with no
+  retry and no mirror setting, and pacman abandons a mirror that stays
+  below 1 byte/s for 10 s - on 2026-10-08 that failed both Windows legs of
+  #740 in the same minute, before a line was compiled. The action now only
+  unpacks MSYS2; a step of the workflow's own syncs, upgrades and installs
+  with pacman's download timeout disabled and up to five attempts per
+  phase, and keeps the downloaded packages in a cache of its own, pruned to
+  one version per package.
+- **The module READMEs in `Docs/Modules/` are generated from the modules'
+  own.** `Docs/Modules/UltraAI/README.md`, `Docs/Modules/UltraNet/README.md`
+  and `Docs/Modules/VirtualFS/README.md` were hand-kept copies of
+  `UltraAI/README.md`, `UltraNet/README.md` and `VirtualFS/README.md` and
+  had drifted apart: the UltraAI pair disagreed on the adapters and the test
+  count, the UltraNet module copy was two weeks behind the docs copy, and
+  the VirtualFS copies each had a section the other lacked. The pairs are
+  merged, `scripts/generate_llms_txt.py` writes the docs-tree copy from the
+  module's README (relative links adjusted), and the llms.txt workflow fails
+  when a mirror is stale, as for `llms.txt` itself. Edit `<Name>/README.md`,
+  then run the script.
+
+#### 2026-10-09 *0.9.214*
+- **CI compiles the component docs' C++, and every doc passes.**
+  `scripts/check_doc_examples.py` checked a doc only when someone ran it,
+  so docs drifted from the headers they describe: 319 findings across 60
+  component docs, and two of the file dialog doc's snippets mended twice
+  on two branches in one day in ways that then clashed. The new
+  `doc-examples.yml` workflow runs it over every component doc (`--all`:
+  `Docs/UltraCanvas/*.md` but the changelog and the Proposal / Plan /
+  Investigation design documents, whose code is of APIs not written yet)
+  whenever a doc or a public header changes, and fails on any finding. It
+  runs on ubuntu-24.04 because clang's wording is part of a finding.
+  - **The 60 docs are fixed against today's headers**, not silenced:
+    renamed and moved APIs (`AddElement` -> `AddChild`, `GetInstance` ->
+    `GetCurrent`, `UltraCanvasJSON::Parse` -> `JSON::Parse`, the dialogs'
+    `UltraCanvasWindowBase*` parent, the financial chart without its old
+    `uid`, `CreateImageFromFile` for an image from a path), listings and
+    enum copies made to match their headers, `...` placeholders turned into
+    code, member fragments turned into small classes, and the names a
+    snippet takes from its application (a window, a path, a callback the
+    reader writes) declared in a `<!-- doc-check: ... -->` comment with
+    their real types. One example was also wrong at run time: a list
+    view's header-click handler captured its own view by `shared_ptr`, so
+    the view was never freed; it captures it raw now, as AGENTS.md asks.
+  - **The usage comment at the top of `UltraCanvasDesktopShell.h`**, which
+    no check reads, called `AddToggleButton` with `...` for its callback
+    and `ActivateWindow` with an `id` it never declared. It and the
+    DesktopShell doc now show the taskbar button UltraDesktop builds: the
+    window's id captured, activated when the button is pressed, minimized
+    when it is released.
+  - **The checker reads more C++ the way a compiler does.** A framework
+    class's member defined out of line (`void
+    UltraCanvasUIElement::Render(...) {`) is compiled in the class's
+    namespace; a file-scope macro line without `;`
+    (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) is a definition; a copy of a
+    type prefers the framework's (`UltraCanvas::BlendMode`, not
+    `PixelFX::BlendMode`) and a listing a top-level namespace
+    (`PixelFX::Colour`); prose may name a function of any framework header
+    - backend, platform or dialog - not only the public ones;
+    `auto x = UltraCanvas::CreateX(...)` is typed; and a doc-check comment
+    may define a macro the application's build provides.
+  - `--all`, `--strict`, `--baseline` and `--update-baseline` are new.
+    `scripts/doc_examples_baseline.txt` holds findings that predate the
+    check, and is empty.
+- **`FileDialogOptions::SetDefaultExtension`: a default extension through
+  `UltraCanvasFileLoader`, native dialogs included.** Only a caller that
+  built the framework dialog itself could give one
+  (`FileDialogConfig::defaultExtension`); everything that saves through
+  `UltraCanvasFileLoader::SaveFileDialog` - most applications, and every one
+  with native dialogs on - could not, so "photo" saved under All files came
+  back bare. The option reaches every dialog now, each applying it before
+  its own Replace File question:
+  - **framework dialog**: handed on as `FileDialogConfig::defaultExtension`;
+  - **GTK**: applied to the accepted name and when the type changes, with
+    the question asked if the result already exists;
+  - **Windows**: the dialog's own default extension when the chosen type
+    names none or there are no filters, and applied to the result as on GTK;
+  - **macOS**: with no type naming an extension, the panel is given it as
+    its only allowed type, other extensions still allowed, so it adds it and
+    asks itself;
+  - **Android**: added to the name offered to the document picker, which
+    also gives SAF the type.
+  The rule is public as `ApplyDefaultExtension(name, extension)`
+  (`UltraCanvasModalDialog.h`).
+- **The file dialog refuses a name the file system cannot hold.**
+  `FileDialogConfig::validateNames` (on by default) was declared and never
+  read, so a Save name like `a:b` on Windows, `CON.txt`, or one longer
+  than 255 reached the caller's write and failed there, usually with a
+  message about the write rather than the name. Save now refuses it with
+  the reason - "\"a:b\" cannot be used as a file name: it contains ":"" -
+  and stays open on the name. The rules are the new
+  `InvalidFileNameReason(name, FileNameRules)` (`UltraCanvasModalDialog.h`):
+  empty, "." and "..", control characters and names over 255 (bytes on
+  POSIX, UTF-16 units on Windows) everywhere; on Windows also
+  `< > : " / \ | ? *`, a trailing dot or space and the device names (CON,
+  PRN, AUX, NUL, COM1-9, LPT1-9, with any extension). `validateNames =
+  false` lets such a name through, as before.
+- **The file dialog adds what it opens and saves to the recent files
+  itself.** `FileDialogConfig::addToRecent` (on by default) was declared and
+  never read: only `UltraCanvasFileLoader` registered recent files, after
+  the dialog closed, so a dialog built with
+  `UltraCanvasDialogManager::CreateFileDialog` added nothing. The dialog now
+  calls `UltraCanvasFileLoader::NotifyRecentFile` for every file an Open,
+  Open multiple or Save accepts (not for a folder picked). The loader hands
+  its `FileDialogOptions::registerAsRecent` to the dialog and registers only
+  after a native dialog, so a file is not added twice.
+- `FileDialogTest` checks the name rules for both systems (always run), and
+  under a display a refused name, `validateNames` off, and - on Linux, with
+  GTK's recent-files store moved to the test's folder - `addToRecent` on
+  and off.
+
+#### 2026-10-09 *0.9.213*
+- **`HTML::ExtractPlainText` reads a word split by formatting as one word.**
+  It put a space wherever a tag was, so `wor<b>ld</b>` came out as
+  "wor ld" - and a keyword filter, which is one of the things the function is
+  for, could be fooled by `<b>via</b>gra`. An inline element (`<b>`, `<i>`,
+  `<span>`, `<a>`, `<font>` ...) now leaves no space, as on screen; a block,
+  `<br>` and a picture still separate words, and so does the place a
+  `<style>` or `<script>` was (that ran words together before). A no-break
+  space now counts as a space when whitespace is collapsed. With this,
+  UltraMail's threat scan and EmailCleaner drop their own tag strippers and
+  entity tables and leave the html-reuse baseline (six entries).
+- **`HTML::ExtractPlainText(const Node&)`: the text of a parsed element**, by
+  the same rules - what a link or a cell says, read from the DOM instead of
+  from a slice of the source.
+- **The Filer's text preview and UltraCloud's WebDAV client decode entities
+  through `HTML::DecodeEntities`.** The preview's own decoder knew six names
+  and turned every numeric reference into a blank (`&#8364;` showed as a
+  space, not "€"); the WebDAV client knew the five XML entities and left a
+  numeric one such as Nextcloud's `&#x27;` in the file name. Both had their
+  own tables; three more html-reuse baseline entries go.
+
+#### 2026-10-08 *0.9.212*
+- **AGENTS.md rule 7 names both spellings of the Claude Code Remote tool.**
+  It said to call `set_session_title` on "the claude-code-remote MCP server".
+  Some builds register that server as `mcp__Claude_Code_Remote__…`, so a
+  session could take the tool for missing. The rule now gives both names.
+  The chat-title hook accepts both since #731.
+
+#### 2026-10-08 *0.9.211*
+- **HTML as text a person reads: `HTML::ExtractPlainText(html,
+  PlainTextLayout::Lines)`.** `ExtractPlainText` put a whole page on one
+  line, which suits a search index but not text someone reads or quotes, so
+  callers that needed lines wrote their own tag stripper. The new layout
+  parses the page and writes it the way a browser's `innerText` does,
+  simplified: block elements on lines of their own, a blank line around
+  paragraphs, headings, quotes and `<pre>`, `<br>` a line break, table cells
+  a tab apart, list items as `- ` or `1. `, `<pre>` as written, a no-break
+  space as a space - and what a browser does not show left out (`<head>`,
+  `<script>`, `<style>`, the `hidden` attribute, an inline `display: none`
+  such as a mail's preheader). The default stays one line, so existing
+  callers are unchanged. UltraMail's own `HtmlToText` is replaced by it and
+  leaves the html-reuse baseline.
+
+#### 2026-10-08 *0.9.210*
+- **Text in labels can be selected and copied.** `UltraCanvasLabel::SetSelectable(true)`
+  lets the reader drag across a label's text, double-click a word (a dot or
+  an apostrophe between letters stays in it: `example.com`, `don't`),
+  triple-click all of it and Shift+click to extend; Ctrl+C (Ctrl+Insert,
+  Cmd+C) copies and Ctrl+A selects all. The highlight is drawn under the text
+  in `LabelStyle::selectionColor`; what is copied leaves out inline pictures
+  and soft hyphens and turns a no-break space into a space. A link in a
+  selectable label opens when the button is released without having dragged,
+  so a drag that starts on a link selects. Labels nobody made selectable work
+  exactly as before.
+  - **One selection across many labels:** `UltraCanvasTextSelection`
+    (`UltraCanvasTextSelection.h`), shared by labels in reading order
+    (`AddLabel`, `AddLabelsIn`). A drag runs on from one label into the
+    next, to the nearest text when the pointer is between them, and scrolls
+    the scroll view when it goes past its edge; a copy puts a line break
+    between labels above one another and a tab between labels side by side.
+    Only the pressed label accepts the keyboard focus, so a page of
+    paragraphs is one Tab stop. `onContextMenu` and `onSelectionChanged` let
+    the host offer Copy and Select All.
+  - **HTML:** `HTML::BuildOptions::selectableText` gives every label of a
+    built page one such selection (`HTML::BuildResult::textSelection`).
+  - New tests: `LabelSelectionTest` (a window under Xvfb).
+
+#### 2026-10-08 *0.9.209*
+- **One shared core on every platform, with the modules inside it.** The
+  framework is now `libUltraCanvas.dylib` on macOS as it has been `.so` on
+  Linux and `.dll` on Windows: `ULTRACANVAS_BUILD_SHARED` defaults ON on every
+  desktop platform and every CI row passes it explicitly (the Windows row had
+  relied on the LaTeX plug-in forcing it). Until now each of the ~20 macOS
+  `.app` executables carried the whole framework statically, so the suite
+  shipped and loaded the same code twenty times over; `package-macos.sh`
+  bundles the core into the suite's shared `Frameworks/` like any other dylib,
+  `verify_suite` fails a suite without it, and the `ultramsg` tool loads from
+  that shared folder too instead of carrying a second copy.
+- **The UI-free modules are folded into the shared core whole.** UltraCrypt,
+  UltraVault, UltraDatabase, UltraMessage, NetworkMonitor and VirtualFS join
+  UltraNet and UltraWin as `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` members of the
+  core, so the DSO exports each module's complete API and one copy of its code
+  and global state serves every running application. Before, an app that
+  linked `UltraDatabase` or `UltraVault` next to the shared core (UltraMail,
+  UltraSocial, UltraFIBU, the test suites) got the archive ahead of
+  `libUltraCanvas` on its link line and took the module's objects from there
+  while the core carried its own - two registries, two connection tables, and
+  on Windows the "multiple definition" errors the changelog has recorded
+  before. The public target names (`UltraDatabase`, `UltraVault`, `UltraCrypt`,
+  `UltraMessage`, `NetworkMonitor`) are now INTERFACE "homes" that resolve to
+  the core on a shared build and to the archive (`uc-database`, `uc-vault`,
+  …) on a static one, so no consumer changed; "MODULE HOMES" in
+  `UltraCanvas/CMakeLists.txt` and *One shared core* in `AGENTS.md` have the
+  rules.
+- **CI reports the package sizes.** The Linux and Windows rows write a
+  "Package sizes" table to the job summary - the package, the core library,
+  the sum of the application executables and each one - next to the macOS
+  suite table, which now lists `libUltraCanvas.1.dylib` on its own line, so
+  a change that puts a second copy of the framework into an app shows up on
+  the run page.
+
+#### 2026-10-08 *0.9.208*
+- **Eleven charts and diagrams pass a layout change on to their parent.**
+  The chord, circular progress, polar, radial bar and timeline charts and
+  the fishbone, matrix, parliament, SWOT, timeline and word-cloud diagrams
+  each declared a private `InvalidateLayout()` that only cleared their own
+  layout cache. It had the name of the layout engine's virtual
+  (`CSSLayout::Element::InvalidateLayout`), so it overrode it without
+  calling it: whenever the framework invalidated one of these elements - a
+  new size, `SetVisible`, a style change - the element's measure stayed
+  valid and the change never reached its parent. Clang warned about it as
+  a missing `override`. The cache-clearing helper is `DropLayoutCache()`
+  now, used where the charts called it themselves, and `InvalidateLayout()`
+  is a real override that drops the cache and calls the engine's.
+  `ChartElementBehaviourTest` checks all eleven; each fails without it.
+- `UltraCanvasSyntaxTokenizer.h` writes Dart's `??=` operator as `"?\?="`,
+  so the string no longer reads as a trigraph and Clang stops warning in
+  every file that includes the header.
+- Tests: `PublicHeadersUnusedParamTest` includes the framework's 315 public
+  headers (313 without GL) in one file compiled with
+  `-Werror=unused-parameter`, so an inline body that leaves a parameter
+  unused fails the build instead of warning in every `-Wextra` build. It
+  leaves out the optional subsystems whose headers need libraries a build
+  may lack (UltraNet, UltraVault, PixelFX, LaTeX, the databases, IO devices,
+  network monitor, messaging and window-server clients), and the GL surface
+  headers when GL is off. GCC and Clang only - every CI leg, Windows
+  included through MSYS2's clang; checked here with clang and GCC on Linux
+  and with MinGW GCC against the Windows headers. `AGENTS.md` states the
+  rule.
+- `scripts/check_doc_examples.py` checks a copied type against every type
+  of its name and judges it by the best match. A short name can name
+  several types - `BlendMode` is the render context's enum, a PixelFX one
+  and a VectorStorage one - and the checker took the first in sorted order,
+  `PixelFX::BlendMode`, so `UltraCanvasRenderContext.md`'s correct listing
+  of the render context's modes read as seven missing enumerators. A
+  planted wrong enumerator is still reported, against
+  `UltraCanvas::BlendMode`. The page's mask example declares the
+  application's `DrawContent` it calls; the page passes the checker.
+- Docs: `UltraCanvasMatrixDiagram.md` passes the doc checker. The roll-up
+  example used `row` and `col` without saying what they were, and the
+  checker read `row` as a container (a common name for one in the other
+  docs); the example now declares them as the item indices the score
+  functions take. The validation example's `Log` is marked as the
+  application's logger and declared for the checker.
+- **Checkboxes, radios and switches take the keyboard focus.**
+  `UltraCanvasLabeledToggleBase` never overrode `AcceptsFocus()`, so Tab
+  skipped every toggle and their Space handling and focus ring were never
+  reached. They take the focus like buttons now: Tab reaches them, a press
+  focuses them, and Space activates the focused one. Enter is no longer
+  handled by a toggle, so in a dialog it still presses the default button,
+  as in HTML and the native toolkits. `SetAcceptsFocus(false)` keeps a toggle
+  out of the Tab order. Apps whose dialogs hold toggles gain Tab stops.
+- **A radio added to a group already checked becomes its selection.**
+  `UltraCanvasRadioGroup::AddRadioButton` ignored a radio's checked state, so
+  one created with `checked = true` showed its dot while
+  `GetSelectedButton()` returned null, and two such radios both stayed
+  checked. The last checked radio added wins and the others are cleared, as
+  in an HTML group; building the group does not call `onSelectionChanged`.
+- **Charts leave a left press to the parent unless it starts a pan.** The
+  chart base took every left press and release, so a chart in a scrolling or
+  draggable container swallowed its clicks. It takes them only to start and
+  end a pan of a zoomed chart; charts that react to clicks handle them
+  first, as before.
+- **A CSV row that cannot be read is skipped, not plotted at (0,0).**
+  `ChartDataVector` and `ChartDataStream` turned a row after the first whose
+  x or y is not a number into a point at the origin. Every line is now kept
+  only when its x and y read as numbers - headers, blank lines and broken
+  rows are skipped wherever they stand - and `ChartDataStream` numbers its
+  points over the data rows, so its count and chunks agree.
+- `IsFocused()` on an element whose window has no application (a test, a
+  tool) called through a null pointer and crashed;
+  `UltraCanvasWindowBase::IsWindowFocused()` is false then.
+- Tests: `TextInputFontTest` checks `IRenderContext::GetLineBoxHeight`
+  headless: it is the font's line height unrounded, `GetTextLineHeight` is
+  the same height in whole pixels and never more, a line's descenders end
+  inside it, and a second ask comes from the cache.
+- The public headers' inline default bodies mark their unused parameters
+  `(void)`, as `UltraCanvasRenderContext.h` already did in places: a build
+  with `-Wextra` (the Models plugin, the tests, Texter, AnchorPoint) saw 48
+  `-Wunused-parameter` warnings from 17 headers - the render context's on
+  every file - and now sees none. Signatures and parameter names are
+  unchanged.
+
+#### 2026-10-08 *0.9.207*
+- **A text field's caret and selection reach the bottom of the text.** The
+  field's line box was `GetTextLineHeight("H")` tall: whole pixels, with the
+  fraction cut off (the size is converted with a `static_cast<int>`). The
+  glyphs are drawn at the font's full line height, so the caret ended up to a
+  pixel above the descenders and the bottoms of parentheses, and
+  `TextMetricsScreenshotTest` failed on that ("The caret spans the text's line
+  box: at or below the ink's bottom"). The box is the font's height in
+  fractional pixels now, from the new `IRenderContext::GetLineBoxHeight(font)`
+  (cached per font, cleared with the other font measurements), and the caret
+  covers every pixel row the box touches. `UltraCanvasTextInput` 1.8.1,
+  `UltraCanvasRenderContext.h` 2.8.0.
+- **Video: stopping the GStreamer backend no longer hangs.** The backend runs
+  a GLib event loop on a thread of its own, and `Stop()` quit it with
+  `g_main_loop_quit` from the calling thread. A quit that came before that
+  thread had reached `g_main_loop_run` was lost: the loop then started and ran
+  for ever, and `Stop()` waited for it. A process that used video briefly
+  could hang at exit, where a static destructor stops the backend, and the
+  busier the machine the more often: `VideoCodecPluginTest` timed out in about
+  1 run in 13 when 24 ran at once. The quit is now a source queued on the
+  loop's own context, which the loop runs whenever it runs. A new case in
+  `VideoCodecPluginTest` starts and stops the backend 200 times with a
+  watchdog; it hung on every run before the change. `VideoBackendGStreamer.cpp`
+  0.1.12.
+
+#### 2026-10-08 *0.9.206*
+- **The chat-title hook recognises the rename under either tool name.** The
+  Claude Code Remote server is registered as `mcp__claude-code-remote__...` in
+  some builds and `mcp__Claude_Code_Remote__...` in others. The
+  `PostToolUse` matcher in `.claude/settings.json` named only the first, so a
+  rename made through the second was never recorded, and
+  `check-chat-title.sh` kept asking for a title that was already right. The
+  matcher now takes either case and either separator, and the hook's message
+  no longer names one spelling (hook 1.0.1).
+- **mDNS plugin 0.3.1:** the Bonjour branch's `OnBrowseReply` no longer
+  declares a variable it never uses, which macOS builds warned about.
+
+#### 2026-10-08 *0.9.205*
+- **The signed macOS apps could not open the camera or the microphone.** Every
+  app is signed with the hardened runtime, which refuses a device the app has
+  no entitlement for, and `MacOS/entitlements.plist` had neither
+  `com.apple.security.device.camera` nor
+  `com.apple.security.device.audio-input`. The generated `Info.plist` had no
+  `NSCameraUsageDescription` or `NSMicrophoneUsageDescription` either, and
+  macOS terminates an app that opens the device without one. So in the
+  notarized suite, UltraAuthenticator's QR scan and the demo's video and audio
+  recorders could not open a camera or a microphone. `package-macos.sh` now
+  takes both from one line per app (`camera_usage`, `microphone_usage`). The
+  reason goes into the app's `Info.plist` and the entitlement into a per-app
+  copy of `MacOS/entitlements.plist` that the app is signed with, so the two
+  cannot disagree. Apps that open neither device get no device entitlement.
+  - UltraAuthenticator: camera. UltraCanvas Demo: camera and microphone.
+- **Every macOS app now states why it uses the local network.** Since macOS 15
+  the system asks before an app reaches the local network. Any app that prints
+  browses Bonjour for IPP printers, and DeviceExplorer browses for eSCL
+  scanners as well, so every app's `Info.plist` now has
+  `NSLocalNetworkUsageDescription` and an `NSBonjourServices` list of the four
+  service types the framework browses (`_ipp._tcp`, `_ipps._tcp`,
+  `_uscan._tcp`, `_uscans._tcp`).
+- `package-macos.sh` checks each generated `Info.plist` and entitlements file
+  with `plutil -lint` while it packages, and logs the entitlements each app was
+  signed with. A pull request's build signs ad hoc with the same per-app
+  entitlements, so it shows what the release will carry.
+
+#### 2026-10-08 *0.9.204*
+- **DemoApp: the domain dashboard is back, on the list view.** The old
+  "Templates demo" page - a domain table with links, an "Enable" action,
+  sparklines, visitor figures, plans and a ⋮ menu per row - was taken out of
+  the build in January and its file deleted today, because it no longer
+  compiled. It built eight elements and a line chart per row in a container.
+  The new *Domain Dashboard* page (Extended Functionality, after List View)
+  shows the same table with `UltraCanvasListView`: one custom `IItemDelegate`
+  paints every cell, `onCellClicked` / `onCellHovered` make the domain a link
+  (it opens in the browser through `OpenURL`, where the old page ran
+  `system("xdg-open " + url)`) and "Enable" an action, ⋮ and a right-click
+  open the row's menu (open, (de)activate, change plan, remove - each edits
+  the model), and a header click sorts by that column (the trend column by
+  growth). "Add 1,000 domains" shows that only the rows on screen are
+  painted. `UltraCanvasListViewExamples.md` explains the pattern under "A
+  custom delegate with clickable cells".
+- **DemoApp: `--component` starts without the About window, and
+  `--no-about` leaves it out on any start.** The modal "UltraCanvas Demo -
+  Information" window opened on every start, also over the page
+  `--component <id>` had just selected, so a page could only be screenshotted
+  after a script clicked it away. Naming a page now implies `--no-about`;
+  `--help` lists both.
+- **Docs: no page points at the removed layout managers any more.**
+  `GettingStarted.md` still told readers (and the prompts it suggests) to lay
+  out with `UltraCanvasBoxLayout`, `UltraCanvasGridLayout` and
+  `UltraCanvasFlexLayout`, and `UltraCanvasImagePerformanceTest.md` included
+  `UltraCanvasBoxLayout.h`; none of those headers exist. Both now name the
+  CSSLayout engine (`layout.SetFlexRow()` / `SetFlexColumn()` / `SetGrid()`),
+  which `UltraCanvasLayoutExamples.md` documents.
+- **Docs: `GettingStarted.md` and `UltraCanvasImagePerformanceTest.md` pass
+  the doc checker.** The Image Performance Test page now matches the demo
+  source:
+  - the `UltraCanvasImageElement` outline carries its real constructors and
+    `LoadFromFile(path, forceLoad)`;
+  - the Include BMP checkbox reacts through `onStateChanged`, not
+    `onCheckedChanged`;
+  - its two `std::filesystem` calls convert with `PathFromUtf8` /
+    `PathToUtf8`, as the UTF-8 path rule asks, where they used `path(str)`
+    and `.string()`;
+  - new sections show the page's private helpers (`NowMs`,
+    `DefaultOptionsFor`), its grouped bar chart and the `PanelState` every
+    lambda shares.
+
+  Every snippet on the page now compiles against the headers with all its
+  names typed.
+- **`scripts/check_doc_examples.py` 1.1.0.**
+  - A snippet's `#if` / `#ifdef` / `#else` / `#endif` and `#define` lines
+    stay where they are, so Windows-only code (`WinMain` under
+    `#ifdef _WIN32`) is left out on Linux instead of being compiled.
+  - A `doc-check` comment can `#define` a macro the build supplies
+    (`MYAPP_VERSION`).
+  - Prose may name a function that the doc's own headers or its `doc-check`
+    comment declare.
+  - `Name (` with a space is no longer read as a call, so
+    `Code needs to be PRed (N lines)` is not flagged.
+  - A name whose type sits in another block is no longer given up when
+    clang suggests that type on one of its two generated lines but not on
+    the other.
+- **Elements take the presses they act on.** Since a press nobody took climbs
+  to the elements around it, an element that acted on a press and then
+  reported it as untaken handed the same press to its parents. These did:
+  the kanban board (a press on the background took the focus and cleared the
+  selection, firing `onSelectionChanged`), the Gantt chart (a click off the
+  rows cleared the selection and started a pan), the block diagram and the
+  Gource tree (deselect on the empty canvas), the tree map (deselect on a
+  background double-click), the arc and adjacency diagrams (the press of a
+  click whose release selects, and the release that deselects), the gradient
+  editor (a press off its stops took the focus) and the video player (the
+  release that ends a seek or volume drag). Each now returns `true` there.
+  The curve editor and the PDF view took the focus for a middle press and
+  then let it go on; they now leave a button they have no use for alone, the
+  focus included. The rich-text editor's right press without a menu still
+  goes on, on purpose, so a surrounding pane's menu can open - as a button's
+  does; the code now says so.
+- **The arc diagram can be clicked where it is drawn.** Its hover and click
+  hit test subtracted the diagram's position in its parent from a pointer
+  that was already local, so a diagram away from its parent's top left
+  showed the wrong node's tooltip and selected the wrong node, or none.
+- **The video player's seek and volume drags capture the mouse**, so their
+  release arrives even off the player; before, a release outside it left the
+  scrub running.
+- **A movable toolbar is dragged by its own surface, and stays where it is
+  dropped.** With `ToolbarDragMode::Movable` / `Both` any left press the bar
+  got started a drag - with presses climbing, a press on a label, separator
+  or disabled button would carry the whole bar off. The drag also tracked the
+  pointer in the bar's own coordinates while moving the bar (the reference
+  moved with every step), was not captured (it stuck once the pointer left
+  the bar), and moved only the laid-out bounds, which the next layout pass
+  put back. It now starts only from the bar's own surface, follows the
+  pointer in window coordinates with the mouse captured, and sets the bar's
+  CSS position (`SetElementAbsolutePosition`). `BeginDrag` / `UpdateDrag`
+  take window coordinates. Docs: `UltraCanvasToolbarExamples.md`.
+- The file view's guard against presses on its own elements now hit-tests
+  with `FindElementAtPoint`, as the window does (scrolling, clipping), instead
+  of a bounds check of its own.
+- Tests: `ElementPressTakenTest` (a window under Xvfb; it skips without a
+  display) - 11 of its 15 checks fail on the previous code.
+- **A mouse press the element under the pointer does not take climbs to its
+  parents.** The window handed `MouseDown`, `MouseUp` and `MouseDoubleClick`
+  to the innermost interactive element under the pointer and, when that
+  element did not take it, straight to the window - never to the elements
+  around it, although the wheel, drags, touches and keys already climbed. So
+  a container that acts on a click (a clickable card, a row, a tile) never
+  heard of a click on the label, icon or inner row inside it, and answered
+  only on its padding: UltraMail's account tiles switched the account from 1
+  of 14 spots. A press now goes to the element's parent, then the
+  grandparent, each with the pointer in its own local space, until one
+  returns `true`. The climb:
+  - stops below the window, which still gets a press nobody took, once, at
+    the end - so a press in a popup (a child of the window) never reaches
+    what lies under it;
+  - stops at an element that left the tree, or was destroyed, while the
+    press was being handled (a click that closed its row): the chain is
+    taken before the first element runs, and `CleanupElementReferences`
+    clears an element destroyed meanwhile, also during a modal dialog's
+    nested event loop;
+  - changes nothing for a press an element takes (returns `true`), which is
+    what buttons, inputs, lists, sliders and menus do with their own clicks.
+  Two elements were made ready for it, because a press they left would now
+  have reached a parent that acts on it:
+  - **`UltraCanvasTextInput` takes a double-click.** A fast second click
+    arrives as `MouseDoubleClick`, which the input dropped; in the
+    spreadsheet's cell editor it would have climbed to the sheet, which reads
+    a double-click on a cell as "start editing" and rebuilt the editor from
+    the stored text - losing what had been typed. It now selects the word
+    under the pointer (all of a password field) and is a second press on the
+    clear and reveal buttons, and a release over the field is the field's.
+  - **`UltraCanvasFilerWidget` leaves alone a press on its own elements.** A
+    right-click on the filter's "clear" button (which has no menu) would have
+    reached the view as a right-click on the folder: it took the keyboard
+    from the search field, committed an open rename and opened the folder
+    menu, which then swallowed the next click.
+  Gained by the change without code of their own: UltraMail's address-book
+  sidebar answers a click on a group's name, and an
+  UltraDesktop sticky note can be dragged by its grip (the grip is a label,
+  and the board was written expecting its press to climb - it never did).
+  Rules for element authors - return `true` for a press you acted on, and a
+  container now sees the presses its children did not take - are in
+  `UltraCanvasCoordinateSystemGuide.md`, *Which element gets a press*. Tests:
+  `MouseClickBubblingTest` (a window under Xvfb; it skips without a display):
+  7 of its 21 checks fail on the old code, and 3 Filer checks fail with the
+  climb but without the Filer's guard.
+- **`UltraCanvasTemplate` is removed.** The layout-template class
+  (`UltraCanvasTemplate.h` / `.cpp`, with its builder and presets) was never
+  named in a build file in the repository's history and no longer compiled
+  (61 errors against today's API). Its only examples lived in
+  `Apps/UltraCanvasToolbarExample.cpp`, a standalone program that was never
+  built either and was deleted in May 2026. What it offered exists in working
+  form: `UltraCanvasToolbarBuilder` and `ToolbarPresets` (toolbar, status
+  bar, ribbon, sidebar), flex and grid layout on every container,
+  `PlaceChildAt` for absolute placement, a movable toolbar, and
+  `UltraCanvasElementPlugins::Create(typeName)` for creating elements by
+  name. Its placement engine wrote children's bounds directly, which the
+  layout pass overwrites, and it painted its own drag handle. The element
+  catalogue's exemption list called it "the skeleton new elements are copied
+  from"; that line is gone with it.
+- **New text layouts wrap a long word between characters.** A layout from
+  `IRenderContext::CreateTextLayout` wrapped at word boundaries only - Pango's
+  own default - so a URL, a file path or a hash given a width ran on past it.
+  Everything drawn through `DrawText` / `DrawTextInRect` already wrapped words
+  first and characters second (`TextStyle::wrap` is `WrapWordChar`), and every
+  element that wraps on purpose (the text area, the rich-text editor, the
+  Markdown view, the tooltip) set that mode itself; a layout made directly
+  was the one place that did not. `UCTextLayout` now starts in `WrapWordChar`,
+  so the two paths agree, and a layout whose words all fit wraps exactly as
+  before. A caller that wants a long word kept whole still asks for
+  `TextWrap::WrapWord`. See *Wrapping* in `UltraCanvasRenderContext.md`.
+
+#### 2026-10-08 *0.9.203*
+- **Screen readers can use the common widgets, and VoiceOver reaches
+  UltraCanvas on macOS.**
+  - **Widgets describe themselves** (`UltraCanvasAccessibility.h` 1.2): new
+    roles `RadioButton`, `Switch`, `ComboBox`, `Slider`, `SpinButton`,
+    `ProgressBar`, `Toolbar`, `TabList`, `Tree`, `Group`; and on
+    `UltraCanvasUIElement` `GetAccessibleDescription` (the tooltip by
+    default), `GetAccessibleToggleState`, `GetAccessibleRange` /
+    `SetAccessibleValue`, `GetAccessibleValueText` /
+    `SetAccessibleValueText`, `GetAccessibleActionName` /
+    `DoAccessibleAction`, `NotifyAccessibility`, and
+    `SetAccessibleName` / `SetAccessibleDescription` to name any element
+    (an icon button, a field labelled by another element). New events
+    `ValueChanged` and `StateChanged`.
+  - Implemented by button (press; a toggle button its pressed state; an icon
+    button is named by its tooltip), checkbox / radio / switch (checked
+    state, toggle / select), label, text input (named by its placeholder,
+    its text as value, settable, never in password mode), dropdown (the
+    shown item), slider and spinner (value, range, step, settable), busy
+    indicator, group box, tabbed container (named after the open tab),
+    toolbar, list and tree view, image and menu.
+  - **AT-SPI** gains the `Value` and `Action` interfaces, checkable / checked
+    / indeterminate / pressed states, descriptions, the new roles, and
+    reads a text field's value through `Text`. **UI Automation** gains the
+    Invoke, Toggle, SelectionItem, RangeValue and Value patterns, HelpText,
+    the new control types and property-changed events.
+  - **NSAccessibility bridge** (`OS/MacOS/UltraCanvasMacOSAccessibility`):
+    a window's content view hands VoiceOver its elements, one
+    `NSAccessibilityElement` per element, with roles, labels, help, values,
+    actions, focus, frames, the text attributes VoiceOver reads (UTF-16
+    ranges converted) and change notifications. `UltraCanvasMacOSWindow`
+    gains `GetContentView()`. Compile-checked by the macOS CI build; not yet
+    tried with VoiceOver.
+  - Tests: new `WidgetAccessibilityTest` (41 checks, headless);
+    `AtspiBridgeTest` now presses a button, ticks a checkbox, sets a slider
+    and reads a text field through libatspi.
+
+#### 2026-10-08 *0.9.202*
+- **`NormalizePath` doubled the separator at the end of a folder on Windows.**
+  `NormalizePath(GetResourcesDir() + "media/icons/")` came back ending in
+  `\\`, and every file name appended to it carried the doubled backslash -
+  `GetBundledFontsDir()`, the file display's icon folders and the demo apps'
+  media folders among them. A folder given with `/` or `\` at its end now
+  ends in exactly one native separator on every platform (the root `/` on
+  Linux and macOS, which came back as `//`, included).
+- **On Linux and macOS a path that did not exist could come back cut
+  short.** `realpath` fails for it, and POSIX leaves its buffer undefined
+  then; glibc leaves the path up to the first name that is missing, so a
+  file in a folder that did not exist (`.../missing/sub/file.txt`) came back
+  as that folder (`.../missing`). Such a path is now returned as it was
+  given, so whatever opens it next names the file it did not find.
+- `FilerNameEncodingTest` checks both, on the Windows CI row too: a
+  Thai-named folder asked for with `/` or `\` ends in one separator and a
+  file name appended to it reaches the file, the root keeps one separator,
+  and a missing path comes back whole.
+
+#### 2026-10-08 *0.9.201*
+- **CI no longer waits an hour on a stalled Ubuntu mirror.** On 2026-10-07 an
+  `apt-get update` in the Android check sat on one download for fifty minutes
+  without receiving a byte, and the x64 Linux build spent half an hour
+  installing packages from a mirror sending about 30 KB/s; both runs were
+  cancelled by hand and passed on re-run in seconds. apt's own timeouts never
+  fire on such connections, so every apt call in the workflows now goes through
+  `scripts/ci-apt.sh`. It watches what apt has downloaded and, after two
+  minutes without a byte, stops it and starts again on a fresh connection, up
+  to three times (apt resumes the partial files). A mirror that is merely slow
+  is left alone, since the same day's slow installs (15 to 27 minutes) did
+  finish. Only downloads are ever interrupted: packages are fetched first and
+  then installed from the local cache, so dpkg is never killed mid-unpack.
+  - Every install step also has its own time limit, well above its slowest
+    run in the last two days, instead of only the job's 2-hour (5-hour on
+    macOS) limit: Linux dependencies 45 minutes, MSYS2 30, the Android
+    check's headers and the WebAssembly host tools 20, Clang and Homebrew 15,
+    Rust 10, the Python websockets package 5.
+
+#### 2026-10-08 *0.9.200*
+- **The UTF-8 path check runs when UltraNet or VideoFX changes.**
+  `scripts/check_path_string.py` has always scanned `UltraNet/` and
+  `VideoFX/`, but `path-strings.yml` did not list them among the paths that
+  start it, so a pull request touching only those modules never ran the
+  check, and a `.string()` or `fs::path(std::string)` added there went
+  unreported until some later change started it. Both are in the trigger
+  list now, which notes that it follows the scanner's `SEARCH_ROOTS`.
+
+#### 2026-10-08 *0.9.199*
+- **The vector converter doc's examples compile again.** The C++ in
+  `UltraCanvasVectorConverters.md` used the converter classes
+  (`XARConverter`, `EPSConverter`, `CDRConverter`, `EMFConverter`,
+  `WMFConverter`, `AIConverter`, `DXFConverter`, `DWGConverter`) and
+  `AutoRegisteredFormatPlugins()` without saying where they come from. Those
+  live in the plugin headers (`UltraCanvas/Plugins/Vector/`,
+  `UltraCanvas/Plugins/UltraCanvasAllFormats.h`), not the public ones, so a
+  reader copying an example got undeclared names and
+  `scripts/check_doc_examples.py` reported 18 errors. The examples now open
+  with the `#include`s they need, and the checker passes the doc.
+- **`llms.txt` no longer shows a `doc-check` note as a document's
+  description.** `scripts/generate_llms_txt.py` took the first paragraph after
+  the title, and in `UltraCanvasHTMLReader.md` and `UltraCanvasSVGExamples.md`
+  that was the hidden `<!-- doc-check: ... -->` note for the example checker.
+  HTML comments are now skipped, so both index entries describe the document.
+
+#### 2026-10-08 *0.9.198*
+- **Startup and frame timings, for an application that starts slowly or
+  draws slowly.** An application could time `Initialize()` only as a whole,
+  and a frame not at all - UltraMail's window stays black for ten seconds and
+  more on Windows, and which of the framework's steps, or the first frame,
+  takes that time could not be told from outside.
+  - `UltraCanvasApplicationBase::GetStartupTimings()` lists each step of
+    `Initialize()` with its time (`StartupStageTiming`): fontconfig setup,
+    the image subsystem, the native backend, the bundled and system fonts,
+    the clipboard and the default window icon. The same lines go to
+    `debugOutput` ("UltraCanvas: startup step ... took N ms").
+  - `UltraCanvasWindowBase::onFrameRendered` is called after every frame that
+    laid out or painted anything, with a `WindowFrameTiming`: the time of the
+    layout, of painting the dirty rectangles and popups, and of compositing,
+    and how many rectangles were painted. Nothing is timed while it is unset.
+  - Doc: `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md`, "Slow to start,
+    or a window that stays black". UltraMail 0.10.35 prints both in its
+    timing trace.
+- **VideoFX: built-in face detector; slideshows frame faces by themselves**
+  (VideoFX 0.6.0). `VideoFX_DetectFaces` finds frontal faces in an image -
+  a Viola-Jones detector running OpenCV's trained `haarcascade_frontalface_alt`
+  model (vendored unmodified in `UltraCanvas/third_party/opencv_haarcascade/`,
+  Intel License Agreement, BSD-style; compiled in as a table generated by
+  `scripts/generate_face_cascade.py`), evaluated by VideoFX's own code with no
+  OpenCV linked. It finds what OpenCV's `CascadeClassifier` finds (checked to
+  within a few pixels), runs in some 0.1-0.2 s a photo on several threads,
+  works without FFmpeg, and thins out the model's stray hits (a colour photo's
+  face needs skin colour; too few agreeing windows drop a box).
+  - `VideoFXSegment::keepFacesInView` and `VideoFXSlideshowOptions::keepFacesInView`
+    (on by default): a photo with no regions given keeps its detected faces
+    in shot through the pan and zoom. An app's `findKeepInView` still wins.
+  - `videofx faces IMAGE`; `videofx slideshow ... --no-faces`.
+  - Test photo `Tests/data/videofx/astronaut-200.ppm` (NASA, public domain).
+- **Windows: the system fonts are scanned in the background; a cold font
+  cache no longer holds the start.** The generated `fonts.conf` names
+  `C:\Windows\Fonts` and the user's font folder, and fontconfig read every
+  font in them before the first text could be laid out. From its cache that
+  is quick; with a cold cache - the first start on a computer, after Windows
+  changed its fonts, after the cache was cleaned - it opens every file, and
+  with Windows 11's fonts that takes many seconds in which no window could
+  appear.
+  - `SetupBundledFontconfig()` now writes two configs when the bundled fonts
+    are present: `fonts-startup.conf` (the bundled fonts alone, which
+    fontconfig starts with) and `fonts.conf` (the full set), and scans the
+    full set on a thread of its own.
+  - `AdoptSystemFontsWithin(waitMs)`, called by the Windows
+    `LoadBundledFontsNative()` with 400 ms: a scan that ends within the wait
+    - a warm cache does - is the current set from the start, exactly as
+    before. A longer one: the application starts with the bundled fonts and
+    Windows' two symbol fonts (`seguisym.ttf`, `seguiemj.ttf`, added by file:
+    the symbols the UI draws, ● ↩ ✓ ▲ ▼, and emoji), and when the scan ends
+    every window switches to the full set on the UI thread - fontconfig's
+    current config, Pango's font map, the text caches
+    (`RenderContextCairo::InvalidateAllFontMetricsCaches`) and a new layout of
+    every element. Fonts registered at run time move with it.
+  - `GetSystemFontScanStatus()` and `SetSystemFontsSwitchedHandler()` tell an
+    application how it went, for a start-up report.
+  - Other platforms are unchanged: Linux and the BSDs use the system's own
+    fonts.conf, macOS CoreText.
+- **Windows: a window is never shown black.** `Show()` made the window
+  visible and painted it at once - from a surface nothing had been drawn
+  into yet, which a new Cairo image surface fills with zeros: black. The
+  content came with the event loop's first frame, so a window stayed black
+  for as long as anything held the loop on its way there (UltraMail's main
+  window, for ten seconds and more on one machine).
+  - `UltraCanvasWindowsWindow::Show()` draws the first frame before the
+    window appears (`UltraCanvasWindowBase::RenderBeforeShow()`: the layout
+    and paint of `UpdateAndRender()` for a window not yet shown), so it
+    appears with its content.
+  - A window's surface starts in its `backgroundColor`, not black - when it
+    is created and when it is made again for another screen scale - so
+    whatever is shown before a frame has been drawn is the window's colour.
+  - Doc: `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md`, "Slow to
+    start, or a window that stays black".
+
+#### 2026-10-07 *0.9.197*
+- **The file dialog says why OK did nothing.** In Open mode, OK on a typed
+  name that is not a file was swallowed, so the button read as dead; it now
+  shows a **File Not Found** notice naming the name and the folder, and the
+  dialog stays open on the name. A Save typed into a folder that does not
+  exist gets a **Folder Not Found** notice the same way.
+- **`FileDialog.conf` failures are reported, and it is written only when
+  something changed.** A settings folder that could not be written left the
+  file dialog forgetting its view, size and folder with no trace; the failed
+  write, and a file that is there but cannot be read, are now reported once
+  per run on `debugOutput`. `FileDialogSettings::Update` compares the
+  settings before and after the change and skips the temp-file-and-rename
+  when a close changed nothing, which is most closes.
+
+#### 2026-10-07 *0.9.196*
+- **`scripts/check_callback_cycles.py` now sees a `shared_ptr` the function
+  was handed, and a callback passed to a setter.** It passed
+  `UltraCanvasRadioGroup::AddRadioButton`, which leaked every radio it was
+  given: `button->onChecked = [this, button]` stored a copy of the by-value
+  `std::shared_ptr<UltraCanvasRadio> button` parameter on the radio it owns.
+  The check looked for the capture's type only inside the function body, and
+  a parameter is declared before the `{`, so it never knew `button` was a
+  `shared_ptr`.
+  - A parameter declared `shared_ptr<T>`, `const shared_ptr<T>&` or
+    `shared_ptr<T>&&` now counts, beside `make_shared`, declared locals and
+    factories. A pointer to one, a `weak_ptr` or a container of them does not.
+  - A lambda handed to a setter on the object (`x->SetOnClick(...)`,
+    `x->SetEventCallback(...)`, `x->SetValueFormatter(...)`,
+    `x->AddListener(...)`) is checked like an assignment to `x->onClick`.
+    Most of the framework's click handlers are wired this way, and none of
+    them were checked before.
+  - `[p = x]`, `[p = std::move(x)]` and a `[=]` whose body uses `x` are
+    reported like `[x]`, since each copies the `shared_ptr`. `[x = x.get()]`,
+    `[w = std::weak_ptr<T>(x)]` and by-reference captures (`[&x]`, `[&]`)
+    are not: they own nothing. A `[&x]` used to be read as `[x]`.
+  - Run against `AddRadioButton` as it stood before its fix, the check now
+    reports it. The DemoApp's earlier hand fixes of the same shapes
+    (`AttachStatus` in the mind-map examples, the `SetEventCallback` tiles in
+    the CDR, DWG, EPS, SVG and XAR examples) are now enforced rather than
+    merely done.
+- The check found two more leaks of this kind, both fixed: the DemoApp's git
+  graph page stored a file-list provider capturing `graph` on `graph`, and
+  `UltraCanvasFlowChartPalette` stored each shape button's click handler,
+  capturing the button, on that button. It now also scans
+  `UltraCanvas/Plugins` (where the palette leak sat unseen),
+  `UltraCanvas/OS`, `UltraCanvas/libspecific` and `Tests`, in CI as well.
+- Charts: the hover ring (`SetEnableSelection`) is drawn around the point
+  where the chart draws it. In `XAxisLabelMode::DataLabel` the points are
+  spaced by index, but the ring was placed by the x value, so it could sit
+  beside the point; it is also no longer drawn for a point the zoom has
+  scrolled out of the plot.
+- **Docs: `UltraCanvasCheckbox.md` describes the checkbox and radio API that
+  exists.** It documented the checkbox from before the radio and the switch
+  became their own classes: `Switch` and `Radio` styles, `CreateSwitch`,
+  `CreateRadioButton`, `SetAutoSize`, a numeric id and `long` coordinates,
+  label fields on the checkbox style, and a radio group of checkboxes. None
+  of these compile any more, and `check_doc_examples.py` found 31 problems on
+  the page. It now covers `UltraCanvasCheckbox`, `UltraCanvasRadio` (with
+  `UltraCanvasRadio::Create` and `RadioVisualStyle`) and the base they share,
+  the click cycle of the three states, sizing, and `UltraCanvasRadioGroup`,
+  which no other page documents: how the selection works, why the initial
+  choice is set with `SelectButton`, that a grouped radio's `onChecked` is
+  the group's, and the lifetime rules from this release (the group is not
+  owned by its radios; what happens when it goes first, when a radio is
+  removed, and when a group is moved or copied). Every C++ block on the page
+  compiles against the headers.
+- DemoApp: the checkbox page's tri-state section no longer leaks its boxes.
+  Each item's callback held `updateParentState`, which held the item, and the
+  parent's held `updateStatusLabel`, which held the parent; they name the
+  boxes raw now. The parent's handler was also assigned twice, the first
+  never taking effect; it is set once.
+- **A menu fades in as a whole.** With `MenuStyle::enableAnimations` a popup
+  menu or submenu faded only its entries in; the panel - background, border,
+  shadow - appeared at once. It now fades in whole over `animationDuration`:
+  the menu starts its popup at opacity 0 and steps it to 1 on a timer
+  (`UltraCanvasWindowBase::SetPopupOpacity`, below). A step only composites
+  the window again; the menu is not repainted. Animations stay off by
+  default.
+- **A popup can be shown at an opacity.** `UltraCanvasWindowBase::SetPopupOpacity()`
+  / `GetPopupOpacity()`, with the value kept on the window's `PopupElement`.
+  Each popup draws into a surface of its own, and the window copied that
+  surface over its content when compositing, so a popup could only be fully
+  there or not at all. Below 1 the window now mixes the popup with the
+  content and the popups already composited beneath it
+  (`IRenderContext::FlushToSurfaceWithOpacity`, new: each pixel moves from
+  the destination towards the popup's by the opacity). It works for any
+  popup opened with `OpenPopup()` - dropdown and autocomplete lists, date and
+  time pickers, menus - and a popup takes input at any opacity. Popups open
+  at 1, which is the copy exactly as before, so nothing changes for a popup
+  that does not ask. A render context that cannot blend draws the popup
+  opaque. A caret inside a popup below full opacity is redrawn with a full
+  composite, not restored from the popup's surface alone.
+- `Tests/MenuAndTabBehaviourTest.cpp` reads the opacity and the fade off a
+  window stand-in whose screen is an offscreen surface, so
+  `UpdateAndRender()` composites onto it as onto a real window.
+- Docs: `UltraCanvasScatterPlotElement.md` matches the code and passes
+  `check_doc_examples.py`. The constructor and `CreateScatterPlotElement`
+  take no numeric id; `SetPointSize` takes a `double` and is the point's
+  radius (6 by default); `SetEnableSelection` is the ring around the hovered
+  point, not click selection; the tooltip picks a point within its size plus
+  5 px; and an invented `ShowErrorMessage` and `ScatterDataPoint` gave way to
+  the chart's empty state and the real `ChartDataPoint`.
+
+#### 2026-10-07 *0.9.195*
+- **A button made without a label has none.** `UltraCanvasButton`'s
+  constructors and `CreateButton` defaulted the label to "Button". An
+  icon-only button that left the label out carried it and was laid out as
+  icon + text, so its icon sat at the left padding instead of in the middle
+  (the file dialog's Up arrow, until the fix in 0.9.176 passed `""`). The
+  default is now empty. Of the 291 buttons in the repository made without a
+  label, 288 are given one right after; the other three are UltraTexter's
+  search-bar *First match*, *Previous* and *Search options* icon buttons,
+  whose icons now sit in the middle like *Next*'s, which already passed
+  `""`.
+- **`FileDialogConfig::defaultExtension` is used.** It was declared and never
+  read. A Save name that still has no extension after the chosen type's -
+  under All files, or with no filters - now gets it ("photo" -> "photo.png"),
+  before the Replace File question like the rest of the Save naming. Empty
+  (the default) leaves such a name bare, as before. It belongs to the
+  framework dialog; `FileDialogOptions` has no counterpart.
+- **Saving under a name without an extension says what is wrong.** The
+  extension picks the format, so a name saved under "All files" without one
+  has none to pick. `UCRasterDocument::SaveToFile` passed such a name to
+  libvips, which answered only that it was "not a known file format", and
+  `UltraCanvasFileLoader::SaveVectorDocument` answered "No writer for .".
+  Both now say the name has no extension and to add one or choose the file
+  type, and write nothing. UltraPaint and ArtCreator relied on adding a
+  default extension of their own instead; they no longer do (see their
+  changelogs), since the save dialog adds the chosen type's.
+
+#### 2026-10-07 *0.9.194*
+- **Windows: a WSD print queue gets its printer's address, and a printer
+  that is already a queue is no longer listed twice.**
+  - A WSD port carries no address the spooler gives out. The spooler backend
+    now reads it from Plug and Play: the queue's device node and the WSD
+    device it prints to share a device container, and the WSD device's PnP-X
+    `IpAddress` (or the hosts of its WS-Discovery `XAddrs` or location) name
+    the printer. A queue in the computer's own container gives none.
+  - So the IPP supply-level fallback now covers WSD queues too, tried at
+    `/ipp/print`, `/ipp` and `/` on 631 like a Standard TCP/IP port.
+  - The IPP backend skips a printer it finds over DNS-SD when a Windows
+    queue already prints to that host, the way it defers to CUPS on Linux and
+    macOS. A new `Internal::WindowsQueuePrinterHosts()` lists those hosts
+    (IPP, Standard TCP/IP and WSD ports). The match is on the mDNS host name
+    and every address the printer answered from.
+  - The matching is the new platform-neutral `IppHostsForWindowsQueue()`,
+    `IppPrinterIsWindowsQueue()`, `IppUriHost()` and `IppNormalizeHost()`.
+    `IODevicePrinterIPPTest` covers them with 19 new checks. The SetupAPI walk
+    only runs on Windows and is cross-compiled, not yet run on real hardware.
+- **IODeviceManager README: the *Printer Status* example compiles.** It used
+  `printer` without declaring it, which `check_doc_examples.py` reported. It
+  now gets the printer the way the printing example above it does.
+- **The mDNS plugin reports every address a service answers from**, not
+  only the first (plugin 0.3.0). `attributes["ip"]` now lists all of them,
+  IPv4 first, and a service answered more than once is one entry.
+  - Avahi reported a service once per interface and IP version, as separate
+    entries, each with one address. Each is now resolved to its own family's
+    address, and the answers are merged into one entry.
+  - Win32 reported the IPv6 address only when there was no IPv4 one. It now
+    reports both.
+  - Bonjour reported no address at all. It now asks for both families
+    (`DNSServiceGetAddrInfo`), waiting at most a second for the first answer
+    and 150 ms more for the other family.
+  - The merging is the new `Mdns::AddAddress()` and `Mdns::MergeAnswer()`,
+    tested in `MdnsNamesTest`. The Bonjour branch was only syntax-checked
+    here; macOS CI compiles it.
+
+#### 2026-10-07 *0.9.193*
+- **Trusting a printer on first use is tested on every Linux CI run.**
+  `IODevicePrinterIPPLiveTest` already printed to CUPS's reference printer
+  (`ippeveprinter`, from `cups-ipp-utils`, which CI installs) over `ipp://`;
+  it now reaches the same printer over `ipps://` too, where it presents the
+  self-signed certificate it made itself. It checks that the printer's key is
+  learned on first contact and kept under its name, that a document prints
+  through the pinned connection, that a key differing from the one kept is
+  refused and does not replace it, that forgetting the key lets the same key
+  be learned again, and that with learning switched off the printer is
+  refused. The keys go to a file of the test's own, never the user's.
+
+#### 2026-10-07 *0.9.192*
+- **Charts: zoom and pan of the line, area and scatter charts work, and are
+  off by default.** `SetEnableZoom` / `SetEnablePan` did nothing visible (the
+  zoom level was never read, pan was an empty stub), yet these three charts
+  switched both on in their constructors, so they swallowed the mouse wheel
+  and a scrolling page around them could not scroll. Now, once enabled, the
+  wheel zooms the x axis around the pointer (up to 50x, in both x-axis label
+  modes) and a drag pans a zoomed axis; `ResetZoom()` and `IsZoomed()` are
+  new. A wheel turn or drag that changes nothing - over the margins, zooming
+  out of the whole range, on a chart that does not zoom such as the bar
+  chart - is left to the parent.
+- **Charts: the plot area follows a resize.** The chart base worked out its
+  plot rectangle only when the data source or label mode was set, so a chart
+  the layout resized kept its old plot area. `SetBounds` and `Arrange` now
+  make it be worked out again.
+- **Charts: the line chart's dots follow `SetPointRadius`.** The line chart
+  had a radius of its own (4 px) that hid the base class's; it is still 4 by
+  default.
+- **Charts: a chart's background is the element's own.** The chart base kept
+  a second `backgroundColor` and `SetBackgroundColor` beside
+  `UltraCanvasUIElement`'s, so a colour set through one was not seen by the
+  other. There is one colour now, white by default for charts.
+- **Charts: bar charts rise from zero.** The value axis ran from the smallest
+  to the largest value plus 5 %, so bars stood on the smallest value; it now
+  always includes 0, and negative values hang below the zero line.
+- **Charts: a CSV's first row labelled "May" or "July" is kept.**
+  `ChartDataVector` and `ChartDataStream` took the first line for a header
+  when it contained an `x` or a `y` anywhere; it is a header now only when its
+  x and y columns are not numbers.
+- **Waterfall chart:** `WaterfallChartDataVector::LoadFromCSV` (lines
+  `label,change[,type]`) and `LoadFromArray(std::vector<ChartDataPoint>)` load
+  steps instead of nothing; the running totals are worked out when the steps
+  change instead of on every `GetPoint`; and the chart no longer re-declares
+  `showValueLabels`, so `SetShowValueLabels` through the base class reaches
+  it.
+- **`CreatePopulationPyramid` lays out its `rowLabels`** as empty rows in
+  that order, and `AddDataRow` with a label that is already a row fills that
+  row instead of adding a second one.
+- **The block diagram's and the chart renderer's connection styles can be used
+  in one program.** Both declared `UltraCanvas::ConnectionStyle` - an enum in
+  `UltraCanvasBlockDiagram.h`, a struct in `UltraCanvasConnectionRenderer.h`
+  (pulled in by the chord chart and the circular infographic) - so a file
+  that included both did not compile. The block diagram's enum is
+  `BlockConnectionStyle` now, beside the existing `FlowChartConnectionStyle`;
+  code that names `ConnectionStyle::Orthogonal` for a block diagram changes
+  to `BlockConnectionStyle::Orthogonal`.
+- **DemoApp: a CorelDRAW file saves as XAR.** The CDR page offered "Xara
+  drawing (not finished yet)" and called `UltraCanvasCDRPlugin::ExportToXAR`,
+  which always failed, saying there was no CorelDRAW reader into the vector
+  document model. There is one - the Vector plugin's `CDRConverter` - and its
+  `XARConverter` writes that model, so the page saves the first page through
+  them. `ExportToXAR` cannot reach them (the Vector plugin builds on the CDR
+  plugin, not the other way round); it still fails, and its error now names
+  that path.
+- `UltraCanvasCairoDebugExtension.h` is gone: nothing included it, it called
+  a `GetRenderContext()` that no longer exists, so it did not compile, and it
+  defined functions in a header without `inline`.
+- DemoApp: `UltraCanvasTableDemo.cpp` is gone. It was in no build (not in the
+  DemoApp's source list), nothing called its `CreateDomainTableDemo`, and it
+  no longer compiled: it called an `UltraCanvasMenu::ShowAt` that does not
+  exist.
+- **A radio added to an `UltraCanvasRadioGroup` was never freed, and a radio
+  clicked after its group was gone called into freed memory.** The `onChecked`
+  handler `AddRadioButton` installs held a `shared_ptr` to the radio it was
+  stored on, and a raw pointer to the group. It now holds the radio raw, and
+  the group takes the handler back when it is destroyed or the radio is
+  removed (`RemoveRadioButton`), leaving any `onChecked` the application set
+  itself alone. Moving a group now hands its radios' clicks to the new object;
+  before, they still went to the moved-from one. The public API is unchanged.
+- **An `UltraCanvasImageElement` whose `LoadFromFile` failed drew nothing.**
+  `SetError` replaced the image, and `Render` looked for the error message on
+  the replacement, so the error placeholder never appeared. It is drawn again,
+  with the reason, into the context `Render` was given (it used the window's,
+  which an offscreen or print render does not have).
+- `UltraCanvasImageElement::SetTintColor` tints the picture: its colours are
+  multiplied by the tint, inside the picture only (white, the default, leaves
+  it unchanged; the colour's alpha sets the strength). It used to be stored
+  and never drawn.
+- `UltraCanvasImageElement::LoadFromImage` reports like `LoadFromFile`: it
+  fires `onImageLoaded` for a valid image, and for one whose decode failed it
+  fires `onImageLoadFailed`, sets `GetLastError()` and shows the error
+  placeholder. A null or empty image still clears the element. It returns
+  true only for a valid image (it returned true for any non-null one).
+- `CreateImageFromMemory`'s `format` argument is documented as unused: the
+  loader detects the format from the bytes and takes no hint. The argument
+  stays, so existing calls compile.
+- **`SliderHandleShape` is an `enum class`.** As a plain enum it put
+  `Circle`, `Square`, `Triangle` and `Diamond` into namespace `UltraCanvas`,
+  where they clashed with any other name of that spelling in the namespace or
+  brought in beside it by `using namespace UltraCanvas`. Code that
+  writes `SliderHandleShape::Square` is unaffected; a bare `Square` or an
+  implicit conversion to `int` must now be spelled out.
+- `ImageAndRadioBehaviourTest` covers the above headless, with a check that
+  fails without each fix. The documentation pages for the image element and
+  the slider follow the changes.
+- **`MenuStyle::enableAnimations` animates.** `UltraCanvasMenu` computed an
+  opening progress in `UpdateAnimation()` that nothing drew, so the setting
+  had no visible effect. A popup menu or submenu now fades its entries in over
+  `animationDuration` when it opens, painting them as one group at the
+  progress (`IRenderContext::BeginGroup` / `EndGroup(opacity)`) and asking for
+  repaints on a timer until the fade is complete. The panel itself appears at
+  once: popups are composited onto the window as opaque blocks, so there is
+  nothing beneath it to fade over. Animations stay off by default.
+- **`MenuItemData::Input()` is gone.** Both overloads were declared with their
+  definitions commented out, so a call compiled and failed to link. Nothing
+  called them; `MenuItemType::Input` stays, reserved. Escape was checked as
+  well: it closes an open menu through the popup system (the application
+  closes the topmost popup when `closeByEscapeKey` is set), so the
+  commented-out Escape case in `HandleKeyDown` is replaced by a note saying so.
+- **The tabbed container's overflow button honours the search settings.**
+  `SetDropdownSearchEnabled()` and `SetDropdownSearchThreshold()` were stored
+  and never read: the button always opened the "Search tabs..." popup. It now
+  opens the search popup only when search is enabled and the visible tabs
+  reach the threshold, and otherwise a plain menu of the tabs (the active one
+  checked, disabled ones greyed out). `UsesDropdownSearch()` says which.
+  Turning search off on a container that is in no window yet - which
+  `CreateTabbedContainerWithDropdown(..., false, ...)` does - called
+  `ClosePopup` through the null window pointer (undefined behaviour that
+  happened not to crash); `HideSearchAutoComplete` checks the window now.
+- **`UltraCanvasTextArea::SetCursorPosition(pos, true)` selects.** The
+  `selecting` flag was ignored; it now extends the selection from its anchor
+  (the start of the current selection, or the caret's old place), as
+  Shift+arrow does. `GetCursorPosition()` is `const`.
+- **Activating a menu item before the application exists no longer
+  crashes.** `UltraCanvasMenu` posted the `MenuClick` event through
+  `UltraCanvasApplication::GetInstance()` without checking it, so choosing an
+  item in a test or a tool with no application ran the item and then called
+  through a null pointer. It runs the item and posts nothing. The
+  commented-out `onTextInput` slot in `UltraCanvasMenuRegistry` is gone too.
+- `Tests/MenuAndTabBehaviourTest.cpp` covers all of the above headless, with
+  popups opened in a window stand-in and the menu drawn offscreen.
+- **The SVG reader matches `<style>` selectors through the HTMLReader's
+  matcher.** 0.9.183 moved selector matching into `CSSStyleSheet.h` so that
+  the Vector plugin's SVG reader would stop carrying its own copy, but the
+  reader still matched with that copy (`SelectorMatches`, `CompoundMatches`,
+  `PseudoMatches`, `AttributeMatches` in `UltraCanvasSVGConverter.cpp`). It
+  now supplies a traits type for tinyxml2 elements to `HTML::MatchingRules`,
+  and the copy is gone. `SVGConverterTest` covers what the traits decide:
+  `:first-child`, `:nth-of-type`, an attribute selector on a camelCase
+  attribute (`[pathLength]`), `^=`, and `:root`.
+- `scripts/check_html_reuse.py` also reports a selector matcher written
+  outside the module (`SelectorMatches`, `CompoundMatches`, `MatchSelector`),
+  so a copy like that one is caught.
+- `UltraCanvasHTMLReader.md`: the style-sheet example named a variable
+  `inline`, a C++ keyword, so it did not compile; it is `declarations` now,
+  and the matcher listing shows its namespace. Every example on the page
+  compiles against the headers (`scripts/check_doc_examples.py`).
+- **A text input's formatter replaced the placeholder you set, and left an
+  empty one empty.** `UltraCanvasTextInput::SetFormatter` had the test
+  inverted. The formatter's placeholder ("(555) 123-4567", "$0.00",
+  "MM/DD/YYYY") now fills a field that has none and never replaces one you
+  set, so `CreatePhoneInput` and a field set to Currency or Date show it by
+  default.
+- **Changing a text input's type stacked validation rules.** `SetInputType`
+  only ever added rules, so switching Email to Text kept the email check and
+  Number to Email checked both. The rules a type brings are now replaced when
+  the type changes. Rules added with `AddValidationRule` stay, whether they
+  were added before or after the type.
+- **Leaving a text input now validates it.** `validateOnBlur` was set but never
+  read, so a required field the user tabbed through without typing never
+  showed its error. The rules run when the field loses the focus, before
+  `onFocusLost`, but not when it loses the focus because it is being hidden or
+  disabled.
+- **An empty optional Email, Phone or Number field is not an error.** The
+  format rules (`Email`, `Phone`, `Numeric`, `Range`, `Pattern`) rejected an
+  empty value, so once leaving a field validated, every optional field of
+  those types showed an error. They accept it now; `Required` is what makes a
+  field mandatory, as in HTML forms. `MinLength` still counts empty as too
+  short.
+- **A text input's type no longer leaves its formatter behind, and the
+  builder no longer takes it away.** Phone -> Text stayed phone-formatted with
+  the phone placeholder; the type's formatter and the placeholder it brought
+  are replaced now (a formatter or placeholder the caller set stays).
+  `TextInputBuilder::Build` applied `NoFormat` and an empty placeholder even
+  when it was given neither, so a built Phone, Currency or Date field lost its
+  formatting.
+- **Backspace and Delete report a change once, and validate.** On a selection
+  they reported it twice; at the start or end of the field they reported a
+  change that was not one; and erasing one character did not validate, so
+  emptying a required field showed no error until the next edit.
+- **One key press is one undo step in a text input.** A typed character or
+  Space saved two undo states, and typing over a selection, Backspace or
+  Delete on a selection, or a paste over a selection saved two or three, so
+  one Space took two Ctrl+Z. A key press the length limit refused also left an
+  empty step and cleared the redo stack. Typing over a selection in a full
+  field still works.
+- `TextFormatter::Currency()`'s unformat function read `front()` of an empty
+  string, which is undefined behaviour; it returns an empty string now. The
+  field itself never calls `unformatFunction`: it keeps the typed text and
+  formats a copy for display. The function is for callers that hold formatted
+  text and want the raw value (`UltraCanvasTextInputExamples.md` shows how).
+- `CreateTextInput`, `CreatePasswordInput` and `CreateRevealablePasswordInput`
+  take float geometry like the email, phone and number factories, and
+  `TextInputBuilder` keeps its position and size as floats. The builder stored
+  them as `long`, so a size of 150.5 became 150.
+- `Tests/TextInputBehaviourTest.cpp` checks all of these. Each check fails
+  without its fix.
+- Tests: `VectorFormatsPluginTest` expects `.xar` to be readable, previewable
+  and loadable only when the XAR plugin is built (`ULTRACANVAS_PLUGIN_XAR`),
+  as it already did for `.cdr` and the CDR plugin. A build with the Vector
+  plugin and without the XAR plugin failed two checks; it now checks that XAR
+  is not claimed for reading there.
+
+#### 2026-10-07 *0.9.191*
+- **Width profiles follow straight segments.** `VariableWidthOutline`
+  (`UltraCanvasVectorStorage.cpp`) built a width-profiled stroke's band from
+  the flattened path's points only, so on a straight segment the width went
+  linearly from one point to the next whatever the profile did in between:
+  a straight two-point line with a mid-way peak (`{0: 0.2, 0.5: 2, 1: 0.2}`)
+  came out as an even thin band. Curves were mostly spared, because
+  flattening gives them many points. The band now gets a point wherever a
+  profile sample falls inside a segment (the closing segment of a closed
+  shape included). The profile is linear between samples, so the edges are
+  exact straight lines between those points. The path's own points keep the
+  tangent they had, so corners join as before. The renderer and the XAR
+  writer use the function (the SVG writer too, once it writes width
+  profiles), so the screen and the exports change together.
+  `Tests/VectorModelTest.cpp` checks the band's width, the rendered peak, a
+  thin end and a profiled closed shape's two rings.
+
+#### 2026-10-07 *0.9.190*
+- **Transforms are written dot-decimal whatever the desktop's locale.**
+  `SerializeTransform` (`UltraCanvasVectorStorage.cpp`) formatted with
+  `std::to_string(double)`, which renders through `LC_NUMERIC` - and the
+  Linux backend sets that from the environment for XIM. On a comma-decimal
+  desktop (German, French, Russian, Brazilian Portuguese, ...) every
+  transform the SVG writer saved, on groups, gradients and patterns, came
+  out as `matrix(0,866025,0,500000,...)`, whose commas are also the
+  separators, so a saved drawing reopened with its rotated and moved groups
+  somewhere else. It now formats through `FormatFloatClassic` at twelve
+  significant digits, which keeps everything `"%f"` kept below a million (a
+  CAD drawing's 250000.5 stays 250000.5) without the trailing zeros.
+  `scripts/check_locale_numbers.py` did not flag it because it cannot see
+  that the matrix entries are doubles. `Tests/SVGLocaleTest.cpp` now checks
+  transforms, and a rotated group saved and reopened, under "C" and a
+  comma-decimal locale.
+
+#### 2026-10-07 *0.9.189*
+- **VideoFX: beat detection; slideshows on the beat** (VideoFX 0.5.0).
+  `VideoFX_DetectBeats` gives a file's tempo (BPM), a confidence and its beat
+  times - VideoFX's own analysis (spectral-flux onsets, an autocorrelation
+  tempo weighted towards 120 BPM against half / double readings, and
+  dynamic-programming beat tracking), reporting no beat for speech, noise or
+  a held tone. `VideoFXSlideshowOptions::beatSync` puts every change (a cut,
+  or a transition's middle) on the beat nearest `secondsPerImage`;
+  `beatsPerImage` gives each image exactly that many beats. With a song list
+  the beats come from each song where it plays.
+  - `videofx beats FILE`; `videofx slideshow ... --beat-sync`,
+    `--beats-per-image N`.
+- **VideoFX: faces kept in shot through pan and zoom** (VideoFX 0.5.0).
+  `VideoFXSegment::keepInView` lists regions of a photo (`VideoFXRect`,
+  fractions of the image as shown, or `FromPixels`) that must stay in
+  frame: the move's zoom is capped where the view could no longer hold them
+  (with 15 % headroom), its pan narrowed around them, and every frame slid -
+  never resized - to hold them, so they stay in shot through the whole move.
+  A `Still` photo looks at them. VideoFX finds no faces itself: slideshows
+  take `keepInView` per image, or ask the app's own detector
+  (`findKeepInView` - UltraAI's vision analyser, the OS, a tap in the UI)
+  once per photo.
+  - `videofx slideshow ... --keep N:X,Y,W,H`.
+- **VideoFX: song lists with crossfades** (VideoFX 0.5.0). Background music
+  can be several songs: `VideoFXMusic::playlist` (or
+  `VideoFXMusic::FromFiles`) plays after `path`, in order, each song blending
+  into the next over `crossfade` seconds (3 by default, 0..30) with
+  equal-power gains, so the loudness holds steady and there is neither a hard
+  cut nor a gap. A song shorter than twice the crossfade gets a shorter one,
+  at most half of either song. A looping list crossfades from its last song
+  into its first; a single looping song now crossfades into its own start
+  (`crossfade = 0` keeps the 0.4 back-to-back loop).
+  - `VideoFXSlideshowOptions::matchMusicLength` fits a slideshow to the whole
+    list: the songs' lengths minus the crossfades.
+  - `videofx`: repeat `--music FILE` for a list; `--music-crossfade S`.
+
+#### 2026-10-07 *0.9.188*
+- **The path check follows a member access through the includes.**
+  `scripts/check_path_string.py` already read the headers a file includes
+  directly; a member access such as `PathFromUtf8(mailDir_) / env.accountId`
+  in UltraMail's preview still slipped through, because the struct
+  (`UltraMailTypes.h`) is two includes away. A member access (`x.name`,
+  `x->name`) is now looked up in every repository header the file includes,
+  transitively (up to 400), a header that the include roots do not reach
+  being found by its file name when exactly one header in the repository
+  has it; a member name the headers declare two different ways is left
+  alone. Bare names keep the direct-include rule. Each header's
+  declarations and each include are read once per run, so a full run takes
+  about as long as before (36 s against 34 s). The self-test gains a struct
+  included through another header, and against the pre-fix UltraMail /
+  EmailCleaner sources the check now reports all eight wrong operands.
+  Five more sites are wrapped in `PathFromUtf8`: UltraWin's environment
+  listing and prefix check, VirtualFS's cached-archive cleanup, UltraSocial's
+  attachment check, and an AnchorPoint test.
+- **A plug-in carrying a copy of the core is caught.** Linking a core
+  library *statically* into an UltraNet plug-in leaves nothing undefined
+  and nothing imported, so neither import check saw it - but the plug-in
+  then has its own copy of the core's globals (the plug-in registry, the
+  HTTP session pool, the TLS trust store) beside the host's.
+  - `UltraCanvas/CMakeLists.txt` now stops the configure when a plug-in
+    target links `UltraCanvas`, `UltraNet`, `UltraCanvasTextUtils` or
+    `UltraCanvasAllFormats`, directly or through another target (followed
+    through `LINK_LIBRARIES` / `INTERFACE_LINK_LIBRARIES` and
+    `$<LINK_ONLY:...>`). Tried with a direct link and with one through an
+    interface target: both stop the configure.
+  - `scripts/check_ultranet_plugin_imports.py` also reads each plug-in's
+    exports - `nm -D` on Linux, `nm -gUm` on macOS, the DLL export table on
+    Windows - and fails on a core function exported as a strong definition
+    (a plug-in exports `UltraNet_PluginInit`; the weak inline functions and
+    type information of the headers are not counted). A test plug-in linked
+    against the real `libultranet.a` is reported with the five URL
+    functions it pulled in; a DLL exporting `UltraNet_ParseUrl` is
+    reported; the 12 real plug-ins are clean. The core marks nothing
+    `dllexport`, so a static copy inside a Windows DLL exports nothing -
+    that case is the configure guard's. The self-test covers the export
+    parsers of all three platforms.
+
+#### 2026-10-07 *0.9.187*
+- **Notifications are drawn where nothing else draws them.** Where
+  UltraMessage itself serves `org.freedesktop.Notifications` - on ULTRA OS,
+  and on any Linux session with no notification daemon installed - every
+  application's notification arrived on the bus and reached the message feed
+  only; nothing put it on screen. The new `UltraCanvasNotificationToastHost`
+  (`include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, target
+  `UltraMessageCenter`) is the screen of last resort: a client of the bus that
+  draws each live `system.notification` nothing else shows as a toast,
+  stacked in a corner of the screen clear of the desktop's bars, and sends
+  what the user does back - a click or an action button as
+  `system.notification.action`, the close button as
+  `system.notification.dismissed`, which the freedesktop adapter turns into
+  `ActionInvoked` / `NotificationClosed` for the application. A toast goes
+  after 8 s (5 s for low urgency; a critical one stays until closed; the
+  pointer resting on it holds it), when it is dismissed or acted on anywhere
+  on the bus, and a replacement updates it. The ULTRA OS desktop hosts it
+  (UltraDesktop 0.2.0).
+  - **For the desktop shell, not applications.** An application posts a
+    `system.notification` and the message system decides who shows it; the
+    host is the desktop's, one per bus - a second `Connect` is refused so
+    nothing is drawn twice.
+  - **`UltraCanvasNotificationToast`**, the toast as an element: the
+    application's icon and name, summary, body, the notification's action
+    buttons and a close button, from catalogue elements. In the element
+    catalogue and documented in `Docs/UltraCanvas/UltraCanvasNotificationToast.md`.
+  - **`WindowType::Notification`**: undecorated, above other windows, on
+    every virtual desktop, out of taskbars and pagers, and never given the
+    keyboard focus (`_NET_WM_WINDOW_TYPE_NOTIFICATION` with the input hint
+    off on X11; `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, shown
+    without activating, on Windows; borderless on macOS).
+  - **Every notification says whether it is on screen.** The broker hands an
+    application's notification to the presenters before it journals and
+    delivers it and writes the presenter that took it into the body's
+    `displayed` (an application's own value is removed); the
+    `freedesktop-notifications` adapter in monitor mode and the
+    `windows-notification-listener` write it on what the platform drew. A
+    toast host draws only what carries none, so on GNOME, Plasma, dunst or
+    Windows nothing is shown twice.
+  - DemoApp: a *Notification Toast* page next to *Alert / Message Box* - the
+    element on the page, real toasts at the screen corner (mail, a chat with
+    Reply, a critical one, a download updating in place, six at once against
+    the limit of four), what the clicks report, and when to use a toast
+    rather than an Alert; the Alert page points at it.
+  - The `freedesktop-presenter`'s state names the toast host for the case no
+    notification server runs.
+  - The Alert's documentation pointed transient messages at a "Toast
+    (`UltraCanvasToast`)" that did not exist; it now names this element, and
+    a critical toast takes the Error alert's red. A toast is not built on the
+    Alert: that one is modal, centred, focused and answered by a button.
+  - `core/UltraCanvasToast.cpp`, an unfinished in-app toast draft that never
+    compiled (its header was never committed, and it called a rendering API
+    that no longer exists), is removed: the element above replaces it.
+  - Tests: six toast-host cases (which notifications it draws, update and
+    replace, the visible limit, expiry and the pointer's hold, the controls,
+    and a round trip on the private bus); `displayed` in the adapter and
+    presenter tests. Checked by hand under Xvfb with no notification daemon:
+    UltraDesktop drawing a native application's `Notify`, an UltraMail
+    notification and a critical one, the clicks answering on both buses, and
+    nothing drawn twice where dunst runs.
+- **macOS: UltraMessage puts applications' notifications in Notification
+  Center.** The new `macos-presenter` adapter
+  (`OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm`, in every macOS build)
+  hands a `system.notification` an application posts on the bus to
+  Notification Center through the UserNotifications framework, so UltraMail's
+  new-mail notification now shows on macOS as it does on Linux and Windows.
+  Until now there was no presenter on macOS and such a notification reached
+  the message feed only.
+  - A banner that stays in the Notification Center list. The notification's
+    other actions become buttons (up to three). On macOS 12 and later
+    `critical` is time-sensitive and `low` is passive and silent. An icon
+    that names a PNG, JPEG or GIF file becomes the notification's picture,
+    and one application's notifications are grouped. An update
+    (`UltraMsgFlag_Replace`) changes the notification in place.
+  - What the user does comes back on the bus naming the notification: a
+    click as the `default` action where the notification has one, a button
+    as its action, a dismissal as `system.notification.dismissed`. A
+    dismissal or action posted on the bus removes it from Notification
+    Center. Each notification carries its bus id, so a click on one shown
+    before the broker last started is still reported.
+  - macOS names the notification after the application bundle that hosts the
+    broker and asks the user once to allow it. Another application's
+    notification names that application in its subtitle. Where the user did
+    not allow notifications, the adapter's state is `needs-permission` and
+    names the place in System Settings.
+  - **Outside an application bundle** (an executable started from the build
+    tree, `ultramsgd`, a test), or where macOS refuses the bundle, the
+    adapter shows notifications through `osascript`'s
+    `display notification` (mode `script`): under Script Editor's name,
+    without buttons, and a click on one opens nothing. The texts are passed
+    as script arguments, never inside the script.
+  - **The presenters' shared half** moves into `UltraMessageAdapter.h` and is
+    tested on every platform: `ReadPresentedContent` (what a notification
+    says, its buttons, its icon file), `ButtonSetKey`, `PresentedNotifications`
+    (which update shows where) and `PublishPresenterResponse` (what a click,
+    a button or a dismissal publishes).
+  - `UltraMessage` links the Foundation and UserNotifications frameworks on
+    macOS and exports `ULTRAMESSAGE_HAVE_MACOS_PRESENTER`. Tests: five cases
+    for the shared half on every platform (41 in the suite on Linux), and on
+    macOS one that lists the adapter and switches it off and on.
+- **UltraMessage puts applications' notifications on screen.** A
+  `system.notification` an application posts on the bus is now handed by the
+  broker to a *presenter* adapter, which shows it with the desktop's own
+  notification service - so it looks, sounds and obeys do-not-disturb like
+  every other program's - and reports what the user does with it back on the
+  bus: a click as `system.notification.action` (`actionId` `"default"` for
+  the body), a close as `system.notification.dismissed`, both naming the
+  notification. A dismissal posted on the bus withdraws it from the screen,
+  and `UltraMsgFlag_Replace` updates it; `UltraMsgFlag_Silent` keeps it off
+  screen, and what adapters publish (it came from the screen) is never
+  presented. Until now the feed was the only place such a notification
+  appeared. New hook: `Internal::IAdapter::Present`.
+  - **Linux: `freedesktop-presenter`** calls `Notify` on whatever owns
+    `org.freedesktop.Notifications` (GNOME Shell, Plasma, XFCE, dunst, mako),
+    with the hints `category`, `urgency`, `desktop-entry` (the body's new
+    optional `desktopEntry`), `sender-pid` and `x-ultramessage-id`, and turns
+    `ActionInvoked` and a close by the user into the bus notices above. Where
+    UltraMessage itself serves the name nothing draws notifications; the
+    presenter then declines and its state says so, with the remedy.
+  - **Windows: `windows-presenter`** shows a notification-area balloon
+    (`Shell_NotifyIconW`), which Windows 10 and 11 present as a toast and keep
+    in the Action Center - no package identity, shortcut or registration
+    needed, so every desktop build has it. Focus assist is respected. The
+    `windows-notification-listener` no longer reads those toasts back as a
+    second notification.
+  - **The `freedesktop-notifications` adapter no longer takes the name from
+    an installed notification server.** dunst, mako and xfce4-notifyd start
+    by D-Bus activation on the first `Notify`; the adapter used to claim the
+    free name first, and from then on no application's notification was drawn
+    on those desktops. It now starts such a server and watches it in monitor
+    mode. It also skips the presenter's own `Notify` calls.
+  - `UltraCanvasMessageCenter` lists only what the journal holds: a notice
+    sent with `UltraMsgFlag_NoJournal` - a passing alert such as UltraMail's
+    new-mail notification, whose messages are rows already - is no row.
+  - The DemoApp's *Ultra Message* page sends its sample notifications Silent,
+    so they stay on the page instead of popping up on the desktop.
+  - `UltraMessage` links `shell32` and `user32` on Windows. Tests: two
+    presenter cases against a fake desktop notification server on the private
+    D-Bus session (36 in the suite); the message centre's NoJournal rule.
+    UltraMail uses all this for its new-mail notification (UltraMail 0.10.34).
+- **UltraWeb links on Ubuntu 24.04.** wasmtime's prebuilt library carries
+  its own zstd with hidden symbols, and on Ubuntu 24.04 `libvips-dev` pulls
+  in `libarchive-dev`, so VirtualFS links the system libarchive, which uses
+  the system zstd. GNU ld then refused `UltraWeb` and `UltraWebGuestTest`:
+  "hidden symbol `ZSTD_freeCStream' ... is referenced by DSO". CI's Ubuntu
+  22.04 has no libarchive and never saw it; a 24.04 machine and every cloud
+  session did. Where the system zstd is 1.5 or newer, `WasmHost` now links it
+  ahead of the wasmtime archive (`ULTRACANVAS_WASMTIME_PRELINK`,
+  `cmake/UltraCanvasWasmtime.cmake`), so wasmtime binds to it and the
+  archive's copy is never pulled in; with an older zstd or none, nothing
+  changes. `WasmHostTest` and `UltraWebGuestTest` pass against it.
+
+#### 2026-10-07 *0.9.186*
+- **SVG export writes arrowheads.** The SVG writer ignored the line
+  gallery's arrowheads (`StrokeData::StartArrow` / `EndArrow`), so an arrow
+  drawn in ArtCreator lost its heads when saved as SVG. Each is now written
+  as a `<marker>` holding the outline the renderer draws
+  (`ArrowheadOutline`), in the line's units and colour, with
+  `orient="auto"` and a start head drawn pointing backwards so SVG 1.1
+  readers (no `auto-start-reverse`) place it right. They go on lines,
+  polylines and paths whose ends are open, as the renderer draws them, and
+  the same arrowhead in the same colour is written once. The markers carry
+  `data-ultracanvas-arrowhead` / `-scale` / `-end`, and the SVG reader turns
+  them back into the arrowheads themselves, so saving and reopening in
+  ArtCreator keeps them editable; any other reader simply draws them. All 14
+  kinds at both ends of a curve render the same through librsvg as through
+  the framework's renderer. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG export writes width profiles and brushes.** SVG has neither a
+  variable-width stroke nor a brush, and the writer wrote a plain
+  constant-width stroke instead: a tapered line came out uniform and a
+  brushed line as a bare stroke. A shape with a `WidthProfile` or a `Brush`
+  is now written as what the renderer draws: a group holding the shape with
+  its fill and no stroke, then the band (`VariableWidthOutline`, filled
+  even-odd in the stroke's paint) or the stamps (`<use>`s of the stamp,
+  written once in `<defs>`), then the arrowheads. The group carries the
+  stroke (`data-ultracanvas-stroke`, a style declaration list), the profile
+  and the brush, and the SVG reader gives back the shape with its stroke
+  and stamp, so it stays editable; any other reader draws the shapes. A
+  tapered curve, a thick-thin curve, a profiled ellipse and a brush turning
+  along a curve render the same through librsvg as through the renderer.
+  - `BrushStampPlacements(points, stroke)` (`UltraCanvasVectorStorage.h`):
+    where a brush stamps along a flattened subpath, as matrices from the
+    stamp's own space. It was a private copy of the renderer's loop inside
+    the XAR writer; the XAR and SVG writers now share it.
+  - `Tests/SVGConverterTest.cpp` covers the export, the round trip and the
+    librsvg rendering.
+
+#### 2026-10-07 *0.9.185*
+- **A scanner named in `ULTRACANVAS_ESCL_SCANNERS` is called what it is.**
+  It has no DNS-SD instance name, so it was listed under its URL - and a
+  certificate trusted for it read *(name not known)* in UOS-Settings. Once its
+  `ScannerCapabilities` are read it takes the make and model they report
+  ("Acme MegaScan 42") as its name, and its model and serial number are filled
+  in, as an IPP printer configured by address already took its
+  `printer-name`. A scanner found by DNS-SD keeps its instance name.
+
+#### 2026-10-07 *0.9.184*
+- **`FilerHistoryTest` runs.** The test of UltraFiler's recently-used lists
+  (`Tests/FilerHistoryTest.cpp` - the Files / Folders / Apps lists survive a
+  restart and keep the History & Favorites limit while recording, on reading
+  the file back and when the limit is lowered) was written in September but
+  never added to any CMake file, so no build compiled it and CI never ran it.
+  It is in `Tests/FilerTests.cmake` now, so Linux runs it in the full test
+  pass and the Windows job runs it with the other Filer tests, where
+  UltraFiler keeps its history under `%APPDATA%`. For Windows its paths now go
+  through `PathToUtf8` / `PathFromUtf8` and its config folder is redirected
+  with the wide environment API, and `scripts/check_path_string.py` scans it,
+  as it does every test that runs on Windows.
+- **Inline `<svg>` and `<math>` in a page keep their names' case.** The HTML
+  parser lower-cased every tag and attribute name, so an SVG drawn inside a
+  page came out as `lineargradient` with a `viewbox`, which no SVG consumer
+  recognises. Inside `<svg>` and `<math>` the parser now applies the HTML
+  standard's foreign-content tables: the vocabulary's own spelling
+  (`linearGradient`, `viewBox`, `preserveAspectRatio`, `definitionURL`)
+  whatever case the source used, HTML again inside `foreignObject`, `desc`,
+  `title` and the MathML text elements, no HTML implicit closes or void
+  elements in between. `Node::GetAttribute` finds a name exactly, then in any
+  ASCII case, and a CSS type selector matches a foreign element's camelCase
+  name, as in a browser. Needed before UltraWeb renders pages; harmless for
+  mail and eBooks, whose SVG cover wrappers still show their raster image.
+- **The tests compile the HTMLReader core once.** `Tests/CMakeLists.txt`
+  listed the parser, CSS and resolver sources in three test targets; they are
+  one object library, `HTMLReaderTestCore`, that the three link.
+- **The unbuilt SVG plugin is gone.** `Plugins/SVG/UltraCanvasSVGPlugin`
+  (a separate `UltraCanvasSVGElement` with its own SVG model, renderer and
+  `style=""` parser, 1,850 lines) was commented out of the build and named
+  only by the demo page, which has shown SVG files through
+  `UltraCanvasImageElement` all along. An SVG is a picture: the image
+  element and the media viewer show it (librsvg), `UltraCanvasVectorRaster`
+  rasterizes it, the Vector plugin's `SVGConverter` reads and writes it.
+  `Docs/UltraCanvas/UltraCanvasSVGExamples.md` now says so instead of
+  documenting the removed element.
+- **The Filer tests that run on Windows are checked for code-page path
+  conversions.** `scripts/check_path_string.py` scans only the tests that run
+  on Windows, and of the five Filer tests the Windows job runs it covered
+  none until `FilerHistoryTest` - so a `.string()` or `fs::path(std::string)`
+  added to `FilerFolderPreviewTest`, `FilerHostIconsTest`,
+  `FilerNameEncodingTest` or `FilerShortcutEntryTest` would have passed the
+  check and failed only on a Windows machine with a name its code page cannot
+  hold. All five are scanned now, and `path-strings.yml` runs when one of
+  them changes - before, a change to a test file alone never started it. The
+  two sites in `FilerNameEncodingTest` that write a raw Latin-1 file name on
+  POSIX on purpose say so with `// path-string-ok`.
+
+#### 2026-10-07 *0.9.183*
+- **CSS selector matching is one piece of code for every tree.** The HTML
+  style resolver matched selectors with a private method typed on the HTML
+  DOM, so the Vector plugin's SVG reader, which holds tinyxml2 elements, had
+  to carry a copy of it to apply `<style>` sheets. The matcher now lives in
+  `CSSStyleSheet.h` as `SelectorMatches` / `CompoundMatches` /
+  `MatchingRules`, written against a small Traits type a tree supplies
+  (`NodeSelectorTraits` is the DOM's; `HTML::Matches(selector, node)` is the
+  stand-alone test a querySelector is made of), with the attribute operators
+  and the an+b arithmetic as plain functions. The resolver uses it; a second
+  tree joins with ten one-line traits. `Tests/HTMLReaderTest.cpp` runs the
+  matcher over an SVG-shaped tree that is not the DOM.
+- **The HTMLReader module is documented and registered.** It had no page
+  under `Docs/UltraCanvas/`, no row in `Masterfile_modules.md` and no entry
+  in `llms.txt`, which is how seven tag strippers and entity tables came to
+  be written around it. `Docs/UltraCanvas/UltraCanvasHTMLReader.md` is the
+  page; AGENTS.md states the rule (HTML, CSS and entities are read through
+  the module); `scripts/check_html_reuse.py` and `html-reuse.yml` block a new
+  copy, with the existing sites in `scripts/html_reuse_baseline.txt` to be
+  worked off.
+
+#### 2026-10-07 *0.9.182*
+- **`GetTextIndexForXY` no longer reads a freed font name.** With no font
+  family set (the system-default font), the Cairo backend's
+  `RenderContextCairo::CreatePangoFont` resolved the default family into a
+  string local to an `if` block and handed Pango a pointer to it after the
+  block had ended, so `pango_font_description_set_family` read stack memory
+  that was already out of scope (AddressSanitizer: stack-use-after-scope).
+  Short names such as "Sans" usually survived on the stack by luck; when they
+  did not, the hit-test measured text in an arbitrary font. The name now lives
+  until Pango has copied it, as it already did in `UCTextLayout`. Nothing in
+  this repository calls `GetTextIndexForXY` today, so only callers outside it
+  were affected.
+
+#### 2026-10-07 *0.9.181*
+- **Mobipocket and Kindle books show their cover in the file display too.**
+  `.mobi`, `.prc`, `.azw` and `.azw3` tiles were still purple type sheets
+  after EPUB got its covers in 0.9.173. `UltraCanvasFilerWidget` now shows
+  their cover the same way - thumbnail grids, the Details / List icon column,
+  folder previews, cached on disk - and `GetPreviewableFormats()` reports all
+  four as thumbnail-supported in every build. A PalmDOC `.prc` with no
+  pictures keeps its glyph.
+  - **Reading a cover does not read the book.** The new
+    `MOBIEngine::ReadCoverImageFromFile(path)` reads the record list, record 0
+    and the cover record - the first bytes of the image records in between at
+    most - and gives the picture `GetCoverImage()` gives once the book is
+    loaded: the EXTH 201 image, else the first image. It decompresses and
+    decrypts nothing, so a **DRM-protected** `.azw` and a HUFF/CDIC-compressed
+    book, whose text the engine refuses, show their cover as well (Mobipocket
+    DRM encrypts the text records only). The path is opened as UTF-8 through
+    `OpenFileUtf8`, and a cover past 64 MB is refused before it is read.
+  - `MOBIEngine::ParseRecord0` now reads the PalmDOC, MOBI and EXTH headers
+    before it refuses a DRM or HUFF/CDIC text, so the cover reader shares it;
+    what `LoadFromMemory` accepts, and the errors it reports, are unchanged.
+    `MOBIEngine` 1.3.0.
+- **Tests no longer write into the source tree.** Run without an argument,
+  four tests wrote their files into the current directory, so a run from the
+  repository root put them in the source tree: `VirtualFSDeleteTest`'s
+  archives in `vfsdelete-test-out/`, where they were committed (`bulk.zip`,
+  `bulk.tar.gz`, `manager.zip`) and every later run rewrote tracked files;
+  `WordFormatsTest`'s some fifty sample documents (`sample.odt`,
+  `edited.docx`, `mdmedia/`, ...) and `LaTeXDocumentTest`'s files loose in
+  the root; and `VirtualFSNameEncodingTest`'s archive and extracted folders
+  in `vfs-name-encoding-test-out/`, a folder it also deletes on start. All
+  four now default to a folder in the system temp directory (ctest still
+  passes one in the build tree), the three archives are removed from the
+  repository, and `.gitignore` keeps `vfsdelete-test-out/` out should an
+  older build of the test still write it.
+  - `LaTeXDocumentTest` also finds the shipped `media/LaTex` corpus from any
+    directory: its path is compiled in (`LATEXTEST_CORPUS_DIR`) instead of
+    the `../../media/LaTex` that resolved only from `build/bin`. Run from
+    anywhere else, the corpus checks were skipped and the test still reported
+    every check passed; a corpus that cannot be found is now a failure.
+- **ZIP files open by their UTF-8 name, and without locking the file.** Three
+  readers handed the path to miniz's own fopen: `UCZipPackageReader::Open`
+  (the CorelDRAW thumbnails, the ODT / DOCX / mind-map imports), the ODS
+  spreadsheet loader, and VirtualFS's fast ZIP rewrite behind deleting entries
+  from an archive. miniz turns a UTF-8 name into UTF-16 only under MSVC and
+  64-bit MinGW; with any other Windows toolchain a Thai, Cyrillic or emoji
+  name went through the ANSI code page and the file did not open. Where miniz
+  did convert the name, it opened with `_wfopen_s`, which denies every other
+  program write access while the file is open, so saving a drawing in
+  CorelDRAW could fail while the file display was reading its thumbnail. All
+  three now open the file themselves through `OpenFileUtf8` (`_wfopen`,
+  shared like every other open), hand it to miniz, and close it when done.
+  The package writer and the ODS writer already opened their files this way.
+  - `UCZipPackageReader`: a file that cannot be opened now says so ("Cannot
+    open file") instead of "Not a valid ZIP archive".
+  - VirtualFS: the raw-copy rewrite now also opens the temporary archive it
+    writes through `OpenFileUtf8`, and fails the delete when closing that file
+    fails. miniz closed it itself and ignored the answer, so a disk that
+    filled up during the last flush left a cut-off archive that was then
+    renamed over the original. `VirtualFSLibArchiveProvider` 1.3.1.
+  - Tests: the new `ZipPackageTest` writes and reads a package in a
+    Thai-and-emoji folder, and on Windows writes the file from a second handle
+    while the reader holds it; Windows CI compiles and runs it by hand next to
+    `PathUtf8Test`, on its code page 1252 runner. The new
+    `SpreadsheetOdsFileTest` saves and reloads a sheet under a Thai-and-emoji
+    name, and `VirtualFSDeleteTest` deletes entries from a ZIP with one.
+
+#### 2026-10-07 *0.9.180*
+- **The `*Examples.md` component docs describe the API that exists.** A new
+  checker, `scripts/check_doc_examples.py`, compiles the C++ in a doc
+  against the headers (clang++, Linux) and reports, at the doc's own line,
+  every example that does not compile, every listed function, field or
+  enumerator the class does not have, and every signature that differs. Run
+  over the 60 Examples docs it found 694 problems in 42 of them; all 60 pass
+  it now. The usual faults: a numeric `long id` / `uid` argument and `long`
+  coordinates on constructors and factories (they take `float`s and no id),
+  functions that were renamed or never existed (`GetButtonState`,
+  `SetAutoresize`, `Show`/`Hide` on a menu, `SetModel(IListModel*)`,
+  `SetGridEnabled`, `onOverflowChange`), style fields that are not there
+  (`hoverBackgroundColor`, `padding`, `borderWidth`), wrong return types
+  (`Point2Df` for `Point2Dd`, `Rect2Di` for `Rect2Df`), and listings written
+  as pseudo-code. `UltraCanvasLayoutExamples.md` is rewritten for the CSS
+  layout engine (the box/grid/flex layout managers it documented are gone),
+  and `UltraCanvasBasicChartsExamples.md`, which held a stale copy of the
+  demo's C++ source, is now a doc for the line, bar, scatter and area
+  charts.
+- **`CreateAdjacencyDiagram` can be called.** Its declaration took a
+  `long uid` that its only definition does not, so every call failed to
+  link; the declaration now matches.
+- Comments: `UltraCanvasSpacer.h` and `AddSpacer` no longer say the cross
+  axis stretches by default, and the usage notes in
+  `UltraCanvasJitterPlotElement.h` drop the numeric id.
+- **DemoApp gauges: the cards no longer carry a size they never had.** Every
+  gauge card, and the gauge in it, was built at 272 x 374 (`kCardW` /
+  `kCardH`) and then placed in a 1fr grid cell of about 180 x 247. The grid
+  sized them anyway, but the stale heights made the Progress, Specialized
+  and Analog tabs taller than their area, so a vertical scrollbar appeared
+  and narrowed every card. They are built without a size now; the tabs fit
+  and the scrollbar is gone. The Round Gauges tab is unchanged, pixel for
+  pixel.
+- **`Docs/UltraCanvas/UltraCanvasLabelExamples.md` documents the label that
+  exists.** It described a constructor with a numeric `long id`, `LabelStyle`
+  fields the struct does not have (padding, border, `wordWrap`,
+  `autoResize`), and functions that were never there or are gone -
+  `SetAutoResize`, `SetWordWrap`, `SetCrossAlignment`, `SetShadow`,
+  `SetBorderWidth`, `AppendText`, `ClearText`, `IsEmpty`, `CreateAutoLabel`,
+  `CreateHeaderLabel`, `CreateStatusLabel`, `CreateLabelBuilder`,
+  `onSizeChanged`. It now follows `UltraCanvasLabel.h`: the four
+  constructors, the real `LabelStyle`, text links, the factories,
+  `LabelBuilder`, and how a label sizes itself in a layout. Every example in
+  it compiles against the headers.
+- **The layout engine stretches nothing unless the layout asks for it, and a
+  container's stretch no longer overrides a child's own size.** Flex
+  `align-items` defaulted to `Stretch`, and a grid item to `justify-self` /
+  `align-self: Stretch` whatever its container said, so every child of a flex
+  or grid container was stretched across it unless someone opted out - and a
+  child with its own `width` or `height` was stretched over that too (a 200 px
+  button in a column came out full width), although `UltraCanvasUIElement.h`
+  and `Docs/CSSLayout.md` already promised the CSS rule. Now, in one place,
+  for every application, the most specific statement wins:
+  - the child's own `align-self` / `justify-self: Stretch` stretches it, also
+    over a size it carries (CSS would keep the size; here a size often comes
+    from a constructor that requires one, the request never does);
+  - otherwise a child's set width (in a column, a grid cell's width) or
+    height (in a row, a cell's height) is kept, at the start (CSS Flexbox 9.4
+    step 11, CSS Box Alignment 6.1);
+  - otherwise the container's `align-items` / `justify-items` decides, and
+    those now start at `Start` - flex `FlexLayout::alignItems`, grid
+    `GridLayout::justifyItems` / `alignItems` - with a grid item's own values
+    at `Auto`, which takes the container's; the grid code never read the
+    container's values before, so a grid's `SetGridAlignItems(Center)` takes
+    effect now.
+  - A negative width or height counts as no size (CSS rejects it; here it is
+    the "not set" -1, or a size computed before the window had one).
+  - A child that is not stretched is still measured against the container's
+    width as an upper bound, so a wrapping label still wraps.
+  - New: `Layout::SetGridJustifyItems`, and `ULTRACANVAS_LAYOUT_AUDIT=1`,
+    which prints once per element every set size that outranked its
+    container's stretch - the way to find a size given only because a
+    constructor wanted one.
+- **Every container that relied on the old default asks for it now**, so it
+  looks as it did: 72 flex containers (the CSV import and export dialogs,
+  the image export dialog, the e-book viewer; Texter's find, replace and
+  go-to dialogs and toolbar; UltraFiler's find-text, RAM-disk and Windows-app
+  dialogs; UltraAI's chat and settings dialogs; UltraMail's account bar and
+  message preview; DemoApp pages) set `SetFlexAlignItems(Stretch)`, and 10
+  grid containers (DemoApp's main window, gauges and diagram pages, Texter's
+  file statistics, UltraAI's settings modes) set both grid stretches.
+  `CreateFormGrid` asks for its horizontal stretch, so form controls still
+  fill their column - except a control given a width of its own, which now
+  keeps it (the image export dialog's 200 px file-name field, for one).
+- Tests: `Apps/CSSLayoutTests` Phase 11 (default start, the container's
+  stretch keeps a set size, the item's own stretch does not, a negative size,
+  grid start / stretch / set size); the track-sizing cases ask for the
+  stretch they read their tracks through; `Tests/CSSLayoutFormGridTest.cpp`
+  adds a sized control.
+- **A text field showed a new font only when something else repainted it.**
+  `UltraCanvasTextInput::SetFontSize` and `SetStyle` stored the new font and
+  did nothing else: no redraw, no layout invalidation, and the horizontal
+  scroll stayed clamped for the old character widths. Both now re-clamp the
+  scroll, invalidate the layout and redraw, as the `UltraCanvasLabel` and
+  `UltraCanvasButton` font setters always did. Test:
+  `Tests/TextInputFontTest.cpp` (headless, through a probe subclass).
+- **An async HTTP transfer cut off after its status line looked like a
+  success.** When a response went over `maxReceiveSize`, timed out or lost its
+  connection mid-body, `UltraNet_HttpRequestAsync` handed its callback the
+  server's status (200, say) and the bytes that had arrived, with nothing to
+  tell them from a whole response; only the synchronous calls returned the
+  error. `UltraNetResponse::transferError` now carries why the transfer did
+  not finish (also for a cancelled request), empty when the whole response
+  arrived, `IsComplete()` asks it, and `exceededReceiveLimit` marks the
+  over-the-limit case. An HTTP error status (404, 500) is a
+  finished transfer and leaves it empty.
+- **`UltraNet_ResolveUrl(base, reference, out)`** (`UltraNetUrl.h`) resolves a
+  relative URL against a base the way RFC 3986 section 5 does - `../img/a.png`,
+  `//cdn.example/x`, `?page=2` - through libcurl's URL parser. UltraWeb uses
+  it for an app's relative fetches. It refuses a URL with a control character
+  in it (a CR or LF would end the request line) itself: libcurl 8 does, but
+  libcurl 7.81 on Ubuntu 22.04 lets them through.
+- Tests: `url_resolve_*` in `Tests/UltraNet/test_url.cpp` and
+  `loopback_async_reports_an_incomplete_transfer` in
+  `Tests/UltraNet/test_loopback.cpp`.
+
+#### 2026-10-07 *0.9.179*
+- **Menus line their labels up, and a checkbox can be round.** A vertical
+  `UltraCanvasMenu` now has an indicator column (when any item is a Checkbox
+  or Radio) and an icon column (when any item has an icon), and every label
+  starts after both - an `Action` with no icon used to start its label at the
+  left edge while its neighbours' labels started one column further in. An
+  item with both a tick and an icon (a checkbox entry with an `iconPath`)
+  shows them side by side; it used to be measured for one column and drawn
+  across two, so its label ran past the menu's edge. The icon of a disabled
+  item is drawn faded with its label, as a disabled button's is.
+  `MenuStyle::checkboxShape` draws a Checkbox's tick inside a circle
+  (`MenuCheckboxShape::Round`) instead of a box, and
+  `SetDefaultMenuCheckboxShape()` sets it for every menu an application shows,
+  including the ones elements build for themselves. Square stays the default.
+  See *Checkbox Indicator Shape* and *Icon and Indicator Columns* in
+  `Docs/UltraCanvas/UltraCanvasMenuExamples.md`.
+- **The file display's context menu has icons.** Every entry of
+  `UltraCanvasFilerWidget`'s context menu and of its *Display* submenu now
+  carries an icon - a new line-icon set in `media/icons/menu/` (Open with,
+  Copy, Cut, Paste, Delete, Delete Permanently, Duplicate, Rename, New,
+  Compress, Extract, Print, Extras, Display, Settings, Sort, Type, File
+  extensions, File icons, Thumbnails, Detail view, Dataset, Icon-Menu, Folder
+  previews, Info-Bar, Hidden files). *Display > Type* shows each layout with
+  the glyph UltraFiler's view selector uses, with two new ones,
+  `media/icons/view-force-tree.svg` and `media/icons/view-3d.svg`, for the
+  force-directed tree and the 3D view. The *Display* submenu also lists
+  *Folder previews* in `UltraCanvasFilerWidget.md` now; it was in the menu
+  but missing from the documented layout.
+
+#### 2026-10-07 *0.9.178*
+- **SVG import draws markers: arrowheads on connector lines.** The Vector
+  plugin's SVG reader skipped `<marker>` ("`<marker>` is not supported,
+  skipped") and ignored `marker-start` / `-mid` / `-end`, so a diagram's
+  arrows imported as bare lines. The model has no marker-by-reference, so
+  the reader now draws each marker's content as ordinary shapes at the
+  vertices SVG 2 says (each subpath start and segment end; curves and arcs
+  by their tangents): placed by `refX`/`refY`, mapped from its `viewBox`
+  onto `markerWidth` x `markerHeight`, scaled by the stroke width unless
+  `markerUnits="userSpaceOnUse"`, turned by `orient` (`auto`,
+  `auto-start-reverse`, an angle) and clipped to its viewport when its
+  content reaches past it. The shape and its markers become one group, so
+  an arrow stays one object to select and move in ArtCreator, and the
+  marker content takes `context-fill` / `context-stroke` from the shape.
+  The properties work from attributes, `style=""` and `<style>` sheets
+  alike, and inherit (`<g marker-end="…">`); a marker that uses itself is
+  drawn once. Checked against librsvg on a diagram with single- and
+  double-ended arrows. `Tests/SVGConverterTest.cpp` covers it.
+- **SVG import applies `<style>` sheets.** The Vector plugin's SVG reader
+  skipped every `<style>` element, so a drawing that colours its shapes by
+  class came in with all of them black (SVG's default fill), its rounded
+  corners square and its centred titles left-aligned - an architecture
+  diagram whose page background is `.container { fill: #f8f9fa; rx: 8 }`
+  imported as a black page in ArtCreator, while UltraFiler's thumbnail
+  (librsvg) drew it correctly. The reader now gathers every `<style>`,
+  inside `<defs>` or not and CDATA or not, skipping one whose `media` does
+  not match. It parses them with the HTMLReader's CSS subset
+  (`HTML::StyleSheet`) and matches the selectors against the SVG tree: type,
+  class, id, attribute and structural pseudo-classes, and descendant chains.
+  Each property cascades as SVG 2 specifies: presentation attribute, then
+  the sheets by specificity and order, then `style=""`, with `!important`
+  turning the last two round (`style=""` now honours `!important` too, which
+  it used to read as part of the value). The geometry properties `x`, `y`,
+  `width`, `height`, `rx`, `ry`, `cx`, `cy` and `r` can come from a sheet on
+  rects, circles and ellipses. The reader note "`<style>` is not supported"
+  is gone. `Tests/SVGConverterTest.cpp` covers the cascade.
+
+#### 2026-10-07 *0.9.177*
+- **A failed image save no longer leaves an empty file - or destroys the one
+  it was saving over.** A libvips writer opens its file, truncating one that
+  is there, before it has encoded a byte. When the encoder then failed - AVIF
+  on a libheif built without an AV1 encoder ("heifsave: Unsupported
+  compression"), a source that does not decode, a full disk - the save left a
+  0-byte file, and saving over an existing image that way lost it.
+  `PixelFX::FileIO`'s savers (`Save`, `SaveWithOptions` and the per-format
+  ones) now write through `WriteFileAtomically`: the image is encoded into a
+  temporary file in the same folder and moved over the target only when it is
+  complete, so a failure leaves no file and the old one as it was. The media
+  viewer's Save image as goes through them; `UCRasterDocument::SaveToFile`
+  (UltraPaint) staged its own write around `FileIO::Save` and now relies on
+  it. `UltraCanvasQRCode::ExportToImage` and its SVG export
+  (`QRCodeUtils::ExportToSVG`), which wrote straight to the target, are
+  staged the same way. Its AVIF export also crashed the whole process
+  wherever an AV1 encoder was installed: it marked its image sRGB with
+  `set("interpretation", ...)`, which leaves the header's interpretation at
+  "multiband", and libvips' heifsave double-frees on a 4-band multiband
+  image (8.12 and 8.15 alike). The image is now marked through `copy()`.
+  New test: `Tests/ImageSaveStagedTest.cpp`.
+- **The media viewer's Save image as saved nothing for an SVG.** The save
+  dialog offered the shown file's own name, so a drawing came up as
+  `diagram.svg` with "PNG image" as the type. The dialog returns the name as
+  typed, libvips picks its writer from the extension, and it has no SVG
+  writer: the save failed with `"diagram.svg" is not a known file format`,
+  reported only in the small info line at the bottom of the viewer, so it
+  looked as if Save did nothing. `UltraCanvasMediaViewer` now:
+  - offers a name the viewer can write: the file's own when it is PNG, JPEG,
+    WebP, TIFF, AVIF or BMP, otherwise its stem as a PNG (`diagram.png`);
+  - as a last resort, after the dialog has applied the chosen type
+    (`ApplySaveExtension`, 0.9.176), adds `.png` to a name that still has none of
+    those extensions - added rather than swapped in, because what follows
+    the last dot is not always a format - and asks before replacing a file
+    of that name, which the dialog could not ask about;
+  - shows an error message when a save fails, as well as the info line.
+
+#### 2026-10-06 *0.9.176*
+- **The file dialog's Up arrow sits in the middle of its button.** The button
+  was created without a label, and `UltraCanvasButton`'s constructor defaults
+  the label to "Button", so it was laid out as an icon beside text: the arrow
+  started at the left padding, 6px right of centre in the 28px button, and
+  lost the tip of its right arm to the button's edge. It is created with an
+  empty label now.
+- **The file dialog's view buttons have their glyphs in the middle.**
+  `UltraCanvasSegmentedControl` drew a segment's icon at the segment's left
+  padding even when the segment had no text, so wherever the segments are
+  wider than icon + padding - every equal-width control - the glyph sat to the
+  right: 3px in the file dialog's six view buttons. An icon-only segment now
+  centres its icon; a segment with text is laid out as before.
+- **The file dialog's listing has no hover icon menu.** The Copy / Cut /
+  Rename / Delete strip that `UltraCanvasFilerWidget` floats over the file
+  under the pointer belongs to a file manager, not to a picker, and covered
+  the names being chosen from. Every mode of the dialog (Open, Open multiple,
+  Save, Select folder) now leaves it off; `FileDialogConfig::hoverIconMenu`
+  (`FileDialogOptions::SetHoverIconMenu` through `UltraCanvasFileLoader`)
+  brings it back for a caller that wants it.
+- New test `FileDialogTest` reads the dialog's pixels back and checks all
+  three, skipping that part without a display like the other window tests.
+- **A Save dialog gives the name the chosen file type's extension.** It
+  handed back the name exactly as typed, so "photo" with JPEG chosen came
+  back without an extension. Applications pick the format from the
+  extension, and each one patched the gap with its own default: UltraPaint
+  saved that "photo" as a PNG called `photo.png`, whatever type was
+  chosen. The patch also came after the dialog had asked about replacing
+  "photo", so an existing `photo.png` was overwritten without a question.
+  The name now carries the chosen type's extension before the Replace File
+  question is asked: added when it has none ("photo" -> "photo.jpg"),
+  swapped when it has another offered type's ("photo.png" -> "photo.jpg"),
+  kept when it already fits, and left alone under All files. The new
+  `ApplySaveExtension` and `FindFilterForName` (`UltraCanvasModalDialog.h`)
+  hold the rule for every dialog:
+  - **The framework dialog** applies it on OK and shows the result in the
+    name field, rewrites the name when the type is switched, and opens on
+    the type of `defaultFileName` when the caller's type does not fit it,
+    so "holiday.jpg" offered under PNG is not saved as `holiday.png`.
+  - **The GTK chooser** applies it to the name it returns. It already swapped
+    the extension when the type changed, but it swapped any trailing
+    extension, so "Report v1.2" became "Report v1.png"; it now uses the same
+    rule. It opens on the suggested name's type, and when the corrected name
+    is an existing file it asks before replacing it - **No** leaves the
+    chooser open on that name.
+  - **The Windows dialog** is given the chosen type's extension as its
+    default (`SetDefaultExtension`), so it adds and follows the extension
+    itself and asks about the final name; it also opens on the suggested
+    name's type. A name that still does not fit, such as one ending in
+    another type's extension, is corrected afterwards, with the question
+    asked there if the corrected name exists (**No** cancels).
+  - The macOS panel already insisted on an offered extension and is
+    unchanged.
+- `FileDialogTest` (was `FileDialogLayoutTest`) checks the rule on its own,
+  which runs everywhere, and the framework dialog's Save under a display.
+
+#### 2026-10-06 *0.9.175*
+- **A long URL ran out of its tooltip's box.** UltraMail shows a link's
+  address as a tooltip, and a tracking link is mostly long runs of letters and
+  digits with nowhere to break. The tooltip wrapped its text with Pango's
+  default word-only wrap, which leaves such a run whole, so lines came out up
+  to 991 px wide in a box sized for 430 and the text was drawn straight over
+  the border. `UltraCanvasTooltipManager` now wraps at word boundaries first
+  and between characters where a word alone does not fit, and sizes the box
+  to the text it actually drew - for plain text, titles, bullets and table
+  cells alike. A wrapped paragraph's box now also hugs its longest line
+  instead of always taking the full `maxWidth`.
+
+#### 2026-10-06 *0.9.174*
+- **A WebAssembly host for applications: the WasmHost module.**
+  `WasmHost/UltraCanvasWasmHost.h` compiles a module (binary, or WebAssembly
+  text), links host functions an application offers, instantiates it with
+  WASI preview 1 and nothing granted (no files, no environment), and calls its
+  exports. Every call into a guest has a time limit (default 2 s, epoch
+  interruption) and every instance a memory cap (default 256 MB), and every
+  way a guest can fail - a trap, a C++ exception thrown by a host function,
+  a runaway loop, bad input - ends in a `WasmStatus`, never a crash or a hang.
+  The engine is wasmtime 49.0.2 through its prebuilt C API, downloaded and
+  hash-checked by `cmake/UltraCanvasWasmtime.cmake` (or taken from
+  `ULTRACANVAS_WASMTIME_DIR`) and private to the module, so no wasmtime type
+  reaches a caller. On by default on Linux (`ULTRACANVAS_ENABLE_WASM_HOST`);
+  elsewhere the module builds without an engine and says so. UltraWeb is its
+  first user; `Tests/WasmHostTest.cpp` covers it with guests written inline
+  as WebAssembly text.
+
+#### 2026-10-06 *0.9.173*
+- **EPUB files show their cover in the file display, as in Finder.** A folder
+  of books was a wall of identical purple "EPUB" sheets: the thumbnail workers
+  had no picture to read out of an e-book, and epub was on the list of
+  containers no reader unpacks. `UltraCanvasFilerWidget` now shows the cover
+  the book declares - in the thumbnail grids, the icon column of the Details
+  and List rows, and (Display > Folder previews) peeking out of the folder
+  that holds the books. It is cached like every other thumbnail, on disk
+  included, so a library is read once. Display > Thumbnails > Docs, or the
+  epub switch of the per-format list, turns it off; `GetPreviewableFormats()`
+  now reports epub as thumbnail-supported in every build. mobi / prc / azw /
+  azw3 keep their glyph.
+  - **Reading a cover does not read the book.** The new
+    `EPUBEngine::ReadCoverImageFromFile(path)` inflates three entries -
+    `META-INF/container.xml`, the package document and the cover - and no
+    chapter, table of contents or other resource, so a 300 MB illustrated
+    book costs what a novel does. `EBookArchive::OpenFromFile` (which nothing
+    called) now reads only the ZIP central directory and inflates entries
+    from the file as they are asked for, opening the UTF-8 path through
+    `OpenFileUtf8`; `EBookArchive::FileSize` lets a caller refuse an entry
+    before inflating it, which the cover reader does past 64 MB.
+  - **More books are found to have a cover.** The engine took a cover only
+    from EPUB 3 `cover-image` or an EPUB 2 `<meta name="cover">` id, and
+    otherwise from a manifest image whose id said "cover". It now also takes
+    a `<meta name="cover">` that names the image's href instead of its id,
+    and the `<guide>` cover reference; a declaration that names a cover
+    **page** (the `cover.xhtml`, or the SVG-wrapped `titlepage.xhtml` Calibre
+    writes) gives the picture on that page instead of the page's markup; a
+    declared cover missing from the archive falls through to the next rule;
+    and the last resort also matches an image's file name. The viewer's
+    `GetCoverImage()` and `EBookMetadata::hasCover` follow the same rules.
+    `EPUBEngine` 1.1.0, `EBookArchive` 1.1.0.
+
+#### 2026-10-06 *0.9.172*
+- **A clipboard history that outlives the program that showed it.**
+  `UltraCanvasClipboardHistory` (library `UltraClipboardHistory`) keeps every
+  copy - files with the cut flag, images as copied, text with its HTML - in
+  an SQLite database (UltraDatabase) with one content-addressed file per
+  payload, under `<data>/ultraos/clipboard/`. Titles, texts and payloads are
+  sealed with XChaCha20-Poly1305 (UltraCrypt) under an owner-only key file
+  kept apart from them; images get 96 px thumbnails. Each entry is described
+  when it is recorded (text, code, formatted text, link, colour, image,
+  files; title, preview, source program, sizes), the same content copied
+  again moves to the top, and a copy marked secret is never recorded.
+  `List` searches case- and accent-insensitively and filters by kind;
+  `Remove` / `Restore` give an undo, `Replace` an edited copy beside or in
+  place of the original, `SetPinned`, `Clear`, and a policy of limits,
+  pause, thumbnails and excluded programs. Two processes share one history:
+  a generation number tells the other side to reload, and a lease lets
+  exactly one of them record. See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
+  - `UltraCanvasClipboardRecorder` records from a UI timer, and puts the last
+    copy back on the clipboard when the program that owned it quits (X11).
+  - `CaptureClipboard` / `RestoreToClipboard` move a `ClipboardSnapshot`
+    between the live clipboard and the history; `EditClipboardText` (trim,
+    join lines, upper / lower / title / sentence case for Latin, Greek and
+    Cyrillic) and `ClipboardImageFile` serve an editor.
+  - `ClipboardHistoryListModel` and `ClipboardHistoryRowDelegate`
+    (`UltraCanvasClipboardHistoryView.h`) show a history in an
+    `UltraCanvasListView`: section headers, a thumbnail by kind, a meta line
+    and painted Copy / Edit / Delete, in a light style and the desktop's dark
+    compact one.
+  - The X11 clipboard learns of a new copy from XFixes
+    (`XFixesSelectSelectionInput` on a connection and thread of its own) when
+    libXfixes is found. Before, `HasClipboardChanged` fetched the clipboard's
+    text every 100 ms and compared it, which also missed every copied image
+    and file list; that stays the fallback without XFixes.
+    `HasClipboardOwner()` is new on the backend.
+  - `Tests/ClipboardHistoryStoreTest.cpp` (headless).
+- **A copied password no longer ends up in a clipboard history.**
+  `SetText(text, ClipboardHint::Secret)` (and `SetClipboardText(text, hint)`)
+  puts the text on the clipboard together with each platform's "leave this out
+  of the history" marker: `x-kde-passwordManagerHint` = `secret` on X11 (the
+  marker KDE's Klipper and KeePassXC use);
+  `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory` = 0 and `CanUploadToCloudClipboard` = 0 on
+  Windows, which also keep it out of `Win+V` and the cloud clipboard; and
+  `org.nspasteboard.ConcealedType` on macOS. The clipboard's own history
+  honours the same markers, from this process or any other:
+  `ProcessNewClipboardContent` and the entry recorded at start-up skip content
+  whose owner marked it, through the new backend call
+  `IsClipboardMarkedSecret()`. Until now UltraDesktop's monitor recorded
+  every text it saw, so a password copied from UltraPassword stayed in its
+  clipboard menu after UltraPassword had cleared the clipboard.
+  - `UltraCanvasClipboardBackend` gains `SetClipboardSecretText` and
+    `IsClipboardMarkedSecret`; a backend without markers (Android,
+    WebAssembly) puts plain text and reports nothing marked.
+  - `UltraCanvasClipboard::InitializeWithBackend` takes a backend from the
+    caller, for a platform the framework has none for, and for tests.
+  - `GetEntries()` is documented as newest first, which it always was.
+  - `Tests/ClipboardHistoryTest.cpp`: newest-first order, a secret copy from
+    another program, from this process, and one already on the clipboard at
+    start-up, against a fake backend (headless).
+- **A key combination for the whole desktop.** `UltraCanvasGlobalShortcut`
+  (`UltraCanvasDesktopShell.h`) calls back when `"Super+V"`, `"Ctrl+Alt+H"`
+  or another combination is pressed, whichever window has the focus: on X11 a
+  passive `XGrabKey` on the root window, with the Caps Lock and Num Lock
+  variants, on a connection and thread of its own. `Start` fails and says why
+  when the combination cannot be read, when another program holds it, and
+  on the platforms without a backend; `Stop` joins the thread. UltraDesktop
+  opens its clipboard panel with it.
+- **A 16-bit picture saved as an 8-bit PNG keeps its colours.** `pngsave`
+  narrows 16-bit samples to the bit depth it is given by clipping them, so a
+  16-bit PNG (as ImageMagick, scanners and some screenshot tools write them)
+  that `UCImage::Save` wrote as an ordinary PNG - a thumbnail, an export -
+  came out white. A 16-bit RGB or grey image is now converted to 8-bit sRGB
+  or grey first, as the JPEG and WebP writers already do on their own.
+- **Files copied with xclip arrive complete.** The X11 clipboard reads files
+  from `x-special/gnome-copied-files`, whose first line is the verb `copy` or
+  `cut`. A program that answers every target with the same bytes, as xclip
+  does, hands over a bare URI list there, and its first file was taken for
+  the verb and dropped. Only `copy` and `cut` count as the verb now.
+
+#### 2026-10-06 *0.9.171*
+- **`RasterizeVectorElements`: chosen elements of an open drawing as a
+  picture.** `UltraCanvasVectorRaster.h` could rasterize a vector *file*;
+  a drawing program had no way to turn its own selection into pixels, so its
+  Copy had nothing to offer a paint program, a word processor or a chat. The
+  new call draws the elements where they sit in the document (their
+  ancestors' transforms applied, definitions resolved) at a given number of
+  pixels per point, over transparency, and crops the layer to what they
+  paint, so a thick stroke or a shadow is kept and empty margin is not.
+  ArtCreator's Copy is its first user. `Tests/VectorRasterTest.cpp` covers
+  it, and the read-back it shares with the plugin rasterizer is one function
+  now instead of two copies.
+- **Windows: pictures cross the clipboard between UltraCanvas applications
+  and every other program.** Nothing image-shaped went either way before:
+  - *Copy* put the application's PNG bytes under `CF_DIB`, the format that
+    must hold a bitmap header and pixels. Paint Shop Pro, Paint, Word and
+    the rest read a header that was not there and pasted nothing. An image
+    now goes on as `"PNG"` (browsers, Office, GIMP, Paint.NET and Krita read
+    it, transparency included), `CF_DIBV5` (32-bit with straight alpha) and
+    `CF_DIB` (24-bit, transparency flattened onto white, for the programs
+    that read only a bitmap; Windows makes `CF_BITMAP` from it).
+  - *Paste* handed back the raw `CF_DIB` block as `image/bmp` - a bitmap
+    with no file header, which no decoder reads - so a picture copied in
+    another program pasted as nothing in UltraPaint, and UltraFiler's Paste
+    wrote it to a `Pasted image.bmp` nothing could open. `GetImage` now
+    returns PNG on Windows as on the other desktops: the `"PNG"` format when
+    the source offered one (trimmed to its `IEND`; a clipboard block is often
+    larger than its content), else `CF_DIBV5` or `CF_DIB` converted. 1/4/8-bit
+    palettes, 16/24/32-bit `BI_RGB` and bit fields, `BI_PNG`, and rows stored
+    either way up are read; alpha is taken only from a bit-field DIB, and a
+    picture whose alpha is zero everywhere reads as opaque.
+  - The conversion is `UltraCanvasClipboardDib.h` (`ClipboardDib::DecodeDib`,
+    `EncodeDibV5`, `EncodeDib24`, `DibToPng`, PNG through cairo): plain byte
+    work, so `Tests/ClipboardDibTest.cpp` checks it on Linux.
+- **Windows: a copied file list goes on the clipboard the way Explorer puts
+  it.** Next to `CF_HDROP` it now carries `"Shell IDList Array"` (what
+  programs built on the shell's data-object helpers read), `"FileNameW"` and
+  `"Preferred DropEffect"`, all written in one open of the clipboard. The cut
+  marker used to be added in a second open, after another program could
+  already have read the list as a copy; a plain `SetFiles` now marks a copy,
+  as Explorer does.
+- **Windows: a clipboard another program holds for a moment no longer makes
+  a copy or paste silently do nothing.** A clipboard manager or Remote
+  Desktop's `rdpclip` opens the clipboard right after every change, and
+  `OpenClipboard` fails while it does; every read and write now retries for
+  up to 200 ms.
+
+#### 2026-10-06 *0.9.170*
+- **Resizing a window keeps the scroll position of the page in a tabbed
+  container.** `UltraCanvasTabbedContainer::Arrange` ran the ordinary block
+  layout over its tab pages before placing the active one, and in that
+  throwaway pass every scroll view on the page saw a viewport as tall as its
+  content and was clamped to the top - the same fault the split pane had
+  (0.9.154). The tabbed container now takes its box with `ArrangeOwnBox` and
+  places only the active page and the overflow button, as it already did
+  after that pass. A hidden page is laid out when it is switched to, as
+  before. New test: `ScrollKeepsPositionOnResizeTest` scrolls a tall view in
+  a split pane and in a tab, resizes the page, and checks the position.
+
+#### 2026-10-06 *0.9.169*
+- **The menu cursor shows on Windows, and has a clearer picture.**
+  `UCMouseCursor::ContextMenu` - the pointer over a breadcrumb item's dropdown
+  (UltraFiler's path bar, the media viewer), the breadcrumb's `...` item and
+  the dropdown widget's button - never appeared on Windows: the backend handed
+  `media/lib/cursor/context-menu.png` to `LoadCursorFromFileW` and
+  `LoadImageW`, which read only `.cur`, `.ani` and `.ico`, and fell back to the
+  arrow. `LoadCursorFromImageFile` now decodes any other image through
+  `UCImage` and builds an alpha cursor from it, drawn at the window's DPI scale
+  with the hotspot scaled along. The context-menu cursor is drawn from the new
+  `context-menu.svg`, so it is sharp at 125 %, 150 % and 200 %. The same fix
+  brings the colour picker's eyedropper cursor (`color-picker.png`) to
+  Windows, where it was the arrow too.
+  - New artwork: a pointer arrow with a small menu beside it, hotspot at the
+    arrow tip. The old picture was a large page with a faint grey cross at
+    its corner and no arrow, so it did not show where the pointer pointed.
+    `context-menu.png` (Linux, macOS) is the SVG rendered at 32 x 32.
+- **A breadcrumb dropdown opens from the full height of the breadcrumb.** The
+  dropdown zone at the end of an item, and the whole `...` item, now reach
+  from the top to the bottom of the element, padding and border included,
+  instead of stopping at the item row. The menu cursor covers the same zone.
+  `UltraCanvasBreadcrumb` 1.6.1.
+- **Cursors drawn from a picture follow the screen's scaling.** The
+  context-menu and magnifier cursors and the colour picker's eyedropper were
+  drawn once, at the scaling of the screen they were first shown on, and kept
+  that size after their window moved to a screen with other scaling - too
+  small on a 200 % screen, too large back on a 100 % one. Windows and Linux
+  now keep each such cursor's file and draw it once for every scaling it is
+  asked for (`UCImageCursorCache`, `UltraCanvasImageCursorCache.h`); Windows
+  picks the right one on the next pointer move, and Linux puts it up as soon
+  as the window's scaling changes. `Tests/ImageCursorCacheTest.cpp` covers
+  the cache.
+- **macOS uses its own context-menu cursor.** `UCMouseCursor::ContextMenu`
+  is `[NSCursor contextualMenuCursor]` on macOS: macOS draws it at the
+  screen's resolution, where `context-menu.png` was scaled up and blurred on
+  Retina, and there is no file to read - the PNG was read from disk again on
+  every switch to that cursor. The magnifier cursor, still a picture on
+  macOS, is now read once and kept.
+- **The magnifier cursor on Windows.** `UCMouseCursor::LookingGlass` was a
+  crosshair on Windows, because `looking-glass.png` could not be read there;
+  it is now the same magnifier Linux and macOS show (the zoom tools of
+  UltraPaint and ArtCreator). The crosshair remains the fallback when the
+  picture is missing.
+- **Window icons on Windows have clean edges.** `SetWindowIcon` copied
+  cairo's premultiplied pixels straight into the icon, which Windows reads as
+  straight alpha, so every soft edge of the taskbar and title-bar icon came
+  out too dark. The icon and the image cursors now go through one conversion,
+  `UltraCanvasWindowsApplication::IconFromPixmap`.
+
+#### 2026-10-06 *0.9.168*
+- **The .blend and .ms3d readers ignored three more of the mesh import
+  options: `TriangulateOnImport`, `WeldTolerance` and
+  `GenerateMissingNormals`.** Every other mesh reader applies them, so a
+  caller asking the dispatch for triangles got Blender's quads and n-gons
+  back. Both readers now finish the way the others do: generate the normals
+  a surface is missing, weld, triangulate, then turn to the requested up
+  axis.
+  - Blender's stored normals are a cache the reader never reads, so it
+    always generated its own, even when a caller asked for none. It now
+    generates them only when `GenerateMissingNormals` is on, which is the
+    default, so a default load returns exactly what it did before.
+  - `ModelFormatsPluginTest` holds every reader in the dispatch to the three
+    options. Each option's result must equal a plain load with the same
+    operation applied by hand, a check only a reader that applies the
+    option can pass. All twelve formats pass. On the samples in
+    `media/3D` only Blender's triangulation tells the old readers apart:
+    MilkShape is triangles with normals already, and neither sample has
+    coincident vertices to weld. So `ModelBlendTest` and `ModelMS3DTest`
+    also build files that do tell them apart: a `.blend` quad read with
+    normals off and triangulated, and an `.ms3d` whose two corners
+    0.00001 apart weld into one.
+- **`UltraCanvasDialogManager::CloseAllDialogs()` closes every dialog.** It
+  walked the list of open dialogs while each close erased that dialog from the
+  same list, so every second dialog stayed open, and the loop went on to read
+  the vacated slots past the list's end. The `clear()` after it then
+  unregistered a dialog that a result callback had opened meanwhile, leaving it
+  on screen where no later call could reach it. It now closes from a copy and
+  unregisters only the dialogs it closed. Apps call it to lock or reset
+  (UltraPassword's `Lock()`), so far never with more than one dialog open. New
+  `DialogCloseAllTest` (Xvfb) closes one and three dialogs and one whose
+  callback opens another; three of its checks fail without the fix.
+- **`ModelDocument::ConvertUpAxis` turned a model's root nodes but not the
+  animation keys that drive them.** An animation channel replaces the value
+  it targets, so a root's keyed translation or rotation would have undone
+  the turn on playback: an FBX, COLLADA or MilkShape model whose root is
+  animated, read with `ForceUpAxis`, would have lain back on its side. Nothing in the
+  framework plays animations yet, so nothing showed it. The keys now turn
+  with the node: R * (T * Q * S) = (R t) * (R * Q) * S, so translation keys
+  are rotated, rotation keys are pre-multiplied, and scale keys stay as they
+  are in the node's own frame. Both operations are linear in the stored
+  values, so cubic-spline tangents turn exactly too.
+  - A sampler that a turned channel shares with one that must not turn (a
+    child node, or a root's scale) is split, so the other channel keeps its
+    keys. Converting back restores every key.
+  - `ModelStorageTest` checks that every keyed pose of an animated root
+    turns exactly as its static pose does, along with the shared-sampler
+    split, the tangents, the untouched scale keys and the round trip.
+    `ModelMS3DTest` checks it end to end on an `.ms3d` whose root joint
+    carries translation keys. The old code fails both.
+- **A trusted device's certificate is kept with the device's name.**
+  `DeviceCertificates.conf` lines now read
+  `host:port=sha256//... Office Printer`, the name being the one the eSCL or
+  IPP backend discovered the device under (`Internal::NoteDeviceTlsName`).
+  A key learned before the name was known takes it on when the device is
+  next listed, or - for a printer named only by its address - once it has
+  described itself. `IODeviceTrustedCertificate` gains `name`, and lines
+  without one, as the first version wrote them, still read.
+- **A scanner or printer that speaks only HTTPS is now reachable.** Such a
+  device presents a certificate it signed itself, which ordinary verification
+  refuses, so an eSCL scanner offering only `https://` or a printer offering
+  only `ipps://` could not be used. Both backends now trust the device on
+  first use, as SSH does a host key: a certificate that verifies is used as
+  it is; the first time one fails, the device's public key is read over a
+  connection that sends nothing but `HEAD /` and remembered, and every later
+  connection is pinned to it. A device that presents a different key is
+  refused - never relearned - with a message saying how to forget the old
+  one: UOS-Settings' *Devices > Trusted certificates* page lists every
+  trusted device with a *Forget* button (`IODeviceForgetCertificate()` in
+  code). Keys are kept in
+  `DeviceCertificates.conf` in the UltraCanvas settings folder;
+  `ULTRACANVAS_DEVICE_TLS_TOFU=0` stops new ones being learned.
+- **UltraNet: public-key pinning.** `UltraNetHttpOptions::pinnedPublicKey`
+  accepts a server only when its certificate carries that key, checked even
+  with `acceptInvalidCert`; a mismatch is the new `TlsPublicKeyMismatch`, and
+  a TLS backend that cannot pin turns verification back on rather than drop
+  the pin. `capturePeerCertificate` fills `UltraNetResponse::tlsInfo`, which
+  was never filled before, and `UltraNet_PublicKeyPinOf()` computes a pin
+  from a certificate - the same value `openssl` prints for it.
+- **`UltraCanvasSettingsFolder()`** names the per-user folder every
+  application keeps settings in; the file dialog's settings now use it too.
+- **The .blend and .ms3d readers ignored `ConversionOptions::ForceUpAxis`.**
+  Every other model reader turns the scene to the up axis a caller asks for.
+  These two returned their own (Z-up for Blender, Y-up for MilkShape), so a
+  `.blend` asked for Y-up through `LoadModelDocument` still arrived Z-up.
+  Both now call `ModelDocument::ConvertUpAxis` as the others do. The rotation
+  goes on the root nodes, and for MilkShape that includes the root joints, so
+  a skinned mesh and its skeleton turn together.
+  - `ModelFormatsPluginTest` now asks every geometry sample in `media/3D` for
+    each up axis in turn. It checks that the document reports the axis it was
+    asked for, and that the height measured along Y in one equals the height
+    measured along Z in the other, so a reader cannot pass by relabelling.
+    Against the old readers it fails for `.blend` and `.ms3d` and for nothing
+    else.
+- **HTML reader: an inline `!important` beats a style sheet's `!important`.**
+  The resolver applied a whole `style` attribute at once and then every
+  `!important` rule of the style sheets on top, so
+  `style="color: #ffffff !important"` lost to
+  `a.intercom-content-link { color: #FF4554 !important }`. CSS orders the
+  cascade the other way round (Cascading 4, 6.1: normal rules, inline,
+  `!important` rules, inline `!important`). In a Lexware newsletter (Intercom)
+  three red buttons came out empty - "Zum Artikel", "Anmelden" - their white
+  text painted in the button's own red, and the footer's white links ("E-Mails
+  abbestellen", "Kontakt") came out red on black. The inline `!important`
+  declarations are now applied last; this also means a later normal
+  declaration in the same `style` attribute no longer replaces an earlier
+  `!important` one. `HTMLStyleResolver::Resolve`; test
+  `TestInlineImportantBeatsSheetImportant` in `HTMLReaderTest.cpp`.
+- **IMAP: headers and bodies are fetched in batches, forty times faster on a
+  slow link.** The IMAP plug-in fetched mail one message at a time: its flags,
+  then its header or body by URL (which libcurl fetches with BODY[], marking it
+  read), then the read mark taken off again - four to six round trips a
+  message. Through a virus scanner that reads the mail on Windows that came to
+  about a second a message: a mailbox of 2228 took over half an hour to load
+  the first time. The plug-in now opens a session of its own on the connection
+  libcurl signs in (`CURLOPT_CONNECT_ONLY`: TLS, STARTTLS, password or XOAUTH2
+  as before) and asks for two hundred headers in one `UID FETCH`, and for
+  bodies in blocks cut by size - their `RFC822.SIZE` is asked first, then up
+  to 4 MB or a hundred bodies go in one `UID FETCH` - all with `BODY.PEEK`:
+  nothing is marked read, and nothing has to be put back. Measured against
+  Dovecot at 150 ms a round trip: 160 messages with their bodies 107.8 s ->
+  2.5 s (0.67 -> 0.016 s a message), 2228 messages in about 10 s, unread mail
+  still unread. `FetchEnvelopes`, `FetchEnvelopesByUid` and `FetchMessageBodies`
+  use it; the per-message way stays as the fallback when libcurl will not open
+  such a session, and for the rest of a batch the server refuses. The
+  responses are read whole, literals included (`ImapResponseReader`,
+  `ParseFetchResponse`, `UidSetString` in `ImapParse.h`) - libcurl hands on
+  only the lines of a command's response that begin with `*`, which is why a
+  message's text could not be fetched in one command before. Tests:
+  `test_imap_mailbox.cpp`.
+- **IMAP: one sign-in serves many checks.** Every call into the IMAP plug-in
+  signed in to the server anew: a mail check - the folder's status, the list
+  of new messages, the read flags, the bodies - came to four sign-ins, twelve
+  a minute per account at a check every twenty seconds, which some providers
+  limit or block. The plug-in now keeps its signed-in sessions in a pool
+  (`SessionPool`), keyed by server, user, credentials and TLS settings: up to
+  two a key and sixteen in all, each kept for up to 330 s unused. A call takes
+  one, runs on it and gives it back (`WithSession`); one that has been idle
+  for over 15 s is first asked `NOOP`, and one the server closed (`* BYE`, an
+  error, a time-out) is dropped and a new one opened. `ListFolders`,
+  `GetMailboxStatus`, `FetchEnvelopes`, `FetchEnvelopesByUid`, `FetchMessage`,
+  `FetchMessageBodies`, `FetchAllFlags`, `StoreFlags`, `ExpungeMessage` and
+  `MoveMessage` run on a pooled session, each with the URL-based way as the
+  fallback when libcurl will not open one. `STATUS` is not trusted on the
+  folder a session has open (RFC 3501 6.3.10), so the session leaves it first
+  - `UNSELECT`, or a failed `EXAMINE` where the server lacks it, neither of
+  which expunges as `CLOSE` would. `Shutdown` closes the pool. Measured
+  against Dovecot with a check every twenty seconds: no sign-in at all over
+  65 s of checks after the first (four a check before), a newly delivered
+  message picked up within one check, and a message marked read on the
+  server, without signing in. `ImapResponse::AsLine` hands a response with
+  its literals to the line parsers (a folder name the server sends as a
+  literal), and a quoted folder name in a `LIST` response is now unescaped
+  (`\"`, `\\`). Tests: `test_imap_mailbox.cpp`.
+- **The media viewer's toolbar offers only what the shown file takes.** The
+  second row used to show every tool for every file, so a video, a PDF, a 3D
+  model, a spreadsheet, a text file or a drawing still offered the gamma /
+  brightness / colour sliders, Curves with its histogram, rotate, mirror and
+  Save as - buttons that did nothing, or that worked on a picture that was
+  not the file. Each load now decides the tool groups
+  (`UltraCanvasMediaViewer::GetAvailableTools()`, a `MediaViewerTools`): a
+  bitmap gets them all; an SVG or another drawing on the image surface keeps
+  zoom, rotate / mirror and Save as, but no colour adjustments and no Curves;
+  a `*.ucd` preview, a PDF and an e-book get zoom; text, spreadsheets, fonts,
+  3D models, video and audio get only Details, because their views carry
+  their own controls. Separators follow the groups, so none stands alone.
+- **An open adjustments panel folds away for a file it cannot change** and
+  comes back with the next bitmap while its toggle is still on (and when the
+  top bars are shown again, where it used to stay closed under a pressed
+  toggle). The adjustments still carry from one photo to the next, but they
+  no longer reach a drawing or a document preview browsed to in between,
+  which used to be drawn tinted by them - and now hides the sliders that
+  would take the tint off. An
+  open Curves dialog drops the previous picture's histogram for such a file
+  instead of showing it as this one's.
+- **Zoom works on the vector drawing view.** DXF, DWG and the other drawings
+  the Vector plugin reads were shown with the zoom buttons up and no effect;
+  zoom in / out, Fit and the zoom levels now drive the drawing.
+- `UltraCanvasMediaSurface::ShowImage` has an overload that takes the
+  adjustments for the new image, so it is colour-processed once rather than
+  with the previous image's settings first. `Tests/MediaViewerToolsTest`
+  checks the tool set and the toolbar for a photo, an SVG, text, a
+  spreadsheet, an STL model, video, audio and a PDF, and the panel and the
+  adjustments across them.
+- **Screen readers are told a password field is one.** The Windows bridge
+  answered UI Automation's `IsPassword` with a constant false, and
+  `UltraCanvasTextInput` described nothing about itself, so assistive
+  technology treated every password field - UltraPassword's master password
+  and entry fields among them - as an unknown element, and a screen reader
+  would speak each character typed. `UltraCanvasUIElement` gains
+  `IsAccessiblePassword()`; a text input reports itself as a `TextField`, and
+  in password mode (revealed or not) as a password. UI Automation gets
+  `IsPassword` from it, and AT-SPI the *password text* role (Orca then says
+  "password" and speaks no characters). The field's text is still not exposed
+  through either bridge. New headless `TextInputAccessibilityTest`;
+  `AtspiBridgeTest` now has a password field and checks that a libatspi client
+  sees password text with nothing to read. `UltraCanvasAccessibility.md` and
+  `UltraCanvasTextInputExamples.md` describe it.
+- **Tooltips sit above and to the right of the pointer.** A tooltip's top-left
+  corner was put 10 px right of and 10 px below the pointer's tip: the body
+  covered the lower half of the line the pointer was on, its soft shadow (10 px
+  blur) reached over the rest, and the lines below went under it - the text
+  being read was hidden by its own explanation, and the tooltip sat on the
+  pointer's arrow. Now its body ends 20 px above the pointer and starts 12 px
+  to its right (`TooltipStyle::offsetY` / `offsetX`, now the gap above and
+  right of the pointer), so the line under the pointer and the arrow stay in
+  view, and it follows the pointer as before. With no room above - near the
+  top of the window - it goes below the pointer's arrow instead, and with no
+  room on the right, to the left of the pointer
+  (`UltraCanvasTooltipManager::UpdateTooltipPosition`). `UltraCanvasGroupBox`'s
+  help tooltip, anchored at a spot rather than the pointer, now passes the
+  info icon's top edge, so it opens above the icon instead of over it.
+- **A Windows crash report now names the function and the call stack.** The
+  message box and the crash line in the log said only *"at 0x00007FFB1212C86D
+  in libUltraCanvas.dll"* - an address that changes on every start, since the
+  DLL loads somewhere else each time (ASLR), and that nobody can trace to a
+  line without the dump and the matching build in a debugger. UltraPassword's
+  crash on pasting a password (UCDemo 0.9.147, Windows 11) arrived as exactly
+  that and could not be placed. The report now adds the offset into the module,
+  which is the same on every start, and the function, taken from the module's
+  export table: `libUltraCanvas.dll` is linked with
+  `WINDOWS_EXPORT_ALL_SYMBOLS`, so every framework function with external
+  linkage is named there (`libUltraCanvas.dll+0x<offset>
+  UltraCanvas::<Class>::<Function>+0x<n>`). On x64 the box and the log
+  then list up to 16 callers the same way, walked from the faulting context with
+  `RtlLookupFunctionEntry` / `RtlVirtualUnwind`. A call through a freed object
+  that jumps to no module at all is followed by the caller that made it. The
+  filter still allocates nothing and loads nothing: it reads the modules' own
+  mapped headers, never leaves the thread's stack, skips the walk for a stack
+  overflow, and does not walk twice if a walk over a smashed stack faults.
+  Checked under Wine 9 with a MinGW build: a fault in an exported member
+  function of a DLL, and a virtual call through a bad pointer, both reported
+  with every frame down to `RtlUserThreadStart`. `UltraCanvasWindowsDiagnostics.md`
+  shows the new lines. ARM64 builds name the faulting function without the
+  call stack.
+- **The DirectX .x aircraft on the demo's 3D Model Formats page stood on its
+  head, and its glass canopy was missing.** The reader was right; the sample
+  was not. Both meshes in the source `.blend` hang from armature bones, and
+  Blender's exporter wrote each mesh frame relative to its bone without
+  writing the bones. Walked as written, those frames roll the hull 180
+  degrees about X and leave the canopy inside it. No reader can recover bones
+  that are not in the file, so
+  `media/3D/XFile/E-45-Aircraft.x` now carries the placements the `.blend`
+  gives the objects: the hull at the armature's origin, and the canopy
+  translated onto the nose by (0, -0.101452, 1.525604). Those are the numbers
+  Blender's own X3D export of the scene writes. The aircraft now stands the
+  same way up as the OBJ, 3DS, DXF, PLY, MS3D, Alembic and FBX samples.
+  - The same file was also incomplete in a way the picture did not show.
+    When it was mirrored to the whole aeroplane in 0.8.90, its vertices,
+    faces and normals were doubled but its UVs (372 for 744 vertices, 3683
+    for 7366) and its per-face material indices (93 for 186 faces, 937 for
+    1874) were not. The reader warned about the UVs and filled the gap with
+    zeros. The mirrored half now has its twin's UVs, which is what Blender's
+    Mirror modifier gives it, and every face has its material index.
+  - `ModelXFileTest` now also reads the demo copy and asserts that it loads
+    without a warning, that the hull is the right way up, and that the canopy
+    sits on its nose. Run against the old file, it fails all three. The
+    untouched export in `Tests/data/3D` keeps its bone-relative frames, and
+    the suite still pins the reader reproducing them.
+- **The DirectX .x reader delivered every model as its mirror image.**
+  Direct3D's space is left-handed (Z points away from the viewer) and the
+  `ModelDocument` is right-handed (Z points toward the viewer). The reader
+  copied the numbers across unchanged, so a file arrived mirrored in Z. On
+  the symmetric E-45 sample this looked like a half-turn: the nose pointed +Z
+  where the OBJ, DXF and MS3D exports point it -Z. In text, markings or any
+  asymmetric model it is plainly backwards. The reader now converts as
+  Direct3D-to-OpenGL importers do. It negates Z in every position and
+  normal, conjugates each frame matrix by the same reflection so the
+  hierarchy composes as before, and reverses every face's corners, because a
+  reflection alone would turn each face inside out. X and Y do not move, so a
+  Y-up file stays Y-up, and the document now states `RightHanded` because it
+  is.
+  - An exporter's own root-frame reflection and the face winding it reversed
+    to match still cancel after the conversion. The winding check against
+    the file's own MeshNormals still passes on the E-45 export (93 of 93 and
+    925 of 937 faces). Blender's Z-up `(x, y, z)` now arrives as
+    `(x, z, -y)`, the axis change Blender's own OBJ export makes. The E-45
+    `.x` now lands vertex for vertex where the MS3D sample does.
+  - `ModelXFileTest` gains three chirality cases. A point at Direct3D's
+    z = +3 lands at -3. A mesh under a rotating frame lands where Direct3D
+    draws it, mirrored, which catches negating the vertices without
+    converting the frames. A triangle facing a Direct3D camera still faces
+    the document's camera. The old reader fails all three, and a reader that
+    skips the frame conjugation fails the second. The vertex-colour case now
+    finds its vertices by position, because reversing the winding changes
+    the order a face visits them in.
+
+#### 2026-10-05 *0.9.167*
+- **`UltraVault::DeviceKeyVault` opens in a profile folder of any name, and
+  says why when it does not open.**
+  - The device key's path was handed to `fs::exists`, `std::ifstream`,
+    `std::ofstream`, `fs::remove` and `fs::permissions` as a `std::string`,
+    and the directory to `fs::create_directories` the same way. On Windows
+    that is read in the ANSI code page, so a profile folder the code page
+    cannot spell - a Thai or Cyrillic user name under code page 1252 - could
+    not find, write or protect its `device.key`, and the vault of UltraMail,
+    UltraFiler, UltraSocial or EmailCleaner did not open. Every path now goes
+    through `PathFromUtf8`. `scripts/check_path_string.py` could not see
+    these: the path came from a function's result and a member declared in
+    the header. The vault core's clean-up of a failed write
+    (`std::remove(tmpPath.c_str())`) goes through `std::filesystem` too.
+  - `TryAutoUnlock()` returned a bare `false` whatever the reason. The new
+    `GetLastUnlockStatus()` says why the last `Unlock()` / `TryAutoUnlock()`
+    left the vault closed - `Unavailable` (no crypto backend: UltraCrypt
+    built without libsodium), `IoError` (the folder or the key cannot be
+    written or read), `Locked` (a vault made with a master password, no
+    device key), or what `Unlock()` reported - and
+    `DescribeUnlockStatus(status)` puts it in words for an error message.
+    `DeviceKeyVault` 0.2.0, `UltraVaultCore` 0.1.2.
+  - `Tests/UltraVaultTests.cpp` checks the status on each path, including a
+    build without libsodium, and a vault in a Thai-and-emoji folder.
+- **Environment variables are read as UTF-8 on Windows, and the path check
+  reports a narrow read.** Windows keeps the profile folders and the user's
+  name in the environment (`APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, `TEMP`,
+  `USERNAME` ...), and the narrow `getenv` / `_dupenv_s` answer in the ANSI
+  code page. A profile named in Thai or Cyrillic under code page 1252 came
+  back with `?` in it, so a settings folder, a cache or a dictionary was
+  looked for in a folder that does not exist. Wrapping those bytes in
+  `PathFromUtf8` does not make them UTF-8, which is why `check_path_string`
+  never saw it.
+  - **`GetEnvUtf8(name)`** in `UltraCanvasPathUtf8.h` (1.2.0): the value as
+    UTF-8, from `GetEnvironmentVariableW` on Windows and `getenv` elsewhere,
+    empty when unset. It reads the live environment block, not the C
+    runtime's copy, so it also sees a variable set later with
+    `SetEnvironmentVariableW`. Still header-only: it declares
+    `GetEnvironmentVariableW` itself rather than including `<windows.h>`.
+    `Tests/PathUtf8Test.cpp` checks a Thai-and-emoji value, one longer than
+    the first 260-character buffer, an empty and an unset one; Windows CI
+    runs it under code page 1252.
+  - **`env-narrow`** in `scripts/check_path_string.py` reports a narrow read
+    of one of those names, any narrow read in Windows-only code, and a call
+    with one of those names to a helper of the same file that reads narrowly
+    (`EnvOrEmpty("LOCALAPPDATA")`). `--self-test` covers it.
+  - **The 46 sites it found are fixed**, and the baseline stays empty: the
+    framework's spell checker (the user dictionary and the Hunspell
+    dictionary folders), the generated fontconfig folder, the cloud-storage
+    folder detection, the file dialogs' remembered folder and home folder,
+    Windows shortcut targets (`%VAR%` expansion), the desktop shell's home
+    and `PATH` search, the UltraMessage journal, the "Open with" icon cache
+    and Applications folder, and the DemoApp image benchmark's temporary
+    folder; and the apps listed in their own changelogs (Texter, UltraMail,
+    UltraPassword, UltraAuthenticator, UltraDesktop, UltraNetMonitor,
+    UltraCanvasStart, UltraCleaner, UltraFiler and the UltraAI dashboard). Each consumer was checked first: every one opens the folder
+    through `PathFromUtf8` or `OpenFileUtf8` (or hands it to SQLite, which
+    takes UTF-8), so the code-page bytes never worked there for a name
+    beyond ASCII. The one consumer further down that reads names narrowly,
+    Hunspell, is handled next.
+  - **A dictionary Hunspell cannot open is no longer listed.** Hunspell
+    opens its files with the narrow CRT, so on Windows a path beyond ASCII
+    only reaches it where the process code page is UTF-8 (the manifest's
+    `activeCodePage`, honoured from Windows 10 1903). With `%APPDATA%` now
+    read correctly, a dictionary there would otherwise have been found ahead
+    of the bundled copy of the same language and then failed to open; it is
+    passed over instead, and the next one in the search order is used.
+  - The crash-report switches (`ULTRACANVAS_NO_ERROR_DIALOG`,
+    `ULTRACANVAS_NO_CRASH_DUMP`) stay a narrow read: they hold an ASCII
+    `0`/`1`, and are read on the way to a crash report, where nothing should
+    allocate. The site says so.
+- **`check_path_string` reads one line at a time when it strips literals.**
+  Stripping the whole file at once let an apostrophe in a comment ("don't")
+  pair with one many lines further down, and every declaration in between
+  disappeared - so the header-aware rules missed strings declared there. Ten
+  sites came to light and are fixed: five `fs::is_directory(currentPath)`
+  calls and a template path in the Filer widget, the audio recorder's stream
+  file, the rich document's image folder, and UltraFiler's rename of a
+  remote preview.
+- **VirtualFS's Windows RAM disc reads volume labels wide.** Every drive's
+  label is read to find the discs this module made, and
+  `GetVolumeInformationA` handed a stick labelled `ultravfs-Ελένη` back as
+  `ultravfs-?????` - which then counted as one of ours. It uses
+  `GetVolumeInformationW` now, and a label only counts when what follows the
+  prefix is a name the module accepts. The `imdisk` and `icacls` command
+  lines already went through `_wpopen` as UTF-16.
+- **UltraNet's FTP calls report their session as it happens, and a failure
+  says what actually went wrong.** A listing that hung after PASV used to fail
+  with "Timeout was reached" and nothing else - no address, no reply, no word
+  on the step it got to. Every `UltraNet_Ftp*` call now logs the lines an FTP
+  client shows in its message log (`UltraNetFtp.h`): the steps (*Resolving
+  address of ...*, *Connecting to 203.0.113.7:21...*, *Logged in*,
+  *Retrieving directory listing...*), every command sent - with the password
+  masked, `PASS ********` - every reply with its three-digit code, and an
+  error line carrying UltraNet's result code and libcurl's error number. A
+  caller passes `UltraNetFtpOptions::onLog`; one that reaches UltraNet
+  through a layer building the options itself sets a per-thread sink with the
+  new `UltraNet_SetThreadFtpLog`. The kind is `UltraNetFtpLogKind::Step`, not
+  `Status`, which Xlib `#define`s. The transcript logic is curl-free in
+  `core/UltraNet/UltraNetFtpLog.h`.
+  - A failure's `message` is libcurl's specific reason (its error buffer)
+    rather than the error class, with the server's refusal added when the
+    last reply was a 4xx / 5xx ("RETR response: 550 - the server said
+    \"550 Permission denied\""); `diagnostics` now carries the connection
+    chain (`UltraNetCurlError.h`) and the last server reply for FTP too.
+  - `UltraNetFtpOptions::inactivityTimeoutMs` (default 30 s) ends a call
+    whose server has gone quiet - no reply to a command, no bytes of a
+    listing or file - as "Connection timed out after N seconds of
+    inactivity". Before it, a data connection that opened and then carried
+    nothing held the call indefinitely.
+  - A listing tries LIST and NLST after MLSD only when the server refused the
+    command. A failure to connect, sign in, set up TLS or the data
+    connection, or a timeout, is reported once instead of three times (a
+    refused password was sent three times, and one timeout became three),
+    and an empty folder is listed with one request instead of three.
+  - `CURLE_REMOTE_FILE_NOT_FOUND` maps to `NotFound`, `CURLE_USE_SSL_FAILED`
+    to `TlsHandshakeFailed`. `UltraNetResult::url` of an FTP call no longer
+    carries credentials written into the URL.
+  - `Tests/UltraNet/test_ftp_log.cpp` checks the transcript and drives real
+    calls against a scripted FTP server on loopback (a refused sign-in, an
+    empty folder, MLSD refused, a stalled data connection, a server that
+    never answers the listing); `UltraNetApiStatus` probes
+    `UltraNet_SetThreadFtpLog`.
+  - The connection steps read every libcurl's wording: "Connected to" (7.x),
+    "Connected 2nd connection to" (8.x) and, from 8.21, "Established
+    connection to" / "Established 2nd connection to". The last is all the
+    vendored `third_party/curl` (8.21, used where the system libcurl lacks
+    WebSockets, as on Ubuntu 22.04) says, so there neither "Connection
+    established" nor "Data connection established" ever appeared.
+- **UltraCloud: a failed `Result` carries the transport's diagnostics.**
+  `Result::diagnostics` holds the connection chain the provider's transport
+  put together; the FTP provider fills it from `UltraNetResult::diagnostics`
+  (`FromFtp`). UltraFiler's connection log shows it under each failure.
+- **The mail-connection trace: the documented variable, no passwords in it,
+  and POP3 too.** `Docs/Modules/UltraNet/README.md` told readers to set
+  `ULTRANET_CURL_DEBUG`, but the plug-ins read `ULTRANET_CURL_VERBOSE`, so
+  the documented trace never turned on; the README now names the variable
+  the code reads, and says what is redacted as it is printed
+  (`<redacted auth line>`).
+  - The trace masked only lines with "AUTH" in them, so the plain sign-ins
+    libcurl falls back to when a server offers no SASL went out as they
+    were: POP3's `PASS password` and IMAP's `A001 LOGIN user password`.
+    Both are redacted now (`UltraNetCurlDebug.h` 0.2.0,
+    `ultranet_curldebug::IsPlainLogin`); the server's replies are still
+    kept whole.
+  - The POP3 plug-in (0.1.2) honours `ULTRANET_CURL_VERBOSE` like the SMTP
+    and IMAP ones; the README listed it, but it never asked.
+  - `Tests/UltraNet/test_curl_debug.cpp` checks the redaction rule.
+- **`check_path_string` sees what a header declares, a call that returns a
+  string, and a call over several lines.** The device-key vault's path
+  conversions went through the Windows code page unseen, because the check
+  read only the file's own declarations and never treated a call as a string:
+  `fs::exists(DeviceKeyPath(), ec)` (a function declared in the header as
+  returning `std::string`), `fs::create_directories(dir_, ec)` (a member
+  declared there) and a three-line `fs::permissions(DeviceKeyPath(), ...)`
+  all passed. The check now also reads the repository headers a file includes
+  directly - their declarations, with inline function bodies left out so a
+  header's locals lend their types to nothing - counts a call to a function
+  declared as returning `std::string` as a string wherever it is handed to a
+  path, and reads a call that is left open at the end of a line together with
+  the lines that close it. `--self-test` checks those rules against examples
+  of their own (and fails when either is switched off); `path-strings.yml`
+  runs it before the scan. Run on the pre-fix vault source, the check now
+  reports every one of its sites; the old one reported it clean.
+- **The 37 sites it found are fixed, and the baseline stays empty.** Among
+  them, real failures on a Windows profile named outside the code page:
+  - UltraFiler's and the UltraAI dashboard's configuration folders were read
+    with the narrow `getenv("APPDATA")`, which answers in the ANSI code page,
+    and handed on as UTF-8 to code that opens them as UTF-8 (SQLite, the
+    vault, the JSON file helpers). They are read as UTF-8 now (`GetEnvUtf8`,
+    see the `env-narrow` entry), and every file in them is opened through
+    `PathFromUtf8`.
+  - VirtualFS's Windows RAM-disc fallback took its folder from
+    `GetTempPathA`; it uses `GetTempPathW` now, and runs `icacls` through
+    `_wpopen`, so a UTF-8 path on the command line is not read in the code
+    page.
+  - UltraWin's associations file and environment manifests, the Filer
+    widget's shortcut-target check and its chunked copy's `fs::permissions`,
+    a `.git` file's `gitdir:` pointer, the LaTeX reader's `\graphicspath`,
+    the safe-save temporary name (`UltraCanvasFileError.h`, whose extension
+    is the target's own) and the CorelDRAW converter's temporary name, the
+    UltraCloud plug-in folder, a RAM disc's mount check, the Z-Wave
+    controller path, the DemoApp's Up button, UltraAuthenticator's
+    `fs::permissions` on its temporary files, and the vault's file name join.
+- **`UltraVaultTests` runs on Windows.** The new `ULTRACANVAS_BUILD_VAULT_TESTS`
+  builds it without the full suite (the target lives in
+  `Tests/VaultTests.cmake`, shared with `BUILD_TESTS`), and the Windows CI row
+  runs it - the one platform, on its code page 1252 runner, where the
+  vault-in-a-Thai-and-emoji-folder test can fail. The test file itself goes
+  through `PathToUtf8` / `PathFromUtf8` now and is scanned by the check.
+
+#### 2026-10-05 *0.9.166*
+- **macOS: a pull request's disk image no longer passes for the release.**
+  On macOS 27 the apps of `UCDemo-MacOS-0.9.147-arm64.dmg` were refused with
+  *"UltraFiler.app is damaged and can't be opened"*. Two images of that name
+  existed: the one built on `main`, signed with the Developer ID, notarized
+  and stapled, and one built for a pull request with `--no-sign`, which
+  Gatekeeper refuses with exactly that message once a browser has downloaded
+  it. Nothing in the file, the volume or the CI artifact said which was
+  which. `package-macos.sh --no-sign` now names the image
+  `UCDemo-MacOS-<version>-<arch>-unsigned.dmg` and its volume
+  "UltraCanvas <version> (unsigned)", and CI names the artifact the same way
+  on every run that is not a release. The image carries
+  `Unsigned build - read me.txt`: why macOS calls the apps damaged, and that
+  `xattr -dr com.apple.quarantine /Applications/UltraCanvas` after copying the
+  folder lets them run.
+- **`--no-sign` signs ad hoc instead of not at all.** An unsigned arm64 app
+  had only the linker's signature on its executable - no sealed `Info.plist`
+  or resources - and its dylibs kept whatever `install_name_tool` and `strip`
+  had left of theirs, while Apple silicon runs no code without a valid
+  signature. Every dylib, plug-in, executable and bundle is now signed with
+  `codesign --sign -`, with the same hardened-runtime options and
+  entitlements as the release and in the same order, and verified with
+  `codesign --verify --strict`, so a bundle that cannot be signed fails the
+  pull request instead of the release build on `main`. Ad hoc needs no
+  certificate and no `--timestamp`, so it asks Apple nothing and brings back
+  none of the network failures that took signing out of pull requests in
+  0.8.31.
+
+#### 2026-10-05 *0.9.165*
+- **A RAM disc's name fits its volume label on Windows.** A drive letter
+  carries no name, so an ImDisk disc keeps "ultravfs-<name>" in its NTFS
+  volume label - the only way `VirtualFS_ListRamDisks()` and the duplicate
+  check find it again. A label holds 32 characters, but names of up to 64
+  were accepted: a name over 23 characters could not be stamped on the
+  volume, and the disc was then neither found by its name nor listed, so
+  nothing in VirtualFS could eject it again. Names are now limited to 23 characters on Windows
+  (still 64 elsewhere), for the `%TEMP%` fallback too, so a name works
+  whichever backing a machine has. The limit is computed from the prefix,
+  and `VirtualFS_GetMaxRamDiskNameLength()` reports it. Each back end now
+  states its own limit (`PlatformMaxNameLength`), and `IsValidName` applies
+  it. `VirtualFSRamDiskTest` checks the limit, rejects a name one character
+  longer, and makes and lists a disc with a name of exactly that length -
+  also built for Windows and run under Wine, through the fallback.
+
+#### 2026-10-05 *0.9.164*
+- **Colour picker: a square, pixel-exact saturation/value area for the Bar
+  style.** `UltraCanvasColorPicker::SetSVAreaShape` takes
+  `ColorPickerSVAreaShape::Fill` (the stretched rectangle, still the default),
+  `Square` (1:1, as large as fits) or `PixelExact` (1:1 at
+  `PixelExactSVSide` = 256 x 256 pixels). 8-bit channels have 256 steps, so
+  at 256 pixels each column is one step of saturation and each row one step of
+  value: a smaller area skips values, a larger one repeats them. A square area
+  is centred with the hue bar at its width, and `PreferredHeightForWidth`
+  sizes a collapsible PixelExact picker for its expanded sliders, so opening
+  them does not shrink the area below exact.
+- **Colour picker: the SV area's first and last pixels now are 0 and 100 %.**
+  The pointer mapped column `i` to `i / width`, so the last column inside the
+  area gave 99.6 % and the extremes were reachable only by dragging past the
+  edge, while the gradient was drawn half a pixel off what a click picked.
+  Column `i` now maps to `i / (width - 1)`, the gradients run from the centre
+  of the first pixel to the centre of the last, and the marker sits on the
+  centre of the picked pixel.
+- **DemoApp colour picker page rearranged.** The first row now holds the full
+  picker, the collapsible-sliders picker with a 256 x 256 pixel-exact SV
+  square, and the hue x lightness field with collapsible sliders; the 60 %
+  scaled picker moved to the last row.
+- **Colour picker: value boxes with `< >` steppers cut their value to
+  "17...".** The arrows take 14 px each inside the box, but the box was only
+  12 px wider than a plain one, so "178.0" and "100.0" did not fit. A box
+  with steppers is now the plain width plus both arrows.
+
+#### 2026-10-05 *0.9.163*
+- **IMAP plug-in: the bulk `FetchMessages` fetches the messages it found.** It
+  listed the mailbox with `SEARCH ALL`, which answers with sequence numbers,
+  then fetched each by UID (`/;UID=n`). The two agree only on a mailbox from
+  which nothing has ever been deleted. Elsewhere it fetched the wrong messages,
+  or none at all once the sequence numbers fell below the lowest UID. It now
+  searches with `UID SEARCH ALL`, like `FetchEnvelopes`. Checked against a fake
+  IMAP server whose messages 1 and 2 carry UIDs 10 and 20: before, no messages;
+  after, both.
+
+#### 2026-10-05 *0.9.162*
+- **DemoApp: the Ultra Message page shows each sample message once.** Two
+  causes. `SelectDemoItem` (used by `--component`) selected the tree node,
+  which already fires `onNodeSelected`, and then called `OnTreeNodeSelected`
+  itself, so every page opened that way was built twice and the first copy
+  thrown away. The Ultra Message page seeded the bus both times. Separately,
+  the page's broker and journal outlive the page, so each later visit seeded
+  the samples again. The node is now selected silently and displayed once, and
+  the page seeds only a feed that comes up empty. Building the page twice also
+  destroyed the first Message Centre while its seeded messages were queued,
+  the crash fixed in UltraMessage itself in #672.
+- **DemoApp: the Ultra Message page's subtitle is no longer clipped.** It is
+  three lines at the usual window width and had a fixed 40 px height; its
+  height now follows its lines.
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+
+#### 2026-10-05 *0.9.161*
+- **`UltraCanvasBusyIndicator` gets a sixth kind, `DotRing`, and a two-colour
+  `DualRing`.** `DotRing` is a ring of `ringDotCount` dots (default 8) with a
+  head running round it; the dots behind the head shrink, and
+  `dotRingFade` (`BusyDotRingFade`) picks whether they also fade (`Fade`, the
+  default), stay solid (`NoFade`) or fade and come back in a new random colour
+  every time (`FadeRandomColor`). `DualRing` draws its inner arc in the new
+  `secondArcColor` (orange by default), and `Bar` takes a segment length in
+  pixels, `barLength`, which overrides `barFraction` when set.
+- **DemoApp: the Busy Indicator page shows the new kind.** A `DotRing` row,
+  its three fades side by side at 64 px, the dual ring in two colours (orange
+  and purple in the second-colour column), and a green bar with a 40 px
+  segment.
+- **DemoApp: a long page description is no longer cut off in the header.**
+  The header showed each page's description on one line and cut it off with
+  an ellipsis. 44 of the demo's pages have descriptions too long for the
+  1400 px window, and Media Viewer's lost about three quarters of its text.
+  The title now wraps, and the header grows to fit the lines and shrinks
+  back on a page with a short description. The window's column measured the
+  header against an "at most this wide" width, under which a flex row keeps
+  its items at their one-line width and height, so the header now takes a
+  definite 100 % width. The documentation and source buttons no longer
+  shrink: on the longest descriptions they had been squashed to a few
+  pixels.
+- **DemoApp: the Media Viewer page shows its whole introduction.** The
+  three-line introduction sat in a box two lines tall and lost its first and
+  last lines, and the frame's caption read "Media Viewer wid…".
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+- **UltraMessage: a delivery queued for the UI thread is dropped once its
+  subscription ends.** `UltraMsg_Unsubscribe` and `UltraMsg_Disconnect` took
+  a subscription out of the tables, but a delivery the reader thread had
+  already handed to the UI dispatcher kept its own reference and still called
+  back. A subscriber that unsubscribed in its destructor was then called on
+  freed memory. The Message Centre does exactly that, so the DemoApp crashed a
+  moment after the Ultra Message page opened: the page was built twice at
+  startup, and the first Message Centre was destroyed while the seven
+  messages it had just seeded were still queued. Each subscription now
+  carries an `active` flag that both calls clear and that a queued delivery
+  checks before calling back. A dropped delivery is not acknowledged, exactly
+  as if it had arrived after the unsubscribe. `UltraMessage.h` and the module
+  README state the guarantee. New tests `unsubscribe_cancels_deliveries_already_queued`,
+  `disconnect_cancels_deliveries_already_queued` and
+  `message_center_destroyed_with_deliveries_queued` hold queued deliveries in
+  a test dispatcher and run them after the unsubscribe; without the fix the
+  first two fail and the Message Centre one aborts.
+
+#### 2026-10-05 *0.9.160*
+- **The company is now ULTRA OS Development GmbH.** The old name, Cloverleaf
+  UG, is replaced wherever the repository names the company: the copyright line
+  in `LICENSE`, the licence and "Developed by" lines of `README.md` and
+  `Docs/UltraCanvas/README.md`, the footers of the module READMEs, the
+  copyright string every macOS app bundle shows in its About box
+  (`NSHumanReadableCopyright`, written by `package-macos.sh`), and the
+  publisher name `SignUltraTexter.ps1` and `SignUltraDemo.ps1` put in the
+  self-signed Windows code-signing certificate they create.
+  - A machine that already has the old self-signed certificate keeps signing
+    with it while its `.pfx` file is present. Delete the `.pfx` and run the
+    script once with `-Mode CreateAndSign` to get one in the new name.
+  - Three things keep the old name on purpose. The macOS signing identity in
+    `package-macos.sh` must match the name inside the Apple Developer ID
+    certificate, which Apple issued to Cloverleaf RISCOS Computer UG; it
+    changes when Apple reissues the certificate. The `com.cloverleaf.*`
+    bundle identifiers stay, because macOS files each app's preferences,
+    keychain items and privacy permissions under them. Test data that
+    happens to contain the old name is test data, not a reference to the
+    company.
+- **macOS builds configure again: the vcpkg libraries install outside the
+  checkout.** Since the switch to vcpkg-built libraries, `scripts/macos-deps.sh`
+  installed them into `.vcpkg/installed` inside the source tree. The
+  UltraCanvas package exports the prefix's `lib` directory, and CMake refuses
+  to generate an `install(EXPORT)` whose link directories lie inside the source
+  or build tree, so both macOS CI legs (and a local build following
+  `MacOS/deps/README.md`) failed at *Configure CMake* with one "…which is
+  prefixed in the source directory" error per library. This was not a macOS 15
+  compatibility problem; the arm64 and Intel legs failed identically before
+  anything compiled. The default install root is now
+  `~/.cache/ultracanvas/vcpkg-installed` (`$XDG_CACHE_HOME` is honoured, and
+  `UC_DEPS_INSTALL_ROOT` still overrides it). The script refuses an install
+  root inside the checkout before building anything, and
+  `cmake/UltraCanvasMacOSDeps.cmake` stops at configure with one clear message
+  when `ULTRACANVAS_MACOS_DEPS_PREFIX` lies in the source or build tree. vcpkg's
+  checkout and binary cache stay in `.vcpkg/`; the cached archives do not
+  depend on where they are installed, so CI reuses them.
+- **macOS packaging: libmupdf no longer links the build machine's OpenSSL.**
+  With the configure step fixed, the Intel leg got as far as
+  `package-macos.sh` for the first time since the switch to vcpkg, and its
+  suite check refused the bundle: "libmupdf.dylib still loads
+  /usr/local/opt/openssl@3/lib/libcrypto.3.dylib from the build machine".
+  MuPDF's Makerules asks pkg-config for libcrypto (PDF digital signatures) on
+  macOS, and the port only prepended vcpkg's directories to `PKG_CONFIG_PATH`,
+  so pkg-config still found Homebrew's OpenSSL. The apps do not use MuPDF's
+  signature support: the port now builds with `HAVE_LIBCRYPTO=no` and confines
+  pkg-config to vcpkg's prefix with `PKG_CONFIG_LIBDIR` (port-version 1).
+
+#### 2026-10-05 *0.9.159*
+- **Hiding or disabling a focused text field left its caret blinking where
+  the field had been.** `UltraCanvasTextInput::OnEvent` and
+  `UltraCanvasTextArea::OnEvent` returned early for a hidden or disabled
+  element - before the FocusLost case that releases the shared caret - and
+  `SetVisible(false)` hides the element first and only then drops its focus,
+  so the release never ran. FocusLost now always gets through. Found with
+  UltraClaude's login-code box, which is hidden when sign-in ends.
+- **Hiding a container now takes the keyboard focus from the fields inside
+  it.** `UltraCanvasUIElement::SetVisible(false)` dropped the focus only when
+  the hidden element itself held it, so hiding a panel left a text field in it
+  focused: keys still went to the invisible field and its caret blinked where
+  it had been. It now clears the window's focus when the focused element is
+  the hidden element or anywhere inside it (together with
+  `caret-left-by-hidden-input.md`, the caret goes too). UltraClaude's
+  sign-in page drops its own workaround for this.
+- **`UltraCanvasTextArea::onBeforeKeyDown`: a host can give a key a meaning of
+  its own.** The callback sees every KeyDown before the area handles it, in any
+  editing mode and when read-only, and consumes the key by returning true. A
+  chat box can now send on Enter and keep Shift+Enter for a line break without
+  reimplementing the editor - the text area's `OnEvent` never reached the
+  generic `eventCallback`, so there was no way in before. UltraClaude's message
+  box is the first user. Documented in `UltraCanvasTextAreaExamples.md`.
+
+#### 2026-10-05 *0.9.158*
+- **An eSCL scanner is listed by its own name, not its model.** Discovery
+  named a scanner by its TXT record's `ty`, so two scanners of one model were
+  listed under the same name and could not be told apart. It now uses the
+  DNS-SD instance name, which is unique on the network - as the IPP backend
+  does for printers - and keeps the model in `model`.
+- **And that name is no longer the full service name.** A scanner without a
+  `ty` fell back to the mDNS plugin's `dn`, so it was listed as
+  "Office Scanner._uscan._tcp.local" - and on macOS as
+  `Office\032Scanner._uscan._tcp.local.`. It is now "Office Scanner", cut out
+  and unescaped by `EsclInstanceFromServiceName`, with the full name kept as
+  the `mdns-name` attribute. The cutting and unescaping moved out of the IPP
+  backend into `UltraCanvasIODeviceDnsSd.h`, which both backends now use.
+
+#### 2026-10-04 *0.9.157*
+- **The macOS apps run on macOS 14 (Sonoma) and later, on Apple Silicon and
+  Intel; CI published apps that started only on the macOS they were built on
+  - for Apple Silicon, macOS 26.** The arm64 leg ran on `macos-latest`, which
+  GitHub moved to macOS 26 in July 2026; nothing set a deployment target, so
+  clang compiled our code for the runner's SDK, and the bundled Homebrew
+  libraries carry the macOS of the machine their bottle was built on. dyld
+  refuses a binary built for a newer macOS than the running one, so on macOS
+  14 or 15 the apps did not start, while their `Info.plist` still said
+  `LSMinimumSystemVersion` 12.0.
+  - The libraries the apps bundle are built from source with vcpkg for macOS
+    14.0 (`MacOS/deps/`, `scripts/macos-deps.sh`, `MacOS/deps/README.md`)
+    instead of coming from Homebrew, which since 7.0 (September 2026) builds
+    no bottles for macOS 14 or for Intel. vcpkg lacks MuPDF, zbar and
+    librevenge, so they have ports in `MacOS/deps/ports`, as does libvips for
+    the formats Homebrew's linked in (FITS, MAT, OpenEXR, JPEG 2000, RAW, ...)
+    and the built-in loaders vcpkg's port turns off. vcpkg's binary cache is
+    kept between CI runs. Homebrew still provides the build tools.
+  - Our code is compiled for `MACOSX_DEPLOYMENT_TARGET=14.0`, the arm64 leg
+    runs on `macos-15`, and `cmake/UltraCanvasMacOSDeps.cmake` replaces every
+    `brew --prefix` in the CMake files, so the build takes its libraries from
+    `ULTRACANVAS_MACOS_DEPS_PREFIX` (Homebrew's by default, for local builds).
+    UltraNet stays on Apple's libcurl although vcpkg's tesseract brings its own.
+  - `package-macos.sh` reads the minimum macOS from every executable, plug-in
+    and dylib in the suite - the shared `Frameworks/` once, then each app's
+    own binaries - writes it into each app as `LSMinimumSystemVersion`
+    instead of a fixed 12.0, and fails when a binary needs a newer macOS than
+    `MACOSX_DEPLOYMENT_TARGET`, naming each one. The job summary's suite table
+    gains a *Needs macOS* column. Its first run caught Homebrew's arm64
+    tesseract bottle declaring macOS 15.7.5.
+  - Two packaging bugs fixed on the way: the install-name rewrite no longer
+    repoints a system library (`/usr/lib`, `/System`) at a bundled one with
+    the same file name - Homebrew's bundle already swapped the apps' Apple
+    libcurl for Homebrew's that way - and run paths into the build machine's
+    library prefix are deleted from the shipped binaries. MuPDF's library no
+    longer exports its lcms2mt fork's `cms*` functions, which share lcms2's
+    names with other signatures.
+  - Dropped: three optional libvips helpers vcpkg does not have - `cgif` (the
+    apps write GIF themselves when `gifsave` is missing), `libimagequant` and
+    `libultrahdr` - and MuPDF's own OCR, which the apps do not use.
+
+#### 2026-10-04 *0.9.156*
+- **macOS packaging no longer fails every run with "no app bundle was
+  produced".** The check that ends `package-macos.sh`, added to fail a run
+  that packaged nothing, looked for `*.app` directly in `dist-macos/`, but
+  since the apps became one suite folder they are built in
+  `dist-macos/UltraCanvas/`. It never found one, so both macOS builds of every
+  pull request and of `main` failed after packaging every app correctly. It
+  now looks in the suite folder.
+
+#### 2026-10-04 *0.9.155*
+- **IMAP: numbers above 2147483647 are read right on Windows.** The IMAP
+  parsers read UIDs, UIDVALIDITY and UIDNEXT with `strtol`, whose `long` is 32
+  bits on Windows: every value above 2147483647 read as 2147483647 there. A
+  mailbox's UIDVALIDITY is how a client notices that the server renumbered it,
+  so a renumbering went unnoticed on Windows only, and new mail numbered below
+  the old highest UID was never fetched. They are read as unsigned 32-bit
+  values on every platform now (`ParseImapNumber`, `ImapParse.h`), a STATUS
+  reply is read after its item list's `(` so a mailbox named "Recent messages"
+  cannot hide the counts, and a SEARCH value too large for a UID is no longer
+  taken for another one. Tests: `test_imap_mailbox.cpp`.
+- **IMAP: `IMailboxProtocolPlugin::FetchEnvelopesByUid`** - the envelopes of
+  the messages named, for mail an incremental fetch ("UID > the highest held")
+  can no longer reach: one an interrupted sync skipped, one whose header could
+  not be read the first time. Added last with a default (FetchEnvelopes from
+  the lowest UID asked for, keeping the ones asked for), so the existing vtable
+  is undisturbed and the JMAP plug-in and test fakes serve it unchanged; the
+  IMAP plug-in fetches exactly those UIDs over one connection.
+- **IMAP plug-in: no empty envelopes.** A message whose header fetch failed
+  (or came back empty) was still handed to the caller - with no sender,
+  subject, date or Message-ID - and UltraMail stored it as a blank row it never
+  asked for again. Such a message is now left out; the caller asks again.
+  `FetchEnvelopes` also drops the server's echo of the highest UID: "UID n:*"
+  always matches it, even below n (RFC 3501 6.4.8), so the newest message was
+  fetched again - body and all - on every sync.
+- **`UltraCanvasMultiColumnListModel::SetItems`**: every row at once, with one
+  change notification. `AddItem` notifies the view per row (row geometry,
+  scrollbar, redraw), which for a list of thousands - a mailbox - was most of
+  the time it took to fill; and a re-sort is a new order of the same rows.
+  Documented in `UltraCanvasListViewExamples.md`.
+- **ListView: EnsureRowVisible before the first layout.** Called while the
+  view had no height yet, it measured against a zero - less the header,
+  negative - viewport and scrolled the row below the top: a list filled and
+  selected while its window was being built opened two rows down, the selected
+  row hidden above it (UltraMail's message list did, at every start). The row
+  is now remembered and revealed once the view has its size. Tests (with
+  `SetItems`): `ListViewScrollTest.cpp`.
+- **ListView: the selection follows the rows.** A row inserted into the model
+  above the selected one left the selection at the same row number, so the
+  highlight sat on whatever item slid into its place; a row removed above it
+  did the same the other way. The view now moves the selection - and the
+  keyboard focus and the hover - with the rows: `IListSelection::ShiftRows`,
+  called from the model's row notifications, keeps the same items selected
+  without an `onSelectionChanged` (nothing went in or out of the selection);
+  a selected row that is removed still leaves it, reported as before. The
+  default implementation (through `Clear` / `Select`) serves other selection
+  classes. Tests: `ListViewScrollTest.cpp`. Documented in
+  `UltraCanvasListViewExamples.md`.
+- **IMAP: folder roles by the server's own separator.** `DetectFolderRole`
+  reads the last level of a folder's name after the separator the LIST line
+  gives (it took the last `/` or `.` of any name, so "Mr. Sent" on a `/`
+  server was a Sent folder), knows the German names servers use ("Gesendete
+  Objekte", "Papierkorb", "Entwürfe", "Gelöschte Objekte", …) and leaves out a
+  leading `INBOX^` - how a folder came across from a server with another
+  separator, so Courier's "INBOX.INBOX^Sent" is the Sent folder. Only the
+  folder named INBOX is the inbox, not a sub-folder that happens to be called
+  so. Tests: `test_imap_mailbox.cpp`.
+- **ListView: the arrow keys go on from a row selected in code.** The keyboard
+  focus moved only with clicks and keys; a row the application selected
+  through `GetSelection()->Select` left it where it was - or at "none" after
+  `ResetSelection` - so the next Down jumped to the top, or to a row long
+  gone. The focus now follows the selection's current row whatever set it.
+  UltraMail's message list (rebuilt on a folder or account switch, re-sorted
+  from a header) and `UltraCanvasDropdown`, which selects its current item in
+  code as it opens, now move on from the selected row. Tests:
+  `ListViewScrollTest.cpp`.
+
+#### 2026-10-04 *0.9.154*
+- **A scrolled view no longer leaves glyph fringes beside and below it.**
+  Text drawn at the edge of a scrolling container marks the pixel just
+  outside it with its anti-aliased fringe, and a scroll repainted exactly the
+  container's box, so that pixel was never painted over: scrolling built up a
+  faint dotted column beside the text (yellow, from sub-pixel anti-aliasing)
+  and slivers of the line scrolled past the bottom edge. A scroll now repaints
+  2px past the container's box.
+- **Resizing a window keeps the scroll position of everything in a split
+  pane.** `UltraCanvasSplitPane::Arrange` first ran the ordinary block layout,
+  which stacked the panes one under the other at their full content height,
+  and only then placed them side by side. That throwaway pass clamped every
+  scroll view inside a pane to the top, so a resize sent a scrolled message,
+  list or document back to its start. The split pane now takes its box with
+  the new `UltraCanvasUIElement::ArrangeOwnBox` and places its panes once,
+  then runs the container's post-layout steps through the new protected
+  `UltraCanvasContainer::FinishArrange`.
+- **TextArea: the scrollbar's thickness and rounding are styleable.** The
+  text area drew its own scrollbars as fixed 15px square bars, so an app could
+  not match them to the thin, rounded `ScrollbarStyle::Modern()` bars of the
+  list views beside it. `TextAreaStyle` now has `scrollbarWidth` (default 15),
+  `scrollbarCornerRadius` (default 0, square) and `scrollbarThumbInset`
+  (default 2); drawing, hit-testing, thumb dragging, the text's reserved
+  width and the hex view's row width all use them. The defaults draw exactly
+  what was drawn before. UltraMail's plain-text reading pane is the first user.
+
+#### 2026-10-04 *0.9.153*
+- **The Filer's Display > Sort is greyed out for a list that keeps its own
+  order.** With `SetFileListOrderPreserved(true)` on a file list, sorting
+  does nothing, yet the context menu still offered every sort field and
+  direction. The submenu entry is now disabled there.
+- **A disabled submenu entry no longer opens its submenu.**
+  `UltraCanvasMenu` drew a submenu entry with `enabled = false` greyed out
+  but still opened it on hover, so its items stayed reachable. It now opens
+  on neither hover, click nor keyboard.
+
+#### 2026-10-04 *0.9.152*
+- **`package-macos.sh` skips an app that was not built, without hiding real
+  failures.** Every `build_app_bundle` call, and `build_cli_tool "ultramsg"`,
+  now goes through `package_if_built`, which checks for the executable (in the
+  build root or `bin/`) before calling. Before, a missing Texter, UltraFiler or
+  any other app stopped the whole run under `set -e`, although the function
+  said it was "skipping". The UltraAuthenticator and UltraPassword calls used
+  `build_app_bundle … || echo …` instead, and that was worse: bash turns
+  `set -e` off for a function's entire body when it is called on the left of
+  `||`, so a failed signing, `iconutil` or dylib-copy step would have been
+  carried past and an unsigned or half-built bundle shipped. Those calls now
+  go through the same helper. The run ends by listing what was not built, and
+  fails when it produced no bundle at all.
+
+#### 2026-10-04 *0.9.151*
+- **macOS: the apps share one copy of their libraries.** `package-macos.sh`
+  gave every `.app` its own `Contents/Frameworks/` with the ~90 Homebrew
+  dylibs (95-131 MB each). With eight apps that was ~830 MB of the same
+  libraries, and adding UltraAuthenticator and UltraPassword took the macOS
+  DMG from 431 MB to 556 MB (arm64). The apps are now packaged as one suite
+  folder, `UltraCanvas/`, with a single shared `Frameworks/` that every app
+  loads from (`@executable_path/../../../Frameworks/`); `ultramsg` sits in
+  the same folder. The suite is notarized in one submission and each app's
+  ticket stapled, instead of one round trip to Apple per app.
+  - Install by copying the whole `UltraCanvas` folder to Applications: an app
+    moved out of it on its own does not start.
+  - `verify_suite` fails the packaging run when an app carries its own
+    `Contents/Frameworks/`, when a binary needs a dylib missing from the
+    shared folder, or when one still loads from Homebrew - so a new app can
+    no longer bring its own copy of the libraries. The rule is written down
+    in `AGENTS.md` ("Packaging a new app for macOS").
+  - `package_and_notarize-macos.sh` zips the suite folder instead of the
+    separate `.app` folders.
+
+#### 2026-10-04 *0.9.150*
+- **The Windows and macOS SDKs carry the development files of the libraries
+  the framework uses.** `scripts/sdk-bundle-deps.sh` adds a `deps/` tree
+  (headers, import libraries or dylibs, static archives, relocatable `.pc`
+  and CMake config files, and on Windows the run-time DLLs) for the
+  pkg-config closure of cairo, pango, harfbuzz, freetype, glib, tinyxml2 and
+  libvips, plus fmt, libcurl and zlib where the build used the system ones.
+  `UltraCanvasConfig.cmake` puts `deps/` first on `CMAKE_PREFIX_PATH`, remaps
+  exported libraries found by full path on the build machine to their bundled
+  copies, and on macOS links consumers with an rpath to `deps/lib`, where the
+  bundled dylibs have `@rpath` install names. `ULTRACANVAS_DEPS_DIR` names the
+  directory. CI builds `Tests/PackageConsumer` against the bundled files alone
+  on both platforms (`Docs/UltraCanvasSDK.md`).
+- **UltraCanvasStart, the setup application, joins the build.** `Apps/UltraCanvasStart`
+  (`BUILD_ULTRACANVASSTART`, on by default) with its engine test suite
+  (`ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS`, run by CI), the product entry in
+  `cmake/UltraCanvasVersion.cmake`, the icon under `media/appicon/` and a
+  `--check` smoke run on every CI leg. See `Docs/UltraCanvasStart/CHANGELOG.md`.
+
+#### 2026-10-04 *0.9.149*
+- **The file dialog asks before Save replaces a file.** `UltraCanvasFileDialog`
+  in Save mode accepted a name that was already a file without a word, so
+  every application saving through it overwrote silently. The platforms' own
+  save dialogs (GTK, Windows, macOS) all ask, so a choice between native and
+  framework dialogs also decided whether the user was asked. It now asks too:
+  a **Replace File** question ("… already exists. Do you want to replace
+  it?") on OK, on a typed name and on a double-click in the listing. No
+  leaves the dialog open on that name. `FileDialogConfig::confirmOverwrite`
+  (`FileDialogOptions::SetConfirmOverwrite` through `UltraCanvasFileLoader`)
+  turns it off for a caller that asks itself. The new
+  `Docs/UltraCanvas/UltraCanvasFileDialog.md` describes the dialog: its
+  modes, the filter toggles, the overwrite question and what it remembers.
+- **A new `FileDialogConfig` has no filters.** It came with four samples
+  (All Files, Text, Image and Document files), so code that built the file
+  dialog itself and did not replace them offered `.doc` and `.rtf` in a
+  picture picker. It now starts empty, and a file dialog without filters
+  lists every file under one "All Files" entry (a folder picker filters
+  nothing). `UltraCanvasFileLoader` passes the caller's filters straight
+  through and leaves that fallback to the dialog.
+
 #### 2026-10-03 *0.9.148*
 - **IMAP plug-in: reading a message no longer marks it read on the server.**
   The plug-in fetched each message's header (`/;UID=n;SECTION=HEADER`) and

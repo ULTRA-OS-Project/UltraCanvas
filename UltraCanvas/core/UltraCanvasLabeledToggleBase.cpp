@@ -1,7 +1,9 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
-// Version: 1.1.0
-// Last Modified: 2026-06-02
+// Version: 1.3.0 - a press focuses the toggle; Space activates it and Enter is left
+//                 to the window (a dialog's default button)
+// Version: 1.2.0 - accessible name, toggle state and action
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabeledToggleBase.h"
@@ -17,6 +19,33 @@ namespace UltraCanvas {
             float x, float y, float w, float h,
             const std::string& labelText)
             : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {}
+
+    void UltraCanvasLabeledToggleBase::SetText(const std::string& labelText) {
+        const bool renamed = text != labelText;
+        text = labelText;
+        layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
+        if (renamed && GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
+    }
+
+    std::string UltraCanvasLabeledToggleBase::GetAccessibleName() const {
+        return GetAccessibleNameOverride().empty() ? text : GetAccessibleNameOverride();
+    }
+
+    AccessibleToggleState UltraCanvasLabeledToggleBase::GetAccessibleToggleState() const {
+        switch (checkState) {
+            case CheckedState::Checked:       return AccessibleToggleState::On;
+            case CheckedState::Indeterminate: return AccessibleToggleState::Mixed;
+            default:                          return AccessibleToggleState::Off;
+        }
+    }
+
+    bool UltraCanvasLabeledToggleBase::DoAccessibleAction() {
+        if (IsDisabled() || !IsVisible()) return false;
+        OnActivate();
+        return true;
+    }
 
     void UltraCanvasLabeledToggleBase::SetChecked(bool checked) {
         SetCheckState(checked ? CheckedState::Checked : CheckedState::Unchecked);
@@ -34,6 +63,7 @@ namespace UltraCanvas {
             case CheckedState::Unchecked:     if (onUnchecked) onUnchecked(); break;
             case CheckedState::Indeterminate: if (onIndeterminate) onIndeterminate(); break;
         }
+        NotifyAccessibility(AccessibilityEventType::StateChanged);
         RequestRedraw();
     }
 
@@ -176,6 +206,7 @@ namespace UltraCanvas {
             case UCEventType::MouseDoubleClick:
                 if (totalBounds.Contains(event.pointer)) {
                     SetPressed(true);
+                    SetFocus(true);   // no-op when focus is refused
                     handled = true;
                 }
                 break;
@@ -201,8 +232,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::KeyDown:
-                if (IsFocused()
-                    && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Enter)) {
+                // Space only, as in HTML and the native toolkits: Enter goes on
+                // to the window, where a dialog presses its default button.
+                if (IsFocused() && event.virtualKey == UCKeys::Space &&
+                    !event.ctrl && !event.alt && !event.meta) {
                     OnActivate();
                     handled = true;
                 }

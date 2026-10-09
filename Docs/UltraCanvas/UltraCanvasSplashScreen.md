@@ -1,5 +1,10 @@
 # UltraCanvasSplashScreen
 
+<!-- doc-check: struct MainWindow : UltraCanvasWindow { void PromptCrashRecovery(); }; std::shared_ptr<MainWindow> mainWindow;
+#define LADYBIRD_VERSION "1.0.0"
+#define LADYBIRD_VERSION_DATE "2026-08-28"
+-->
+
 The window an application puts up while it starts: a borderless, always-on-top
 panel holding a logo, the product name, its version and release date, an
 optional attribution block and an optional website link. It closes when its timeout expires or when

@@ -35,7 +35,7 @@ the framework's, which does not).
 
 FileDialogOptions opts;
 opts.SetTitle("Open a picture")
-    .SetParentWindow(window)                 // modal to the application window
+    .SetParentWindow(window.get())           // modal to the application window
     .AddFilter("Images", {"png", "jpg", "jpeg", "webp"})
     .AddFilter("All files", "*");
 
@@ -59,6 +59,8 @@ UltraCanvasFileLoader::SelectFolderDialog(FileDialogOptions().SetTitle("Choose a
 dialog as a row of toggle buttons ("Show: Images | Audio | Video") rather than
 a dropdown; a native dialog gets them as a list headed by one that matches
 all of them. `SetShowHidden(true)` lists hidden files from the start.
+Its modes, the overwrite question in Save and building it directly are in
+[UltraCanvasFileDialog.md](UltraCanvasFileDialog.md).
 
 Paths come back as UTF-8. Convert them with `PathFromUtf8` before handing
 them to `std::filesystem` (see *Core conventions* in `AGENTS.md`).
@@ -70,17 +72,17 @@ them to `std::filesystem` (see *Core conventions* in `AGENTS.md`).
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 // Ask only: what printer, how many copies, which paper, duplex, page range.
-NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings("Report.txt", window);
+NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings("Report.txt", window.get());
 if (choice) {
     IODeviceResult sent = PrintTextWithSettings(choice, "Report.txt", text);
 }
 
 // Ask and print in one call. A cancelled dialog comes back as
 // IODeviceResultCode::Cancelled, not as a failure.
-IODeviceResult result = PrintTextWithDialog("Report.txt", text, window);
+IODeviceResult result = PrintTextWithDialog("Report.txt", text, window.get());
 
 // A formatted document: PDF bytes, plus pages for renderers that cannot lay out a PDF.
-PrintDocumentWithDialog("Report.pdf", pdfBytes, "application/pdf", window, pages);
+PrintDocumentWithDialog("Report.pdf", pdfBytes, "application/pdf", window.get(), pages);
 ```
 
 `NativePrintResult` (`IOPrintDialogChoice`) carries the printer's queue name,
@@ -91,16 +93,16 @@ to File* instead of a printer.
 ## Message and input dialogs — `UltraCanvasDialogManager`
 
 ```cpp
-UltraCanvasDialogManager::ShowInformation("Saved.", "Report", nullptr, window);
-UltraCanvasDialogManager::ShowWarning("The disk is nearly full.", "Disk", nullptr, window);
-UltraCanvasDialogManager::ShowError("The file could not be written.", "Save", nullptr, window);
+UltraCanvasDialogManager::ShowInformation("Saved.", "Report", nullptr, window.get());
+UltraCanvasDialogManager::ShowWarning("The disk is nearly full.", "Disk", nullptr, window.get());
+UltraCanvasDialogManager::ShowError("The file could not be written.", "Save", nullptr, window.get());
 
 UltraCanvasDialogManager::ShowQuestion("Discard the changes?", "Close",
-    [](DialogResult r) { if (r == DialogResult::Yes) { /* ... */ } }, window);
+    [](DialogResult r) { if (r == DialogResult::Yes) { /* ... */ } }, window.get());
 
 UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder",
     "Untitled", InputType::Text,
-    [](DialogResult r, const std::string& value) { /* ... */ }, window);
+    [](DialogResult r, const std::string& value) { /* ... */ }, window.get());
 ```
 
 `InputType::Password` masks the field. Native message dialogs block and call

@@ -2,12 +2,15 @@
 
 **Status:** Phase 1 implemented (channel and journal); Phase 2 in progress —
 adapter framework, the Linux `freedesktop-notifications` adapter, the
-`windows-notification-listener` adapter, UltraMail publishing to the feed and
-the `UltraCanvasMessageCenter` element. The rest of Phases 2–4 is in the
-proposal.
-**Version:** 0.2.2
+`windows-notification-listener` adapter, the presenters that put
+applications' notifications on screen (`freedesktop-presenter`,
+`windows-presenter`, `macos-presenter`), the toast host that draws them where nothing else does
+(`UltraCanvasNotificationToastHost`, in the ULTRA OS desktop), UltraMail
+publishing to the feed and notifying of new mail, and the
+`UltraCanvasMessageCenter` element. The rest of Phases 2–4 is in the proposal.
+**Version:** 0.5.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-23
+**Last Modified:** 2026-10-05
 
 UltraMessage is the message channel of the ULTRA OS stack: one API through
 which applications send structured messages to each other, receive what other
@@ -46,10 +49,16 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | Adapter interface (`IAdapter`, `IAdapterHost`) and registry | `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`, `UltraMessageAdapters.cpp` |
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
-| UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
+| `freedesktop-presenter` adapter (GDBus): applications' notifications on screen | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp` |
+| `windows-presenter` adapter (notification-area balloons) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp` |
+| `macos-presenter` adapter (Notification Center, osascript outside a bundle) | `UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm` |
+| The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
+| UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
+| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
-| Tests (34 cases; the adapter ones on a private D-Bus session; 5 more for the element in-tree) | `Tests/UltraMessage/` |
+| `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
+| Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -95,7 +104,7 @@ endpoints and subscriptions are opaque `UltraMsgHandle`s.
 | Call | Purpose |
 |---|---|
 | `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
-| `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends. |
+| `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends, including deliveries already queued for the UI thread. |
 | `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
 | `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
 
@@ -122,7 +131,13 @@ exact topic, one wildcard segment (`mail.*`, `*.message`), a trailing `#`
 (`app.#`) or `#` alone. Options: `manualAck`, `includeOwn` (also see what
 this endpoint posts), `onWorkerThread` (bypass the UI dispatcher),
 `replaySinceMs` (journaled history first, oldest to newest, then live).
-`UltraMsg_Unsubscribe(subscription)` ends it.
+`UltraMsg_Unsubscribe(subscription)` ends it. Called on the UI thread, no
+callback of the subscription runs after it returns, not even for a message
+that was already queued for the UI thread; such deliveries are dropped
+unacknowledged, as if they had arrived a moment later. An object can
+therefore unsubscribe in its destructor and free what its callbacks capture.
+A callback already running on another thread at that moment still finishes.
+`UltraMsg_Disconnect` ends every subscription of the endpoint the same way.
 
 **Threading.** Callbacks run through the dispatcher installed with
 `UltraMsg_SetUIDispatcher`; an UltraCanvas application installs
@@ -178,7 +193,7 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 |---|---|---|
 | `messaging.message` | yes | `service`, `conversation{id,title,isGroup}`, `sender{id,name}`, `text`, `direction`, `read`, `attachments[]` |
 | `mail.message` | yes | `account`, `folder`, `from{name,address}`, `to[]`, `subject`, `snippet`, `read`, `flagged` |
-| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]` |
+| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`; `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
 | `system.notification.action` / `.dismissed`, `feed.read` / `feed.dismissed` | no | feed ↔ adapter signalling |
 | `app.lifecycle.started` / `.stopping` | no | published by the broker for every endpoint |
 | `app.open.request` | no | `paths[]` / `urls[]`, `activate` — single-instance hand-off |
@@ -222,11 +237,18 @@ category `im.received` are additionally mirrored to `messaging.message`
 (service from the desktop entry or app name, conversation and sender from the
 summary, text from the body), `email*` ones to `mail.message` (sender from the
 summary, subject from the body's first line); each mirror carries `mirrorOf`
-with the notification's id. Note for a session without any notification
-daemon: the adapter then *is* the server and, until the message centre
-renders toasts, nothing pops up on screen — the feed and `ultramsg tail` show
-them; `ultramsg adapters disable freedesktop-notifications` hands the name
-back.
+with the notification's id. Where a notification server is installed but not
+running — dunst, mako and xfce4-notifyd start by D-Bus activation on the first
+`Notify` — the adapter asks the bus to start it (`StartServiceByName`) and
+then watches in monitor mode, instead of taking the name and leaving every
+application's notifications undrawn. A `Notify` carrying the hint
+`x-ultramessage-id` comes from the `freedesktop-presenter` and is not
+published again. In monitor mode a published notification carries
+`displayed` (the desktop's own server drew it); served by the adapter, it
+does not. On a session without any notification daemon installed the adapter
+*is* the server, and a toast host on the bus draws what it receives (§3.8,
+the ULTRA OS desktop); `ultramsg adapters disable freedesktop-notifications`
+hands the name back.
 
 **`windows-notification-listener`** (Windows, built where the C++/WinRT
 projection headers are found — the MSYS2 `cppwinrt` package, which CI
@@ -248,6 +270,84 @@ clears the toast, as a dismissal does. Access is the user's to grant
 restart is needed. Where the listener is unavailable to the process (older
 Windows, or a build without package identity) the state is `unavailable`.
 
+**Presenters** are the way out to the screen. A `system.notification` that
+an *application* posts (not one an adapter published, which came from the
+screen already), without `UltraMsgFlag_Silent`, is handed by the broker to its
+presenter adapters (`Internal::IAdapter::Present`, outside the routing lock);
+the first that takes it shows it with the platform's own notification service,
+so it looks, sounds and obeys do-not-disturb like every other program's. What
+the user does with it comes back on the bus naming the notification's id: a
+click as `system.notification.action` (`actionId`, `"default"` for the body),
+a close by the user as `system.notification.dismissed` (`reason:
+"dismissed"`). The other way, a `system.notification.dismissed` or `.action`
+posted on the bus for a presented notification withdraws it from the screen,
+and a notification sent with `UltraMsgFlag_Replace` updates the one it names.
+Posting one is the whole API:
+
+```cpp
+UltraMessage::SystemNotification n;
+n.appName = "UltraMail"; n.category = "email.arrived";
+n.summary = "New mail from Ada Lovelace"; n.body = "The engine notes";
+n.actions = {{"default", "Open"}};                    // the click on its body
+UltraMsgSendOptions options;
+options.flags = UltraMsgFlag_NoJournal;               // an alert only: the feed lists the mail itself
+std::string id;
+UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n), options, &id);
+// later: a system.notification.action with notificationId == id is the click
+```
+
+- **`freedesktop-presenter`** (Linux, with gio) calls `Notify` on whatever owns
+  `org.freedesktop.Notifications` — GNOME Shell, Plasma, XFCE, dunst, mako —
+  on a private connection, with the hints `category`, `urgency`,
+  `desktop-entry` (from the body's `desktopEntry`), `sender-pid` and
+  `x-ultramessage-id`; a body for a server with `body-markup` is escaped.
+  `ActionInvoked` and a `NotificationClosed` with reason *dismissed* from that
+  server come back as above. It finds out who draws notifications from
+  `GetServerInformation` and asks again whenever the name changes hands; mode
+  `forward` names the server. Where UltraMessage itself is the server (no
+  notification daemon installed — the ULTRA OS case) no notification server
+  would draw it: mode `none`, `Present` declines, and a toast host on the bus
+  draws it instead (§3.8); the state says so, with the remedy for a session
+  without one.
+- **`windows-presenter`** (every Windows build) shows a notification-area
+  balloon (`Shell_NotifyIconW`, `NIF_INFO`), which Windows 10 and 11 present as
+  a toast and keep in the Action Center; focus assist is respected, `critical`
+  shows the warning icon and `low` makes no sound. It needs no package
+  identity, shortcut or registration. Windows heads the toast with the name of
+  the process hosting the broker, so another application's notification carries
+  its `appName` in the title. A click is the `"default"` action; the tray icon
+  the click needs exists from the first balloon until it is clicked or ten
+  minutes have passed. The `windows-notification-listener` skips the toasts
+  the presenter put up (`Internal::NotePresented` / `WasPresented`).
+- **`macos-presenter`** (every macOS build) hands the notification to
+  Notification Center through the UserNotifications framework: a banner that
+  stays in the Notification Center list, the notification's other actions as
+  buttons (up to three), `critical` time-sensitive and `low` passive and
+  silent (macOS 12+), an icon that names a PNG, JPEG or GIF file as its
+  picture, and the notifications of one application grouped. macOS names the
+  notification after the application bundle hosting the broker and asks the
+  user once to allow it (mode `notification-center`); another application's
+  notification names that one in its subtitle. A click is the `"default"`
+  action where the notification has one, a button its action, a dismissal
+  `reason: "dismissed"`; each notification carries its bus id, so a click on
+  one shown before the broker last started is still answered. Where the user
+  did not allow notifications the state is `needs-permission`, with the place
+  in System Settings. UserNotifications works only in an application bundle:
+  where the broker runs in a process that is none (an executable started from
+  the build tree, `ultramsgd`, a test) or macOS refuses the bundle, it shows
+  them through `osascript`'s `display notification` (mode `script`): under
+  Script Editor's name, without buttons, and a click opens nothing. The texts
+  travel as script arguments, never inside the script.
+
+**`displayed`.** The broker hands an application's notification to the
+presenters *before* it journals and delivers it, and writes the name of the
+presenter that took it into the body's `displayed`; an application's own
+`displayed` is removed first (one that draws its own toast posts `Silent`).
+The notification adapters write it on what they read from a service that drew
+it (`freedesktop-notifications` in monitor mode, `windows-notification-listener`).
+Every copy of a notification therefore says whether it is on screen, which is
+what a toast host keys on.
+
 **Category guessing.** Windows carries no category hint and most Linux
 applications set none, so both adapters guess it from the application's
 identity (`Internal::GuessAppKind` in `core/UltraMessage/UltraMessageAdapters.cpp`:
@@ -261,8 +361,15 @@ notification adapter. The list is a heuristic and easy to extend.
 and it posts a `mail.message` (endpoint `org.ultraos.ultramail`) for the ones
 that are news — unread, not deleted or draft, dated within the last 7 days —
 at most 100 per account per ten minutes so an initial sync never floods the
-feed. Built with the engine wherever `UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`);
-without it the publisher compiles to a no-op.
+feed. When an inbox sync ends it also puts one notification on screen
+(`FeedPublisher::Notify`): a `system.notification` (category `email.arrived`,
+action `default` = *Open*, `desktopEntry` `UltraMail`, `NoJournal`) naming the
+sender and subject, or counting the messages, for the unread mail the sync
+stored above the inbox's highest UID before it (`UltraMail::NewMailTracker`; an
+account's first download and a cache reset announce nothing). The click comes
+back as the action and opens the mail. Built with the engine wherever
+`UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`); without it the publisher
+compiles to a no-op.
 
 ### 3.7 The message centre element
 
@@ -276,8 +383,30 @@ notification's own actions. It queries the journal on `Connect()`, subscribes
 to the three feed topics plus `system.notification.dismissed`, `feed.read` and
 `feed.dismissed`, and posts `feed.read`, `feed.dismissed`,
 `system.notification.dismissed` and `system.notification.action` back. A
-mirrored chat or mail row stands in for the notification it came from. The
+mirrored chat or mail row stands in for the notification it came from, and a
+notice sent with `NoJournal` (a passing alert such as UltraMail's new-mail
+notification) is no row: the feed lists what the journal holds. The
 DemoApp's *Ultra Message* page (under *ULTRA OS modules*) hosts it on a private bus with seeded traffic.
+
+### 3.8 Toasts where nothing else draws notifications
+
+`UltraCanvasNotificationToastHost` (`include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`,
+target `UltraMessageCenter`, [its doc](../../UltraCanvas/UltraCanvasNotificationToast.md))
+is the screen of last resort, for where UltraMessage itself serves
+`org.freedesktop.Notifications`. A client of the bus (app id
+`org.ultraos.notifications`), it draws each live `system.notification` that is
+not `Silent` and carries no `displayed` as an `UltraCanvasNotificationToast` in
+a `WindowType::Notification` window (above everything, never focused),
+stacked in a screen corner clear of the desktop's bars; a click or an action
+button posts `system.notification.action`, the close button
+`system.notification.dismissed`, which the freedesktop adapter turns into
+`ActionInvoked` / `NotificationClosed` for the native application. A toast
+leaves after 8 s (5 s for low urgency, never for critical, not while the
+pointer rests on it) or when the notification is dismissed or acted on
+anywhere on the bus; a replacement updates it. The ULTRA OS desktop hosts one
+(`Apps/UltraDesktop`, top right beside its right bar). On a desktop with its
+own notification server every notification carries `displayed` and the host
+draws nothing.
 
 ## 4. The C++ layer
 
@@ -308,7 +437,9 @@ ultramsg export <path> [--topic <pattern>]
 ```
 
 `--bus`, `--journal`, `--app` and `--no-broker` (fail rather than host a
-broker) apply everywhere. `ultramsg tail` in one shell and `ultramsg post` in
+broker) apply everywhere, after the command. `ultramsg post
+system.notification '{"appName":"Test","summary":"Hello"}'` puts a
+notification on screen through the presenter. `ultramsg tail` in one shell and `ultramsg post` in
 another is the quickest two-process check of an installation.
 
 ## 7. Wire format and delivery guarantees
@@ -366,7 +497,10 @@ in-tree build uses.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
 - **The other Phase 2 adapters** (Apple Mail, Telegram); the adapter
   framework, `freedesktop-notifications`, `windows-notification-listener`,
-  UltraMail publishing and the `UltraCanvasMessageCenter` element are built
-  (§3.6, §3.7).
+  the Linux, Windows and macOS presenters, UltraMail
+  publishing and notifying, the toast host and the `UltraCanvasMessageCenter`
+  element are built (§3.6–§3.8).
+- **Icon-theme names** in a notification's icon: the toast host draws an icon
+  only when the notification names a file.
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.

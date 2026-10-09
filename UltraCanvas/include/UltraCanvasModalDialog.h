@@ -181,6 +181,46 @@ namespace UltraCanvas {
         }
     };
 
+// ===== SAVE NAMES =====
+    // The name a Save dialog hands back when `type` is the file type chosen
+    // from `offered`. Applications pick the format to write from the name's
+    // extension, so the name has to carry the chosen type's:
+    //  - a name ending in one of `type`'s extensions (any case) is kept, and
+    //    so is every name when `type` takes all files ("*") or names none;
+    //  - the extension of another offered type is swapped for `type`'s first
+    //    ("photo.jpg" -> "photo.png" with PNG chosen);
+    //  - any other name gets `type`'s first extension added ("photo" ->
+    //    "photo.png", "Report v1.2" -> "Report v1.2.png").
+    // Trailing dots are dropped first. Takes a bare name or a path - only its
+    // last component is looked at.
+    std::string ApplySaveExtension(const std::string& name, const FileFilter& type,
+                                   const std::vector<FileFilter>& offered);
+
+    // The index of the first filter in `filters` whose extension `name` ends
+    // in, passing over "*" filters; -1 when there is none. A Save dialog
+    // opens on the type of the name it suggests.
+    int FindFilterForName(const std::string& name, const std::vector<FileFilter>& filters);
+
+    // `name` with `extension` ("png", undotted) added when its last component
+    // has no extension of its own: the default for a Save under a type that
+    // names none (All files). Trailing dots are dropped first; a leading dot
+    // (".profile") is part of the name. An empty `extension` changes nothing.
+    std::string ApplyDefaultExtension(const std::string& name, const std::string& extension);
+
+    // Whose rules a file name is held to: the system this runs on, or one
+    // named outright (for a name meant for another system, and for tests).
+    enum class FileNameRules { Host, Windows, Posix };
+
+    // Why `name` (one path component, UTF-8) cannot name a file, or "" when
+    // it can. Everywhere: empty, "." or "..", a control character, or longer
+    // than 255 (bytes on POSIX, UTF-16 units on Windows). Windows also
+    // refuses < > : " / \ | ? *, a trailing space or dot, and the device
+    // names CON, PRN, AUX, NUL, COM1-9 and LPT1-9 (with any extension).
+    // POSIX also refuses "/". The reason reads after the name: "\"a:b\" "
+    // + "contains \":\"".
+    std::string InvalidFileNameReason(const std::string& name,
+                                      FileNameRules rules = FileNameRules::Host);
+
 // ===== DIALOG STYLE =====
     struct ModalDialogStyle {
         // Spacing
@@ -310,6 +350,9 @@ namespace UltraCanvas {
         FileDialogType dialogType = FileDialogType::Open;
         std::string initialDirectory;
         std::string defaultFileName;
+        // Save: the extension ("png", undotted) a name gets when it still
+        // has none after the chosen type's (ApplySaveExtension) - under All
+        // files, or with no filters. Empty: such a name stays bare.
         std::string defaultExtension;
         std::vector<FileFilter> filters;
         int selectedFilterIndex = 0;
@@ -322,7 +365,20 @@ namespace UltraCanvas {
         // ("*") filter, unless that is the only kind there is. For an Open
         // dialog whose filters are kinds of file rather than one format each.
         bool filterToggles = false;
+        // Save: ask "Replace it?" before accepting a name that is already a
+        // file, as the platforms' own save dialogs do. Off for a caller that
+        // asks itself (or appends to the file).
+        bool confirmOverwrite = true;
+        // The listing's hover icon menu (Copy / Cut / Rename / Delete on the
+        // file under the pointer), as UltraFiler has it. Off: a picker chooses
+        // files, it does not manage them.
+        bool hoverIconMenu = false;
+        // Save: refuse a name the file system cannot hold
+        // (InvalidFileNameReason) with a message, and stay open on it.
         bool validateNames = true;
+        // Open, Open multiple and Save add what they accept to the system's
+        // recent files (UltraCanvasFileLoader::NotifyRecentFile).
+        // UltraCanvasFileLoader sets it from FileDialogOptions::registerAsRecent.
         bool addToRecent = true;
 
         FileDialogConfig();
@@ -652,6 +708,8 @@ namespace UltraCanvas {
                                UltraCanvasWindowBase* parent = nullptr);
 
         // ===== DIALOG MANAGEMENT =====
+        // Cancels every open dialog (each result callback runs with Cancel).
+        // A dialog that one of those callbacks opens stays open.
         static void CloseAllDialogs();
         static std::shared_ptr<UltraCanvasModalDialog> GetCurrentModalDialog();
         static std::vector<std::shared_ptr<UltraCanvasModalDialog>> GetActiveDialogs();
@@ -761,6 +819,8 @@ namespace UltraCanvas {
         // fileConfig.filterToggles is set; activeFilters holds the ones on.
         std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
         std::set<int> activeFilters;
+        // A "Replace it?" question is showing: OK and activation wait for it.
+        bool overwritePromptOpen = false;
 
         // Folder-tree nodes whose sub-folders have been read.
         std::set<std::string> loadedTreeNodes;
@@ -834,9 +894,15 @@ namespace UltraCanvas {
         // Rebuilds the toggle buttons from fileConfig.filters and switches on
         // the default set (see FileDialogConfig::filterToggles).
         void RebuildFilterToggles();
+        // Closes the dialog with `files` as the result, once Accept has
+        // settled any overwrite question.
+        void FinishAccept(const std::vector<std::string>& files);
         // True when the file name passes the type filter: the selected
         // dropdown entry, or any toggle that is on.
         bool MatchesTypeFilter(const std::string& fileName) const;
+        // A Save name with the chosen type's extension (ApplySaveExtension):
+        // the selected dropdown entry, or the first toggle that is on.
+        std::string WithSaveExtension(const std::string& name) const;
 
         // ===== FOLDER TREE =====
         void PopulateFolderTree();

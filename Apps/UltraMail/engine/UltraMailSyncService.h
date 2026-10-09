@@ -3,6 +3,7 @@
 // inbox's envelopes + bodies) and can run it on a background worker thread. The
 // completion callback fires on the worker thread — the app marshals it to the
 // UI with UltraCanvasApplication::PostToUIThread.
+// Version: 0.3.0 - every sync refreshes the folder whole (RefreshFolder)
 // Version: 0.2.0 - background sync with a worker-thread prepare step
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -24,8 +25,10 @@ public:
     // mailbox. Marshal to the UI thread before touching any widget.
     using ProgressFn = std::function<void(const MessageEnvelope&)>;
 
-    // Synchronous full sync for one account: LIST folders, then fetch the inbox
-    // envelopes + bodies. Returns the combined outcome.
+    // Synchronous full sync for one account: LIST folders, then refresh the
+    // inbox (SyncEngine::RefreshFolder: new envelopes + bodies, the reconcile
+    // with the server's list, the mail an earlier sync missed). Returns the
+    // combined outcome.
     SyncOutcome SyncNow(const std::string& accountId, const std::string& serverUrl,
                         const UltraNetMailOptions& options, ProgressFn onProgress = {});
 

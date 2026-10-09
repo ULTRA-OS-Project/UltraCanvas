@@ -1,6 +1,8 @@
 # Tests/UltraMessage/CMakeLists.txt
 # Builds UltraMessageTests. In-tree it is enabled by
-# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links the UltraMessage archive.
+# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links UltraMessage - the module's
+# home, which is the shared core that absorbed the archive, or the archive
+# itself under a static core (UltraCanvas/CMakeLists.txt, "MODULE HOMES").
 #
 # It also configures on its own (cmake -S Tests/UltraMessage -B build), where
 # it compiles the module, UltraCanvasJSON, the vendored yyjson and the
@@ -39,11 +41,14 @@ if(NOT TARGET UltraMessage)
         if(UM_GIO_FOUND)
             set(_um_gio_found TRUE)
             list(APPEND _um_sources
-                ${_um_root}/UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+                ${_um_root}/UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp
+                ${_um_root}/UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopPresenter.cpp)
         endif()
     endif()
     set(_um_winrt_found FALSE)
     if(WIN32)
+        list(APPEND _um_sources
+            ${_um_root}/UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsPresenter.cpp)
         include(CheckIncludeFileCXX)
         set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
         if(MSVC)
@@ -59,11 +64,28 @@ if(NOT TARGET UltraMessage)
                 ${_um_root}/UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
         endif()
     endif()
+    set(_um_macos_presenter FALSE)
+    if(APPLE)
+        enable_language(OBJCXX)
+        set(_um_macos_presenter TRUE)
+        set(_um_macos_presenter_source
+            ${_um_root}/UltraCanvas/OS/MacOS/UltraMessage/UltraMessageMacOSPresenter.mm)
+        list(APPEND _um_sources ${_um_macos_presenter_source})
+        set_source_files_properties(${_um_macos_presenter_source}
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
     add_library(UltraMessage STATIC
         ${_um_sources}
         ${_um_root}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp)
     target_include_directories(UltraMessage PUBLIC ${_um_root}/UltraCanvas/include)
     target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads PRIVATE uc-yyjson)
+    if(WIN32)
+        target_link_libraries(UltraMessage PUBLIC shell32 user32)
+    endif()
+    if(_um_macos_presenter)
+        target_link_libraries(UltraMessage PUBLIC "-framework Foundation" "-framework UserNotifications")
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_MACOS_PRESENTER=1)
+    endif()
     if(_um_gio_found)
         target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
         target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
@@ -86,8 +108,9 @@ else()
     set(_um_output_dir ${CMAKE_BINARY_DIR}/bin)
 endif()
 
-# test_adapters.cpp compiles to nothing without ULTRAMESSAGE_HAVE_GIO, which
-# the UltraMessage target exports wherever the notification adapter is built.
+# test_adapters.cpp checks the registry and the presenters' shared half
+# everywhere; its platform cases follow what the UltraMessage target exports
+# (ULTRAMESSAGE_HAVE_GIO, ULTRAMESSAGE_HAVE_WINRT, ULTRAMESSAGE_HAVE_MACOS_PRESENTER).
 set(ULTRAMESSAGE_TEST_SOURCES
     test_main.cpp
     test_ultramessage.cpp
@@ -107,11 +130,16 @@ set_target_properties(UltraMessageTests PROPERTIES
 include(CTest)
 add_test(NAME UltraMessage COMMAND UltraMessageTests
          WORKING_DIRECTORY ${_um_output_dir})
+# In-tree the binary loads the shared core from the build root, and on
+# Windows the loader finds a DLL only beside the executable, in the working
+# directory or on PATH (see Tests/VaultTests.cmake).
+set_tests_properties(UltraMessage PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}")
 
-# The message centre element, headless: in-tree only, since it needs the
-# widget library. Same framework, same private bus.
+# The message centre element and the notification toasts, headless: in-tree
+# only, since they need the widget library. Same framework, same private bus.
 if(TARGET UltraMessageCenter)
-    add_executable(UltraMessageCenterTests test_main.cpp test_messagecenter.cpp)
+    add_executable(UltraMessageCenterTests test_main.cpp test_messagecenter.cpp test_toasts.cpp)
     target_compile_features(UltraMessageCenterTests PRIVATE cxx_std_20)
     target_link_libraries(UltraMessageCenterTests PRIVATE UltraMessageCenter UltraMessage)
     target_include_directories(UltraMessageCenterTests PRIVATE
@@ -121,4 +149,6 @@ if(TARGET UltraMessageCenter)
         RUNTIME_OUTPUT_DIRECTORY ${_um_output_dir})
     add_test(NAME UltraMessageCenter COMMAND UltraMessageCenterTests
              WORKING_DIRECTORY ${_um_output_dir})
+    set_tests_properties(UltraMessageCenter PROPERTIES
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}")
 endif()

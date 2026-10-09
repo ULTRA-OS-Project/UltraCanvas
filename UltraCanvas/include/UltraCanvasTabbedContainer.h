@@ -1,7 +1,8 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.5.0 - a tab list to screen readers, named after the open tab
 // Version: 2.3.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -113,6 +114,15 @@ namespace UltraCanvas {
 // ===== TABBED CONTAINER COMPONENT =====
     class UltraCanvasTabbedContainer : public UltraCanvasContainer {
     public:
+        // ===== ACCESSIBILITY =====
+        // A tab list named after the open tab (unless SetAccessibleName() says
+        // otherwise); the open tab's content is reached as its children.
+        AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TabList; }
+        std::string GetAccessibleName() const override {
+            if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+            return activeTabIndex >= 0 ? GetTabTitle(activeTabIndex) : std::string();
+        }
+
         // ===== TAB MANAGEMENT =====
         std::vector<std::unique_ptr<TabData>> tabs;
         int activeTabIndex = -1;
@@ -171,8 +181,14 @@ namespace UltraCanvas {
         int overflowDropdownWidth = 24;
         std::shared_ptr<UltraCanvasButton> overflowButton = nullptr;
         std::shared_ptr<UltraCanvasAutoComplete> searchAutoComplete = nullptr;
+        // The plain list the overflow button opens when the search popup is
+        // not used: one Radio entry per visible tab, the active one checked.
+        std::shared_ptr<UltraCanvasMenu> overflowListMenu = nullptr;
 
         // ===== DROPDOWN SEARCH =====
+        // The overflow button opens the "Search tabs..." popup when search is
+        // enabled and at least dropdownSearchThreshold tabs are listed (visible
+        // ones); with fewer, or with search off, it opens the plain list.
         bool enableDropdownSearch = true;
         int dropdownSearchThreshold = 5;
         bool dropdownSearchActive = false;
@@ -374,6 +390,13 @@ namespace UltraCanvas {
         void ShowSearchAutoComplete();
         void HideSearchAutoComplete();
         void PopulateSearchAutoComplete();
+        // What the overflow button does: the search popup when
+        // UsesDropdownSearch(), the plain list of tabs otherwise.
+        void OpenOverflowList();
+        // True when search is enabled and the visible tabs reach the threshold.
+        bool UsesDropdownSearch() const;
+        void ShowOverflowListMenu();
+        void HideOverflowListMenu();
 
         // ===== LAYOUT =====
         void SetBounds(const Rect2Df& b) override;

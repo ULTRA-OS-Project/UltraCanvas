@@ -131,7 +131,6 @@ because bionic defines `__linux__`. Sites needing an Android arm:
 | `include/UltraCanvasWindow.h:451` | same, shadows `:478` |
 | `include/UltraCanvasNativeHandle.h:11` | Android inherits `unsigned long` (X11 XID); should be `void*` for `ANativeWindow*` |
 | `include/UltraCanvasEvent.h:329-337` | native handle init switch |
-| `include/UltraCanvasCairoDebugExtension.h:12,83` | `#ifdef __linux__` would wrongly activate |
 | `core/UltraCanvasClipboard.cpp:15,90` | `#ifdef __linux__` instantiates the X11 clipboard backend |
 | `core/UltraCanvasConfig.cpp:32` | `SetResourcesDir` Linux probe (Android: assets/APK paths) |
 | `core/UltraCanvasUtils.cpp:521,564` | `GetExecutableDir` reads `/proc/self/exe` (returns the zygote path on Android); `OpenURL` needs a JNI Intent |

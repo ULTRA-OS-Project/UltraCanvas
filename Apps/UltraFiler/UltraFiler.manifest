@@ -8,13 +8,13 @@
 
     <!-- ===== IDENTITY ===== -->
     <assemblyIdentity
-        version="1.65.0.0"
+        version="1.68.1.0"
         processorArchitecture="*"
-        name="CloverleafUG.UltraFiler"
+        name="ULTRAOSDevelopment.UltraFiler"
         type="win32"
     />
 
-    <description>UltraFiler - Cross-platform file manager by Cloverleaf UG</description>
+    <description>UltraFiler - Cross-platform file manager by ULTRA OS Development GmbH</description>
 
     <!-- ===== UAC: Run as standard user, no elevation needed ===== -->
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">

@@ -10,7 +10,12 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasClipboardDib.h"   // ClipboardDib::EncodePng
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasTextUtils.h"      // Base64Encode
+#include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
@@ -20,6 +25,11 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#ifdef HAS_LIBVIPS
+#include "PixelFX/PixelFX.h"
+#endif
 
 // ARTCREATOR_VERSION comes from the build alone: CMake reads the first
 // line of Docs/ArtCreator/CHANGELOG.md (cmake/UltraCanvasVersion.cmake)
@@ -54,6 +64,33 @@ namespace {
         if (!e.empty() && e[0] == '.') e.erase(0, 1);
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return e;
+    }
+
+    // The MIME type a picture file is embedded under, from its extension.
+    std::string PictureMimeOf(const std::string& path) {
+        const std::string ext = ExtensionOf(path);
+        if (ext == "jpg" || ext == "jpeg" || ext == "jpe" || ext == "jfif") return "image/jpeg";
+        if (ext == "tif") return "image/tiff";
+        return "image/" + ext;
+    }
+
+    // A file a file manager copied that holds a picture, by extension.
+    bool IsPictureFile(const std::string& path) {
+        const std::string ext = ExtensionOf(path);
+        if (ext.empty()) return false;
+        const auto bitmaps = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+        return std::find(bitmaps.begin(), bitmaps.end(), ext) != bitmaps.end();
+    }
+
+    // Every element of a subtree gets a fresh Id: pasted or imported objects
+    // must not share one with what the drawing already holds, or selection
+    // and undo rebind to the wrong object.
+    void RenewIds(const ElementPtr& element) {
+        if (!element) return;
+        element->Id = GenerateId();
+        if (auto* group = dynamic_cast<VectorGroup*>(element.get())) {
+            for (const auto& child : group->Children) RenewIds(child);
+        }
     }
 
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
@@ -864,10 +901,9 @@ void ArtCreatorWindow::CmdSaveAs() {
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        std::string p = path;
-        if (PathFromUtf8(p).extension().empty()) p += ".xar";
-        SaveToPath(p);
+        SaveToPath(path);
     });
 }
 
@@ -889,10 +925,9 @@ void ArtCreatorWindow::CmdExport() {
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        std::string p = path;
-        if (PathFromUtf8(p).extension().empty()) p += ".pdf";
-        SaveToPath(p);
+        SaveToPath(path);
     });
 }
 
@@ -943,9 +978,37 @@ void ArtCreatorWindow::CmdRedo() { history.Redo(); }
 
 void ArtCreatorWindow::CmdCopy() {
     clipboard.clear();
-    for (const auto& e : SortByDrawingOrder(selection->Elements())) if (e) clipboard.push_back(e->Clone());
+    const auto ordered = SortByDrawingOrder(selection->Elements());
+    for (const auto& e : ordered) if (e) clipboard.push_back(e->Clone());
     pasteCount = 0;
+    PutPictureOnSystemClipboard(ordered);
     if (statusHint && !clipboard.empty()) statusHint->SetText(std::to_string(clipboard.size()) + " object" + (clipboard.size() == 1 ? "" : "s") + " copied");
+}
+
+// Copy used to keep the objects to itself, so nothing copied here could be
+// pasted in another program. The system clipboard now gets their picture -
+// what a paint program, a word processor or a chat takes - at a pixel a
+// point, the size UltraPaint renders a drawing at.
+void ArtCreatorWindow::PutPictureOnSystemClipboard(const std::vector<ElementPtr>& elements) {
+    clipboardPng.clear();
+    if (!document || elements.empty()) return;
+    std::string error;
+    auto layer = RasterizeVectorElements(*document, elements, 1.0, error);
+    if (!layer) {
+        debugOutput << "ArtCreator: the copy has no picture for other programs: " << error << std::endl;
+        return;
+    }
+    ClipboardDib::RgbaImage image;
+    image.width = layer->GetWidth();
+    image.height = layer->GetHeight();
+    image.pixels.resize(static_cast<size_t>(image.width) * image.height * 4);
+    for (int y = 0; y < image.height; ++y) {
+        std::copy_n(layer->Row(y), static_cast<size_t>(image.width) * 4,
+                    image.pixels.data() + static_cast<size_t>(y) * image.width * 4);
+    }
+    std::vector<uint8_t> png;
+    if (!ClipboardDib::EncodePng(image, png)) return;
+    if (auto* cb = GetClipboard(); cb && cb->SetImage(png, "image/png")) clipboardPng = std::move(png);
 }
 
 void ArtCreatorWindow::CmdCut() {
@@ -954,7 +1017,137 @@ void ArtCreatorWindow::CmdCut() {
     CmdDelete();
 }
 
+// What was copied last wins. A picture another program put on the system
+// clipboard becomes an image object; so does an image file copied in a file
+// manager (UltraFiler, Explorer, Finder), and a drawing file comes in as a
+// group. This window's own copy comes back as the objects themselves, not
+// as their picture. Paste used to read only the in-app copy, so a picture
+// or a file copied anywhere else pasted nothing.
 void ArtCreatorWindow::CmdPaste() {
+    if (!document) return;
+    if (PasteFromSystemClipboard()) return;
+    PasteCopiedElements();
+}
+
+bool ArtCreatorWindow::PasteFromSystemClipboard() {
+    auto* cb = GetClipboard();
+    if (!cb) return false;
+    std::vector<uint8_t> bytes;
+    std::string format;
+    if (cb->GetImage(bytes, format) && !bytes.empty()) {
+        if (!clipboard.empty() && bytes == clipboardPng) return false;   // our own copy
+        if (PlacePicture(std::move(bytes), format, "the picture")) return true;
+    }
+    std::vector<std::string> files;
+    if (cb->GetFiles(files)) {
+        for (const auto& file : files) {
+            if (UltraCanvasFileLoader::CanLoadVectorDocument(file)) return PlaceDrawingFile(file);
+            if (IsPictureFile(file)) {
+                std::ifstream in(PathFromUtf8(file), std::ios::binary);
+                std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                if (data.empty()) {
+                    UltraCanvasDialogManager::ShowError("Could not read " + file, "Paste", nullptr, window.get());
+                    return true;   // answered: the file was what the clipboard held
+                }
+                return PlacePicture(std::move(data), PictureMimeOf(file), FileNameOf(file));
+            }
+        }
+    }
+    return false;
+}
+
+// A picture as an image object at a pixel a point - shrunk to the page when
+// it is larger - in the middle of the page. PNG, JPEG, GIF and WebP are
+// embedded as they are; anything else is turned into PNG first, so a saved
+// SVG carries a picture every reader shows.
+bool ArtCreatorWindow::PlacePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& what) {
+    if (!document || bytes.empty()) return false;
+    if (mimeType != "image/png" && mimeType != "image/jpeg" && mimeType != "image/gif" && mimeType != "image/webp") {
+#ifdef HAS_LIBVIPS
+        try {
+            std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(PixelFX::FileIO::LoadFromMemory(bytes, ""), ".png");
+            if (!png.empty()) {
+                bytes = std::move(png);
+                mimeType = "image/png";
+            }
+        } catch (...) {}
+#endif
+    }
+    auto picture = UCImage::LoadFromMemory(bytes);
+    if (!picture || picture->GetWidth() <= 0 || picture->GetHeight() <= 0) {
+        if (statusHint) statusHint->SetText("Could not read " + what + " on the clipboard");
+        return false;
+    }
+
+    double w = picture->GetWidth(), h = picture->GetHeight();
+    const Rect2Dd page = document->ViewBox;
+    if (page.width > 0 && page.height > 0 && (w > page.width || h > page.height)) {
+        const double k = std::min(page.width / w, page.height / h);
+        w *= k;
+        h *= k;
+    }
+    auto image = std::make_shared<VectorImage>();
+    image->Bounds = Rect2Dd(page.x + (page.width - w) / 2, page.y + (page.height - h) / 2, w, h);
+    image->MimeType = mimeType;
+    image->Source = "data:" + mimeType + ";base64," + Base64Encode(bytes, false);
+    PlaceElement(image, "Paste picture");
+    if (statusHint) {
+        statusHint->SetText("Pasted " + what + " (" + std::to_string(picture->GetWidth()) + " x " +
+                            std::to_string(picture->GetHeight()) + " pixels)");
+    }
+    return true;
+}
+
+// A drawing file copied in a file manager: its visible layers' objects, as
+// one group in the middle of the page. Gradients, clip paths and symbols it
+// defines come along unless the drawing already has one of that name.
+bool ArtCreatorWindow::PlaceDrawingFile(const std::string& path) {
+    std::string error;
+    auto incoming = UltraCanvasFileLoader::LoadVectorDocument(path, error);
+    if (!incoming) {
+        UltraCanvasDialogManager::ShowError(error + "\n" + path, "Paste", nullptr, window.get());
+        return true;   // answered: the file was what the clipboard held
+    }
+    auto group = std::make_shared<VectorGroup>();
+    for (const auto& layer : incoming->Layers) {
+        if (!layer || !layer->Visible) continue;
+        for (const auto& child : layer->Children) if (child) group->AddChild(child);
+    }
+    if (group->Children.empty()) {
+        if (statusHint) statusHint->SetText(FileNameOf(path) + " has nothing to paste");
+        return true;
+    }
+    RenewIds(group);
+    // centre what it draws on the page
+    const Rect2Dd box = group->GetBoundingBox();
+    const Rect2Dd page = document->ViewBox;
+    if (box.width >= 0 && box.height >= 0) {
+        TranslateElements({group}, page.x + (page.width - box.width) / 2 - box.x,
+                                   page.y + (page.height - box.height) / 2 - box.y);
+    }
+    PlaceElement(group, "Paste drawing", [&]() {
+        for (const auto& [id, definition] : incoming->Definitions) {
+            if (definition && !document->Definitions.count(id)) document->Definitions[id] = definition;
+        }
+    });
+    if (statusHint) statusHint->SetText("Pasted " + FileNameOf(path));
+    return true;
+}
+
+// One undo step that adds the element to the active layer and selects it.
+void ArtCreatorWindow::PlaceElement(const ElementPtr& element, const std::string& label,
+                                    const std::function<void()>& alongside) {
+    auto layer = ActiveLayer();
+    if (!layer || !element) return;
+    if (element->Id.empty()) element->Id = GenerateId();
+    history.Record(label, [&]() {
+        if (alongside) alongside();
+        layer->AddChild(element);
+    });
+    Reselect({element->Id});
+}
+
+void ArtCreatorWindow::PasteCopiedElements() {
     if (clipboard.empty() || !document) return;
     ++pasteCount;
     std::vector<std::string> ids;

@@ -2,17 +2,21 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.2.0 - the notification toasts (StartNotifications, PlaceNotifications)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopWindow.h"
 #include "UltraDesktopAppStarter.h"
+#include "UltraDesktopClipboardPanel.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 
+#include "UltraCanvasAlert.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasClipboardHistory.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
@@ -24,6 +28,9 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWaveSeparator.h"
 #include "UltraCanvasWindow.h"
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+#include "Plugins/UltraMessage/UltraCanvasNotificationToast.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -91,10 +98,14 @@ std::string Shorten(const std::string& text, size_t max) {
 UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
-    // The poll thread and the shell monitor both hand over through members
-    // of this object: stop them before anything else goes.
+    toasts_.reset();   // its windows, its bus connection
+    // The poll thread, the shell monitor and the shortcut's thread all hand
+    // over through members of this object: stop them before anything else goes.
     StopDevicePoll();
     shellMonitor_.Stop();
+    clipboardShortcut_.Stop();
+    clipboardPanel_.reset();
+    if (recorder_) recorder_->Detach();
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(uiTimer_);
     }
@@ -123,10 +134,10 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     if (!window_) return false;
 
     BuildLayout();
+    StartNotifications();
 
-    // History for the clipboard button: the framework's clipboard keeps the
-    // entries once it is told to watch.
-    if (auto* clipboard = GetClipboard()) clipboard->StartMonitoring();
+    // The clipboard history the button shows: recorded here, kept on disk.
+    StartClipboardHistory();
 
     // Window and desktop changes arrive on the monitor's thread as a flag;
     // the device poll on its own thread as a pending reading. The UI timer
@@ -359,11 +370,21 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     organiser_->AddSeparator();
     AddBarToggle(organiser_, "stickerboard", "Stickerboard", IconPath("pinboard.svg"), "",
                  [this](bool on) { ToggleStickerboard(on); });
-    auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history", IconPath("clipboard.svg"), nullptr);
+    auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history (Super+V)",
+                                  IconPath("clipboard.svg"), nullptr);
+    clipboardButton_ = clipboard.get();
     clipboard->onClick = [this, button = clipboard.get()]() {
+        if (history_) {
+            ToggleClipboardPanel(true);
+            return;
+        }
         const Rect2Df bounds = button->GetBoundsInWindow();
         ShowClipboardMenu(static_cast<int>(bounds.x), static_cast<int>(bounds.y + bounds.height));
     };
+    clipboard->onContextMenu = [this](int windowX, int windowY) {
+        if (history_) ShowClipboardButtonMenu(windowX, windowY);
+    };
+    UpdateClipboardButton();
     AddBarButton(organiser_, "screenshot", "Screenshot of the screen", IconPath("screenshot.svg"),
                  [this]() { TakeScreenshot(); });
     bar->AddChild(organiser_);
@@ -545,6 +566,36 @@ void UltraDesktopWindow::ApplySettings() {
     BuildLayout();
     requestedDesktops_ = 0;
     RefreshDesktops();
+    PlaceNotifications();   // the taskbar may have moved
+}
+
+// ===== NOTIFICATIONS =====
+
+void UltraDesktopWindow::StartNotifications() {
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    // The desktop is the first to start in an ULTRA OS session, so it usually
+    // hosts the UltraMessage broker too - and with it the adapter that serves
+    // org.freedesktop.Notifications for every application.
+    toasts_ = std::make_unique<UltraCanvasNotificationToastHost>();
+    PlaceNotifications();
+    if (!toasts_->Connect()) {
+        debugOutput << "UltraDesktop: notifications are not shown: " << toasts_->LastError() << std::endl;
+    }
+#endif
+}
+
+void UltraDesktopWindow::PlaceNotifications() {
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    if (!toasts_) return;
+    // Top right, beside the right bar, and below the taskbar when it runs
+    // along the top.
+    const TaskbarEdge edge = settings_.taskbarEdge;
+    toasts_->SetCorner(NotificationToastCorner::TopRight);
+    toasts_->SetScreenMargins(edge == TaskbarEdge::Left ? kBarThickness : 0,
+                              edge == TaskbarEdge::Top ? kBarThickness : 0,
+                              kInfoPanelWidth,
+                              edge == TaskbarEdge::Bottom ? kBarThickness : 0);
+#endif
 }
 
 void UltraDesktopWindow::SaveSettings() {
@@ -626,6 +677,8 @@ void UltraDesktopWindow::OnTimer() {
     if (screenshotBadgeTicks_ > 0 && --screenshotBadgeTicks_ == 0 && organiser_) {
         organiser_->ClearItemBadge("screenshot");
     }
+
+    CheckClipboardHistory();
 }
 
 void UltraDesktopWindow::RefreshDesktops() {
@@ -655,6 +708,9 @@ void UltraDesktopWindow::RefreshWindows() {
 
     std::map<uint64_t, const DesktopWindowInfo*> wanted;
     for (const DesktopWindowInfo& w : windows) {
+        // Where a paste from the clipboard panel goes when it is opened from
+        // the bar: clicking the bar does not change it.
+        if (w.active && w.appClass != "UltraDesktop") lastPasteWindow_ = w.id;
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
@@ -882,8 +938,9 @@ void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {
     size_t shown = 0;
     if (clipboard) {
         const auto& entries = clipboard->GetEntries();
-        // Newest last in the store; a menu reads best newest first.
-        for (auto it = entries.rbegin(); it != entries.rend() && shown < 15; ++it) {
+        // The store keeps the newest first (AddEntry inserts at the front),
+        // which is the order a menu reads best in.
+        for (auto it = entries.begin(); it != entries.end() && shown < 15; ++it) {
             const ClipboardData entry = *it;
             std::string label = entry.type == ClipboardDataType::Text
                     ? entry.preview : (entry.GetTypeString() + ": " + entry.preview);
@@ -910,6 +967,198 @@ void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {
     }
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+// ===== CLIPBOARD HISTORY =====
+
+namespace {
+
+// The program a copy came from: the window that has the focus when the copy
+// is noticed - the one the person copied in. The desktop's own panel is not
+// a source.
+std::string ActiveApplicationName() {
+    const uint64_t active = UltraCanvasDesktopShell::GetActiveWindow();
+    if (active == 0) return "";
+    for (const auto& window : UltraCanvasDesktopShell::ListWindows()) {
+        if (window.id != active) continue;
+        std::string name = !window.appName.empty() ? window.appName : window.appClass;
+        if (name == "UltraDesktop" || window.title == "Clipboard") return "";
+        return name;
+    }
+    return "";
+}
+
+// What a paste into `window` takes, from its application's desktop entry.
+UltraDesktopClipboardPanel::Target PasteTargetFor(const DesktopWindowInfo& window,
+                                                  const std::vector<UCDesktopEntry>& applications) {
+    UltraDesktopClipboardPanel::Target target;
+    const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(window, applications);
+    if (!entry) return target;
+    target.kinds = PreferredClipboardKinds(entry->categories, entry->mimeTypes);
+    // "GNU Image Manipulation Program" does not fit a section header.
+    target.name = entry->name.size() <= 18 || window.appClass.empty() ? entry->name : window.appClass;
+    return target;
+}
+
+} // namespace
+
+void UltraDesktopWindow::StartClipboardHistory() {
+    history_ = std::make_unique<UltraCanvasClipboardHistory>();
+    if (!history_->Open()) {
+        debugOutput << "UltraDesktop: no clipboard history (" << history_->GetLastError()
+                    << "); the clipboard button shows this session's copies" << std::endl;
+        history_.reset();
+    }
+    if (!history_) {
+        if (auto* clipboard = GetClipboard()) clipboard->StartMonitoring();
+        return;
+    }
+    historyGeneration_ = history_->GetGeneration();
+    clipboardPaused_ = history_->GetPolicy().recordingPaused;
+    recorder_ = std::make_unique<UltraCanvasClipboardRecorder>();
+    recorder_->sourceProvider = []() { return ActiveApplicationName(); };
+    recorder_->onRecorded = [this](int64_t, ClipboardRecordResult) {
+        if (clipboardPanel_) clipboardPanel_->Refresh();
+    };
+    if (auto* clipboard = GetClipboard()) recorder_->Attach(history_.get(), clipboard, "desktop", 10);
+
+    UltraDesktopClipboardPanel::Actions actions;
+    actions.copy = [this](int64_t id) { CopyHistoryEntry(id); };
+    actions.edit = [this](int64_t id) { OpenClipboardApplication({"--edit", std::to_string(id)}); };
+    actions.openApplication = [this](const std::string& text) {
+        if (text.empty()) OpenClipboardApplication({});
+        else OpenClipboardApplication({"--search", text});
+    };
+    clipboardPanel_ = std::make_shared<UltraDesktopClipboardPanel>(history_.get(), std::move(actions));
+
+    // Super+V from any window. The shortcut's thread hands the press to the UI thread.
+    std::string error;
+    const bool started = clipboardShortcut_.Start("Super+V", [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { ToggleClipboardPanel(false); });
+        }
+    }, &error);
+    if (!started) debugOutput << "UltraDesktop: Super+V does not open the clipboard: " << error << std::endl;
+}
+
+void UltraDesktopWindow::CheckClipboardHistory() {
+    if (!history_) return;
+    if (recorder_) recorder_->Tick();
+    // Changes from another process (UltraClipboard): once a second.
+    if (++ticksSinceHistoryCheck_ >= 4) {
+        ticksSinceHistoryCheck_ = 0;
+        const uint64_t generation = history_->GetGeneration();
+        if (generation != historyGeneration_) {
+            historyGeneration_ = generation;
+            const bool paused = history_->GetPolicy().recordingPaused;
+            if (paused != clipboardPaused_) {
+                clipboardPaused_ = paused;
+                UpdateClipboardButton();
+            }
+            if (clipboardPanel_) clipboardPanel_->Refresh();
+        }
+    }
+    // Removals past their undo window are finished once a minute.
+    if (++ticksSincePrune_ >= 240) {
+        ticksSincePrune_ = 0;
+        history_->Prune();
+    }
+}
+
+void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
+    if (!clipboardPanel_ || !window_) return;
+    if (clipboardPanel_->IsOpen()) {
+        clipboardPanel_->Close();
+        return;
+    }
+    // The window the paste goes to: the focused one for Super+V, the last
+    // focused one of another program when the bar was clicked.
+    UltraDesktopClipboardPanel::Target target;
+    const uint64_t active = UltraCanvasDesktopShell::GetActiveWindow();
+    const DesktopWindowInfo* pasteWindow = nullptr;
+    const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
+    for (const DesktopWindowInfo& w : windows) {
+        if (w.id == active && w.appClass != "UltraDesktop") pasteWindow = &w;
+    }
+    for (const DesktopWindowInfo& w : windows) {
+        if (!pasteWindow && w.id == lastPasteWindow_) pasteWindow = &w;
+    }
+    if (pasteWindow) {
+        lastPasteWindow_ = pasteWindow->id;
+        const auto now = std::chrono::steady_clock::now();
+        if (applications_.empty() || now - applicationsRead_ > std::chrono::minutes(5)) {
+            applications_ = UltraCanvasDesktopShell::ListApplications(16);
+            applicationsRead_ = now;
+        }
+        target = PasteTargetFor(*pasteWindow, applications_);
+    }
+    if (besideButton && clipboardButton_) {
+        // The desktop window covers the screen from its top left corner, so
+        // its coordinates are the screen's, scaled to physical pixels.
+        const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
+        clipboardPanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
+                              window_->LogicalToPhysical(static_cast<int>(bounds.y) - 8), std::move(target));
+    } else {
+        clipboardPanel_->Open(-1, -1, std::move(target));
+    }
+}
+
+void UltraDesktopWindow::CopyHistoryEntry(int64_t entryId) {
+    auto* clipboard = GetClipboard();
+    if (!history_ || !clipboard) return;
+    std::vector<ClipboardFormat> formats;
+    if (!history_->ReadFormats(entryId, formats) || !RestoreToClipboard(*clipboard, formats)) {
+        UltraCanvasAlert::Error("This copy can no longer be read from the clipboard history.", "Clipboard",
+                                nullptr, window_.get());
+        return;
+    }
+    history_->MarkUsed(entryId);
+}
+
+void UltraDesktopWindow::OpenClipboardApplication(const std::vector<std::string>& arguments) {
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UltraClipboard", arguments, &error)) return;
+    UltraCanvasAlert::Error("UltraClipboard could not be started: " + error, "Clipboard", nullptr, window_.get());
+}
+
+void UltraDesktopWindow::SetClipboardRecording(bool on) {
+    if (!history_) return;
+    ClipboardHistoryPolicy policy = history_->GetPolicy();
+    policy.recordingPaused = !on;
+    history_->SetPolicy(policy);
+    clipboardPaused_ = !on;
+    historyGeneration_ = history_->GetGeneration();
+    UpdateClipboardButton();
+    if (clipboardPanel_) clipboardPanel_->Refresh();
+}
+
+// Crossed out while recording is paused, so the bar says it.
+void UltraDesktopWindow::UpdateClipboardButton() {
+    if (!clipboardButton_) return;
+    clipboardButton_->SetIcon(IconPath(clipboardPaused_ ? "clipboard-paused.svg" : "clipboard.svg"));
+    clipboardButton_->SetTooltip(clipboardPaused_ ? "Clipboard history - recording is paused (Super+V)"
+                                                  : "Clipboard history (Super+V)");
+}
+
+void UltraDesktopWindow::ShowClipboardButtonMenu(int windowX, int windowY) {
+    if (!window_ || !history_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("ClipboardButtonMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Clipboard history"));
+    popupMenu_->AddItem(MenuItemData::Action(clipboardPaused_ ? "Resume recording" : "Pause recording",
+                                             [this]() { SetClipboardRecording(clipboardPaused_); }));
+    popupMenu_->AddItem(MenuItemData::Action("Open UltraClipboard", [this]() { OpenClipboardApplication({}); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Clear history\xE2\x80\xA6", [this]() {
+        UltraCanvasAlert::Confirm("Remove every entry from the clipboard history? Pinned entries stay.",
+                                  "Clear clipboard history", [this](bool yes) {
+                                      if (!yes || !history_) return;
+                                      history_->Clear(false);
+                                      if (clipboardPanel_) clipboardPanel_->Refresh();
+                                  }, window_.get());
+    }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
 }
 
 } // namespace UltraDesktop

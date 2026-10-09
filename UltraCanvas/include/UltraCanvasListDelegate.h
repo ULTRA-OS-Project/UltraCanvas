@@ -40,6 +40,7 @@ namespace UltraCanvas {
 
         // Size hint for a row (height is the key value)
         virtual int GetRowHeight(const IListModel* model, int row) const {
+            (void)model; (void)row;
             return 24;
         }
     };

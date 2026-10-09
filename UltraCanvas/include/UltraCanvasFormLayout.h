@@ -18,8 +18,10 @@
 //
 // Rows hidden with SetVisible(false) leave the grid entirely (display:none),
 // so a form can show a different set of rows without leaving gaps.
+// Version: 1.2.0 - the grid asks for its horizontal stretch (the engine no
+//                 longer stretches by default)
 // Version: 1.1.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,6 +64,9 @@ namespace UltraCanvas {
         grid->layout.SetGridColumns({captionColumn, controlColumn});
         grid->layout.SetGridGap(rowGap, columnGap);
         grid->layout.SetGridAlignItems(CSSLayout::AlignItems::Center);
+        // A control fills the rest of its row and a caption the caption
+        // column; a control given a width of its own keeps it.
+        grid->layout.SetGridJustifyItems(CSSLayout::JustifyItems::Stretch);
         grid->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         // A form grid lays its rows out; it never scrolls. Left on the
         // container default, a row one pixel taller than the track it sits in

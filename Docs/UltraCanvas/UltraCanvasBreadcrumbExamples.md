@@ -4,7 +4,7 @@
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -31,9 +31,10 @@
 ### Constructor
 
 ```cpp
-UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                      long x = 0, long y = 0,
-                      long w = 400, long h = 28);
+UltraCanvasBreadcrumb(const std::string& identifier,
+                      float x, float y, float w, float h);
+UltraCanvasBreadcrumb(const std::string& identifier, float w, float h);   // position -1, -1
+explicit UltraCanvasBreadcrumb(const std::string& identifier = "");       // size -1, -1 (layout decides)
 ```
 
 ### Factory Function
@@ -41,7 +42,7 @@ UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
 ```cpp
 std::shared_ptr<UltraCanvasBreadcrumb> CreateBreadcrumb(
     const std::string& identifier,
-    long x, long y, long w = 400, long h = 28);
+    float x, float y, float w = 400, float h = 28);
 ```
 
 ### BreadcrumbItem Structure
@@ -195,9 +196,10 @@ Set `sortDropdownItems` on an item to have its entries sorted by label
 (case-insensitive) before the menu opens — for lists gathered from elsewhere,
 such as the folders of a directory. A hand-written menu keeps its own order.
 
-**What opens the dropdown** is a full-height zone at the trailing end of the
-item, not the 6px chevron glyph: the chevron, the gap in front of it and the
-item's trailing padding, widened to at least
+**What opens the dropdown** is a zone at the trailing end of the item that
+runs from the top to the bottom of the breadcrumb (its padding and border
+included), not the 6px chevron glyph: the chevron, the gap in front of it and
+the item's trailing padding, widened to at least
 `BreadcrumbStyle::dropdownHitAreaMinWidth` (24px by default) and — in the
 `Arrow` / `Parallelogram` item styles — extended over the tip drawn past the
 segment's right edge, so the whole arrow head is clickable. The zone never
@@ -205,9 +207,12 @@ takes more than the trailing half of an item, so the label always keeps a
 clickable area of its own.
 
 The pointer says which parts open a menu: the dropdown zone — and the whole
-overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
-(`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
-the rest of the strip shows the item cursor. Both are style fields:
+overflow (`...`) item, which opens from anywhere on it, also top to bottom —
+shows the menu cursor (`UCMouseCursor::ContextMenu`, the same one the dropdown
+widget's button uses: an arrow with a small menu beside it - the system's own
+context-menu pointer on macOS, drawn from `media/lib/cursor/context-menu.svg`
+elsewhere), the rest of the strip shows the item cursor. Both are style
+fields:
 
 ```cpp
 BreadcrumbStyle s = bc->GetStyle();

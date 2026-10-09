@@ -7,8 +7,11 @@
 
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "UltraCanvasIODeviceBackends.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
+#include <cctype>
+#include <sstream>
 #include <unordered_set>
 
 namespace UltraCanvas {
@@ -212,6 +215,30 @@ IODeviceManager::GetRegisteredBackends(IODeviceCategory category) const {
 // DISCOVERY
 // ============================================================================
 
+namespace {
+
+std::string LowerCase(std::string text) {
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+// The backends ULTRACANVAS_DEVICE_BACKENDS lets run, lower-case; empty when
+// it is unset or names none, which lets every backend run.
+std::vector<std::string> SelectedBackends() {
+    std::vector<std::string> selected;
+    std::stringstream list(GetEnvUtf8("ULTRACANVAS_DEVICE_BACKENDS"));
+    std::string name;
+    while (std::getline(list, name, ',')) {
+        const size_t first = name.find_first_not_of(" \t");
+        if (first == std::string::npos) continue;
+        const size_t last = name.find_last_not_of(" \t");
+        selected.push_back(LowerCase(name.substr(first, last - first + 1)));
+    }
+    return selected;
+}
+
+}  // namespace
+
 IODeviceResult IODeviceManager::EnumerateDevices(IODeviceCategory category) {
     // Copy the enumerators out before running them: a backend may take its
     // own locks or block on hardware, and holding registryMutex across that
@@ -231,6 +258,26 @@ IODeviceResult IODeviceManager::EnumerateDevices(IODeviceCategory category) {
             IODeviceResultCode::BackendUnavailable,
             std::string("No backend registered for category ") +
                 IODeviceCategoryToString(category));
+    }
+
+    const std::vector<std::string> selected = SelectedBackends();
+    if (!selected.empty()) {
+        toRun.erase(std::remove_if(toRun.begin(), toRun.end(),
+                                   [&](const EnumeratorEntry& entry) {
+                                       return std::find(selected.begin(), selected.end(),
+                                                        LowerCase(entry.backendName)) ==
+                                              selected.end();
+                                   }),
+                    toRun.end());
+        if (toRun.empty()) {
+            // Said, not silently zero, and the registry left as it is: an
+            // empty run would drop every device of the category.
+            return IODeviceResult::Error(
+                IODeviceResultCode::BackendUnavailable,
+                std::string("No backend for category ") + IODeviceCategoryToString(category) +
+                    " is among those ULTRACANVAS_DEVICE_BACKENDS lets run (" +
+                    GetEnvUtf8("ULTRACANVAS_DEVICE_BACKENDS") + ")");
+        }
     }
 
     std::vector<IODevicePtr> discovered;

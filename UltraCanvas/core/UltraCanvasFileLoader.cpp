@@ -158,18 +158,19 @@ namespace UltraCanvas {
         config.dialogType       = type;
         config.initialDirectory = opts.initialDirectory;
         config.defaultFileName  = opts.defaultFileName;
+        config.defaultExtension = opts.defaultExtension;
         config.showHiddenFiles  = opts.showHiddenFiles;
         config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
         config.filterToggles    = opts.filterToggles && type != FileDialogType::SelectFolder;
-        // A folder has no file filter; a file dialog takes the caller's, and
-        // falls back to "everything" rather than the config's sample list.
-        if (type == FileDialogType::SelectFolder) {
-            config.filters.clear();
-        } else if (!opts.filters.empty()) {
-            config.filters = opts.filters;
-        } else {
-            config.filters = { FileFilter("All Files", "*") };
-        }
+        config.confirmOverwrite = opts.confirmOverwrite;
+        config.hoverIconMenu    = opts.hoverIconMenu;
+        // The framework dialog adds what it accepts to the recent files
+        // itself (FileDialogConfig::addToRecent); the native path below does
+        // it here.
+        config.addToRecent      = opts.registerAsRecent;
+        // A folder has no file filter; a file dialog takes the caller's (the
+        // dialog lists every file when there are none).
+        if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
         return config;
     }
 
@@ -229,8 +230,8 @@ namespace UltraCanvas {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::Open, "Open File"),
                 opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
                 });
             return;
         }
@@ -261,7 +262,7 @@ namespace UltraCanvas {
         if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::OpenMultiple, "Open Files"),
-                opts.parentWindow, deliver);
+                opts.parentWindow, onResult);
             return;
         }
 
@@ -290,8 +291,8 @@ namespace UltraCanvas {
             ShowFrameworkFileDialog(
                 FileConfigFrom(opts, FileDialogType::Save, "Save File"),
                 opts.parentWindow,
-                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
-                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
                 });
             return;
         }
@@ -451,8 +452,13 @@ namespace UltraCanvas {
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         const auto writable = SavableVectorExtensions();
         if (std::find(writable.begin(), writable.end(), ext) == writable.end()) {
+            // The extension picks the format, so a name without one (saved
+            // under "All files") has none to pick.
             outError = writable.empty()
                        ? "No vector file writers are installed (RegisterVectorFormatsPlugin was not called)."
+                       : ext.empty()
+                       ? "The file name has no extension, so there is no format to save it in. "
+                         "Add one, such as .svg, or choose the file type."
                        : "No writer for ." + ext;
             return false;
         }

@@ -171,21 +171,27 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# macOS: record only the dylibs a binary actually takes a symbol from. On
-# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
-# so every application's link line carries the core's whole PUBLIC dependency
-# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
-# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
-# command for each one whether the program uses it or not. package-macos.sh
-# then copies every one of them, with its own dependencies, into each .app's
-# Frameworks/, six bundles over. With this flag an app that never reaches the
-# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
-# that supplied no symbol at link time are dropped, so nothing an app calls
-# can go missing; it would only matter for a library needed purely for a side
-# effect of its initializer, and none of the Homebrew dependencies is that.
+# macOS: record only the dylibs a binary actually takes a symbol from. ld64,
+# unlike GNU ld with --as-needed, writes a load command for every library on
+# the link line whether the program takes a symbol from it or not. While the
+# core was linked statically on macOS, every application's link line carried
+# the core's whole PUBLIC dependency list - tesseract, leptonica, MuPDF, zbar,
+# libcdr with boost and ICU, the audio codecs - and package-macos.sh copied
+# every one of them into each .app's Frameworks/. The core is a shared
+# libUltraCanvas.dylib on macOS now too (ULTRACANVAS_BUILD_SHARED), so the
+# apps' link lines are short, but the flag still earns its place: the core
+# itself records only the libraries it uses, and a format plug-in archive an
+# app links still brings its dependency list along. Only libraries that
+# supplied no symbol at link time are dropped, so nothing an app calls can go
+# missing; it would only matter for a library needed purely for a side effect
+# of its initializer, and none of the dependencies is that.
 if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
+
+# Where the macOS dependency libraries are: Homebrew's, or the vcpkg prefix CI
+# builds for the oldest supported macOS (ULTRACANVAS_MACOS_DEPS_PREFIX).
+include(cmake/UltraCanvasMacOSDeps.cmake)
 
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -478,6 +484,18 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRACANVASSTART =====
+# Sets a computer up for UltraCanvas development: detects the platform and
+# package manager, checks and installs the development libraries, names the
+# matching SDK artifact, writes a project skeleton and explains the AI
+# workflow. Headless --check / --plan modes for the terminal and CI.
+option(BUILD_ULTRACANVASSTART "Build the UltraCanvasStart application" ON)
+if(BUILD_ULTRACANVASSTART)
+    message(STATUS "")
+    message(STATUS "── Building UltraCanvasStart ──")
+    add_subdirectory(Apps/UltraCanvasStart)
+endif()
+
 # ===== UOS-SETTINGS =====
 # The ULTRA OS settings application: settings that belong to the system rather
 # than to one application, starting with where the file dialogs of all
@@ -511,6 +529,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRAWEB =====
+# The ULTRA OS browser. This version runs WebAssembly apps that build their UI
+# out of UltraCanvas elements (the WasmHost module, on wasmtime); the HTML
+# reader and JavaScript follow Docs/UltraWeb/UltraWebProposal.md. A headless
+# --check mode starts an app without a window.
+option(BUILD_ULTRAWEB "Build the UltraWeb browser" ON)
+if(BUILD_ULTRAWEB)
+    message(STATUS "")
+    message(STATUS "── Building UltraWeb ──")
+    add_subdirectory(Apps/UltraWeb)
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
@@ -522,6 +552,16 @@ if(BUILD_ULTRADESKTOP)
     message(STATUS "")
     message(STATUS "── Building UltraDesktop ──")
     add_subdirectory(Apps/UltraDesktop)
+endif()
+
+# ===== ULTRACLIPBOARD =====
+# The clipboard history of ULTRA OS: everything copied - texts, links,
+# colours, images, files - with a thumbnail and Copy / Edit / Delete on every
+# entry, search, pins and the history's settings. UltraDesktop records the
+# history and opens this from its quick panel (Super+V).
+option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
+if(BUILD_ULTRACLIPBOARD)
+    add_subdirectory(Apps/UltraClipboard)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -587,6 +627,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAlertExamples.cpp
+            Apps/DemoApp/UltraCanvasNotificationToastExamples.cpp
             Apps/DemoApp/UltraCanvasPaginationExamples.cpp
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
@@ -608,6 +649,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
+            Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
@@ -773,12 +815,10 @@ if(BUILD_DEMO_APP)
                 ${LIBVIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
-        # Set Homebrew prefix
-        execute_process(
-            COMMAND brew --prefix
-            OUTPUT_VARIABLE HOMEBREW_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+        # The dependency prefix (cmake/UltraCanvasMacOSDeps.cmake): Homebrew's,
+        # or the vcpkg one CI builds.
+        set(HOMEBREW_PREFIX "${ULTRACANVAS_MACOS_DEPS_PREFIX}")
+        ultracanvas_macos_dep_prefix(vips _uc_vips_prefix)
         include_directories(
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
@@ -806,7 +846,7 @@ if(BUILD_DEMO_APP)
                 ${GLIB_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
-                ${HOMEBREW_PREFIX}/opt/vips/lib
+                ${_uc_vips_prefix}/lib
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         link_directories(
@@ -844,8 +884,10 @@ if(BUILD_DEMO_APP)
     # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
-    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
-    # needs the element's library; without UltraMessage the page says so.
+    # The message centre and notification toast pages
+    # (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp,
+    # UltraCanvasNotificationToastExamples.cpp) need the elements' library;
+    # without UltraMessage the pages say so.
     if(TARGET UltraMessageCenter)
         target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
     endif()
@@ -936,6 +978,28 @@ option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
+# ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
+# IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
+# (the macOS and Windows CI rows): trusting a device's self-signed certificate
+# on first use rests on libcurl's public-key pinning and certificate capture,
+# which each TLS library implements apart - OpenSSL on Linux, Apple's TLS on
+# macOS, Schannel on Windows - so it is a test on every one of them.
+option(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS "Build the device TLS tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DeviceTlsTests.cmake)
+endif()
+
+# ===== VAULT TESTS WITHOUT THE FULL SUITE =====
+# UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
+# row): the device-key vault in a Thai-and-emoji folder is only a test where a
+# folder name goes through UTF-16 and a code page.
+option(ULTRACANVAS_BUILD_VAULT_TESTS "Build UltraVaultTests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VAULT_TESTS AND NOT BUILD_TESTS AND TARGET UltraVault)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 endif()
 
 # ===== ULTRANET TESTS =====
@@ -1094,6 +1158,18 @@ if(ULTRACANVAS_BUILD_ULTRACLEANER_TESTS AND TARGET UltraCleanerEngine)
     message(STATUS "── UltraCleaner engine test suite enabled (target: UltraCleanerEngineTests) ──")
 endif()
 
+# ===== ULTRACANVASSTART ENGINE TESTS =====
+# Headless tests of the setup app's engine: os-release parsing, version
+# comparison, the dependency table, the install command, SDK names, the plan
+# and the project scaffold. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS "Build the UltraCanvasStart engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraCanvasStart)
+    message(STATUS "")
+    message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
@@ -1192,6 +1268,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
@@ -1385,6 +1462,13 @@ if (BUILD_ULTRAPAINT_APP)
     target_link_libraries(UltraPaint PRIVATE
             ${ULTRACANVAS_LIBRARY}
     )
+
+    # Paste with nothing on the clipboard offers the newest image of the
+    # clipboard history UltraDesktop keeps; Edit > Paste Last Copied Image.
+    if(TARGET UltraClipboardHistory)
+        target_link_libraries(UltraPaint PRIVATE UltraClipboardHistory)
+        target_compile_definitions(UltraPaint PRIVATE ULTRAPAINT_HAVE_CLIPBOARD_HISTORY=1)
+    endif()
 
     # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
     # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and
@@ -1870,17 +1954,9 @@ if (BUILD_TESTS)
              COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
-    # persistence, and the no-oracle property (wrong passphrase and a tampered
-    # file are indistinguishable). Compiles only UltraVault + UltraCrypt.
-    add_executable(UltraVaultTests Tests/UltraVaultTests.cpp)
-    target_link_libraries(UltraVaultTests PRIVATE UltraVault)
-    target_compile_features(UltraVaultTests PRIVATE cxx_std_20)
-    set_target_properties(UltraVaultTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraVaultTests COMMAND UltraVaultTests
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # UltraVault unit tests (Tests/VaultTests.cmake, shared with
+    # ULTRACANVAS_BUILD_VAULT_TESTS below).
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
 
     # Cross-module: UltraAI's ResolveApiKey resolving apiKeyVaultRef through
     # UltraVault (the path enabled by ULTRAAI_USE_ULTRAVAULT).
@@ -2136,7 +2212,7 @@ endif()
 # ===== CPack CONFIGURATION =====
 #set(CPACK_PACKAGE_NAME "UltraCanvas")
 #set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-#set(CPACK_PACKAGE_VENDOR "Cloverleaf UG")
+#set(CPACK_PACKAGE_VENDOR "ULTRA OS Development GmbH")
 #set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Cross-platform UI & Rendering Framework")
 #set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 #set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")

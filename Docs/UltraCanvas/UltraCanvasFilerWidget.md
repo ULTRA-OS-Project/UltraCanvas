@@ -1,5 +1,7 @@
 # UltraCanvasFilerWidget
 
+<!-- doc-check: struct RemoteDrives { bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error); std::string ListingStatus(const std::string& path); bool QueueDelete(const std::vector<FilerEntry>& entries, std::string& error); bool QueueRename(const std::string& path, const std::string& newName, std::string& error); bool QueueMakeDirectory(const std::string& folderPath, const std::string& name, std::string& error); bool QueueUpload(const std::string& folderPath, const std::vector<std::string>& localFiles, std::string& error); bool QueueDownload(const std::string& folderPath, const std::vector<std::string>& remoteFiles, std::string& error); }; std::shared_ptr<RemoteDrives> drives; std::string utf8Path; FileFilter filter; std::unordered_set<std::string> favorites; size_t entryIndex; std::string UserHomeDir(); void OpenInNewTab(const std::string& path); void StartSubfolderScan(const std::string& query); -->
+
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
 tiles, treemap cells, the hover icon menu and the scrollbar are all painted
@@ -356,6 +358,7 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Dataset     >  Size / Edit date / Creation date / Attributes /
                                  Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
+                  Folder previews (checkbox: pictures peeking out of a folder)
                   Info-Bar (checkbox: the selection info bar)
                   Hidden files (checkbox: hidden entries, and the full listing
                              of a curated home folder — see below)
@@ -364,6 +367,15 @@ Settings
 
 Notes:
 
+- **Icons.** Every entry of the menu and of its *Display* submenu carries an
+  icon from `media/icons/menu/` (copy, cut, paste, delete, ...), found
+  through `GetResourcesDir()`, so the labels line up behind one icon column.
+  The entries of *Display > Type* carry the same `media/icons/view-*.svg`
+  glyphs as UltraFiler's view selector. The checkbox entries of *Display*
+  show their tick and their icon side by side (see *Icon and Indicator
+  Columns* in [UltraCanvasMenuExamples.md](UltraCanvasMenuExamples.md)); the
+  tick is drawn round or square by `MenuStyle::checkboxShape`, which a host
+  sets for all its menus with `SetDefaultMenuCheckboxShape` (UltraFiler: round).
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
@@ -539,7 +551,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -636,9 +648,10 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
-ones are refused by the text-preview extractor too, so the tile keeps its type
-glyph instead of drawing a "page" holding the file's ZIP magic.
+reader here unpacks (xls, fb2.zip) — those are refused by the text-preview
+extractor too, so the tile keeps its type glyph instead of drawing a "page"
+holding the file's ZIP magic. An e-book's text (epub, mobi, prc, azw, azw3) is
+not read either, but its cover is, so those report true in every build.
 
 `onDisplayFormatsChanged` fires after any of the four sets changes, whoever
 changed it (the Display menu included) — that is where an application saves
@@ -676,6 +689,64 @@ it never throws, so a worker can hand it any file the user points at.
 `UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
 rasterize is displayed from its embedded preview, which is what gives these
 formats a detail pane as well as a tile.
+
+### E-book covers
+
+An e-book tile — `.epub`, and the Mobipocket / Kindle `.mobi`, `.prc`, `.azw`
+and `.azw3` — shows the book's cover, as Finder does: a folder of books reads
+as a shelf instead of a wall of identical purple type sheets. The cover is read
+on the thumbnail workers by the engine's own cover reader (both built into
+every build), which reads only what leads to the cover, never a chapter, so a
+300 MB illustrated book costs what a novel does. The image is then decoded like
+any other picture and its outermost pixels are darkened a little, which gives a
+white cover an edge against the white tile and leaves a dark one as it is.
+
+**EPUB** — `EPUBEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/EPUBEngine.h`) opens the archive's central directory
+and reads three entries: `META-INF/container.xml`, the package document and the
+cover image. The cover is the one the book declares, tried in this order, the
+first that names a file actually in the archive winning:
+
+1. EPUB 3 — the manifest item with `properties="cover-image"`;
+2. EPUB 2 — `<meta name="cover" content="…">`, which names the item's id (or,
+   from some producers, its href);
+3. EPUB 2 — `<guide><reference type="cover" href="…">`;
+4. failing all of those, a manifest image whose id or file name contains
+   "cover".
+
+Where a declaration names a cover **page** rather than an image — the
+`cover.xhtml` or the SVG-wrapped `titlepage.xhtml` most converters write — the
+picture on that page is the cover (`<img src>`, or SVG `<image xlink:href>`).
+A book that declares none of these keeps the glyph; the first picture inside
+the book is not assumed to be its cover.
+
+**Mobipocket / Kindle** — `MOBIEngine::ReadCoverImageFromFile`
+(`Plugins/Documents/eBook/MOBIEngine.h`) reads the database's record list,
+record 0 (whose EXTH block names the cover) and the cover record. The cover is
+the EXTH 201 image, else the first picture of the book's image records — the
+same picture the engine reports once the book is loaded, a Kindle book having
+no other way to declare one. Neither the text nor its compression is touched,
+so a **DRM-protected** `.azw` or a HUFF/CDIC-compressed book shows its cover
+too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
+pictures keeps the glyph.
+
+```cpp
+#include "Plugins/Documents/eBook/EPUBEngine.h"
+#include "Plugins/Documents/eBook/MOBIEngine.h"
+
+std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
+if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
+```
+
+Both never throw and return an empty vector for a book without a cover, a
+damaged file or one that is not of their format at all. The same rules decide
+`IEBookEngine::GetCoverImage()` and `EBookMetadata::hasCover` for a book the
+viewer has open. Covers are cached like every other thumbnail — in memory and,
+when `ThumbnailDiskCache` is on, on disk — so a library is read once, and a
+folder of books shows covers peeking out of its icon under Display > Folder
+previews. Display > Thumbnails > Docs turns them off with the other documents,
+and `SetThumbnailFormatEnabled("epub", false)` (or `"mobi"`, `"azw3"`, ... —
+UltraFiler: Settings > Display > Thumbnails) turns off one format's.
 
 ### File types the FileLoader knows
 
@@ -1061,19 +1132,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueDelete(victims, error);   // queued, not yet done
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueRename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->QueueMakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueUpload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->QueueDownload(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -1624,7 +1705,9 @@ UltraFiler does that when a tile of its History view is activated.
 
 When enabled (`SetHoverIconMenuEnabled`, default on, also toggled by
 Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
-item with Copy, Cut, Rename and Delete buttons. The glyphs are drawn as vectors,
+item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
+turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
+`FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
 so no icon assets are required.
 
 A button acts on the hovered entry — or on the **whole selection** when the
@@ -1678,9 +1761,9 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
-                              // a taken name asks Replace (red) / Cancel with the
-                              // two entries side by side
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
+                                 // a taken name asks Replace (red) / Cancel with the
+                                 // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -2270,10 +2353,22 @@ The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The element running the gesture owns the overlay (the filer does this on
+// every mouse move of an item drag).
+class DragSource : public UltraCanvasUIElement {
+public:
+    void UpdateBadge(const Rect2Di& badgeRectInWindowCoords) {
+        if (auto* window = GetWindow())
+            window->SetDragOverlay(this, badgeRectInWindowCoords,
+                    [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+    }
+    void HideBadge() {   // when the gesture ends
+        if (auto* window = GetWindow()) window->ClearDragOverlay(this);
+    }
+
+private:
+    void DrawBadge(IRenderContext* ctx, const Rect2Di& rect);
+};
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -2428,7 +2523,9 @@ paths itself carries the meaning — a most-recently-used history, a ranked
 result list — `SetFileListOrderPreserved(true)` shows them exactly as handed
 over (`IsFileListOrderPreserved()` reads the flag back). Sorting is then off
 for the file list: `SetSort()` and the Details column headers leave the order
-alone until the widget returns to a folder listing, which is always sorted.
+alone until the widget returns to a folder listing, which is always sorted —
+and the context menu's *Display > Sort* is greyed out, so the choice is not
+offered only to be ignored.
 
 ```cpp
 filer->SetFileListOrderPreserved(true);
@@ -2443,7 +2540,7 @@ lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -2495,8 +2592,9 @@ When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
-    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
+// A raw pointer: the filer owns this callback, so a shared_ptr would keep it alive.
+filer->SetFilterEmptyAction("Scan sub folder", [this, view = filer.get()]() {
+    StartSubfolderScan(view->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
 

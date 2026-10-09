@@ -6,7 +6,8 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileDialogSettings.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
+#include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasDebug.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -85,22 +86,9 @@ namespace UltraCanvas {
     }
 
     std::filesystem::path FileDialogSettings::FilePath() {
-        std::filesystem::path base;
-#if defined(_WIN32) || defined(_WIN64)
-        if (const wchar_t* appData = _wgetenv(L"APPDATA"))
-            base = std::filesystem::path(appData);   // path-string-ok: wide
-#elif defined(__APPLE__)
-        if (const char* home = std::getenv("HOME"))
-            base = PathFromUtf8(home) / "Library" / "Application Support";
-#else
-        if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-            base = PathFromUtf8(xdg);
-        } else if (const char* home = std::getenv("HOME")) {
-            base = PathFromUtf8(home) / ".config";
-        }
-#endif
-        if (base.empty()) return {};
-        return base / "UltraCanvas" / "FileDialog.conf";
+        const std::filesystem::path folder = UltraCanvasSettingsFolder();
+        if (folder.empty()) return {};
+        return folder / "FileDialog.conf";
     }
 
     FileDialogSettings FileDialogSettings::Load() {
@@ -108,6 +96,23 @@ namespace UltraCanvas {
         const std::filesystem::path path = FilePath();
         if (path.empty()) return s;
         std::ifstream in(path);
+        if (!in) {
+            // No file yet is the normal first run. A file that is there and
+            // will not open (permissions, a folder of that name) is not, and
+            // the dialog would otherwise silently open with the defaults
+            // every time; said once, as every open would say the same.
+            std::error_code ec;
+            if (std::filesystem::exists(path, ec)) {
+                static bool reported = false;
+                if (!reported) {
+                    reported = true;
+                    debugOutput << "UltraCanvasFileDialog: could not read "
+                                << PathToUtf8(path) << "; opening with the default view, size and folder"
+                                << std::endl;
+                }
+            }
+            return s;
+        }
         std::string line;
         while (std::getline(in, line)) {
             if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -193,8 +198,12 @@ namespace UltraCanvas {
     }
 
     bool FileDialogSettings::Update(const std::function<void(FileDialogSettings&)>& change) {
-        FileDialogSettings s = Load();
+        const FileDialogSettings before = Load();
+        FileDialogSettings s = before;
         if (change) change(s);
+        // Nothing changed: no temp file, no rename, nothing for another
+        // application reading the file to race with.
+        if (s == before) return true;
         return s.Save();
     }
 

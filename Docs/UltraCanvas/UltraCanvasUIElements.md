@@ -78,7 +78,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
@@ -144,9 +144,9 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
-| "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar or a pulsing circle (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
+| "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
-| Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
+| Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
@@ -155,6 +155,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
+| A notification on screen (a toast: app, summary, body, action buttons, close) - and `UltraCanvasNotificationToastHost`, which draws the UltraMessage notifications nothing else draws, stacked in a screen corner. For the desktop shell only: an application posts a `system.notification` instead ([doc](UltraCanvasNotificationToast.md)) | `UltraCanvasNotificationToast` | `Plugins/UltraMessage/UltraCanvasNotificationToast.h` |
 
 ## Charts, diagrams and codes — the plugin elements
 
@@ -236,10 +237,11 @@ Each takes its data through setters and renders itself; most have a
 | A PDF on its own, with thumbnail strip, zoom and search-hit overlay (`UltraCanvasMediaViewer` embeds this for `.pdf`) | `UltraCanvasPDFView` | `Plugins/Documents/UltraCanvasPDFView.h` |
 | Markdown rendered as a standalone display (`UltraCanvasTextArea`'s Markdown mode is the editable route) | `UltraCanvasMarkdownDisplay` | `Plugins/Text/UltraCanvasMarkdown.h` |
 
-The vector format plugins (`UltraCanvasSVGElement`, `UltraCanvasCDRElement`,
-`UltraCanvasEPSElement`, `UltraCanvasXARElement`) are **not** in these tables on
-purpose: they are decoders behind `UltraCanvasVectorElement` and
-`UltraCanvasImageElement`, which are what an application reaches for. Same for
+The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
+`UltraCanvasXARElement`) are **not** in these tables on purpose: they are
+decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
+are what an application reaches for. An SVG has no element of its own either:
+`UltraCanvasImageElement` shows it (through librsvg). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
@@ -249,7 +251,7 @@ exists:
 
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
-auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
+auto shot   = CreateImageFromFile("preview", 0, 0, 320, 240, "poster.png");
 auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 

@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSenderTrust.cpp
+// Version: 0.1.1 - a scam's reason names scams as well as phishing (romance, crypto)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderTrust.h"
@@ -123,8 +124,8 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     // from — an address book entry says nothing about *this* message.
     if (who.level == ThreatLevel::Scam) {
         status.cls    = SenderClass::Scam;
-        status.reason = "This message shows phishing markers — check the reasons below "
-                        "before clicking anything in it.";
+        status.reason = "This message shows scam or phishing markers — check the reasons "
+                        "below before clicking, paying or answering anything in it.";
         return status;
     }
     if (who.level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {

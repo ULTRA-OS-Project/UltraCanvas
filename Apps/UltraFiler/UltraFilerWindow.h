@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.21.0
-// Last Modified: 2026-10-03
+// Version: 1.23.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,6 +106,7 @@
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerFindTextDialog.h"
+#include "UltraFilerConnectionLogWindow.h"
 #include "UltraFilerFolderExport.h"
 #include "UltraFilerVolumeSpace.h"
 
@@ -342,6 +343,17 @@ private:
     // Empty while the drives are idle, which is when the status line goes back
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
+    // The connection log button at the right of the status bar: shown once
+    // there is a remote drive (or anything logged), and red with the number
+    // of failed connections the log window has not shown yet.
+    void UpdateConnectionLogButton();
+    // Opens the connection log window, or brings it to the front with the
+    // log as it is now.
+    void OpenConnectionLog();
+    // Hands the open log window the log as it is now; called a moment after
+    // a change, so a burst of steps is one refresh.
+    void ScheduleConnectionLogRefresh();
+    void RefreshConnectionLogWindow();
     // Puts the progress bar in step with `remoteActivity`: a percentage during
     // a transfer whose size the server gave, the gauge's indeterminate slide
     // during one it did not, and hidden the rest of the time.
@@ -364,6 +376,32 @@ private:
     // Pushes the configured tree colours (drive row background, selected
     // folder highlight) into the folder tree.
     void ApplyTreeColors();
+    // Gives the folder tree the width Display > Treeview asks for: fitted to
+    // the rows on show - 10 px wider than the longest - or the fixed width
+    // set there, within the tree's limits and never so wide that the file
+    // display (and the preview pane, while it is up) drops below its minimum.
+    // The tree's own pane takes it, or, while the split view has the tree
+    // docked beside a display, the tree's share of that pane. Fitting
+    // measures the text with the window's render context: before there is
+    // one it tries once more on the next turn of the event loop (allowRetry).
+    void ApplyTreeWidth(bool allowRetry = true);
+    // Puts `width` on the tree - in its pane, docked, or kept for when it
+    // comes back - kept to what the window leaves it (ApplyTreeWidth's
+    // second half, shared with FitTreeToRoom).
+    void PlaceTreeWidth(int width);
+    // The window was resized, so the room beside the tree changed: the width
+    // the tree last asked for is placed again - narrower when the file
+    // display would otherwise drop below its minimum, and back to full width
+    // when a window made wider again has the room. Nothing is measured: the
+    // rows did not change. A divider the user dragged since the last fit
+    // stands, as far as the window allows.
+    void FitTreeToRoom();
+    // The tree's rows changed - added, removed, shown, hidden, opened or
+    // closed: a fitted tree is fitted again once the current event is done,
+    // so a burst of changes (a folder's subfolders arriving one by one, a
+    // stick's several mount reports) costs one measuring pass. Nothing to do
+    // while the width is fixed.
+    void ScheduleTreeFit();
     // Selects (expanding ancestors as needed) the tree node of `path`.
     void SyncTreeSelection(const std::string& path);
 
@@ -905,6 +943,14 @@ private:
     // which is the framework's progress bar. Short enough that the gauge
     // drops its caption and value line and is simply the bar.
     std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
+    // Opens the connection log window; see UpdateConnectionLogButton.
+    std::shared_ptr<UltraCanvasButton>          statusLogButton;
+    // The log window while it is open; it owns itself (deleteOnClose).
+    std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
+    TimerId connectionLogRefreshTimer = InvalidTimerId;
+    // How many failed connections the log window has shown: the button
+    // counts the ones beyond this.
+    std::size_t connectionLogSeenErrors = 0;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;
@@ -946,8 +992,25 @@ private:
     int treeDockTakenFromOther = 0;
     int treeDockTakenFromRest = 0;
     // The tree pane's width while it is out of the split, so it comes back
-    // as wide as the user had it. Starts at the start-up width.
-    int treePaneWidth = 280;
+    // as wide as the user had it. Starts at the start-up width, and follows
+    // Display > Treeview's width (ApplyTreeWidth).
+    int treePaneWidth = UltraFilerSettings::kDefaultTreeWidth;
+    // A ScheduleTreeFit is waiting for its turn of the event loop.
+    bool treeFitPosted = false;
+    // The width the tree last asked for, before the window's room was taken
+    // into account: fitted or fixed, within the tree's limits. 0 until it
+    // has asked (a fitted tree before its first measurement). FitTreeToRoom
+    // places it again when the window is resized.
+    int  treeWantedWidth = 0;
+    // A FitTreeToRoom is waiting for its turn of the event loop: the split
+    // reports its new width from the middle of a layout pass, and an
+    // interactive resize reports many.
+    bool treeRoomFitPosted = false;
+    // The Display > Treeview width last applied, so ApplySettings re-applies
+    // it only when it moved - an unrelated setting must not undo a divider
+    // the user dragged. 0 never matches: the first call always applies.
+    bool treeWidthAutoApplied  = false;
+    int  treeFixedWidthApplied = 0;
 
     // Tree nodes whose real children have been scanned (EnsureTreeChildren runs
     // once per node); keyed by node id, which is the folder path.

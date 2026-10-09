@@ -11,8 +11,11 @@ set(ULTRAMAIL_TEST_SOURCES
     test_senderidentity.cpp
     test_threatscan.cpp
     test_unsubscribe.cpp
+    test_recipientcomplete.cpp
     test_inlineimages.cpp
     test_messagefilter.cpp
+    test_messagesort.cpp
+    test_foldernames.cpp
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp
@@ -24,8 +27,11 @@ set(ULTRAMAIL_TEST_SOURCES
     test_oauth.cpp
     test_logincheck.cpp
     test_feedpublisher.cpp
+    test_newmail.cpp
     test_preferences.cpp
     test_headertext.cpp
+    test_trace.cpp
+    test_onetimecode.cpp
     # The Settings window's preferences file: plain C++, no UI.
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailPreferences.cpp
 )
@@ -55,3 +61,45 @@ endif()
 
 include(CTest)
 add_test(NAME UltraMailEngine COMMAND UltraMailEngineTests)
+
+# A click anywhere on an account tile selects its account: the account bar in a
+# real window, clicked through the application's own dispatch. Opens a window,
+# so it runs under Xvfb and skips itself without a DISPLAY. Linked like the
+# UltraMail app: the engine (EmailDomain / EmailLocalPart) before the core.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailAccountBarTest
+        AccountBarClickTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailAccountBar.cpp
+    )
+    target_compile_features(UltraMailAccountBarTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailAccountBarTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailAccountBarTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailAccountBarTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailAccountBar COMMAND UltraMailAccountBarTest)
+endif()
+
+# The message pane's body reaches the pane's bottom: an attachment strip with
+# nothing in it takes no room. Shows real .eml messages in a window, so it
+# runs under Xvfb and skips itself without a DISPLAY. Linked like the UltraMail
+# app: the engine (MIME, trace, inline images) before the core.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailMessagePreviewTest
+        MessagePreviewLayoutTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+    )
+    target_compile_features(UltraMailMessagePreviewTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailMessagePreviewTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailMessagePreviewTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailMessagePreviewTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailMessagePreview COMMAND UltraMailMessagePreviewTest)
+endif()

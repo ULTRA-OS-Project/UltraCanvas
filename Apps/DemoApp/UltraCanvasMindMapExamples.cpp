@@ -502,7 +502,9 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
                                              .value = CSSLayout::Dimension::Px(44)},
                     CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
                                              .value = CSSLayout::Dimension::Fr(1)}})
-            .SetGridGap(6);
+            .SetGridGap(6)
+            .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
+            .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto title = std::make_shared<UltraCanvasLabel>("MindMapTitle");
     title->SetText("Mind Map");
