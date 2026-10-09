@@ -48,6 +48,7 @@ set(ULTRANET_TEST_SOURCES
     test_ftp_log.cpp
     test_curl_debug.cpp
     test_loopback.cpp
+    test_session.cpp
     test_oauth2.cpp
     test_oauth2_apps.cpp
     test_smtp_plugin.cpp

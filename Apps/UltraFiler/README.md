@@ -236,17 +236,28 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     to the settings (the 512 most recently used folders; only names, sizes
     and dates are stored, never credentials). On the next start a folder
     from that file shows at once and is checked with the server in the
-    background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
+    background when it is opened; a remembered folder is not fetched ahead
+    again. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **One login per burst.** The drive's requests run one after another on
+    one connection: a folder and the subfolders fetched ahead after it are
+    one login, not one each, and a server that has refused `MLSD` (vsftpd
+    does) is asked with `LIST` from then on rather than refused again on
+    every folder. The connection log shows *Using the open connection to
+    ... - already logged in* for a request that needed no login. The
+    connection is closed once the drive has been quiet for 15 seconds.
   - **Every connection step is shown, and kept.** While a drive is busy the
     status bar shows the step its connection is at — *Connecting to
     203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
     folder view's *Loading folder* notice names the same step with how long
     it has waited. Every job (opening a folder, an upload, a delete, a
-    folder fetched ahead) is recorded in the **connection log**: the button
-    with the clipboard icon at the right of the status bar opens it, and
-    counts in red the failures not looked at yet. Its *Errors* tab is a
+    folder fetched ahead) is recorded in the **connection log**: the round
+    button with the network symbol in the bottom-left corner of a folder
+    display opens it. It is there only while that display shows a folder on
+    an FTP / FTPS / SFTP drive (in the split view each display has its own),
+    sits above the display's info bar, and turns red with a count on its
+    corner for the failures not looked at yet. Its *Errors* tab is a
     Markdown report of each failure — the message, the error class, the
     codes (libcurl's error number, the server's last reply), the likely
     cause, the last steps and the diagnostics chain; its *Message log* tab
