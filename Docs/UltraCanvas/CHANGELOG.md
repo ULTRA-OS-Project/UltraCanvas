@@ -1,3 +1,12 @@
+#### 2026-10-09 *0.9.231*
+- **`ultramsg` has an icon.** The uploaded UltraMsg logo is
+  `media/appicon/UltraMsg.svg` now (it arrived as `UltraMsg logo.svg`; an
+  icon name with a space cannot be looked up in an icon theme), and
+  `media/appicon/UltraMsg.png` is its 256 px render through librsvg, as for
+  the other applications. The UltraMessage command line has no window, so
+  the one place it shows is the Windows `ultramsg.exe`, which embeds it
+  (`ultracanvas_embed_app_icon`).
+
 #### 2026-10-09 *0.9.230*
 - **A list model that outlives its view no longer calls into it.**
   `UltraCanvasListView` puts its callbacks on the model it shows, and they
