@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.13.0 - senderMenuItems: a right-click on the sender's name or badge
+//                   opens the sender's menu
 // Version: 0.12.0 - the message's text can be selected and copied: the HTML body
 //                   (one selection across all of it), the header (subject,
 //                   from, to, date), and a right-click menu with Copy and
@@ -169,6 +171,10 @@ public:
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
     std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
+    // A right-click on the sender's name or badge: the items the sender's
+    // menu offers above Copy and Select All - the address book, spam, the
+    // sender's mail - for the message shown. Asked for as the menu opens.
+    std::function<std::vector<UltraCanvas::MenuItemData>(const MessageEnvelope&)> senderMenuItems;
 
 private:
     // A link of the body was clicked: web addresses open in the browser, mail
@@ -180,6 +186,12 @@ private:
 
     // The right-click menu over the message's text: Copy (offered when
     // something is selected) and Select All.
+    // The sender's menu: its address as the title, senderMenuItems, then
+    // Copy and Select All when the right-click was on the header's text.
+    void ShowSenderMenu(const UltraCanvas::UCEvent& event, bool withText, bool canCopy,
+                        std::function<void()> copy, std::function<void()> selectAll);
+    // Whether a window point is over the sender's name or badge.
+    bool PointerOnSender(const UltraCanvas::Point2Di& windowPoint) const;
     void ShowTextMenu(const UltraCanvas::UCEvent& event, bool canCopy,
                       std::function<void()> copy, std::function<void()> selectAll);
     // Gives a selection (the header's, the HTML body's) its menu, and makes

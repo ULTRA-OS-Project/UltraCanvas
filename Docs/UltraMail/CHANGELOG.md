@@ -1,3 +1,175 @@
+#### 2026-10-09 *0.10.43*
+- **Trust or block a sender from their menu.** A right-click on a sender - a
+  row of the message list, or the name or badge above the message - now
+  offers *Always trust this sender*, *Block this sender* and *Block
+  everything from example.com* beside the address book and spam items, and
+  the same menu undoes each (*Stop trusting*, *Unblock*). The whole-domain
+  block is not offered for a mailbox provider such as gmail.com, which would
+  block everyone who writes from it.
+  - **Blocked:** the sender's mail is marked as spam (`blocked-sender`, 30
+    points - the orange frame), and the strip above the message says *"You
+    blocked this sender"* and how to undo it. Nothing is moved or deleted;
+    *Mark as spam* still moves a message to the junk folder. A blocked
+    domain blocks its subdomains too.
+  - **Trusted:** the guessed warnings stop for that address - romance and
+    advance-fee letters, the crypto caution, spam markers, a brand's name in
+    a domain - and its pictures load like a contact's. What catches a lie
+    still counts: a link that hides where it goes, a forged sender address
+    (`auth-failure`), a program dressed as a document, a request for a
+    wallet's recovery phrase.
+  - An address is on one list or the other: trusting a blocked address
+    unblocks it. A trusted address under a blocked domain stays trusted.
+  - The sender's mail in the list on screen is checked again at once, off
+    the UI thread, with the open message; the stored verdicts elsewhere are
+    marked stale (`LocalStore::MarkSenderVerdictsStale`) and follow with the
+    mail check.
+  - *Settings > Warnings > Trusted and blocked senders* lists both, to edit
+    by hand (a domain typed as `example.com` is kept as `@example.com`);
+    `preferences.ini` keeps them as `trusted_senders` and `blocked_senders`.
+  - Tests: matching addresses and domains, the entries a list accepts, a
+    blocked sender's verdict, a trusted sender keeping only the findings
+    that catch a lie, and only that sender's stored verdicts going stale.
+
+#### 2026-10-09 *0.10.42*
+- **Romance scams are flagged.** A love letter from a stranger - "Where are
+  you my dear?", a nurse from Russia who found your profile on a dating site,
+  "it is destiny", two photos attached, "I shall await your earliest
+  response" - passed the scan as clean: it has no links that lie and asks for
+  no password. Its pattern does it now (`romance-scam`). The scan counts
+  kinds of signs, each once: pet names, talk of love or attraction, an offer
+  of sex or a meeting, a self-introduction (name, age, divorced, "Im lawyer",
+  "I live in Russia"), how they came to write (your profile, a dating site,
+  destiny, "are you real?"), a site to sign up on or be "verified" at ("they
+  never charge you, they just check you have no criminal history"), guilt or
+  pressure ("don't upset Shui98 or make her bored"), a pretended
+  acquaintance, assurances of being real ("I am for real", a "scan
+  passport"), photos, a push to write back, a request for money (Western
+  Union, the rent, a laptop for the webcam, crypto) and a hardship story. A
+  **photo** - attached, or in the body - counts as a sign of its own, since
+  these letters nearly always carry one, and so does a **free mailbox**.
+  - It needs something romantic *and* something only a stranger writes, so a
+    partner's "my dear, here are the holiday photos, write back" stays
+    clean; never for a proven brand's mail, a newsletter from a domain of its
+    own, a job application or a mail over 60 000 characters. Three signs make
+    the message suspicious, five a scam.
+  - The reading pane says *"Warning: This is likely a romance scam² email!"*
+    with a footnote on what romance scams are after, and that a reverse image
+    search often finds the photo under another name.
+  - Tests: ten letters one reader received between 2011 and 2019, as sent,
+    plus the mail that must stay quiet.
+- **Cryptocurrency.** Any mail about crypto (bitcoin, BTC, USDT, a wallet, a
+  seed phrase …) gets an orange *"Caution: this message is about
+  cryptocurrency"* strip above the body - a crypto payment cannot be called
+  back, no genuine service asks for a recovery phrase, no genuine investment
+  guarantees a profit - whoever sent it (`crypto-content`, 10 points, none
+  from a proven exchange). Three patterns are scams outright: asking for a
+  wallet's recovery phrase or private key (`crypto-wallet-secret`, 50 - not a
+  sentence warning never to give it), a wallet address to pay into
+  (`crypto-payment-demand`, 40: the "I recorded you through your camera"
+  blackmail, fake invoices) and promised profit (`crypto-investment-lure`,
+  35: "guaranteed returns", "30% daily", a "trading platform"). Apple's
+  AirDrop is not a crypto airdrop, and a token inside a link is not a wallet
+  address.
+- **More advance-fee letters are caught.** The "abandoned baggage" letter
+  from an airport's "baggage dispute" office - $7.5 million, "your own share",
+  "50% by 50%", "God fearing" - matched none of the rule's ingredients and
+  passed as clean; money nobody claimed, the share-and-blessing phrases and
+  the FBI's "ATM card for scam victims" are ingredients now.
+- **"Write to me at this other address."** A new sign, 15 points
+  (`reply-elsewhere`): the text asks for answers at a free mailbox other than
+  the one it came from ("Please find my contact email address for us to
+  proceed: (l.byrne96@yahoo.com)") - how advance-fee and romance letters move
+  to an address their provider has not closed yet.
+- **A sender address dressed up as a brand's is flagged.** Yana's letter
+  came from `uncollatednessi.faceebookinbox.biz` - Facebook with a doubled
+  "e" - and nothing looked at the sender's domain itself, only at its display
+  name and subject. Now it does (`sender-domain-lookalike`, 45-50 points, a
+  scam on its own), in three ways and only on a domain that is none of the
+  brand's own: the brand's name padded with the words phishing pads it with
+  ("paypal-secure-login.com", "appleidverify.com": secure, login, verify,
+  account, support, inbox …); the name misspelt with look-alike characters
+  ("amaz0n", "paypa1", "rnicrosoft"), a doubled letter ("paypall",
+  "faceebook") or, for names of eight letters or more, one letter added,
+  dropped, changed or swapped ("facebok"); and a brand's own domain in front
+  of a foreign one ("paypal.com.account-check.ru"). A name beside an ordinary
+  word is no claim - "applewood-estates.com", "amazonas-reisen.de",
+  "paypal-community.com" - and neither is a server called Hermes
+  ("hermes.uni-example.de") or the bare name under another suffix
+  ("paypal.xyz"), which the brand table leaves unclaimed on purpose. The
+  reading pane tells it as phishing (`BrandImitatedByDomain`).
+- **Brand names in the letters of another script.** "pаypal.com" with a
+  Cyrillic "а" reads exactly like PayPal's domain and travels as
+  `xn--pypal-4ve.com`; only links in such a domain were noticed (as a
+  punycode host), never a sender. Punycode labels are decoded now
+  (`DomainToUnicode`, RFC 3492) and every letter of another script that
+  looks like a Latin one - Cyrillic, Greek, accented and full-width letters
+  - is read as that Latin letter; a domain whose reading is a brand's own,
+  or its name bare or padded with any word, is flagged as written to deceive
+  (the reason says "reads \"pаypal.com\" - PayPal's name written with
+  Cyrillic letters that look like Latin ones"). Real words in other scripts
+  stay clean ("münchen.de", "москва.рф", "東京.jp"), and so does a mailbox
+  provider's name ("gmаil.com" names no brand).
+- **The links are checked the same way.** A button that goes to
+  "faceebook-login.com", "paypa1.com", "paypal-secure-login.com" or the
+  Cyrillic "pаypal.com" is flagged with its label and its host
+  (`link-domain-lookalike`, 40-50 points, a scam on its own; once per host,
+  the sender's own domain being the sender rule's). The older checks of link
+  hosts stay. On a newsletter of 200 links to 60 sites the scan takes about
+  2 ms longer.
+- **A real name is padded with phishing words only.** The look-alike check
+  read "mail", "app", "online", "care", "my" and other ordinary words as
+  padding, so a brand's own second domain that the brand table does not
+  list, or a business named after its trade - "zoomcare.com" (a clinic),
+  "cdn.discordapp.com" - would have been called an imitation; with links
+  checked, that would have reached every newsletter. Those words now pad
+  only a misspelt or foreign-lettered name ("faceboookmail.com"), which no
+  brand does to itself.
+- **Letters in the FBI's, Interpol's or the IMF's name.** The FBI letter was
+  caught only by its money story. Now a message that presents itself as a
+  government agency or an international organisation - the FBI, Interpol, the
+  IMF, the United Nations, the World Bank, Europol, the Department of Justice,
+  the US Treasury, the Federal Reserve, the Secret Service, the IRS, the BKA,
+  the Bundespolizei, Scotland Yard, the Central Bank of Nigeria … - but was
+  sent from an address that is not a government one is flagged
+  (`government-impersonation`): 45 when the sender's name or domain says so
+  ("FBI <director@fbi-atm-center.example>"), 30 when the subject or text
+  speaks in its name about your money, a case or an arrest ("we the
+  International Monetary Fund … your compensation"). A government address
+  (.gov, .mil, .int, gov.uk, gouv.fr, bund.de, admin.ch, europa.eu …) or an
+  agency's own domain (imf.org, un.org, bka.de) never is, nor is a news item
+  that mentions the FBI or a newsletter from a domain of its own; "Souza &
+  Cia" is a company, not the CIA.
+- **Settings > Warnings > Spam/scam warnings.** One switch per kind of
+  warning: phishing, romance scams, advance-fee letters, letters in an
+  agency's name, cryptocurrency scams, the caution on any mail about
+  cryptocurrency, dangerous attachments, and spam as the mail server marked
+  it - all on. A kind switched off is not looked for: its findings are
+  dropped and add nothing to the score, so its messages are labelled as if
+  the check did not exist. Mail already checked is checked again with the
+  new choice - the open message at once, the rest in the background with
+  each mail check, starting with one right away (`ThreatScanOptions`,
+  `LocalStore::MarkVerdictsStale`; `warn_*` in `preferences.ini`). "Warn about
+  all" restores the defaults.
+- **A sender menu in the reading pane.** A right-click on the sender's
+  name or badge above the message offered only Copy and Select All; the
+  contact and spam items were in the message list's menu alone. It opens the
+  sender's menu now, with the address as its title: Copy address, Show only
+  mail from this sender (Show all messages while that filter is on), Add to
+  contact group, Add to contacts - or Edit contact for an address already in
+  the address book - and Mark as spam (Not spam in the junk folder), with
+  Copy and Select All below when the click was on the name. The list's menu
+  and this one share the address-book items (`MailView::SenderMenuItems`,
+  `MessagePreview::senderMenuItems`). Test: `MessagePreviewLayoutTest`.
+- **The Russian, Ukrainian and Belarusian mailbox providers** (i.ua,
+  ukr.net, bk.ru, list.ru, inbox.ru, rambler.ru, yandex, tut.by …) and
+  foxmail.com are free mailboxes, as gmail.com is.
+- The verdict keeps the codes of its findings (`MessageSecurity::findings`,
+  schema 11), which is how the reading pane knows which scam it is; stored
+  verdicts are scanned again by the new rules (`kThreatRulesRevision`). A
+  scam's badge tooltip says "scam or phishing markers" rather than phishing
+  alone. Tests: `test_threatscan.cpp`, `test_localstore.cpp`,
+  `test_preferences.cpp`.
+
 #### 2026-10-08 *0.10.41*
 - **The scam check's pictures come from the parsed page.** The check that
   catches a mail dressed in a well-known brand's pictures while its links go

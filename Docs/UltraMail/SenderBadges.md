@@ -20,7 +20,7 @@ developer notes in [`Apps/UltraMail/README.md`](../../Apps/UltraMail/README.md).
 | **Black outline** | New sender | Never seen in the address book |
 | **Dark blue outline** | Likely advertisement | Bulk/marketing markers (`List-Unsubscribe`, `Precedence: bulk`, `Auto-Submitted`) |
 | **Orange outline** | Likely spam | Server-side spam markers, the junk folder, or a content scan that did not add up |
-| **Red outline** | Likely scam | Phishing markers — above all, links that lie about where they go |
+| **Red outline** | Likely scam | Phishing markers — above all, links that lie about where they go — or the pattern of a known scam: a romance scam, an advance-fee letter, a cryptocurrency scam |
 
 Two rules decide which one wins:
 
@@ -43,8 +43,20 @@ failing that, a bare link) leads off the sender's domain, the strip is titled
 *"Warning: This is likely a phishing² email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
-accounts on other websites (`FindDomainMismatch` in the scan). Nothing is ever hidden, moved or deleted — UltraMail labels, the
-reader decides.
+accounts on other websites (`FindDomainMismatch` in the scan). A message the
+scan reads as a **romance scam** is titled *"Warning: This is likely a romance
+scam² email!"* instead ("may be" when the verdict is only suspicious), even
+when it also links elsewhere, and its footnote says what a romance scam is and
+that a reverse image search often finds the photo under another name; a
+**cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
+into, promised profit) gets its own title and footnote the same way. **Any
+message about cryptocurrency** that is not otherwise flagged — a newsletter, an
+exchange's own mail — still gets an orange *"Caution: this message is about
+cryptocurrency"* strip: a crypto payment cannot be called back, no genuine
+service asks for a recovery phrase, no genuine investment guarantees a
+profit. The strip knows which scam it is from the finding codes stored with
+the verdict (`MessageSecurity::findings`). Nothing is ever hidden, moved or
+deleted — UltraMail labels, the reader decides.
 
 ## 2. The known-sender registry
 
@@ -236,20 +248,211 @@ cascade. The rules, with their weights:
 | `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
 | `link-ip-host` | 35 | A link straight to a numeric address |
 | `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
-| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate, taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential") — 50 when two of those appear |
+| `sender-domain-lookalike` | 45 / 50 | The From domain is dressed up as a brand's — see *Look-alike sender domains* below. 45 for the name padded with phishing words, 50 for a misspelt name or a brand's own domain in front of a foreign one |
+| `link-domain-lookalike` | 40 / 50 | A link goes to a domain dressed up as a brand's — the same check as `sender-domain-lookalike`, once per host, not for the sender's own domain |
+| `government-impersonation` | 45 / 30 | A government agency or international organisation (FBI, Interpol, IMF, UN …) claimed from an address that is not a government one: 45 in the sender's name or domain, 30 in the subject or text when it addresses the reader about money, a case or an arrest |
+| `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
+| `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
+| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
+| `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
 | `reply-to-mismatch` | 15 | Replies would go to a different domain than the sender's |
+| `reply-elsewhere` | 15 | The text asks for answers at another free mailbox than the one it came from ("my contact email for us to proceed: x@yahoo.com") |
+| `crypto-content` | 10 (0 from a proven exchange) | Any mention of cryptocurrency (bitcoin, BTC, USDT, a wallet, a seed phrase …): alone it changes no verdict, but the reading pane shows its caution strip |
 | `link-shortener` | 12 | The destination cannot be seen |
 | `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
 | `spam-flag` | 40 | The receiving server already said so |
+| `blocked-sender` | 30 | The reader blocked the sender, or their domain — see *Trusted and blocked senders* below |
 | *(verified sender)* | −10 | DMARC passed for the From domain, or a DKIM signature of it verified: the From address is genuinely theirs |
 
 45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
 with bulk markers is an **Advertisement** and everything else is **Clean**.
+
+### Romance scams
+
+A romance scam starts as a love letter from a stranger: a pet name, talk of
+fate, a short self-introduction (name, age, divorced, a nurse in Russia), how
+they came to write ("I saw your profile", "it is destiny"), a photo or two,
+and a push to answer — often at a private address, or on a site that "only
+verifies" with a bank card. Later mails of the same thread add assurances ("I
+am for real", a "scan passport") and the request: a ticket, a visa, the rent,
+a laptop for the webcam, Western Union, crypto. No one phrase gives it away,
+so `romance-scam` counts **kinds of signs**, each kind once:
+
+| Kind | For example |
+|---|---|
+| Pet names | "my dear", "honey", "kisses", "truly yours" |
+| Love or attraction | "true love", "future husband", "I am attracted", "drawn to you" |
+| An offer of sex or a meeting | "meeting up", "escorts", "your desires" |
+| A self-introduction | "my name is", "I'm 31 years old", "divorced", "I live in Russia", "Im lawyer", "I have blue eyes" |
+| How they came to write | "your profile", "dating site", "destiny", "are you real?", "among the millions", "are you still looking for friend?" |
+| A site to sign up on or be "verified" at | "get my number … login there", "they never charge", "criminal history" |
+| Guilt or pressure | "don't upset Shui98 or make her bored" (a screen name speaking of herself), "no playing fool" |
+| A pretended acquaintance | "so good to see you again", "we emailed each other a long time ago", "did you get my …" |
+| Assurances of being real | "I am for real", "honest to you", "scan passport" |
+| Photos, a push to write back | "two pictures", "hope you like them"; "write me at", "await your earliest response" |
+| A request for money | "send me the money", "Western Union", "pay my rent", "a cheap laptop", any crypto |
+| A hardship or far-away story | "my old mother", "Luhansk", "oil rig", "deployed" |
+
+Two more signs count: **a photo** — an attached picture, or one shown in the
+body — which these letters nearly always carry, and a sender at a **free
+mailbox** (gmail.com, hotmail.com, i.ua, ukr.net, mail.ru …).
+
+The rule fires only when the letter has both **something romantic** (pet
+names, love, sex, or a guilt trip) and **something only a stranger writes**
+(an introduction, how they "found" you, a site to sign up on, assurances of
+being real, or a guilt trip). A partner's "my dear, here are the photos,
+write back" has the first and not the second, and stays clean. It never
+fires for a proven brand's mail (a dating service writing about matches), a
+newsletter from a domain of its own, a job application ("job posting", "my
+CV") or a mail over 60 000 characters. Three signs make the message
+suspicious, five a scam. The tests are real letters one reader received
+between 2011 and 2019 (`Tests/UltraMail/test_threatscan.cpp`).
+
+### Cryptocurrency
+
+Any message that mentions cryptocurrency gets `crypto-content`: 10 points
+(none from a proven registry exchange), which alone changes no verdict but
+puts the caution strip above the body. Three patterns are scams outright and
+weigh accordingly — a request for a wallet's recovery phrase
+(`crypto-wallet-secret`), a wallet address to pay into
+(`crypto-payment-demand`: the "I recorded you through your camera" blackmail,
+fake invoices) and promised profit (`crypto-investment-lure`: the
+"investment platform" a new online acquaintance recommends). A romance letter
+that turns to crypto counts it as its request for money.
+
+### Look-alike sender domains
+
+`BrandImitatedByDomain` (`UltraMailSenderBrands`) reads a domain the way a
+hurried eye does — the From domain (`sender-domain-lookalike`) and every
+link's host (`link-domain-lookalike`). It flags a domain that is none of a
+brand's own in four ways:
+
+* **The name padded with phishing words** — the brand's name or keyword
+  plus only words such as secure, login, verify, account, support, inbox,
+  billing, update, service, id: `paypal-secure-login.com`,
+  `appleidverify.com`. A name beside any other word is a business of its
+  own (`applewood-estates.com`, `amazonas-reisen.de`,
+  `paypal-community.com`) or the brand's own second domain (`redditmail.com`,
+  `cdn.discordapp.com`, `zoomcare.com` is a clinic), and the bare name under
+  another suffix (`paypal.xyz`) is left unclaimed, as the brand table leaves
+  it.
+* **The name misspelt** — look-alike characters (`0` for o, `1` or `i` for
+  l, `3` e, `4` a, `5` s, `7` t, `rn` m, `vv` w: `amaz0n`, `paypa1`,
+  `rnicrosoft`), a doubled letter (`paypall`, `faceebook`), or — for names of
+  eight letters or more only, so that `telecom` is not Telekom and
+  `interact` not Interac — one letter added, dropped, changed or swapped
+  (`facebok`). Padded or bare: `faceebookinbox.biz`, `faceboook.com`.
+* **A brand's own domain in front of a foreign one** —
+  `paypal.com.account-check.ru`.
+* **The name in letters of another script** — `pаypal.com` with a Cyrillic
+  "а", which travels as `xn--pypal-4ve.com`. Punycode labels are decoded
+  (`DomainToUnicode`, RFC 3492) and every Cyrillic, Greek, accented or
+  full-width letter that looks like a Latin one is read as that letter; a
+  domain whose reading is a brand's own domain, or its name bare or padded
+  with any word, was written to deceive. A domain with a letter that has no
+  Latin look-alike (`москва.рф`, `東京.jp`) is no imitation, nor is one that
+  reads as an ordinary word (`münchen.de`) or as a mailbox provider.
+
+A misspelt or foreign-lettered name may be padded with ordinary words too
+(mail, app, online, my, shop …: `faceboookmail.com`), since no brand
+misspells itself.
+
+Each label is read on its own, so `uncollatednessi.faceebookinbox.biz`
+finds Facebook in its second; a bare name as a host label is no claim
+(`hermes.uni-example.de` is a server called Hermes). Personal mailbox domains
+and every brand's own domains are never flagged.
+
+### Letters in an agency's name
+
+The "compensation for scam victims", "your ATM card" and "warrant for your
+arrest" letters write in the name of an agency or an international
+organisation. `government-impersonation` knows about twenty of them — the
+FBI, Interpol, the IMF, the United Nations, the World Bank, Europol, the CIA,
+Homeland Security, the Department of Justice, the US Treasury, the Federal
+Reserve, the Secret Service, the IRS, the European Central Bank and
+Commission, the BKA, the Bundespolizei, Scotland Yard, the National Crime
+Agency, the Central Bank of Nigeria, ECOWAS — and flags a message that
+claims one but was sent from an address that is not a government one: in
+the sender's name or domain it is a claim on its own; in the subject or the
+text it counts when it addresses the reader about money, a case or an
+arrest ("beneficiary", "your payment", "compensation", "ATM card", "arrest
+warrant", "this office", "we the …"), so a news item about the FBI does not.
+A government address — `.gov`, `.mil`, `.int`, a country's `gov.xx` /
+`gob.xx` / `gouv.xx` / `govt.xx` / `go.xx`, `bund.de`, `admin.ch`, `gv.at`,
+`gc.ca`, `europa.eu`, `police.uk` — or an agency's own domain (`imf.org`,
+`un.org`, `worldbank.org`, `bka.de`) never is, and neither is a newsletter
+from a domain of its own. Where the brand table already reported the claim
+(the IRS, HMRC) it is not said twice.
+
+### Switching warnings off
+
+*Settings > Warnings > Spam/scam warnings* has one switch per kind
+(`ThreatScanOptions`, `warn_*` in `preferences.ini`), all on:
+
+| Switch | Findings |
+|---|---|
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Romance scams | `romance-scam` |
+| Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Letters in an agency's name | `government-impersonation` |
+| Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
+| Any mail about cryptocurrency | `crypto-content` (the caution strip) |
+| Dangerous attachments | `attachment-*` |
+| Spam, as the server marked it | `spam-flag` |
+
+A kind switched off is not reported: its findings are dropped and add
+nothing to the score, so a message is labelled as if those rules did not
+exist. Changing a switch marks every stored verdict stale
+(`LocalStore::MarkVerdictsStale`): the open message is scanned again at once,
+and the rest are re-scanned by the mail check a batch at a time, the first
+check starting straight away.
+
+### Trusted and blocked senders
+
+A right-click on a sender — on a row of the message list, or on the name or
+badge above the message — offers the reader's own verdict next to the address
+book and spam items:
+
+| Menu item | Effect |
+|---|---|
+| **Always trust this sender** | The address goes on the trusted list; *Stop trusting this sender* takes it off |
+| **Block this sender** | The address goes on the blocked list; *Unblock this sender* takes it off |
+| **Block everything from example.com** | `@example.com` goes on the blocked list — the registrable domain, so `mail.example.com` too. Not offered for a mailbox provider (gmail.com, outlook.com …): that would block everyone who writes from it. *Unblock everything from example.com* takes it off |
+
+The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
+`preferences.ini` as `trusted_senders` and `blocked_senders`
+(comma-separated) and editable in *Settings > Warnings > Trusted and blocked
+senders*, where a domain can also be typed (`example.com` is kept as
+`@example.com`). An address is on one list or the other: trusting a blocked
+address unblocks it, and blocking a trusted one stops trusting it. A trusted
+address under a blocked domain stays trusted — the exception to the block.
+
+* **Blocked:** the scan adds `blocked-sender` (30, so at least
+  **Suspicious**): the orange frame, and the strip above the message says
+  *"You blocked this sender"* with how to undo it. The mail stays where it
+  is — UltraMail labels, it does not move or delete; *Mark as spam* moves a
+  message to the junk folder.
+* **Trusted:** only the findings that catch a lie or a forgery still count
+  (`FindingKeptForTrustedSender`): `auth-failure` (someone forging the
+  trusted address), the lying-link rules (`link-target-mismatch`,
+  `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
+  `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
+  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  kinds — a romance or advance-fee letter, the crypto caution, spam markers,
+  a brand's name in a domain — are the reader's call, and they made it. A
+  trusted sender's pictures on the web also load like a contact's
+  (*Privacy > Images*, "only from trusted senders").
+
+A change marks the stored verdicts of that sender (or domain) stale
+(`LocalStore::MarkSenderVerdictsStale`). Their mail in the list on screen is
+scanned again at once, off the UI thread (`MailView::RescanSender`, up to 300
+cached bodies), with the open message; the rest follows with the mail check.
 
 ### Mail authentication
 
@@ -311,10 +514,12 @@ clean, and each of those is a test in
 | Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
 | Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
 | Collecting a sender into the address book | `Apps/UltraMail/engine/UltraMailContactCollector.{h,cpp}` |
-| Stored verdicts (`message_security`, schema 4; verified sender, schema 10) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
+| Stored verdicts (`message_security`, schema 4; verified sender, schema 10; finding codes, schema 11) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
 | Scan at download time | `Apps/UltraMail/engine/UltraMailSyncEngine.cpp` (`WriteBody`) |
 | The badge itself (painting + element) | `Apps/UltraMail/ui/UltraMailSenderBadge.{h,cpp}` |
 | Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |
 | Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
-| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp` |
+| The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
+| Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted and blocked senders); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
+| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
