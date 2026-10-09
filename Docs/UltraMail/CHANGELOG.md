@@ -1,4 +1,4 @@
-#### 2026-10-09 *0.10.46*
+#### 2026-10-09 *0.10.47*
 - **Add and delete folders from the folder tree.** A right-click on a row of
   the tree offers *Add folder…* and *Delete folder…*.
   - *Add folder…* asks for the name. On a folder, the new one goes inside
