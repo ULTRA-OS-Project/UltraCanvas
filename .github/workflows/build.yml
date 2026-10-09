@@ -584,31 +584,44 @@ jobs:
           # and MuPDF's USE_SYSTEM_* builds.
           scripts/ci-apt.sh install libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
           MUPDF_VER=1.23.10
-          # The source archive comes from mupdf.com alone (the GitHub mirror
-          # carries no release tarball with the third-party sources), and on
-          # 2026-10-09 one connection to it timed out after 135 s and failed
-          # the leg before a line was compiled. So the download gets what the
-          # apt step has: a short connect timeout, a stall watchdog (under
-          # 1 byte/s for 120 s ends the transfer), curl's own retries on any
-          # error, and three attempts on top with a growing pause. The
-          # archive is downloaded to a file and unpacked afterwards, so a
-          # truncated transfer never reaches tar.
+          # The release archive lives on mupdf.com, and on 2026-10-09 that
+          # host timed out twice: once for 135 s, then for a whole seven
+          # minutes of retries. The download gets what the apt step has (a
+          # short connect timeout, a stall watchdog of under 1 byte/s for
+          # 120 s, curl's own retries, three attempts with a growing pause),
+          # and when mupdf.com still does not answer, the same release is
+          # cloned from its GitHub mirror instead: the 1.23.10 tag plus the
+          # third-party submodules this build compiles (the ones replaced by
+          # USE_SYSTEM_* below, and the OCR, GLUT and curl ones the make
+          # never touches, are left out). Either way the tree is unpacked
+          # before make sees it, so a truncated transfer never reaches tar.
           MUPDF_TAR="mupdf-${MUPDF_VER}-source.tar.gz"
+          MUPDF_SRC="mupdf-${MUPDF_VER}-source"
+          mupdf_downloaded=false
           for attempt in 1 2 3; do
             rm -f "$MUPDF_TAR"
             if curl -fsSL --connect-timeout 20 --speed-time 120 --speed-limit 1 \
                     --retry 3 --retry-all-errors --retry-delay 10 \
                     -o "$MUPDF_TAR" "https://mupdf.com/downloads/archive/$MUPDF_TAR"; then
+              mupdf_downloaded=true
               break
             fi
             if [ "$attempt" -eq 3 ]; then
-              echo "::error::could not download $MUPDF_TAR from mupdf.com in 3 attempts"
-              exit 1
+              echo "::warning::could not download $MUPDF_TAR from mupdf.com in 3 attempts; cloning the release from github.com/ArtifexSoftware/mupdf instead"
+              break
             fi
             echo "download of $MUPDF_TAR failed (attempt $attempt of 3); retrying in $((attempt * 20)) s"
             sleep $((attempt * 20))
           done
-          tar xzf "$MUPDF_TAR"
+          if [ "$mupdf_downloaded" = true ]; then
+            tar xzf "$MUPDF_TAR"
+          else
+            rm -rf "$MUPDF_SRC"
+            git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
+            git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
+              thirdparty/jbig2dec thirdparty/mujs thirdparty/gumbo-parser \
+              thirdparty/lcms2 thirdparty/zlib thirdparty/extract
+          fi
           make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
             HAVE_X11=no HAVE_GLUT=no \
             USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
