@@ -1,3 +1,16 @@
+#### 2026-10-09 *0.61*
+- **Wildcard rules find caches under a folder named outside the Windows code
+  page.** A rule root with a `*` in it - the browser-profile and container
+  caches - is expanded by listing the folder above the wildcard. That folder
+  went to the filesystem as narrow text, which Windows reads in the ANSI code
+  page. So under a Thai or emoji user name the listing failed and the rule
+  found nothing. It goes through `PathFromUtf8` now, like every other path
+  the engine opens. `WildcardExpansionListsFoldersNamedOutsideTheCodePage`
+  covers it.
+- **The engine suite runs in CI**, on Linux, macOS and Windows, so the case
+  above is checked on the system it fails on (framework changelog:
+  `macos-opengl-optional-cleaner-tests-in-ci`).
+
 #### 2026-10-08 *0.60*
 - **The sandboxed-cache rule says when macOS keeps it out, and how to let it
   in.** From macOS 27 the system refuses every other developer's app

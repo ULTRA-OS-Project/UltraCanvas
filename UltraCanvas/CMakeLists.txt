@@ -373,15 +373,28 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # has neither the framework nor its header, and the backend compiles the
     # enumeration out (__has_include) and reports no candidates there.
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
-    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     # IOKit + CoreFoundation back the hardware probe
     # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
+    # macOS 10.14, so it is looked up only when that surface is wanted, and an
+    # SDK without it turns the surface off instead of failing the configure -
+    # as a missing GLEW does on Windows. It was REQUIRED unconditionally, so
+    # even -DULTRACANVAS_ENABLE_GL=OFF could not configure without it. CI's
+    # "Verify OpenGL backend enabled" step still fails when CGL goes missing.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_CGL TRUE)
+        find_library(OPENGL_FRAMEWORK OpenGL)
+        if(OPENGL_FRAMEWORK)
+            set(ULTRACANVAS_HAS_CGL TRUE)
+        else()
+            message(WARNING "  OpenGL.framework NOT FOUND in the macOS SDK - disabling "
+                            "OpenGL surface support")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES

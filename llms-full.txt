@@ -28376,7 +28376,11 @@ surface->RequestRender();
 ## Platform Notes
 
 - **Linux:** uses EGL on top of the X11/Wayland surface
-- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>`
+- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>` (CGL).
+  Apple has deprecated OpenGL since macOS 10.14, so the framework is looked
+  up only when `ULTRACANVAS_ENABLE_GL` is on. An SDK without it turns the GL
+  surface off with a warning, as a missing GLEW does on Windows, and a build
+  with `-DULTRACANVAS_ENABLE_GL=OFF` needs no OpenGL at all.
 - **Windows:** uses WGL/EGL depending on the build configuration
 
 ## See Also

@@ -8,6 +8,9 @@
 #include "UltraCleanerPaths.h"
 #include "UltraCleanerTypes.h"
 
+#include <filesystem>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+
 using namespace UltraCleaner;
 using ultracleaner_test::TempTree;
 
@@ -78,6 +81,24 @@ TEST(WildcardExpansionListsMatchingDirectories) {
 
     auto matches = ExpandWildcardDirectories(tree.Path() + "/profiles/*/Cache");
     REQUIRE_EQ(matches.size(), static_cast<size_t>(2));
+}
+
+// A folder named outside the Windows code page - a Thai user name, an emoji -
+// is listed and named like any other. The parent of a wildcard used to reach
+// the filesystem as narrow text, which Windows reads in the ANSI code page,
+// so nothing under such a folder was found there. The folders are made with
+// PathFromUtf8 rather than TempTree's helpers, which take narrow text too.
+TEST(WildcardExpansionListsFoldersNamedOutsideTheCodePage) {
+    TempTree tree;
+    const std::string parent = tree.Path() + "/ผู้ใช้";
+    std::error_code ec;
+    std::filesystem::create_directories(
+        UltraCanvas::PathFromUtf8(parent + "/โปรไฟล์ 😀/Cache"), ec);
+    REQUIRE(!ec);
+
+    auto matches = ExpandWildcardDirectories(parent + "/*/Cache");
+    REQUIRE_EQ(matches.size(), static_cast<size_t>(1));
+    REQUIRE(matches[0] == parent + "/โปรไฟล์ 😀/Cache");
 }
 
 TEST(WildcardExpansionYieldsPlainPathUnchanged) {

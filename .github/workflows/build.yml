@@ -789,6 +789,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
@@ -817,6 +818,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
@@ -1128,6 +1130,19 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
+      # UltraCleaner's engine suite: the path guard, the rule table, the
+      # scanner, the remover and the album logic, over temporary trees only
+      # (no display, no network, nothing outside the temp folder removed).
+      # ULTRACANVAS_BUILD_ULTRACLEANER_TESTS was on in no row until 2026-10,
+      # so the cleaner's tests ran nowhere but a developer's machine. Linux
+      # runs the suite in the full pass below; here it runs on the two
+      # systems the cleaner has its own code for - the recycle bin and the
+      # UTF-16 paths on Windows, ~/.Trash and case-insensitive names on macOS.
+      - name: Run UltraCleaner engine tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
 
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's
