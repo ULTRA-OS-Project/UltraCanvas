@@ -13,6 +13,7 @@
 
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasSpreadsheetExcelFormula.h"   // Excel's Sheet!A1 <-> 'Sheet'.A1
 
 #include "tinyxml2.h"
 
@@ -523,7 +524,8 @@ private:
 
         bool hasFormula = false;
         if (f && f->GetText()) {
-            std::string formula = f->GetText();
+            // Excel's Data!B5 is the engine's 'Data'.B5 (and _xlfn.IFS its IFS).
+            std::string formula = ExcelFormulaToNative(f->GetText());
             if (!formula.empty() && formula[0] != '=') formula = "=" + formula;
             cell->SetFormula(formula);
             hasFormula = true;
@@ -849,7 +851,8 @@ private:
 
         std::string formula;
         if (cell.HasFormula()) {
-            formula = cell.GetFormulaText();
+            // Back into Excel's syntax: 'Data'.B5 is Data!B5 to Excel.
+            formula = NativeFormulaToExcel(cell.GetFormulaText());
             if (!formula.empty() && formula[0] == '=') formula = formula.substr(1);
         }
 
