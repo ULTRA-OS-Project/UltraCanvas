@@ -1,4 +1,13 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.0 - the sender's menu: a right-click on the sender's name or badge
+//                   offers copying the address, the sender's mail, the address
+//                   book and spam, above Copy and Select All (senderMenuItems)
+// Version: 0.17.1 - a look-alike sender domain or a letter in an agency's name is
+//                   told as phishing; the domain mismatch only while phishing
+//                   warnings are on (Settings > Spam/scam warnings)
+// Version: 0.17.0 - the warning strip names a romance scam and a cryptocurrency
+//                   scam, each with a footnote saying what it is; any mail about
+//                   crypto gets a caution strip, whoever sent it
 // Version: 0.16.1 - HTML mail as plain text (Settings > Reading) and the quote of
 //                   a formatted mail in a reply or forward come from the
 //                   HTMLReader module (HTML::ExtractPlainText, Lines layout):
@@ -403,6 +412,15 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
     avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // A right-click on the badge opens the sender's menu (the badge itself is
+    // rebuilt per message; its press reaches the host it sits in).
+    avatarHost_->SetEventCallback([this](const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown || event.button != UCMouseButton::Right ||
+            !hasMessage_)
+            return false;
+        ShowSenderMenu(event, /*withText=*/false, false, nullptr, nullptr);
+        return true;
+    });
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
@@ -751,15 +769,53 @@ void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
     textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }
 
+bool MessagePreview::PointerOnSender(const Point2Di& p) const {
+    for (const UltraCanvasUIElement* e : { static_cast<const UltraCanvasUIElement*>(from_.get()),
+                                           static_cast<const UltraCanvasUIElement*>(avatarHost_.get()) }) {
+        if (!e) continue;
+        const Rect2Df b = e->GetBoundsInWindow();
+        if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return true;
+    }
+    return false;
+}
+
+void MessagePreview::ShowSenderMenu(const UCEvent& event, bool withText, bool canCopy,
+                                    std::function<void()> copy, std::function<void()> selectAll) {
+    UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
+    if (!window) return;
+    textMenu_ = std::make_shared<UltraCanvasMenu>("prevSenderMenu", 0, 0, 220, 0);
+    textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Whose message this is, as the menu's title, as in the message list.
+    if (!curEnv_.fromAddr.empty()) {
+        textMenu_->AddItem(MenuItemData::Header(curEnv_.fromAddr));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
+    if (senderMenuItems)
+        for (auto& item : senderMenuItems(curEnv_)) textMenu_->AddItem(item);
+    if (withText) {
+        textMenu_->AddItem(MenuItemData::Separator());
+        MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
+        copyItem.enabled = canCopy;
+        textMenu_->AddItem(copyItem);
+        textMenu_->AddItem(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
+                                                            std::move(selectAll)));
+    }
+    textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
 void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSelection>& selection) {
     // Raw here - the selection holds these callbacks - and weak in the menu,
     // which can outlive the body the selection belongs to.
     UltraCanvasTextSelection* raw = selection.get();
     selection->onContextMenu = [this, raw](const UCEvent& event) {
         std::weak_ptr<UltraCanvasTextSelection> weak = raw->weak_from_this();
-        ShowTextMenu(event, raw->HasSelection(),
-                     [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); },
-                     [weak]() { if (auto s = weak.lock()) s->SelectAll(); });
+        auto copy = [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); };
+        auto selectAll = [weak]() { if (auto s = weak.lock()) s->SelectAll(); };
+        // On the sender's name: the sender's menu, Copy and Select All in it.
+        if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
+            ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
     };
     // One highlight at a time, as on a web page: selecting in the header lets
     // go of the body's selection, and the other way round.
@@ -997,6 +1053,7 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
         sec.reason = report.Summary();
         sec.verifiedDomain = report.verifiedDomain;
         sec.verifiedBy     = report.verifiedBy;
+        sec.findings       = report.Codes();
         sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
@@ -1017,10 +1074,33 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
+    const bool romance = security.HasFinding("romance-scam");
+    const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
+                           security.HasFinding("government-impersonation");
+    const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
+                            security.HasFinding("crypto-payment-demand") ||
+                            security.HasFinding("crypto-investment-lure");
+    const bool crypto = cryptoScam || security.HasFinding("crypto-content");
+    const char* cryptoAdvice =
+        "A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
+        "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
+        "private key, and no genuine investment guarantees a profit. Never send crypto to "
+        "someone you only know from email or the internet.";
+
     // Only the two verdicts worth interrupting a reader for. Advertisements and
-    // unknown senders are the badge's business, not a banner's.
+    // unknown senders are the badge's business, not a banner's - except that
+    // any mail about crypto gets a word of caution, whoever sent it.
     if (!status.Dangerous()) {
-        warning_->SetVisible(false);
+        if (!crypto) {
+            warning_->SetVisible(false);
+            return;
+        }
+        warning_->SetBackgroundColor(Theme::kTrustSpamSoft);
+        warning_->SetBorders(1.0f, Theme::kTrustSpam, Theme::kControlRadius);
+        warningTitle_->SetTextColor(Theme::kTrustSpam);
+        warningTitle_->SetText("\xE2\x9A\xA0 Caution: this message is about cryptocurrency");
+        warningText_->SetText(cryptoAdvice);
+        warning_->SetVisible(true);
         return;
     }
 
@@ -1030,19 +1110,27 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // Only on the scan's own verdict: a newsletter that is merely sitting in
     // Junk links to its tracking domain too, and is not phishing for that.
     DomainMismatch mismatch;
-    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    if (security.level >= ThreatLevel::Suspicious && GetThreatScanOptions().phishing)
+        mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
 
+    // The scam the scan named comes first: a love letter that links to a
+    // "verification" site is a romance scam, and is told as one.
     const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
+    const char* what = romance                ? "romance scam"
+                     : phishing || lookalike  ? "phishing"
+                     : cryptoScam ? "cryptocurrency scam"
+                     : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+        (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
+                    what + "\xC2\xB2 email!"
          : status.cls == SenderClass::Scam
-              ? "This message looks like a scam or phishing attempt"
-              : "Parts of this message do not add up"));
+              ? std::string("This message looks like a scam or phishing attempt")
+              : std::string("Parts of this message do not add up")));
 
     std::string text;
     if (phishing) {
@@ -1057,11 +1145,28 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         text = status.reason;
     }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
-    text += "\nDo not sign in, pay or reply through the links in this message unless you "
-            "are sure who sent it.";
-    if (phishing)
+    if (romance)
+        text += "\nDo not send money, gift cards or crypto to someone you only know from "
+                "email or the internet, and do not sign up or give card details on a site "
+                "they send you to.";
+    else
+        text += "\nDo not sign in, pay or reply through the links in this message unless "
+                "you are sure who sent it.";
+    if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
+    if (romance)
+        text += "\n\n\xC2\xB2 Romance scams are love letters from strangers - a made-up "
+                "profile, someone else's photos, \"destiny\" - written to win your trust "
+                "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
+                "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
+                "search of the photo often finds it under another name.";
+    else if (phishing || lookalike)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
+    else if (cryptoScam)
+        text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
+                "demand payment to a wallet address (blackmail, fake invoices) or promise "
+                "profits on an \"investment platform\" that shows made-up gains and keeps "
+                "what is paid in.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }

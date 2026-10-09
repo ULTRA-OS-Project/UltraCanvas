@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.15.0 - the reading pane's sender menu (SenderMenuItems), sharing the
+//                  address-book items with the list's menu (AddressBookItems)
 // Version: 0.14.0 - OpenMessage: one message on screen (a click on the new-mail notification)
 // Version: 0.13.0 - sender icons on demand: SetIconRequester (a painted row
 //                   whose badge has no icon asks for it), IconCached,
@@ -83,6 +85,9 @@ public:
     void IconCached(const std::string& key);
     // Every row's badge worked out again (after the icon settings changed).
     void RefreshBadges();
+    // The message on screen scanned again at once (the scam warnings changed,
+    // and its stored verdict was marked stale); its row's badge follows.
+    void RecheckShownMessage();
 
     // Build the mail area. Call once; add the result to a parent.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
@@ -308,6 +313,12 @@ private:
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
     // "Show emails ▸" entries; `senderAddr` adds "Same sender".
     std::vector<UltraCanvas::MenuItemData> ShowEmailsItems(const std::string& senderAddr);
+    // The sender and the address book: Add to contact group ▸, and Add to
+    // contacts or Edit contact - in the list's menu and the reading pane's.
+    std::vector<UltraCanvas::MenuItemData> AddressBookItems(const MessageEnvelope& m);
+    // The reading pane's sender menu: copy the address, show the sender's
+    // mail, the address book, spam.
+    std::vector<UltraCanvas::MenuItemData> SenderMenuItems(const MessageEnvelope& m);
     std::vector<MailRowState>    rowStates_;    // parallel to messages_ / list rows
     std::vector<SenderBadge>     rowBadges_;    // parallel to messages_ / list rows
     // The stored scan verdicts of the folder on screen, by UID — one query per

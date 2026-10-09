@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.16.0 - the reading pane's sender menu: copy the address, the
+//                   sender's mail, the address book, spam (SenderMenuItems)
+// Version: 0.15.0 - RecheckShownMessage: the message on screen scanned again when
+//                   the scam warnings change
 // Version: 0.14.2 - ShowPendingPreviewNow: the selected message in the window's
 //                  first frame at start
 // Version: 0.14.1 - the folder tree, the list's rebuild and the reading pane in
@@ -34,6 +38,7 @@
 #include "UltraMailFolderNames.h"
 #include "UltraMailTrace.h"
 #include "UltraCanvasApplication.h"   // PostToUIThread
+#include "UltraCanvasClipboard.h"     // SetClipboardText
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
@@ -489,6 +494,8 @@ void MailView::BuildMessageBox() {
     preview_.onAlwaysAllowRemoteImages = [this](const std::string& addr) {
         if (onAlwaysAllowRemoteImages) onAlwaysAllowRemoteImages(addr);
     };
+    // Right-click on the sender in the reading pane: the sender's own menu.
+    preview_.senderMenuItems = [this](const MessageEnvelope& m) { return SenderMenuItems(m); };
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
         RefreshRowBadge(m, s);
     };
@@ -729,37 +736,74 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     // The sender and the address book.
     if (!m.fromAddr.empty()) {
         rowMenu_->AddItem(MenuItemData::Separator());
-        std::vector<MenuItemData> places;
-        for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
-                                  ContactSection::Work, ContactSection::Leisure,
-                                  ContactSection::Services, ContactSection::Other }) {
-            ContactPlace place; place.section = s;
-            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
-                if (onAddToContactGroup) onAddToContactGroup(m, place);
-            }));
-        }
-        const std::vector<GroupCount> groups = contactGroups ? contactGroups()
-                                                             : std::vector<GroupCount>{};
-        if (!groups.empty()) places.push_back(MenuItemData::Separator());
-        for (const auto& g : groups) {
-            ContactPlace place; place.isGroup = true; place.group = g.name;
-            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
-                if (onAddToContactGroup) onAddToContactGroup(m, place);
-            }));
-        }
-        rowMenu_->AddItem(MenuItemData::Submenu("Add to contact group", places));
-        if (contacts_.Contains(m.fromAddr)) {
-            rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
-                if (onEditContact) onEditContact(m);
-            }));
-        } else {
-            rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
-                if (onAddContact) onAddContact(m);
-            }));
-        }
+        for (auto& item : AddressBookItems(m)) rowMenu_->AddItem(item);
     }
     PopupElementSettings settings;
     rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
+}
+
+std::vector<MenuItemData> MailView::AddressBookItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    if (m.fromAddr.empty()) return items;
+    std::vector<MenuItemData> places;
+    for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
+                              ContactSection::Work, ContactSection::Leisure,
+                              ContactSection::Services, ContactSection::Other }) {
+        ContactPlace place; place.section = s;
+        places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+            if (onAddToContactGroup) onAddToContactGroup(m, place);
+        }));
+    }
+    const std::vector<GroupCount> groups = contactGroups ? contactGroups()
+                                                         : std::vector<GroupCount>{};
+    if (!groups.empty()) places.push_back(MenuItemData::Separator());
+    for (const auto& g : groups) {
+        ContactPlace place; place.isGroup = true; place.group = g.name;
+        places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+            if (onAddToContactGroup) onAddToContactGroup(m, place);
+        }));
+    }
+    items.push_back(MenuItemData::Submenu("Add to contact group", places));
+    if (contacts_.Contains(m.fromAddr)) {
+        items.push_back(MenuItemData::Action("Edit contact", [this, m]() {
+            if (onEditContact) onEditContact(m);
+        }));
+    } else {
+        items.push_back(MenuItemData::Action("Add to contacts", [this, m]() {
+            if (onAddContact) onAddContact(m);
+        }));
+    }
+    return items;
+}
+
+std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    if (m.fromAddr.empty()) return items;
+    const std::string address = m.fromAddr;
+    items.push_back(MenuItemData::Action("Copy address", [address]() {
+        SetClipboardText(address);
+    }));
+    const bool showingSender = filter_.kind == MessageFilterKind::SameSender &&
+                               filter_.sender == m.fromAddr;
+    items.push_back(showingSender
+        ? MenuItemData::Action("Show all messages", [this]() { SetFilter({}); })
+        : MenuItemData::Action("Show only mail from this sender", [this, address]() {
+              SetFilter({MessageFilterKind::SameSender, address});
+          }));
+    items.push_back(MenuItemData::Separator());
+    for (auto& item : AddressBookItems(m)) items.push_back(item);
+    items.push_back(MenuItemData::Separator());
+    // Spam: out of the junk mailbox, or back to the inbox from it.
+    if (curFolderIsJunk_) {
+        items.push_back(MenuItemData::Action("Not spam", [this, m]() {
+            if (onNotJunk) onNotJunk(m);
+        }));
+    } else {
+        items.push_back(MenuItemData::Action("Mark as spam", [this, m]() {
+            if (onJunk) onJunk(m);
+        }));
+    }
+    return items;
 }
 
 void MailView::SetIconCache(const SenderIconCache* cache) {
@@ -968,6 +1012,14 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
 
 void MailView::Reload() {
     RebuildList();
+}
+
+void MailView::RecheckShownMessage() {
+    for (const auto& m : messages_) {
+        if (m.uid != selectedUid_ || m.folder != selectedFolder_) continue;
+        if (preview_.Shows(m.accountId, m.folder, m.uid)) preview_.Show(m);
+        return;
+    }
 }
 
 bool MailView::OpenMessage(const std::string& accountId, const std::string& folder, int64_t uid) {

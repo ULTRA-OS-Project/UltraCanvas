@@ -14,6 +14,17 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.8.0 - link-domain-lookalike; look-alike letters of another script
+//                  ("pаypal.com" in Cyrillic) in sender and link domains
+// Version: 0.7.0 - look-alike sender domains (sender-domain-lookalike), letters in
+//                  an agency's name (government-impersonation); ThreatScanOptions:
+//                  each kind of warning can be switched off (Settings > Spam/scam
+//                  warnings); ThreatFinding::score
+// Version: 0.6.0 - romance scams (romance-scam: a stranger's love letter, with
+//                  photos, from a free mailbox) and cryptocurrency (crypto-content
+//                  on any crypto mail; crypto-wallet-secret, crypto-payment-demand,
+//                  crypto-investment-lure); ScanInput::pictureNames;
+//                  ThreatReport::Has / Codes, so the reading pane can name the scam
 // Version: 0.5.3 - ExtractImageHosts reads the parsed page, its CSS through the
 //                  HTMLReader's cascade
 // Version: 0.5.2 - kThreatRulesRevision 2026-10-08: links and texts read through the
@@ -56,7 +67,33 @@ ThreatLevel ThreatLevelFromString(const std::string& s);
 struct ThreatFinding {
     std::string code;
     std::string detail;
+    int         score = 0;   // what it added to the report's score
 };
+
+// Which kinds of warning the scan gives (Settings > Spam/scam warnings). A
+// kind switched off is not reported: its findings are dropped and add nothing
+// to the score, so its messages are labelled as if the rules did not exist.
+struct ThreatScanOptions {
+    bool phishing      = true;   // links that lie, a brand or a look-alike domain
+                                 // claimed, credentials asked for, forged senders
+    bool romance       = true;   // romance-scam
+    bool advanceFee    = true;   // advance-fee-fraud, reply-elsewhere
+    bool government    = true;   // government-impersonation
+    bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
+    bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto
+    bool attachments   = true;   // attachment-*: programs, disguised documents
+    bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool operator==(const ThreatScanOptions&) const = default;
+};
+
+// Whether `options` lets the finding `code` be reported. Codes of no kind
+// (none today) always are.
+bool FindingEnabled(const ThreatScanOptions& options, const std::string& code);
+
+// The options ScanRawMessage scans with, for the whole process - the sync's
+// threads and the reading pane alike. Everything on until set.
+void SetThreatScanOptions(const ThreatScanOptions& options);
+ThreatScanOptions GetThreatScanOptions();
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
@@ -72,6 +109,10 @@ struct ThreatReport {
 
     // The findings as one human-readable block ("• …\n• …"); empty when clean.
     std::string Summary() const;
+    // The findings' codes, comma-separated ("romance-scam,crypto-content"):
+    // what the store keeps so the reading pane can say which scam it is.
+    std::string Codes() const;
+    bool Has(const std::string& code) const;
     bool Suspicious() const { return level >= ThreatLevel::Suspicious; }
 };
 
@@ -112,6 +153,14 @@ struct ScanInput {
     std::string body;
     bool        bodyIsHtml = false;
     std::vector<std::string> attachmentNames;
+    // The pictures `attachmentNames` does not show as such, by file name (""
+    // when one has none): the body's own pictures (cid:), and an image
+    // attached under a name that is not a picture's. An attachment named
+    // like one ("IMG_942.jpg") counts from `attachmentNames` already.
+    std::vector<std::string> pictureNames;
+    // Which kinds of warning to give: all of them unless the caller says
+    // otherwise (ScanRawMessage passes GetThreatScanOptions()).
+    ThreatScanOptions options;
 };
 
 // When the rules last changed (epoch seconds). A stored verdict made before it
@@ -119,7 +168,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1791417600;   // 2026-10-08 00:00 UTC
+constexpr long long kThreatRulesRevision = 1791590400;   // 2026-10-10 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication
@@ -187,6 +236,9 @@ std::vector<std::string> ExtractImageHosts(const std::string& body);
 
 // Run every rule over one message.
 ThreatReport ScanMessage(const ScanInput& input);
+
+// Whether `codes` (ThreatReport::Codes, as the store keeps it) holds `code`.
+bool HasFindingCode(const std::string& codes, const std::string& code);
 
 // Convenience: parse a raw RFC 5322 message (the cached .eml) and scan it.
 ThreatReport ScanRawMessage(const std::string& rawMessage);

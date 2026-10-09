@@ -59,6 +59,8 @@ TEST(preferences_round_trip) {
     out.listSort.ascending = true;
     out.checkMailEverySec = 40;
     out.notifyNewMail = false;
+    out.scamWarnings.romance = false;
+    out.scamWarnings.cryptoCaution = false;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -71,6 +73,11 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.showHtml);
     REQUIRE_EQ(in.messageTextSize, 16);
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
+    REQUIRE(!in.scamWarnings.romance);
+    REQUIRE(!in.scamWarnings.cryptoCaution);
+    REQUIRE(in.scamWarnings.phishing);          // the others stay on
+    REQUIRE(in.scamWarnings.advanceFee);
+    REQUIRE(in.scamWarnings == out.scamWarnings);
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == out.listSort);
