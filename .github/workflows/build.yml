@@ -535,7 +535,31 @@ jobs:
           # and MuPDF's USE_SYSTEM_* builds.
           scripts/ci-apt.sh install libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
           MUPDF_VER=1.23.10
-          curl -fsSL "https://mupdf.com/downloads/archive/mupdf-${MUPDF_VER}-source.tar.gz" | tar xz
+          # The source archive comes from mupdf.com alone (the GitHub mirror
+          # carries no release tarball with the third-party sources), and on
+          # 2026-10-09 one connection to it timed out after 135 s and failed
+          # the leg before a line was compiled. So the download gets what the
+          # apt step has: a short connect timeout, a stall watchdog (under
+          # 1 byte/s for 120 s ends the transfer), curl's own retries on any
+          # error, and three attempts on top with a growing pause. The
+          # archive is downloaded to a file and unpacked afterwards, so a
+          # truncated transfer never reaches tar.
+          MUPDF_TAR="mupdf-${MUPDF_VER}-source.tar.gz"
+          for attempt in 1 2 3; do
+            rm -f "$MUPDF_TAR"
+            if curl -fsSL --connect-timeout 20 --speed-time 120 --speed-limit 1 \
+                    --retry 3 --retry-all-errors --retry-delay 10 \
+                    -o "$MUPDF_TAR" "https://mupdf.com/downloads/archive/$MUPDF_TAR"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::could not download $MUPDF_TAR from mupdf.com in 3 attempts"
+              exit 1
+            fi
+            echo "download of $MUPDF_TAR failed (attempt $attempt of 3); retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          tar xzf "$MUPDF_TAR"
           make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
             HAVE_X11=no HAVE_GLUT=no \
             USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
