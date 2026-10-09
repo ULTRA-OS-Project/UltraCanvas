@@ -51,7 +51,7 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'HeatmapColormap' does not r
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'IsVisible' is not a member of IChartProjection
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'LabelDeclutterPolicy' does not refer to a value
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::color' does not exist (no member named 'color' in 'UltraCanvas::PlacedChartLabel')
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::font' does not exist (no member named 'font' in 'UltraCanvas::PlacedChartLabel'; did you mean 'UltraCanvas::MenuItemData::font'?)
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::font' does not exist (no member named 'font' in 'UltraCanvas::PlacedChartLabel')
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::fontSize' does not exist (no member named 'fontSize' in 'UltraCanvas::PlacedChartLabel')
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ScreenToValue' is not a member of IChartProjection
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'TickDeclutterPolicy' does not refer to a value
