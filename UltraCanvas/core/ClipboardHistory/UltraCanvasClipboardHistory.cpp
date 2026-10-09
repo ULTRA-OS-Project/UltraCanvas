@@ -534,6 +534,38 @@ bool IsWordCharacter(uint32_t cp) {
 
 } // namespace
 
+std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::string>& categories,
+                                                        const std::vector<std::string>& mimeTypes) {
+    using Kind = ClipboardEntryKind;
+    auto has = [&categories](const char* category) {
+        return std::find(categories.begin(), categories.end(), category) != categories.end();
+    };
+    // What it is, by the freedesktop menu categories. A viewer shows
+    // pictures; nothing is pasted into it.
+    const bool viewer = has("Viewer");
+    if (!viewer && (has("RasterGraphics") || has("2DGraphics") || has("VectorGraphics") ||
+                    has("3DGraphics") || has("Photography") || has("Graphics"))) {
+        return {Kind::Image, Kind::Colour};
+    }
+    if (has("FileManager")) return {Kind::Files};
+    if (has("TextEditor") || has("IDE") || has("Development") || has("TerminalEmulator")) {
+        return {Kind::Code, Kind::Text, Kind::Link};
+    }
+    if (has("WebBrowser")) return {Kind::Link, Kind::Text};
+
+    // What it opens, when the categories say nothing of the above.
+    size_t images = 0, texts = 0, others = 0;
+    for (const std::string& mime : mimeTypes) {
+        if (mime == "inode/directory") return {Kind::Files};
+        if (mime.rfind("image/", 0) == 0) ++images;
+        else if (mime.rfind("text/", 0) == 0) ++texts;
+        else ++others;
+    }
+    if (!viewer && images > 0 && texts == 0 && others == 0) return {Kind::Image, Kind::Colour};
+    if (texts > 0 && images == 0 && others == 0) return {Kind::Text, Kind::Code, Kind::Link};
+    return {};
+}
+
 std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension) {
     std::string format = image.mime.rfind("image/", 0) == 0 ? image.mime.substr(6) : "png";
     format = format.substr(0, format.find(';'));
@@ -1134,8 +1166,9 @@ std::vector<ClipboardHistoryEntry> UltraCanvasClipboardHistory::List(const Clipb
     std::vector<ClipboardHistoryEntry> result;
     if (!d.open) return result;
     UltraDbResultSet rows;
-    if (!d.Query(std::string("SELECT ") + kEntryColumns +
-                 " FROM entries WHERE deleted_at = 0 ORDER BY pinned DESC, last_used_at DESC, id DESC", {}, rows)) {
+    const char* order = query.newestFirst ? " ORDER BY last_used_at DESC, id DESC"
+                                          : " ORDER BY pinned DESC, last_used_at DESC, id DESC";
+    if (!d.Query(std::string("SELECT ") + kEntryColumns + " FROM entries WHERE deleted_at = 0" + order, {}, rows)) {
         return result;
     }
 

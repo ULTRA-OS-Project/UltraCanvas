@@ -103,6 +103,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### Notices
 
@@ -129,6 +130,8 @@ nothing is ever reported: `IsNative()` says which.
 
 ### Global shortcuts
 
+<!-- doc-check: void TogglePanel(); -->
+
 `UltraCanvasGlobalShortcut` is a key combination that reaches the program
 whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
 panel:
@@ -151,6 +154,11 @@ if (!shortcut.Start("Super+V", [this]() {
 the combination cannot be read, when another program already holds it, and on
 a platform without global shortcuts. `Stop()` joins the thread, so no
 callback runs after it returns; `IsRunning()`.
+
+The callback runs when the combination's key is **let go**, once however long
+it is held. While the key is down the shortcut's grab holds the keyboard, and a
+window opened and focused in that time could lose the focus again when the
+grab ended; a window opened on release keeps it.
 
 ## Backends
 

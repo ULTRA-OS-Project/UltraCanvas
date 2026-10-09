@@ -315,6 +315,11 @@ int main(int, char** argv) {
     ClipboardHistoryQuery pinnedOnly;
     pinnedOnly.pinnedOnly = true;
     TEST("and alone under pinned", history.List(pinnedOnly).size() == 1);
+    ClipboardHistoryQuery newest;
+    newest.newestFirst = true;
+    newest.limit = 1;
+    entries = history.List(newest);
+    TEST("newest first ignores the pin", !entries.empty() && entries[0].id != id && !entries[0].pinned);
     const size_t before = history.List().size();
     TEST("remove hides it", history.Remove(imageId) && history.List().size() == before - 1 && !history.Get(imageId));
     TEST("undo brings it back", history.Restore(imageId) && history.List().size() == before);
@@ -479,6 +484,25 @@ int main(int, char** argv) {
                           "Hello there. How are you?\nFine");
     TEST("trim", EditClipboardText("\n\n  one  \ntwo\t\n\n", ClipboardTextEdit::Trim) == "  one\ntwo");
     TEST("join lines", EditClipboardText("one\n  two\n\nthree ", ClipboardTextEdit::JoinLines) == "one two three");
+
+    std::cerr << "\n--- What a program takes when pasted into ---" << std::endl;
+    using K = ClipboardEntryKind;
+    auto kinds = [](std::vector<std::string> categories, std::vector<std::string> mimeTypes) {
+        return PreferredClipboardKinds(categories, mimeTypes);
+    };
+    TEST("a bitmap editor takes images, then colours",
+         kinds({"Graphics", "2DGraphics", "RasterGraphics"}, {"image/png", "application/pdf"}) ==
+                 std::vector<K>({K::Image, K::Colour}));
+    TEST("an image viewer prefers nothing", kinds({"Graphics", "Viewer"}, {"image/png"}).empty());
+    TEST("a file manager takes files", kinds({"System", "FileManager"}, {"inode/directory"}) ==
+                                       std::vector<K>({K::Files}));
+    TEST("an editor takes code and text", kinds({"Utility", "TextEditor"}, {"text/plain"}).front() == K::Code);
+    TEST("a browser takes links first", kinds({"Network", "WebBrowser"}, {"text/html", "image/png"}).front() == K::Link);
+    TEST("a mail client prefers nothing", kinds({"Network", "Email"}, {"message/rfc822"}).empty());
+    TEST("without categories, opening only images is enough",
+         kinds({}, {"image/png", "image/jpeg"}) == std::vector<K>({K::Image, K::Colour}));
+    TEST("and opening only text", kinds({}, {"text/plain", "text/markdown"}).front() == K::Text);
+    TEST("a mix says nothing", kinds({}, {"image/png", "text/plain"}).empty());
 
     fs::remove_all(root, ec);
     std::cerr << "\n========================================" << std::endl;

@@ -1463,6 +1463,13 @@ if (BUILD_ULTRAPAINT_APP)
             ${ULTRACANVAS_LIBRARY}
     )
 
+    # Paste with nothing on the clipboard offers the newest image of the
+    # clipboard history UltraDesktop keeps; Edit > Paste Last Copied Image.
+    if(TARGET UltraClipboardHistory)
+        target_link_libraries(UltraPaint PRIVATE UltraClipboardHistory)
+        target_compile_definitions(UltraPaint PRIVATE ULTRAPAINT_HAVE_CLIPBOARD_HISTORY=1)
+    endif()
+
     # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
     # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and
     # linking it is also what defines ULTRACANVAS_HAS_MODELS_PLUGIN so

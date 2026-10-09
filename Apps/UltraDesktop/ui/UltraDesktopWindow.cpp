@@ -708,6 +708,9 @@ void UltraDesktopWindow::RefreshWindows() {
 
     std::map<uint64_t, const DesktopWindowInfo*> wanted;
     for (const DesktopWindowInfo& w : windows) {
+        // Where a paste from the clipboard panel goes when it is opened from
+        // the bar: clicking the bar does not change it.
+        if (w.active && w.appClass != "UltraDesktop") lastPasteWindow_ = w.id;
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
@@ -985,6 +988,18 @@ std::string ActiveApplicationName() {
     return "";
 }
 
+// What a paste into `window` takes, from its application's desktop entry.
+UltraDesktopClipboardPanel::Target PasteTargetFor(const DesktopWindowInfo& window,
+                                                  const std::vector<UCDesktopEntry>& applications) {
+    UltraDesktopClipboardPanel::Target target;
+    const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(window, applications);
+    if (!entry) return target;
+    target.kinds = PreferredClipboardKinds(entry->categories, entry->mimeTypes);
+    // "GNU Image Manipulation Program" does not fit a section header.
+    target.name = entry->name.size() <= 18 || window.appClass.empty() ? entry->name : window.appClass;
+    return target;
+}
+
 } // namespace
 
 void UltraDesktopWindow::StartClipboardHistory() {
@@ -1056,14 +1071,35 @@ void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
         clipboardPanel_->Close();
         return;
     }
+    // The window the paste goes to: the focused one for Super+V, the last
+    // focused one of another program when the bar was clicked.
+    UltraDesktopClipboardPanel::Target target;
+    const uint64_t active = UltraCanvasDesktopShell::GetActiveWindow();
+    const DesktopWindowInfo* pasteWindow = nullptr;
+    const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
+    for (const DesktopWindowInfo& w : windows) {
+        if (w.id == active && w.appClass != "UltraDesktop") pasteWindow = &w;
+    }
+    for (const DesktopWindowInfo& w : windows) {
+        if (!pasteWindow && w.id == lastPasteWindow_) pasteWindow = &w;
+    }
+    if (pasteWindow) {
+        lastPasteWindow_ = pasteWindow->id;
+        const auto now = std::chrono::steady_clock::now();
+        if (applications_.empty() || now - applicationsRead_ > std::chrono::minutes(5)) {
+            applications_ = UltraCanvasDesktopShell::ListApplications(16);
+            applicationsRead_ = now;
+        }
+        target = PasteTargetFor(*pasteWindow, applications_);
+    }
     if (besideButton && clipboardButton_) {
         // The desktop window covers the screen from its top left corner, so
         // its coordinates are the screen's, scaled to physical pixels.
         const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
         clipboardPanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
-                              window_->LogicalToPhysical(static_cast<int>(bounds.y) - 8));
+                              window_->LogicalToPhysical(static_cast<int>(bounds.y) - 8), std::move(target));
     } else {
-        clipboardPanel_->Open(-1, -1);
+        clipboardPanel_->Open(-1, -1, std::move(target));
     }
 }
 
