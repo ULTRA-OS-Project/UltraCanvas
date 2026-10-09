@@ -23953,6 +23953,18 @@ entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
 
+"Made from" means the file as it was **before** the thumbnail was drawn. The
+worker stamps the source ahead of the decode (`ThumbnailDiskCache::StampSource`)
+and hands that stamp to `ThumbnailDiskCache::Store`, which stores nothing when
+the file no longer matches it. Before 2026-10-09 the entry was stamped
+when it was written, so a thumbnail of the old content — a save landing
+mid-decode, or the shared image cache serving the picture as it was before the
+save — was recorded as the valid answer for the new file, and every later run
+showed the old picture. The decode itself reads images with
+`UCImage::GetFresh()`, which checks the shared cache against the file and reads
+a file that changed since it was cached again; plain `UCImage::Get()` never
+looks at the disk.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
@@ -49903,8 +49915,10 @@ viewer->Show(path, UltraCanvasApplication::GetInstance()->GetFocusedWindow());
 
 The file is parsed once and the parsed document is cached by path
 (`UCSvgDocument::Get`), so zooming, HiDPI and relayout only pay for the
-vector render. `UCImageRaster::ClearCache` / `UCSvgDocument::RemoveFromCache`
-drop a document when the file changed on disk. CSS inside the file - a
+vector render. `UCImage::GetFresh(path)` reads a file that changed on disk
+since it was cached again (`UCImage::Get` never checks), and
+`UCImage::RemoveFromCache(path)` drops the raster, its pixmaps and the parsed
+document by hand. CSS inside the file - a
 `<style>` block, `class=""` attributes - is applied by librsvg.
 
 `Apps/DemoApp/UltraCanvasSVGExamples.cpp` is the demo page: one tile per

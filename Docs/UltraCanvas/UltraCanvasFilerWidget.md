@@ -848,6 +848,18 @@ entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
 
+"Made from" means the file as it was **before** the thumbnail was drawn. The
+worker stamps the source ahead of the decode (`ThumbnailDiskCache::StampSource`)
+and hands that stamp to `ThumbnailDiskCache::Store`, which stores nothing when
+the file no longer matches it. Before 2026-10-09 the entry was stamped
+when it was written, so a thumbnail of the old content — a save landing
+mid-decode, or the shared image cache serving the picture as it was before the
+save — was recorded as the valid answer for the new file, and every later run
+showed the old picture. The decode itself reads images with
+`UCImage::GetFresh()`, which checks the shared cache against the file and reads
+a file that changed since it was cached again; plain `UCImage::Get()` never
+looks at the disk.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another

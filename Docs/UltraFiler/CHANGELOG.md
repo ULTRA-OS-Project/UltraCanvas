@@ -1,3 +1,21 @@
+#### 2026-10-09 *1.69.1*
+- **Thumbnails follow a file's new content.** A picture edited and saved over
+  (in an image editor, by a script, or by a camera upload overwriting it) kept
+  its old thumbnail: the folder was rescanned when the save landed, but the
+  thumbnail was made again from a copy of the picture still held in memory,
+  and that old thumbnail was then kept on disk under the new file's date, so
+  it came back on every later start too. The thumbnail is now made from the
+  file as it is after the save, and a thumbnail is only kept on disk when the
+  file did not change while it was being made. Thumbnails kept by earlier
+  versions are made again once, so pictures already showing an old thumbnail
+  are corrected on the first look. A picture caught while it was still being
+  written, and so failed to show at first, gets its thumbnail once the write
+  finishes, instead of keeping the type icon. Selecting a changed picture
+  again opens it in the detail pane as it is now (a picture that stays
+  selected while it changes still shows the version it was opened with), and
+  the dimensions shown for it are its new ones. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+
 #### 2026-10-09 *1.69.0*
 - **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
   thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and

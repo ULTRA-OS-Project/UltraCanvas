@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.3.0
-// Last Modified: 2026-09-04
+// Version: 1.4.0 - GetFresh: the cached image checked against the file
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -130,6 +130,17 @@ namespace UltraCanvas {
         bool animationDecodeFailed = false;
         std::shared_ptr<UCImageAnimation> animation;   // lazy decode cache
 
+        // The file as it was when this raster was read from it: its size and
+        // modification time, taken just BEFORE the read, so a write that races
+        // the read leaves the stamp older than what was read and the next
+        // GetFresh() reads the file again. Unset for an image that did not
+        // come from a file (LoadFromMemory) or whose file could not be
+        // examined. Written by Load() before the raster is shared, read-only
+        // after.
+        uint64_t sourceSize = 0;
+        int64_t  sourceTime = 0;
+        bool     sourceStamped = false;
+
         bool LoadFileToMemory(const std::string &imagePath);
 
 #ifdef HAS_LIBVIPS
@@ -145,11 +156,29 @@ namespace UltraCanvas {
         UCImageRaster(const std::string& fn) : fileName(fn) {};
         ~UCImageRaster();
 
+        // The image at `path`, from the process-wide cache when it holds it.
+        // Keyed by the path alone and never checked against the disk, which
+        // is what makes it cheap enough for a paint path asking for the same
+        // icon every frame - and why a file saved over keeps answering with
+        // its old picture here until something calls GetFresh() or
+        // RemoveFromCache() for it.
         static std::shared_ptr<UCImageRaster> Get(const std::string &path);
+        // Get(), for a caller that must see the file as it is NOW: a file
+        // browser's thumbnails, a viewer opening a file. The cached raster is
+        // checked against the file's current size and modification time, and
+        // when the file has changed since it was read - saved over, rewritten,
+        // replaced - or the cached copy failed to decode (a file caught while
+        // it was still being written, or held by a virus scanner), everything
+        // cached for the path is dropped (RemoveFromCache) and the file is
+        // read again. Costs one stat of the file, so it does not belong in a
+        // paint path; call it where the file is about to be read anyway.
+        static std::shared_ptr<UCImageRaster> GetFresh(const std::string &path);
         // Evict every cached artifact for `path`: the loaded raster, all of its
-        // derived pixmaps (every requested size/fit/scale) and, for SVG
-        // sources, the parsed document. Use after a file on disk changes so the
-        // next Get()/DrawImage re-reads it instead of serving the stale copy.
+        // derived pixmaps (every requested size/fit/scale), for SVG sources
+        // the parsed document, and libvips' own cached operations, which are
+        // keyed by file name too and would otherwise hand the next load the
+        // old file's header. Use after a file on disk changes so the next
+        // Get()/DrawImage re-reads it instead of serving the stale copy.
         static void RemoveFromCache(const std::string &path);
         static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize);

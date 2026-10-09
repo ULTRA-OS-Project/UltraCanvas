@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.7.1
-// Last Modified: 2026-10-06
+// Version: 1.7.2
+// Last Modified: 2026-10-09
 // V1.7.1: Save image as offers a name it can write - an SVG's stem as a PNG
 //   instead of "<name>.svg", which libvips has no writer for - gives a typed
 //   name without a written format ".png", and reports a failed save in a
@@ -2198,9 +2198,11 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         // (1) The image pipeline, where it rasterizes the format at the size
         // asked for. That is the best picture for svg/svgz and for eps/ps on
         // a build with a PostScript loader, and it comes back as an image.
+        // GetFresh: a drawing saved over since it was last shown is read
+        // again, not served from the path-keyed image cache as it was.
         std::shared_ptr<UCImage> img;
         if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
-            img = UCImage::Get(path);
+            img = UCImage::GetFresh(path);
 
         // (2) The drawing itself. A reader registered through the vector
         // preview seam turns the file into a VectorDocument, which the vector
@@ -2311,7 +2313,10 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!handled) {
         // Image — or a kind whose backend is unavailable, shown best-effort.
         ShowView(MediaKind::Image);
-        auto img = UCImage::Get(path);
+        // GetFresh: the image cache is keyed by path, and a picture edited
+        // and saved since it was last shown must open as it is now - a file
+        // manager's preview pane shows the same file again after every save.
+        auto img = UCImage::GetFresh(path);
         // The adjustments (curves included) carry over to the next bitmap;
         // a drawing shown here (an SVG) takes none of them.
         surface->ShowImage(img, transition, transitionDurationMs, animated,
