@@ -1,111 +1,19 @@
 // Apps/EmailCleaner/engine/EmailCleanerText.cpp
-// HTML stripping, obfuscation folding and the shared normalisation pipeline.
+// Obfuscation folding and the shared normalisation pipeline.
+// Version: 0.2.0 - HTML is read through the HTMLReader module (HTML::ExtractPlainText):
+//                  every entity decoded; dashes and the ellipsis fold to ASCII
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerText.h"
 
-#include <algorithm>
+#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
+
 #include <cctype>
-#include <map>
+#include <initializer_list>
+#include <string>
+#include <utility>
 
 namespace EmailCleaner {
-
-namespace {
-
-std::string Lower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
-
-// The handful of HTML entities that actually change a keyword match.
-const std::map<std::string, std::string>& Entities() {
-    static const std::map<std::string, std::string> table = {
-        { "nbsp", " " }, { "amp", "&" }, { "lt", "<" }, { "gt", ">" },
-        { "quot", "\"" }, { "apos", "'" }, { "#39", "'" }, { "#160", " " },
-        { "hellip", "..." }, { "mdash", "-" }, { "ndash", "-" }
-    };
-    return table;
-}
-
-// Elements that format text *inside* a word. Removing one must not introduce
-// a space, or "<b>via</b>gra" would read as two words and slip past the list.
-bool IsInlineElement(const std::string& name) {
-    static const char* kInline[] = {
-        "a", "b", "i", "u", "s", "em", "strong", "span", "font", "small",
-        "big", "sub", "sup", "mark", "abbr", "cite", "code", "tt", "var",
-        "wbr", "ins", "del", "bdo", "bdi", "q", "label"
-    };
-    for (const char* n : kInline) {
-        if (name == n) return true;
-    }
-    return false;
-}
-
-// Element name of a tag starting at `open` ("</b >" -> "b"; "" when it is a
-// comment, a doctype or a processing instruction).
-std::string TagName(const std::string& html, size_t open) {
-    size_t i = open + 1;
-    if (i < html.size() && html[i] == '/') ++i;
-    std::string name;
-    while (i < html.size() && (std::isalnum(static_cast<unsigned char>(html[i])) != 0)) {
-        name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(html[i]))));
-        ++i;
-    }
-    return name;
-}
-
-} // namespace
-
-std::string StripHtml(const std::string& html) {
-    std::string out;
-    out.reserve(html.size());
-
-    size_t i = 0;
-    while (i < html.size()) {
-        const char c = html[i];
-
-        if (c == '<') {
-            const std::string name = TagName(html, i);
-
-            // Drop the contents of script and style elements entirely.
-            if (name == "script" || name == "style") {
-                const std::string closing = "</" + name;
-                size_t close = html.find(closing, i + 1);
-                if (close == std::string::npos) break;
-                close = html.find('>', close);
-                i = (close == std::string::npos) ? html.size() : close + 1;
-                out.push_back(' ');
-                continue;
-            }
-
-            size_t close = html.find('>', i);
-            if (close == std::string::npos) break;   // unterminated tag: drop the rest
-            // A block-level tag is a real word boundary; an inline one is not.
-            if (!name.empty() && !IsInlineElement(name)) out.push_back(' ');
-            else if (name.empty()) out.push_back(' ');   // comment / doctype
-            i = close + 1;
-            continue;
-        }
-
-        if (c == '&') {
-            const size_t semi = html.find(';', i);
-            if (semi != std::string::npos && semi - i <= 8) {
-                const std::string name = Lower(html.substr(i + 1, semi - i - 1));
-                auto it = Entities().find(name);
-                if (it != Entities().end()) {
-                    out += it->second;
-                    i = semi + 1;
-                    continue;
-                }
-            }
-        }
-
-        out.push_back(c);
-        ++i;
-    }
-    return out;
-}
 
 std::string CollapseObfuscation(const std::string& text) {
     std::string out;
@@ -147,8 +55,20 @@ std::string CollapseObfuscation(const std::string& text) {
 }
 
 std::string NormalizeForMatching(const std::string& text) {
-    // 1. Markup out of the way first, so "<b>vi</b>agra" joins back up.
-    std::string s = (text.find('<') != std::string::npos) ? StripHtml(text) : text;
+    // 1. Markup out of the way first, so "<b>vi</b>agra" joins back up (an
+    //    inline element leaves no space; a block does), entities decoded.
+    std::string s = (text.find('<') != std::string::npos) ? UltraCanvas::HTML::ExtractPlainText(text)
+                                                          : text;
+    // Typographic dashes and the ellipsis read as their ASCII spelling, so a
+    // term written "-" or "..." matches "&mdash;" and "&hellip;" too.
+    for (const auto& [from, to] : { std::pair<const char*, const char*>{"\xE2\x80\x93", "-"},   // en dash
+                                    {"\xE2\x80\x94", "-"},                                      // em dash
+                                    {"\xE2\x80\xA6", "..."} }) {                              // ellipsis
+        for (size_t at = s.find(from); at != std::string::npos; at = s.find(from, at)) {
+            s.replace(at, 3, to);
+            at += std::char_traits<char>::length(to);
+        }
+    }
 
     // 2. Lowercase, and fold the leet substitutions spam relies on. This runs
     //    over rule terms too, so both sides of a match agree on '@' -> 'a'.

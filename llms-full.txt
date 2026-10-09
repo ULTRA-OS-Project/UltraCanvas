@@ -527,8 +527,14 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `ClassList`, `TextContent`, `FindFirst`, `ForEachElement`; `Document` with
   `Body`, `Head`, `GetElementById`, `title`, `meta`, `styleSheets`,
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -18926,12 +18932,15 @@ show beside its icon.
 ```cpp
 #include "UltraCanvasDesktopShell.h"
 
-for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-    if (!w.skipTaskbar)
-        taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile,
-            [id = w.id](bool) { UltraCanvasDesktopShell::ActivateWindow(id); });
+for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+    if (w.skipTaskbar) continue;
+    const uint64_t id = w.id;
+    taskbar->AddToggleButton("win-" + std::to_string(id), "", w.iconFile, [id](bool on) {
+        if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+        else UltraCanvasDesktopShell::MinimizeWindow(id);
+    });
+}
 
-UltraCanvasDesktopShell::ActivateWindow(id);
 UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
 UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
 DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
@@ -30608,7 +30617,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
-| HTML text | its words, for a list, a search index or a reply quote | `HTML::ExtractPlainText` |
+| HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
 | HTML text | the links, images, headings or any other elements | `HTML::Parser::Parse`, then walk the `Document` or use `HTML::Matches` with a selector |
 | CSS text and your own tree (SVG, XML) | which rules apply to an element | `HTML::StyleSheet::ParseAppend`, then `HTML::MatchingRules<YourTraits>` |
@@ -30657,17 +30666,43 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
-Two helpers need no DOM:
+Two helpers need no DOM of the caller's:
 
 ```cpp
 std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<style> bodies dropped,
                                                      // entities decoded, whitespace collapsed
+std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
 ```
 
-`ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+`ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
+message list's preview line, a search index or a keyword filter want: block
+boundaries, `<br>` and pictures become spaces, everything is one line. An
+inline element (`<b>`, `<span>`, `<a>` ...) leaves no space, as on screen -
+`wor<b>ld</b>` is "world", and a spam word split by formatting
+(`<b>via</b>gra`) is still the word. A no-break space counts as a space.
+
+`ExtractPlainText(const Node&)` gives the same single line for an element
+already parsed - what a link, a cell or a heading says, read from the DOM.
+UltraMail's threat scan reads every link's text that way while it walks the
+parsed page for `a[href]`, `area[href]` and `form[action]`.
+
+`PlainTextLayout::Lines` is the text a person reads or quotes - an HTML mail
+shown as plain text, the quote in a reply. It parses the page and writes it
+the way a browser's `innerText` does, simplified:
+
+- a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
+  own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
+  `<hr>` - never more than one blank line in a row;
+- `<br>` a line break, two of them a blank line;
+- the cells of a table row a tab apart;
+- list items as `- item`, or `1. item` in an `<ol>` (from its `start`);
+- `<pre>` as written; elsewhere whitespace collapses to single spaces, and a
+  no-break space is a space;
+- what a browser does not show is left out: `<head>`, `<script>`, `<style>`,
+  `<template>`, `<select>`, `<svg>`, the `hidden` attribute, and an inline
+  `display: none`, `visibility: hidden` or `mso-hide: all` (a mail's hidden
+  preheader). A class that hides through a style sheet is not looked up.
 
 ## CSS: the style sheet model
 
@@ -30874,11 +30909,7 @@ and the check blocks new ones:
 | Site | Has its own | Replace with |
 |---|---|---|
 | `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
+| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
 
 ## Limits
 
@@ -71686,6 +71717,7 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 FILE: Docs/Modules/UltraAI/README.md
 ==============================================================================
 
+<!-- Generated from UltraAI/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraAI
 
 **Provider-agnostic AI capability module for ULTRA OS.**
@@ -71736,7 +71768,6 @@ tests run without any network or external model.
 | `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
-| `elevenlabs` | `ITextToSpeech` | cloud (ElevenLabs), directly or through a hosted relay via `baseUrl` | `ULTRAAI_ADAPTER_ELEVENLABS` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
@@ -71793,11 +71824,12 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
-│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/WebSocket), base64, multipart, job polling, cassettes
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
 │   ├── anthropic/                 # Anthropic Messages API (ITextLLM)
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
+│   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -71874,21 +71906,22 @@ cmake -S UltraAI -B build \
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
 | llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
+| ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
-| Unit tests | Complete (12 executables, all passing) |
+| Unit tests | Complete (13 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
 
 ## Design documents
 
-* [`Docs/UltraNetIntegration.md`](Docs/UltraNetIntegration.md) —
+* [`Docs/UltraNetIntegration.md`](../../../UltraAI/Docs/UltraNetIntegration.md) —
   how network adapters use UltraNet (HTTP / WebSocket / SSE),
   threading model, adapter checklist.
-* [`Docs/UltraVault.md`](Docs/UltraVault.md) —
+* [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
 
 ---
@@ -74405,6 +74438,7 @@ account (Basic app-password auth) — phase 1 is exercisable read-only.
 FILE: Docs/Modules/UltraNet/README.md
 ==============================================================================
 
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
@@ -74443,10 +74477,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
@@ -76738,6 +76775,7 @@ The video editing and conversion engine. Probe any media file, pull frames and f
 FILE: Docs/Modules/VirtualFS/README.md
 ==============================================================================
 
+<!-- Generated from VirtualFS/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # VirtualFS
 
 **Unified virtual file system layer for ULTRA OS.**
@@ -76804,6 +76842,40 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 | LZ4 | `VirtualFSCompressionMethod::LZ4` | Fastest | Moderate | Real-time |
 | LZX | `UCVFSCompressionType::LZX` (bridge) | Moderate | Good | CAB, CHM, WIM |
 | Brotli | `VirtualFSCompressionMethod::Brotli` | Moderate | Excellent | Web content |
+
+### Raw buffer compression (no archive container)
+
+`VirtualFSCompression.h` exposes the compression codecs directly for
+modules that need a compress/decompress primitive without an archive
+container — e.g. the UltraWeb bundler compressing `.ucpkg` section
+payloads, or FileLoader transparently decompressing `.gz`/`.zst`/`.lz4`
+content on load:
+
+```cpp
+#include <VirtualFS/VirtualFSCompression.h>
+using namespace VirtualFS;
+
+std::vector<uint8_t> compressed;
+VirtualFS_CompressBuffer(input, compressed, VirtualFSCompressionMethod::LZ4);
+
+std::vector<uint8_t> restored;
+VirtualFS_DecompressBuffer(compressed, restored);   // method auto-detected
+```
+
+Supported methods: `Store`, `Deflate` (zlib/gzip), `Zstd`, `LZ4`
+(standard LZ4 frame format, interoperable with any LZ4F decoder), and
+`Brotli` — each available only when the matching `VIRTUALFS_USE_*`
+option is enabled; query with `VirtualFS_IsCompressionMethodAvailable()`.
+`VirtualFS_DetectCompressionMethod()` identifies a stream by its magic
+bytes (Brotli excepted — it has none).
+
+Note on the UltraCanvas bridge: `UCVFSBridge::LZ4Compress` (in
+`UltraCanvasVirtualFSBridge`) predates this API and emits the LZ4
+*block* format, which has no header and is **not** readable by frame
+decoders — the two LZ4 outputs are not interchangeable. New code and
+anything crossing a process or network boundary (e.g. `.ucpkg`) should
+use this frame-format API; migrating the bridge to delegate here is a
+planned cleanup.
 
 ---
 

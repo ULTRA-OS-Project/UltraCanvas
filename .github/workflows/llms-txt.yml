@@ -1,8 +1,10 @@
 name: llms.txt sync
 
-# Keeps the generated LLM docs exports (llms.txt / llms-full.txt) in sync
-# with the markdown corpus. Fails when a docs change was committed without
-# rerunning scripts/generate_llms_txt.py.
+# Keeps the generated LLM docs exports (llms.txt / llms-full.txt) and the
+# docs-tree mirrors of the module READMEs (Docs/Modules/<Name>/README.md,
+# from <Name>/README.md; the list is MIRRORED_READMES in the script) in
+# sync with the markdown corpus. Fails when a docs change was committed
+# without rerunning scripts/generate_llms_txt.py.
 
 # Trigger policy matches build.yml: `pull_request` covers feature branches, so
 # listing them under `push` too would run this check twice per commit.
@@ -12,6 +14,9 @@ on:
     paths:
       - 'Docs/**'
       - 'README.md'
+      - 'UltraAI/README.md'
+      - 'UltraNet/README.md'
+      - 'VirtualFS/README.md'
       - 'Masterfile_modules.md'
       - 'scripts/generate_llms_txt.py'
       - 'llms.txt'
@@ -32,6 +37,9 @@ on:
     paths:
       - 'Docs/**'
       - 'README.md'
+      - 'UltraAI/README.md'
+      - 'UltraNet/README.md'
+      - 'VirtualFS/README.md'
       - 'Masterfile_modules.md'
       - 'scripts/generate_llms_txt.py'
       - 'llms.txt'
@@ -48,12 +56,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Regenerate llms.txt / llms-full.txt
+      - name: Regenerate llms.txt / llms-full.txt and the README mirror
         run: python3 scripts/generate_llms_txt.py
       - name: Verify committed files are up to date
         run: |
-          if ! git diff --exit-code -- llms.txt llms-full.txt; then
-            echo '::error::llms.txt / llms-full.txt are out of date.'
+          if ! git diff --exit-code -- llms.txt llms-full.txt Docs/Modules/UltraAI/README.md Docs/Modules/UltraNet/README.md Docs/Modules/VirtualFS/README.md; then
+            echo '::error::llms.txt / llms-full.txt / the Docs/Modules README mirrors are out of date.'
             echo 'Run: python3 scripts/generate_llms_txt.py  and commit the result.'
             exit 1
           fi
