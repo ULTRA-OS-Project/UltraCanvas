@@ -1,3 +1,122 @@
+#### 2026-10-09 *0.9.216*
+- **CI: the Android backend check has a time limit of its own.** The job
+  had none, so anything that hung in it ran into GitHub's six-hour default:
+  on 2026-10-07 a stalled `apt-get` held a pull request's checks for five
+  hours. The apt step has since been given a watchdog and a 20-minute limit
+  (`scripts/ci-apt.sh`); the job as a whole now stops after 30 minutes, which
+  covers its other three steps too (the job normally takes 75 seconds).
+- **CI: the caches move off Node.js 20.** `actions/cache@v4` (the ccache and
+  macOS vcpkg caches in the Build workflow, the sysroot cache in the
+  WebAssembly one) targets Node.js 20, which GitHub's runners no longer run:
+  every Build leg ended with "Node.js 20 is deprecated … being forced to run
+  on Node.js 24: actions/cache@v4". It is `actions/cache@v5` now, the Node.js
+  24 release; the inputs and outputs the workflows use are unchanged. The
+  WebAssembly workflow's `actions/upload-artifact@v4` moves to v6, the version
+  the Build workflow already uses.
+- **CI: the WebAssembly workflow installs Emscripten with emsdk itself.**
+  `mymindstorm/setup-emsdk@v14` targets Node.js 20 too, and every run of
+  the workflow carried the same warning for it. The step now clones emsdk
+  and runs `emsdk install` and `emsdk activate` for the requested version,
+  then hands the later steps the same `PATH`, `EMSDK` and `EMSDK_NODE` the
+  action did. The toolchain is no longer cached; it downloads in a minute or
+  two on a job that only runs when started by hand.
+- **`ULTRACANVAS_DEVICE_BACKENDS` chooses which device backends are
+  searched.** A comma-separated list of backend names (`eSCL,IPP`; case
+  ignored). When it is set, `IODeviceManager::EnumerateDevices()` runs only
+  those. That leaves out a backend that is slow and finds nothing wanted,
+  such as SANE probing every port it knows of when only network scanners are
+  used. A category none of whose backends is named is reported as an error,
+  as one with no backend is, and its devices are left as they were rather
+  than dropped. `IODeviceScannerESCLLiveTest` sets it to `eSCL`, which brings
+  the test from 5 seconds or more down to under 2. Tested in
+  `IODeviceManagerTest`.
+- **Trust on first use is tested on macOS and Windows TLS as well as
+  Linux.** `IODeviceScannerESCLLiveTest` was Linux-only, so the device trust
+  had only been run on libcurl over OpenSSL. It now builds on Windows too,
+  starting its scanner and `openssl` there through `CreateProcessW` and
+  making its certificates from a configuration file of its own. The new
+  `ULTRACANVAS_BUILD_DEVICE_TLS_TESTS` builds it without the full test
+  suite, and the macOS rows (Apple's system libcurl) and Windows rows
+  (Schannel, MSYS2's `curl-winssl`) run it with a skip treated as a failure.
+  CMake now finds Python 3 and `openssl` and passes them to the test.
+- **A disabled `UltraCanvasTextInput` now looks disabled.** It drew exactly as
+  an enabled one - white face, the normal border, black text - so a field
+  that could not be typed into gave no sign of it (UltraClaude's locked
+  folder field looked editable). `TextInputStyle` gains
+  `disabledBackgroundColor`, `disabledBorderColor` and `disabledTextColor`,
+  defaulting to the framework's `Colors::ControlDisabled`,
+  `ControlDisabledBorder` and `TextDisabled`, and a disabled field draws with
+  them and hides its clear button. The `Outlined()` and `Underlined()`
+  presets keep their transparent face. Documented in
+  `UltraCanvasTextInputExamples.md`.
+- **Trusting a scanner on first use is tested on every Linux CI run.** The new
+  `IODeviceScannerESCLLiveTest` scans over `https://` from a scanner the test
+  starts itself, `Tests/IODeviceScannerESCLLiveScanner.py`. There is no
+  reference eSCL scanner to run the way `ippeveprinter` is run for IPP, so
+  this one answers the four eSCL calls over TLS only, with self-signed
+  certificates the test makes with `openssl`, and logs every request it gets.
+  The test checks that:
+  - first contact sends nothing but a bare `HEAD /` before the scanner's key
+    is known;
+  - the key kept is the one in its certificate, under the make and model the
+    scanner reports;
+  - a feeder run, a flatbed page and a grey page are scanned over the pinned
+    connection;
+  - the scanner restarted with a different certificate is refused before any
+    request reaches it, and the key kept is not replaced;
+  - forgetting the key lets the new one be learned;
+  - with learning switched off, the scanner is refused.
+
+  CI's Linux rows set `ULTRACANVAS_TEST_ESCL_REQUIRED`, so a skip (no
+  Python 3 or `openssl`) fails the run. The keys go to a file of the test's
+  own, never the user's.
+- **The SDKs are release assets, and the Windows and macOS bundles are
+  smaller.** `.github/workflows/build.yml` gains `publish-sdk`: every release
+  build of `main` (the dispatch `changelog-fold.yml` sends for its version
+  commit) creates the GitHub release `v<version>`, with the version's
+  changelog section as its notes, and attaches the six
+  `UltraCanvas-SDK-<OS>-<version>-<arch>` archives, so
+  `releases/download/v<version>/<archive>` is a fixed address anyone can
+  fetch (`Docs/UltraCanvasSDK.md`). `scripts/sdk-bundle-deps.sh` now tells
+  the public pkg-config closure (`Requires`) from the packages reached only
+  through `Requires.private`: the former come whole, the latter contribute
+  their `.pc` files alone, and a static archive with a DLL or dylib twin is
+  left out; the run-time DLLs still come from the core's import-table walk.
+- **A focused `UltraCanvasTextInput` shows its focus border again.**
+  `Render` computed the frame colour from the state and then drew
+  `style.borderColor` regardless, so `focusBorderColor` never appeared: a
+  field with the keyboard looked like every other one, unlike the dropdown,
+  spinner, pickers and chip, and the focus colours UltraFiler's rename field
+  and UltraDesktop's clipboard search set had no effect. The frame now takes
+  the disabled border, `focusBorderColor` while focused, or `borderColor`;
+  validation still draws its own coloured border over it. The unused
+  private `GetBorderColor()` is gone.
+- **CI: the WebAssembly build names its Emscripten version.** The workflow
+  installed `latest` unless told otherwise, so the compiler moved to every
+  new emsdk release, a new major one included, while the cached sysroot,
+  keyed on the word `latest`, stayed built by whichever release came first.
+  It installs 6.0.11 now, the newest release of the 6.0 line the backend was
+  validated with, and `UltraCanvas/OS/WASM/README.md` names the same
+  version; a run can still ask for another one.
+- **CI: the WebAssembly build's glib gets the meson it needs.** The
+  workflow installed meson from Ubuntu 24.04 (1.3.2), and the sysroot's glib
+  (`wasm-vips-2.89.3`) refuses anything older than 1.4, so the first run of
+  the workflow stopped in `meson setup` for glib. It installs meson 1.12.1
+  from PyPI now, and `build-wasm-sysroot.sh` names the 1.4 floor among its
+  requirements.
+- **CI: the WebAssembly demo finds the sysroot's libraries.** CMake runs
+  the host's `pkg-config`, and `emcmake` does not pass it
+  `EM_PKG_CONFIG_PATH`, so the demo's configure step looked for cairo on the
+  host and failed after the whole sysroot had built. The step puts the
+  sysroot on `PKG_CONFIG_PATH` and `PKG_CONFIG_LIBDIR`, as
+  `build-wasm-sysroot.sh` already does, and the README and the demo's
+  `CMakeLists.txt` give the same two exports. The sysroot is cached as soon
+  as it is built rather than only when the whole job passes, so a failure
+  in the demo no longer costs the next run a 20-minute rebuild.
+- **CI: the WebAssembly demo builds with one job per core.** A bare
+  `cmake --build --parallel` is `make -j` without a limit, and the demo's
+  build ran out of memory with hundreds of compilers at once.
+
 #### 2026-10-09 *0.9.215*
 - **The Windows CI legs survive a slow MSYS2 mirror.** The setup action did
   the package database sync, the upgrade and the install itself, with no
