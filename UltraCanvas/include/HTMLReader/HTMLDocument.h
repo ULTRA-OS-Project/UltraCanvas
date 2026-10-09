@@ -3,8 +3,13 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.3.1 - merged: the Lines layout (1.3.0) beside the inline-aware single
+//                  line and the node overload (1.2.1, 1.2.2), made side by side
 // Version: 1.3.0 - ExtractPlainText(html, PlainTextLayout::Lines): the text with
 //                  its line structure, for a person to read or quote
+// Version: 1.2.2 - ExtractPlainText(const Node&): the text of a parsed element
+// Version: 1.2.1 - ExtractPlainText: inline elements keep a word whole; a no-break
+//                  space is a space
 // Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
 //                  is exact, then ASCII case-insensitive
 // Version: 1.1.0 - doctype and quirksMode
@@ -120,8 +125,11 @@ std::string DecodeEntities(const std::string& text);
 
 // How ExtractPlainText lays the text out.
 enum class PlainTextLayout {
-    // All on one line, every run of whitespace a single space: for search,
-    // indexing and other paths that never show the text.
+    // All on one line, every run of whitespace - a no-break space counts - a
+    // single space. A block, <br> or picture separates words; an inline
+    // element (<b>, <span>, <a> ...) does not, as on screen - "wor<b>ld</b>"
+    // is "world". For search, indexing, matching and other paths that never
+    // show the text.
     SingleLine,
     // As a reader sees it - a browser's innerText, simplified: a block
     // element (<p>, <div>, <li>, <tr>, a heading) on lines of its own, a
@@ -139,6 +147,10 @@ enum class PlainTextLayout {
 // says (one line by default).
 std::string ExtractPlainText(const std::string& html,
                              PlainTextLayout layout = PlainTextLayout::SingleLine);
+
+// The SingleLine text of an element already parsed (its children, by the
+// same rules): what a link, a cell or a heading says, read from the DOM.
+std::string ExtractPlainText(const Node& node);
 
 } // namespace HTML
 } // namespace UltraCanvas
