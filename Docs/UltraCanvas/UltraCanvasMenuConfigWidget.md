@@ -1,5 +1,7 @@
 # Menu Configuration Widget
 
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); -->
+
 `UltraCanvasMenuConfigWidget` lets end users customise an application's menus at
 runtime: reorder entries, add or remove commands, group them into submenus, and
 save the result so it survives a restart. It works together with two supporting
@@ -12,7 +14,7 @@ reconfigurable.
 Menus are normally built imperatively with lambdas:
 
 ```cpp
-menuBar = MenuBuilder("Bar")
+menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
     .AddSubmenu("File", {
         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
     })

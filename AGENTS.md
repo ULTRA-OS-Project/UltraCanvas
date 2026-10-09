@@ -616,7 +616,15 @@ number anywhere else, and never introduce a new literal copy of one:
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
    it compiles the doc's C++ against the headers and reports each function,
    field or signature the headers don't have (Linux, clang++). All
-   `*Examples.md` docs pass it.
+   `*Examples.md` docs pass it. CI runs it over every component doc
+   (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
+   changes, and fails on any finding (`scripts/doc_examples_baseline.txt`,
+   which held the findings that predated the check, is empty and stays so).
+   Changing a header can therefore fail a doc you did not touch: fix that
+   doc in the same change. A name a snippet takes from the application - a
+   `window`, a callback the reader writes, a version macro - is declared in
+   a `<!-- doc-check: ... -->` comment with its real type, never a framework
+   API that does not exist.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and

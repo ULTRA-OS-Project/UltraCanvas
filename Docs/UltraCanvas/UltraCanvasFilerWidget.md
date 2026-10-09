@@ -1,5 +1,7 @@
 # UltraCanvasFilerWidget
 
+<!-- doc-check: struct RemoteDrives { bool List(const std::string& path, std::vector<FilerEntry>& out, std::string& error); std::string ListingStatus(const std::string& path); bool QueueDelete(const std::vector<FilerEntry>& entries, std::string& error); bool QueueRename(const std::string& path, const std::string& newName, std::string& error); bool QueueMakeDirectory(const std::string& folderPath, const std::string& name, std::string& error); bool QueueUpload(const std::string& folderPath, const std::vector<std::string>& localFiles, std::string& error); bool QueueDownload(const std::string& folderPath, const std::vector<std::string>& remoteFiles, std::string& error); }; std::shared_ptr<RemoteDrives> drives; std::string utf8Path; FileFilter filter; std::unordered_set<std::string> favorites; size_t entryIndex; std::string UserHomeDir(); void OpenInNewTab(const std::string& path); void StartSubfolderScan(const std::string& query); -->
+
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
 tiles, treemap cells, the hover icon menu and the scrollbar are all painted
@@ -729,6 +731,9 @@ too: Mobipocket DRM encrypts the text records only. A PalmDOC `.prc` without
 pictures keeps the glyph.
 
 ```cpp
+#include "Plugins/Documents/eBook/EPUBEngine.h"
+#include "Plugins/Documents/eBook/MOBIEngine.h"
+
 std::vector<uint8_t> bytes = EPUBEngine::ReadCoverImageFromFile(utf8Path);  // or MOBIEngine::
 if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);   // JPEG/PNG/GIF/SVG/BMP
 ```
@@ -1127,19 +1132,29 @@ slow drive never holds the UI thread.
 
 ```cpp
 filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueDelete(victims, error);   // queued, not yet done
+};
 filer->remoteRename = [drives](const std::string& path,
                                const std::string& newName,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueRename(path, newName, error);
+};
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
-                                      std::string& error) { … };
+                                      std::string& error) {
+    return drives->QueueMakeDirectory(folderPath, name, error);
+};
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
-                               std::string& error) { … };
+                               std::string& error) {
+    return drives->QueueUpload(folderPath, localFiles, error);
+};
 filer->remoteDownload = [drives](const std::string& folderPath,
                                  const std::vector<std::string>& remoteFiles,
-                                 std::string& error) { … };
+                                 std::string& error) {
+    return drives->QueueDownload(folderPath, remoteFiles, error);
+};
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -1746,9 +1761,9 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
-                              // a taken name asks Replace (red) / Cancel with the
-                              // two entries side by side
+filer->StartRename(entryIndex);  // inline rename editor (Enter commits, Esc cancels);
+                                 // a taken name asks Replace (red) / Cancel with the
+                                 // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -2338,10 +2353,22 @@ The badge is painted through `UltraCanvasWindowBase::SetDragOverlay()`, a
 window-level hook for content that has to be visible above every element:
 
 ```cpp
-window->SetDragOverlay(this, badgeRectInWindowCoords,
-        [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
-...
-window->ClearDragOverlay(this);   // when the gesture ends
+// The element running the gesture owns the overlay (the filer does this on
+// every mouse move of an item drag).
+class DragSource : public UltraCanvasUIElement {
+public:
+    void UpdateBadge(const Rect2Di& badgeRectInWindowCoords) {
+        if (auto* window = GetWindow())
+            window->SetDragOverlay(this, badgeRectInWindowCoords,
+                    [this](IRenderContext* ctx, const Rect2Di& rect) { DrawBadge(ctx, rect); });
+    }
+    void HideBadge() {   // when the gesture ends
+        if (auto* window = GetWindow()) window->ClearDragOverlay(this);
+    }
+
+private:
+    void DrawBadge(IRenderContext* ctx, const Rect2Di& rect);
+};
 ```
 
 Setting it again moves it (both the rectangle it leaves and the one it enters
@@ -2513,7 +2540,7 @@ lets you name it — e.g. `"Open path (in new tab)"`. The item calls
 ```cpp
 filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
 filer->onOpenPath = [this](const FilerEntry& e) {
-    OpenInNewTab(std::filesystem::path(e.path).parent_path().string());
+    OpenInNewTab(PathToUtf8(PathFromUtf8(e.path).parent_path()));
 };
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
@@ -2565,8 +2592,9 @@ When the filter hides every entry the widget shows "No matches for "…"", and
 a host can center an escalation button under that notice:
 
 ```cpp
-filer->SetFilterEmptyAction("Scan sub folder", [this]() {
-    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
+// A raw pointer: the filer owns this callback, so a shared_ptr would keep it alive.
+filer->SetFilterEmptyAction("Scan sub folder", [this, view = filer.get()]() {
+    StartSubfolderScan(view->GetNameFilter());   // e.g. AppendToFileList(batch)
 });
 ```
 

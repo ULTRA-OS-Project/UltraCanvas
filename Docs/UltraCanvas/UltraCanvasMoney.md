@@ -80,10 +80,10 @@ behaves identically on every platform.
 ## German VAT
 
 ```cpp
-net.TaxOnNet(190)        // tax on a net amount:      net * 190/1000
-net.GrossFromNet(190)    // gross from net:           net * 1190/1000
-gross.TaxInGross(190)    // tax contained in a gross: gross * 190/1190
-gross.NetFromGross(190)  // net from gross:           gross - TaxInGross(190)
+Money vat      = net.TaxOnNet(190);       // tax on a net amount:      net * 190/1000
+Money total    = net.GrossFromNet(190);   // gross from net:           net * 1190/1000
+Money included = gross.TaxInGross(190);   // tax contained in a gross: gross * 190/1190
+Money base     = gross.NetFromGross(190); // net from gross:           gross - TaxInGross(190)
 ```
 
 `permille` is thousandths: 190 is 19 %, 70 is 7 %, 0 is 0 %, 25 is 2,5 %.

@@ -1,5 +1,7 @@
 # UltraCanvasDiagramViewport
 
+<!-- doc-check: struct MyNode { double x = 0; double y = 0; double width = 0; double height = 0; }; class MyDiagram : public UltraCanvasUIElement { public: void SyncViewportSize(); DiagramContentBounds ComputeContentBounds() const; bool HandleMouseWheel(const UCEvent& event); bool HandleMinimapMouseDown(const Point2Di& mousePos); bool HandleControlsMouseDown(const Point2Di& mousePos); void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override; void RenderContentInWorldSpace(IRenderContext* ctx); void RenderMinimap(IRenderContext* ctx); void RenderControls(IRenderContext* ctx); UltraCanvasDiagramViewport viewport; std::map<std::string, MyNode> nodes; bool isDraggingMinimap = false; bool isInteractive = true; }; UltraCanvasDiagramViewport viewport; double x; double y; double dx; double dy; double worldX; double worldY; Point2Dd worldPoint; -->
+
 Shared pan / zoom / minimap / controls viewport for canvas-style diagram
 elements.
 
@@ -179,11 +181,14 @@ click always centres the view on the world point drawn under the cursor. Wire it
 on both mouse-down (jump) and mouse-move (drag):
 
 ```cpp
-if (viewport.PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
-    isDraggingMinimap = true;
-    viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
-    RequestRedraw();
-    return true;
+bool MyDiagram::HandleMinimapMouseDown(const Point2Di& mousePos) {   // element-local
+    if (viewport.PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
+        isDraggingMinimap = true;
+        viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
+        RequestRedraw();
+        return true;
+    }
+    return false;
 }
 ```
 
@@ -202,16 +207,19 @@ therefore not fixed** — never hard-code them. Resolve with
 `GetControlButtonRole(index)`, or let `ApplyControlButton` do it:
 
 ```cpp
-int btnIdx = viewport.FindControlButtonAt(mousePos);
-if (btnIdx >= 0) {
-    SyncViewportSize();
-    DiagramControlButton role =
-        viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
-    if (role == DiagramControlButton::ToggleLock) {
-        isInteractive = !isInteractive;   // lock state belongs to the host
+bool MyDiagram::HandleControlsMouseDown(const Point2Di& mousePos) {  // element-local
+    int btnIdx = viewport.FindControlButtonAt(mousePos);
+    if (btnIdx >= 0) {
+        SyncViewportSize();
+        DiagramControlButton role =
+            viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
+        if (role == DiagramControlButton::ToggleLock) {
+            isInteractive = !isInteractive;   // lock state belongs to the host
+        }
+        RequestRedraw();
+        return true;
     }
-    RequestRedraw();
-    return true;
+    return false;
 }
 ```
 

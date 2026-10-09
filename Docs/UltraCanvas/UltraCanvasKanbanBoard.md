@@ -184,14 +184,14 @@ lists Overdue plus every priority actually used on the board.
 Callbacks:
 
 ```cpp
-board->onCardMoved = [](int id, int from, int to) { ... };
-board->onCardAdded = [](int id) { ... };          // Via the editor UI
-board->onCardRemoved = [](int id) { ... };
-board->onCardClick = [](int id) { ... };
-board->onCardDoubleClick = [](int id) { ... };
-board->onSelectionChanged = [](int id) { ... };   // -1 = cleared
-board->onWipExceeded = [](int columnId) { ... };
-board->onBoardChanged = []() { ... };             // Any editor mutation
+board->onCardMoved = [](int id, int from, int to) { /* card moved */ };
+board->onCardAdded = [](int id) { /* added */ };          // Via the editor UI
+board->onCardRemoved = [](int id) { /* removed */ };
+board->onCardClick = [](int id) { /* clicked */ };
+board->onCardDoubleClick = [](int id) { /* double-clicked */ };
+board->onSelectionChanged = [](int id) { /* selected */ };   // -1 = cleared
+board->onWipExceeded = [](int columnId) { /* over WIP limit */ };
+board->onBoardChanged = []() { /* changed */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
 ```
 

@@ -337,6 +337,9 @@ namespace UltraCanvas {
 
         std::string name = options.defaultFileName;
         if (name.empty()) name = "document";
+        // A suggested name without an extension takes the caller's default
+        // (FileDialogOptions::defaultExtension), which also gives SAF its type.
+        name = ApplyDefaultExtension(name, options.defaultExtension);
 
         // SAF wants the new document's MIME type; derive it from the name the
         // app suggested, since that is where the intended format shows.

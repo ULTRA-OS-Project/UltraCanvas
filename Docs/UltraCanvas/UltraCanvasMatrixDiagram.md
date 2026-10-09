@@ -1,5 +1,7 @@
 # UltraCanvasMatrixDiagram
 
+<!-- doc-check: int row; int col; void Log(const std::string& line); -->
+
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
 relationships between two or three ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,

@@ -56,7 +56,7 @@ pcp->SetGroupColors({{"setosa", Color(68, 1, 84)},
                      {"versicolor", Color(33, 145, 140)},
                      {"virginica", Color(253, 231, 37)}});
 
-window->AddElement(pcp.get());
+window->AddChild(pcp);
 ```
 
 Record-oriented input (`SetRecords`) takes `PCPRecord` — values, label, group,

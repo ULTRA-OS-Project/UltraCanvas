@@ -46,13 +46,14 @@ UltraCanvasFileLoader::OpenFileDialog(opts,
 The callback runs when the dialog closes. `DialogResult::OK` always comes with
 at least one path; anything else means the user cancelled. Paths are UTF-8.
 An Open or Save that succeeds is added to the recent-files list unless the
-options say `SetRegisterAsRecent(false)`.
+options say `SetRegisterAsRecent(false)` - by the framework dialog itself
+(`FileDialogConfig::addToRecent`), or by the loader after a native one.
 
 `FileDialogOptions` carries the title, `SetInitialDirectory`,
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
-`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu` and the parent
-window.
+`SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
+`SetDefaultExtension` and the parent window.
 
 ### Building it yourself
 
@@ -85,6 +86,8 @@ A config starts without filters: the dialog then lists every file under an
 | `filterToggles` | Toggle buttons instead of the dropdown |
 | `confirmOverwrite` | Save asks before replacing an existing file (default `true`) |
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
+| `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
+| `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -144,22 +147,35 @@ offered:
   PNG first in the list opens on JPEG rather than saving "holiday.png".
 - With filter toggles on, a name of any type that is on stands; any other
   takes the first one's extension.
+- A name the file system cannot hold is refused with the reason ("… cannot
+  be used as a file name: it contains ":"") and the dialog stays open on it,
+  unless `validateNames` is off. `InvalidFileNameReason(name)` holds the
+  rules for the system it runs on: empty, "." and "..", control characters
+  and names over 255 (bytes on POSIX, UTF-16 units on Windows) everywhere;
+  on Windows also `< > : " / \ | ? *`, a trailing dot or space, and the device
+  names `CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` with any
+  extension. `FileNameRules::Windows` / `Posix` check a name for the other
+  system.
 - Under All files a name without an extension stays without one, so there
-  is no format to pick - unless the config names a `defaultExtension`, which
-  such a name then gets ("photo" -> "photo.png"), before the Replace File
-  question like the rest. Don't add a default extension of your own after
-  the dialog: it would bypass that question. The framework's savers
+  is no format to pick - unless a default extension is given
+  (`FileDialogOptions::SetDefaultExtension("png")`, or
+  `FileDialogConfig::defaultExtension`), which such a name then gets
+  ("photo" -> "photo.png", `ApplyDefaultExtension`), before the Replace
+  File question like the rest. Don't add a default extension of your own
+  after the dialog: it would bypass that question. The framework's savers
   (`UCRasterDocument::SaveToFile`, `UltraCanvasFileLoader::SaveVectorDocument`)
   refuse a name without one with a message asking for an extension.
-  `FileDialogOptions` has no `defaultExtension`: it is the framework
-  dialog's, for a caller that builds the dialog itself.
-- The native dialogs follow the same rule. Windows is given the chosen
-  type's extension as its default (`SetDefaultExtension`) and the result is
-  checked as above; the GTK chooser rewrites the name when the type changes
-  and when it is accepted. Where that produces a different name that is
-  already a file, they ask about replacing it - GTK leaves the chooser open
-  on **No**, Windows cancels. The macOS panel already insists on one of the
-  offered extensions.
+- The native dialogs follow the same rules. Windows is given the chosen
+  type's extension as its default (`SetDefaultExtension`) - the caller's
+  default extension when the type names none, or there are no filters - and
+  the result is checked as above; the GTK chooser rewrites the name when the
+  type changes and when it is accepted. Where that produces a different name
+  that is already a file, they ask about replacing it - GTK leaves the
+  chooser open on **No**, Windows cancels. The macOS panel already insists
+  on one of the offered extensions; when none names one, it is given the
+  default extension as its only one, other extensions still allowed, and
+  adds it and asks itself. Android's document picker is offered the
+  suggested name with the default extension added.
 
 ## Filter toggles
 
