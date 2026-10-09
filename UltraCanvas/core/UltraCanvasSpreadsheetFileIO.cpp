@@ -1,7 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
-// Spreadsheet file I/O implementation (ODS, XLSX, CSV)
-// Version: 1.0.1
-// Last Modified: 2026-10-06
+// Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
+// dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.0.2
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include <stdexcept>   // predeclare std::runtime_error for libspecific/Cairo/ImageCairo.h
@@ -1773,6 +1774,8 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
         return LoadODS(filePath);
     } else if (ext == ".xlsx") {
         return LoadXLSX(filePath);
+    } else if (ext == ".xls") {
+        return LoadXLS(filePath);
     } else if (ext == ".csv") {
         return LoadCSV(filePath);
     } else if (ext == ".tsv") {
@@ -1780,7 +1783,7 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     }
 
     lastError_ = "Unsupported file type '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv: " + filePath;
     return false;
 }
 
@@ -1805,6 +1808,10 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
         CSVExportOptions tsv;
         tsv.fieldSeparator = '\t';
         return SaveCSVWithOptions(filePath, tsv);  // Current sheet, tab delimited
+    } else if (ext == ".xls") {
+        lastError_ = "Saving as Excel 97-2003 (.xls) is not supported; "
+                     "save as .xlsx or .ods instead: " + filePath;
+        return false;
     }
 
     lastError_ = "Unsupported save format '" + ext +

@@ -112,6 +112,25 @@ RasterPixel RasterBlendPixel(const RasterPixel& src, const RasterPixel& dst,
                        static_cast<uint8_t>(std::clamp(std::lround(oa * 255.0f), 0L, 255L)));
 }
 
+RasterPixel RasterReplacePixel(const RasterPixel& src, const RasterPixel& dst, float coverage) {
+    const float c = std::clamp(coverage, 0.0f, 1.0f);
+    if (c <= 0.0f) return dst;
+    // A pixel left with no alpha is stored as (0, 0, 0, 0), as a new
+    // transparent layer is, so a later fill or wand from it matches both.
+    if (c >= 1.0f) return src.a ? src : RasterPixel(0, 0, 0, 0);
+    const float sa = src.a / 255.0f, da = dst.a / 255.0f;
+    const float oa = da + (sa - da) * c;
+    if (oa * 255.0f < 0.5f) return RasterPixel(0, 0, 0, 0);
+    // Interpolate premultiplied so the colour of a transparent end does not
+    // tint the other.
+    auto ch = [&](uint8_t s, uint8_t d) -> uint8_t {
+        const float v = (d * da + (s * sa - d * da) * c) / oa;
+        return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
+    };
+    return RasterPixel(ch(src.r, dst.r), ch(src.g, dst.g), ch(src.b, dst.b),
+                       static_cast<uint8_t>(std::clamp(std::lround(oa * 255.0f), 0L, 255L)));
+}
+
 // ===========================================================================
 // LAYER
 // ===========================================================================

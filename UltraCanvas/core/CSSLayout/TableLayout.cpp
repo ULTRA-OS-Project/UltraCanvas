@@ -24,6 +24,9 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
+// Version: 1.5.0 - the cells' width is the column width while their row's height is
+//                 measured (widthSetByParent): a width="50%" cell no longer
+//                 measured its content at half its column
 // Version: 1.4.0 - merged with main's 1.2.0 (MinContentWidth shared with block
 //                 layout for floats)
 // Version: 1.3.0 - a table's extra height goes to rows without a set height; a
@@ -32,7 +35,7 @@
 // Version: 1.2.0 - a percentage height resolves against a block parent's set height
 // Version: 1.2.0 (main) - MinContentWidth shared with block layout (floats)
 // Version: 1.1.0 - max-width caps the table's width
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -199,6 +202,10 @@ namespace UltraCanvas {
                     if (!k || !isInFlowItem(*k)) continue;
                     Cell cell;
                     cell.el = k.get();
+                    // Its width is the column's: an Exact width from here is
+                    // the used one, its own px / % width already went into
+                    // the column (MeasureFlex and the block path honour it).
+                    k->widthSetByParent = true;
                     GridItem gi;
                     if (std::holds_alternative<GridItem>(k->layoutItem.data))
                         gi = std::get<GridItem>(k->layoutItem.data);
@@ -373,11 +380,13 @@ namespace UltraCanvas {
 
                 const bool authoritative = c.horizontal.mode == ConstraintMode::Exact &&
                                            c.vertical.mode   == ConstraintMode::Exact;
+                const bool usedWidth = authoritative ||
+                    (e.widthSetByParent && c.horizontal.mode == ConstraintMode::Exact);
                 auto specW = resolveDimension(e.size.width, parentInline, ctx);
 
                 // The table's content width (spacing included).
                 float tableW;
-                if (authoritative) {
+                if (usedWidth) {
                     tableW = std::max(0.f, c.horizontal.available - frameH);
                 } else if (specW) {
                     tableW = e.box.boxSizing == BoxSizing::BorderBox
@@ -389,7 +398,7 @@ namespace UltraCanvas {
                 }
                 // max-width caps an explicit or auto width (the used width a
                 // parent imposes is already capped).
-                if (!authoritative && e.boxConstraints) {
+                if (!usedWidth && e.boxConstraints) {
                     if (auto mx = resolveDimension(e.boxConstraints->maxWidth, parentInline, ctx)) {
                         const float cap = e.box.boxSizing == BoxSizing::BorderBox ? *mx - frameH : *mx;
                         tableW = std::min(tableW, std::max(0.f, cap));

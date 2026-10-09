@@ -44,7 +44,9 @@ and **UltraDatabase** (local store) modules.
 > service's icon for a known sender, otherwise the sender's initial, framed in
 > the colour of the verdict (contact / business contact / new / advertisement /
 > spam / scam) — and each downloaded body is **scanned for phishing markers**
-> once, where it is cached, with the verdict kept in the local store. See
+> and for the patterns of known scams (romance scams, advance-fee letters,
+> cryptocurrency scams) once, where it is cached, with the verdict kept in the
+> local store; any mail about cryptocurrency gets a word of caution. See
 > [`Docs/UltraMail/SenderBadges.md`](../../Docs/UltraMail/SenderBadges.md).
 > HTML message bodies are **rendered natively** in the preview through the
 > HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +

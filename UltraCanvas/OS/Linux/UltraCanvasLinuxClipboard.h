@@ -10,8 +10,11 @@
 // a connection and thread of its own, started the first time something asks
 // whether the clipboard changed, reports every new owner - an image or a file
 // copy as much as a text. Without XFixes the text is compared as before.
-// Version: 1.3.0
-// Last Modified: 2026-10-06
+// A copy too large for one X request travels in pieces (ICCCM INCR), both
+// ways: one read from another program is followed piece by piece, and one
+// served from here is sent that way above IncrChunkSize().
+// Version: 1.4.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -53,6 +56,7 @@ namespace UltraCanvas {
         Atom atomGnomeCopiedFiles;   // x-special/gnome-copied-files ("copy\n<uris>" / "cut\n<uris>")
         Atom atomKdeCutSelection;    // application/x-kde-cutselection ("0" copy / "1" cut)
         Atom atomPasswordManagerHint; // x-kde-passwordManagerHint ("secret": keep out of histories)
+        Atom atomIncr;                // INCR: the copy follows in pieces
 
         // ===== CLIPBOARD STATE =====
         std::chrono::steady_clock::time_point lastChangeCheck;
@@ -72,6 +76,29 @@ namespace UltraCanvas {
         std::vector<uint8_t> selectionData;
         std::string selectionFormat;
         bool selectionReady;
+        bool reading = false;          // a ReadClipboardData is waiting for its answer
+        Atom readTarget = None;        // ...for this target
+        std::chrono::steady_clock::time_point readDeadline;
+        // An answer arriving in pieces (INCR): the owner writes each piece to
+        // incrProperty on our window, we read and delete it, an empty piece ends it.
+        bool incrReceiving = false;
+        Atom incrProperty = None;
+        Atom incrType = None;
+        std::vector<uint8_t> incrData;
+
+        // ===== SELECTION SERVING IN PIECES (INCR) =====
+        // One per requestor still taking a large copy: the next piece is
+        // written when the requestor deletes the last one.
+        struct OutgoingIncr {
+            Window requestor = 0;
+            Atom property = None;
+            Atom type = None;
+            std::shared_ptr<const std::vector<uint8_t>> payload;
+            size_t offset = 0;
+            long savedEventMask = 0;   // what this client listened to on the requestor before
+            std::chrono::steady_clock::time_point lastActivity;
+        };
+        std::vector<OutgoingIncr> outgoingIncr;
 
         // ===== SELECTION SERVING (we own the clipboard) =====
         // Everything the current clipboard contents can be delivered as:
@@ -81,13 +108,18 @@ namespace UltraCanvas {
         std::vector<std::pair<Atom, std::vector<uint8_t>>> offeredTargets;
 
         // ===== OWNERSHIP TRACKING =====
-        bool ownsClipboard;
-        bool ownsPrimary;
+        bool ownsClipboard = false;
+        bool ownsPrimary = false;
         std::string clipboardTextData;  // Our clipboard data when we own it
 
         // ===== CONSTANTS =====
         static constexpr int SELECTION_TIMEOUT_MS = 1000;
-        static constexpr size_t MAX_CLIPBOARD_SIZE = 10 * 1024 * 1024; // 10MB
+        // Between two pieces of a copy arriving in pieces.
+        static constexpr int INCR_STALL_TIMEOUT_MS = 3000;
+        // A requestor that stops taking pieces for this long is given up on.
+        static constexpr int OUTGOING_INCR_TIMEOUT_MS = 10000;
+        // The largest copy read from another program (a large photo as PNG).
+        static constexpr size_t MAX_CLIPBOARD_SIZE = 128 * 1024 * 1024;
         static UltraCanvasLinuxClipboard* instance;
 
     public:
@@ -125,6 +157,12 @@ namespace UltraCanvas {
 
         // ===== EVENT PROCESSING =====
         static void ProcessClipboardEvent(const XEvent& event);
+        // A PropertyNotify that belongs to a transfer in pieces (or to the
+        // clipboard's own window); true when it was the clipboard's.
+        static bool ProcessClipboardPropertyEvent(const XEvent& event);
+
+        // Payloads larger than this are served in pieces of this size.
+        size_t IncrChunkSize() const;
     private:
         // ===== INITIALIZATION HELPERS =====
         void InitializeAtoms();
@@ -142,6 +180,8 @@ namespace UltraCanvas {
         bool HandleSelectionEvent(const XSelectionRequestEvent& request);
         void HandleSelectionClear(const XSelectionClearEvent& clear);
         bool HandleSelectionNotify(const XSelectionEvent & event);
+        bool HandlePropertyNotify(const XPropertyEvent& event);
+        static Bool IsClipboardEvent(Display* display, XEvent* event, XPointer self);
 
         // ===== LOW-LEVEL SELECTION HANDLING =====
         bool ReadClipboardData(Atom selection, Atom target, std::vector<uint8_t>& data, std::string& format);
@@ -150,6 +190,16 @@ namespace UltraCanvas {
         bool WriteClipboardTargets(Atom selection,
                                    std::vector<std::pair<Atom, std::vector<uint8_t>>> offers);
         bool WaitForSelectionNotify(std::vector<uint8_t>& data, std::string& format);
+        // Read `property` from our window and delete it. False when it could
+        // not be read or is larger than MAX_CLIPBOARD_SIZE; `type` None when
+        // it does not exist.
+        bool TakeProperty(Atom property, std::vector<uint8_t>& data, Atom& type);
+        void FinishRead(std::vector<uint8_t> data, Atom type);
+        // Answer with the INCR marker and send `payload` in pieces from here
+        // on; false when the requestor's window is gone.
+        bool StartOutgoingIncr(Window requestor, Atom property, Atom type, const std::vector<uint8_t>& payload);
+        void EndOutgoingIncr(size_t index);
+        void ExpireOutgoingIncr();
 
         // ===== TEXT OPERATIONS =====
         bool ReadTextFromClipboard(Atom selection, std::string& text);

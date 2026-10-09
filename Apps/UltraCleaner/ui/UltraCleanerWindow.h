@@ -79,6 +79,10 @@ private:
     // The run's outcome and its failures, grouped by reason, in a scrolling
     // Markdown dialog.
     void ShowCleanResult(const std::string& summary, const RemovalReport& result);
+    // After a scan the system kept out of somewhere: offers, once a session,
+    // to open the settings page that lets UltraCleaner in (macOS: Full Disk
+    // Access). `advice` is BlockedAccessAdvice() for the scan.
+    void OfferBlockedAccessSettings(const std::string& advice);
 
     // ===== VIEW UPDATES =====
     void RefreshDetailList();
@@ -143,6 +147,9 @@ private:
     // which folder the album page last scanned — what OnTabEntered checks
     // before starting one, so a tab switch never throws away ticks.
     bool junkScannedOnce_ = false;
+    // Whether OfferBlockedAccessSettings has asked yet this session: once is
+    // enough, the status line repeats the advice after every scan.
+    bool blockedAccessOffered_ = false;
     std::string albumScannedFolder_;
     // The category the filter dropdown is on; CategoryCount means "all".
     CleanCategory filterCategory_ = CleanCategory::CategoryCount;

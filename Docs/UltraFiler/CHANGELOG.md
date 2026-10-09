@@ -1,4 +1,4 @@
-#### 2026-10-09 *1.69.0*
+#### 2026-10-09 *1.70.0*
 - **FTP drives log in once per burst, not once per folder.** Opening a
   folder on an FTP drive and reading its subfolders ahead used to connect
   and log in for every one of them - twice on a server without MLSD, such
@@ -10,10 +10,11 @@
   listings are one login and one MLSD. The connection log says *Using the
   open connection to ... - already logged in* where it used to show a new
   login. A delete, rename or new folder still logs in on a connection of its
-  own, which is what keeps it acting on the entry that was chosen. The worker closes the connection once the drive has been quiet for
-  15 seconds (`kRemoteConnectionIdleClose`), while the server has only just
-  answered: closing sends QUIT and waits for the reply, which a network
-  that has gone away since never sends.
+  own, which is what keeps it acting on the entry that was chosen. The
+  worker closes the connection once the drive has been quiet for 15 seconds
+  (`kRemoteConnectionIdleClose`), while the server has only just answered:
+  closing sends QUIT and waits for the reply, which a network that has gone
+  away since never sends.
 - **Folders remembered from the last run are no longer read ahead.** A
   folder's subfolders that `remote-listings.cache` still held were fetched
   again in the background every time their parent was opened, on every
@@ -31,6 +32,19 @@
   changelog). Failures not looked at yet turn it red and show as a count on
   its corner (`UltraCanvasBadge`). The error on the status line and the
   failure alert now point to it there.
+
+#### 2026-10-09 *1.69.0*
+- **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
+  thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and
+  `.ods` files already had, instead of the bare type icon, and selecting one
+  opens it in the detail pane as a spreadsheet - with its sheets, values,
+  formulas, merged cells and formatting. Excel 5.0/95 files work too, and so
+  do the HTML tables, Excel 2003 XML files, renamed `.xlsx` files and text
+  exports that other programs save with the `.xls` extension. `.xlsx` files
+  now open in the detail pane as well: they had a thumbnail but no detail
+  view. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/xls-workbook-reader.md`.
+
 #### 2026-10-08 *1.68.1*
 - **The folder tree follows the window's size.** The tree is kept to the
   room the file display leaves it (and the preview pane, while it is up) as

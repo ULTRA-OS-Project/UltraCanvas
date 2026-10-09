@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.1.0
-**Last Modified:** 2026-10-08
+**Version:** 1.2.0
+**Last Modified:** 2026-10-09
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -39,9 +39,13 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 
 That is what UltraCanvasStart's Project page fetches with its *Download*
 button, for the platform and architecture it runs on and the version it was
-built from. The workflow artifacts (seven days, a signed-in browser) remain
-for pull-request builds, and for the minutes between a merge and the end of
-its release build.
+built from. UltraCanvasStart itself is on the same release, on its own, as
+`UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.gz` on Linux, a `.zip` on
+Windows, a signed and notarized `.dmg` on macOS): the application, the
+libraries it loads and nothing else, for a computer that has neither the
+toolchain nor a clone yet (`Apps/UltraCanvasStart/README.md`). The workflow
+artifacts (seven days, a signed-in browser) remain for pull-request builds,
+and for the minutes between a merge and the end of its release build.
 
 ## Layout
 

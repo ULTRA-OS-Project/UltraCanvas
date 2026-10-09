@@ -456,6 +456,7 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     security.reason = report.Summary();
     security.verifiedDomain = report.verifiedDomain;
     security.verifiedBy     = report.verifiedBy;
+    security.findings       = report.Codes();
     security.attachments = MimeCodec::CountAttachments(raw);   // the list's paperclip
     store_.SetSecurity(accountId, folder, uid, security);
     return path;
@@ -481,6 +482,7 @@ int SyncEngine::RescanStaleVerdicts(const std::string& accountId, const std::str
         security.reason = report.Summary();
         security.verifiedDomain = report.verifiedDomain;
         security.verifiedBy     = report.verifiedBy;
+        security.findings       = report.Codes();
         // attachments stays -1: the count already stored is kept.
         if (store_.SetSecurity(accountId, folder, uid, security)) ++rescanned;
     }

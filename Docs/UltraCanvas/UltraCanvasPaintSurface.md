@@ -42,6 +42,9 @@ save it with no display at all.
   use the separable W3C / Photoshop formulas on straight RGB, then the usual
   alpha "over". `RasterBlendPixel()` exposes the same arithmetic to the brush
   engine so a brush painting in Multiply matches a layer set to Multiply.
+  `RasterReplacePixel()` is the other way to put a colour down: it moves the
+  pixel toward the colour, alpha included, so a transparent colour clears it
+  where "over" would leave it as it was.
 
 ## The document
 
@@ -144,7 +147,9 @@ stroke.End();
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
 anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
-global, optionally sampling a merged layer), `MagicWandMask` (the same
+global, optionally sampling a merged layer; `FillCompositing::Replace` sets
+the region to the colour, alpha included, where the default `Blend` paints
+over it - the way to fill with transparency), `MagicWandMask` (the same
 region test as a coverage map for `UCRasterSelection::SetMask`),
 `FillGradient` (linear / radial / reflected, interpolated in premultiplied
 space), `StampMask` (a coverage map in a colour — what the text tool uses

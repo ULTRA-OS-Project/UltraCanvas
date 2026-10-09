@@ -145,6 +145,38 @@ int main() {
         }
     }
 
+    // ===== WHICH APPLICATION A WINDOW BELONGS TO =====
+    {
+        std::vector<UCDesktopEntry> apps(4);
+        apps[0].name = "UltraPaint";
+        apps[0].startupWMClass = "UltraPaint";
+        apps[0].program = "/usr/bin/UltraPaint";
+        apps[1].name = "GNU Image Manipulation Program";
+        apps[1].program = "/usr/bin/gimp-2.10";
+        apps[1].iconName = "gimp";
+        apps[2].name = "Text Editor";
+        apps[2].iconName = "org.gnome.TextEditor";
+        apps[2].program = "/usr/bin/gnome-text-editor";
+        apps[3].name = "Kate";
+        apps[3].program = "/usr/bin/kate";
+        apps[3].startupWMClass = "kate-editor";
+        auto match = [&apps](const std::string& appClass, const std::string& appName) {
+            DesktopWindowInfo window;
+            window.appClass = appClass;
+            window.appName = appName;
+            const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(window, apps);
+            return entry ? entry->name : std::string("(none)");
+        };
+        Check(match("UltraPaint", "ultrapaint") == "UltraPaint", "StartupWMClass names a window's application");
+        Check(match("Gimp-2.10", "gimp-2.10") == "GNU Image Manipulation Program",
+              "the program's name does, case aside (got " + match("Gimp-2.10", "gimp-2.10") + ")");
+        Check(match("org.gnome.TextEditor", "gnome-text-editor") == "Text Editor",
+              "so does its icon name or program");
+        Check(match("kate-editor", "kate") == "Kate", "StartupWMClass wins over a later guess");
+        Check(match("xterm", "xterm") == "(none)", "a window of no listed application has none");
+        Check(match("", "") == "(none)", "nor has a window with no class");
+    }
+
     // ===== THE SCREENSHOT NAME =====
     {
         const std::string path = UltraCanvasDesktopShell::DefaultScreenshotPath();

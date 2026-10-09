@@ -4,7 +4,7 @@
 
 ## Overview
 
-**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`) and CSV/TSV. Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
+**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, plus import of legacy Excel 97-2003 and 5.0/95 workbooks (`.xls`, see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)). Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
 
 **Version:** 1.0.1
 **Last Modified:** 2026-10-07
@@ -17,7 +17,7 @@
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
 - **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
-- **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection
+- **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
@@ -26,7 +26,7 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
-- **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
+- **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
 ## Header Include
@@ -228,6 +228,11 @@ bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath);
+bool SaveXLSX(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
+// XML file or delimited text saved under the name. Read only.
+bool LoadXLS(const std::string& filePath);
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -585,6 +590,66 @@ double sales      = sheet->GetCellNumber(2, 2);       // raw numeric value
 std::string shown = sheet->GetCellDisplayValue(2, 2); // formatted, e.g. "30,913.90 €"
 std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
+```
+
+## Formula language and functions
+
+Formulas are written as in Excel and LibreOffice, with one difference: a
+reference to another sheet is written `'Sheet Name'.A1` (the OpenDocument
+form), not Excel's `Sheet Name!A1`. Loading an `.xlsx` translates Excel's form
+(and drops the `_xlfn.` prefix Excel stores before its newer functions), and
+saving one writes it back, so a workbook round-trips through Excel; loading an
+`.ods` translates OpenDocument's bracketed form the same way. A sheet name may
+hold spaces, dots and quotes (`'It''s'.A1`). A reference to a sheet that does
+not exist is `#REF!`.
+
+Error values can be written as literals — `=IF(ISNA(A1),#N/A,A1*2)`,
+`=IFERROR(#DIV/0!,0)` — and a number turned into text reads the way the cell
+shows it: `=A1&" pie"` with 12.5 in A1 is `12.5 pie`.
+
+**Calculation order.** A formula reading another formula cell gets that cell's
+current result with its type — a number stays a number. A cell not yet
+calculated in a pass (a total above the rows it adds up, a sheet reading a later
+sheet) is calculated first; a circular reference reads the value it has.
+
+**Functions**, by category (`GetFormulaEngine()->GetFunctionLibrary()
+.GetFunctionNames()` lists them):
+
+| Category | Functions |
+|---|---|
+| Lookup | `VLOOKUP`, `HLOOKUP`, `LOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `CHOOSE`, `ROWS`, `COLUMNS` |
+| Conditional | `SUMIF`, `SUMIFS`, `COUNTIF`, `COUNTIFS`, `AVERAGEIF`, `AVERAGEIFS`, `MAXIFS`, `MINIFS`, `COUNTBLANK`, `SUMPRODUCT`, `SUBTOTAL` |
+| Math | `SUM`, `PRODUCT`, `SUMSQ`, `ABS`, `SQRT`, `POWER`, `EXP`, `LN`, `LOG`, `LOG10`, `MOD`, `QUOTIENT`, `INT`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `TRUNC`, `CEILING`, `FLOOR`, `MROUND`, `EVEN`, `ODD`, `SIGN`, `FACT`, `COMBIN`, `GCD`, `LCM`, `PI`, `RAND`, `RANDBETWEEN`, `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`, `ATAN2`, `SINH`, `COSH`, `TANH`, `DEGREES`, `RADIANS` |
+| Statistical | `AVERAGE`, `MEDIAN`, `MODE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `LARGE`, `SMALL`, `RANK`, `PERCENTILE`, `QUARTILE`, `STDEV`, `STDEVP`, `VAR`, `VARP` (and the `STDEV.S`, `STDEV.P`, `VAR.S`, `VAR.P`, `MODE.SNGL`, `RANK.EQ` names) |
+| Text | `LEN`, `LEFT`, `RIGHT`, `MID`, `FIND`, `SEARCH`, `REPLACE`, `SUBSTITUTE`, `CONCATENATE`, `CONCAT`, `TEXTJOIN`, `UPPER`, `LOWER`, `PROPER`, `TRIM`, `CLEAN`, `REPT`, `EXACT`, `CHAR`, `CODE`, `VALUE`, `TEXT`, `T` |
+| Date and time | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `EDATE`, `EOMONTH`, `DAYS`, `DATEDIF`, `DATEVALUE` |
+| Logical | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH`, `AND`, `OR`, `NOT`, `XOR`, `TRUE`, `FALSE` |
+| Information | `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISNONTEXT`, `ISLOGICAL`, `ISERROR`, `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `NA`, `N` |
+| Financial | `PMT`, `FV`, `PV`, `NPV` |
+
+Text functions count characters, not bytes: `=LEN("ขาย")` is 3. The
+criteria of `SUMIF`, `COUNTIF` and their kin are Excel's: a value (`30`,
+`"apple"`), a comparison (`">25"`, `"<>x"`, `"<=2024-01-01"` is text), and the
+wildcards `*`, `?` and `~` (`"a*"`); `""` matches empty cells.
+
+A function an application registers itself can read its arguments in the
+order they were written, with each range's rows and columns, through the
+evaluator:
+
+```cpp
+SpreadsheetFormulaEngine* engine = sheet->GetFormulaEngine();
+FunctionDefinition rowCount;
+rowCount.name = "ROWSOF";
+rowCount.minArgs = 1;
+rowCount.maxArgs = 1;
+rowCount.implementation = [](const std::vector<FormulaValue>&,
+                             const std::vector<std::vector<FormulaValue>>&,
+                             FormulaEvaluator* evaluator) -> FormulaValue {
+    const auto& args = evaluator->GetCallArguments();
+    if (args.empty() || !args[0].isRange) return FormulaValue::Error(CellErrorType::ValueError);
+    return FormulaValue::Number(args[0].range.end.row - args[0].range.start.row + 1);
+};
+engine->GetFunctionLibrary().RegisterFunction(rowCount);
 ```
 
 ## Column widths

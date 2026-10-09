@@ -41,7 +41,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |
-| Fill | F | Flood fill: tolerance, contiguous, sample merged, opacity |
+| Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
 | Text | T | Click, type, choose font / size / bold |
@@ -51,13 +51,32 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 
+### Filling with a transparent colour
+
+The Fill tool's *Mode* says what the colour does to the pixels it lands on:
+
+| Mode | What a fill does |
+|---|---|
+| Normal | Paints over them. The colour's alpha only says how much of it shows, so alpha 0 changes nothing - the status bar says so instead of ignoring the click |
+| Replace | Puts the colour in their place, alpha included. Alpha 0 makes the area transparent, and the checkerboard shows through; alpha 128 leaves it half transparent in that colour |
+
+For an opaque colour the two are the same. *Opacity* applies to both: at
+0.5, Replace takes the area half way to the colour. The colour's alpha is
+the *A* slider of the colour panel (the last two digits of *Hex*). A
+transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
+`.ucraster`); a JPEG has none.
+
 ## Menus
 
 - **File:** New (presets, background), New Window, Open, Import Image
   (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
-  as New Image, Delete, Fill with Foreground / Background.
+  as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
+  Foreground / Background. When Paste finds no picture on the clipboard -
+  text was copied after it - it offers the newest image of the clipboard
+  history UltraDesktop keeps, saying when it was copied; Paste Last Copied
+  Image takes it without asking.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),

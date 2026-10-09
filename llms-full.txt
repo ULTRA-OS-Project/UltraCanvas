@@ -571,7 +571,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
-  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
@@ -710,8 +713,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -755,6 +759,30 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer and the `.xls` reader.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
@@ -898,8 +926,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -938,7 +967,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
@@ -1172,7 +1203,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -1191,7 +1223,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
   ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -2776,6 +2809,16 @@ records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
 `Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
 percentage height is auto and a percentage limit limits nothing.
 
+An `Exact` constraint on **one** axis is normally only a fill hint: a block
+offers its children its content width that way, and a child's own `size.width`
+(`Pct(50)`, `Px(120)`) still wins. A parent that decides a child's width itself
+says so with `widthSetByParent = true` on the child; an `Exact` width from it is
+then the child's used width, exactly as an `Exact` on both axes always is. The
+table engine sets it on its cells: a cell's own px / % width has already gone
+into its column, and the row's height is measured with the cell's content at
+the column's width - not at a cell of `width="50%"` taking its 50% a second
+time (`Tests/HTMLTableLayoutTest.cpp`, *LinkedIn mail*).
+
 A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
 `Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
 offset is added when the value resolves (px, %, vw / vh, em / rem); a percentage
@@ -3712,8 +3755,8 @@ FILE: Docs/GettingStarted.md
 
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.1
-**Last Modified:** 2026-10-08
+**Version:** 1.0.2
+**Last Modified:** 2026-10-09
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -3727,9 +3770,17 @@ system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
 UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
 the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, names the matching SDK, writes
-the project skeleton of step 3 and prepares the first prompt for the
+then checks and installs the packages below, downloads the matching SDK,
+writes the project skeleton of step 3 and prepares the first prompt for the
 assistant. `UltraCanvasStart --check` does the checking in a terminal.
+
+**On a computer with nothing yet, start with UltraCanvasStart.** Every
+release of the framework carries it on its own, built for each platform:
+`UltraCanvasStart-<OS>-<version>-<arch>` under
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.gz` on
+Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
+and it does steps 1 to 3 below; the steps stay here for reading what it does
+and for doing it by hand.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
@@ -4373,8 +4424,8 @@ FILE: Docs/UltraCanvasSDK.md
 
 # The UltraCanvas SDK
 
-**Version:** 1.1.0
-**Last Modified:** 2026-10-08
+**Version:** 1.2.0
+**Last Modified:** 2026-10-09
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -4412,9 +4463,13 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 
 That is what UltraCanvasStart's Project page fetches with its *Download*
 button, for the platform and architecture it runs on and the version it was
-built from. The workflow artifacts (seven days, a signed-in browser) remain
-for pull-request builds, and for the minutes between a merge and the end of
-its release build.
+built from. UltraCanvasStart itself is on the same release, on its own, as
+`UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.gz` on Linux, a `.zip` on
+Windows, a signed and notarized `.dmg` on macOS): the application, the
+libraries it loads and nothing else, for a computer that has neither the
+toolchain nor a clone yet (`Apps/UltraCanvasStart/README.md`). The workflow
+artifacts (seven days, a signed-in browser) remain for pull-request builds,
+and for the minutes between a merge and the end of its release build.
 
 ## Layout
 
@@ -11074,6 +11129,12 @@ bool GetImageRepeatY() const;
 void SetHeightFollowsWidth(bool follows);
 bool GetHeightFollowsWidth() const;
 
+// The shape (width / height) kept while the height follows the width, instead
+// of the picture's own; 0 (the default) is the picture's. An HTML
+// <img width="101" height="37"> keeps 101:37 when a narrower column shrinks it.
+void SetBoxAspectRatio(float widthOverHeight);
+float GetBoxAspectRatio() const;
+
 // Element-local rectangle the image is drawn into for the current fit and position
 Rect2Df ImageDrawRect() const;
 ```
@@ -16123,7 +16184,7 @@ FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
 
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); std::shared_ptr<UltraCanvasListView> list; UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -16205,7 +16266,7 @@ The same content copied again is not a second entry: it moves to the top
 
 | Call | |
 |---|---|
-| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss) |
+| `List(query)` | `ClipboardHistoryQuery { text, kinds, pinnedOnly, limit, newestFirst }`; `text` matches title and preview case- and accent-insensitively (`FoldForClipboardSearch`: Latin, Greek, Cyrillic, ß as ss). Pinned entries come first unless `newestFirst` asks for last use alone: `{kinds = {Image}, newestFirst = true, limit = 1}` is "the last image copied" |
 | `Get(id)`, `ReadFormats(id, formats)`, `ReadText(id)` | one entry, its content |
 | `GetStats()` | entries, pinned, bytes, encrypted |
 | `MarkUsed(id)` | it was put back on the clipboard |
@@ -16227,6 +16288,29 @@ KeePassXC, Bitwarden, 1Password).
 `Sentence` (case changes for Latin, Greek and Cyrillic).
 `ClipboardImageFile(format, extension)` gives an image entry as a file another
 program opens (a bare `CF_DIB` gains its BMP file header).
+
+## What a program takes
+
+`PreferredClipboardKinds(categories, mimeTypes)` reads an application's
+desktop entry (`UCDesktopEntry::categories` and `mimeTypes`) and answers the
+kinds of entry it takes when something is pasted into it, most wanted first:
+
+| The entry says | Kinds |
+|---|---|
+| `Graphics`, `RasterGraphics`, `2DGraphics`, `VectorGraphics`, `3DGraphics`, `Photography` (not `Viewer`) | Image, Colour |
+| `FileManager`, or it opens `inode/directory` | Files |
+| `TextEditor`, `IDE`, `Development`, `TerminalEmulator` | Code, Text, Link |
+| `WebBrowser` | Link, Text |
+| no such category, and it opens only `image/*` types / only `text/*` types | Image, Colour / Text, Code, Link |
+| anything else (mail, chat, office, a mix of types) | nothing: the history is offered as it is |
+
+UltraDesktop's quick panel finds the window Super+V was pressed over, its
+entry (`UltraCanvasDesktopShell::MatchApplication`) and these kinds, and lists
+the newest such entries first under "For <program>", the first one chosen. The
+choice stays the person's: they see it before Enter copies it. Swapping what
+the clipboard hands a program while it pastes was considered and left out - a
+program that prefers images when one is offered would paste an old picture
+instead of the text just copied, unannounced.
 
 ## Recording
 
@@ -16293,18 +16377,19 @@ dark compact one of the desktop's panel
 (`Docs/Research/UltraClipboard/UltraClipboard-RowAnatomy.svg`):
 
 ```cpp
+auto listView = std::make_shared<UltraCanvasListView>("history");
 auto model = std::make_shared<ClipboardHistoryListModel>();
 auto rows  = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Light());
-list->SetModel(model);
-list->SetDelegate(rows);
-list->SetVariableRowHeights(true);          // headers are lower than rows
+listView->SetModel(model);
+listView->SetDelegate(rows);
+listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-list->onCellHovered = [rows = rows.get(), view = list.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
 };
-list->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
+listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
     if (!entry) return;                     // a section header
     switch (rows->ActionAt(row, at)) {
@@ -16314,13 +16399,15 @@ list->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, in
         default: break;
     }
 };
-list->tooltipProvider = [rows = rows.get()](int row, int) {
+listView->tooltipProvider = [rows = rows.get()](int row, int) {
     return ClipboardHistoryRowDelegate::ActionTooltip(rows->GetHoverAction(row));
 };
 ```
 
 - **Sections**: `Flat`; `ByDay` (Pinned, Today, Yesterday, Earlier, with
-  counts); `PinnedAndRecent` (the panel's Pinned and Recent).
+  counts); `PinnedAndRecent` (the panel's Pinned and Recent). A
+  `LeadSection { title, count }` puts the first `count` entries under a title
+  of the caller's above them (the panel's "For UltraPaint").
   `GetEntry(row)` is `nullptr` on a header; `EntryRowFrom(row, step)` skips
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
@@ -16898,6 +16985,71 @@ can mirror an external change without hearing its own echo.
 
 - **[`UltraCanvasMediaViewer`](UltraCanvasMediaViewer.md)** — the backdrop strip
   under a transparent image (and with it the UltraFiler preview pane).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCompoundFile.md
+==============================================================================
+
+# UltraCanvasCompoundFile — OLE2 compound files
+
+<!-- doc-check: std::string path; -->
+
+`UltraCanvasCompoundFile.h` reads the container the legacy Microsoft Office
+formats are stored in: Word 97-2003 (`.doc`), Excel 5.0-2003 (`.xls`),
+PowerPoint (`.ppt`), Outlook (`.msg`). A compound file ("structured storage",
+[MS-CFB]) is a small file system in one file: a FAT of fixed-size sectors
+holding named streams, with small streams kept in a finer-grained mini stream.
+
+```cpp
+#include "UltraCanvasCompoundFile.h"
+
+if (UltraCanvas::UCCompoundFileReader::HasSignature(path)) {   // reads 8 bytes
+    UltraCanvas::UCCompoundFileReader file;
+    if (file.Open(path)) {
+        std::vector<uint8_t> workbook;
+        if (file.ReadStream("Workbook", workbook)) {
+            // the stream's bytes
+        }
+        for (const std::string& name : file.StreamNames()) {
+            (void)name;   // the streams in the root storage, UTF-8
+        }
+    } else {
+        std::string why = file.GetLastError();   // "Not an OLE2 compound file", ...
+    }
+}
+```
+
+`Open` takes a UTF-8 path on every platform; `OpenFromMemory` takes the bytes
+of a container already in hand. Names compare without regard to ASCII case, as
+the format specifies. `ReadStream` and `HasStream` look in the root storage;
+when a writer left the directory tree empty (or it is damaged), the first
+stream of that name anywhere is taken instead.
+
+## Implementation notes
+
+- Version 3 (512-byte sectors) and version 4 (4096-byte sectors, 64-bit stream
+  sizes) are both read; the FAT is gathered from the header's 109 entries and
+  any further DIFAT sectors.
+- Every chain is followed with a length guard, so a FAT that loops ends the
+  read instead of hanging it, and every sector offset is checked against the
+  file size.
+- The root's children are found by walking the directory's red-black tree
+  with a visited set, which keeps a stream of an embedded object (an Excel
+  chart inside a Word file has a `Workbook` of its own) from being taken for
+  the document's.
+- The whole file is read into memory: these containers are documents, not
+  archives.
+
+## Where it is used
+
+The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`)
+and the [`.xls` reader](UltraCanvasSpreadsheetXls.md).
+
+## Test
+
+Covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a `.doc`, and a file
+that is no compound file) and, through the `.doc` importer, by
+`Tests/WordFormatsTest.cpp`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
@@ -18867,6 +19019,8 @@ below it cannot overwrite the entry's own name or command.
 | `iconName` / `iconFile` | `Icon=` and, when a caller resolves it, the image file it names |
 | `url` | `URL=`, for a `Type=Link` web shortcut |
 | `mimeTypes` | `MimeType=` — what the application declares it opens |
+| `categories` | `Categories=` — the menu categories it belongs to (`Graphics`, `RasterGraphics`, `TextEditor`, …) |
+| `startupWMClass` | `StartupWMClass=` — the `WM_CLASS` its windows carry, which ties a running window to its entry |
 | `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
 
 **Localization** follows the specification: `Name[de_DE]` beats `Name[de]`
@@ -19049,6 +19203,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### Notices
 
@@ -19075,6 +19230,8 @@ nothing is ever reported: `IsNative()` says which.
 
 ### Global shortcuts
 
+<!-- doc-check: void TogglePanel(); -->
+
 `UltraCanvasGlobalShortcut` is a key combination that reaches the program
 whichever window has the focus — UltraDesktop's `Super+V` for its clipboard
 panel:
@@ -19097,6 +19254,11 @@ if (!shortcut.Start("Super+V", [this]() {
 the combination cannot be read, when another program already holds it, and on
 a platform without global shortcuts. `Stop()` joins the thread, so no
 callback runs after it returns; `IsRunning()`.
+
+The callback runs when the combination's key is **let go**, once however long
+it is held. While the key is down the shortcut's grab holds the keyboard, and a
+window opened and focused in that time could lose the focus again when the
+grab ended; a window opened on release keeps it.
 
 ## Backends
 
@@ -23496,7 +23658,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
-| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 | `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. Its Detail view opens the glyph browser ([`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)) — every glyph in the file, scrolling, with a picker for the ranges it covers. woff / woff2 report as unsupported for thumbnails unless the installed FreeType was built with zlib / Brotli |
@@ -23592,7 +23754,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, fb2.zip) — those are refused by the text-preview
+reader here unpacks (fb2.zip) — those are refused by the text-preview
 extractor too, so the tile keeps its type glyph instead of drawing a "page"
 holding the file's ZIP magic. An e-book's text (epub, mobi, prc, azw, azw3) is
 not read either, but its cover is, so those report true in every build.
@@ -30628,7 +30790,11 @@ them without linking UltraCanvas.
 Who uses it today: the eBook viewer and the EPUB, FB2 and MOBI engines
 (`HTML::ElementBuilder`), UltraMail's message pane (`HTML::ElementBuilder`),
 UltraMail's composer, replies and signatures (`ImportHTMLToRichDocument`),
-UltraMail's header decoding (`HTML::DecodeEntities`), and, from its pull
+a rich paste into `UltraCanvasRichTextEdit` (`UCRichDocument::FromHTML`, on
+the same importer), UltraMail's header decoding (`HTML::DecodeEntities`), its
+scam check (the parsed page's links and pictures, `HTML::ExtractPlainText`)
+and plain-text view (`PlainTextLayout::Lines`), EmailCleaner's matching, the
+Filer's `.html` preview and UltraCloud's WebDAV client, and, from its pull
 request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
 `<style>` sheets; its own copy of the selector matcher is to become a Traits
 type for the shared one, below). UltraWeb's page reader
@@ -30668,7 +30834,10 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 `HTML::Parser::Parse` reads HTML or XHTML the way documents are actually
 written: unclosed `<p>` and `<li>`, void elements, self-closing XHTML
 syntax, comments, CDATA, a doctype, entities, and the raw-text bodies of
-`<style>` and `<script>`. It never fails; `Errors()` lists what it had to
+`<style>` and `<script>`. As HTML's tree builder does, it drops the one
+newline right after a `<pre>`, `<listing>` or `<textarea>` start tag, so
+content that starts on the next source line has no empty first line; a
+second newline is a blank line. It never fails; `Errors()` lists what it had to
 repair. The result is an `HTML::Document` whose `root` is always an `<html>`
 with a body, even for a fragment, so `Body()` is always there.
 
@@ -30910,6 +31079,17 @@ without a drag. Keep `r.textSelection` to offer Copy and Select All in a
 menu (its `onContextMenu` is asked on a right-click); see
 `UltraCanvasLabelExamples.md`, *Selectable text*.
 
+Pictures are sized as a browser sizes a replaced element: `width` alone or
+`height` alone gives the other in the picture's shape, both give a box of
+their own, and min / max sizes clamp keeping the shape where CSS does. The
+size becomes a width the height follows, so a narrower line shrinks the
+picture in proportion - in its own shape, or in the box's where the author
+gave one (`UltraCanvasImageElement::SetBoxAspectRatio`). `object-fit: fill`
+(the default) stretches the picture only into a box the author shaped
+differently; any other box is the picture's shape, and the picture is fitted
+keeping its proportions. A percentage height inside a table cell is a share
+of the cell's set height, and auto when the cell sets none.
+
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
 `MessagePreview::RenderBody` for the two hosts that exist). A reusable
@@ -30922,11 +31102,32 @@ so that a third reader does not build it a third time.
 read HTML through the same parser and cascade and produce a `UCRichDocument`
 for `UltraCanvasRichTextEdit`: paragraphs, headings, lists, rules, the
 inline formats, links, colours, fonts and sizes, alignment and indents,
-`<blockquote>` as quote level, pictures (`data:` URIs decoded, others
-through `options.resolveImage`), and tables, with the one-column scaffolding
-tables of mail layouts unwrapped into the flow. See
-`UltraCanvasRichTextEdit.md` for the document model and
-`Tests/HTMLRichImportTest.cpp` for what is covered.
+`<blockquote>` as quote level, right-to-left paragraphs (`dir="rtl"` on the
+element or one around it), Word's list paragraphs as list items, pictures (`data:` URIs decoded, others through
+`options.resolveImage`, else their alt text in brackets; a 1-2 px tracking
+pixel left out), and tables, with the one-column scaffolding tables of mail
+layouts unwrapped into the flow. See `UltraCanvasRichTextEdit.md` for the
+document model and `Tests/HTMLRichImportTest.cpp` for what is covered.
+
+Word writes a list as paragraphs, not `<ul>` / `<ol>` - on the clipboard and
+in every mail Outlook sends: `<p class=MsoListParagraph style="mso-list:l0
+level1 lfo1">`, with the label it shows typed out in front, inside a
+`<span style="mso-list:Ignore">`. Such a paragraph becomes a list item at
+that level, and its label its marker rather than text: a number, letter or
+Roman numeral (`1.`, `a)`, `(iv)`) makes a numbered item in that format, and
+gives it its own number only where the model's count would differ - a list
+starting at 4, or one Word carries on past a paragraph between; a bullet in
+Word's symbol fonts becomes the model's (`o` in Courier New a circle, `§` in
+Wingdings a square). A numbered heading stays a heading, its number text.
+
+Two options are for a paste rather than a mail, and are off by default:
+`preAsCodeBlock` makes a `<pre>` a code block (a mail's `<pre>` is mostly a
+quoted plain-text message, so there it stays monospaced lines of a
+paragraph), and `skipWordListLabels` leaves out a label Word types out in a
+`mso-list:Ignore` span where no list item takes it - the "1." of a numbered
+heading (a browser shows it, so a mail keeps it). `UCRichDocument::FromHTML` - the editor's paste from
+another application - is the importer with both on, and a no-break space
+turned into a space.
 
 ```cpp
 HTMLRichImportOptions options;
@@ -30941,14 +31142,11 @@ UCRichDocument reply = ImportHTMLToRichDocument(message.htmlBody, options);
 
 ## What is still implemented elsewhere
 
-These sites predate the rule and are listed in
-`scripts/html_reuse_baseline.txt`; each is a replacement waiting to happen,
-and the check blocks new ones:
-
-| Site | Has its own | Replace with |
-|---|---|---|
-| `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (`MarkupToPreviewLines`, the `.html` preview) | a tag-level line splitter (shared with the XML of `.ods` / `.xlsx`; its entities already go through `HTML::DecodeEntities`) | `HTML::Parser`, a line per block |
+Nothing: `scripts/html_reuse_baseline.txt` lists no site. The last ones -
+`UCRichDocument::FromHTML`'s tokenizer, entity table and CSS reader, and the
+Filer's tag-level line splitter for its `.html` preview - read through the
+importer and `PlainTextLayout::Lines` now. `scripts/check_html_reuse.py`
+blocks new ones.
 
 ## Limits
 
@@ -35799,6 +35997,47 @@ struct ListViewStyle {
 };
 ```
 
+### Column widths
+
+```cpp
+void SetColumnWidth(int column, int width);   // this view only; the model keeps ListColumnDef::width
+int  GetColumnWidth(int column) const;        // the effective width
+bool ColumnsUserAdjusted() const;             // the user dragged a border: stop fitting
+
+// What fitting a column to its content takes, measured on the context the
+// view is painted on:
+int MeasureHeaderWidth(IRenderContext* ctx, int column) const;   // whole title + sort triangle
+int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
+```
+
+`MeasureHeaderWidth` is the narrowest width at which the column's header shows
+its whole title in `headerFontSize`, with room for the sort triangle whether or
+not the column is the sorted one - so a fitted column keeps its width when the
+order changes, and a translated title is measured as it reads.
+`MeasureColumnTextWidth` is the widest `DisplayRole` text of the column's rows
+in `font`, without a delegate's padding; each distinct text is measured once
+and remembered, so a column of thousands of dates costs a few hundred
+measurements. UltraMail fits its Date column this way: the widest date in bold
+plus the 6 px its delegate leaves before the text, and at least the header.
+
+```cpp
+// A Date column (column 3) as wide as its widest date plus a 6 px gap, never
+// narrower than its header - measured where a render context is at hand.
+class DateFittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        if (ctx && !ColumnsUserAdjusted()) {
+            FontStyle font;
+            font.fontSize = 10;
+            const int dates = MeasureColumnTextWidth(ctx, 3, font);
+            SetColumnWidth(3, std::max(dates + 6, MeasureHeaderWidth(ctx, 3)));
+        }
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
+};
+```
+
 ### Scrolling
 
 ```cpp
@@ -37480,7 +37719,7 @@ tool and a missing plugin should stop it running.
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
-| `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
+| `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
@@ -42936,6 +43175,9 @@ save it with no display at all.
   use the separable W3C / Photoshop formulas on straight RGB, then the usual
   alpha "over". `RasterBlendPixel()` exposes the same arithmetic to the brush
   engine so a brush painting in Multiply matches a layer set to Multiply.
+  `RasterReplacePixel()` is the other way to put a colour down: it moves the
+  pixel toward the colour, alpha included, so a transparent colour clears it
+  where "over" would leave it as it was.
 
 ## The document
 
@@ -43038,7 +43280,9 @@ stroke.End();
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
 anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
-global, optionally sampling a merged layer), `MagicWandMask` (the same
+global, optionally sampling a merged layer; `FillCompositing::Replace` sets
+the region to the colour, alpha included, where the default `Blend` paints
+over it - the way to fill with transparency), `MagicWandMask` (the same
 region test as a coverage map for `UCRasterSelection::SetMask`),
 `FillGradient` (linear / radial / reflected, interpolated in premultiplied
 space), `StampMask` (a coverage map in a colour — what the text tool uses
@@ -49221,10 +49465,15 @@ copy/paste **inside the application loses nothing** (between two documents the
 pictures come along; notes, comments and bookmarks stay behind).
 
 A paste from another application uses its HTML when it offers some
-(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
-tables, rules, links, inlined pictures and character formatting from tags and
-CSS, Word's list-number spans and conditional comments dropped), and its plain
-text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UCRichDocument::FromHTML`, which reads it through the HTMLReader's
+`ImportHTMLToRichDocument` - the page's style sheets and inline CSS through
+the same cascade a mail is shown with: paragraphs, headings, lists, quotes as
+a quote level, `<pre>` as a code block, tables, rules, links, right-to-left
+paragraphs, inlined pictures (a picture the clipboard only links to becomes
+its alt text) and character formatting; Word's list paragraphs as list items,
+its typed-out labels and conditional comments dropped, a no-break space pasted
+as a space), and its
+plain text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
 (`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
 converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
@@ -54907,7 +55156,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 
 ## Overview
 
-**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`) and CSV/TSV. Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
+**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, plus import of legacy Excel 97-2003 and 5.0/95 workbooks (`.xls`, see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)). Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
 
 **Version:** 1.0.1
 **Last Modified:** 2026-10-07
@@ -54920,7 +55169,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
 - **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
-- **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection
+- **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
@@ -54929,7 +55178,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
-- **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
+- **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
 ## Header Include
@@ -55131,6 +55380,11 @@ bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath);
+bool SaveXLSX(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
+// XML file or delimited text saved under the name. Read only.
+bool LoadXLS(const std::string& filePath);
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -55490,6 +55744,66 @@ std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
 
+## Formula language and functions
+
+Formulas are written as in Excel and LibreOffice, with one difference: a
+reference to another sheet is written `'Sheet Name'.A1` (the OpenDocument
+form), not Excel's `Sheet Name!A1`. Loading an `.xlsx` translates Excel's form
+(and drops the `_xlfn.` prefix Excel stores before its newer functions), and
+saving one writes it back, so a workbook round-trips through Excel; loading an
+`.ods` translates OpenDocument's bracketed form the same way. A sheet name may
+hold spaces, dots and quotes (`'It''s'.A1`). A reference to a sheet that does
+not exist is `#REF!`.
+
+Error values can be written as literals — `=IF(ISNA(A1),#N/A,A1*2)`,
+`=IFERROR(#DIV/0!,0)` — and a number turned into text reads the way the cell
+shows it: `=A1&" pie"` with 12.5 in A1 is `12.5 pie`.
+
+**Calculation order.** A formula reading another formula cell gets that cell's
+current result with its type — a number stays a number. A cell not yet
+calculated in a pass (a total above the rows it adds up, a sheet reading a later
+sheet) is calculated first; a circular reference reads the value it has.
+
+**Functions**, by category (`GetFormulaEngine()->GetFunctionLibrary()
+.GetFunctionNames()` lists them):
+
+| Category | Functions |
+|---|---|
+| Lookup | `VLOOKUP`, `HLOOKUP`, `LOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `CHOOSE`, `ROWS`, `COLUMNS` |
+| Conditional | `SUMIF`, `SUMIFS`, `COUNTIF`, `COUNTIFS`, `AVERAGEIF`, `AVERAGEIFS`, `MAXIFS`, `MINIFS`, `COUNTBLANK`, `SUMPRODUCT`, `SUBTOTAL` |
+| Math | `SUM`, `PRODUCT`, `SUMSQ`, `ABS`, `SQRT`, `POWER`, `EXP`, `LN`, `LOG`, `LOG10`, `MOD`, `QUOTIENT`, `INT`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `TRUNC`, `CEILING`, `FLOOR`, `MROUND`, `EVEN`, `ODD`, `SIGN`, `FACT`, `COMBIN`, `GCD`, `LCM`, `PI`, `RAND`, `RANDBETWEEN`, `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`, `ATAN2`, `SINH`, `COSH`, `TANH`, `DEGREES`, `RADIANS` |
+| Statistical | `AVERAGE`, `MEDIAN`, `MODE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `LARGE`, `SMALL`, `RANK`, `PERCENTILE`, `QUARTILE`, `STDEV`, `STDEVP`, `VAR`, `VARP` (and the `STDEV.S`, `STDEV.P`, `VAR.S`, `VAR.P`, `MODE.SNGL`, `RANK.EQ` names) |
+| Text | `LEN`, `LEFT`, `RIGHT`, `MID`, `FIND`, `SEARCH`, `REPLACE`, `SUBSTITUTE`, `CONCATENATE`, `CONCAT`, `TEXTJOIN`, `UPPER`, `LOWER`, `PROPER`, `TRIM`, `CLEAN`, `REPT`, `EXACT`, `CHAR`, `CODE`, `VALUE`, `TEXT`, `T` |
+| Date and time | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `EDATE`, `EOMONTH`, `DAYS`, `DATEDIF`, `DATEVALUE` |
+| Logical | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH`, `AND`, `OR`, `NOT`, `XOR`, `TRUE`, `FALSE` |
+| Information | `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISNONTEXT`, `ISLOGICAL`, `ISERROR`, `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `NA`, `N` |
+| Financial | `PMT`, `FV`, `PV`, `NPV` |
+
+Text functions count characters, not bytes: `=LEN("ขาย")` is 3. The
+criteria of `SUMIF`, `COUNTIF` and their kin are Excel's: a value (`30`,
+`"apple"`), a comparison (`">25"`, `"<>x"`, `"<=2024-01-01"` is text), and the
+wildcards `*`, `?` and `~` (`"a*"`); `""` matches empty cells.
+
+A function an application registers itself can read its arguments in the
+order they were written, with each range's rows and columns, through the
+evaluator:
+
+```cpp
+SpreadsheetFormulaEngine* engine = sheet->GetFormulaEngine();
+FunctionDefinition rowCount;
+rowCount.name = "ROWSOF";
+rowCount.minArgs = 1;
+rowCount.maxArgs = 1;
+rowCount.implementation = [](const std::vector<FormulaValue>&,
+                             const std::vector<std::vector<FormulaValue>>&,
+                             FormulaEvaluator* evaluator) -> FormulaValue {
+    const auto& args = evaluator->GetCallArguments();
+    if (args.empty() || !args[0].isRange) return FormulaValue::Error(CellErrorType::ValueError);
+    return FormulaValue::Number(args[0].range.end.row - args[0].range.start.row + 1);
+};
+engine->GetFunctionLibrary().RegisterFunction(rowCount);
+```
+
 ## Column widths
 
 A spreadsheet document may or may not say how wide its columns are, and the grid
@@ -55674,6 +55988,177 @@ to warn in your own way.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md
+==============================================================================
+
+# UltraCanvasSpreadsheetXls — legacy Excel workbooks (.xls)
+
+<!-- doc-check: std::string path; -->
+
+`UltraCanvasSpreadsheetXls.h` reads the workbooks Excel wrote before 2007:
+**Excel 97-2003 (BIFF8)** and **Excel 5.0/95 (BIFF5)**, the record streams
+stored inside an OLE2 compound file
+([`UltraCanvasCompoundFile`](UltraCanvasCompoundFile.md)). It also reads what
+else arrives under the `.xls` name and Excel opens as a workbook: an **HTML
+table** (what web applications and Excel's "Save as Web Page" write) and the
+**Excel 2003 XML Spreadsheet**.
+
+The reader produces a plain model — no UI — and has two users:
+
+- `UltraCanvasSpreadsheet::LoadXLS`, which `LoadFromFile` calls for `.xls`, and
+  builds an editable sheet from it;
+- the file display's preview page (`UltraCanvasFilerWidget`), which only reads
+  the first rows of the first sheet.
+
+There is **no writer**: save an opened `.xls` as `.xlsx` or `.ods`.
+`SaveToFile` refuses `.xls` with a message saying so.
+
+## Opening one in a spreadsheet
+
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+
+auto sheet = std::make_shared<UltraCanvas::UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->LoadFromFile(path)) {          // or sheet->LoadXLS(path)
+    std::string why = sheet->GetLastError();   // "password-protected", "not an Excel workbook", ...
+}
+```
+
+What arrives: every worksheet (hidden ones stay hidden; chart sheets are left
+out), typed values — dates, times, percentages and currency by their number
+format, with the 1904 date system converted — formulas with the results Excel
+cached, merged cells, column widths, row heights, hidden rows and columns,
+defined names that name one range, and the cell style subset the spreadsheet
+models (font, fill, borders, alignment, wrap, rotation, indent).
+
+`LoadXLS` looks at the content first, because a file named `.xls` is not always
+one:
+
+| The file holds | It is read by |
+|---|---|
+| an OLE2 compound file | the BIFF8 / BIFF5 reader |
+| a ZIP package (an `.xlsx` renamed) | `LoadXLSX` |
+| an HTML page with a table | the HTML reader below |
+| `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">` | the Excel 2003 XML reader |
+| text (UTF-8, a code page, or UTF-16 with a BOM) | `LoadCSV`, which detects the separator |
+| other binary data | nothing — refused with a message |
+
+## Formulas
+
+Excel stores a formula as a postfix token list. The reader turns it into the
+engine's own syntax: A1 references, `'Sheet Name'.A1` across sheets (the engine
+does not read Excel's `Sheet!A1`), shared formulas expanded for every cell of
+their range, defined names by name. Precedence is rebuilt with parentheses
+where a writer left them out.
+
+Every formula cell keeps its **cached result**, so the values are always what
+Excel computed. The formula itself is kept only when the engine can evaluate it
+— it parses, and every function and name in it exists in this spreadsheet.
+Otherwise the cell holds the value alone, because a formula that recalculates to
+`#NAME?` is worse than none. Formulas that cannot be expressed at all (an
+external workbook, an array constant, an error literal, a deleted reference, an
+add-in function) are left untranslated the same way.
+
+## Reading the model directly
+
+```cpp
+#include "UltraCanvasSpreadsheetXls.h"
+
+UltraCanvas::XlsWorkbook book;
+std::string error;
+if (UltraCanvas::ReadXlsWorkbook(path, book, error)) {
+    for (const UltraCanvas::XlsSheet& s : book.sheets) {
+        for (const UltraCanvas::XlsCell& cell : s.cells) {
+            std::string shown = UltraCanvas::XlsCellText(cell);   // "12.5", "TRUE", "#N/A"
+            if (cell.hasFormula && !cell.formula.empty()) {
+                std::string formula = cell.formula;              // "=SUM(B2:B4)"
+            }
+            if (cell.format >= 0) {
+                const UltraCanvas::XlsCellFormat& f = book.formats[static_cast<size_t>(cell.format)];
+                UltraCanvas::NumberFormatCategory kind =
+                    UltraCanvas::ExcelNumberFormatCategory(f.numberFormatId, f.numberFormatCode);
+                (void)kind;   // Date, Time, Percentage, Currency, ...
+            }
+        }
+    }
+}
+```
+
+`XlsReadOptions` limits a read — `maxSheets`, `maxRows`, `maxColumns`, and
+`translateFormulas = false` when only values are wanted, as for a preview:
+
+```cpp
+UltraCanvas::XlsReadOptions preview;
+preview.maxSheets = 1;
+preview.maxRows = 20;
+preview.translateFormulas = false;
+UltraCanvas::XlsWorkbook firstRows;
+std::string error;
+UltraCanvas::ReadXlsWorkbook(path, firstRows, error, preview);
+```
+
+`DetectXlsFileKind(path)` answers what a file holds (the table above) from its
+first bytes. `ReadXlsWorkbook` reads the `Biff`, `Html` and `XmlSpreadsheet`
+kinds and returns false, with a reason, for the others.
+`ReadXlsWorkbookFromMemory` reads a binary workbook already in memory.
+
+`ExcelNumberFormatCategory` is shared with the `.xlsx` loader: Excel's numFmt
+ids (0-49 built in, 164 and up custom) and codes are the same in both formats.
+It ignores quoted literals, escaped characters, padding and the bracketed
+sections of a code, so `[Red]` is not read as a day and `[$-409]` not as digits,
+and it reads `[h]:mm:ss` as a time and `[$€-407]` as currency.
+
+## Model reference
+
+| Type | Holds |
+|---|---|
+| `XlsWorkbook` | `biffVersion` (8, 5, or 0 for HTML / XML), `date1904`, `codePage`, `fonts`, `formats`, `sheets`, `names` |
+| `XlsSheet` | `name`, `hidden`, `cells` (file order), `columns`, `rows`, `merges`, `defaultColumnWidthChars`, `defaultRowHeightPoints` |
+| `XlsCell` | `row`, `col`, `type` (`XlsValueType`), `number` / `text` / `boolean` / `errorCode`, `hasFormula`, `formula`, `format` |
+| `XlsCellFormat` | one XF record: `font`, `numberFormatId`, `numberFormatCode`, alignment, `wrapText`, `rotation`, `indent`, `fillPattern` and colours, four `XlsBorderLine`s |
+| `XlsFont` | `name`, `sizePoints`, bold / italic / strikethrough / underline, super- / subscript, `automaticColor`, `color` |
+| `XlsColumnInfo` / `XlsRowInfo` | widths in characters / heights in points, `hidden`, whether the size was set by hand |
+| `XlsDefinedName` | `name`, `sheetScope`, `builtIn`, `formula`, and the range when it names one (`refSheet` ≥ 0) |
+
+Dates are serial numbers, as in the file: with `date1904` the serial counts from
+1904-01-01, so add 1462 for the usual 1900 system (`LoadXLS` does).
+
+## What is not read
+
+Charts, drawings, comments, conditional formats, data validation, pivot
+tables and macros. **Encrypted** workbooks (a `FILEPASS` record, or an
+encrypted Excel 2007+ package) are refused with a message that says they are
+password-protected. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
+not read. BIFF5 strings are decoded from their code page: Windows-1250, 1251
+and 1252 are known; any other is read as Latin-1. In a BIFF5 workbook,
+references to other sheets keep their cached values without a formula.
+
+## Implementation notes
+
+- Records are split once, with each `CONTINUE` record appended to the record
+  it continues and its boundary remembered: a BIFF8 string's characters may run
+  on into the next `CONTINUE`, which then begins with its own "16-bit
+  characters" flag. The shared string table depends on this.
+- Fonts and formats keep palette indices until the end of the workbook globals,
+  because the `PALETTE` record follows the records that use it.
+- Font index 4 is never stored, so an XF's font index above 3 is one less in
+  the list of `FONT` records.
+- Worksheets are found by the stream offset their `BOUNDSHEET` gives, and by
+  their order when a writer left the offsets wrong.
+- Relative references in shared formulas are offsets from the cell using
+  them. A 3-D reference in a shared formula is translated only when it is
+  absolute.
+
+## Test
+
+`Tests/SpreadsheetXlsFileTest.cpp` reads an Excel 97-2003 file written by
+LibreOffice, an Excel 5.0/95 file, an encrypted one, an HTML table and an Excel
+2003 XML file (`Tests/fixtures/xls-*.xls`; `Tests/fixtures/make-xls-fixtures.py`
+rebuilds the binary ones). It checks the model, the loaded spreadsheet, the
+engine recalculating the translated formulas to Excel's results, the refusals,
+and UltraFiler's preview page and detail pane.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasStepper.md
@@ -67817,7 +68302,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
-**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save)
+**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*
@@ -68006,6 +68491,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ | ✅ |
+| Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
 
@@ -78782,7 +79268,11 @@ windows stop short of the bars instead of covering them.
   secret. The clipboard button, or `Super+V` from any window, opens the quick
   panel: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
-  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  Delete. What the program being pasted into takes comes first, under "For
+  <program>" and chosen - the newest images for a paint program, files for
+  a file manager, code and text for an editor - from its desktop entry's
+  categories and file types; the bar's button uses the window that had the
+  focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
   of it. Right-click the button for *Pause recording*, *Open UltraClipboard*

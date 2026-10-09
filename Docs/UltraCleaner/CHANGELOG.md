@@ -1,3 +1,19 @@
+#### 2026-10-08 *0.60*
+- **The sandboxed-cache rule says when macOS keeps it out, and how to let it
+  in.** From macOS 27 the system refuses every other developer's app
+  container without asking. The rule that clears
+  `~/Library/Containers/*/Data/Library/Caches` therefore found nothing and
+  said nothing: the expansion dropped each refused container as if it had
+  no cache folder. The scanner now tells the system's refusal ("operation
+  not permitted", `EPERM`) from a folder's own permissions, and counts it in
+  `ScanReport::blockedPaths`, with the rules it hit in `blockedRules`. The
+  count covers any rule root macOS refuses in the same way, such as
+  privacy-protected Safari data. The status line and `--scan` say how many
+  locations macOS kept back and from which rules. They also say to turn
+  UltraCleaner on under System Settings › Privacy & Security › Full Disk
+  Access, or Terminal when UltraCleaner is started from it. The window
+  offers to open that page once a session.
+
 #### 2026-10-05 *0.59*
 - **The profile's cache, temporary and app-data folders are found under any
   user name.** Every location the cleaner scans - and the Windows folder it

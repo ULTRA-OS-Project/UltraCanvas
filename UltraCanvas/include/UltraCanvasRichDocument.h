@@ -4,8 +4,9 @@
 // Markdown/HTML/plain-text serializers consume it, so no format is ever
 // coupled directly to a UI element. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
 // The model is deliberately UI-free: only std types, no framework headers.
-// Version: 1.3.0
-// Last Modified: 2026-09-29
+// FromHTML reads Word's list paragraphs as list items.
+// Version: 1.3.2
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -736,12 +737,17 @@ public:
     std::string ToHTML() const { return ToHTML(RichDocumentHTMLOptions{}); }
     std::string ToHTML(const RichDocumentHTMLOptions& options) const;
     // Reads HTML as other applications put it on the clipboard (browsers,
-    // Word, LibreOffice, mail clients): paragraphs, headings, lists, quotes,
-    // preformatted text, tables, rules, links, pictures inlined as data:
-    // URIs, and character formatting from tags and CSS (bold, italic,
+    // Word, LibreOffice, mail clients), through the HTMLReader's importer
+    // (ImportHTMLToRichDocument, HTMLRichDocumentImporter.h) and its CSS
+    // cascade: paragraphs, headings, lists, quotes (as a quote level),
+    // <pre> as a code block, tables, rules, links, right-to-left paragraphs,
+    // pictures inlined as data: URIs (one only linked to becomes its alt
+    // text), and character formatting from tags and CSS (bold, italic,
     // underline, strike-through, sub/superscript, colour, highlight, font,
-    // size). Anything else (scripts, styles, forms, unknown markup) is
-    // skipped, its text kept.
+    // size). Word's list paragraphs are list items (their typed labels the
+    // markers; a numbered heading's number is left out) and a no-break space
+    // is a space. Anything else (scripts, forms, unknown markup) is skipped,
+    // its text kept.
     static UCRichDocument FromHTML(const std::string& html);
 
     std::string ToPlainText() const;

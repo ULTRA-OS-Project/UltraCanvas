@@ -1,16 +1,18 @@
 name: Doc examples
 
-# Compiles the C++ in the component docs (Docs/UltraCanvas/*.md, but the
-# changelog and the design documents) against the public headers, so a doc
-# cannot drift from the API it describes: a renamed function, a changed
-# signature or a removed field in a header fails here instead of in the next
-# reader's build. scripts/check_doc_examples.py says what it checks and how a
-# doc declares what its snippets assume.
+# Compiles the C++ in the docs (Docs/UltraCanvas/*.md, but the changelog)
+# against the public headers, so a doc cannot drift from the API it
+# describes: a renamed function, a changed signature or a removed field in a
+# header fails here instead of in the next reader's build.
+# scripts/check_doc_examples.py says what it checks and how a doc declares
+# what its snippets assume.
 #
-# A finding fails unless it is listed in scripts/doc_examples_baseline.txt,
-# which held the findings that predated the check and is empty now that
-# they are fixed. Keep it empty: fix the doc, or declare what its snippets
-# assume in a <!-- doc-check: ... --> comment.
+# A finding fails unless it is listed in scripts/doc_examples_baseline.txt.
+# Every component doc passes and must stay that way: fix the doc, or declare
+# what its snippets assume in a <!-- doc-check: ... --> comment. What the
+# baseline lists is the design documents (Proposal, Plan, Investigation),
+# whose code is of APIs not written yet; an entry that stops being found
+# means its API now exists and the file is rewritten.
 #
 # Pinned to ubuntu-24.04: the docs pass against clang 18 and that release's
 # library headers; a baseline entry, should one ever be needed, is clang's

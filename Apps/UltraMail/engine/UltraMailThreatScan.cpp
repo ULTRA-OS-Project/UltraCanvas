@@ -1,4 +1,17 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.9.0 - SenderLists: trusted senders keep only the findings that catch a
+//                  lie or a forgery; blocked senders get blocked-sender
+// Version: 0.8.0 - link-domain-lookalike: link targets dressed up as a brand's;
+//                  names in look-alike letters of another script, sender and link
+// Version: 0.7.0 - sender-domain-lookalike, government-impersonation;
+//                  ThreatScanOptions (a kind switched off is dropped)
+// Version: 0.6.0 - romance scams (romance-scam) and cryptocurrency (crypto-content,
+//                  crypto-wallet-secret, crypto-payment-demand,
+//                  crypto-investment-lure); the body's pictures; Codes / Has
+// Version: 0.5.3 - ExtractImageHosts reads the parsed page too: <img src>, a
+//                  background attribute, and the background images its CSS gives an
+//                  element (style attributes and <style> sheets, through the HTMLReader's
+//                  cascade) - none from comments, scripts, fonts or the text
 // Version: 0.5.2 - ExtractLinks reads an HTML body's links from the parsed page
 //                  (HTML::Parser): a[href], area[href], form[action], none from
 //                  comments or scripts
@@ -18,14 +31,16 @@
 
 #include "UltraMailSenderBrands.h"
 
-#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
-#include "HTMLReader/HTMLParser.h"     // HTML::Parser (the links of a page)
+#include "HTMLReader/HTMLDocument.h"       // HTML::ExtractPlainText
+#include "HTMLReader/HTMLParser.h"         // HTML::Parser (the links of a page)
+#include "HTMLReader/HTMLStyleResolver.h"  // the background images its CSS gives
 
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <cstring>
 #include <set>
@@ -193,6 +208,8 @@ const std::vector<std::string>& DeceasedPhrases() {
         "his estate", "her estate", "the estate of", "died in", "passed away",
         "plane crash", "car accident", "unclaimed", "dormant account",
         "no heir", "without a will", "verstorben", "erbschaft", "nachlass",
+        // Money nobody claimed: the "abandoned baggage" variant.
+        "abandoned", "no claim", "without claim", "no owner",
     };
     return v;
 }
@@ -217,6 +234,13 @@ const std::vector<std::string>& AdvanceFeeStoryPhrases() {
         "foreign partner", "trustworthy partner", "god bless", "dear friend",
         "dear beloved", "compensation fund", "lottery", "you have won",
         "consignment", "diplomat", "secure vault",
+        "your own share", "split the fund", "split the funds", "share the funds",
+        "50% by 50%", "trust worthy", "trustworthy person", "god fearing", "god-fearing",
+        "honest christian", "kindred heart", "stay blessed", "remain blessed", "baggage",
+        "luggage", "laugages", "legit and secret", "my private email",
+        // The "compensation for scam victims" letter in the FBI's name.
+        "atm card", "payment warrant", "release order", "interpol", "monetary fund",
+        "monitory funds", "scam victims",
     };
     return v;
 }
@@ -254,7 +278,7 @@ const std::string* FirstPhraseIn(const std::string& textLower,
 
 void Add(ThreatReport& r, int score, const char* code, const std::string& detail) {
     for (const auto& f : r.findings) if (f.code == code) return;   // one of each
-    r.findings.push_back({ code, detail });
+    r.findings.push_back({ code, detail, score });
     r.score += score;
 }
 
@@ -264,6 +288,422 @@ std::string Header(const std::map<std::string, std::string>& headers,
     const std::string want = Lower(name);
     for (const auto& h : headers) if (Lower(h.first) == want) return h.second;
     return "";
+}
+
+// `phrase` in `textLower` on word boundaries: "honey" is not in "honeymoon",
+// "sex" not in "Essex", "your ad" not in "your address". A phrase ending in
+// '*' matches as the start of a word ("kiss*": kisses, kisssss).
+bool ContainsPhrase(const std::string& textLower, const std::string& phrase) {
+    if (phrase.empty()) return false;
+    const bool prefix = phrase.back() == '*';
+    const std::string p = prefix ? phrase.substr(0, phrase.size() - 1) : phrase;
+    auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
+    std::size_t pos = 0;
+    while ((pos = textLower.find(p, pos)) != std::string::npos) {
+        const std::size_t end = pos + p.size();
+        const bool leftOk = pos == 0 || !word(p.front()) || !word(textLower[pos - 1]);
+        const bool rightOk = prefix || end >= textLower.size() || !word(p.back()) ||
+                             !word(textLower[end]);
+        if (leftOk && rightOk) return true;
+        ++pos;
+    }
+    return false;
+}
+
+const std::string* FirstWordPhraseIn(const std::string& textLower,
+                                     const std::vector<std::string>& phrases) {
+    for (const auto& p : phrases) if (ContainsPhrase(textLower, p)) return &p;
+    return nullptr;
+}
+
+// "’" (and "`") read as "'", so "I’m" matches "i'm".
+std::string StraightQuotes(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (s.compare(i, 3, "\xE2\x80\x99") == 0 || s.compare(i, 3, "\xE2\x80\x98") == 0) {
+            out.push_back('\'');
+            i += 2;
+            continue;
+        }
+        out.push_back(s[i] == '`' ? '\'' : s[i]);
+    }
+    return out;
+}
+
+bool IsPictureName(const std::string& filename) {
+    static const std::set<std::string> ext = {
+        "jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tif", "tiff",
+    };
+    return ext.count(ExtensionOf(filename)) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Romance scams
+// ---------------------------------------------------------------------------
+// A stranger writes a love letter: pet names and talk of fate, a short
+// self-introduction (name, age, divorced, a nurse in Russia), how they came
+// to write ("I saw your profile", "it is destiny"), a photo or two, and a push
+// to answer - often to a private address, or to a site that "only verifies"
+// with a bank card. Later mails of the same thread add the assurances ("I am
+// for real", a "scan passport") and the request: a ticket, a visa, a laptop
+// for the webcam, the rent, Western Union, crypto. No one phrase gives it
+// away, so the rule counts kinds of signs; each kind counts once.
+struct RomanceSigns {
+    const char*              what;      // how the reason names the kind
+    std::vector<std::string> phrases;
+};
+
+const std::vector<RomanceSigns>& RomanceSignKinds() {
+    static const std::vector<RomanceSigns> v = {
+        { "pet names", {
+            "my dear", "my darling", "darling", "sweetheart", "sweetie", "honey", "my love",
+            "dearest", "my sweet", "my angel", "my king", "my queen", "my prince",
+            "my princess", "my beloved", "dear one", "join me dear", "kiss*", "xoxo",
+            "truly yours", "yours only", "yours forever", "forever yours",
+            "mein schatz", "meine liebe", "liebling", "k\xC3\xBCsse", "kuss" } },
+        { "talk of love or attraction", {
+            "romantic", "romance", "soul mate", "soulmate", "true love", "real love",
+            "look for love", "looking for love", "search of love", "search of real love",
+            "find love", "find my love", "believe in love", "believes in love",
+            "fall in love", "falling in love", "in love with you", "future husband",
+            "future wife", "right man", "right woman", "man of my dreams",
+            "woman of my dreams", "serious relationship", "long-term relationship",
+            "long term relationship", "life partner", "serious intentions",
+            "get to know each other", "get to know you better", "single lady",
+            "single woman", "single girl", "lonely", "loneliness", "attracted to you",
+            "i am attracted", "i'm attracted", "attracted regarding", "drawn to you",
+            "heart beat faster", "my heart", "eternal happiness", "everlasting",
+            "our journey together", "together forever", "attractive girl",
+            "attractive woman", "attractive lady", "young, attractive", "beautiful girl",
+            "pretty girl", "hot girl", "handsome", "love to share", "wahre liebe",
+            "marriage in future", "make baby", "i am rich", "i'm rich", "im rich",
+            "gro\xC3\x9F" "e liebe", "ernsthafte beziehung", "den richtigen mann",
+            "partner f\xC3\xBCr" "s leben", "einsam" } },
+        { "an offer of sex or a meeting", {
+            "hook up", "hookup", "hooking up", "meet up", "meeting up", "escort", "escorts",
+            "sexy", "horny", "naughty", "fuck*", "have sex", "sex with", "sex tonight",
+            "explicit", "your desires",
+            "one night stand", "get laid", "nude*", "pleasant time", "have fun together",
+            "please you" } },
+        { "a self-introduction", {
+            "my name is", "my age is", "years young", "divorced", "never married",
+            "never been married", "no kids", "no children", "single mother", "single mom",
+            "widow", "about me", "about myself", "i work as", "my character",
+            "my hobbies", "cm tall", "blue eyes", "brown eyes", "green eyes",
+            "blonde hair", "brown hair", "black hair", "people say that",
+            "i work and live in", "mein name ist", "ich bin geschieden",
+            "keine kinder", "\xC3\xBC" "ber mich" } },
+        { "how they came to write to you", {
+            "your profile", "your posting", "your ad", "your advert", "your advertisement",
+            "dating site", "dating website", "dating app", "dating service",
+            "dating agency", "marriage agency", "on the site", "on this site",
+            "found your email", "found your e-mail", "found your address",
+            "got your email", "got your e-mail", "got your address",
+            "your email address on", "i have information that you",
+            "among the millions", "lucky star", "horoscope", "destiny", "it's fate",
+            "it is fate", "it was fate", "chance meeting", "by chance",
+            "you don't know me", "you do not know me", "you dont know me",
+            "are you real", "real deal", "are you genuine", "fake profile",
+            "fake profiles", "untrue humans", "tired of fake", "sick of fake",
+            "my new friend", "is writing to you", "are you still looking for",
+            "still looking for friend", "still looking for a friend",
+            "partnervermittlung", "schicksal",
+            "dein profil", "ihr profil" } },
+        { "a site to sign up on or to be \"verified\" at", {
+            "get my number", "my number will be", "my number is on", "login there",
+            "log in there", "sign up there", "signup there", "register there",
+            "create an account", "require you to signup", "require you to sign up",
+            "signup with your", "sign up with your", "they never charge", "won't charge",
+            "will not charge", "free to join", "criminal history", "criminal record",
+            "background check", "never be too careful", "posted a review", "my review",
+            "escorts button", "verify that you are", "verify you are not",
+            "to make sure you are not" } },
+        { "guilt or pressure to answer", {
+            "don't upset", "do not upset", "make her bored", "make me bored",
+            "she is bored", "she's bored", "she is waiting", "she's waiting",
+            "keep her waiting", "don't make her wait", "keep me waiting",
+            "play with my feelings", "playing with my feelings", "no playing",
+            "playing fool", "don't play with me", "if you don't trust me",
+            "i have been waiting for you" } },
+        { "a pretended acquaintance", {
+            "see you again", "remember me", "it's me again", "it is me again",
+            "emailed each other", "wrote each other", "we talked before",
+            "we chatted before",
+            "hey again", "heyy again", "heyyy again", "did you get my", "did you see my",
+            "did you receive my", "haven't heard from you", "have not heard from you",
+            "have not being hearing from you", "not hearing from you", "where are you my",
+            "why don't you answer", "why don't you write", "why didn't you answer",
+            "why didn't you write", "you forgot me", "have you forgotten me",
+            "wo bist du" } },
+        { "assurances of being real and honest", {
+            "i am for real", "i'm for real", "am for real", "i am real", "i'm real",
+            "the real me", "everything about me", "i am honest", "i'm honest",
+            "honest to you", "sincere to you", "i am sincere", "i am serious",
+            "i'm serious", "not a scammer", "not a fake", "not an escort",
+            "not a prostitute", "not here for your money", "not after your money",
+            "not asking you for much", "scan passport", "scanned passport",
+            "copy of my passport", "my passport", "my id card", "believe in your words" } },
+        { "photos", {
+            "my photo", "my photos", "my picture", "my pictures", "my pics", "my pic",
+            "photo of me", "photos of me", "picture of me", "pictures of me",
+            "two pictures", "two photos", "my 2 photos", "my two photos", "my 3 photos",
+            "my three photos", "emailing you my", "sending you my", "some photos",
+            "some pictures",
+            "hope you like them", "hope you like my", "here is my photo", "here is mine",
+            "your photo", "your photos", "your picture", "your pictures", "and photos",
+            "look through my pictures", "meine fotos", "mein foto", "dein foto" } },
+        { "a push to write back", {
+            "write back", "write me", "write to me", "answer back", "answer me",
+            "reply me", "reply to me", "reply as soon as possible", "please reply",
+            "waiting for your", "wait for your", "await your", "awaiting your",
+            "earliest response", "soonest reply", "waiting fo u", "waiting for u",
+            "waiting to hear from you", "hope to hear from you", "hope to find your email",
+            "personal details", "personal email", "personal e-mail", "private email",
+            "private e-mail", "my email is", "my e-mail is", "contact me at",
+            "write to my", "waiting for your call", "join me", "email me", "e-mail me",
+            "give me your email", "give me your new email", "your email addresses",
+            "schreib mir",
+            "warte auf deine antwort", "antworte mir" } },
+        { "a request for money", {
+            "send me the money", "send me money", "send the money", "send me some money",
+            "send money", "the money for", "western union", "moneygram", "money gram",
+            "gift card", "itunes card", "steam card", "google play card", "amazon card",
+            "plane ticket", "air ticket", "flight ticket", "ticket to come",
+            "travel expenses", "visa fee", "customs fee", "customs", "hospital bill",
+            "medical bill", "pay my rent", "rent payment", "housing obligations",
+            "assistance with paying", "help me pay", "help me with money", "lend me",
+            "loan me", "how much you can send", "how much can you send", "a new laptop",
+            "cheap laptop", "buy a laptop", "buy a webcam", "internet cafe",
+            "geld schicken", "\xC3\xBC" "berweisen" } },
+        { "a hardship or far-away story", {
+            "deployed", "peacekeeping", "peace keeping", "military base", "us army",
+            "u.s. army", "soldier", "oil rig", "offshore", "widower", "my late wife",
+            "my old mother", "sick mother", "my mother is sick", "the war", "war zone",
+            "because of war", "my state is not good", "luhansk", "lugansk", "donetsk" } },
+    };
+    return v;
+}
+
+// The countries the "bride" letters write from, as "I live in Russia".
+const std::vector<std::string>& RomanceHomeCountries() {
+    static const std::vector<std::string> v = {
+        "russia", "ukraine", "belarus", "kazakhstan", "moldova", "kyrgyzstan",
+        "uzbekistan", "philippines", "russland",
+    };
+    return v;
+}
+
+// A job application introduces its writer too, with a photo, and asks for an
+// answer - and is not a love letter.
+const std::vector<std::string>& JobApplicationPhrases() {
+    static const std::vector<std::string> v = {
+        "curriculum vitae", "my cv", "my resume", "my r\xC3\xA9sum\xC3\xA9", "cover letter",
+        "vacancy", "vacancies", "job posting", "job application", "job offer",
+        "job interview", "apply for the", "application for the", "advertised position",
+        "the position of", "bewerbung", "lebenslauf", "stellenanzeige",
+    };
+    return v;
+}
+
+// How a domain imitates a brand, for a reason: "imitates Facebook:
+// \"faceebook\" is Facebook's name misspelt".
+std::string DescribeLookalike(const DomainLookalike& l) {
+    const std::string& name = l.brand->name;
+    switch (l.kind) {
+        case LookalikeKind::Misspelt:
+            return "imitates " + name + ": \"" + l.worn + "\" is " + name + "'s name misspelt";
+        case LookalikeKind::OwnDomain:
+            return "puts " + name + "'s own domain (" + l.worn + ") in front of an unrelated one";
+        case LookalikeKind::Homograph:
+            return "reads \"" + l.unicode + "\" - " + name + "'s name written with " +
+                   l.letters + " letters that look like Latin ones";
+        default:
+            return "wears " + name + "'s name (\"" + l.worn + "\") padded with other words";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Government agencies and international organisations
+// ---------------------------------------------------------------------------
+// The names the "compensation for scam victims", "your ATM card" and "warrant
+// for your arrest" letters write in. None of these bodies writes to a private
+// person out of the blue about money or an arrest - least of all from an
+// address that is not theirs.
+struct Agency {
+    const char*              name;      // as the reason says it
+    std::vector<std::string> claims;    // lowercase, matched as words
+    std::vector<std::string> domains;   // its own, beyond the government suffixes
+};
+
+const std::vector<Agency>& Agencies() {
+    static const std::vector<Agency> v = {
+        { "the FBI", { "fbi", "federal bureau of investigation" }, { "fbi.gov", "ic3.gov" } },
+        { "Interpol", { "interpol" }, { "interpol.int" } },
+        { "the IMF", { "imf", "international monetary fund", "international monitory fund",
+                       "international monitory funds" }, { "imf.org" } },
+        { "the United Nations", { "united nations" }, { "un.org" } },
+        { "the World Bank", { "world bank" }, { "worldbank.org" } },
+        { "Europol", { "europol" }, { "europa.eu" } },
+        { "the CIA", { "central intelligence agency" }, { "cia.gov" } },
+        { "Homeland Security", { "homeland security" }, { "dhs.gov" } },
+        { "the Department of Justice", { "department of justice" },
+          { "justice.gov", "usdoj.gov" } },
+        { "the US Treasury", { "department of the treasury", "us treasury", "u.s. treasury",
+                               "treasury department" }, { "treasury.gov" } },
+        { "the Federal Reserve", { "federal reserve" }, { "federalreserve.gov" } },
+        { "the Secret Service", { "secret service" }, { "secretservice.gov" } },
+        { "the IRS", { "irs", "internal revenue service" }, { "irs.gov" } },
+        { "the European Central Bank", { "european central bank" }, { "ecb.europa.eu" } },
+        { "the European Commission", { "european commission" }, { "europa.eu" } },
+        { "the Bundeskriminalamt", { "bundeskriminalamt", "bka" }, { "bka.de" } },
+        { "the Bundespolizei", { "bundespolizei" }, { "bundespolizei.de" } },
+        { "Scotland Yard", { "scotland yard", "metropolitan police" }, { "met.police.uk" } },
+        { "the National Crime Agency", { "national crime agency" },
+          { "nationalcrimeagency.gov.uk" } },
+        { "the Central Bank of Nigeria", { "central bank of nigeria" }, { "cbn.gov.ng" } },
+        { "ECOWAS", { "ecowas" }, { "ecowas.int" } },
+    };
+    return v;
+}
+
+// A government's own domain: .gov, .mil, .int, a country's gov.xx / gob.xx /
+// gouv.xx / govt.xx / go.xx / gv.xx, and the federal and EU domains that do
+// not say so in their suffix (bund.de, admin.ch, gv.at, gc.ca, europa.eu,
+// police.uk).
+bool IsGovernmentDomain(const std::string& domainIn) {
+    const std::string d = "." + Lower(domainIn);
+    auto endsWith = [&d](const std::string& tail) {
+        return d.size() >= tail.size() && d.compare(d.size() - tail.size(), tail.size(), tail) == 0;
+    };
+    for (const char* tail : { ".gov", ".mil", ".int", ".bund.de", ".admin.ch", ".gv.at",
+                              ".gc.ca", ".canada.ca", ".europa.eu", ".police.uk",
+                              ".gouv.fr" })
+        if (endsWith(tail)) return true;
+    const std::size_t last = d.rfind('.');
+    const std::size_t prev = last == 0 ? std::string::npos : d.rfind('.', last - 1);
+    if (prev == std::string::npos || d.size() - last - 1 != 2) return false;
+    const std::string second = d.substr(prev + 1, last - prev - 1);
+    for (const char* s : { "gov", "gob", "gouv", "govt", "go", "gv", "mil", "police" })
+        if (second == s) return true;
+    return false;
+}
+
+// What makes a mention of an agency a letter in its name: it addresses the
+// reader about their money, their case or their arrest.
+const std::vector<std::string>& OfficialLetterPhrases() {
+    static const std::vector<std::string> v = {
+        "attention beneficiary", "dear beneficiary", "beneficiary", "your payment",
+        "your fund", "your funds", "atm card", "compensation", "scam victim",
+        "scam victims", "arrest warrant", "warrant of arrest", "warrant for your arrest",
+        "you will be arrested", "legal action against you", "pay the fine", "pay a fine",
+        "your case", "case number", "this office", "our office", "we the", "hereby",
+        "officially", "haftbefehl", "ihre zahlung", "aktenzeichen",
+    };
+    return v;
+}
+
+// ---------------------------------------------------------------------------
+// Cryptocurrency
+// ---------------------------------------------------------------------------
+const std::vector<std::string>& CryptoTerms() {
+    static const std::vector<std::string> v = {
+        "bitcoin", "bitcoins", "btc", "ethereum", "usdt", "crypto", "cryptocurrency",
+        "cryptocurrencies", "crypto currency", "crypto-currency", "cryptocoin",
+        "blockchain", "altcoin", "altcoins", "dogecoin", "litecoin", "solana", "xrp",
+        "binance", "coinbase", "metamask", "trust wallet", "crypto wallet",
+        "bitcoin wallet", "wallet address", "seed phrase", "recovery phrase", "nft",
+        "nfts", "defi", "krypto", "kryptow\xC3\xA4hrung",
+        "kryptow\xC3\xA4hrungen", "kryptowaehrung",
+    };
+    return v;
+}
+
+// What a crypto "investment" promises: profit without risk, a platform, a
+// balance waiting to be withdrawn, something free to claim.
+const std::vector<std::string>& CryptoProfitPhrases() {
+    static const std::vector<std::string> v = {
+        "guaranteed profit", "guaranteed profits", "guaranteed return",
+        "guaranteed returns", "guaranteed income", "double your", "triple your",
+        "daily profit", "daily profits", "daily return", "daily returns", "weekly profit",
+        "monthly profit", "risk-free", "risk free", "no risk", "passive income",
+        "earn up to", "investment opportunity", "investment platform",
+        "trading platform", "trading account", "trading bot", "your profit",
+        "your profits", "your earnings", "withdraw your", "withdrawal fee",
+        "account balance", "your balance", "has been credited", "claim your", "airdrop",
+        "giveaway", "free bitcoin", "free btc", "free crypto", "mining contract",
+        "cloud mining", "account manager", "investment advisor", "insider",
+        "garantierte rendite", "gewinn garantiert",
+    };
+    return v;
+}
+
+// The secrets that own a wallet. Whoever has one of them has the coins.
+const std::vector<std::string>& WalletSecretPhrases() {
+    static const std::vector<std::string> v = {
+        "seed phrase", "recovery phrase", "secret phrase", "secret recovery phrase",
+        "mnemonic phrase", "mnemonic", "private key", "private keys", "12-word",
+        "24-word", "12 word", "24 word", "backup phrase", "wallet phrase",
+    };
+    return v;
+}
+
+// A sentence of `textLower` that asks for a wallet's secret - not one that
+// warns never to give it away. Returns the secret named, or "".
+std::string WalletSecretRequest(const std::string& textLower) {
+    static const std::vector<std::string> asks = {
+        "enter", "confirm", "verify", "validate", "provide", "submit", "send us",
+        "send your", "share your", "import", "synchronize", "synchronise", "sync",
+        "type in", "fill in", "re-enter", "update", "reactivate",
+    };
+    static const std::vector<std::string> negations = {
+        "never", "not", "don't", "do not", "no one", "nobody", "won't", "nie",
+        "niemals", "nicht",
+    };
+    std::size_t start = 0;
+    while (start < textLower.size()) {
+        std::size_t end = textLower.find_first_of(".!?;\n", start);
+        if (end == std::string::npos) end = textLower.size();
+        const std::string sentence = textLower.substr(start, end - start);
+        if (const std::string* secret = FirstWordPhraseIn(sentence, WalletSecretPhrases()))
+            if (FirstWordPhraseIn(sentence, asks) && !FirstWordPhraseIn(sentence, negations))
+                return *secret;
+        start = end + 1;
+    }
+    return std::string();
+}
+
+// A wallet address in `text` (case kept: Base58 tells 0/O and l/I apart):
+// Bitcoin (bc1…, or 1…/3… of 26-35 characters), Ethereum (0x + 40 hex) or
+// TRON (T…). "" when there is none.
+std::string CryptoWalletAddress(const std::string& text) {
+    static const std::regex bech32(R"(\b[bB][cC]1[ac-hj-np-zAC-HJ-NP-Z02-9]{25,87}\b)");
+    static const std::regex ethereum(R"(\b0x[0-9a-fA-F]{40}\b)");
+    static const std::regex base58(R"(\b[13T][1-9A-HJ-NP-Za-km-z]{25,34}\b)");
+    // Not a part of a link: a token after "?token=" or "/" is not an address.
+    auto inLink = [&text](std::ptrdiff_t at) {
+        return at > 0 && std::string("/=?&#:%").find(text[at - 1]) != std::string::npos;
+    };
+    for (const std::regex* re : { &bech32, &ethereum })
+        for (auto it = std::sregex_iterator(text.begin(), text.end(), *re);
+             it != std::sregex_iterator(); ++it)
+            if (!inLink(it->position())) return it->str();
+    // A Base58 address mixes capitals, small letters and digits; a word or a
+    // long number does not.
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), base58);
+         it != std::sregex_iterator(); ++it) {
+        if (inLink(it->position())) continue;
+        const std::string hit = it->str();
+        bool upper = false, lower = false, digit = false;
+        for (std::size_t i = 1; i < hit.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(hit[i]);
+            upper = upper || std::isupper(c);
+            lower = lower || std::islower(c);
+            digit = digit || std::isdigit(c);
+        }
+        if (upper && lower && digit) return hit;
+    }
+    return std::string();
 }
 
 } // namespace
@@ -301,31 +741,165 @@ std::string ThreatReport::Summary() const {
     return out;
 }
 
+std::string ThreatReport::Codes() const {
+    std::string out;
+    for (const auto& f : findings) {
+        if (!out.empty()) out.push_back(',');
+        out += f.code;
+    }
+    return out;
+}
+
+bool ThreatReport::Has(const std::string& code) const {
+    for (const auto& f : findings) if (f.code == code) return true;
+    return false;
+}
+
+bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
+    if (code == "romance-scam")             return o.romance;
+    if (code == "government-impersonation") return o.government;
+    if (code == "advance-fee-fraud" || code == "reply-elsewhere") return o.advanceFee;
+    if (code == "crypto-content")           return o.cryptoCaution;
+    if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
+    if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
+    if (code == "spam-flag")                return o.spamFlag;
+    static const std::set<std::string> phishing = {
+        "auth-failure", "brand-impersonation", "sender-domain-lookalike",
+        "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
+        "link-nonascii-host", "link-shortener", "link-target-mismatch",
+        "link-brand-mismatch", "link-brand-lookalike", "link-domain-lookalike",
+        "insecure-login-link",
+        "many-foreign-domains", "credential-request", "reply-to-mismatch",
+    };
+    if (phishing.count(code)) return o.phishing;
+    return true;
+}
+
+namespace {
+std::mutex         g_optionsMutex;
+ThreatScanOptions  g_options;
+} // namespace
+
+void SetThreatScanOptions(const ThreatScanOptions& options) {
+    std::lock_guard<std::mutex> lock(g_optionsMutex);
+    g_options = options;
+}
+
+namespace {
+std::mutex  g_listsMutex;
+SenderLists g_lists;
+} // namespace
+
+std::string SenderLists::Normalize(const std::string& address) {
+    std::string a = address;
+    if (const std::size_t lt = a.find('<'); lt != std::string::npos) {
+        const std::size_t gt = a.find('>', lt);
+        a = a.substr(lt + 1, gt == std::string::npos ? std::string::npos : gt - lt - 1);
+    }
+    return Lower(Trim(a));
+}
+
+std::string SenderLists::Entry(const std::string& typed, bool blockList) {
+    std::string e = Normalize(typed);
+    if (e.find_first_of(" \t,;") != std::string::npos) return std::string();
+    if (blockList && e.find('@') == std::string::npos) e = "@" + e;   // a bare domain
+    const std::size_t at = e.find('@');
+    if (at == std::string::npos || e.find('@', at + 1) != std::string::npos) return std::string();
+    const std::string domain = e.substr(at + 1);
+    if (domain.find('.') == std::string::npos || domain.front() == '.' || domain.back() == '.')
+        return std::string();
+    if (at == 0 && !blockList) return std::string();   // trust is per address
+    return e;
+}
+
+bool SenderLists::Trusts(const std::string& address) const {
+    const std::string a = Normalize(address);
+    return !a.empty() && trusted.count(a) > 0;
+}
+
+std::string SenderLists::BlockedBy(const std::string& address) const {
+    const std::string a = Normalize(address);
+    if (a.empty()) return std::string();
+    if (blocked.count(a)) return a;
+    // The domain, and each domain above it: mail.shop.example, shop.example.
+    const std::size_t at = a.rfind('@');
+    std::string domain = at == std::string::npos ? std::string() : a.substr(at + 1);
+    while (domain.find('.') != std::string::npos) {
+        if (blocked.count("@" + domain)) return "@" + domain;
+        domain = domain.substr(domain.find('.') + 1);
+    }
+    return std::string();
+}
+
+void SetSenderLists(const SenderLists& lists) {
+    std::lock_guard<std::mutex> lock(g_listsMutex);
+    g_lists = lists;
+}
+
+SenderLists GetSenderLists() {
+    std::lock_guard<std::mutex> lock(g_listsMutex);
+    return g_lists;
+}
+
+bool FindingKeptForTrustedSender(const std::string& code) {
+    static const std::set<std::string> kept = {
+        "auth-failure", "link-target-mismatch", "link-userinfo", "link-ip-host",
+        "link-punycode", "link-nonascii-host", "link-brand-mismatch",
+        "link-brand-lookalike", "link-domain-lookalike",
+        "attachment-disguised-executable", "crypto-wallet-secret",
+    };
+    return kept.count(code) > 0;
+}
+
+ThreatScanOptions GetThreatScanOptions() {
+    std::lock_guard<std::mutex> lock(g_optionsMutex);
+    return g_options;
+}
+
+bool HasFindingCode(const std::string& codes, const std::string& code) {
+    if (code.empty()) return false;
+    std::size_t start = 0;
+    while (start <= codes.size()) {
+        std::size_t end = codes.find(',', start);
+        if (end == std::string::npos) end = codes.size();
+        if (codes.compare(start, end - start, code) == 0 && end - start == code.size())
+            return true;
+        start = end + 1;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Link extraction
 // ---------------------------------------------------------------------------
 std::vector<std::string> ExtractImageHosts(const std::string& body) {
     std::vector<std::string> hosts;
-    const std::string lower = Lower(body);
-    // src="…" / background="…" / url(…) with an http(s) source.
-    for (const char* key : { "src=", "background=", "url(" }) {
-        std::size_t pos = 0;
-        while ((pos = lower.find(key, pos)) != std::string::npos) {
-            std::size_t v = pos + std::strlen(key);
-            while (v < lower.size() && (std::isspace(static_cast<unsigned char>(lower[v])) ||
-                                        lower[v] == '"' || lower[v] == '\'')) ++v;
-            if (lower.compare(v, 7, "http://") == 0 || lower.compare(v, 8, "https://") == 0) {
-                std::size_t end = v;
-                while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
-                       lower[end] != '"' && lower[end] != '\'' && lower[end] != ')' && lower[end] != '>')
-                    ++end;
-                const std::string host = HostOf(body.substr(v, end - v));
-                if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
-                    hosts.push_back(host);
-            }
-            pos = v;
+    auto add = [&hosts](const std::string& source) {
+        const std::string url = Trim(source);
+        const std::string lower = Lower(url.substr(0, 8));
+        if (lower.compare(0, 7, "http://") != 0 && lower.compare(0, 8, "https://") != 0) return;
+        const std::string host = HostOf(url);
+        if (!host.empty() && std::find(hosts.begin(), hosts.end(), host) == hosts.end())
+            hosts.push_back(host);
+    };
+    UltraCanvas::HTML::Parser parser;
+    UltraCanvas::HTML::Document document = parser.Parse(body);
+    if (!document.root) return hosts;
+    // The cascade gives each element the background images its style
+    // attribute and the page's <style> sheets set - url() values a search of
+    // the source cannot tell from a font's or a rule that matches nothing.
+    UltraCanvas::HTML::StyleResolver resolver;
+    for (const std::string& css : document.styleSheets) resolver.AddStyleSheet(css);
+    resolver.Resolve(document);
+    document.root->ForEachElement([&](UltraCanvas::HTML::Node& element) {
+        if (element.tag == "img"
+            || (element.tag == "input" && Lower(Trim(element.GetAttribute("type"))) == "image")) {
+            add(element.GetAttribute("src"));
         }
-    }
+        if (element.HasAttribute("background")) add(element.GetAttribute("background"));
+        for (const std::string& image : resolver.StyleOf(&element).backgroundImages) add(image);
+        return true;
+    });
     return hosts;
 }
 
@@ -515,6 +1089,21 @@ ThreatReport ScanMessage(const ScanInput& input) {
                                   : senderDomain) + ", which is not " + claimed->name + ".");
     }
 
+    // ---- A sender domain dressed up as a brand's ---------------------------
+    // The From address itself pretends: "faceebookinbox.biz",
+    // "paypal-secure-login.com", "amaz0n-billing.com",
+    // "paypal.com.account-check.ru" (BrandImitatedByDomain). A domain can sign
+    // its own mail, so a proven look-alike is still a look-alike.
+    {
+        const DomainLookalike lookalike = BrandImitatedByDomain(senderDomain);
+        if (lookalike.brand) {
+            Add(report, lookalike.kind == LookalikeKind::Name ? 45 : 50,
+                "sender-domain-lookalike",
+                "The sender's domain " + senderDomain + " " + DescribeLookalike(lookalike) +
+                ", but it is not one of " + lookalike.brand->name + "'s domains.");
+        }
+    }
+
     // ---- Pictures borrowed from a brand the mail is not from --------------
     // The message's pictures come from a site its display name (or subject)
     // names - gotinder.com for "Tinder" - but it was sent from elsewhere and
@@ -538,7 +1127,11 @@ ThreatReport ScanMessage(const ScanInput& input) {
         for (const auto& link : links)
             if (!link.host.empty()) linkRegs.insert(RegistrableDomain(link.host));
         const std::string senderLower = Lower(senderReg);
-        for (const std::string& imageHost : ExtractImageHosts(input.body)) {
+        // Without a word of a name to find, no picture can be borrowed: the
+        // page is not parsed again for it.
+        const std::vector<std::string> imageHosts =
+            nameWords.empty() ? std::vector<std::string>() : ExtractImageHosts(input.body);
+        for (const std::string& imageHost : imageHosts) {
             const std::string imageReg = RegistrableDomain(imageHost);
             if (imageReg.empty() || imageReg == senderReg || linkRegs.count(imageReg)) continue;
             const std::string label = imageReg.substr(0, imageReg.find('.'));
@@ -562,6 +1155,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
 
     // ---- Link rules --------------------------------------------------------
     std::set<std::string> foreignDomains;
+    std::set<std::string> lookalikeHostsChecked;   // once per host, not per link
     for (const auto& link : links) {
         if (link.host.empty()) continue;
         const std::string linkReg = RegistrableDomain(link.host);
@@ -621,6 +1215,21 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 Add(report, 20, "link-brand-mismatch",
                     "A link labelled \"" + Trim(link.text) + "\" does not go to " +
                     linkBrand->name + " but to " + link.host + ".");
+            }
+        }
+
+        // A link to a domain dressed up as a brand's - "faceebook-login.com",
+        // "paypa1.com", "pаypal.com" in Cyrillic letters (BrandImitatedByDomain,
+        // as for the sender). The sender's own domain is the sender rule's.
+        if (!ownDomain && !report.Has("link-domain-lookalike") &&
+            lookalikeHostsChecked.insert(link.host).second) {
+            const DomainLookalike l = BrandImitatedByDomain(link.host);
+            if (l.brand) {
+                Add(report, l.kind == LookalikeKind::Name ? 40 : 50, "link-domain-lookalike",
+                    "A link" + (link.text.empty() ? std::string()
+                                                  : " labelled \"" + Trim(link.text) + "\"") +
+                    " goes to " + link.host + ", which " + DescribeLookalike(l) +
+                    " - not one of " + l.brand->name + "'s domains.");
             }
         }
 
@@ -685,7 +1294,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (parts >= 1) {
                 std::string why = "The message promises a large sum of money (\"" + sum + "\")";
                 std::vector<std::string> extras;
-                if (deceased) extras.push_back("a dead relative, estate or inheritance (\"" + *deceased + "\")");
+                if (deceased) extras.push_back("a dead relative, an estate or money nobody claimed (\"" + *deceased + "\")");
                 if (fee)      extras.push_back("taxes or fees to be paid first (\"" + *fee + "\")");
                 if (setting)  extras.push_back("\"" + *setting + "\"");
                 for (std::size_t i = 0; i < extras.size(); ++i)
@@ -699,6 +1308,49 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Government agencies and international organisations -------------
+    // A letter in the FBI's, Interpol's or the IMF's name from an address that
+    // is not theirs. In the sender's name or domain it is a claim on its own
+    // ("FBI <director@fbi-atm-center.example>"); in the subject or the text it
+    // counts when it addresses the reader about money, a case or an arrest -
+    // a news item about the FBI does not. Not for a newsletter from a domain
+    // of its own, and not where the brand table already said so.
+    bool agencyDomain = IsGovernmentDomain(senderDomain);   // one agency may name another
+    for (const Agency& agency : Agencies())
+        for (const auto& d : agency.domains)
+            agencyDomain = agencyDomain || RegistrableDomain(senderDomain) == RegistrableDomain(d);
+    if (!(input.options.phishing && report.Has("brand-impersonation")) && !agencyDomain &&
+        !(report.bulk && !IsPersonalMailboxDomain(senderDomain))) {
+        std::string who = input.fromName.empty() ? input.fromAddr : input.fromName;
+        if (const std::size_t lt = who.find('<'); lt != std::string::npos) who = who.substr(0, lt);
+        std::string domainWords = senderDomain;
+        for (char& c : domainWords) if (c == '.' || c == '-' || c == '_') c = ' ';
+        const std::string named = Lower(who) + " " + domainWords;
+        const std::string letterText = Lower(input.subject) + "\n" + bodyLower;
+        for (const Agency& agency : Agencies()) {
+            const std::string from = senderDomain.empty() ? std::string("an address with no domain")
+                                                          : senderDomain;
+            if (const std::string* claim = FirstWordPhraseIn(named, agency.claims)) {
+                Add(report, 45, "government-impersonation",
+                    "The message presents itself as " + std::string(agency.name) + " (\"" +
+                    *claim + "\"), but it was sent from " + from +
+                    ", which is not a government address.");
+                break;
+            }
+            const std::string* claim = FirstWordPhraseIn(letterText, agency.claims);
+            const std::string* letter = claim ? FirstWordPhraseIn(letterText, OfficialLetterPhrases())
+                                              : nullptr;
+            if (claim && letter) {
+                Add(report, 30, "government-impersonation",
+                    "The message speaks in the name of " + std::string(agency.name) +
+                    " about your money, a case or an arrest (\"" + *letter + "\"), but it "
+                    "was sent from " + from + ", which is not a government address. "
+                    "Agencies do not announce payments, compensation or arrests by email.");
+                break;
+            }
+        }
+    }
+
     // ---- Reply-To pointing somewhere else ---------------------------------
     // A proven sender's replies may well go to its help desk's domain.
     if (!authenticated && !input.replyTo.empty() && !senderReg.empty()) {
@@ -706,6 +1358,41 @@ ThreatReport ScanMessage(const ScanInput& input) {
         if (!replyReg.empty() && replyReg != senderReg) {
             Add(report, 15, "reply-to-mismatch",
                 "Replies would not go back to " + senderReg + " but to " + replyReg + ".");
+        }
+    }
+
+    // ---- Answers asked for at another address ------------------------------
+    // "Please find my contact email address for us to proceed: (x@yahoo.com)"
+    // - the advance-fee and romance letters move the conversation to a free
+    // mailbox other than the one they were sent from (which the provider may
+    // already have closed). An address of a company domain in a signature is
+    // not this, and neither is the sender repeating their own.
+    if (!verifiedBrand) {
+        std::string from = Lower(input.fromAddr);
+        if (const std::size_t lt = from.find('<'); lt != std::string::npos) {
+            const std::size_t gt = from.find('>', lt);
+            from = from.substr(lt + 1, gt == std::string::npos ? std::string::npos : gt - lt - 1);
+        }
+        from = Trim(from);
+        static const std::vector<std::string> invitations = {
+            "contact me", "contact email", "write me", "write to me", "reply to",
+            "email me", "e-mail me", "my email", "my e-mail", "my private email",
+            "my personal email", "reach me", "get back to me", "send your reply",
+            "to proceed", "private email", "kontaktieren sie mich", "schreib mir",
+            "meine e-mail",
+        };
+        const std::string* invitation = FirstWordPhraseIn(bodyLower, invitations);
+        for (std::size_t at = bodyLower.find('@'); invitation && at != std::string::npos;
+             at = bodyLower.find('@', at + 1)) {
+            std::size_t a = 0, b = 0;
+            if (!MailAddressAt(bodyLower, at, a, b)) continue;
+            const std::string address = bodyLower.substr(a, b - a);
+            if (address == from || !IsPersonalMailboxDomain(DomainOfAddress(address))) continue;
+            Add(report, 15, "reply-elsewhere",
+                "The message asks for answers at another address (" + address +
+                "), a free mailbox that is not the one it was sent from" +
+                (from.empty() ? std::string() : " (" + from + ")") + ".");
+            break;
         }
     }
 
@@ -741,6 +1428,162 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Romance scams -----------------------------------------------------
+    // A stranger's love letter (RomanceSignKinds): it needs both something
+    // romantic (pet names, love, sex, a guilt trip) and something only a
+    // stranger writes (an introduction, how they "found" you, a site to sign
+    // up on, assurances of being real) - a partner's "my dear, here are the
+    // photos, write back" has the first and not the second. Not a proven
+    // brand's mail (a dating service writing about matches), not a newsletter
+    // from a domain of its own, not a job application, and not a long mail,
+    // which these never are.
+    const bool freeMailbox = IsPersonalMailboxDomain(senderDomain);
+    const std::string letter = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+    const std::string* cryptoTerm = FirstWordPhraseIn(letter, CryptoTerms());
+    if (!verifiedBrand && !(report.bulk && !freeMailbox) && letter.size() < 60000 &&
+        !FirstWordPhraseIn(letter, JobApplicationPhrases())) {
+        enum Kind { kPetNames, kLove, kSex, kIntro, kContact, kSite, kPressure,
+                    kAcquaintance, kSincerity, kPhotos, kReply, kMoney, kStory };
+        const auto& kinds = RomanceSignKinds();
+        std::vector<std::string> found(kinds.size());
+        for (std::size_t k = 0; k < kinds.size(); ++k)
+            if (const std::string* p = FirstWordPhraseIn(letter, kinds[k].phrases))
+                found[k] = *p;
+        if (found[kIntro].empty()) {
+            // "I'm 31 years old", "ich bin 30 Jahre", "I live in Russia".
+            // "I'm single", "Im lawyer", "I am a nurse".
+            static const std::regex age(
+                R"(\b(?:i am|i'm|im|ich bin)\s+(?:a\s+)?\d{2}\s?(?:years?|yrs|jahre)\b)");
+            static const std::regex status(
+                R"(\b(?:i am|i'm|im)\s+(?:an?\s+)?(?:single|divorced|nurse|doctor|lawyer|)"
+                R"(engineer|teacher|soldier|surgeon|widow|widower|businessman|businesswoman)\b)");
+            std::smatch m;
+            if (std::regex_search(letter, m, age) || std::regex_search(letter, m, status))
+                found[kIntro] = m.str();
+            for (const std::string& country : RomanceHomeCountries()) {
+                if (!found[kIntro].empty()) break;
+                for (const char* lead : { "i live in ", "i am from ", "i'm from ", "living in ",
+                                          "ich lebe in ", "ich komme aus " })
+                    if (ContainsPhrase(letter, lead + country)) {
+                        found[kIntro] = lead + country;
+                        break;
+                    }
+            }
+        }
+        if (found[kPressure].empty()) {
+            // A screen name speaking of herself: "don't upset Shui98 or make her bored".
+            static const std::regex screenName(
+                R"((?:^|\s)([a-z]{3,}_?\d{2,4})(?=[\s,.!?]|$)[^.!?\n]{0,30}?\b(?:her|she)\b)");
+            std::smatch m;
+            if (std::regex_search(letter, m, screenName)) found[kPressure] = Trim(m.str());
+        }
+        if (found[kMoney].empty() && cryptoTerm) found[kMoney] = *cryptoTerm;
+
+        const bool romantic = !found[kPetNames].empty() || !found[kLove].empty() ||
+                              !found[kSex].empty() || !found[kPressure].empty();
+        const bool stranger = !found[kIntro].empty() || !found[kContact].empty() ||
+                              !found[kSite].empty() || !found[kPressure].empty() ||
+                              !found[kSincerity].empty();
+
+        // The photo these letters nearly always carry.
+        std::vector<std::string> photos;
+        for (const auto& name : input.attachmentNames)
+            if (IsPictureName(name)) photos.push_back(name);
+        for (const auto& name : input.pictureNames) photos.push_back(name);
+
+        int signs = (photos.empty() ? 0 : 1) + (freeMailbox ? 1 : 0);
+        for (const auto& f : found) if (!f.empty()) ++signs;
+        if (romantic && stranger && signs >= 3) {
+            std::vector<std::string> parts;
+            for (std::size_t k = 0; k < kinds.size(); ++k)
+                if (!found[k].empty())
+                    parts.push_back(std::string(kinds[k].what) + " (\"" + found[k] + "\")");
+            std::string why = "The message reads like a romance scam: ";
+            for (std::size_t i = 0; i < parts.size(); ++i)
+                why += (i == 0 ? "" : (i + 1 == parts.size() ? " and " : ", ")) + parts[i];
+            if (!photos.empty()) {
+                std::string named = photos.front().empty() ? std::string()
+                                                           : " (\"" + photos.front() + "\")";
+                why += photos.size() == 1
+                    ? ", with a photo attached" + named
+                    : ", with " + std::to_string(photos.size()) + " photos attached" + named;
+            }
+            if (freeMailbox) why += ", sent from a free mailbox (" + senderDomain + ")";
+            why += ". Romance scammers write to strangers with a made-up profile and someone "
+                   "else's photos, and once they are trusted they ask for money - a ticket, "
+                   "a visa, the rent, a laptop, crypto.";
+            Add(report, signs >= 5 ? 50 : signs == 4 ? 35 : 22, "romance-scam", why);
+        }
+    }
+
+    // ---- Cryptocurrency ----------------------------------------------------
+    // Any mail about crypto gets a word of caution: a payment cannot be called
+    // back. Three patterns are scams outright - asking for a wallet's recovery
+    // phrase, an address to pay into (blackmail, fake invoices), and profit
+    // promised on an "investment". A proven exchange writing about its own
+    // service is spared the last two (a deposit address, "your balance").
+    if (cryptoTerm) {
+        Add(report, verifiedBrand ? 0 : 10, "crypto-content",
+            "The message is about cryptocurrency (\"" + *cryptoTerm + "\"). A crypto payment "
+            "cannot be called back: whoever receives it keeps it.");
+        const std::string secret = WalletSecretRequest(letter);
+        if (!secret.empty()) {
+            Add(report, 50, "crypto-wallet-secret",
+                "The message asks for a crypto wallet's " + secret + ". No genuine wallet, "
+                "exchange or help desk ever asks for it: whoever has it owns the wallet and "
+                "everything in it.");
+        }
+        if (!verifiedBrand) {
+            const std::string address =
+                CryptoWalletAddress(input.bodyIsHtml ? UltraCanvas::HTML::ExtractPlainText(input.body)
+                                                 : input.body);
+            if (!address.empty()) {
+                Add(report, 40, "crypto-payment-demand",
+                    "The message gives a crypto wallet address to pay into (" + address +
+                    "). Blackmail (\"I recorded you through your camera\") and fake invoices "
+                    "ask for payment this way, because it cannot be traced or reversed.");
+            }
+            std::string lure;
+            if (const std::string* p = FirstWordPhraseIn(letter, CryptoProfitPhrases())) {
+                lure = *p;
+            } else {
+                static const std::regex percent(
+                    R"(\d+(?:[.,]\d+)?\s?%\s?(?:daily|per day|a day|weekly|per week|a week|monthly|per month|a month|returns?|roi|profit))");
+                std::smatch m;
+                if (std::regex_search(letter, m, percent)) lure = m.str();
+            }
+            if (!lure.empty()) {
+                Add(report, 35, "crypto-investment-lure",
+                    "The message pairs cryptocurrency with a promise of profit (\"" + lure +
+                    "\"). No genuine investment guarantees a return; the \"platforms\" "
+                    "strangers recommend show made-up gains and keep what is paid in.");
+            }
+        }
+    }
+
+    // ---- The reader's own lists ----------------------------------------------
+    // A blocked sender's mail is marked as spam: the reader said so. (Their
+    // mail stays where it is - UltraMail labels, it does not move.)
+    if (!input.senderBlockedBy.empty()) {
+        Add(report, 30, "blocked-sender",
+            input.senderBlockedBy.front() == '@'
+                ? "You blocked everything from " + input.senderBlockedBy.substr(1) +
+                  ", so its mail is marked as spam."
+                : "You blocked " + input.senderBlockedBy + ", so their mail is marked as spam.");
+    }
+
+    // Settings > Spam/scam warnings: a kind switched off is not reported; and
+    // for a sender the reader trusts, only what catches a lie or a forgery.
+    for (auto it = report.findings.begin(); it != report.findings.end();) {
+        if (FindingEnabled(input.options, it->code) &&
+            (!input.senderTrusted || FindingKeptForTrustedSender(it->code))) {
+            ++it;
+            continue;
+        }
+        report.score -= it->score;
+        it = report.findings.erase(it);
+    }
+
     if (report.score < 0) report.score = 0;
     if (report.score >= kScamScore)            report.level = ThreatLevel::Scam;
     else if (report.score >= kSuspiciousScore) report.level = ThreatLevel::Suspicious;
@@ -769,6 +1612,12 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     // The topmost: the parsed headers keep the last of a repeated header,
     // and the bottom-most Authentication-Results may be anyone's.
     in.authResults     = TopHeaderValue(rawMessage, "Authentication-Results");
+    in.options         = GetThreatScanOptions();
+    {
+        const SenderLists lists = GetSenderLists();
+        in.senderTrusted   = lists.Trusts(msg.from);
+        in.senderBlockedBy = lists.BlockedBy(msg.from);
+    }
 
     std::string body;
     bool isHtml = false;
@@ -777,9 +1626,16 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
         in.bodyIsHtml = isHtml;
     }
 
+    // The attachments, and the body's own pictures (cid:) - with the image
+    // attachments a picture's file name does not show.
     std::vector<UltraNetMimeAttachmentView> atts;
-    UltraNet_MimeCollectAttachments(msg, atts, /*includeInline=*/false);
-    for (const auto& a : atts) in.attachmentNames.push_back(a.filename);
+    UltraNet_MimeCollectAttachments(msg, atts, /*includeInline=*/true);
+    for (const auto& a : atts) {
+        const bool image = a.mediaType.rfind("image/", 0) == 0;
+        if (!a.isInline) in.attachmentNames.push_back(a.filename);
+        if (image && (a.isInline || !IsPictureName(a.filename)))
+            in.pictureNames.push_back(a.filename);
+    }
     return true;
 }
 

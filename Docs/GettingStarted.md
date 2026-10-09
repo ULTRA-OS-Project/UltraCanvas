@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.1
-**Last Modified:** 2026-10-08
+**Version:** 1.0.2
+**Last Modified:** 2026-10-09
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -15,9 +15,17 @@ system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
 UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
 the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, names the matching SDK, writes
-the project skeleton of step 3 and prepares the first prompt for the
+then checks and installs the packages below, downloads the matching SDK,
+writes the project skeleton of step 3 and prepares the first prompt for the
 assistant. `UltraCanvasStart --check` does the checking in a terminal.
+
+**On a computer with nothing yet, start with UltraCanvasStart.** Every
+release of the framework carries it on its own, built for each platform:
+`UltraCanvasStart-<OS>-<version>-<arch>` under
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.gz` on
+Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
+and it does steps 1 to 3 below; the steps stay here for reading what it does
+and for doing it by hand.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside

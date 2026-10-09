@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<!-- An Excel 2003 XML Spreadsheet saved under an .xls name. Read by
+     SpreadsheetXlsFileTest. Formulas are R1C1, relative to their cell. -->
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Borders/>
+   <Font ss:FontName="Arial" ss:Size="10"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="s21">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1"/>
+   <Interior ss:Color="#FFFF00" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s22">
+   <NumberFormat ss:Format="Short Date"/>
+  </Style>
+  <Style ss:ID="s23">
+   <NumberFormat ss:Format="Percent"/>
+  </Style>
+  <Style ss:ID="s24">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+  </Style>
+  <Style ss:ID="s25">
+   <Font ss:FontName="Arial" ss:Size="10" ss:Color="#FF0000" ss:Italic="1"/>
+  </Style>
+  <Style ss:ID="s26">
+   <NumberFormat ss:Format="yyyy\-mm\-dd\ hh:mm"/>
+  </Style>
+ </Styles>
+ <Names>
+  <NamedRange ss:Name="Rate" ss:RefersTo="=Data!R2C2"/>
+ </Names>
+ <Worksheet ss:Name="Data">
+  <Table ss:ExpandedColumnCount="4" ss:ExpandedRowCount="8" x:FullColumns="1"
+   x:FullRows="1">
+   <Column ss:AutoFitWidth="0" ss:Width="120"/>
+   <Column ss:Index="3" ss:Hidden="1" ss:AutoFitWidth="0" ss:Width="60"/>
+   <Row>
+    <Cell ss:StyleID="s21"><Data ss:Type="String">Item</Data></Cell>
+    <Cell ss:StyleID="s21"><Data ss:Type="String">Price</Data></Cell>
+    <Cell ss:StyleID="s21"><Data ss:Type="String">Hidden</Data></Cell>
+    <Cell ss:StyleID="s21"><Data ss:Type="String">When</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">Apple</Data></Cell>
+    <Cell><Data ss:Type="Number">12.5</Data></Cell>
+    <Cell ss:Index="4" ss:StyleID="s22"><Data ss:Type="DateTime">2024-03-15T00:00:00.000</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">&#3586;&#3634;&#3618;</Data></Cell>
+    <Cell><Data ss:Type="Number">1000</Data></Cell>
+    <Cell ss:Index="4" ss:StyleID="s26"><Data ss:Type="DateTime">2024-03-15T13:45:00.000</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">Total</Data></Cell>
+    <Cell ss:Formula="=SUM(R[-2]C:R[-1]C)"><Data ss:Type="Number">1012.5</Data></Cell>
+    <Cell ss:Index="4" ss:StyleID="s23" ss:Formula="=R[-2]C[-2]/R[-1]C[-2]"><Data
+      ss:Type="Number">1.2500000000000001E-2</Data></Cell>
+   </Row>
+   <Row ss:AutoFitHeight="0" ss:Height="30">
+    <Cell ss:MergeAcross="2" ss:StyleID="s24"><Data ss:Type="String">Merged across three</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="Boolean">1</Data></Cell>
+    <Cell ss:Formula="=1/0"><Data ss:Type="Error">#DIV/0!</Data></Cell>
+    <Cell ss:StyleID="s25"><ss:Data ss:Type="String"
+      xmlns="http://www.w3.org/TR/REC-html40"><B>Rich</B> text</ss:Data></Cell>
+   </Row>
+   <Row ss:Index="8" ss:Hidden="1">
+    <Cell><Data ss:Type="String">hidden row</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Second Sheet">
+  <Table>
+   <Row>
+    <Cell ss:Formula="=Data!R4C2"><Data ss:Type="Number">1012.5</Data></Cell>
+    <Cell ss:Formula="=Rate*2"><Data ss:Type="Number">25</Data></Cell>
+    <Cell ss:Formula="=IF(RC[-2]&gt;100,&quot;big&quot;,&quot;small&quot;)"><Data
+      ss:Type="String">big</Data></Cell>
+    <Cell ss:Formula="=ROUND(SUM('Data'!R2C2:R3C2)/2,1)"><Data ss:Type="Number">506.3</Data></Cell>
+   </Row>
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Visible>SheetHidden</Visible>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>

@@ -1,3 +1,313 @@
+#### 2026-10-09 *0.9.225*
+- **CI: the MuPDF source download on Linux is retried.** The Linux install
+  step fetched the archive from mupdf.com with one `curl | tar`, so on
+  2026-10-09 one connection that timed out after 135 s failed the leg before
+  a line was compiled. The download now has what the apt step has: a short
+  connect timeout, a stall watchdog, curl's own retries and three attempts
+  with a growing pause, and it goes to a file that is unpacked afterwards,
+  so a truncated transfer never reaches tar.
+- **UltraCanvasStart is a release asset of its own, for each platform.** The
+  setup application sets a computer up for UltraCanvas development, so it
+  has to reach a computer that has neither the toolchain nor a clone - and
+  until now it was only in the suite packages, one of twenty applications in
+  a download of several hundred megabytes, and not in the Linux and macOS
+  suites at all. Every CI leg now cuts it out of the suite package it just
+  made with exactly the libraries it loads: `scripts/package-ultracanvasstart.sh`
+  on Linux (the closure `ldd` resolves inside the bundle's `lib/`) and Windows
+  (the DLLs its import table reaches, with `cacert.pem` for the SDK download),
+  `package-macos.sh --start-app` on macOS (a bundle with its own `Frameworks/`,
+  signed and notarized in a submission of its own). Each script runs the
+  packaged application before it is done. The release build of `main`
+  attaches the six `UltraCanvasStart-<OS>-<version>-<arch>` archives to the
+  release beside the six SDKs; `Docs/GettingStarted.md` opens with the
+  download. The Linux and macOS suites carry UltraCanvasStart too now.
+
+#### 2026-10-09 *0.9.224*
+- **A formula reading another formula cell gets its result, typed.** The
+  engine handed a formula cell on as its display text, so `='Data'.B5` of a
+  formula cell held the text `"1008.75"` (arithmetic on it worked only by
+  luck of the text-to-number conversion), and `SUM` over formula cells left
+  them out. It now reads the stored result - number, text, Boolean or error.
+- **Cells are calculated in dependency order.** `RecalculateAll` visited cells
+  in storage order, so a formula reading a formula further on - a total above
+  the rows it adds up, an earlier sheet reading a later one - read nothing. A
+  reference to a formula not yet calculated in the pass now calculates it
+  first; a circular reference reads the value it has, and a chain deeper than
+  200 cells is finished by further passes rather than a deeper stack.
+- **A reference to a sheet that does not exist is `#REF!`**, as in Excel; it
+  read the current sheet's cell of the same address.
+- **A formula with an error literal no longer hangs.** The tokenizer never
+  stepped past a `#`, so `=IF(ISNA(A1),#N/A,1)` - or a stray `#` typed into a
+  cell - spun forever in whatever parsed it. Error literals (`#N/A`,
+  `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!`, ...) are now
+  read as errors in any case, an unknown one as `#NAME?`, and the tokenizer
+  makes progress on every character whatever it holds.
+- **`.xlsx` cross-sheet formulas work.** The loader kept Excel's `Data!B5`,
+  which the engine cannot read (it recalculated to `#NAME?`), and the saver
+  wrote the engine's `'Data'.B5`, which Excel cannot read. Both directions are
+  translated now (`UltraCanvasSpreadsheetExcelFormula.h`:
+  `ExcelFormulaToNative`, `NativeFormulaToExcel`), including the `_xlfn.`
+  prefix Excel stores before its newer functions. A quoted sheet name may now
+  hold a `.` or a doubled quote (`'It''s'.A1`).
+- **About a hundred Excel-compatible functions** join the 45 the engine had
+  (`UltraCanvasSpreadsheetFormulaFunctions.cpp`): lookups (`VLOOKUP`,
+  `HLOOKUP`, `LOOKUP`, `XLOOKUP`, and `INDEX` / `MATCH` over two dimensions
+  with match types and wildcards), conditional aggregation (`SUMIF`,
+  `SUMIFS`, `COUNTIF`, `COUNTIFS`, `AVERAGEIF`, `AVERAGEIFS`, `MAXIFS`,
+  `MINIFS`) with Excel's criteria, `SUMPRODUCT`, `SUBTOTAL`, rounding and
+  number theory, the standard statistics, text (`FIND`, `SEARCH`,
+  `SUBSTITUTE`, `TEXTJOIN`, ...), dates (`EDATE`, `EOMONTH`, `DATEDIF`,
+  `WEEKDAY`, ...), `IFNA`, `IFS`, `SWITCH`, `XOR`, the `IS*` family, `FV`, `PV`
+  and `NPV`. A function now sees its arguments in the order written and each
+  range's rows and columns (`FormulaEvaluator::GetCallArguments`).
+- **Text functions count characters, and numbers become text as shown.**
+  `LEN`, `LEFT`, `RIGHT` and `MID` counted bytes, so `=LEN("ขาย")` was 9;
+  it is 3. A number joined into text was written with `std::to_string`
+  (`12.500000`, with the reader's decimal comma on some desktops); it is
+  `12.5`.
+
+#### 2026-10-09 *0.9.223*
+- **Word's lists are lists in the editor and in mail replies.** Word writes
+  a list as paragraphs - `<p style="mso-list:l0 level1 lfo1">` with the
+  label it shows typed out in front, on the clipboard and in every mail
+  Outlook sends. `ImportHTMLToRichDocument` read them as plain paragraphs: a
+  reply to an Outlook mail quoted "1.  First" as text, and a paste from Word
+  lost the numbers altogether. Such a paragraph is now a list item at its
+  level, its label the marker: numbers, letters and Roman numerals give a
+  numbered item in that format, starting where Word's did (a list from 4, or
+  one Word carries on past a paragraph); Word's bullets become the model's
+  (a circle for its `o`, a square for its `§`). A numbered heading stays a
+  heading. `skipWordListLabels` now only concerns such a heading's number.
+- **The newline right after `<pre>` is the only one dropped.** HTML's tree
+  builder drops a newline that directly follows a `<pre>`, `<listing>` or
+  `<textarea>` start tag; `HTML::Parser` kept it. The element builder, which
+  shows a `<pre>`'s text as written, drew an empty first line for a `<pre>`
+  whose content starts on the next source line (the mail view, the e-book
+  reader), and the rich-document importer, making up for it, dropped every
+  blank line at the start of a `<pre>`. The parser drops that one newline
+  now, and the importer keeps the rest.
+- **macOS CI keeps the libraries' sources.** A run that has to rebuild a
+  library from source (its package missing from the vcpkg binary cache)
+  downloaded it from its home site, so `download.gnome.org` being down on
+  2026-10-08 turned the macOS leg red. CI now keeps every source in vcpkg's
+  asset cache, fetched once per change of `MacOS/deps` or the vcpkg commit
+  (`scripts/macos-deps.sh` gains `UC_VCPKG_ONLY_DOWNLOADS=1` for that), and
+  builds from that copy.
+
+#### 2026-10-09 *0.9.222*
+- **A picture in an HTML mail is no longer stretched out of shape.** Since
+  the HTML reader learnt `object-fit` (default `fill`: the picture is
+  stretched to its box), every `<img>` whose box the reader got wrong was
+  drawn distorted. LinkedIn's mails showed both:
+  - **An `<img>` with a height and no width** (LinkedIn's header icons,
+    `height="25"`) took the picture's own width - a 50px-high 2x icon shown
+    25 high stayed 50 wide - and was stretched across it, twice as wide as
+    it should be. Its width is now the picture's shape at that height, as
+    in a browser (CSS 2.1 10.3.2).
+  - **An `<img>` with a width and a height** that a narrower column shrinks
+    (LinkedIn's logo, 101x37 in an 84px link) kept its full height and was
+    squeezed. It now shrinks in its own shape
+    (`UltraCanvasImageElement::SetBoxAspectRatio`, new).
+  - **The picture is stretched only into a box the author gave another
+    shape** - a width and a height, or min / max sizes that break the
+    ratio, as `<img width="600" height="1">` rules need. Every other box has
+    the picture's shape, so it is fitted keeping its proportions: the same
+    as `fill` when the box is right, and an undistorted picture if the
+    layout ever hands it one of another shape.
+- **A table cell with a percentage width laid its row out at half its
+  width.** While a row's height was measured, a `width="50%"` cell took its
+  own 50% again of the column width it had been given, so its content was
+  measured at half the cell's width: text wrapped onto too many lines and
+  made the row too tall, and a `width:100%` picture came out half as high,
+  so the row was too short and the picture hung out of it over the text
+  below (LinkedIn's "Install LinkedIn Widgets" footer). The table now marks
+  its cells `CSSLayout::Element::widthSetByParent` (new): an Exact width
+  from it is the cell's used width - the block, flex, grid and table
+  layouts all honour the flag - so a row is as tall as its content at the
+  width it is drawn at.
+- **`height="100%"` on the content of a table cell without a height is
+  auto,** as in browsers (CSS 2.1 10.5): the table inside such a cell keeps
+  its rows together, centred by the cell, in a row the picture beside it
+  makes taller, instead of spreading them over the whole row. A cell that
+  sets a height is still what the percentage is a share of.
+- **`UltraCanvasListView` measures what fitting a column takes.**
+  `MeasureHeaderWidth(ctx, column)` is the narrowest width at which a
+  column's header shows its whole title and, beside it, the sort triangle -
+  reserved whether or not the column is the sorted one, so a fitted column
+  keeps its width when the order changes, and a translated title is measured
+  as it reads. `MeasureColumnTextWidth(ctx, column, font)` is the widest
+  `DisplayRole` text of the column's rows in a font; each distinct text is
+  measured once and remembered, so a column of thousands of dates costs a few
+  hundred measurements. UltraMail's Date column is fitted with them
+  (UltraMail 0.10.44). The header's insets and the triangle's strip are named
+  constants now, shared by the painting and the measuring.
+
+#### 2026-10-09 *0.9.221*
+- **Legacy Excel workbooks (`.xls`) open.** `UltraCanvasSpreadsheet` reads
+  Excel 97-2003 (BIFF8) and Excel 5.0/95 (BIFF5) files through a new reader,
+  `UltraCanvasSpreadsheetXls.h` (`ReadXlsWorkbook` into a UI-free model), and
+  `LoadFromFile` sends `.xls` to the new `LoadXLS`. What arrives: every
+  worksheet (hidden ones stay hidden), typed values - dates, times,
+  percentages and currency by their number format, the 1904 date system
+  converted - text in any script (BIFF8 is UTF-16; BIFF5's code pages 1250,
+  1251 and 1252 are decoded), merged cells, column widths, row heights,
+  hidden rows and columns, defined names, and fonts, fills, borders and
+  alignment. Formulas are translated into the engine's syntax - shared
+  formulas expanded per cell, other sheets as `'Sheet'.A1`, names by name -
+  and every formula cell keeps the result Excel cached; a formula is kept only
+  when the engine can evaluate it (it parses, and its functions and names
+  exist here), otherwise the cell holds Excel's value. An encrypted workbook is
+  refused with a message saying it is password-protected. There is no `.xls`
+  writer: `SaveToFile` says to save as `.xlsx` or `.ods`.
+- **What else travels as `.xls` opens too, as Excel opens it.** An `.xlsx`
+  renamed is read as `.xlsx`, delimited text (UTF-8, a code page, or Excel's
+  UTF-16 "Unicode Text") as CSV, an HTML table - what web applications export,
+  with Excel's own `x:num` values - as one sheet, and an Excel 2003 XML
+  Spreadsheet with its styles and its R1C1 formulas turned into A1.
+  `DetectXlsFileKind` says which a file is; binary data that is none of them
+  is refused rather than read as text.
+- **The file display previews `.xls`, and the media viewer shows `.xls` and
+  `.xlsx`.** `UltraCanvasFilerWidget`'s preview page reads the first rows of
+  an `.xls`'s first sheet as a cell grid, like `.xlsx` and `.ods` (it kept its
+  type glyph), and `UltraCanvasMediaViewer` - the detail pane UltraFiler
+  shows - now opens `.xls` and `.xlsx` in the spreadsheet: `.xlsx` had been
+  left off its list although the spreadsheet loads it. The format inventory
+  (`UltraCanvasSupportedFormats`) lists `.xls` as loaded, not saved.
+- **`UCCompoundFileReader` (`UltraCanvasCompoundFile.h`)** reads OLE2
+  compound files - the container of `.doc`, `.xls`, `.ppt` and `.msg`. It was
+  the `.doc` importer's private reader; it now lives in the core for both
+  readers, finds a stream in the root storage by walking the directory tree
+  (so an embedded object's stream of the same name is not taken for the
+  document's), compares names without regard to case, and decodes them as
+  UTF-8.
+- **Excel number formats are classified more carefully** (shared by the
+  `.xlsx` and `.xls` loaders, now `ExcelNumberFormatCategory`): the bracketed
+  parts of a format code are read for what they say rather than as letters, so
+  `0.00;[Red]-0.00` is a number and not a date (the `d` of `Red`), a locale tag
+  such as `[$-409]` no longer makes a date format currency, `[h]:mm:ss` is a
+  time, and an escaped `\$` - how LibreOffice writes a dollar sign - is
+  currency.
+
+#### 2026-10-09 *0.9.220*
+- **Release notes for a version with no changelog entries point at its
+  commits.** The `publish-sdk` job took the version's section of
+  `CHANGELOG.md` as the release notes as it was, so a version whose section
+  was only its header (a hand-cut one, say) would have ended its notes on an
+  empty "Changes" heading. The notes now say that the section is empty and
+  name the previous version and a link to the commits up to the release's
+  own, and the step prints a warning. The notes the job wrote are shown in
+  the run's log.
+
+#### 2026-10-09 *0.9.219*
+- **The design documents are checked too.** `--all` first left out the
+  Proposal / Plan / Investigation docs, whose code is of APIs not written
+  yet. They are in now, with their findings baselined (one `<doc>::<message>`
+  line each): the file is the record of what each proposal still waits
+  for, and when an API is written its entries stop being found and the
+  strict run says so. The component docs stay at zero; only the changelog
+  is left out, being a record of what shipped rather than a description
+  of an API.
+
+#### 2026-10-09 *0.9.218*
+- **A rich paste reads the clipboard's HTML through the HTMLReader.**
+  `UCRichDocument::FromHTML` - what `UltraCanvasRichTextEdit` pastes from a
+  browser, Word or LibreOffice - had its own tokenizer, a table of 55
+  entities and its own `style=""` reader. It now calls
+  `ImportHTMLToRichDocument`, the importer UltraMail's composer already uses,
+  so a paste reads like the page it was copied from:
+  - the page's `<style>` sheets apply, through the same cascade a mail is
+    shown with (a class colour, Word's fonts and sizes), and paragraphs keep
+    the spacing their CSS gives them;
+  - every HTML entity is decoded, not only the 55;
+  - a `<blockquote>` is a quote level, so a quoted list, heading or table
+    stays what it is (it was one quote paragraph);
+  - a picture the clipboard only links to is pasted as its alt text in
+    brackets, and a 1-2 px tracking pixel is left out.
+  As before, `<pre>` is a code block, Word's typed-out list labels are left
+  out, a no-break space is pasted as a space, and `dir="rtl"` makes a
+  right-to-left paragraph.
+- **`ImportHTMLToRichDocument` reads `dir="rtl"`**, on a paragraph or any
+  element around it, into right-to-left paragraphs - a reply to an Arabic or
+  Hebrew mail keeps its direction. Two options serve a paste and are off for
+  a mail: `preAsCodeBlock` (a `<pre>` as a code block; a mail's `<pre>` is
+  mostly quoted plain text) and `skipWordListLabels` (the "1." Word types out
+  in a `mso-list:Ignore` span; a browser shows it, so a mail keeps it).
+- **The Filer's preview of an `.html` file is the page as a browser lays it
+  out** (`HTML::ExtractPlainText`, `PlainTextLayout::Lines`): a line per
+  paragraph, list item and table row. Its own tag-level splitter showed the
+  `<title>` and a mail's hidden preheader as page text, dropped the list
+  markers and ran a table row's cells together ("NamePrice").
+  `UltraCanvasFilerWidget::TextPreviewLines` (static) gives the lines a
+  document's preview page shows.
+- **Nothing in the repository reads HTML, CSS or entities on its own any
+  more**: `scripts/html_reuse_baseline.txt` is empty.
+
+#### 2026-10-09 *0.9.217*
+- **Knowing what a program takes when something is pasted into it.**
+  UltraDesktop's clipboard panel now puts first what the window under
+  Super+V takes - images for a paint program, files for a file manager, code
+  for an editor - and the pieces it is built from are the framework's:
+  - `UCDesktopEntry` reads `Categories=` (`categories`) and
+    `StartupWMClass=` (`startupWMClass`).
+  - `UltraCanvasDesktopShell::MatchApplication(window, applications)` finds
+    a window's desktop entry: its `StartupWMClass` first, then the program,
+    icon or name its `WM_CLASS` spells, case aside (`Gimp-2.10` is
+    `gimp-2.10`'s).
+  - `PreferredClipboardKinds(categories, mimeTypes)` turns an entry into the
+    kinds of clipboard entry it takes, most wanted first; empty when nothing
+    says.
+  - `ClipboardHistoryQuery::newestFirst` lists by last use, pins aside -
+    "the last image copied", which UltraPaint's Paste now offers when the
+    clipboard holds no picture.
+  - `ClipboardHistoryListModel::SetEntries` takes a `LeadSection`: the first
+    entries under a title of the caller's, above the usual sections.
+- **A copy too large for one X request travels in pieces, both ways (X11).**
+  ICCCM's INCR transfer: the owner answers with an `INCR` marker and writes
+  the copy piece by piece, each once the requestor has deleted the one
+  before, and an empty piece ends it. The X11 clipboard did neither half.
+  A large picture copied in GIMP or a browser was read back as the marker's
+  few bytes. A large copy made here went out in one request, which an X
+  server refuses when the request exceeds its largest: 256 KB without the
+  BIG-REQUESTS extension, 16 MB with it on Xvfb.
+  - Reading follows the pieces to the end. Each piece has 3 seconds to
+    arrive, and a copy may be up to 128 MB (up from 10 MB). A larger one is
+    refused rather than cut short: one too large for a single property used
+    to come back silently truncated.
+  - A copy larger than 256 KB is served in 256 KB pieces, as GTK and Qt do.
+    A requestor that stops taking pieces is given up on after 10 seconds.
+    The application's event loop passes the requestor's property changes to
+    the clipboard (`ProcessClipboardPropertyEvent`).
+  - While it waits for an answer, the clipboard takes only its own events
+    off the X queue. It used to discard every other event that arrived in
+    the meantime - a key press, an expose, a window's message.
+  - A late notice of losing the clipboard, handled after the clipboard was
+    taken back, no longer clears the copy made since.
+  - `Tests/ClipboardIncrTest.cpp` checks both directions against a second
+    X connection written from the ICCCM, and against `xclip` when it is
+    installed.
+- **Every format another program offers on the clipboard is seen (X11).**
+  Xlib returns a format-32 property, the `TARGETS` list among them, as an
+  array of C `long`s - 8 bytes each on a 64-bit system - and the X11
+  clipboard copied it at 4 bytes an item, so `GetAvailableFormats()` and
+  `IsFormatAvailable()` saw only the first half of the list. A program that
+  offered its image or text type late in the list looked as if it offered
+  nothing usable: UltraFiler's Paste stayed off, for one. The copy now uses
+  the size Xlib hands back. `Tests/ClipboardTargetsTest.cpp` offers eight
+  formats from a second X connection and checks all eight are seen.
+- **A window opened by a global shortcut keeps the focus (X11).**
+  `UltraCanvasGlobalShortcut` fired on the key press, while its passive grab
+  still held the keyboard; a window it opened took the focus during the grab
+  and the grab's end handed it focus events the window manager followed by
+  giving the focus back - UltraDesktop's clipboard panel, which closes when
+  it loses the focus, shut again at once about one Super+V in two.
+  - The shortcut now fires when its key is released, and asks for
+    detectable auto-repeat, so a held combination fires once.
+  - The X11 event loop drops `FocusIn` / `FocusOut` whose mode is
+    `NotifyGrab` or `NotifyUngrab`: a keyboard grab starting or ending (a
+    shortcut held, a window manager's key binding) does not take the focus
+    from a window. A real change during a grab still arrives
+    (`NotifyWhileGrabbed`).
+
 #### 2026-10-09 *0.9.216*
 - **CI: the Android backend check has a time limit of its own.** The job
   had none, so anything that hung in it ran into GitHub's six-hour default:

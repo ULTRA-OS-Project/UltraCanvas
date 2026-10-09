@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.3.0 - trusted_senders, blocked_senders
 // Version: 0.2.0 - link_display (status bar / tooltip)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +14,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
@@ -59,6 +61,10 @@ TEST(preferences_round_trip) {
     out.listSort.ascending = true;
     out.checkMailEverySec = 40;
     out.notifyNewMail = false;
+    out.scamWarnings.romance = false;
+    out.scamWarnings.cryptoCaution = false;
+    out.senderLists.trusted = { "friend@example.org" };
+    out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -71,6 +77,12 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.showHtml);
     REQUIRE_EQ(in.messageTextSize, 16);
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
+    REQUIRE(!in.scamWarnings.romance);
+    REQUIRE(!in.scamWarnings.cryptoCaution);
+    REQUIRE(in.scamWarnings.phishing);          // the others stay on
+    REQUIRE(in.scamWarnings.advanceFee);
+    REQUIRE(in.scamWarnings == out.scamWarnings);
+    REQUIRE(in.senderLists == out.senderLists);
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == out.listSort);
@@ -99,6 +111,24 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.listSort == MessageSort{});                        // newest first
     REQUIRE_EQ(in.checkMailEverySec, 300);                        // every 5 minutes
     REQUIRE(in.notifyNewMail);                                    // on until switched off
+    std::remove(path.c_str());
+}
+
+// The sender lists edited by hand: kept as the sender menu would write them,
+// and what is no address (or, on the blocked list, no domain) dropped.
+TEST(preferences_sender_lists_from_a_hand_edited_file) {
+    const std::string path = UltraCanvas::PathToUtf8(
+        std::filesystem::temp_directory_path() / "ultramail_prefs_lists.ini");
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "trusted_senders = Friend@Example.org, @x.example,\n"
+             "blocked_senders = junk.example, Spam <SPAM@X.Example>, nonsense\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE(in.senderLists.trusted == std::set<std::string>{ "friend@example.org" });
+    REQUIRE(in.senderLists.blocked ==
+            (std::set<std::string>{ "@junk.example", "spam@x.example" }));
     std::remove(path.c_str());
 }
 
