@@ -999,7 +999,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -1018,7 +1019,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
   ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
