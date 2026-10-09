@@ -1,3 +1,69 @@
+#### 2026-10-09 *0.9.217*
+- **Knowing what a program takes when something is pasted into it.**
+  UltraDesktop's clipboard panel now puts first what the window under
+  Super+V takes - images for a paint program, files for a file manager, code
+  for an editor - and the pieces it is built from are the framework's:
+  - `UCDesktopEntry` reads `Categories=` (`categories`) and
+    `StartupWMClass=` (`startupWMClass`).
+  - `UltraCanvasDesktopShell::MatchApplication(window, applications)` finds
+    a window's desktop entry: its `StartupWMClass` first, then the program,
+    icon or name its `WM_CLASS` spells, case aside (`Gimp-2.10` is
+    `gimp-2.10`'s).
+  - `PreferredClipboardKinds(categories, mimeTypes)` turns an entry into the
+    kinds of clipboard entry it takes, most wanted first; empty when nothing
+    says.
+  - `ClipboardHistoryQuery::newestFirst` lists by last use, pins aside -
+    "the last image copied", which UltraPaint's Paste now offers when the
+    clipboard holds no picture.
+  - `ClipboardHistoryListModel::SetEntries` takes a `LeadSection`: the first
+    entries under a title of the caller's, above the usual sections.
+- **A copy too large for one X request travels in pieces, both ways (X11).**
+  ICCCM's INCR transfer: the owner answers with an `INCR` marker and writes
+  the copy piece by piece, each once the requestor has deleted the one
+  before, and an empty piece ends it. The X11 clipboard did neither half.
+  A large picture copied in GIMP or a browser was read back as the marker's
+  few bytes. A large copy made here went out in one request, which an X
+  server refuses when the request exceeds its largest: 256 KB without the
+  BIG-REQUESTS extension, 16 MB with it on Xvfb.
+  - Reading follows the pieces to the end. Each piece has 3 seconds to
+    arrive, and a copy may be up to 128 MB (up from 10 MB). A larger one is
+    refused rather than cut short: one too large for a single property used
+    to come back silently truncated.
+  - A copy larger than 256 KB is served in 256 KB pieces, as GTK and Qt do.
+    A requestor that stops taking pieces is given up on after 10 seconds.
+    The application's event loop passes the requestor's property changes to
+    the clipboard (`ProcessClipboardPropertyEvent`).
+  - While it waits for an answer, the clipboard takes only its own events
+    off the X queue. It used to discard every other event that arrived in
+    the meantime - a key press, an expose, a window's message.
+  - A late notice of losing the clipboard, handled after the clipboard was
+    taken back, no longer clears the copy made since.
+  - `Tests/ClipboardIncrTest.cpp` checks both directions against a second
+    X connection written from the ICCCM, and against `xclip` when it is
+    installed.
+- **Every format another program offers on the clipboard is seen (X11).**
+  Xlib returns a format-32 property, the `TARGETS` list among them, as an
+  array of C `long`s - 8 bytes each on a 64-bit system - and the X11
+  clipboard copied it at 4 bytes an item, so `GetAvailableFormats()` and
+  `IsFormatAvailable()` saw only the first half of the list. A program that
+  offered its image or text type late in the list looked as if it offered
+  nothing usable: UltraFiler's Paste stayed off, for one. The copy now uses
+  the size Xlib hands back. `Tests/ClipboardTargetsTest.cpp` offers eight
+  formats from a second X connection and checks all eight are seen.
+- **A window opened by a global shortcut keeps the focus (X11).**
+  `UltraCanvasGlobalShortcut` fired on the key press, while its passive grab
+  still held the keyboard; a window it opened took the focus during the grab
+  and the grab's end handed it focus events the window manager followed by
+  giving the focus back - UltraDesktop's clipboard panel, which closes when
+  it loses the focus, shut again at once about one Super+V in two.
+  - The shortcut now fires when its key is released, and asks for
+    detectable auto-repeat, so a held combination fires once.
+  - The X11 event loop drops `FocusIn` / `FocusOut` whose mode is
+    `NotifyGrab` or `NotifyUngrab`: a keyboard grab starting or ending (a
+    shortcut held, a window manager's key binding) does not take the focus
+    from a window. A real change during a grab still arrives
+    (`NotifyWhileGrabbed`).
+
 #### 2026-10-09 *0.9.216*
 - **CI: the Android backend check has a time limit of its own.** The job
   had none, so anything that hung in it ran into GitHub's six-hour default:
