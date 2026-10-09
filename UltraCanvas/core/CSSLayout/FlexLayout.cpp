@@ -2,6 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.0 - widthSetByParent: an Exact width is the container's used width
+//                 (a table cell measured for its row's height)
 // Version: 1.5.0 - an item stretches only when the container or the item asks
 //                 for it (align-items now starts at Start); the container's
 //                 stretch leaves a set width in a column, or height in a row,
@@ -35,7 +37,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -444,11 +446,18 @@ namespace UltraCanvas {
                 const bool authoritative =
                     c.horizontal.mode == ConstraintMode::Exact &&
                     c.vertical.mode   == ConstraintMode::Exact;
+                // The width alone is the used one when the parent decides it
+                // (a table's cell: its column width) - the main extent of a
+                // row, the cross extent of a column.
+                const bool usedWidth = authoritative ||
+                    (e.widthSetByParent && c.horizontal.mode == ConstraintMode::Exact);
+                const bool usedMain  = s.axis.isRow ? usedWidth : authoritative;
+                const bool usedCross = s.axis.isRow ? authoritative : usedWidth;
 
                 // Treat the main extent as "known" when constraints are Exact OR an
                 // explicit size resolves; AtMost is also acceptable as an upper bound
                 // for wrapping decisions.
-                if (authoritative && mainOuter.has_value()) {
+                if (usedMain && mainOuter.has_value()) {
                     s.availableMain = std::max(0.f, *mainOuter - s.padMain - s.bordMain);
                     s.mainKnown = true;
                 } else if (ownMain.has_value()) {
@@ -469,7 +478,7 @@ namespace UltraCanvas {
                     s.mainKnown = false;
                 }
 
-                if (authoritative && crossOuter.has_value()) {
+                if (usedCross && crossOuter.has_value()) {
                     s.availableCross = std::max(0.f, *crossOuter - s.padCross - s.bordCross);
                     s.crossKnown = true;
                 } else if (ownCross.has_value()) {
