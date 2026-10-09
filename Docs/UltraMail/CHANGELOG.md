@@ -1,3 +1,22 @@
+#### 2026-10-09 *0.10.44*
+- **The Date column is as wide as its dates.** It was a fixed 88 px, about
+  twice what "Oct 07" needs. It is now the widest date in the list - in
+  bold, as unread mail shows it, so reading a message never moves the
+  column - plus the 6 px gap before the text, so the subject gets the rest.
+  It is never narrower than its header needs for the caption and the sort
+  triangle, measured as the caption reads, so a longer caption in another
+  language fits too; the month names are measured as well, as `strftime`
+  writes them in the system's language. A folder with mail from earlier
+  years widens it for "Jan 14, 2025", and narrows it again once that mail
+  is gone. A column border dragged by hand keeps its width, as before.
+  (`UltraCanvasListView::MeasureHeaderWidth` / `MeasureColumnTextWidth`, new
+  in the framework.)
+- **HTML mail: pictures keep their shape** - LinkedIn's header icons were
+  drawn twice as wide, its logo squeezed, and the picture in its footer hung
+  out over the text below. Fixed in the framework's HTML reader and table
+  layout (framework changelog, "A picture in an HTML mail is no longer
+  stretched out of shape").
+
 #### 2026-10-09 *0.10.43*
 - **Trust or block a sender from their menu.** A right-click on a sender - a
   row of the message list, or the name or badge above the message - now
