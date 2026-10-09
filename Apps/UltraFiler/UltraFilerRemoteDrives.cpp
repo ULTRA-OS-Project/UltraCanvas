@@ -1,5 +1,5 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.6.0
+// Version: 1.7.0
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
@@ -22,6 +22,7 @@
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
 #include <UltraCloud/UltraCloudAccounts.h>
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudSecrets.h>
 #include <UltraCloud/UltraCloudService.h>
@@ -131,6 +132,8 @@ std::string DescribeResultCode(UltraCloud::ResultCode code) {
             words = "Invalid request - an address, path or name it cannot use"; break;
         case UltraCloud::ResultCode::IoError:         words = "Local file error"; break;
         case UltraCloud::ResultCode::Unknown:         words = "Unknown"; break;
+        case UltraCloud::ResultCode::RateLimited:
+            words = "Rate limited - the service asks to wait before more requests"; break;
     }
     return words + " (UltraCloud code " + std::to_string(static_cast<int>(code)) + ")";
 }
@@ -151,12 +154,36 @@ RemoteLogLine ToRemoteLogLine(const UltraNetFtpLogLine& in) {
     return line;
 }
 
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+// A line of a cloud provider's log (UltraCloudLog.h) as the connection log
+// keeps it: a request is the session's command, the HTTP status the reply's
+// code.
+RemoteLogLine ToRemoteLogLine(const UltraCloud::LogLine& in) {
+    RemoteLogLine line;
+    switch (in.kind) {
+        case UltraCloud::LogKind::Step:     line.kind = RemoteLogLine::Kind::Step; break;
+        case UltraCloud::LogKind::Request:  line.kind = RemoteLogLine::Kind::Command; break;
+        case UltraCloud::LogKind::Response: line.kind = RemoteLogLine::Kind::Response; break;
+        case UltraCloud::LogKind::Error:    line.kind = RemoteLogLine::Kind::Error; break;
+    }
+    line.text = in.text;
+    line.replyCode = in.httpStatus;
+    return line;
+}
+#endif
+
+// Whether a drive of this provider speaks HTTP - every one but FTP / SFTP.
+bool ProviderSpeaksHttp(const std::string& providerId) {
+    return providerId != "ftp";
+}
+
 // The same line as the status bar's step: a status as it is, the rest with
 // what kind of line it is in front, the way an FTP client's log reads.
-std::string StepText(const RemoteLogLine& line) {
+// `http`: a cloud drive's line, whose commands are requests.
+std::string StepText(const RemoteLogLine& line, bool http) {
     switch (line.kind) {
         case RemoteLogLine::Kind::Step:     return line.text;
-        case RemoteLogLine::Kind::Command:  return "Command: " + line.text;
+        case RemoteLogLine::Kind::Command:  return (http ? "Request: " : "Command: ") + line.text;
         case RemoteLogLine::Kind::Response: return "Response: " + line.text;
         case RemoteLogLine::Kind::Error:    return "Error: " + line.text;
     }
@@ -1205,31 +1232,47 @@ void UltraFilerRemoteDrives::WorkerMain() {
         if (!job.isPrefetch) ReportActivity(activity, /*force=*/true);
 
         // The job as a session of the connection log. On an FTP or SFTP
-        // drive UltraNet logs every step of it on this thread - the sink
-        // below catches them, because the call goes through UltraCloud,
-        // which builds UltraNet's options itself and has no log to hand on.
+        // drive UltraNet logs every step of it on this thread, and on a cloud
+        // drive UltraCloud logs each request, the service's answer, a renewed
+        // sign-in and the pages of a listing - the sinks below catch them,
+        // because the call goes through UltraCloud, which builds UltraNet's
+        // options itself and has no log to hand on.
         const uint64_t logId = BeginLogSession(job);
+        bool http = false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            const std::string accountId = RemoteFilerAccountId(job.path);
+            for (const RemoteDrive& d : drives_) {
+                if (d.accountId != accountId) continue;
+                http = ProviderSpeaksHttp(d.providerId);
+                break;
+            }
+        }
         // What the status line says about this job, shared by the two things
         // that move it on: each step of the connection, and each chunk of a
         // transfer. Both fire on this thread, inside the provider call, so
         // the copy needs no lock.
         auto current = std::make_shared<RemoteActivity>(activity);
         const bool reportsActivity = !job.isPrefetch;
-        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
-                [this, logId, current, reportsActivity](const UltraNetFtpLogLine& in) {
-            const RemoteLogLine line = ToRemoteLogLine(in);
+        auto onLine = [this, logId, current, reportsActivity, http](const RemoteLogLine& line) {
             log_.Append(logId, line);
             NotifyLogChanged();
             if (!reportsActivity) return;
             // Every step, not one in eighty milliseconds: when a connection
             // hangs, the step on screen has to be the one it hangs at.
-            current->step = StepText(line);
+            current->step = StepText(line, http);
             {
                 std::lock_guard<std::mutex> lk(mutex_);
                 activeJobStep_ = current->step;
             }
             ReportActivity(*current, /*force=*/true);
-        });
+        };
+        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
+                [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+        UltraCloud::LogCallback previousCloudLog = UltraCloud::SetThreadLog(
+                [onLine](const UltraCloud::LogLine& in) { onLine(ToRemoteLogLine(in)); });
+#endif
 
         // A transfer counts its own bytes. UltraNet reports them through the
         // module's global transfer callbacks, which is why the previous bag is
@@ -1291,6 +1334,9 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
         UltraNet_SetThreadFtpLog(std::move(previousLog));
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+        UltraCloud::SetThreadLog(std::move(previousCloudLog));
+#endif
         connectionsOpen = true;
         log_.Finish(logId, outcome.failed, outcome.message, outcome.category,
                     outcome.diagnostics);
@@ -1424,6 +1470,7 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
             if (d.accountId != accountId) continue;
             header.drive = d.displayName;
             header.server = d.serverUrl;
+            header.http = ProviderSpeaksHttp(d.providerId);
             break;
         }
     }

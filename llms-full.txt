@@ -72847,6 +72847,66 @@ directory (`ULTRACLOUD_PLUGIN_DIR`, else `<executable dir>/plugins/ultracloud`)
 and calls it. A plug-in derives from `HttpProviderBase` or `OAuthProviderBase`
 like the built-in providers do.
 
+## The session log, and what a refusal says
+
+Every request a cloud provider makes goes through `HttpProviderBase::Send`,
+so that is where it is logged. A caller that wants the lines sets a sink for
+its thread around the calls it makes - UltraFiler's drive worker does, and
+shows them in its connection log next to an FTP drive's commands and replies:
+
+```cpp
+UltraCloud::LogCallback previous = UltraCloud::SetThreadLog(
+        [](const UltraCloud::LogLine& line) { Show(line.kind, line.text, line.httpStatus); });
+cloud.List(accountId, "/Photos", entries);
+UltraCloud::SetThreadLog(std::move(previous));
+```
+
+```
+Step:      The access token has expired - renewing it
+Step:      Access token renewed
+Request:   POST https://api.dropboxapi.com/2/files/list_folder
+Response:  200 OK - 420 ms
+Step:      The listing continues - page 2 (2000 entries so far)
+Request:   POST https://api.dropboxapi.com/2/files/list_folder/continue
+Response:  429 Too Many Requests - too_many_requests (80 ms)
+Step:      The service is limiting requests: it asks to wait 30 s
+```
+
+- **Request** lines are the method and the URL; **Response** lines the
+  status, the service's own reason when it refused, and how long it took
+  (`LogLine::httpStatus` carries the number). A request that got no answer
+  at all is an **Error** line with the transport's reason.
+- **Step** lines come from `CloudService` (an access token renewed, or the
+  renewal refused - `invalid_grant` when the user revoked the access) and
+  from the providers that page through a long folder (Dropbox, OneDrive,
+  Google Drive).
+- Nothing secret is written: no header (the `Authorization` bearer token
+  among them), no body, and no value of a query parameter whose name says it
+  carries one - `LoggableUrl` masks `tempauth=`, `key=`, `code=`, `sig=` and
+  the like as `***` and drops a URL's user name and password.
+- With no sink set on the thread nothing is formatted.
+
+A failure's `Result` says the same things without the log
+(`HttpProviderBase::FromHttp`):
+
+- `message` keeps the service's reason, read from each service's error body
+  (`ServerErrorReason`: Dropbox's `error_summary`, Graph's `error.code` and
+  `message`, Google's `errors[].reason`, OAuth's `error` /
+  `error_description`, the WebDAV `<s:message>`) - `list /Photos: HTTP 409 -
+  path/not_found` rather than `HTTP 409`. A 401 says *sign-in rejected*, a
+  403 *not allowed*, a 404 *not found*, each with the status and the reason
+  after it.
+- A request the service throttled - 429, a 503 with `Retry-After`, or Google
+  Drive's 403 `rateLimitExceeded` / `userRateLimitExceeded` - is
+  `ResultCode::RateLimited`, and its message says how long the service asks
+  to wait (`Retry-After` in seconds or as an HTTP date, `RetryAfterSeconds`).
+- `diagnostics` carries the HTTP status, the service's reason, `Retry-After`,
+  the request ID the service's support asks for (`x-dropbox-request-id`,
+  `request-id`, `x-request-id`, ...), the URL that answered and the time it
+  took, then the transport's connection chain when the request never got an
+  answer (UltraNet fills `UltraNetResult::diagnostics` for a failed HTTP
+  transfer as it does for FTP).
+
 ## Quick examples
 
 ```cpp
@@ -72920,9 +72980,10 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, HTTP → Result with the service's reason) |
+| `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
@@ -72931,7 +72992,7 @@ providers.
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
-| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
+| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
 | `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
@@ -75603,7 +75664,10 @@ architecture.
   interfaces use `I<Category>ProtocolPlugin`. Callbacks use
   `on<Event>` (base verb form).
 * **Errors:** every blocking call returns `UltraNetResult`. Operator
-  `bool` for quick success checks; structured fields for diagnostics.
+  `bool` for quick success checks; structured fields for diagnostics. An
+  HTTP request that failed in transit (no answer, TLS refused, timed out)
+  carries the connection chain in `diagnostics`, as an FTP or mail failure
+  does (`UltraNetCurlError.h`).
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.

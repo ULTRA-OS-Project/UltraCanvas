@@ -408,7 +408,10 @@ architecture.
   interfaces use `I<Category>ProtocolPlugin`. Callbacks use
   `on<Event>` (base verb form).
 * **Errors:** every blocking call returns `UltraNetResult`. Operator
-  `bool` for quick success checks; structured fields for diagnostics.
+  `bool` for quick success checks; structured fields for diagnostics. An
+  HTTP request that failed in transit (no answer, TLS refused, timed out)
+  carries the connection chain in `diagnostics`, as an FTP or mail failure
+  does (`UltraNetCurlError.h`).
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.

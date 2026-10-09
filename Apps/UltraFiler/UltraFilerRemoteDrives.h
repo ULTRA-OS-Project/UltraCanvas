@@ -42,10 +42,13 @@
 //
 // Every job is also a session in the connection log (ConnectionLog(),
 // UltraFilerConnectionLog.h): on an FTP or SFTP drive each step UltraNet
-// takes - resolving, connecting, every command and reply - is recorded there
-// and reported to the status line as it happens (RemoteActivity::step), and
-// a failure keeps its codes and diagnostics for the log window.
-// Version: 1.7.0
+// takes - resolving, connecting, every command and reply - and on a cloud
+// drive each request UltraCloud sends with the service's answer, a renewed
+// sign-in and the pages of a long listing (UltraCloudLog.h). Each is recorded
+// there and reported to the status line as it happens
+// (RemoteActivity::step), and a failure keeps its codes and diagnostics for
+// the log window.
+// Version: 1.8.0
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once

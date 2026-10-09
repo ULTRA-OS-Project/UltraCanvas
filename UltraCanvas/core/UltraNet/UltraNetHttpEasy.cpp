@@ -1,10 +1,12 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
-// Version: 0.2.0 (Stage 2)
+// Version: 0.2.1 - a failed transfer carries its diagnostics (UltraNetCurlError.h)
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
+#include "UltraNet/UltraNetCurlError.h"   // diagnostics of a failed transfer
 #include "UltraNet/UltraNetCurlTls.h"
 #include "UltraNet/UltraNetTls.h"
 
@@ -592,6 +594,10 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
         result.success = false;
         result.message = curl_easy_strerror(rc);
         response.transferError = result.message;
+        // The connection chain - which address, TLS, library versions, trust
+        // roots - as an FTP failure carries it, for whoever shows the
+        // failure (a cloud drive's connection log) and for bug reports.
+        result.diagnostics = ultranet_curlerror::Diagnostics(easy, rc, result.message);
     }
     return result;
 }

@@ -73,7 +73,7 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.24.0
+// Version: 1.24.1
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
@@ -144,7 +144,7 @@ private:
         // The round "network" button floating in the display's bottom-left
         // corner that opens the connection log, and the count of failures
         // the log window has not shown yet riding on its corner. Both are on
-        // show only while this display is on an FTP drive
+        // show only while this display is on a remote drive
         // (UpdateConnectionLogButton).
         std::shared_ptr<UltraCanvasButton>      connectionLogButton;
         std::shared_ptr<UltraCanvasBadge>       connectionLogBadge;
@@ -352,16 +352,17 @@ private:
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
     // The connection log buttons, one in the bottom-left corner of each
-    // folder display: shown while that display is on an FTP drive, and red,
+    // folder display: shown while that display is on a remote drive, and red,
     // with the number of failed connections the log window has not shown yet
     // on a badge, when there are any. The first form brings every display's
     // button up to date; the second one display's.
     void UpdateConnectionLogButton();
     void UpdateConnectionLogButton(FilerTabState* display);
-    // Whether `path` is a folder on an FTP / FTPS / SFTP drive - the drives
-    // whose every connection step the log records. Cloud drives (Nextcloud,
-    // Dropbox, ...) are not, and neither is anything local.
-    bool IsFtpDrivePath(const std::string& path) const;
+    // Whether `path` is a folder on a configured remote drive - FTP / FTPS /
+    // SFTP or a cloud drive (Dropbox, OneDrive, Google Drive, Nextcloud,
+    // WebDAV), the drives whose every connection step the log records.
+    // Nothing local is.
+    bool IsRemoteDrivePath(const std::string& path) const;
     // Opens the connection log window, or brings it to the front with the
     // log as it is now.
     void OpenConnectionLog();

@@ -255,19 +255,31 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     folder fetched ahead) is recorded in the **connection log**: the round
     button with the network symbol in the bottom-left corner of a folder
     display opens it. It is there only while that display shows a folder on
-    an FTP / FTPS / SFTP drive (in the split view each display has its own),
-    sits above the display's info bar, and turns red with a count on its
-    corner for the failures not looked at yet. Its *Errors* tab is a
-    Markdown report of each failure — the message, the error class, the
-    codes (libcurl's error number, the server's last reply), the likely
-    cause, the last steps and the diagnostics chain; its *Message log* tab
-    lists every step of every connection the way an FTP client does
+    a remote drive — FTP / FTPS / SFTP or a cloud drive (in the split view
+    each display has its own), sits above the display's info bar, and turns
+    red with a count on its corner for the failures not looked at yet. Its
+    *Errors* tab is a Markdown report of each failure — the message, the
+    error class, the codes (libcurl's error number and the server's last
+    reply, or a cloud service's HTTP status), the likely cause, the last
+    steps and the diagnostics chain; its *Message log* tab lists every step
+    of every connection the way an FTP client does
     (`12:03:04  Response: 227 Entering Passive Mode (...)`). *Copy* takes
     the tab on show for a mail to whoever runs the server; passwords never
     appear (`PASS ********`). A folder that could not be listed keeps its
     error on the status line. The log is in memory only (the last 200
-    connections). FTP and SFTP drives log every step; cloud drives log the
-    job and its outcome.
+    connections).
+  - **Cloud drives log their requests too.** On a Dropbox, OneDrive, Google
+    Drive, Nextcloud or WebDAV drive the message log lists each request the
+    drive makes and the service's answer, with how long it took
+    (`Request:  POST https://api.dropboxapi.com/2/files/list_folder`,
+    `Response: 409 Conflict - path/not_found (0.31 s)`), when the sign-in
+    was renewed or the renewal refused, which page of a long folder is being
+    read, and when the service is limiting requests and how long it asks to
+    wait. A failure's report carries the service's own reason, its HTTP
+    status, the request ID its support asks for, and a likely cause read
+    from the status (a 401 asks for a new sign-in, a 507 says the storage is
+    full). No access token, password or request body is ever written to the
+    log.
   - **Remote files preview too.** A picture, a vector drawing (SVG, DXF,
     CorelDRAW, EPS, ...) or a 3D model (STL, OBJ, ...) selected on an FTP or
     cloud drive is downloaded into `remote-previews` under UltraCanvas's

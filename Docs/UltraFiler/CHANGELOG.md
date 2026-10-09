@@ -1,3 +1,35 @@
+#### 2026-10-09 *1.71.0*
+- **Cloud drives have a connection log too.** The round network button in
+  a folder display's bottom-left corner was only there on FTP / FTPS / SFTP
+  drives; a cloud drive's log held one line per job, so a failed Dropbox or
+  Google Drive listing said `HTTP 409` or `HTTP 403` and nothing else. The
+  button is now there on every remote drive, and on a Dropbox, OneDrive,
+  Google Drive, Nextcloud or WebDAV drive the message log lists what the
+  drive did: each request (`Request:  POST https://api.dropboxapi.com/2/...`)
+  and the service's answer with its status, its own reason for a refusal and
+  how long it took (`Response: 409 Conflict - path/not_found (0.31 s)`); a
+  renewed sign-in, or the service refusing the renewal (`invalid_grant`, the
+  access was revoked); the pages of a long folder; and the service limiting
+  requests, with how long it asks to wait. UltraCloud writes these lines
+  (see the framework changelog); the drive worker puts them in the same log
+  as an FTP drive's commands and replies.
+  - The *Errors* report says *HTTP status 409* and *Last answer* for a cloud
+    drive, not *last server reply*, and its likely cause is read from the
+    HTTP status: an expired or revoked sign-in (401), a refusal (403), an
+    item moved or deleted elsewhere (404), a name conflict (409), a locked
+    file (412 / 423), a file too large (413), throttling (429, and Google
+    Drive's 403 *userRateLimitExceeded*), the service having trouble
+    (500 - 504), a full drive (507), or the service not reached at all. The
+    same numbers are not read as FTP replies (an HTTP 425 is not a failed
+    data connection). The diagnostics carry the request ID the service's
+    support asks for.
+  - A throttled request is reported as *Rate limited* rather than as a
+    server error.
+  - Nothing secret is logged: no access token, no password, no request or
+    answer body, and no value of a URL parameter that carries a key.
+  - `FilerConnectionLogTest` covers a cloud session's labels, its report and
+    its hints.
+
 #### 2026-10-09 *1.70.0*
 - **FTP drives log in once per burst, not once per folder.** Opening a
   folder on an FTP drive and reading its subfolders ahead used to connect

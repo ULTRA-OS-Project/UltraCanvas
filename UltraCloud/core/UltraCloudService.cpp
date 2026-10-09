@@ -1,8 +1,9 @@
 // UltraCloud/core/UltraCloudService.cpp
-// Version: 0.3.0
-// Last Modified: 2026-09-24
+// Version: 0.4.0 - an access token renewal is logged (UltraCloudLog.h)
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudService.h>
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath
 
 #include <ctime>
@@ -32,11 +33,18 @@ Result CloudService::Resolve(const std::string& accountId, Account& account,
     if (credentials.username.empty()) credentials.username = account.username;
 
     // An expired OAuth token is renewed before it is used, and the renewal
-    // persisted so the next call starts fresh.
+    // persisted so the next call starts fresh. Said in the log either way: a
+    // renewal the service refuses is the usual reason a cloud drive that
+    // worked yesterday stops working today.
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     if (credentials.TokenExpired(now)) {
+        LogToThread(LogKind::Step, "The access token has expired - renewing it");
         Result refreshed = provider->RefreshCredentials(account, credentials);
-        if (!refreshed) return refreshed;
+        if (!refreshed) {
+            LogToThread(LogKind::Step, "Renewing the access token failed: " + refreshed.message);
+            return refreshed;
+        }
+        LogToThread(LogKind::Step, "Access token renewed");
         secrets_.Store(accountId, credentials);
     }
     return Result::Ok();

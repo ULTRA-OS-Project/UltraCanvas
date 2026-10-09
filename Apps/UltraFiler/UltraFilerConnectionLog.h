@@ -1,9 +1,14 @@
 // Apps/UltraFiler/UltraFilerConnectionLog.h
 // The connection log of UltraFiler's remote drives: every job the drive
 // worker runs - opening a folder, an upload, a download, a delete - as a
-// session with its lines (what UltraNet logged: status steps, commands, the
-// server's replies, the error) and its outcome, so a failure can be read
-// afterwards with its codes rather than as one line in the status bar.
+// session with its lines and its outcome, so a failure can be read
+// afterwards with its codes rather than as one line in the status bar. On an
+// FTP / SFTP drive the lines are what UltraNet logged: status steps, the
+// commands sent, the server's replies, the error. On a cloud drive (Dropbox,
+// OneDrive, Google Drive, Nextcloud, WebDAV) they are what UltraCloud logged
+// (UltraCloudLog.h): each request, the service's answer with its HTTP status
+// and its own reason for a refusal, a renewed sign-in, the pages of a long
+// listing, a request to wait.
 //
 // Two renderings of it, both for the log window's text areas:
 //
@@ -22,9 +27,10 @@
 //
 // Kept in memory only, and bounded (kMaxSessions, kMaxLinesPerSession): it is
 // for the session at hand, not an audit trail, and it never holds a password
-// - UltraNet writes PASS as "PASS ********" before a line gets here.
-// Version: 1.0.0
-// Last Modified: 2026-10-04
+// - UltraNet writes PASS as "PASS ********" before a line gets here, and
+// UltraCloud logs no header, no body and no query value that carries a token.
+// Version: 1.1.0 - cloud drives: HTTP sessions, their labels and their hints
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,6 +68,10 @@ struct RemoteLogSession {
     // Work nobody was waiting on: a folder fetched ahead, a preview copy.
     // Logged like the rest, but it does not count as an error the user saw.
     bool background = false;
+    // A cloud drive's session: its Command lines are HTTP requests, the codes
+    // of its Response lines HTTP statuses - which share numbers with FTP's
+    // replies (421, 425, 426) and mean something else.
+    bool http = false;
     int64_t startedMs = 0;
     int64_t finishedMs = 0;   // 0 while it is still running
     bool failed = false;
@@ -246,10 +256,10 @@ inline std::string FormatRemoteLogDuration(int64_t ms) {
 }
 
 // "Status:   ", padded so the texts line up the way they do in an FTP client.
-inline const char* RemoteLogKindLabel(RemoteLogLine::Kind kind) {
+inline const char* RemoteLogKindLabel(RemoteLogLine::Kind kind, bool http = false) {
     switch (kind) {
         case RemoteLogLine::Kind::Step:     return "Status:   ";
-        case RemoteLogLine::Kind::Command:  return "Command:  ";
+        case RemoteLogLine::Kind::Command:  return http ? "Request:  " : "Command:  ";
         case RemoteLogLine::Kind::Response: return "Response: ";
         case RemoteLogLine::Kind::Error:    return "Error:    ";
     }
@@ -257,9 +267,9 @@ inline const char* RemoteLogKindLabel(RemoteLogLine::Kind kind) {
 }
 
 // One line as the message log shows it.
-inline std::string FormatRemoteLogLine(const RemoteLogLine& line) {
-    std::string out = FormatRemoteLogClock(line.timeMs) + "  " + RemoteLogKindLabel(line.kind) +
-                      line.text;
+inline std::string FormatRemoteLogLine(const RemoteLogLine& line, bool http = false) {
+    std::string out = FormatRemoteLogClock(line.timeMs) + "  " +
+                      RemoteLogKindLabel(line.kind, http) + line.text;
     if (line.kind == RemoteLogLine::Kind::Error && line.transportCode != 0)
         out += "  [libcurl error " + std::to_string(line.transportCode) + "]";
     return out;
@@ -290,7 +300,7 @@ inline std::string RenderRemoteLogText(const std::vector<RemoteLogSession>& sess
             if (s.droppedLines > 0 && i + 1 == s.lines.size() &&
                 s.lines[i].kind == RemoteLogLine::Kind::Error)
                 out += "          ... " + std::to_string(s.droppedLines) + " lines left out\n";
-            out += FormatRemoteLogLine(s.lines[i]) + "\n";
+            out += FormatRemoteLogLine(s.lines[i], s.http) + "\n";
         }
         if (s.droppedLines > 0 && (s.lines.empty() ||
                                    s.lines.back().kind != RemoteLogLine::Kind::Error))
@@ -340,10 +350,60 @@ inline std::string FenceSafe(const std::string& text) {
     return out;
 }
 
+// The likely cause of a failed cloud drive session, from the HTTP status of
+// the service's last answer; "" when nothing more specific than the message
+// itself can be said.
+inline std::string RemoteHttpFailureHint(const RemoteLogSession& s) {
+    // Google Drive says it is throttling with a 403; the message says so.
+    if (s.error.find("limiting requests") != std::string::npos)
+        return "The service is limiting how many requests this account may make. Wait the "
+               "time it asks for and try again; opening fewer folders at once helps.";
+    switch (s.LastReplyCode()) {
+        case 0:
+            if (s.failed && !s.lines.empty() &&
+                s.lines.back().kind == RemoteLogLine::Kind::Error)
+                return "The service could not be reached. Check that this computer is "
+                       "online, and that no proxy or firewall is in the way.";
+            return {};
+        case 400:
+            return "The service did not accept the request - often a file or folder name "
+                   "it does not allow.";
+        case 401:
+            return "The service no longer accepts the drive's sign-in: the access was "
+                   "revoked, the password or app password changed, or the sign-in expired. "
+                   "Sign in to the drive again.";
+        case 403:
+            return "The service refused: this account may not use that file or folder, or "
+                   "UltraFiler was not given access to it when the drive was signed in.";
+        case 404:
+            return "The file or folder is not there any more - moved, renamed or deleted "
+                   "elsewhere. Refresh the folder.";
+        case 409:
+            return "The service refused because of a conflict: an item of that name already "
+                   "exists, or a folder on the way is missing.";
+        case 412: case 423:
+            return "The file is locked, or someone changed it meanwhile. Try again in a "
+                   "moment.";
+        case 413:
+            return "The file is larger than the service accepts.";
+        case 429:
+            return "The service is limiting how many requests this account may make. Wait the "
+                   "time it asks for and try again; opening fewer folders at once helps.";
+        case 500: case 502: case 503: case 504:
+            return "The service itself had a problem, or is overloaded. Try again in a while; "
+                   "if it lasts, the service's status page may say why.";
+        case 507:
+            return "The drive is full: the account's storage is used up.";
+        default: break;
+    }
+    return {};
+}
+
 // A sentence on the likely cause of a failed session, from the server's last
 // reply and libcurl's error; "" when nothing more specific than the message
 // itself can be said.
 inline std::string RemoteFailureHint(const RemoteLogSession& s) {
+    if (s.http) return RemoteHttpFailureHint(s);
     const int reply = s.LastReplyCode();
     const int curl = s.TransportCode();
     const std::string command = s.LastCommand();
@@ -456,11 +516,13 @@ inline std::string RenderRemoteErrorsMarkdown(const std::vector<RemoteLogSession
         if (const int curl = s.TransportCode(); curl != 0)
             codes += "libcurl error " + std::to_string(curl);
         if (const int reply = s.LastReplyCode(); reply != 0)
-            codes += (codes.empty() ? "" : ", ") + std::string("last server reply ") +
+            codes += (codes.empty() ? "" : ", ") +
+                     std::string(s.http ? "HTTP status " : "last server reply ") +
                      std::to_string(reply);
         if (!codes.empty()) out += "| Error codes | " + EscapeRemoteLogMarkdown(codes) + " |\n";
         if (const std::string reply = s.LastReply(); !reply.empty())
-            out += "| Last server reply | " + EscapeRemoteLogMarkdown(reply) + " |\n";
+            out += std::string(s.http ? "| Last answer | " : "| Last server reply | ") +
+                   EscapeRemoteLogMarkdown(reply) + " |\n";
         out += "| When | " + FormatRemoteLogClock(s.startedMs) + ", failed after " +
                FormatRemoteLogDuration(s.finishedMs - s.startedMs) + " |\n\n";
 
@@ -472,7 +534,7 @@ inline std::string RenderRemoteErrorsMarkdown(const std::vector<RemoteLogSession
             const std::size_t kShown = 12;
             const std::size_t from = s.lines.size() > kShown ? s.lines.size() - kShown : 0;
             for (std::size_t i = from; i < s.lines.size(); ++i)
-                out += FenceSafe(FormatRemoteLogLine(s.lines[i])) + "\n";
+                out += FenceSafe(FormatRemoteLogLine(s.lines[i], s.http)) + "\n";
             out += "```\n\n";
         }
         if (!s.diagnostics.empty()) {

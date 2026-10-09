@@ -6,9 +6,10 @@
 //
 // A failed FTP connection used to leave one line in the status bar and no
 // way to see the server's reply or the step it got to; what the report must
-// carry for that is checked here.
-// Version: 1.0.0
-// Last Modified: 2026-10-04
+// carry for that is checked here - and, for a cloud drive, that its requests
+// and HTTP statuses are not read as FTP's commands and replies.
+// Version: 1.1.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #include "UltraFilerConnectionLog.h"
 
@@ -231,6 +232,103 @@ int main() {
 
         RemoteLogSession plain;
         Check(RemoteFailureHint(plain).empty(), "nothing to say, nothing said");
+    }
+
+    std::printf("Cloud drives\n");
+    {
+        // A Dropbox listing the service refused: requests, not commands, and
+        // HTTP statuses, not FTP replies.
+        RemoteConnectionLog log;
+        RemoteLogSession header;
+        header.drive = "Dropbox";
+        header.server = "dropbox";
+        header.operation = "Open folder";
+        header.target = "/Photos";
+        header.http = true;
+        const uint64_t id = log.Begin(header);
+        using K = RemoteLogLine::Kind;
+        log.Append(id, Line(K::Step, "The access token has expired - renewing it"));
+        log.Append(id, Line(K::Step, "Access token renewed"));
+        log.Append(id, Line(K::Command, "POST https://api.dropboxapi.com/2/files/list_folder"));
+        log.Append(id, Line(K::Response, "409 Conflict - path/not_found (0.31 s)", 409));
+        log.Finish(id, true, "list /Photos: HTTP 409 - path/not_found",
+                   "Server - the service refused the request (UltraCloud code 5)",
+                   "HTTP status: 409 Conflict\nService's reason: path/not_found\n"
+                   "Request ID: 5f1c0de\n");
+
+        const std::string text = RenderRemoteLogText(log.Snapshot());
+        Check(Contains(text, "Request:  POST https://api.dropboxapi.com/2/files/list_folder"),
+              "a cloud drive's requests are labelled as requests");
+        Check(!Contains(text, "Command:  POST"), "not as FTP commands");
+        Check(Contains(text, "Response: 409 Conflict - path/not_found"),
+              "the answer with the service's reason");
+        Check(Contains(text, "Status:   Access token renewed"), "a renewed sign-in is a step");
+
+        const std::string md = RenderRemoteErrorsMarkdown(log.Snapshot());
+        Check(Contains(md, "| Error codes | HTTP status 409 |"),
+              "the code is an HTTP status, not a server reply");
+        Check(Contains(md, "| Last answer | 409 Conflict - path/not\\_found (0.31 s) |"),
+              "the last answer in the table");
+        Check(!Contains(md, "Last server reply"), "no FTP wording in a cloud report");
+        Check(Contains(md, "Request:  POST"), "the last steps keep the request label");
+        Check(Contains(md, "Request ID: 5f1c0de"), "the diagnostics carry the request ID");
+        Check(Contains(md, "**Likely cause:**") && Contains(md, "conflict"),
+              "a 409 is explained as a conflict");
+
+        // The same numbers mean other things in FTP: an HTTP 425 is not a
+        // data connection, a 421 not a server hanging up.
+        RemoteLogSession early;
+        early.http = true;
+        early.lines.push_back(Line(K::Response, "425 Too Early", 425));
+        Check(RemoteFailureHint(early).empty(), "an HTTP 425 gets no FTP hint");
+        RemoteLogSession ftp425;
+        ftp425.lines.push_back(Line(K::Response, "425 Can't open data connection", 425));
+        Check(Contains(RemoteFailureHint(ftp425), "data connection"),
+              "while FTP's 425 keeps its own");
+
+        RemoteLogSession expired;
+        expired.http = true;
+        expired.lines.push_back(Line(K::Response, "401 Unauthorized - invalid_token", 401));
+        Check(Contains(RemoteFailureHint(expired), "Sign in to the drive again"),
+              "a 401 asks for a new sign-in");
+
+        RemoteLogSession forbidden;
+        forbidden.http = true;
+        forbidden.lines.push_back(Line(K::Response, "403 Forbidden - accessDenied", 403));
+        Check(Contains(RemoteFailureHint(forbidden), "may not use"), "a 403 is a refusal");
+
+        RemoteLogSession throttled;
+        throttled.http = true;
+        throttled.lines.push_back(Line(K::Response, "429 Too Many Requests", 429));
+        Check(Contains(RemoteFailureHint(throttled), "limiting"), "a 429 is throttling");
+
+        // Google Drive throttles with a 403; the message says it is limiting.
+        RemoteLogSession google;
+        google.http = true;
+        google.error = "list /: the service is limiting requests - it asks to wait 30 s "
+                       "(HTTP 403 - userRateLimitExceeded: User Rate Limit Exceeded)";
+        google.lines.push_back(Line(K::Response, "403 Forbidden - userRateLimitExceeded", 403));
+        Check(Contains(RemoteFailureHint(google), "limiting"),
+              "Google's throttling 403 is not read as a refusal");
+
+        RemoteLogSession full;
+        full.http = true;
+        full.lines.push_back(Line(K::Response, "507 Insufficient Storage", 507));
+        Check(Contains(RemoteFailureHint(full), "storage is used up"), "a full drive");
+
+        RemoteLogSession offline;
+        offline.http = true;
+        offline.failed = true;
+        offline.lines.push_back(
+                Line(K::Command, "PROPFIND https://cloud.example.org/remote.php/dav/files/erika/"));
+        offline.lines.push_back(Line(K::Error, "No answer: Could not resolve host (after 12 ms)"));
+        Check(Contains(RemoteFailureHint(offline), "could not be reached"),
+              "a request with no answer at all");
+
+        RemoteLogSession answered;
+        answered.http = true;
+        answered.lines.push_back(Line(K::Response, "200 OK - 420 ms", 200));
+        Check(RemoteFailureHint(answered).empty(), "nothing to explain about a 200");
     }
 
     std::printf("Formatting\n");
