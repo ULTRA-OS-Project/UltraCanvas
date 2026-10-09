@@ -544,6 +544,30 @@ TEST(changed_warnings_make_every_verdict_stale) {
     REQUIRE(got.level == ThreatLevel::Clean);         // the verdict stays until re-scanned
 }
 
+TEST(a_trusted_or_blocked_sender_makes_only_their_verdicts_stale) {
+    LocalStore s = FreshStore("stale-sender");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    const std::vector<std::pair<int64_t, std::string>> mail = {
+        { 1, "Friend@Example.org" }, { 2, "a@junk.example" }, { 3, "b@mail.junk.example" },
+        { 4, "c@notjunk.example" }, { 5, "other@example.org" } };
+    for (const auto& [uid, from] : mail) {
+        REQUIRE(s.UpsertMessage(Incoming("erika", uid, from, {"erika@example.com"})).success);
+        MessageSecurity verdict;
+        verdict.level = ThreatLevel::Clean;
+        verdict.scannedAt = 5000;
+        REQUIRE(s.SetSecurity("erika", "INBOX", uid, verdict).success);
+    }
+    std::vector<int64_t> stale;
+    REQUIRE(s.MarkSenderVerdictsStale("friend@example.org").success);   // any case
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE_EQ(stale.size(), (size_t)1);
+    REQUIRE_EQ(stale[0], (int64_t)1);
+    REQUIRE(s.MarkSenderVerdictsStale("@junk.example").success);        // and below it
+    REQUIRE(s.ListStaleVerdicts("erika", "INBOX", 2000, 10, stale).success);
+    REQUIRE_EQ(stale.size(), (size_t)3);
+    for (int64_t uid : stale) REQUIRE(uid == 1 || uid == 2 || uid == 3);
+}
+
 TEST(verified_sender_and_stale_verdicts) {
     LocalStore s = FreshStore("verified");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");

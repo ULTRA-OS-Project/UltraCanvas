@@ -4,6 +4,7 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.12.0 - senderLists: trusted and blocked senders
 // Version: 0.11.0 - scamWarnings: which kinds of spam/scam warning are given
 //                   (Settings > Spam/scam warnings)
 // Version: 0.10.0 - notifyNewMail: a notification on screen when new mail arrives
@@ -135,6 +136,10 @@ struct Preferences {
     // agency's name, crypto scams, the caution on any crypto mail, dangerous
     // attachments, the server's spam verdict. All on.
     ThreatScanOptions scamWarnings;
+    // The sender menu's "Always trust this sender" and "Block this sender"
+    // (Settings > Warnings > Trusted and blocked senders): addresses, lower
+    // case, and "@example.com" for a blocked domain.
+    SenderLists senderLists;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

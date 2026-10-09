@@ -14,6 +14,9 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.9.0 - SenderLists: senders the reader trusts (only the findings that
+//                  catch a lie or a forgery count for them) and blocks (blocked-sender,
+//                  their mail marked as spam)
 // Version: 0.8.0 - link-domain-lookalike; look-alike letters of another script
 //                  ("pаypal.com" in Cyrillic) in sender and link domains
 // Version: 0.7.0 - look-alike sender domains (sender-domain-lookalike), letters in
@@ -44,6 +47,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -94,6 +98,39 @@ bool FindingEnabled(const ThreatScanOptions& options, const std::string& code);
 // threads and the reading pane alike. Everything on until set.
 void SetThreatScanOptions(const ThreatScanOptions& options);
 ThreatScanOptions GetThreatScanOptions();
+
+// The reader's own lists: the sender menu's "Always trust this sender" and
+// "Block this sender" (Settings > Warnings > Trusted and blocked senders).
+// Addresses are lower case; a blocked "@example.com" blocks the whole domain
+// and its subdomains.
+struct SenderLists {
+    std::set<std::string> trusted;
+    std::set<std::string> blocked;
+    bool operator==(const SenderLists&) const = default;
+
+    bool Trusts(const std::string& address) const;
+    // The entry that blocks `address` ("x@example.com" or "@example.com"),
+    // or "" when none does.
+    std::string BlockedBy(const std::string& address) const;
+    // "Erika <ERIKA@Example.com> " -> "erika@example.com".
+    static std::string Normalize(const std::string& address);
+    // What a typed entry is kept as, or "" when it is none: an address for
+    // either list; for the blocked one also a domain, "@example.com" (typed
+    // "example.com" or "@Example.com").
+    static std::string Entry(const std::string& typed, bool blockList);
+};
+
+// The lists ScanRawMessage reads, for the whole process. Empty until set.
+void SetSenderLists(const SenderLists& lists);
+SenderLists GetSenderLists();
+
+// Whether a finding still counts for a sender the reader trusts: only those
+// that catch a lie or a forgery - a link that lies about where it goes, a
+// sender check the From domain failed (someone forging the trusted address),
+// a program dressed as a document, a wallet's recovery phrase asked for. The
+// guessed kinds - romance, advance-fee, crypto caution, spam markers, a
+// brand's name in a domain - are the reader's call, and they made it.
+bool FindingKeptForTrustedSender(const std::string& code);
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
@@ -161,6 +198,10 @@ struct ScanInput {
     // Which kinds of warning to give: all of them unless the caller says
     // otherwise (ScanRawMessage passes GetThreatScanOptions()).
     ThreatScanOptions options;
+    // The reader's lists for this sender: trusted, or the entry that blocks
+    // it ("" when none). ScanRawMessage fills both from GetSenderLists().
+    bool        senderTrusted = false;
+    std::string senderBlockedBy;
 };
 
 // When the rules last changed (epoch seconds). A stored verdict made before it

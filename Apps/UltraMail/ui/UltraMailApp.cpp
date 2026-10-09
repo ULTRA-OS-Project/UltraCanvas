@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.30 - trusted and blocked senders: set at start, changed from the
+//                   sender menus or Settings, the changed senders' mail judged
+//                   again; a trusted sender's pictures load like a contact's
 // Version: 0.9.29 - Settings > Spam/scam warnings: the scan's options set at start
 //                   and on a change, which has the stored verdicts judged again
 // Version: 0.9.28 - the window first: only what the first frame shows is done
@@ -108,6 +111,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraMailSenderBrands.h"   // RegistrableDomain
 #include <map>
+#include <set>
 
 // ULTRAMAIL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -197,6 +201,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // Which spam/scam warnings the content scan gives - before anything is
     // scanned, on the sync's threads or in the reading pane.
     SetThreatScanOptions(prefs_.scamWarnings);
+    SetSenderLists(prefs_.senderLists);
     ApplyNeedsAnswerRules();
     // The sender-icon cache (the badge left of every subject line) lives under
     // the cache directory; it is safe to point at it before the folder exists.
@@ -590,7 +595,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             case RemoteImagePolicy::LoadTrusted: break;
         }
         const std::string a = lowerAddr(addr);
-        if (prefs_.remoteImageSenders.count(a)) return true;
+        if (prefs_.remoteImageSenders.count(a) || prefs_.senderLists.Trusts(a)) return true;
         if (const auto at = a.rfind('@'); at != std::string::npos &&
             prefs_.IsTrustedDomain(a.substr(at + 1)))
             return true;
@@ -617,6 +622,10 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         return groups;
     };
     mailView_.onNotJunk    = [this](const MessageEnvelope& e) { HandleNotJunk(e); };
+    mailView_.senderLists  = [this]() { return prefs_.senderLists; };
+    mailView_.onSenderListChange = [this](const std::string& entry, bool blockList, bool add) {
+        HandleSenderListChange(entry, blockList, add);
+    };
     mailView_.onUnsubscribe = [this](const MessageEnvelope& e) { HandleUnsubscribe(e); };
     mailView_.onMoveTo     = [this](const MessageEnvelope& e, const std::string& folder) {
         HandleMoveMessage(e, folder);
@@ -1443,6 +1452,46 @@ void UltraMailApp::HandleNotJunk(const MessageEnvelope& env) {
             return engine.MoveMessage(env.accountId, env.folder, env.uid, inbox, url, opts);
         },
         "Not spam");
+}
+
+void UltraMailApp::HandleSenderListChange(const std::string& entry, bool blockList, bool add) {
+    SenderLists& lists = prefs_.senderLists;
+    std::set<std::string>& list  = blockList ? lists.blocked : lists.trusted;
+    std::set<std::string>& other = blockList ? lists.trusted : lists.blocked;
+    if (add) {
+        list.insert(entry);
+        // An address is trusted or blocked, not both. (A trusted address under
+        // a blocked domain stays trusted: the exception to the block.)
+        other.erase(entry);
+    } else {
+        list.erase(entry);
+    }
+    prefs_.Save(prefsPath_);
+    SettingsDialog::SyncWithPreferences();
+    ApplySenderLists();
+}
+
+void UltraMailApp::ApplySenderLists() {
+    const SenderLists before = GetSenderLists();
+    const SenderLists& after = prefs_.senderLists;
+    if (before == after) return;
+    SetSenderLists(after);
+    // The entries on one list and not the other, before or after.
+    std::set<std::string> changed;
+    auto diff = [&changed](const std::set<std::string>& a, const std::set<std::string>& b) {
+        for (const auto& e : a) if (!b.count(e)) changed.insert(e);
+    };
+    diff(before.trusted, after.trusted);
+    diff(after.trusted, before.trusted);
+    diff(before.blocked, after.blocked);
+    diff(after.blocked, before.blocked);
+    // Their mail in the list on screen at once, the rest as the mail check
+    // re-scans stale verdicts.
+    for (const auto& entry : changed) {
+        store_.MarkSenderVerdictsStale(entry);
+        mailView_.RescanSender(entry);
+    }
+    mailView_.RecheckShownMessage();
 }
 
 void UltraMailApp::HandleSetNeedsAnswer(const MessageEnvelope& env, bool needsAnswer) {
@@ -3364,6 +3413,9 @@ void UltraMailApp::OpenSettings() {
             mailView_.RecheckShownMessage();
             SyncAllInBackground();
         }
+        // Senders taken off (or put on) Settings > Warnings > Trusted and
+        // blocked senders.
+        ApplySenderLists();
     });
 }
 

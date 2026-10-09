@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.9.0 - SenderLists: trusted senders keep only the findings that catch a
+//                  lie or a forgery; blocked senders get blocked-sender
 // Version: 0.8.0 - link-domain-lookalike: link targets dressed up as a brand's;
 //                  names in look-alike letters of another script, sender and link
 // Version: 0.7.0 - sender-domain-lookalike, government-impersonation;
@@ -783,6 +785,72 @@ void SetThreatScanOptions(const ThreatScanOptions& options) {
     g_options = options;
 }
 
+namespace {
+std::mutex  g_listsMutex;
+SenderLists g_lists;
+} // namespace
+
+std::string SenderLists::Normalize(const std::string& address) {
+    std::string a = address;
+    if (const std::size_t lt = a.find('<'); lt != std::string::npos) {
+        const std::size_t gt = a.find('>', lt);
+        a = a.substr(lt + 1, gt == std::string::npos ? std::string::npos : gt - lt - 1);
+    }
+    return Lower(Trim(a));
+}
+
+std::string SenderLists::Entry(const std::string& typed, bool blockList) {
+    std::string e = Normalize(typed);
+    if (e.find_first_of(" \t,;") != std::string::npos) return std::string();
+    if (blockList && e.find('@') == std::string::npos) e = "@" + e;   // a bare domain
+    const std::size_t at = e.find('@');
+    if (at == std::string::npos || e.find('@', at + 1) != std::string::npos) return std::string();
+    const std::string domain = e.substr(at + 1);
+    if (domain.find('.') == std::string::npos || domain.front() == '.' || domain.back() == '.')
+        return std::string();
+    if (at == 0 && !blockList) return std::string();   // trust is per address
+    return e;
+}
+
+bool SenderLists::Trusts(const std::string& address) const {
+    const std::string a = Normalize(address);
+    return !a.empty() && trusted.count(a) > 0;
+}
+
+std::string SenderLists::BlockedBy(const std::string& address) const {
+    const std::string a = Normalize(address);
+    if (a.empty()) return std::string();
+    if (blocked.count(a)) return a;
+    // The domain, and each domain above it: mail.shop.example, shop.example.
+    const std::size_t at = a.rfind('@');
+    std::string domain = at == std::string::npos ? std::string() : a.substr(at + 1);
+    while (domain.find('.') != std::string::npos) {
+        if (blocked.count("@" + domain)) return "@" + domain;
+        domain = domain.substr(domain.find('.') + 1);
+    }
+    return std::string();
+}
+
+void SetSenderLists(const SenderLists& lists) {
+    std::lock_guard<std::mutex> lock(g_listsMutex);
+    g_lists = lists;
+}
+
+SenderLists GetSenderLists() {
+    std::lock_guard<std::mutex> lock(g_listsMutex);
+    return g_lists;
+}
+
+bool FindingKeptForTrustedSender(const std::string& code) {
+    static const std::set<std::string> kept = {
+        "auth-failure", "link-target-mismatch", "link-userinfo", "link-ip-host",
+        "link-punycode", "link-nonascii-host", "link-brand-mismatch",
+        "link-brand-lookalike", "link-domain-lookalike",
+        "attachment-disguised-executable", "crypto-wallet-secret",
+    };
+    return kept.count(code) > 0;
+}
+
 ThreatScanOptions GetThreatScanOptions() {
     std::lock_guard<std::mutex> lock(g_optionsMutex);
     return g_options;
@@ -1493,9 +1561,25 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
-    // Settings > Spam/scam warnings: a kind switched off is not reported.
+    // ---- The reader's own lists ----------------------------------------------
+    // A blocked sender's mail is marked as spam: the reader said so. (Their
+    // mail stays where it is - UltraMail labels, it does not move.)
+    if (!input.senderBlockedBy.empty()) {
+        Add(report, 30, "blocked-sender",
+            input.senderBlockedBy.front() == '@'
+                ? "You blocked everything from " + input.senderBlockedBy.substr(1) +
+                  ", so its mail is marked as spam."
+                : "You blocked " + input.senderBlockedBy + ", so their mail is marked as spam.");
+    }
+
+    // Settings > Spam/scam warnings: a kind switched off is not reported; and
+    // for a sender the reader trusts, only what catches a lie or a forgery.
     for (auto it = report.findings.begin(); it != report.findings.end();) {
-        if (FindingEnabled(input.options, it->code)) { ++it; continue; }
+        if (FindingEnabled(input.options, it->code) &&
+            (!input.senderTrusted || FindingKeptForTrustedSender(it->code))) {
+            ++it;
+            continue;
+        }
         report.score -= it->score;
         it = report.findings.erase(it);
     }
@@ -1529,6 +1613,11 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     // and the bottom-most Authentication-Results may be anyone's.
     in.authResults     = TopHeaderValue(rawMessage, "Authentication-Results");
     in.options         = GetThreatScanOptions();
+    {
+        const SenderLists lists = GetSenderLists();
+        in.senderTrusted   = lists.Trusts(msg.from);
+        in.senderBlockedBy = lists.BlockedBy(msg.from);
+    }
 
     std::string body;
     bool isHtml = false;

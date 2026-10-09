@@ -1335,3 +1335,86 @@ TEST(links_to_brands_and_ordinary_sites_are_not_lookalikes) {
         "<a href=\"https://www.m\xC3\xBCnchen.de/\">M\xC3\xBCnchen</a>"));
     REQUIRE(!r.Has("link-domain-lookalike"));
 }
+
+// ---------------------------------------------------------------------------
+// The reader's own lists: trusted and blocked senders
+// ---------------------------------------------------------------------------
+TEST(sender_lists_match_addresses_and_domains) {
+    SenderLists lists;
+    lists.trusted = { "erika@example.org" };
+    lists.blocked = { "spam@mailbox.example", "@junk.example" };
+    REQUIRE(lists.Trusts("Erika <ERIKA@Example.org>"));
+    REQUIRE(!lists.Trusts("other@example.org"));
+    REQUIRE_EQ(lists.BlockedBy("spam@mailbox.example"), std::string("spam@mailbox.example"));
+    REQUIRE_EQ(lists.BlockedBy("a@junk.example"), std::string("@junk.example"));
+    REQUIRE_EQ(lists.BlockedBy("b@mail.junk.example"), std::string("@junk.example"));   // below it
+    REQUIRE_EQ(lists.BlockedBy("c@notjunk.example"), std::string());               // not a suffix
+    REQUIRE_EQ(lists.BlockedBy("other@mailbox.example"), std::string());
+    REQUIRE_EQ(SenderLists::Normalize(" Name <A@B.Example> "), std::string("a@b.example"));
+}
+
+TEST(sender_list_entries_are_addresses_or_blocked_domains) {
+    REQUIRE_EQ(SenderLists::Entry(" Friend@Example.org ", false), std::string("friend@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("example.org", true), std::string("@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("@Example.org", true), std::string("@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("@example.org", false), std::string());   // trust is per address
+    REQUIRE_EQ(SenderLists::Entry("example.org", false), std::string());
+    REQUIRE_EQ(SenderLists::Entry("nobody@localhost", true), std::string());
+    REQUIRE_EQ(SenderLists::Entry("a@b@example.org", true), std::string());
+    REQUIRE_EQ(SenderLists::Entry("two words@example.org", true), std::string());
+}
+
+TEST(a_blocked_senders_mail_is_marked_as_spam) {
+    ScanInput in = Letter("friendly@shop.example", "Hello", "An ordinary message.");
+    in.senderBlockedBy = "friendly@shop.example";
+    ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("blocked-sender"));
+    REQUIRE(r.level == ThreatLevel::Suspicious);
+    REQUIRE(r.Summary().find("You blocked friendly@shop.example") != std::string::npos);
+    in.senderBlockedBy = "@shop.example";
+    REQUIRE(ScanMessage(in).Summary().find("everything from shop.example") != std::string::npos);
+}
+
+TEST(a_trusted_sender_keeps_only_the_warnings_that_catch_a_lie) {
+    // A friend's letter that happens to read like a romance scam: trusted, clean.
+    ScanInput letter = Letter("anna.k.tova@gmail.com", "Where are you my dear?",
+        "I go to a Dating site and find a profile of a person who believes in love. My "
+        "name is Anna, I'm 31 years old. I hope you like my photos. Write back!",
+        { "IMG_942.jpg" });
+    REQUIRE(ScanMessage(letter).Has("romance-scam"));
+    letter.senderTrusted = true;
+    const ThreatReport trusted = ScanMessage(letter);
+    REQUIRE(!trusted.Has("romance-scam"));
+    REQUIRE(trusted.level == ThreatLevel::Clean);
+    // A link that lies, and a forged From address, still count.
+    ScanInput lie = Html("erika@example.org",
+        "<a href=\"http://203.0.113.9/login\">www.paypal.com</a>");
+    lie.authResults = "mx.example.net; dmarc=fail header.from=example.org";
+    lie.senderTrusted = true;
+    const ThreatReport r = ScanMessage(lie);
+    REQUIRE(r.Has("link-target-mismatch"));
+    REQUIRE(r.Has("auth-failure"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(FindingKeptForTrustedSender("crypto-wallet-secret"));
+    REQUIRE(!FindingKeptForTrustedSender("crypto-content"));
+    REQUIRE(!FindingKeptForTrustedSender("advance-fee-fraud"));
+}
+
+TEST(raw_scans_read_the_process_wide_sender_lists) {
+    const std::string raw =
+        "From: Shop <deals@shop.example>\r\nSubject: Offer\r\n"
+        "Content-Type: text/plain\r\n\r\nBitcoin rose today.\r\n";
+    REQUIRE(!ScanRawMessage(raw).Has("blocked-sender"));
+    SenderLists lists;
+    lists.blocked = { "@shop.example" };
+    SetSenderLists(lists);
+    const ThreatReport blocked = ScanRawMessage(raw);
+    lists.blocked.clear();
+    lists.trusted = { "deals@shop.example" };
+    SetSenderLists(lists);
+    const ThreatReport trusted = ScanRawMessage(raw);
+    SetSenderLists(SenderLists{});                      // back for the other tests
+    REQUIRE(blocked.Has("blocked-sender"));
+    REQUIRE(!trusted.Has("crypto-content"));            // the caution is a guessed kind
+    REQUIRE(GetSenderLists() == SenderLists{});
+}

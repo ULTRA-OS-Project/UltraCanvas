@@ -267,6 +267,7 @@ cascade. The rules, with their weights:
 | `link-shortener` | 12 | The destination cannot be seen |
 | `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
 | `spam-flag` | 40 | The receiving server already said so |
+| `blocked-sender` | 30 | The reader blocked the sender, or their domain — see *Trusted and blocked senders* below |
 | *(verified sender)* | −10 | DMARC passed for the From domain, or a DKIM signature of it verified: the From address is genuinely theirs |
 
 45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
@@ -412,6 +413,47 @@ exist. Changing a switch marks every stored verdict stale
 and the rest are re-scanned by the mail check a batch at a time, the first
 check starting straight away.
 
+### Trusted and blocked senders
+
+A right-click on a sender — on a row of the message list, or on the name or
+badge above the message — offers the reader's own verdict next to the address
+book and spam items:
+
+| Menu item | Effect |
+|---|---|
+| **Always trust this sender** | The address goes on the trusted list; *Stop trusting this sender* takes it off |
+| **Block this sender** | The address goes on the blocked list; *Unblock this sender* takes it off |
+| **Block everything from example.com** | `@example.com` goes on the blocked list — the registrable domain, so `mail.example.com` too. Not offered for a mailbox provider (gmail.com, outlook.com …): that would block everyone who writes from it. *Unblock everything from example.com* takes it off |
+
+The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
+`preferences.ini` as `trusted_senders` and `blocked_senders`
+(comma-separated) and editable in *Settings > Warnings > Trusted and blocked
+senders*, where a domain can also be typed (`example.com` is kept as
+`@example.com`). An address is on one list or the other: trusting a blocked
+address unblocks it, and blocking a trusted one stops trusting it. A trusted
+address under a blocked domain stays trusted — the exception to the block.
+
+* **Blocked:** the scan adds `blocked-sender` (30, so at least
+  **Suspicious**): the orange frame, and the strip above the message says
+  *"You blocked this sender"* with how to undo it. The mail stays where it
+  is — UltraMail labels, it does not move or delete; *Mark as spam* moves a
+  message to the junk folder.
+* **Trusted:** only the findings that catch a lie or a forgery still count
+  (`FindingKeptForTrustedSender`): `auth-failure` (someone forging the
+  trusted address), the lying-link rules (`link-target-mismatch`,
+  `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
+  `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
+  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  kinds — a romance or advance-fee letter, the crypto caution, spam markers,
+  a brand's name in a domain — are the reader's call, and they made it. A
+  trusted sender's pictures on the web also load like a contact's
+  (*Privacy > Images*, "only from trusted senders").
+
+A change marks the stored verdicts of that sender (or domain) stale
+(`LocalStore::MarkSenderVerdictsStale`). Their mail in the list on screen is
+scanned again at once, off the UI thread (`MailView::RescanSender`, up to 300
+cached bodies), with the open message; the rest follows with the mail check.
+
 ### Mail authentication
 
 The receiving server checks the sending domain's own records when a message
@@ -479,4 +521,5 @@ clean, and each of those is a test in
 | Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
+| Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted and blocked senders); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
