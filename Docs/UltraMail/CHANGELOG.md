@@ -1,4 +1,4 @@
-#### 2026-10-09 *0.10.45*
+#### 2026-10-09 *0.10.46*
 - **Settings > Warnings > Trusted & blocked shows every entry.** A list
   with more addresses than one row holds hid the rest: the field wrapped
   them onto a second row but stayed one row tall, so the third blocked
@@ -13,6 +13,37 @@
 - **The page's name fits the settings tree.** "Trusted and blocked senders"
   was cut off to "Trusted and blocked se..."; the tree says *Trusted &
   blocked*, and the page keeps its full title.
+
+#### 2026-10-09 *0.10.45*
+- **Yahoo accounts can sign in with an app password again.** The browser
+  sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
+  which Yahoo now does per app through a commercial application, not in the
+  developer console. Until then Yahoo users had no way in, because the
+  password field was hidden for Yahoo. It is back. The wizard asks for an app
+  password first (Account security > Generate app password), and the browser
+  sign-in stays available by leaving it empty. The server settings page has
+  the password field for Yahoo too (`ProviderAcceptsPassword`). Test:
+  `test_oauth.cpp`.
+- **A password typed on the server settings page replaces a browser
+  sign-in.** The account kept using its stored OAuth tokens, which take
+  precedence over a password, so switching an account from the browser
+  sign-in to an app password had no effect. Saving a new password now removes
+  the tokens.
+- **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
+  Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as
+  UltraMail, but redirects to `https://127.0.0.1` instead of using the
+  out-of-band code page. UltraMail now handles that kind of redirect too: a
+  Yahoo client registered with an https redirect (`redirect_uri` in
+  `oauth_clients.ini`) takes the paste-back sign-in rather than the loopback
+  listener, which only speaks plain HTTP. The code dialog accepts either the
+  code or the whole address the browser landed on, and takes the `code`
+  parameter from it (`ExtractOAuthCode`, `OAuthUsesPastedCode`).
+- **More Yahoo addresses are recognised.** `rocketmail.com`, `myyahoo.com`
+  and Yahoo's country domains (`yahoo.co.uk`, `yahoo.fr`, `yahoo.it`,
+  `yahoo.es`, `yahoo.ca`, `yahoo.com.au`, `yahoo.co.in`, `yahoo.com.br`,
+  `yahoo.com.mx`) now get the Yahoo servers and the browser sign-in. Before,
+  only `yahoo.com`, `yahoo.de` and `ymail.com` did. Tests: `test_oauth.cpp`,
+  `test_discovery.cpp`.
 
 #### 2026-10-09 *0.10.44*
 - **The Date column is as wide as its dates.** It was a fixed 88 px, about

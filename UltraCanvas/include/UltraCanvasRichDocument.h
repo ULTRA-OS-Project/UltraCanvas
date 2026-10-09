@@ -5,7 +5,8 @@
 // coupled directly to a UI element. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
-// Version: 1.3.2
+// ConcatenateRunText counts the first run's line break.
+// Version: 1.3.3
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
@@ -770,6 +771,10 @@ public:
     static std::string FileExtensionForMimeType(const std::string& mimeType);
     // Reads PNG/GIF/JPEG pixel dimensions from raw bytes (0 on failure).
     static bool SniffImagePixelSize(const std::vector<uint8_t>& data, int& width, int& height);
+    // The runs' text as one string: each run's text, preceded by a '\n' for
+    // every run carrying lineBreakBefore - the first run's too, so a block
+    // that starts with an empty line keeps it. The concatenation the
+    // editor's positions index into (UCRichDocumentEditor::RunsText).
     static std::string ConcatenateRunText(const std::vector<RichTextRun>& runs);
 };
 

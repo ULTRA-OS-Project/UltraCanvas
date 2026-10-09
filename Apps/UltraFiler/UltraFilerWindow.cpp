@@ -59,8 +59,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.27.0
-// Last Modified: 2026-10-08
+// Version: 1.28.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -251,6 +251,12 @@ namespace {
     // the entry underneath is still recognisable.
     constexpr int kPromoteButtonSize      = 32;
     constexpr int kPromoteButtonLeftInset = 8;
+
+    // The round button in a folder display's bottom-left corner that opens
+    // the connection log while the display is on an FTP drive: its diameter,
+    // and how far it sits from the display's left and bottom edges.
+    constexpr int kConnectionLogButtonSize  = 30;
+    constexpr int kConnectionLogButtonInset = 10;
 
     // ===== COMPUTER PAGE =====
     // The folder tiles row: one row of medium thumbnails (the tile edge, the
@@ -651,24 +657,85 @@ namespace {
     // A round icon button that floats over the edge of a pane rather than
     // sitting in a row: no label, a full circle, and a light border so it
     // stays legible over whatever it overlays.
+    void StyleFloatingRoundButton(UltraCanvasButton& b, const std::string& iconFile,
+                                  int diameter, const std::string& tooltip,
+                                  std::function<void()> onClick) {
+        b.SetCornerRadius(diameter / 2.0f);
+        b.SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
+        b.SetBorder(1.0f, Color(0, 0, 0, 70));
+        b.SetIcon(IconPath(iconFile));
+        b.SetIconSize(diameter / 2, diameter / 2);
+        b.SetIconSpacing(0);
+        b.SetUseIconAsMask(true);
+        b.SetIconMaskColor(Color(55, 55, 60, 255));
+        b.SetTooltip(tooltip);
+        if (onClick) b.SetOnClick(std::move(onClick));
+    }
+
     std::shared_ptr<UltraCanvasButton> MakeFloatingRoundButton(
             const std::string& id, const std::string& iconFile, int diameter,
             const std::string& tooltip, std::function<void()> onClick) {
         auto b = std::make_shared<UltraCanvasButton>(
                 id, 0, 0, static_cast<float>(diameter),
                 static_cast<float>(diameter), "");
-        b->SetCornerRadius(diameter / 2.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
-        b->SetBorder(1.0f, Color(0, 0, 0, 70));
-        b->SetIcon(IconPath(iconFile));
-        b->SetIconSize(diameter / 2, diameter / 2);
-        b->SetIconSpacing(0);
-        b->SetUseIconAsMask(true);
-        b->SetIconMaskColor(Color(55, 55, 60, 255));
-        b->SetTooltip(tooltip);
-        if (onClick) b->SetOnClick(std::move(onClick));
+        StyleFloatingRoundButton(*b, iconFile, diameter, tooltip, std::move(onClick));
         return b;
     }
+
+    // A floating round button that keeps to the bottom-left corner of a
+    // folder display's file area: `inset` from its left edge, and `inset`
+    // above the display's own strips along its bottom edge (the selection
+    // info bar, the hidden-items notice) rather than over them. Those strips
+    // come and go with the folder and the Display > Info-Bar switch without
+    // telling anybody, so the button checks where they end each time it is
+    // painted - the way an anchored UltraCanvasBadge follows its anchor -
+    // and its layout insets are kept in step so the next layout pass agrees.
+    // It is the display's sibling in the same page.
+    class FileAreaCornerButton : public UltraCanvasButton {
+    public:
+        FileAreaCornerButton(const std::string& id, int diameter, int inset,
+                             std::weak_ptr<UltraCanvasFilerWidget> display)
+            : UltraCanvasButton(id, 0, 0, static_cast<float>(diameter),
+                                static_cast<float>(diameter), ""),
+              diameter(static_cast<float>(diameter)),
+              inset(static_cast<float>(inset)),
+              display(std::move(display)) {
+            layoutItem.SetPositionType(CSSLayout::PositionType::Absolute)
+                      .SetPositionInsets(CSSLayout::Position{
+                              CSSLayout::Dimension::Auto(),                       // top
+                              CSSLayout::Dimension::Auto(),                       // right
+                              CSSLayout::Dimension::Px(static_cast<float>(inset)),   // bottom
+                              CSSLayout::Dimension::Px(static_cast<float>(inset))}); // left
+        }
+
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+            KeepToCorner();
+            UltraCanvasButton::Render(ctx, dirtyRect);
+        }
+
+    private:
+        void KeepToCorner() {
+            std::shared_ptr<UltraCanvasFilerWidget> filer = display.lock();
+            if (!filer) return;
+            const float bottom = inset + static_cast<float>(filer->GetBottomStripsHeight());
+            if (layoutItem.position && layoutItem.position->bottom.value != bottom)
+                layoutItem.position->bottom = CSSLayout::Dimension::Px(bottom);
+            const Rect2Df area = filer->GetBounds();
+            const float x = area.x + inset;
+            const float y = area.y + area.height - bottom - diameter;
+            if (std::abs(x - GetX()) > 0.5f || std::abs(y - GetY()) > 0.5f) {
+                SetBounds(x, y, diameter, diameter);
+                // This frame may already have been placed where the button
+                // was; the next one has it where it is.
+                InvalidateLayout();
+                RequestRedraw();
+            }
+        }
+
+        float diameter;
+        float inset;
+        std::weak_ptr<UltraCanvasFilerWidget> display;
+    };
 
     // Mark / unmark a toggle-style tool button (the Preview switch).
     void StyleToggleButton(UltraCanvasButton* b, bool active) {
@@ -1133,19 +1200,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
 
-    // The connection log: every step of every remote-drive connection, and
-    // the failed ones with their codes. The button names how many failures
-    // the log window has not shown yet, in red, so a failure that scrolled
-    // past on the status line is not lost.
-    statusLogButton = MakeToolButton("ufl-status-log", "", "clipboard-list.svg", 0,
-                                     [this]() { OpenConnectionLog(); });
-    statusLogButton->size.height = CSSLayout::Dimension::Px(20);
-    statusLogButton->SetIconSize(13, 13);
-    statusLogButton->SetVisible(false);
-    statusRow->AddChild(statusLogButton);
-
     window->AddChild(statusRow);
-    UpdateConnectionLogButton();
 
     std::string start = startFolder;
     std::error_code ec;
@@ -2513,7 +2568,7 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     ApplyTreeColors();
     folderTree->RequestRedraw();
     ScheduleTreeFit();
-    // The log button comes with the first drive.
+    // A display on a drive that has just gone loses its log button.
     UpdateConnectionLogButton();
 }
 
@@ -3490,7 +3545,8 @@ void UltraFilerWindow::BuildFolderTree() {
         alert.message = message;
         // The message says what failed; the log says how far it got.
         alert.details = "Every step of the connection, with the error codes, is in "
-                        "the connection log - the button at the right of the status bar.";
+                        "the connection log - the round network button in the bottom-left "
+                        "corner of the folder display.";
         alert.parent = window.get();
         UltraCanvasAlert::Show(alert);
     };
@@ -4668,6 +4724,35 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
+
+    // The connection log: every step of every connection to an FTP drive,
+    // and the failed ones with their codes. Opened from a round button with
+    // the network symbol floating in this display's bottom-left corner -
+    // in the display, not the window's status bar, because it is about the
+    // drive the display is on, and it is there only while it is on one
+    // (UpdateConnectionLogButton). The count of failures the log window has
+    // not shown yet rides on its corner in red, so a failure that scrolled
+    // past on the status line is not lost.
+    // Out of the display's flow, in the corner of its file area - above the
+    // info bar, not over it.
+    auto logButton = std::make_shared<FileAreaCornerButton>(
+            "ufl-connection-log-" + suffix, kConnectionLogButtonSize,
+            kConnectionLogButtonInset, state->filer);
+    StyleFloatingRoundButton(*logButton, "network.svg", kConnectionLogButtonSize,
+                             "Connection log", [this]() { OpenConnectionLog(); });
+    state->connectionLogButton = logButton;
+    // Over the entries, not behind them.
+    state->connectionLogButton->SetZIndex(OverlayZOrder::Overlays);
+    state->connectionLogButton->SetVisible(false);
+    state->page->AddChild(state->connectionLogButton);
+
+    state->connectionLogBadge = CreateCountBadge(
+            "ufl-connection-log-badge-" + suffix, 0, 0, 0, BadgeVariant::Danger);
+    state->connectionLogBadge->AnchorTo(state->connectionLogButton,
+                                        BadgeCorner::TopRight, -3, 3);
+    state->connectionLogBadge->onClick = [this]() { OpenConnectionLog(); };
+    state->connectionLogBadge->SetVisible(false);
+    state->page->AddChild(state->connectionLogBadge);
 
     WireFilerCallbacks(state.get());
     return state;
@@ -5895,6 +5980,8 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
         tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
         tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     }
+    // The connection log button comes with an FTP drive and goes with it.
+    UpdateConnectionLogButton(tab);
 
     // Entering a folder ends a search-result display (SetPath leaves it) and
     // the scan that was filling it.
@@ -6115,12 +6202,32 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
     statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
 }
 
+bool UltraFilerWindow::IsFtpDrivePath(const std::string& path) const {
+    if (!remoteDrives || !IsRemoteFilerPath(path)) return false;
+    RemoteDrive drive;
+    return remoteDrives->Find(RemoteFilerAccountId(path), drive) &&
+           UltraFilerRemoteDrives::ProviderBelongsToKind(drive.providerId,
+                                                         RemoteDriveKind::FtpOrSftp);
+}
+
 void UltraFilerWindow::UpdateConnectionLogButton() {
-    if (!statusLogButton) return;
-    if (!remoteDrives) {
-        statusLogButton->SetVisible(false);
+    for (const std::unique_ptr<FilerTabState>& tab : tabStates)
+        UpdateConnectionLogButton(tab.get());
+    UpdateConnectionLogButton(secondPane.get());
+}
+
+void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
+    if (!display || !display->connectionLogButton) return;
+    UltraCanvasButton& button = *display->connectionLogButton;
+    UltraCanvasBadge* badge = display->connectionLogBadge.get();
+
+    const bool show = display->filer && IsFtpDrivePath(display->filer->GetPath());
+    if (button.IsVisible() != show) button.SetVisible(show);
+    if (!show) {
+        if (badge && badge->IsVisible()) badge->SetVisible(false);
         return;
     }
+
     const RemoteConnectionLog& log = remoteDrives->ConnectionLog();
     const std::size_t sessions = log.SessionCount();
     const std::size_t errors = log.ErrorCount();
@@ -6129,23 +6236,7 @@ void UltraFilerWindow::UpdateConnectionLogButton() {
     if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
     const std::size_t unseen = errors - connectionLogSeenErrors;
 
-    const bool show = sessions > 0 || !remoteDrives->Drives().empty();
-    if (statusLogButton->IsVisible() != show) statusLogButton->SetVisible(show);
-    if (!show) return;
-
-    // Called for every line a running connection logs, so the button is
-    // only restyled when what it says changes.
-    const std::string label = unseen > 0 ? std::to_string(unseen) : std::string();
-    if (statusLogButton->GetText() != label) {
-        const Color quiet(55, 55, 60, 255);
-        const Color alarm(200, 30, 30, 255);
-        statusLogButton->SetText(label);
-        statusLogButton->SetIconSpacing(unseen > 0 ? 4 : 0);
-        statusLogButton->SetIconMaskColor(unseen > 0 ? alarm : quiet);
-        statusLogButton->SetTextColors(unseen > 0 ? alarm : quiet);
-    }
-
-    std::string tip = "Connection log - every step of the remote drive connections";
+    std::string tip = "Connection log - every step of the connections to the FTP drives";
     if (sessions > 0) {
         tip += " (" + std::to_string(sessions) +
                (sessions == 1 ? " connection" : " connections");
@@ -6156,7 +6247,29 @@ void UltraFilerWindow::UpdateConnectionLogButton() {
         tip += ". " + std::to_string(unseen) +
                (unseen == 1 ? " failure not looked at yet" : " failures not looked at yet") +
                " - click for the error codes.";
-    statusLogButton->SetTooltip(tip);
+
+    // Called for every line a running connection logs, so the button and
+    // the badge are only touched when what they say changes.
+    if (button.GetTooltip() != tip) {
+        const Color quiet(55, 55, 60, 255);
+        const Color alarm(200, 30, 30, 255);
+        button.SetIconMaskColor(unseen > 0 ? alarm : quiet);
+        button.SetBorder(1.0f, unseen > 0 ? alarm : Color(0, 0, 0, 70));
+        button.SetTooltip(tip);
+        if (badge) badge->SetTooltip(tip);
+    }
+    if (badge) {
+        const int count = static_cast<int>(unseen);
+        if (badge->GetCount() != count) badge->SetCount(count);
+        if (badge->IsVisible() != (unseen > 0)) {
+            // Anchored afresh as it comes up: anchoring places it at the
+            // button's corner as the button is now. It follows the button
+            // from its own paint, which is a frame too late for the first.
+            if (unseen > 0)
+                badge->AnchorTo(display->connectionLogButton, BadgeCorner::TopRight, -3, 3);
+            badge->SetVisible(unseen > 0);
+        }
+    }
 }
 
 void UltraFilerWindow::OpenConnectionLog() {
@@ -6281,7 +6394,7 @@ void UltraFilerWindow::UpdateStatusBar() {
             !error.empty()) {
             statusLabel->SetText("Error: " + error +
                                  "  -  every step and the error codes are in the "
-                                 "connection log (button on the right)");
+                                 "connection log (the network button at the bottom left)");
             return;
         }
     }

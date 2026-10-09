@@ -10,4 +10,4 @@
   puts a field between two labels in a flex column and checks that it grows,
   moves the label below it down, and shrinks back. Seen in UltraMail's *Settings > Warnings > Trusted & blocked*
   (a third blocked address was invisible) and *Privacy > Images*, and
-  UltraFiler's own ignore patterns (UltraMail 0.10.45).
+  UltraFiler's own ignore patterns (UltraMail 0.10.46).

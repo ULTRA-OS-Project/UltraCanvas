@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+// Version: 0.5.1 - Yahoo asks for an app password first (browser sign-in optional)
 // Version: 0.5.0 - "How to set up an iCloud mail account" with a Show info
 //                  button: the guide opens in an info area under the sign-in
 //                  fields (ICloudSetupGuide), for iCloud addresses and
@@ -186,6 +187,15 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                   "password needed. Continue to open the sign-in page."
                 : d.displayName + " only accepts the " + name + " browser sign-in, which "
                   "needs an OAuth client configured (Docs/UltraMail/AccountSetup.md).");
+        } else if (provider == "yahoo") {
+            // Yahoo: the app password comes first, because the browser sign-in
+            // only works once Yahoo has granted the app Mail API access.
+            hint->SetText(d.displayName + ": enter an app password (Yahoo account > "
+                          "Account security > Generate app password)."
+                          + std::string(OAuthApps::Has(provider)
+                              ? " Leave it empty to sign in with Yahoo in your browser instead."
+                              : ""));
+            password->SetPlaceholder("App password");
         } else if (!provider.empty() && OAuthApps::Has(provider)) {
             const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(d.displayName + ": leave the password empty to sign in with "

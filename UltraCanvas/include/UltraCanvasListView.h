@@ -1,5 +1,8 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.2.0 - the callbacks the view puts on its model do nothing once the
+//                  view is gone (a model may outlive it); OnModelChanged for
+//                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
 // Last Modified: 2026-10-09
@@ -247,6 +250,14 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 
+    protected:
+        // After the view has taken in a change its model signalled - the rows
+        // replaced, one changed, inserted or removed. A subclass that keeps
+        // something derived from the rows (a column fitted to their text)
+        // marks it stale here, rather than wrapping the model's callbacks,
+        // which would outlive it.
+        virtual void OnModelChanged() {}
+
     private:
         // Model / Delegate / Selection
         std::shared_ptr<IListModel> model;
@@ -356,7 +367,13 @@ namespace UltraCanvas {
         void NavigateHome();
         void NavigateEnd();
 
-        // Model connection
+        // Model connection. The callbacks put on the model hold a weak handle
+        // to signalToken and do nothing once it is gone: the model can outlive
+        // the view (an application keeps it), and a proxy chained onto it
+        // keeps a copy of them (UltraCanvasListSortFilterProxy), so they are
+        // made harmless rather than removed - removing them from the model
+        // would cut off whoever chained on after the view.
+        std::shared_ptr<char> signalToken = std::make_shared<char>(0);
         void ConnectModelSignals();
         void DisconnectModelSignals();
     };

@@ -96,8 +96,10 @@
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
 // TextPreviewLines gives the lines a document's preview page shows.
-// Version: 1.38.0
-// Last Modified: 2026-10-08
+// GetBottomStripsHeight says how much of the bottom edge the info bar and
+// the hidden-items notice take, for a host floating something in the corner.
+// Version: 1.39.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1074,6 +1076,12 @@ namespace UltraCanvas {
         // by the Display > Info-Bar context-menu checkbox.
         void SetSelectionInfoVisible(bool visible);
         bool IsSelectionInfoVisible() const { return showSelectionInfo; }
+        // How much of the display's bottom edge its own strips take, in
+        // pixels: the selection info bar and the hidden-items notice above
+        // it, 0 while neither is up. Both come and go with the folder and
+        // the Display > Info-Bar switch, so a host floating something over
+        // the display's bottom corner asks this each time it places it.
+        int GetBottomStripsHeight() const { return InfoBarHeight(); }
 
         // ===== THUMBNAIL DATASET =====
         // Which extra facts are drawn under the file name in the thumbnail

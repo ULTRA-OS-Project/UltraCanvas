@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.31 - a password typed on the server settings page drops stored
+//                   OAuth tokens, so the account switches to it
 // Version: 0.9.30 - trusted and blocked senders: set at start, changed from the
 //                   sender menus or Settings, the changed senders' mail judged
 //                   again; a trusted sender's pictures load like a contact's
@@ -3492,8 +3494,13 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
                 }
                 // Another server or user: what is held came from another mailbox.
                 if (otherMailbox) ForgetDownloadedMail(account.accountId);
-                // A typed password replaces the stored one (the vault is open).
-                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
+                // A typed password replaces the stored one (the vault is open)
+                // and switches the account to it: stored OAuth tokens would
+                // otherwise go on being used ahead of the password.
+                if (!r.newPassword.empty()) {
+                    vault_.Store(account.accountId, r.newPassword);
+                    if (!r.reauth) vault_.RemoveOAuthTokens(account.accountId);
+                }
                 Refresh();
                 StartBackgroundSync();
                 // The "Sign in with <provider>" button flags a re-auth: run the
@@ -3752,8 +3759,9 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
                                     std::function<void()> onReauthed) {
     // Out-of-band providers (Yahoo) can't redirect to a loopback listener, so
     // they take a separate flow: open the browser, then prompt for the code the
-    // provider shows rather than waiting on a socket.
-    if (OAuthApps::Get(providerId).redirectUri == "oob") {
+    // provider shows (or the https redirect address it lands on) rather than
+    // waiting on a socket.
+    if (OAuthUsesPastedCode(OAuthApps::Get(providerId).redirectUri)) {
         StartOAuthOobSignIn(accountId, email, providerId, std::move(onReauthed));
         return;
     }

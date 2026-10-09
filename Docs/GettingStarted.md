@@ -22,7 +22,7 @@ assistant. `UltraCanvasStart --check` does the checking in a terminal.
 **On a computer with nothing yet, start with UltraCanvasStart.** Every
 release of the framework carries it on its own, built for each platform:
 `UltraCanvasStart-<OS>-<version>-<arch>` under
-`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.gz` on
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.xz` on
 Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
 and it does steps 1 to 3 below; the steps stay here for reading what it does
 and for doing it by hand.

@@ -1172,6 +1172,23 @@ int main(int argc, char** argv) {
         CHECK(UCRichDocument::FromHTML(doc->ToHTML()).blocks[0].rightToLeft);
     }
 
+    // ===== 5g12. A code block's leading empty line survives ODT and DOCX =====
+    {
+        UCRichDocument doc = UCRichDocument::FromMarkdown("```\n\nint a;\nreturn a;\n```\n");
+        CHECK(!doc.blocks.empty() && doc.blocks[0].type == RichBlockType::CodeBlock);
+        CHECK(!doc.blocks.empty() && UCRichDocument::ConcatenateRunText(doc.blocks[0].runs) == "\nint a;\nreturn a;");
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("leading-blank.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* code = FindBlock(back, "int a;");
+            CHECK_MSG(code && UCRichDocument::ConcatenateRunText(code->runs) == "\nint a;\nreturn a;",
+                      std::string(ext) + ": " + (code ? UCRichDocument::ConcatenateRunText(code->runs) : "<missing>"));
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");
