@@ -1025,6 +1025,15 @@ build_app_bundle() {
     [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
     strip_binaries "${strip_dirs[@]}"
 
+    # A run path to the shared folder, after strip_binaries has deleted the
+    # build tree's. A library built without header padding (mupdf, croco)
+    # keeps some of its references as @rpath/<name> - install_name_tool
+    # cannot lengthen them once the padding is used up, and fix_install_names
+    # lets that pass - and dyld expands @rpath against the run paths of the
+    # executable, so with this one those references resolve to the shared
+    # Frameworks/ too. verify_suite checks each of them against the folder.
+    install_name_tool -add_rpath "$APP_FW_REF" "$contents_dir/MacOS/$exe_name"
+
     # Signed and notarized after the last app (finish_suite): the shared
     # Frameworks/ has to be complete and signed first.
     BUILT_APPS+=("$app_dir")
@@ -1063,6 +1072,8 @@ build_cli_tool() {
 
     bundle_dylibs "$tool_dir/bin/$exe_name" "$SHARED_FW" "$TOOL_FW_REF"
     strip_binaries "$tool_dir/bin"
+    # The run path to the shared folder, as build_app_bundle gives an app.
+    install_name_tool -add_rpath "$TOOL_FW_REF" "$tool_dir/bin/$exe_name"
 
     # Signed after the shared Frameworks/ it loads from, and notarized with
     # the rest of the suite folder (finish_suite).
@@ -1108,9 +1119,13 @@ verify_suite() {
         while IFS= read -r dep; do
             case "$dep" in
                 /System/*|/usr/lib/*) ;;
-                "$APP_FW_REF"/*|"$TOOL_FW_REF"/*)
+                "$APP_FW_REF"/*|"$TOOL_FW_REF"/*|@rpath/*)
+                    # @rpath/<name>: a reference fix_install_names could not
+                    # lengthen, resolved through the run path each
+                    # executable carries (build_app_bundle).
                     name="${dep#"$APP_FW_REF"/}"
                     name="${name#"$TOOL_FW_REF"/}"
+                    name="${name#@rpath/}"
                     if [ ! -f "$SHARED_FW/$name" ]; then
                         echo "  ERROR: $(basename "$bin") needs $name, which is not in $SUITE_NAME/Frameworks/"
                         errors=$((errors + 1))
@@ -1262,8 +1277,14 @@ build_standalone_app() {
         current=$(head -1 "$queue_file")
         sed -i '' '1d' "$queue_file"
         for dep in $(otool -L "$current" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
-            case "$dep" in "$APP_FW_REF"/*) ;; *) continue ;; esac
-            name="${dep#"$APP_FW_REF"/}"
+            # A reference the suite could not rewrite is still @rpath/<name>
+            # (see "the run path" below); the file is in the shared folder
+            # under that name all the same.
+            case "$dep" in
+                "$APP_FW_REF"/*) name="${dep#"$APP_FW_REF"/}" ;;
+                @rpath/*)        name="${dep#@rpath/}" ;;
+                *) continue ;;
+            esac
             [ -f "$fw/$name" ] && continue
             if [ ! -f "$SHARED_FW/$name" ]; then
                 echo "  ERROR: $(basename "$current") loads $name, which is not in the suite's Frameworks/" >&2
@@ -1282,6 +1303,15 @@ build_standalone_app() {
     # The new path is shorter than the old, so it always fits the load
     # command. The rewrite invalidates the suite's signatures; they are
     # made again below.
+    #
+    # A reference the suite left as @rpath/<name> is one install_name_tool
+    # could not lengthen: a library built without header padding (mupdf,
+    # croco) has room for a few longer load commands and then none, and
+    # fix_install_names lets that pass. The same rewrite is tried here, and
+    # where it does not fit the reference stays @rpath/<name>: the run path
+    # added to the executable below resolves it to the bundle's own
+    # Frameworks/, since dyld expands @rpath against the run paths of every
+    # image on the load chain up to the executable.
     local bin
     while IFS= read -r -d '' bin; do
         case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
@@ -1290,10 +1320,16 @@ build_standalone_app() {
             "$fw"/*) install_name_tool -id "$STANDALONE_FW_REF/$(basename "$bin")" "$bin" ;;
         esac
         for dep in $(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
-            case "$dep" in "$APP_FW_REF"/*) ;; *) continue ;; esac
-            install_name_tool -change "$dep" "$STANDALONE_FW_REF/${dep#"$APP_FW_REF"/}" "$bin"
+            case "$dep" in
+                "$APP_FW_REF"/*)
+                    install_name_tool -change "$dep" "$STANDALONE_FW_REF/${dep#"$APP_FW_REF"/}" "$bin" ;;
+                @rpath/*)
+                    install_name_tool -change "$dep" "$STANDALONE_FW_REF/${dep#@rpath/}" "$bin" 2>/dev/null \
+                        || echo "  $(basename "$bin") keeps $dep (no room for the longer path; the run path resolves it)" ;;
+            esac
         done
     done < <(find "$contents/MacOS" "$contents/PlugIns" "$fw" -type f -print0 2>/dev/null)
+    install_name_tool -add_rpath "$STANDALONE_FW_REF" "$contents/MacOS/$exe_name"
 
     # Every reference now resolves inside the bundle or to the system.
     local errors=0
@@ -1302,9 +1338,11 @@ build_standalone_app() {
         for dep in $(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
             case "$dep" in
                 /System/*|/usr/lib/*) ;;
-                "$STANDALONE_FW_REF"/*)
-                    if [ ! -f "$fw/${dep#"$STANDALONE_FW_REF"/}" ]; then
-                        echo "  ERROR: $(basename "$bin") needs ${dep#"$STANDALONE_FW_REF"/}, which is not in the bundle" >&2
+                "$STANDALONE_FW_REF"/*|@rpath/*)
+                    name="${dep#"$STANDALONE_FW_REF"/}"
+                    name="${name#@rpath/}"
+                    if [ ! -f "$fw/$name" ]; then
+                        echo "  ERROR: $(basename "$bin") needs $name, which is not in the bundle" >&2
                         errors=$((errors + 1))
                     fi ;;
                 *)
