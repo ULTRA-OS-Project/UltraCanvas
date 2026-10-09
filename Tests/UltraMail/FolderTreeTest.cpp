@@ -11,7 +11,7 @@
 //
 // Builds the mail view on an in-memory store in a real window, so it runs
 // under Xvfb (xvfb-run -a) and skips itself without a DISPLAY.
-// Version: 1.0.0
+// Version: 1.0.1 - UltraMail::Folder qualified (Windows' shldisp.h has a Folder)
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -50,9 +50,11 @@ static int failCount = 0;
 
 namespace {
 
-Folder MakeFolder(const std::string& account, const std::string& name,
-                  FolderRole role = FolderRole::Normal) {
-    Folder f;
+// Qualified: on Windows the shell's headers, which the window headers pull
+// in, declare a COM interface named Folder in the global namespace.
+UltraMail::Folder MakeFolder(const std::string& account, const std::string& name,
+                             FolderRole role = FolderRole::Normal) {
+    UltraMail::Folder f;
     f.accountId = account;
     f.name = name;
     f.role = role;
