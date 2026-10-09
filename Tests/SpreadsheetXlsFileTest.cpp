@@ -18,7 +18,7 @@
 //     .xlsx.
 // The fixtures are in Tests/fixtures (make-xls-fixtures.py rebuilds the
 // binary ones and says how each was made).
-// Version: 1.0.0
+// Version: 1.0.1
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
@@ -356,11 +356,7 @@ void TestBiff8Spreadsheet() {
           "recalculated: the shared B*2 formulas");
     Check(TextOf(book, 0, 4, 2) == "big", "recalculated: the IF");
     Check(TextOf(book, 0, 4, 3) == "Apple pie", "recalculated: the concatenation");
-    // The engine hands a cross-sheet reference to a formula cell back as its
-    // result's text (a defect of the formula engine, not of the .xls
-    // translation), so the value is compared as text: it proves the reference
-    // points at Data!B5.
-    Check(TextOf(book, 1, 0, 0) == "1008.75", "recalculated: the cross-sheet reference");
+    Check(Near(NumberOf(book, 1, 0, 0), 1008.75), "recalculated: the cross-sheet reference");
     Check(Near(NumberOf(book, 1, 1, 0), 1008.75), "recalculated: the cross-sheet SUM");
     Check(Near(NumberOf(book, 1, 3, 0), 3.14), "recalculated: ROUND(PI(),2)");
     Check(Near(NumberOf(book, 1, 4, 0), 5.0), "recalculated: LEN");
@@ -517,8 +513,7 @@ void TestXmlSpreadsheet() {
     Check(book.LoadFromFile(Fixture("xls-xml2003-sample.xls")), "LoadFromFile reads it");
     book.RecalculateAll();
     Check(Near(NumberOf(book, 0, 3, 1), 1012.5), "recalculated: SUM");
-    Check(TextOf(book, 1, 0, 0) == "1012.5",
-          "recalculated: the cross-sheet reference (compared as text, see above)");
+    Check(Near(NumberOf(book, 1, 0, 0), 1012.5), "recalculated: the cross-sheet reference");
     Check(Near(NumberOf(book, 1, 0, 1), 25.0), "recalculated: through the named range");
     Check(Near(NumberOf(book, 1, 0, 3), 506.3), "recalculated: ROUND(SUM(...)/2,1)");
 }
