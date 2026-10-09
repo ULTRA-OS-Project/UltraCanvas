@@ -36077,6 +36077,27 @@ IListSelection* GetSelection() const;
 
 The view shares ownership of the model, the delegate and the selection: all three are passed as `std::shared_ptr`, and the getters return plain pointers for reading.
 
+`SetModel` puts the view's callbacks on the model (`onDataChanged`,
+`onRowChanged`, `onRowInserted`, `onRowRemoved`). The model may outlive the
+view - an application usually keeps it - so once the view is destroyed those
+callbacks do nothing; they are not taken off the model, because a
+`UltraCanvasListSortFilterProxy` chained on after the view keeps a copy of them
+and must go on hearing its source. A subclass that keeps something derived from
+the rows overrides `OnModelChanged()`, called after the view has taken in each
+change, instead of wrapping the model's callbacks itself (which would outlive
+it):
+
+```cpp
+class FittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+protected:
+    void OnModelChanged() override { columnStale = true; }   // measure again at the next paint
+private:
+    bool columnStale = true;
+};
+```
+
 ### Styling
 
 ```cpp
