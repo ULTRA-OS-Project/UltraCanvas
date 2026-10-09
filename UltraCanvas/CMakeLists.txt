@@ -858,6 +858,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsxIO.cpp
+        # Legacy Excel 5.0-2003 workbooks (.xls, BIFF5/BIFF8): the reader and
+        # the spreadsheet's LoadXLS
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXls.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsIO.cpp
         # Cell-formatting menu (alignment, number formats, colours, sizing)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormatMenu.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
@@ -904,6 +908,8 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # OLE2 compound files (the legacy Office containers: .doc, .xls)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.

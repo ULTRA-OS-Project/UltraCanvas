@@ -759,6 +759,30 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
 
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer and the `.xls` reader.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
+
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
   of them: the frames of an `.ico`, the `RT_GROUP_ICON` / `RT_ICON` resources
@@ -16931,6 +16955,71 @@ can mirror an external change without hearing its own echo.
   under a transparent image (and with it the UltraFiler preview pane).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCompoundFile.md
+==============================================================================
+
+# UltraCanvasCompoundFile — OLE2 compound files
+
+<!-- doc-check: std::string path; -->
+
+`UltraCanvasCompoundFile.h` reads the container the legacy Microsoft Office
+formats are stored in: Word 97-2003 (`.doc`), Excel 5.0-2003 (`.xls`),
+PowerPoint (`.ppt`), Outlook (`.msg`). A compound file ("structured storage",
+[MS-CFB]) is a small file system in one file: a FAT of fixed-size sectors
+holding named streams, with small streams kept in a finer-grained mini stream.
+
+```cpp
+#include "UltraCanvasCompoundFile.h"
+
+if (UltraCanvas::UCCompoundFileReader::HasSignature(path)) {   // reads 8 bytes
+    UltraCanvas::UCCompoundFileReader file;
+    if (file.Open(path)) {
+        std::vector<uint8_t> workbook;
+        if (file.ReadStream("Workbook", workbook)) {
+            // the stream's bytes
+        }
+        for (const std::string& name : file.StreamNames()) {
+            (void)name;   // the streams in the root storage, UTF-8
+        }
+    } else {
+        std::string why = file.GetLastError();   // "Not an OLE2 compound file", ...
+    }
+}
+```
+
+`Open` takes a UTF-8 path on every platform; `OpenFromMemory` takes the bytes
+of a container already in hand. Names compare without regard to ASCII case, as
+the format specifies. `ReadStream` and `HasStream` look in the root storage;
+when a writer left the directory tree empty (or it is damaged), the first
+stream of that name anywhere is taken instead.
+
+## Implementation notes
+
+- Version 3 (512-byte sectors) and version 4 (4096-byte sectors, 64-bit stream
+  sizes) are both read; the FAT is gathered from the header's 109 entries and
+  any further DIFAT sectors.
+- Every chain is followed with a length guard, so a FAT that loops ends the
+  read instead of hanging it, and every sector offset is checked against the
+  file size.
+- The root's children are found by walking the directory's red-black tree
+  with a visited set, which keeps a stream of an embedded object (an Excel
+  chart inside a Word file has a `Workbook` of its own) from being taken for
+  the document's.
+- The whole file is read into memory: these containers are documents, not
+  archives.
+
+## Where it is used
+
+The `.doc` importer (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`)
+and the [`.xls` reader](UltraCanvasSpreadsheetXls.md).
+
+## Test
+
+Covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a `.doc`, and a file
+that is no compound file) and, through the `.doc` importer, by
+`Tests/WordFormatsTest.cpp`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
 ==============================================================================
 
@@ -23537,7 +23626,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
-| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
 | `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. Its Detail view opens the glyph browser ([`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)) — every glyph in the file, scrolling, with a picker for the ranges it covers. woff / woff2 report as unsupported for thumbnails unless the installed FreeType was built with zlib / Brotli |
@@ -23633,7 +23722,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 honestly: false for audio (nothing reads cover art), for the vector formats
 with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
-reader here unpacks (xls, fb2.zip) — those are refused by the text-preview
+reader here unpacks (fb2.zip) — those are refused by the text-preview
 extractor too, so the tile keeps its type glyph instead of drawing a "page"
 holding the file's ZIP magic. An e-book's text (epub, mobi, prc, azw, azw3) is
 not read either, but its cover is, so those report true in every build.
@@ -37518,7 +37607,7 @@ tool and a missing plugin should stop it running.
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
-| `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
+| `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
@@ -54949,7 +55038,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 
 ## Overview
 
-**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`) and CSV/TSV. Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
+**UltraCanvasSpreadsheet** is a full-featured, editable spreadsheet grid component. It supports multiple worksheets, sparse cell storage, an OpenFormula-compatible formula engine, rich per-cell formatting (fonts, fills, borders, number formats), merged cells, freeze panes, sorting/filtering, find/replace, undo/redo, and file import/export for OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, plus import of legacy Excel 97-2003 and 5.0/95 workbooks (`.xls`, see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)). Each cell is strongly typed (text, number, boolean, date/time, currency, percentage, error, or formula) and rendered with a built-in formula bar, sheet tabs, scrollbars, and row/column headers.
 
 **Version:** 1.0.1
 **Last Modified:** 2026-10-07
@@ -54971,7 +55060,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
-- **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
+- **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
 ## Header Include
@@ -55173,6 +55262,11 @@ bool SaveToFile(const std::string& filePath);
 
 bool LoadODS(const std::string& filePath);
 bool SaveODS(const std::string& filePath);
+bool LoadXLSX(const std::string& filePath);
+bool SaveXLSX(const std::string& filePath);
+// Legacy Excel (.xls): BIFF8 / BIFF5, and an .xlsx, HTML table, Excel 2003
+// XML file or delimited text saved under the name. Read only.
+bool LoadXLS(const std::string& filePath);
 
 // CSV/TSV: single-argument form auto-detects encoding/separators.
 bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
@@ -55716,6 +55810,177 @@ to warn in your own way.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md
+==============================================================================
+
+# UltraCanvasSpreadsheetXls — legacy Excel workbooks (.xls)
+
+<!-- doc-check: std::string path; -->
+
+`UltraCanvasSpreadsheetXls.h` reads the workbooks Excel wrote before 2007:
+**Excel 97-2003 (BIFF8)** and **Excel 5.0/95 (BIFF5)**, the record streams
+stored inside an OLE2 compound file
+([`UltraCanvasCompoundFile`](UltraCanvasCompoundFile.md)). It also reads what
+else arrives under the `.xls` name and Excel opens as a workbook: an **HTML
+table** (what web applications and Excel's "Save as Web Page" write) and the
+**Excel 2003 XML Spreadsheet**.
+
+The reader produces a plain model — no UI — and has two users:
+
+- `UltraCanvasSpreadsheet::LoadXLS`, which `LoadFromFile` calls for `.xls`, and
+  builds an editable sheet from it;
+- the file display's preview page (`UltraCanvasFilerWidget`), which only reads
+  the first rows of the first sheet.
+
+There is **no writer**: save an opened `.xls` as `.xlsx` or `.ods`.
+`SaveToFile` refuses `.xls` with a message saying so.
+
+## Opening one in a spreadsheet
+
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+
+auto sheet = std::make_shared<UltraCanvas::UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->LoadFromFile(path)) {          // or sheet->LoadXLS(path)
+    std::string why = sheet->GetLastError();   // "password-protected", "not an Excel workbook", ...
+}
+```
+
+What arrives: every worksheet (hidden ones stay hidden; chart sheets are left
+out), typed values — dates, times, percentages and currency by their number
+format, with the 1904 date system converted — formulas with the results Excel
+cached, merged cells, column widths, row heights, hidden rows and columns,
+defined names that name one range, and the cell style subset the spreadsheet
+models (font, fill, borders, alignment, wrap, rotation, indent).
+
+`LoadXLS` looks at the content first, because a file named `.xls` is not always
+one:
+
+| The file holds | It is read by |
+|---|---|
+| an OLE2 compound file | the BIFF8 / BIFF5 reader |
+| a ZIP package (an `.xlsx` renamed) | `LoadXLSX` |
+| an HTML page with a table | the HTML reader below |
+| `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">` | the Excel 2003 XML reader |
+| text (UTF-8, a code page, or UTF-16 with a BOM) | `LoadCSV`, which detects the separator |
+| other binary data | nothing — refused with a message |
+
+## Formulas
+
+Excel stores a formula as a postfix token list. The reader turns it into the
+engine's own syntax: A1 references, `'Sheet Name'.A1` across sheets (the engine
+does not read Excel's `Sheet!A1`), shared formulas expanded for every cell of
+their range, defined names by name. Precedence is rebuilt with parentheses
+where a writer left them out.
+
+Every formula cell keeps its **cached result**, so the values are always what
+Excel computed. The formula itself is kept only when the engine can evaluate it
+— it parses, and every function and name in it exists in this spreadsheet.
+Otherwise the cell holds the value alone, because a formula that recalculates to
+`#NAME?` is worse than none. Formulas that cannot be expressed at all (an
+external workbook, an array constant, an error literal, a deleted reference, an
+add-in function) are left untranslated the same way.
+
+## Reading the model directly
+
+```cpp
+#include "UltraCanvasSpreadsheetXls.h"
+
+UltraCanvas::XlsWorkbook book;
+std::string error;
+if (UltraCanvas::ReadXlsWorkbook(path, book, error)) {
+    for (const UltraCanvas::XlsSheet& s : book.sheets) {
+        for (const UltraCanvas::XlsCell& cell : s.cells) {
+            std::string shown = UltraCanvas::XlsCellText(cell);   // "12.5", "TRUE", "#N/A"
+            if (cell.hasFormula && !cell.formula.empty()) {
+                std::string formula = cell.formula;              // "=SUM(B2:B4)"
+            }
+            if (cell.format >= 0) {
+                const UltraCanvas::XlsCellFormat& f = book.formats[static_cast<size_t>(cell.format)];
+                UltraCanvas::NumberFormatCategory kind =
+                    UltraCanvas::ExcelNumberFormatCategory(f.numberFormatId, f.numberFormatCode);
+                (void)kind;   // Date, Time, Percentage, Currency, ...
+            }
+        }
+    }
+}
+```
+
+`XlsReadOptions` limits a read — `maxSheets`, `maxRows`, `maxColumns`, and
+`translateFormulas = false` when only values are wanted, as for a preview:
+
+```cpp
+UltraCanvas::XlsReadOptions preview;
+preview.maxSheets = 1;
+preview.maxRows = 20;
+preview.translateFormulas = false;
+UltraCanvas::XlsWorkbook firstRows;
+std::string error;
+UltraCanvas::ReadXlsWorkbook(path, firstRows, error, preview);
+```
+
+`DetectXlsFileKind(path)` answers what a file holds (the table above) from its
+first bytes. `ReadXlsWorkbook` reads the `Biff`, `Html` and `XmlSpreadsheet`
+kinds and returns false, with a reason, for the others.
+`ReadXlsWorkbookFromMemory` reads a binary workbook already in memory.
+
+`ExcelNumberFormatCategory` is shared with the `.xlsx` loader: Excel's numFmt
+ids (0-49 built in, 164 and up custom) and codes are the same in both formats.
+It ignores quoted literals, escaped characters, padding and the bracketed
+sections of a code, so `[Red]` is not read as a day and `[$-409]` not as digits,
+and it reads `[h]:mm:ss` as a time and `[$€-407]` as currency.
+
+## Model reference
+
+| Type | Holds |
+|---|---|
+| `XlsWorkbook` | `biffVersion` (8, 5, or 0 for HTML / XML), `date1904`, `codePage`, `fonts`, `formats`, `sheets`, `names` |
+| `XlsSheet` | `name`, `hidden`, `cells` (file order), `columns`, `rows`, `merges`, `defaultColumnWidthChars`, `defaultRowHeightPoints` |
+| `XlsCell` | `row`, `col`, `type` (`XlsValueType`), `number` / `text` / `boolean` / `errorCode`, `hasFormula`, `formula`, `format` |
+| `XlsCellFormat` | one XF record: `font`, `numberFormatId`, `numberFormatCode`, alignment, `wrapText`, `rotation`, `indent`, `fillPattern` and colours, four `XlsBorderLine`s |
+| `XlsFont` | `name`, `sizePoints`, bold / italic / strikethrough / underline, super- / subscript, `automaticColor`, `color` |
+| `XlsColumnInfo` / `XlsRowInfo` | widths in characters / heights in points, `hidden`, whether the size was set by hand |
+| `XlsDefinedName` | `name`, `sheetScope`, `builtIn`, `formula`, and the range when it names one (`refSheet` ≥ 0) |
+
+Dates are serial numbers, as in the file: with `date1904` the serial counts from
+1904-01-01, so add 1462 for the usual 1900 system (`LoadXLS` does).
+
+## What is not read
+
+Charts, drawings, comments, conditional formats, data validation, pivot
+tables and macros. **Encrypted** workbooks (a `FILEPASS` record, or an
+encrypted Excel 2007+ package) are refused with a message that says they are
+password-protected. Excel 2.x–4.0 worksheets (BIFF2-4, no compound file) are
+not read. BIFF5 strings are decoded from their code page: Windows-1250, 1251
+and 1252 are known; any other is read as Latin-1. In a BIFF5 workbook,
+references to other sheets keep their cached values without a formula.
+
+## Implementation notes
+
+- Records are split once, with each `CONTINUE` record appended to the record
+  it continues and its boundary remembered: a BIFF8 string's characters may run
+  on into the next `CONTINUE`, which then begins with its own "16-bit
+  characters" flag. The shared string table depends on this.
+- Fonts and formats keep palette indices until the end of the workbook globals,
+  because the `PALETTE` record follows the records that use it.
+- Font index 4 is never stored, so an XF's font index above 3 is one less in
+  the list of `FONT` records.
+- Worksheets are found by the stream offset their `BOUNDSHEET` gives, and by
+  their order when a writer left the offsets wrong.
+- Relative references in shared formulas are offsets from the cell using
+  them. A 3-D reference in a shared formula is translated only when it is
+  absolute.
+
+## Test
+
+`Tests/SpreadsheetXlsFileTest.cpp` reads an Excel 97-2003 file written by
+LibreOffice, an Excel 5.0/95 file, an encrypted one, an HTML table and an Excel
+2003 XML file (`Tests/fixtures/xls-*.xls`; `Tests/fixtures/make-xls-fixtures.py`
+rebuilds the binary ones). It checks the model, the loaded spreadsheet, the
+engine recalculating the translated formulas to Excel's results, the refusals,
+and UltraFiler's preview page and detail pane.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasStepper.md
@@ -67859,7 +68124,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
-**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save)
+**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*
@@ -68048,6 +68313,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ | ✅ |
+| Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
 
