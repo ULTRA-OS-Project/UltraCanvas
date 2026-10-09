@@ -9,7 +9,8 @@
   that refused MLSD is listed with LIST from then on, so the same five
   listings are one login and one MLSD. The connection log says *Using the
   open connection to ... - already logged in* where it used to show a new
-  login. The worker closes the connection once the drive has been quiet for
+  login. A delete, rename or new folder still logs in on a connection of its
+  own, which is what keeps it acting on the entry that was chosen. The worker closes the connection once the drive has been quiet for
   15 seconds (`kRemoteConnectionIdleClose`), while the server has only just
   answered: closing sends QUIT and waits for the reply, which a network
   that has gone away since never sends.

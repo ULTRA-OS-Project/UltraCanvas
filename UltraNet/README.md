@@ -58,7 +58,7 @@ planned (see the status table below).
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
-| Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
@@ -351,9 +351,12 @@ What a failure says, whether or not anyone reads the log:
 - A listing tries MLSD, then LIST, then NLST only when the server refused the
   command; a failure to connect, sign in, set up TLS or the data connection, or
   a timeout, is reported once rather than three times, and an empty folder is
-  listed with one request. A server that does not know MLSD (500 / 502 / 504)
-  is remembered for the life of the process and listed with LIST from then
-  on; a 550 refuses the folder, not the command, and is not taken as that.
+  listed with one request - also when the server lists nothing but the
+  folder's own `.` / `..` (MLSD `cdir` / `pdir`, or `ls -la` style LIST),
+  which is never taken for an entry, whatever name a `cdir` carries. A server
+  that does not know MLSD (500 / 502 / 504) is remembered for the life of the
+  process and listed with LIST from then on; a 550 refuses the folder, not
+  the command, and is not taken as that.
 
 Connections are kept open between calls. Each thread's calls share a libcurl
 connection pool, so the next call on the same thread to the same server, as
@@ -368,7 +371,12 @@ every thread's by `UltraNet_Shutdown`. A caller whose work comes in bursts
 closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
-threads that transfer at the same time.)
+threads that transfer at the same time.) A change - delete, rename, create or
+remove a folder - is the exception on FTP: it always logs in on a connection
+of its own and closes it, because libcurl sends those commands before it
+changes folder, and they name the entry from the folder a login lands in; on
+a kept connection that a listing left in a subfolder they would name another
+file.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

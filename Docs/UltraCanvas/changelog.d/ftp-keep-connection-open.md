@@ -13,6 +13,14 @@
   of the process and listed with LIST straight away; a 550 (the folder
   refused, not the command) is not taken as that. The same five listings
   against vsftpd 3.0.5 are one login, one MLSD and five LISTs.
+  - Changes are the exception: on FTP, `UltraNet_FtpDelete`, `FtpRename`,
+    `FtpCreateDirectory` and `FtpRemoveDirectory` still log in on a
+    connection of their own and close it. libcurl sends their commands
+    (DELE, RNFR / RNTO, MKD, RMD) before it changes folder, and they name
+    the entry from the folder a login lands in; on a kept connection that a
+    listing left in /photos/, "DELE photos/a.txt" named
+    /photos/photos/a.txt. SFTP's commands carry the full path and may use a
+    kept connection.
   - New `UltraNet_FtpCloseIdleConnections()` closes the calling thread's
     open connections; a thread's are also closed when it ends, and every
     thread's by `UltraNet_Shutdown`. One pool per thread because libcurl
@@ -24,6 +32,9 @@
     address of" is now held back until libcurl says what it does first.
   - Tests: `test_ftp_log.cpp` counts logins and MLSD requests against the
     scripted loopback server (three listings, one login, one MLSD; a 550
-    refusal leaves MLSD on; a close logs in afresh) and checks the reuse
-    wording of libcurl 8.21 and earlier. `UltraNetApiStatus` probes the new
+    refusal leaves MLSD on; a close logs in afresh; a delete after a
+    listing in a subfolder names the right file, on a login of its own) and
+    checks the reuse wording of libcurl 8.21 and earlier. The scripted
+    server now keeps each connection's folder and serves connections side
+    by side. `UltraNetApiStatus` probes the new
     function, against a real server when `ULTRANET_PROBE_FTP_URL` is set.

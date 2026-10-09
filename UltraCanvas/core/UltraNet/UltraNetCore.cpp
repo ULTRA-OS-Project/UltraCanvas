@@ -21,6 +21,9 @@ namespace ultranet_internal {
     // Defined in UltraNetFtp.cpp. Closes the FTP connections each thread
     // keeps open between calls, for the same reason.
     void CloseFtpConnections();
+    // Defined in UltraNetCookies.cpp. Closes every session still open, with
+    // its handles and connections, for the same reason.
+    void CloseAllSessions();
 }
 
 namespace {
@@ -54,6 +57,7 @@ void UltraNet_Shutdown() {
     ultranet_internal::StopAsyncWorker();
     ultranet_internal::CloseAllWebSockets();
     ultranet_internal::CloseFtpConnections();
+    ultranet_internal::CloseAllSessions();
     std::lock_guard<std::mutex> lk(g_mutex);
     if (!g_initialized) return;
     curl_global_cleanup();

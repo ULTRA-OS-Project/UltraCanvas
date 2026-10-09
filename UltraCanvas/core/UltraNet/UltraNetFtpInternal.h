@@ -18,6 +18,14 @@ namespace ultranet_internal::ftp {
     // indicates "this isn't MLSD" — callers fall back to other formats.
     bool ParseMlsdLine(const std::string& line, UltraNetFtpEntry& out);
 
+    // Whether an MLSD line describes the listed folder itself or its parent
+    // (type=cdir / pdir, or the name "." / ".."), which ParseMlsdLine does
+    // not take for an entry: a listing of nothing else is an empty folder.
+    bool IsMlsdSelfOrParentLine(const std::string& line);
+
+    // The same for a LIST line: a folder line named "." or "..".
+    bool IsUnixSelfOrParentLine(const std::string& line);
+
     // Parses a UNIX ls -l-style line (the LIST format most FTP servers
     // emit and what libcurl's SFTP returns). Returns true on success.
     bool ParseUnixLine(const std::string& line, UltraNetFtpEntry& out);

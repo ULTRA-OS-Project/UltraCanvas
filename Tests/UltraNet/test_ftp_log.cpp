@@ -306,6 +306,12 @@ public:
     void Stop() {
         stop_.store(true);
         if (thread_.joinable()) thread_.join();
+        std::vector<std::thread> sessions;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            sessions.swap(sessions_);
+        }
+        for (std::thread& t : sessions) t.join();
         if (listenFd_ >= 0) { ::close(listenFd_); listenFd_ = -1; }
     }
 
@@ -315,6 +321,12 @@ public:
     std::vector<std::string> Commands() {
         std::lock_guard<std::mutex> lk(mutex_);
         return commands_;
+    }
+    // The files DELE removed, each as the absolute path it named from the
+    // folder its connection was in at the time.
+    std::vector<std::string> Deleted() {
+        std::lock_guard<std::mutex> lk(mutex_);
+        return deleted_;
     }
     int Count(const std::string& verb) {
         int n = 0;
@@ -413,6 +425,9 @@ private:
 
     void Session(int fd) {
         int dataListen = -1;
+        // The connection's current folder, as a real server keeps it: a login
+        // lands in "/", CWD moves it.
+        std::string cwd = "/";
         Send(fd, "220 Scripted FTP server ready");
         std::string line;
         while (!stop_.load() && ReadLine(fd, line)) {
@@ -426,9 +441,19 @@ private:
             } else if (verb == "PASS") {
                 Send(fd, script_.refuseLogin ? "530 Login incorrect." : "230 Logged in");
             } else if (verb == "PWD") {
-                Send(fd, "257 \"/\" is the current directory");
+                Send(fd, "257 \"" + cwd + "\" is the current directory");
             } else if (verb == "CWD") {
+                const std::string to = line.size() > 4 ? line.substr(4) : std::string();
+                cwd = !to.empty() && to[0] == '/' ? to : cwd + to;
+                if (cwd.back() != '/') cwd.push_back('/');
                 Send(fd, "250 Directory changed");
+            } else if (verb == "DELE") {
+                const std::string name = line.size() > 5 ? line.substr(5) : std::string();
+                {
+                    std::lock_guard<std::mutex> lk(mutex_);
+                    deleted_.push_back(!name.empty() && name[0] == '/' ? name : cwd + name);
+                }
+                Send(fd, "250 Delete operation successful");
             } else if (verb == "TYPE") {
                 Send(fd, "200 Type set");
             } else if (verb == "EPSV") {
@@ -461,10 +486,15 @@ private:
         ::close(fd);
     }
 
+    // Each control connection on a thread of its own: a call that makes a
+    // fresh connection while an earlier one is still kept open must not
+    // wait for the server to give up on the first.
     void Serve() {
         while (!stop_.load()) {
             const int fd = AcceptOn(listenFd_, 200);
-            if (fd >= 0) Session(fd);
+            if (fd < 0) continue;
+            std::lock_guard<std::mutex> lk(mutex_);
+            sessions_.emplace_back([this, fd]() { Session(fd); });
         }
     }
 
@@ -472,9 +502,11 @@ private:
     int listenFd_ = -1;
     int port_ = 0;
     std::thread thread_;
+    std::vector<std::thread> sessions_;
     std::atomic<bool> stop_{false};
     std::mutex mutex_;
     std::vector<std::string> commands_;
+    std::vector<std::string> deleted_;
 };
 
 // A short inactivity limit only where a test waits for it to run out; the
@@ -548,6 +580,51 @@ TEST(ftp_log_an_empty_folder_is_listed_once) {
     REQUIRE(c.Has(UltraNetFtpLogKind::Step, "Retrieving directory listing..."));
     REQUIRE(c.Has(UltraNetFtpLogKind::Step, "Directory listing successful"));
     REQUIRE(c.Last(UltraNetFtpLogKind::Error) == nullptr);
+}
+
+// Many servers list a folder's own "." and ".." (MLSD's cdir / pdir) before
+// its entries. A folder holding nothing else is empty - not a listing that
+// could not be read and has to be asked for again in another format.
+TEST(ftp_log_a_folder_of_only_its_own_entries_is_empty_and_listed_once) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.mlsdBody = "type=cdir;modify=20240103120000;perm=flcdmpe; .\r\n"
+                      "type=pdir;modify=20240103120000;perm=flcdmpe; ..\r\n";
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult r = UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(r.success);
+    REQUIRE(entries.empty());
+    REQUIRE_EQ(server.Count("MLSD"), 1);
+    REQUIRE_EQ(server.Count("LIST"), 0);
+    REQUIRE(!c.Mentions("could not be read"));
+}
+
+// The same over LIST, on a server without MLSD that lists like `ls -la`.
+TEST(ftp_log_a_list_of_only_dot_entries_is_an_empty_folder) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.refuseMlsd = true;
+    script.listBody = "total 8\r\n"
+                      "drwxr-xr-x  2 erika users 4096 Jan  3  2024 .\r\n"
+                      "drwxr-xr-x 14 erika users 4096 Jan  3  2024 ..\r\n";
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult r = UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(r.success);
+    REQUIRE(entries.empty());
+    REQUIRE_EQ(server.Count("LIST"), 1);
+    REQUIRE_EQ(server.Count("NLST"), 0);
 }
 
 TEST(ftp_log_a_refused_mlsd_falls_back_to_list_and_says_so) {
@@ -705,6 +782,39 @@ TEST(ftp_log_closing_idle_connections_logs_in_afresh) {
     REQUIRE(second.Has(UltraNetFtpLogKind::Step,
                        "Connection established, waiting for welcome message..."));
     REQUIRE(!second.Mentions("Using the open connection"));
+}
+
+// A change on the server never takes up a connection an earlier call left
+// open. libcurl sends DELE / RNFR / RMD / MKD before it changes folder, and
+// they name the entry from the folder a login lands in: on a connection a
+// listing left in /photos/, "DELE photos/a.txt" named /photos/photos/a.txt -
+// a 550, or a same-named file deleted that nobody chose.
+TEST(ftp_log_a_delete_after_a_listing_names_the_right_file) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.mlsdBody = "type=file;size=5;modify=20240103120000; a.txt\r\n";
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult listed =
+            UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+    const UltraNetResult deleted = UltraNet_FtpDelete(server.Url() + "photos/a.txt",
+                                                      TestOptions(c));
+    // The listing's connection is still the one kept open afterwards.
+    const UltraNetResult again =
+            UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(listed.success);
+    REQUIRE(deleted.success);
+    REQUIRE(again.success);
+    const std::vector<std::string> gone = server.Deleted();
+    REQUIRE_EQ(gone.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(gone[0], std::string("/photos/a.txt"));
+    // The delete logged in on a connection of its own; the listings shared one.
+    REQUIRE_EQ(server.Count("USER"), 2);
 }
 
 TEST(ftp_log_the_thread_sink_hears_calls_without_an_onlog) {

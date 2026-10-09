@@ -470,6 +470,11 @@ namespace ultranet_internal::ftp {
 // Returns true if the line is a valid MLSD entry; false otherwise (caller
 // then tries other formats).
 bool ParseMlsdLine(const std::string& line, UltraNetFtpEntry& out) {
+    // The listed folder itself and its parent (type=cdir / pdir) are not
+    // entries of it, whatever name they carry: "." and "..", or the folder's
+    // own path ("type=cdir; /pub"), which would otherwise be shown as a
+    // subfolder called "/pub".
+    if (IsMlsdSelfOrParentLine(line)) return false;
     const std::size_t spaceAfterFacts = line.find(' ');
     if (spaceAfterFacts == std::string::npos) return false;
     const std::string facts = line.substr(0, spaceAfterFacts);
@@ -545,6 +550,40 @@ bool ParseMlsdLine(const std::string& line, UltraNetFtpEntry& out) {
     return true;
 }
 
+// Whether `line` is an MLSD line - facts, one space, a name - for the listed
+// folder itself or its parent: type=cdir / type=pdir, or the name "." / "..".
+bool IsMlsdSelfOrParentLine(const std::string& line) {
+    const std::size_t space = line.find(' ');
+    if (space == std::string::npos) return false;
+    std::string facts = line.substr(0, space);
+    if (facts.find('=') == std::string::npos) return false;
+    const std::string name = line.substr(space + 1);
+    if (name == "." || name == "..") return true;
+    for (char& c : facts) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // As a whole fact: "type=cdir" at the start or after a ';'.
+    for (const char* type : {"type=cdir", "type=pdir"}) {
+        const std::size_t at = facts.find(type);
+        if (at == std::string::npos || (at > 0 && facts[at - 1] != ';')) continue;
+        const std::size_t end = at + std::string(type).size();
+        if (end == facts.size() || facts[end] == ';') return true;
+    }
+    return false;
+}
+
+// Whether `line` is a LIST line for "." or "..": a folder line whose name,
+// after the eight ls -l fields, is one of the two - what a server listing
+// like `ls -la` sends before the folder's entries.
+bool IsUnixSelfOrParentLine(const std::string& line) {
+    if (line.empty() || line[0] != 'd') return false;
+    std::istringstream is(line);
+    std::string field;
+    for (int i = 0; i < 8; ++i)
+        if (!(is >> field)) return false;
+    std::string name, more;
+    if (!(is >> name) || (is >> more)) return false;
+    return name == "." || name == "..";
+}
+
 // Parses a UNIX ls -l-style line (common LIST output from FTP servers,
 // also the format libcurl's SFTP emits). Example:
 //   "drwxr-xr-x 2 alice users 4096 Dec 15 12:00 myfolder"
@@ -617,6 +656,8 @@ std::vector<std::string> SplitLines(const std::string& body) {
 namespace {
 // Bring the parsers into the anonymous namespace's usage scope so the call
 // sites in UltraNet_FtpListDirectory remain unqualified.
+using ultranet_internal::ftp::IsMlsdSelfOrParentLine;
+using ultranet_internal::ftp::IsUnixSelfOrParentLine;
 using ultranet_internal::ftp::ParseMlsdLine;
 using ultranet_internal::ftp::ParseUnixLine;
 using ultranet_internal::ftp::SplitLines;
@@ -776,18 +817,22 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
         CURLcode rc = CURLE_OK;
         UltraNetResult r = runListing("MLSD", false, body, rc);
         if (r) {
-            const std::vector<std::string> lines = SplitLines(body);
-            if (lines.empty()) return UltraNetResult::Ok();   // an empty folder
-            for (const auto& line : lines) {
+            // Lines that are neither an entry nor the folder's own "." / ".."
+            // (cdir / pdir): what says the reply was not MLSD after all.
+            bool unreadLine = false;
+            for (const auto& line : SplitLines(body)) {
                 UltraNetFtpEntry e;
                 if (ParseMlsdLine(line, e)) {
                     e.fullPath = listUrl + e.name;
                     out.push_back(std::move(e));
+                } else if (!IsMlsdSelfOrParentLine(line)) {
+                    unreadLine = true;
                 }
             }
-            if (!out.empty()) return UltraNetResult::Ok();
-            // Not remembered: a folder holding nothing but its own "." and
-            // ".." entries reads this way too, on a server whose MLSD is fine.
+            // Entries, or an empty folder: no lines at all, or only the
+            // folder's own and its parent's - which many servers send, and
+            // which used to send an empty folder round again with LIST.
+            if (!out.empty() || !unreadLine) return UltraNetResult::Ok();
             log.Step("The MLSD listing could not be read - asking again with LIST");
         } else if (!WorthAnotherListing(rc)) {
             return Finish(log, r, rc);
@@ -811,17 +856,19 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
         CURLcode rc = CURLE_OK;
         UltraNetResult r = runListing(nullptr, false, body, rc);
         if (r) {
-            bool anyLine = false;
+            bool unreadLine = false;
             for (const auto& line : SplitLines(body)) {
                 if (line.rfind("total ", 0) == 0) continue;  // ls -l preamble
-                anyLine = true;
                 UltraNetFtpEntry e;
                 if (ParseUnixLine(line, e)) {
                     e.fullPath = listUrl + e.name;
                     out.push_back(std::move(e));
+                } else if (!IsUnixSelfOrParentLine(line)) {
+                    unreadLine = true;
                 }
             }
-            if (!out.empty() || !anyLine) return r;   // entries, or an empty folder
+            // Entries, or an empty folder - "." and ".." alone included.
+            if (!out.empty() || !unreadLine) return r;
             log.Step("The LIST listing could not be read - asking for the names only");
         } else if (!isFtp || !WorthAnotherListing(rc)) {
             // SFTP / other: surface the error rather than try DIRLISTONLY,
@@ -880,6 +927,19 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
     curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
     curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
     ApplyCommonOptions(h.get(), opt);
+    // On FTP, a connection of its own, closed afterwards - never one an
+    // earlier call left open (ThreadConnections). libcurl sends quote
+    // commands BEFORE it changes into the URL's folder, so they run in
+    // whatever folder the connection is in, and they are written for the
+    // folder a login lands in (UltraNetFtpQuote.h). A kept connection is
+    // wherever the last listing left it: there "DELE photos/a.txt" looked for
+    // photos/photos/a.txt and failed with a 550 - or found a file of that name
+    // and deleted the wrong one. SFTP's quote commands carry the full path
+    // and may use any connection.
+    if (!IsSftpUrl(url)) {
+        curl_easy_setopt(h.get(), CURLOPT_FRESH_CONNECT, 1L);
+        curl_easy_setopt(h.get(), CURLOPT_FORBID_REUSE, 1L);
+    }
 
     CURLcode rc = CURLE_OK;
     UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);
