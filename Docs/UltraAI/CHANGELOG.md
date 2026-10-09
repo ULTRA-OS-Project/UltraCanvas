@@ -1,3 +1,12 @@
+#### 2026-10-09 *0.1.12*
+- **New dashboard icon.** The face is drawn larger and without the light blue
+  disc behind it (`media/appicon/UltraAI.svg`, the uploaded artwork).
+  `media/appicon/UltraAI.png` is re-rendered from it at 256 px through
+  librsvg; the drawing is taller than wide (229 x 303 units), so it is padded
+  to a square on a transparent background. The window and taskbar icon, the
+  Windows `.exe` icon and the `hicolor` theme icons are all made from this
+  pair, so every one of them changes with it.
+
 #### 2026-10-07 *0.1.11*
 - **The Translation dialog takes the source language and the formality.**
   It sent only the texts and a target language, so the register and a known
