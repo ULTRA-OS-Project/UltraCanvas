@@ -1469,11 +1469,12 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 }
 
 bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
-    // Spreadsheets open in UltraCanvasSpreadsheet (ODS / CSV / TSV). The engine
-    // is always compiled into the core library, so no backend guard is needed.
-    // (ODT is an OpenDocument *text* document, not a spreadsheet — not handled.)
+    // Spreadsheets open in UltraCanvasSpreadsheet (ODS / XLSX / XLS / CSV / TSV)
+    // - every format its LoadFromFile reads. The engine is always compiled into
+    // the core library, so no backend guard is needed. (ODT is an OpenDocument
+    // *text* document, not a spreadsheet — not handled.)
     std::string e = LowerExt(path);
-    return e == "ods" || e == "csv" || e == "tsv";
+    return e == "ods" || e == "xlsx" || e == "xls" || e == "csv" || e == "tsv";
 }
 
 bool UltraCanvasMediaViewer::GetModelViewPose(ModelViewPose& out) const {
@@ -1776,7 +1777,7 @@ static std::vector<std::string> SupportedOpenExtensions() {
     };
     add(PlainTextExtensions());
     add(EBookExtensions());
-    add({ "pdf", "ods", "csv", "tsv", "ucd" });
+    add({ "pdf", "ods", "xlsx", "xls", "csv", "tsv", "ucd" });
     add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
           "pcf", "bdf", "fon", "fnt" });
     add(PreviewableModelExtensions());
@@ -2060,7 +2061,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     }
 #endif
     if (!handled && kind == MediaKind::Sheet && sheetView) {
-        // Spreadsheets (ODS / CSV / TSV) open in the spreadsheet engine.
+        // Spreadsheets (ODS / XLSX / XLS / CSV / TSV) open in the spreadsheet engine.
         ShowView(MediaKind::Sheet);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* sv = static_cast<UltraCanvasSpreadsheet*>(sheetView.get());
