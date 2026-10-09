@@ -752,8 +752,9 @@ A paste from another application uses its HTML when it offers some
 the same cascade a mail is shown with: paragraphs, headings, lists, quotes as
 a quote level, `<pre>` as a code block, tables, rules, links, right-to-left
 paragraphs, inlined pictures (a picture the clipboard only links to becomes
-its alt text) and character formatting; Word's typed-out list labels and
-conditional comments dropped, a no-break space pasted as a space), and its
+its alt text) and character formatting; Word's list paragraphs as list items,
+its typed-out labels and conditional comments dropped, a no-break space pasted
+as a space), and its
 plain text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
 (`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
 converted), `HTML Format` on Windows; other platforms fall back to plain text.
