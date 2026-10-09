@@ -45,6 +45,9 @@ struct PaintToolOptions {
     bool  fillContiguous = true;
     bool  fillSampleMerged = false;
     float fillOpacity = 1.0f;
+    // Normal paints over the pixels; Replace sets them to the colour, its
+    // alpha included, which is how a fill makes an area transparent.
+    RasterPaint::FillCompositing fillCompositing = RasterPaint::FillCompositing::Blend;
 
     int   wandTolerance = 32;
     bool  wandContiguous = true;

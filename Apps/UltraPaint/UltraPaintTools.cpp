@@ -672,15 +672,31 @@ public:
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         if (!e.insideImage) return;
         const RasterPixel colour = e.button == UCMouseButton::Right ? ctx.background() : ctx.foreground();
+        const RasterPaint::FillCompositing compositing = ctx.options->fillCompositing;
+        // Painted over the pixels, a colour with no alpha leaves them as they
+        // were - say so, rather than let the click look ignored.
+        if (compositing == RasterPaint::FillCompositing::Blend && colour.a == 0) {
+            if (ctx.setStatus)
+                ctx.setStatus("Nothing filled: the colour is fully transparent. Set Mode to Replace to make the area transparent");
+            return;
+        }
+        // Take that message down again once a fill does something.
+        if (ctx.setStatus) ctx.setStatus(name + ": " + hint);
         EditActiveLayer(ctx, "Fill", [&](UCRasterDocument& doc, UCRasterLayer& layer, const UCRasterSelection* sel) {
             std::shared_ptr<UCRasterLayer> merged = ctx.options->fillSampleMerged ? doc.Flatten() : nullptr;
             return RasterPaint::FloodFill(layer, sel, static_cast<int>(e.x), static_cast<int>(e.y), colour,
                                           ctx.options->fillTolerance, ctx.options->fillContiguous, merged.get(),
-                                          RasterBlendMode::Normal, ctx.options->fillOpacity);
+                                          RasterBlendMode::Normal, ctx.options->fillOpacity, compositing);
         });
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
+        AddDropdown(panel, "fill-mode", "Mode", { "Normal", "Replace" },
+                    o->fillCompositing == RasterPaint::FillCompositing::Replace ? 1 : 0,
+                    [o](int i) {
+                        o->fillCompositing = i == 1 ? RasterPaint::FillCompositing::Replace
+                                                    : RasterPaint::FillCompositing::Blend;
+                    });
         AddSliderRow(panel, "fill-tol", "Tolerance", 0, 255, static_cast<float>(o->fillTolerance), 1, true,
                      [o](float v) { o->fillTolerance = static_cast<int>(v); });
         AddSliderRow(panel, "fill-opacity", "Opacity", 0, 1, o->fillOpacity, 0.05f, false, [o](float v) { o->fillOpacity = v; });

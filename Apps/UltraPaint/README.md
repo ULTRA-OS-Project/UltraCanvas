@@ -41,7 +41,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |
-| Fill | F | Flood fill: tolerance, contiguous, sample merged, opacity |
+| Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
 | Text | T | Click, type, choose font / size / bold |
@@ -50,6 +50,21 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
+
+### Filling with a transparent colour
+
+The Fill tool's *Mode* says what the colour does to the pixels it lands on:
+
+| Mode | What a fill does |
+|---|---|
+| Normal | Paints over them. The colour's alpha only says how much of it shows, so alpha 0 changes nothing - the status bar says so instead of ignoring the click |
+| Replace | Puts the colour in their place, alpha included. Alpha 0 makes the area transparent, and the checkerboard shows through; alpha 128 leaves it half transparent in that colour |
+
+For an opaque colour the two are the same. *Opacity* applies to both: at
+0.5, Replace takes the area half way to the colour. The colour's alpha is
+the *A* slider of the colour panel (the last two digits of *Hex*). A
+transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
+`.ucraster`); a JPEG has none.
 
 ## Menus
 
